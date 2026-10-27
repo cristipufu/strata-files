@@ -172,6 +172,12 @@ README 번역은 이 영어 원문을 바탕으로 카탈로그에서 생성됩�
 
 [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest)에서 최신 버전을 다운로드하고 디스크 이미지를 연 뒤 Strata를 응용 프로그램으로 드래그하세요. Apple silicon 탑재 Mac과 **macOS 26**이 필요합니다. 릴리스는 서명과 Apple 공증을 받으므로 일반 앱처럼 열 수 있습니다. **Strata ▸ 업데이트 확인…**에서 업데이트하거나, 허용하면 자동으로 업데이트합니다. 설치 전에 서명을 검증합니다.
 
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
+
 Swift 툴체인(Xcode 또는 Command Line Tools)으로 직접 빌드할 수도 있습니다.
 
 ```sh

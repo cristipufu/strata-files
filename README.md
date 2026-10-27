@@ -214,6 +214,12 @@ image and drag Strata to Applications. It needs an Apple silicon Mac running **m
 notarized by Apple, so Strata opens like any other app. It updates itself: **Strata ▸ Check for Updates…**, or
 automatically if you allow it (updates are signed and checked before they're installed).
 
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
+
 Or build it yourself with the Swift toolchain (Xcode or the Command Line Tools):
 
 ```sh

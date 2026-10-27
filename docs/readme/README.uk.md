@@ -172,6 +172,12 @@ Strata доступна 22 мовами й дотримується мови Mac
 
 Завантажте останню версію з [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest), відкрийте образ диска й перетягніть Strata до папки «Програми». Потрібен Mac з Apple silicon і **macOS 26**. Випуски підписані й нотаріально засвідчені Apple, тому Strata відкривається як звичайна програма. Оновлення доступні через **Strata ▸ Перевірити оновлення…** або автоматично з вашого дозволу; перед установленням перевіряється їхній підпис.
 
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
+
 Або зберіть програму самостійно інструментами Swift — Xcode чи Command Line Tools:
 
 ```sh

@@ -172,6 +172,12 @@ README 的译文以本英文原稿为源，从翻译目录生成。请参阅 [RE
 
 从 [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest) 下载最新版，打开磁盘映像，将 Strata 拖入“应用程序”。需要搭载 Apple silicon 且运行 **macOS 26** 的 Mac。发行版均经过签名和 Apple 公证，可像普通应用一样打开。通过 **Strata ▸ 检查更新…** 或经你允许自动更新；安装前会检查更新的签名。
 
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
+
 也可使用 Swift 工具链（Xcode 或 Command Line Tools）自行构建：
 
 ```sh

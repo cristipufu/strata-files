@@ -198,6 +198,8 @@ kbd, .key {
 .hero__lede { margin-top: 20px; max-width: 600px; font-size: clamp(17px, 1.6vw, 20px); color: var(--text-2); text-wrap: balance; }
 .hero__cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .hero__meta { margin-top: 16px; font-size: 14px; color: var(--text-3); }
+.hero__brew { margin-top: 16px; font-size: 14px; line-height: 1.8; }
+.hero__brew code { overflow-wrap: anywhere; }
 .hero__shot { position: relative; margin-top: 44px; perspective: 1600px; }
 .hero__shot .shot { position: relative; width: min(100%, 1180px); margin: 0 auto; transform-origin: 50% 0; }
 .hero__glow {
