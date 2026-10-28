@@ -141,6 +141,36 @@ class MutationAuditTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_a_test_filter_names_the_suite_a_test_is_declared_in(self):
+        with tempfile.TemporaryDirectory(prefix="strata-mutation-audit-") as folder:
+            root = Path(folder)
+            (root / "Sources").mkdir()
+            (root / "Tests" / "StrataTests").mkdir(parents=True)
+            (root / "Sources" / "Safety.swift").write_text("func check() {}\n")
+            (root / "Tests" / "StrataTests" / "ExtraTests.swift").write_text(
+                "extension SafetyTests {\n    @Test func refusesUpFront() {}\n}\n")
+            (root / "Tests" / "StrataTests" / "QueueTests.swift").write_text(
+                "@Suite(.serialized) struct QueueTests {\n    @Test func keepsBoth() {}\n}\n")
+            previous = os.getcwd()
+            try:
+                os.chdir(folder)
+                results = {}
+                filters = ["SafetyTests/refusesUpFront", "QueueTests/keepsBoth", "ExtraTests",
+                           "ExtraTests/refusesUpFront"]
+                for tests in filters:
+                    (root / "Tests" / "mutations.json").write_text(json.dumps([{
+                        "file": "Safety.swift", "find": "check()", "replace": "skip()", "rule": "Refusal",
+                        "tests": tests,
+                    }]))
+                    results[tests] = audit.mutation_problems()
+                self.assertEqual(results["SafetyTests/refusesUpFront"], [])
+                self.assertEqual(results["QueueTests/keepsBoth"], [])
+                self.assertEqual(results["ExtraTests"], [])
+                self.assertEqual(results["ExtraTests/refusesUpFront"],
+                                 ["Refusal: tests `ExtraTests/refusesUpFront` match no test"])
+            finally:
+                os.chdir(previous)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -151,12 +151,16 @@ def mutation_problems():
     """Entries of Tests/mutations.json that no longer fit the code or the tests."""
     import json
     problems = []
-    # A test belongs to the suites its file declares or extends (AcrossDisksTests.swift extends TransferTests).
-    tests = set()
+    # A test belongs to the suites its file declares or extends (AcrossDisksTests.swift extends TransferTests). A
+    # filter of a file's name alone also matches its tests, through the source location in their IDs, but
+    # `File/name` doesn't: the name follows the suite there, not the file.
+    tests, files = set(), set()
     for path in glob.glob("Tests/StrataTests/*.swift"):
         text = Path(path).read_text()
-        suites = set(re.findall(r"^(?:@Suite[^\n]*\n)?\s*(?:struct|extension|final class|class)\s+(\w+)", text, re.M))
-        suites.add(path.split("/")[-1].removesuffix(".swift"))
+        declaration = r"^\s*(?:@\w+(?:\([^)]*\))?\s+)*(?:struct|extension|final class|class)\s+(\w+)"
+        suites = set(re.findall(declaration, text, re.M))
+        if "@Test func" in text:
+            files.add(path.split("/")[-1].removesuffix(".swift"))
         for name in re.findall(r"@Test func (\w+)", text):
             for suite in suites:
                 tests.add((suite, name))
@@ -174,7 +178,8 @@ def mutation_problems():
         # or extensions of it) and name prefix, or by suite alone.
         for alternative in m["tests"].split("|"):
             suite, _, prefix = alternative.partition("/")
-            if not any(s == suite and name.startswith(prefix) for s, name in tests):
+            by_file = prefix == "" and suite in files
+            if not by_file and not any(s == suite and name.startswith(prefix) for s, name in tests):
                 problems.append(f"{m['rule']}: tests `{alternative}` match no test")
     return problems
 
