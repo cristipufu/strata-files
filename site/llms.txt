@@ -6,7 +6,7 @@
 - Download: https://github.com/cristipufu/strata-files/releases/latest (Strata.dmg, signed with a Developer ID and notarized by Apple)
 - Requirements: macOS 26 Tahoe on a Mac with Apple silicon. Apple Intelligence is optional.
 - Price: free. License: MIT.
-- Color themes: fourteen presets with light and dark palettes, native macOS controls and optional window tint, in Settings ▸ Appearance. System keeps the Mac’s own colors.
+- Color themes: seventeen presets with light and dark palettes, native macOS controls and optional window tint, in Settings ▸ Appearance. System keeps the Mac’s own colors.
 - Quick Look: press Space on a folder or archive to browse its contents and preview files alongside, with filtering, sorting, list and thumbnail views, and explicit Open and Copy actions. The viewer remembers its size and pane proportions.
 - Books and comics: EPUB and CBZ/CBR/CB7/CBT cover thumbnails; Space browses comic pages in a contact sheet; EPUB chapters preview offline in Quick Look and the inspector. Search kinds: `kind:book` / `kind:ebook`, `kind:comic`. MOBI, AZW3 and DjVu are searchable by kind; their reading previews are not included.
 

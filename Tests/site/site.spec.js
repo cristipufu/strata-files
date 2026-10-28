@@ -60,7 +60,7 @@ for (const width of [320, 390, 768, 1440]) {
     expect(await page.evaluate(() => window.policyViolations)).toEqual([]);
     expect(errors).toEqual([]);
     await expect(page.locator('#themes .lede')).toHaveText(
-      'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of fourteen themes.');
+      'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of seventeen themes.');
     for (const image of await page.locator('img:visible').all()) {
       await image.scrollIntoViewIfNeeded();
       await expect.poll(() => image.evaluate(el => el.complete && el.naturalWidth > 0)).toBe(true);

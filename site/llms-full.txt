@@ -51,7 +51,7 @@ Filters can be combined with words:
 
 ## Color themes
 
-Settings ▸ Appearance ▸ Color theme offers System (the Mac’s own colors) and fourteen presets: Graphite, Blue, Green, Purple, Sand, Teal, Rose, Amber, Slate, Sage, Coral, Plum, Ice and Midnight. Each preset has a light and dark palette, with coordinated colors across file views, the sidebar, inspector, toolbar and secondary windows. Controls and behavior remain native macOS. Turn Window tint off to keep native backgrounds while using the palette for selections and accents. Row density and file name size are also adjustable.
+Settings ▸ Appearance ▸ Color theme offers System (the Mac’s own colors) and seventeen presets: Graphite, Blue, Green, Purple, Sand, Teal, Rose, Amber, Slate, Sage, Coral, Plum, Ice, Midnight, Catppuccin, Dracula and Tokyo Night. Each preset has a light and dark palette, with coordinated colors across file views, the sidebar, inspector, toolbar and secondary windows. Controls and behavior remain native macOS. Turn Window tint off to keep native backgrounds while using the palette for selections and accents. Row density and file name size are also adjustable.
 
 ## Space
 

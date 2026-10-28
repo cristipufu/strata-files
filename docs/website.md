@@ -7,7 +7,7 @@ at 800, 1100, 1400, 2360 and the original 3960 pixels. The homepage preload and 
 responsive candidates so only the appropriate size is downloaded.
 
 The Color Themes section pairs its copy with the approved Appearance settings capture, `docs/screenshots/appearance.png`.
-It shows all fourteen themes plus System in the actual settings window, with its native border, shadow and transparency.
+It shows System and the original fourteen themes in the actual settings window, with its native border, shadow and transparency.
 The portrait image is displayed at up to 632 CSS pixels; lossless WebP delivery preserves palette colors and alpha at
 480, 800, 1100 and the original 1264 pixels. The README shares the primary `appearance.webp` export.
 
