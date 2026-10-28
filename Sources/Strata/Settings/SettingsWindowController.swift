@@ -112,6 +112,9 @@ private struct GeneralSettings: View {
                            get: { Prefs.shared.showHidden }, set: { Prefs.shared.showHidden = $0 })
                 PrefToggle(title: "Keep folders on top", caption: nil,
                            get: { Prefs.shared.foldersFirst }, set: { Prefs.shared.foldersFirst = $0 })
+                PrefToggle(title: "Address bar in each pane",
+                           caption: "In Dual Pane, each side has its own path bar instead of just the folder name.",
+                           get: { Prefs.shared.dualPaneAddressBars }, set: { Prefs.shared.dualPaneAddressBars = $0 })
                 PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
                            get: { Prefs.shared.reopenWindows }, set: { Prefs.shared.reopenWindows = $0 })
                 PrefToggle(title: "Open archives like folders",

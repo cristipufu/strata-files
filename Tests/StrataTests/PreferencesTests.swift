@@ -102,8 +102,11 @@ struct PreferencesTests {
         domain.defaults.removeObject(forKey: "gridIconSize")
         #expect(prefs.foldersFirst && prefs.gridIconSize == 72)
         #expect(prefs.reopenWindows && prefs.openArchivesAsFolders && prefs.showIconPreviews)
+        #expect(!prefs.dualPaneAddressBars)
         #expect(prefs.density == 1 && prefs.nameTextSize == 13)
         #expect(prefs.favoritePaths == nil)
+        prefs.dualPaneAddressBars = true
+        #expect(prefs.dualPaneAddressBars)
         prefs.newFileExtension = ".md"
         #expect(prefs.newFileExtension == "md")
         prefs.newFileExtension = "../bad"
@@ -121,6 +124,7 @@ struct PreferencesTests {
         prefs.colorThemeOptions = .init(palette: .teal, tintsWindow: false)
         prefs.lastLocation = URL(fileURLWithPath: "/one", isDirectory: true)
         let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: domain.name)), domainName: domain.name)
+        #expect(reopened.dualPaneAddressBars)
         #expect(reopened.favoritePaths == ["/one", "/two"])
         #expect(reopened.collapsedSidebarSections == ["favorites", "volumes"])
         #expect(reopened.hiddenListColumns == ["size", "created"])

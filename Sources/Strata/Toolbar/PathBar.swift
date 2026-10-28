@@ -7,6 +7,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// Folder to show, plus an item inside it to select (when a file path was typed).
     var onNavigate: ((URL, URL?) -> Void)?
     var onFinishEditing: (() -> Void)?
+    var onActivate: (() -> Void)?
 
     var url: URL? {
         didSet {
@@ -17,6 +18,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     /// A title shown instead of breadcrumbs (Search, Recents…), kept across editing.
     private var title: (text: String, symbol: String)?
+    var isShowingTitle: Bool { title != nil }
 
     /// Root of the git work tree being shown, if any; the branch pill follows its crumb.
     var gitRoot: URL? {
@@ -33,9 +35,22 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let suggestionList = PathSuggestionList()
     private var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
+    private let embedded: Bool
 
-    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared, copies: CopyProviders = .live) {
+    var editorField: NSTextField { field }
+
+    var crumbButtons: [CrumbButton] {
+        crumbs.arrangedSubviews.flatMap { view -> [CrumbButton] in
+            if let button = view as? CrumbButton { return [button] }
+            if let stack = view as? NSStackView { return stack.arrangedSubviews.compactMap { $0 as? CrumbButton } }
+            return []
+        }
+    }
+
+    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared, copies: CopyProviders = .live,
+         embedded: Bool = false) {
         self.copies = copies
+        self.embedded = embedded
         suggestions = PathSuggestions(visits: visits, preferences: preferences)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
@@ -47,7 +62,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         crumbs.detachesHiddenViews = true
         // Let a deep path squeeze into the bar by dropping middle crumbs (their visibility priorities below) instead of
         // forcing the bar wider: past the toolbar's room, AppKit would move every toolbar item into the overflow menu.
-        crumbs.setClippingResistancePriority(.defaultLow, for: .horizontal)
+        crumbs.setClippingResistancePriority(embedded ? .init(230) : .defaultLow, for: .horizontal)
         crumbs.translatesAutoresizingMaskIntoConstraints = false
         addSubview(crumbs)
 
@@ -65,44 +80,64 @@ final class PathBar: NSView, NSTextFieldDelegate {
         addSubview(field)
         suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
 
-        // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
-        let preferred = widthAnchor.constraint(equalToConstant: 520)
-        preferred.priority = .fittingSizeCompression
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 32),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            widthAnchor.constraint(lessThanOrEqualToConstant: 720),
-            preferred,
+        var constraints = [
             crumbs.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             crumbs.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
             crumbs.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             field.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+        ]
+        if embedded {
+            setContentCompressionResistancePriority(.init(199), for: .horizontal)
+            setContentHuggingPriority(.init(199), for: .horizontal)
+            field.setContentCompressionResistancePriority(.init(199), for: .horizontal)
+            branchPill.setContentCompressionResistancePriority(.init(220), for: .horizontal)
+        } else {
+            // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
+            let preferred = widthAnchor.constraint(equalToConstant: 520)
+            preferred.priority = .fittingSizeCompression
+            constraints += [
+                heightAnchor.constraint(equalToConstant: 32),
+                widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+                widthAnchor.constraint(lessThanOrEqualToConstant: 720),
+                preferred,
+            ]
+        }
+        NSLayoutConstraint.activate(constraints)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func mouseDown(with event: NSEvent) {
+        onActivate?()
         beginEditing()
     }
 
     /// Shows a single non-navigating crumb, for places that aren't folders (Search, Recents).
     func showTitle(_ title: String, symbol: String) {
-        self.title = (title, symbol)
         if isEditing { endEditing(restoreFocus: false) }
+        if self.title?.text == title, self.title?.symbol == symbol, !crumbs.arrangedSubviews.isEmpty { return }
+        self.title = (title, symbol)
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let crumb = CrumbButton(title: title, symbol: symbol, emphasized: true)
+        if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
+        crumb.target = self
+        crumb.action = #selector(titleCrumbClicked)
         crumb.isEnabled = true
         crumbs.addArrangedSubview(crumb)
+    }
+
+    @objc private func titleCrumbClicked() {
+        onActivate?()
     }
 
     // MARK: - Breadcrumbs
 
     private func rebuild() {
-        if let title {
-            showTitle(title.text, symbol: title.symbol)
+        if let currentTitle = title {
+            title = nil
+            showTitle(currentTitle.text, symbol: currentTitle.symbol)
             return
         }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -112,6 +147,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
             let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast)
+            if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
             crumb.toolTip = Format.tildePath(part.url)
             crumb.target = self
             crumb.action = #selector(crumbClicked(_:))
@@ -125,17 +161,26 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 group.setCustomSpacing(2, after: branchPill)
             }
             if !isLast {
-                let chevron = ChevronButton(folder: part.url) { [weak self] target in self?.onNavigate?(target, nil) }
+                let chevron = ChevronButton(folder: part.url) { [weak self] target in
+                    self?.onActivate?()
+                    self?.onNavigate?(target, nil)
+                }
                 group.addArrangedSubview(chevron)
             }
             crumbs.addArrangedSubview(group)
             // When space runs out, middle folders go first; the root and the current folder stay.
-            let priority: Float = index == 0 || isLast ? 1000 : isRepoRoot ? 900 : Float(500 + index)
+            let priority: Float
+            if embedded {
+                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 180 : Float(100 + min(index, 70))
+            } else {
+                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 900 : Float(500 + index)
+            }
             crumbs.setVisibilityPriority(NSStackView.VisibilityPriority(rawValue: priority), for: group)
         }
     }
 
     @objc private func crumbClicked(_ sender: CrumbButton) {
+        onActivate?()
         guard let destination = sender.destination else { return }
         onNavigate?(destination, nil)
     }
@@ -209,8 +254,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
     // MARK: - Editing
 
     func beginEditing() {
+        guard url != nil, !isEditing else { return }
+        onActivate?()
         guard let url, !isEditing else { return }
         isEditing = true
+        alphaValue = 1
         suggestions.begin(at: url)
         if let window {
             for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
@@ -224,6 +272,14 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.stringValue = text
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+    }
+
+    func cancelEditing() {
+        if isEditing {
+            endEditing(restoreFocus: false)
+        } else {
+            closeSuggestions()
+        }
     }
 
     private func endEditing(restoreFocus: Bool) {

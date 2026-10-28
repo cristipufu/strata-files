@@ -29,6 +29,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     let split: MainSplitViewController
     let pathBar: PathBar
+    var pathBarItem: NSToolbarItem?
     var searchItem: NSSearchToolbarItem?
     var viewModeItem: NSToolbarItemGroup?
     var sidebarModeItem: NSToolbarItemGroup?
@@ -143,6 +144,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             activate(pane)
             window?.makeFirstResponder(pane.browser.focusView)
         }
+        pane.host.pathBar.onActivate = { [weak self, weak pane] in
+            guard let self, let pane else { return }
+            activate(pane)
+        }
+        pane.host.pathBar.onNavigate = { [weak self, weak pane] url, select in
+            guard let self, let pane else { return }
+            activate(pane)
+            go(.folder(url.standardizedFileURL), in: pane, select: select)
+            window?.makeFirstResponder(pane.browser.focusView)
+        }
+        pane.host.pathBar.onFinishEditing = { [weak self, weak pane] in
+            guard let self, let pane else { return }
+            window?.makeFirstResponder(pane.browser.focusView)
+        }
         let tab: () -> Bool = { [weak self] in
             guard let self, isDualPane else { return false }
             focusOtherPane(nil)
@@ -249,15 +264,48 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func activate(_ newPane: Pane) {
         guard newPane !== pane, panes.contains(where: { $0 === newPane }) else { return }
+        pane.host.pathBar.cancelEditing()
         pane = newPane
         updateChrome()
         refreshPanels()
     }
 
     func updateHeaders() {
+        let dualAddressBars = isDualPane && services.preferences.dualPaneAddressBars
+        if dualAddressBars, pathBar.isEditing { pathBar.cancelEditing() }
+        pathBarItem?.isHidden = dualAddressBars
         for p in panes {
             let title = p.title
-            p.host.setHeader(visible: isDualPane, title: title.text, symbol: title.symbol, active: p === pane)
+            syncPathBar(p.host.pathBar, for: p)
+            p.host.setHeader(visible: isDualPane, title: title.text, symbol: title.symbol, active: p === pane,
+                             showsPathBar: services.preferences.dualPaneAddressBars)
+        }
+    }
+
+    private func syncPathBar(_ bar: PathBar, for p: Pane) {
+        guard !bar.isEditing else { return }
+        switch p.destination {
+        case .folder(let url):
+            let shown = (p.browser.mode == .columns ? p.columnLocation : nil) ?? url
+            if bar.url != shown || bar.isShowingTitle { bar.url = shown }
+            updateGitChrome(on: bar, destination: p.destination, location: shown)
+        case .search(let text, _):
+            if bar.url != p.location { bar.url = p.location }
+            bar.gitRoot = nil
+            bar.branchPill.model = nil
+            bar.showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
+                              : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
+                          symbol: "magnifyingglass")
+        case .duplicates:
+            if bar.url != p.location { bar.url = p.location }
+            bar.gitRoot = nil
+            bar.branchPill.model = nil
+            bar.showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square")
+        case .recents:
+            if bar.url != p.location { bar.url = p.location }
+            bar.gitRoot = nil
+            bar.branchPill.model = nil
+            bar.showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock")
         }
     }
 
@@ -381,6 +429,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.backStack.append(p.destination)
             p.forwardStack.removeAll()
         }
+        p.host.pathBar.cancelEditing()
+        if p === pane { pathBar.cancelEditing() }
         p.destination = target
         switch target {
         case .folder(let url):
@@ -409,6 +459,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func updateChrome() {
         switch destination {
         case .folder(let url):
+            let url = (browser.mode == .columns ? pane.columnLocation : nil) ?? url
             pathBar.url = url
             updateGitChrome()
             split.sidebar.highlight(.folder(url))
@@ -534,8 +585,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func goRecents(_ sender: Any?) { go(.recents) }
     func showDuplicates() { go(.duplicates) }
     @objc func goToFolder(_ sender: Any?) {
-        revealToolbarItem(.pathBar)
-        pathBar.beginEditing()
+        if isDualPane && services.preferences.dualPaneAddressBars {
+            pane.host.pathBar.beginEditing()
+        } else {
+            revealToolbarItem(.pathBar)
+            pathBar.beginEditing()
+        }
     }
     @objc func focusSearch(_ sender: Any?) {
         revealToolbarItem(.search)
@@ -597,6 +652,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Every window's switch follows the setting (it's the same for all of them).
     @objc private func sidebarModePrefChanged() {
         sidebarModeItem?.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
+        updateHeaders()
     }
 
     @objc func viewModeChanged(_ sender: NSToolbarItemGroup) {
@@ -632,7 +688,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func windowDidBecomeKey(_ notification: Notification) {
         split.sidebar.reload()
         // Catch commits, checkouts and edits made in other apps while we were in the background (tags in Finder too).
-        GitStatusStore.shared.invalidate(containing: location)
+        for p in panes { GitStatusStore.shared.invalidate(containing: p.location) }
         panes.forEach { $0.browser.rereadTags() }
     }
 
@@ -645,14 +701,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Branch pill after the repository's crumb: from the last status, or straight from HEAD until it arrives.
     private func updateGitChrome() {
+        let shown = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
+        updateGitChrome(on: pathBar, destination: destination, location: shown)
+        for p in panes where !p.host.pathBar.isEditing {
+            let url = (p.browser.mode == .columns ? p.columnLocation : nil) ?? p.location
+            updateGitChrome(on: p.host.pathBar, destination: p.destination, location: url)
+        }
+    }
+
+    private func updateGitChrome(on bar: PathBar, destination: Destination, location: URL) {
         let store = GitStatusStore.shared
         guard case .folder = destination, let repository = store.repository(containing: location) else {
-            pathBar.gitRoot = nil
-            pathBar.branchPill.model = nil
+            bar.gitRoot = nil
+            bar.branchPill.model = nil
             return
         }
-        pathBar.gitRoot = repository.root
-        pathBar.branchPill.model = store.snapshot(for: repository.root).map(GitBranchPill.Model.init)
+        bar.gitRoot = repository.root
+        bar.branchPill.model = store.snapshot(for: repository.root).map(GitBranchPill.Model.init)
             ?? GitBranchPill.Model(placeholderFor: repository)
     }
 
@@ -850,8 +915,10 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         }
         owner.columnLocation = url
         owner.folderEntry = FileEntry(url: url)
+        updateHeaders()
         guard owner === pane else { return }
         pathBar.url = url
+        updateGitChrome(on: pathBar, destination: owner.destination, location: url)
         window?.title = Places.displayName(url, copies: services.copies)
         refreshPanels()
     }

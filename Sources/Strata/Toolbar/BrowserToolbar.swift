@@ -106,6 +106,7 @@ extension BrowserWindowController {
 
     func toolbarDidRemoveItem(_ notification: Notification) {
         guard let item = notification.userInfo?[NSToolbarUserInfoKey.itemKey.rawValue] as? NSToolbarItem else { return }
+        if item === pathBarItem { pathBarItem = nil }
         if item === searchItem { searchItem = nil }
         if item === sidebarModeItem { sidebarModeItem = nil }
         if item === viewModeItem { viewModeItem = nil }

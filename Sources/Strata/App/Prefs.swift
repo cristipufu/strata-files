@@ -87,6 +87,7 @@ final class Prefs {
         static let dockSearch = "dockSearch"
         static let collapsedSidebarSections = "collapsedSidebarSections"
         static let newFileExtension = "newFileExtension"
+        static let dualPaneAddressBars = "dualPaneAddressBars"
     }
 
     /// An explicit app-language override. An empty value lets macOS choose the language on the next launch.
@@ -107,6 +108,12 @@ final class Prefs {
     var sidebarShowsTree: Bool {
         get { defaults.bool(forKey: Key.sidebarShowsTree) }
         set { defaults.set(newValue, forKey: Key.sidebarShowsTree); notifications.post(name: .prefsChanged, object: nil) }
+    }
+
+    /// In Dual Pane, each pane shows its own path bar instead of just the folder name.
+    var dualPaneAddressBars: Bool {
+        get { defaults.bool(forKey: Key.dualPaneAddressBars) }
+        set { defaults.set(newValue, forKey: Key.dualPaneAddressBars); notifications.post(name: .prefsChanged, object: nil) }
     }
 
     /// Sidebar sections you've hidden (Hide on a section's title), by ID: they stay hidden until you show them again.

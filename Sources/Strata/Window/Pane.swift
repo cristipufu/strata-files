@@ -17,6 +17,7 @@ final class Pane {
             guard destination != oldValue else { return }
             navigationRevision += 1
             browser.cancelPendingActions()
+            host.pathBar.cancelEditing()
         }
     }
     private(set) var navigationRevision = 0
@@ -55,6 +56,7 @@ final class Pane {
     func stopBackgroundWork() {
         browser.cancelPendingActions()
         opening.cancel()
+        host.pathBar.cancelEditing()
         browser.stopBackgroundWork()
         searchTask?.cancel()
         searchTask = nil
@@ -67,10 +69,12 @@ final class Pane {
     /// Short description for the pane header.
     var title: (text: String, symbol: String) {
         switch destination {
-        case .folder(let url): (Places.displayName(url, copies: browser.services.copies), Trash.isTrash(url) ? "trash" : "folder")
-        case .search(let text, _): (BrowserWindowController.searchTitle(text), "magnifyingglass")
-        case .recents: (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
-        case .duplicates: (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")
+        case .folder(let url):
+            let shown = (browser.mode == .columns ? columnLocation : nil) ?? url
+            return (Places.displayName(shown, copies: browser.services.copies), Trash.isTrash(shown) ? "trash" : "folder")
+        case .search(let text, _): return (BrowserWindowController.searchTitle(text), "magnifyingglass")
+        case .recents: return (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
+        case .duplicates: return (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")
         }
     }
 }
@@ -78,8 +82,9 @@ final class Pane {
 /// A pane's browser plus, in dual-pane mode, a slim header that shows where it is and whether it has focus.
 final class PaneHostViewController: NSViewController {
     let browser: BrowserViewController
+    let pathBar: PathBar
     var onActivate: (() -> Void)?
-    private let header = PaneHeaderView()
+    private let header: PaneHeaderView
     private let status = NSTextField(labelWithString: "")
     private let statusBar = NSView()
     private var underToolbar: NSLayoutConstraint?
@@ -89,6 +94,9 @@ final class PaneHostViewController: NSViewController {
 
     init(browser: BrowserViewController) {
         self.browser = browser
+        let services = browser.services
+        pathBar = PathBar(visits: services.visits, preferences: services.preferences, copies: services.copies, embedded: true)
+        header = PaneHeaderView(pathBar: pathBar)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -160,10 +168,10 @@ final class PaneHostViewController: NSViewController {
         hold(text == nil ? aboveBottom : aboveStatus, over: text == nil ? aboveStatus : aboveBottom)
     }
 
-    func setHeader(visible: Bool, title: String, symbol: String, active: Bool) {
+    func setHeader(visible: Bool, title: String, symbol: String, active: Bool, showsPathBar: Bool = false) {
         loadViewIfNeeded()
         header.isHidden = !visible
-        header.configure(title: title, symbol: symbol, active: active)
+        header.configure(title: title, symbol: symbol, active: active, showsPathBar: showsPathBar)
         hold(visible ? underHeader : underToolbar, over: visible ? underToolbar : underHeader)
     }
 
@@ -179,10 +187,12 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
     var onClick: (() -> Void)?
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
+    private let pathBar: PathBar
     private let underline = NSView()
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(pathBar: PathBar) {
+        self.pathBar = pathBar
+        super.init(frame: .zero)
         material = .headerView
         blendingMode = .withinWindow
         icon.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
@@ -191,8 +201,9 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
         // A long folder name truncates instead of holding the pane (and the window) wider; the header is laid out even
         // while hidden.
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pathBar.isHidden = true
         underline.wantsLayer = true
-        for view in [icon, label, underline] {
+        for view in [icon, label, pathBar, underline] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -202,6 +213,10 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            pathBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            pathBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            pathBar.topAnchor.constraint(equalTo: topAnchor),
+            pathBar.bottomAnchor.constraint(equalTo: underline.topAnchor),
             underline.leadingAnchor.constraint(equalTo: leadingAnchor),
             underline.trailingAnchor.constraint(equalTo: trailingAnchor),
             underline.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -211,15 +226,20 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(title: String, symbol: String, active: Bool) {
+    func configure(title: String, symbol: String, active: Bool, showsPathBar: Bool) {
         label.stringValue = title
-        setAccessibilityElement(true)
+        setAccessibilityElement(!showsPathBar)
         setAccessibilityRole(.button)
         setAccessibilityLabel(active ? String(localized: "\(title), focused pane", comment: "Accessibility: the pane header; where the pane is")
                                      : String(localized: "\(title), pane", comment: "Accessibility: the pane header; where the pane is"))
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         label.textColor = active ? .labelColor : .secondaryLabelColor
         icon.contentTintColor = active ? ThemeStyle.accent : .tertiaryLabelColor
+        icon.isHidden = showsPathBar
+        label.isHidden = showsPathBar
+        pathBar.isHidden = !showsPathBar
+        if !showsPathBar, pathBar.isEditing { pathBar.cancelEditing() }
+        pathBar.alphaValue = active || pathBar.isEditing ? 1 : 0.75
         isActive = active
         updateUnderline()
     }
@@ -244,7 +264,12 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onClick?()
+        if !pathBar.isHidden {
+            pathBar.onActivate?()
+            pathBar.beginEditing()
+        } else {
+            onClick?()
+        }
     }
 
     override func accessibilityPerformPress() -> Bool {

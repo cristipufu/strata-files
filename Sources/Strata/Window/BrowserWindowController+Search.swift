@@ -379,8 +379,13 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         case .pathBar:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
-            if flag { item.view = pathBar }
-            else { item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil) }
+            if flag {
+                item.view = pathBar
+                item.isHidden = isDualPane && services.preferences.dualPaneAddressBars
+                pathBarItem = item
+            } else {
+                item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+            }
             item.visibilityPriority = .high
             return item
         case .sidebarMode:

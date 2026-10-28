@@ -342,4 +342,83 @@ struct BrowserPreferencesTests {
         #expect(a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
         #expect(tree.snapshot() == ["UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt"])
     }
+
+    @Test func dualPaneAddressBarsStayWithTheirEnvironmentAndNavigateEachPaneIndependently() async throws {
+        let tree = try TestTree("left/sub/deep/", "left/sub/a.txt", "right/other/b.txt", "elsewhere/")
+        let first = try Environment(), second = try Environment()
+        _ = NSApplication.shared
+        let a = BrowserWindowController(location: tree.url("left/sub"), secondPane: tree.url("right/other"), services: first.services)
+        let b = BrowserWindowController(location: tree.url("left/sub"), secondPane: tree.url("right/other"), services: second.services)
+        for window in [a, b] { window.split.splitView.autosaveName = nil; window.window?.setFrameAutosaveName("") }
+        defer {
+            for window in [a, b] {
+                window.panes.forEach { $0.stopBackgroundWork() }
+                window.window?.contentViewController = nil
+            }
+        }
+        for p in a.panes + b.panes { await p.browser.directoryReads.task?.value }
+        let leftPane = a.panes[0], rightPane = a.panes[1]
+
+        // Default is off: each pane shows its compact title header and the toolbar path bar stays visible.
+        #expect(!first.preferences.dualPaneAddressBars && !second.preferences.dualPaneAddressBars)
+        #expect(a.pathBarItem?.isHidden == false && b.pathBarItem?.isHidden == false)
+        #expect(leftPane.host.pathBar.isHidden && rightPane.host.pathBar.isHidden)
+
+        // Turning the setting on in `first` updates `a` live without affecting `b`.
+        first.preferences.dualPaneAddressBars = true
+        #expect(a.pathBarItem?.isHidden == true && b.pathBarItem?.isHidden == false)
+        #expect(!leftPane.host.pathBar.isHidden && !rightPane.host.pathBar.isHidden)
+        #expect(b.panes.allSatisfy { $0.host.pathBar.isHidden })
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("right/other").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.crumbButtons.last?.title == "sub")
+        #expect(rightPane.host.pathBar.crumbButtons.last?.title == "other")
+
+        // Clicking a parent breadcrumb in the unfocused pane activates that pane and navigates only that pane.
+        #expect(a.pane === leftPane)
+        let rightParentCrumb = try #require(rightPane.host.pathBar.crumbButtons.first { $0.title == "right" })
+        _ = rightParentCrumb.target?.perform(rightParentCrumb.action, with: rightParentCrumb)
+        await rightPane.browser.directoryReads.task?.value
+        #expect(a.pane === rightPane)
+        #expect(rightPane.location.standardizedFileURL.path == tree.url("right").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("right").standardizedFileURL.path)
+        #expect(leftPane.location.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+
+        // ⌘L (Go to Folder) edits the focused pane's address bar and navigates that pane on Return.
+        a.goToFolder(nil)
+        #expect(rightPane.host.pathBar.isEditing && !leftPane.host.pathBar.isEditing && !a.pathBar.isEditing)
+        rightPane.host.pathBar.editorField.stringValue = tree.url("elsewhere").path
+        _ = rightPane.host.pathBar.control(rightPane.host.pathBar.editorField, textView: NSTextView(),
+                                           doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        await rightPane.browser.directoryReads.task?.value
+        #expect(!rightPane.host.pathBar.isEditing)
+        #expect(rightPane.location.standardizedFileURL.path == tree.url("elsewhere").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.crumbButtons.last?.title == "elsewhere")
+
+        // Deeper column navigation in an unfocused pane updates that pane's own address bar.
+        leftPane.browser.setMode(.columns, remember: false)
+        a.browser(leftPane.browser, columnLocationChanged: tree.url("left/sub/deep"))
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub/deep").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.crumbButtons.last?.title == "deep")
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("elsewhere").standardizedFileURL.path)
+
+        // Non-folder destinations in one pane show their title crumb while the other pane keeps its folder breadcrumbs.
+        a.go(.recents, in: leftPane)
+        #expect(leftPane.host.pathBar.isShowingTitle)
+        #expect(!rightPane.host.pathBar.isShowingTitle)
+        let recentsCrumb = try #require(leftPane.host.pathBar.crumbButtons.first)
+        _ = recentsCrumb.target?.perform(recentsCrumb.action, with: recentsCrumb)
+        #expect(a.pane === leftPane)
+
+        // Closing dual-pane restores the toolbar path bar; turning the setting off restores compact headers.
+        a.toggleDualPane(nil)
+        #expect(!a.isDualPane && a.pathBarItem?.isHidden == false)
+        a.toggleDualPane(at: tree.url("left/sub"))
+        #expect(a.isDualPane && a.pathBarItem?.isHidden == true)
+        first.preferences.dualPaneAddressBars = false
+        #expect(a.pathBarItem?.isHidden == false && a.panes.allSatisfy { $0.host.pathBar.isHidden })
+        #expect(tree.snapshot() == ["elsewhere/", "left/", "left/sub/", "left/sub/a.txt", "left/sub/deep/",
+                                    "right/", "right/other/", "right/other/b.txt"])
+    }
 }
