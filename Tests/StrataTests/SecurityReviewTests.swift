@@ -26,11 +26,8 @@ struct SecurityReviewTests {
         let tree = try TestTree("source/top/", "source/top/file", "source/top/inside -> ./file", "source/top/escape -> ../sibling",
                                 "source/sibling", "out/", "out/sibling", "state/")
         if merge { try tree.add(["out/top/", "out/top/own", "out/top/own-link -> ../sibling"]) }
-        let domain = "strata-security-queue-" + UUID().uuidString
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/cache"), key: nil)
-        let queue = TransferQueue(preferences: Prefs(defaults: defaults, domainName: domain), history: OperationLog(storage: storage),
+        let queue = TransferQueue(preferences: try Prefs.isolated(), history: OperationLog(storage: storage),
                                   copies: CopyProviders([Provider(root: tree.url("source"))]))
         let resolver = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
         let job = queue.enqueue([tree.url("source/top")], to: tree.url("out"), mode: .copy, verify: true, undo: nil, conflicts: resolver)

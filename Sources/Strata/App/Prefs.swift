@@ -19,7 +19,12 @@ extension Notification.Name {
 /// notification center, so changing a fixture never reloads another environment's views.
 final class Prefs {
     private static var selected: Prefs?
-    nonisolated private static let testDomain = "dev.strata.tests.\(UUID().uuidString)"
+    /// A test process keeps its settings here, in a folder of its own, not in ~/Library/Preferences: the system can
+    /// write a test suite's file back after its process exits, and only a temporary folder can take those late writes.
+    nonisolated static let testPreferencesFolder = FileManager.default.temporaryDirectory
+        .appending(path: "StrataTestPreferences/\(getpid())", directoryHint: .isDirectory)
+    nonisolated private static let testDomain = testPreferencesFolder
+        .appending(path: "dev.strata.tests.\(UUID().uuidString)").path
 
     static func useApplicationPreferences() {
         precondition(selected == nil, "Configure preferences before creating app services")
@@ -40,7 +45,11 @@ final class Prefs {
 
     private nonisolated static func registerTestCleanup() {
         // The test runner can exit from a worker thread; a C exit callback must not inherit MainActor isolation.
-        atexit { UserDefaults.standard.removePersistentDomain(forName: Prefs.testDomain) }
+        atexit {
+            UserDefaults.standard.removePersistentDomain(forName: Prefs.testDomain)
+            // Emptying a suite leaves its file behind.
+            try? FileManager.default.removeItem(atPath: Prefs.testDomain + ".plist")
+        }
     }
 
     let defaults: UserDefaults
@@ -268,11 +277,13 @@ final class Prefs {
         set { defaults.set(newValue, forKey: Key.density); notifications.post(name: .appearanceChanged, object: nil) }
     }
 
+    static let defaultNameTextSize: Double = 13
+
     /// File names' text size in points (11–16).
     var nameTextSize: Double {
         get {
-            let value = defaults.object(forKey: Key.nameTextSize) as? Double ?? 13
-            return value.isFinite ? min(max(value, 11), 16) : 13
+            let value = defaults.object(forKey: Key.nameTextSize) as? Double ?? Self.defaultNameTextSize
+            return value.isFinite ? min(max(value, 11), 16) : Self.defaultNameTextSize
         }
         set { defaults.set(newValue, forKey: Key.nameTextSize); notifications.post(name: .appearanceChanged, object: nil) }
     }

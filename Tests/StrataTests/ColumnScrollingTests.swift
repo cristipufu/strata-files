@@ -18,9 +18,10 @@ struct ColumnScrollingTests {
 
     @Test(arguments: [CGScrollEventUnit.line, .pixel])
     func horizontalScrollingWorksOverEveryFolderColumn(_ units: CGScrollEventUnit) async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("a/b/c/note.txt")
         let scroll = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll)
+        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
         columns.select([tree.url("a/b/c/note.txt")])
@@ -55,11 +56,12 @@ struct ColumnScrollingTests {
     }
 
     @Test func verticalScrollingStaysInTheFolderAndKeepsItsSelection() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree()
         let files = (0..<60).map { "file-\($0).txt" }
         try tree.add(files)
         let strip = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: strip)
+        let columns = ColumnBrowserViewController(scrollView: strip, preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
         columns.select([tree.url("file-0.txt")])

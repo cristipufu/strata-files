@@ -38,7 +38,7 @@ struct PreviewLayoutTests {
         env.preferences.previewWindowSize = NSSize(width: 1100, height: 700)
         env.preferences.previewBrowserFraction = 0.55
         env.preferences.previewColumnWidths = ["previewSize": 100, "previewDate": 170, "invalid": .infinity]
-        let reopened = Prefs(defaults: env.defaults, domainName: env.domain)
+        let reopened = Prefs(defaults: env.defaults, domainName: env.preferences.domainName)
         #expect(reopened.previewWindowSize == NSSize(width: 1100, height: 700))
         #expect(reopened.previewBrowserFraction == 0.55)
         #expect(reopened.previewColumnWidths == ["previewSize": 100, "previewDate": 170])

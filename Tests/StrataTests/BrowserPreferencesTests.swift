@@ -5,20 +5,17 @@ import Testing
 
 struct BrowserPreferencesTests {
     private final class Environment {
-        let name = "StrataBrowserPreferencesTests.\(UUID().uuidString)"
         let state: TestTree
-        let defaults: UserDefaults
         let preferences: Prefs
         let services: BrowserServices
 
         init(reader: DirectoryReader = .live) throws {
             state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -26,8 +23,6 @@ struct BrowserPreferencesTests {
                 clipboard: .shared,
                 directories: reader)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
     }
 
     private final class Reads {
@@ -161,6 +156,39 @@ struct BrowserPreferencesTests {
         #expect(cell.textField?.font?.pointSize == 14)
         #expect(first.preferences.nameTextSize == 14 && second.preferences.nameTextSize == 16)
         #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
+    @Test func columnsStartInTheOrderTheirOwnWindowChooses() throws {
+        let tree = try TestTree("a.txt", "b/")
+        let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
+        let env = try Environment()
+        let columns = ColumnBrowserViewController(preferences: env.preferences)
+        env.preferences.foldersFirst = true
+        #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
+        env.preferences.foldersFirst = false
+        #expect(columns.sortComparator(file, folder) && !columns.sortComparator(folder, file))
+        #expect(tree.snapshot() == ["a.txt", "b/"])
+    }
+
+    @Test func deeperColumnsOrderFoldersByTheirOwnWindowsPreference() async throws {
+        let tree = try TestTree("top/a.txt", "top/b/")
+        for foldersFirst in [true, false] {
+            let env = try Environment()
+            env.preferences.foldersFirst = foldersFirst
+            let window = BrowserViewController(services: env.services)
+            window.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+            window.setMode(.columns, remember: false)
+            window.load(tree.root)
+            await window.directoryReads.task?.value
+            window.columns.select([tree.url("top")], scroll: false)
+            let pane = try #require(views(window.columns.view, of: ColumnPane.self).first {
+                $0.folder.fileViewKey == tree.url("top").fileViewKey
+            })
+            await pane.directoryReads.task?.value
+            #expect(pane.entries.map(\.name) == (foldersFirst ? ["b", "a.txt"] : ["a.txt", "b"]), "foldersFirst \(foldersFirst)")
+            withExtendedLifetime(env) {}
+        }
+        #expect(tree.snapshot() == ["top/", "top/a.txt", "top/b/"])
     }
 
     @Test func inlineRenameUsesTheOwningPanesTextSize() async throws {

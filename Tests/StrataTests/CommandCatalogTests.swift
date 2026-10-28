@@ -193,10 +193,8 @@ struct CommandCatalogTests {
     @Test func shortcutOverridesAndAlternatesKeepTheirExistingIdentities() throws {
         let app = NSApplication.shared
         let saved = (app.windowsMenu, app.helpMenu, app.servicesMenu)
-        let suite = "Strata.CommandCatalogTests.\(UUID().uuidString)"
-        let preferences = try #require(UserDefaults(suiteName: suite))
+        let preferences = try Prefs.isolated().defaults
         defer {
-            preferences.removePersistentDomain(forName: suite)
             app.windowsMenu = saved.0
             app.helpMenu = saved.1
             app.servicesMenu = saved.2

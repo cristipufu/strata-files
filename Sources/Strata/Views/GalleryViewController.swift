@@ -29,6 +29,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     private let previewBox = NSView()
     private let preview = QuickLookPreviewView(frame: .zero, style: .normal)
     let iconView = NSImageView()
+    /// A title, so it ignores the file text size.
+    private static let nameFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
     private let nameLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
     private let dropHighlight = DropHighlightView()
@@ -108,7 +110,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         previewBox.addSubview(preview)
         previewBox.addSubview(iconView)
 
-        nameLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        nameLabel.font = Self.nameFont
         nameLabel.alignment = .center
         nameLabel.lineBreakMode = .byTruncatingMiddle
         // Not selectable: a click there mustn't take the keyboard away from the strip.
@@ -285,7 +287,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         select([url], scroll: true)
         schedulePreview(now: true)
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, wraps: false,
-                                      font: nameLabel.font ?? FileViewStyle.nameFont)
+                                      font: Self.nameFont)
         view.layoutSubtreeIfNeeded()
         let frame = nameLabel.frame
         let width = min(max(frame.width * 0.6, 240), frame.width)

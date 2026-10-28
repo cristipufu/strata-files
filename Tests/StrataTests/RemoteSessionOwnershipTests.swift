@@ -416,19 +416,16 @@ struct RemoteSessionOwnershipTests {
     }
 
     private final class BrowserEnvironment {
-        let domain = "StrataServerOpening.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let services: BrowserServices
         init(_ tree: TestTree, browsing: RemoteBrowsing,
              openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { _ in throw Failure.refused }) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
             services = BrowserServices.configured(
                 transfers: transfers,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -438,7 +435,6 @@ struct RemoteSessionOwnershipTests {
                 remoteBrowsing: browsing,
                 openContainer: openContainer)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     @Test func theNativeBrowserCancelButtonPreventsNavigationAfterADeferredReveal() async throws {

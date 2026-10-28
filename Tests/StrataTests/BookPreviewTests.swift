@@ -294,7 +294,7 @@ struct BookPreviewTests {
         let item = PreviewItem(.member(ArchiveNode(name: "1.png", isDirectory: false, size: Int64(bytes.count)), path: ["1.png"]))
         let cell = PreviewGridItem(); _ = cell.view
         func configure() {
-            cell.configure(item, metrics: GridMetrics(iconSize: 80), preferences: environment.preferences,
+            cell.configure(item, metrics: GridMetrics(iconSize: 80, typography: .standard), preferences: environment.preferences,
                 thumbnails: environment.services.thumbnails, requests: requests, scale: 1, archiveRequests: pages)
         }
         configure(); configure()

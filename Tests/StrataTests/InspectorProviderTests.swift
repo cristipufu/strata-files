@@ -57,16 +57,14 @@ struct InspectorProviderTests {
     }
 
     private final class Environment {
-        let domain = "StrataInspectorProviderTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let remote: RemoteServices
         let services: BrowserServices
 
         init(_ tree: TestTree, folder: String, servers: [RemoteServer] = [], extraProviders: [any CopyProvider] = []) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
-            preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+            preferences = try Prefs.isolated()
+            preferences.defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
             preferences.showIconPreviews = false
             let keychain = RemoteKeychain(access: KeychainAccess(
                 copy: { _ in (errSecItemNotFound, nil) },
@@ -92,17 +90,13 @@ struct InspectorProviderTests {
                 : CopyProviders(extraProviders, remoteCopies: remote.copies)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
                 containers: .shared,
                 containerStore: .shared,
                 clipboard: .shared,
                 directories: DirectoryReader { _, _, _ in [] })
-        }
-
-        isolated deinit {
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 

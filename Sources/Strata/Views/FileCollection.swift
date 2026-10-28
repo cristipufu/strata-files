@@ -367,36 +367,38 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
 // MARK: - Shared drawing helpers
 
 struct FileViewTypography: Equatable {
+    /// A placeholder until a view gets its window's settings.
+    static let standard = FileViewTypography(size: Prefs.defaultNameTextSize)
+
     let font: NSFont
     let bold: NSFont
 
-    init(preferences: Prefs = .shared) {
-        (font, bold) = FileViewStyle.fonts(for: preferences.nameTextSize)
+    init(preferences: Prefs) {
+        self.init(size: preferences.nameTextSize)
+    }
+
+    private init(size: Double) {
+        (font, bold) = Self.fonts(for: size)
+    }
+
+    private static var cachedFonts: [Double: (regular: NSFont, bold: NSFont)] = [:]
+    private static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
+        if let cached = cachedFonts[size] { return cached }
+        let made = (regular: NSFont.systemFont(ofSize: size), bold: NSFont.systemFont(ofSize: size, weight: .bold))
+        cachedFonts[size] = made
+        return made
     }
 }
 
 enum FileViewStyle {
-    /// File names, at the size chosen in Settings ▸ Appearance.
-    static var nameFont: NSFont { fonts(for: Prefs.shared.nameTextSize).regular }
-    static var nameBoldFont: NSFont { fonts(for: Prefs.shared.nameTextSize).bold }
     static let detailFont = NSFont.systemFont(ofSize: 11)
 
-    private static var cachedFonts: (size: Double, regular: NSFont, bold: NSFont)?
-    static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
-        if let cached = cachedFonts, cached.size == size { return (cached.regular, cached.bold) }
-        let made = (NSFont.systemFont(ofSize: size), NSFont.systemFont(ofSize: size, weight: .bold))
-        cachedFonts = (size, made.0, made.1)
-        return made
-    }
-
     /// List rows: compact, regular or spacious, and taller for bigger names.
-    static var listRowHeight: CGFloat { listHeight(for: .shared) }
     static func listHeight(for preferences: Prefs) -> CGFloat {
         [22, 26, 32][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
 
     /// Column rows, a little tighter than the list's.
-    static var columnRowHeight: CGFloat { columnHeight(for: .shared) }
     static func columnHeight(for preferences: Prefs) -> CGFloat {
         [20, 24, 30][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
@@ -411,7 +413,7 @@ enum FileViewStyle {
     }
 
     /// `name` with the fuzzy-match characters at `matches` (Character offsets) bold and accent-colored, like the list.
-    static func highlightedName(_ name: String, matches: [Int], font: NSFont = nameFont, boldFont: NSFont = nameBoldFont,
+    static func highlightedName(_ name: String, matches: [Int], font: NSFont, boldFont: NSFont,
                                 color: NSColor, highlight: NSColor, paragraph: NSParagraphStyle? = nil) -> NSAttributedString {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         if let paragraph { attributes[.paragraphStyle] = paragraph }
@@ -451,7 +453,7 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
     private var cancelled = false
     private var finished = false
 
-    init(name: String, isFolder: Bool, centered: Bool, wraps: Bool? = nil, font: NSFont = FileViewStyle.nameFont) {
+    init(name: String, isFolder: Bool, centered: Bool, wraps: Bool? = nil, font: NSFont) {
         let multiline = wraps ?? centered
         super.init(frame: .zero)
         stringValue = name

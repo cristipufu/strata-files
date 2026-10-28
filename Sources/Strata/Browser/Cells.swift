@@ -10,7 +10,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     private let gitBadge = GitStatusBadge()
     private let tagDots = TagDotsView()
     private let cloudBadge = CloudBadge()
-    private var typography = FileViewTypography()
+    private var typography = FileViewTypography.standard
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
@@ -65,7 +65,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
                    tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil,
                    thumbnails: FileThumbnails = .shared, scale: CGFloat = 2,
-                   typography: FileViewTypography = FileViewTypography()) {
+                   typography: FileViewTypography) {
         self.typography = typography
         self.name = name
         self.matches = matches

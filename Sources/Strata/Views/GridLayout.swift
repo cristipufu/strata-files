@@ -15,7 +15,7 @@ struct GridMetrics: Equatable {
     let detailHeight: CGFloat
     let bottomPad: CGFloat = 6
 
-    init(iconSize: CGFloat, typography: FileViewTypography = FileViewTypography()) {
+    init(iconSize: CGFloat, typography: FileViewTypography) {
         self.typography = typography
         self.iconSize = iconSize.isFinite ? min(max(iconSize.rounded(), Self.minIconSize), Self.maxIconSize) : 64
         iconPad = (self.iconSize * 0.07).rounded().clamped(3, 10)
@@ -42,7 +42,7 @@ fileprivate extension CGFloat {
 /// so huge folders scroll smoothly. Points between items propose a background drop (gap before the end) instead of
 /// an insertion point, since a file grid has no manual ordering.
 final class GridLayout: NSCollectionViewLayout {
-    var metrics = GridMetrics(iconSize: 64)
+    var metrics = GridMetrics(iconSize: 64, typography: .standard)
     var itemCount = 0
     var insets = NSEdgeInsets(top: 10, left: 14, bottom: 18, right: 14)
     var rowSpacing: CGFloat = 2

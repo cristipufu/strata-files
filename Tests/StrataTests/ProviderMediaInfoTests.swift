@@ -75,17 +75,14 @@ struct ProviderMediaInfoTests {
     }
 
     private final class Environment {
-        let domain = "StrataProviderMediaInfo.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders, reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -93,7 +90,6 @@ struct ProviderMediaInfoTests {
                 clipboard: .shared,
                 mediaReader: reader)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     @Test func mediaColumnsRecognizeTheirOwnProvidersPlaceholders() async throws {

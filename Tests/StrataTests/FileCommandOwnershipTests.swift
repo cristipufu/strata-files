@@ -7,15 +7,12 @@ import Testing
 struct FileCommandOwnershipTests {
     private final class Environment {
         let state: TestTree
-        let domain = "StrataFileCommandOwnership.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let storage: SecureStorage.Context
         let services: BrowserServices
 
         init() throws {
             state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             storage = SecureStorage.Context(directory: state.url("state"), caches: state.url("cache"),
                                             key: SymmetricKey(size: .bits256))
@@ -33,7 +30,6 @@ struct FileCommandOwnershipTests {
 
         isolated deinit {
             services.clipboard.pasteboard.releaseGlobally()
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 

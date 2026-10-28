@@ -391,6 +391,7 @@ extension BrowserViewController {
 
     /// Density or text size changed: every view takes the new row height and font (nothing is read again).
     @objc func appearanceChanged() {
+        refreshListTypography()
         outlineView.rowHeight = FileViewStyle.listHeight(for: preferences)
         outlineView.reloadData()
         columnController?.restyle()

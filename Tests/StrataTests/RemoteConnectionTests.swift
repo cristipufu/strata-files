@@ -354,10 +354,7 @@ struct RemoteConnectionTests {
 
     @Test func nativeSheetKeepsNewAttemptsBusyWhenOldResultsArrive() async throws {
         _ = NSApplication.shared
-        let domain = "StrataStagedSheet.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let original = s3(), environment = Environment([original], secrets: [original.id: "Saved"])
         let sheet = ConnectToServerController(editing: original, settings: settings, connections: environment.connections, sshHosts: { [] })
         let secret = try #require(views(sheet.view, of: NSSecureTextField.self).first)
@@ -392,10 +389,7 @@ struct RemoteConnectionTests {
 
     @Test func releasingTheNativeSheetCancelsItsPrivateConnection() async throws {
         _ = NSApplication.shared
-        let domain = "StrataStagedLifetime.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let original = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
         let environment = Environment([original])
         var sheet: ConnectToServerController? = ConnectToServerController(editing: original, settings: settings,

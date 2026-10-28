@@ -4,19 +4,16 @@ import Testing
 
 struct BrowserOrderingTests {
     private final class Environment {
-        let name = "StrataBrowserOrderingTests.\(UUID().uuidString)"
         let state: TestTree
-        let defaults: UserDefaults
         let preferences: Prefs
         let services: BrowserServices
         init(reader: DirectoryReader = .live) throws {
             state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -24,7 +21,6 @@ struct BrowserOrderingTests {
                 clipboard: .shared,
                 directories: reader)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
     }
 
     private func entry(_ path: String, size: Int64? = 0, label: String? = nil, folder: Bool = false,

@@ -21,13 +21,15 @@ struct BrowserPresentationsTests {
     }
 
     @Test func sharedContentPreservesEachNativeViewsSelectionPolicy() throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("a.txt", "b.txt", "c.txt")
         let all = try entries(tree, ["b.txt", "a.txt", "c.txt"])
         var sizes = 0, permissions = 0, comparisons = 0
         let metadata = FileCollectionMetadata(ordered: { comparisons += 1; return $0.name < $1.name },
                                               canMeasure: { _ in permissions += 1; return false },
                                               size: { sizes += 1; return $0.size })
-        let controllers: [FileCollectionController] = [GridViewController(), ColumnBrowserViewController(),
+        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences),
+                                                       ColumnBrowserViewController(preferences: preferences),
                                                        GalleryViewController(), TreemapViewController()]
         for controller in controllers {
             sizes = 0; permissions = 0; comparisons = 0
@@ -52,10 +54,13 @@ struct BrowserPresentationsTests {
     }
 
     @Test func directoryContextChangesEvenWhenTheNewFolderIsEmpty() throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("old/a.txt", "new/")
         let old = FileCollectionContent(directory: tree.url("old"), entries: try entries(tree, ["old/a.txt"]), matches: [:])
         let empty = FileCollectionContent(directory: tree.url("new"), entries: [], matches: [:])
-        let grid = GridViewController(), columns = ColumnBrowserViewController(), gallery = GalleryViewController()
+        let grid = GridViewController(preferences: preferences)
+        let columns = ColumnBrowserViewController(preferences: preferences)
+        let gallery = GalleryViewController()
         for controller in [grid, columns, gallery] as [FileCollectionController] {
             controller.apply(old, metadata: metadata, animated: false)
             controller.apply(empty, metadata: metadata, animated: false)
@@ -68,11 +73,12 @@ struct BrowserPresentationsTests {
     }
 
     @Test func deeperColumnsUseTheLiveComparatorAndKeepTheirOwnSelectionOnRootRefresh() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("folder/a.txt", "folder/z.txt", "other.txt")
         let root = try entries(tree, ["folder", "other.txt"]), children = try entries(tree, ["folder/a.txt", "folder/z.txt"])
         let reads = ReadLog()
         let reader = DirectoryReader { folder, _, _ in await reads.record(folder); return children }
-        let columns = ColumnBrowserViewController(directoryReader: reader)
+        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let content = FileCollectionContent(directory: tree.root, entries: root, matches: [:])
         var descending = false, comparisons = 0
@@ -96,9 +102,10 @@ struct BrowserPresentationsTests {
     }
 
     @Test func columnContentPassesMatchHighlightsIntoNativeText() throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("alpha.txt")
         let entry = try #require(FileEntry(url: tree.url("alpha.txt")))
-        let columns = ColumnBrowserViewController()
+        let columns = ColumnBrowserViewController(preferences: preferences)
         columns.apply(FileCollectionContent(directory: tree.root, entries: [entry], matches: [entry.url: [0, 1]]),
                       metadata: metadata, animated: false)
         let pane = try #require(views(columns.view, of: ColumnPane.self).first)

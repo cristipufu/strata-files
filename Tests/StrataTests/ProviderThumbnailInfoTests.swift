@@ -103,25 +103,22 @@ struct ProviderThumbnailInfoTests {
     }
 
     private final class Environment {
-        let domain = "StrataProviderThumbnails.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
         let generator: Generator
         let services: BrowserServices
 
         init(_ tree: TestTree, copies: CopyProviders, image: CGImage? = nil,
              reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = true
             generator = Generator(immediateImage: image)
             let thumbnails = generator.loader(copies: copies)
             let itemInfo = ItemInfoLoader(copies: copies, mediaReader: reader)
-            let storage = SecureStorage.Context(directory: tree.url("state/\(domain)"),
-                                                caches: tree.url("state/\(domain)/Caches"), key: nil)
+            let state = tree.url("state/\(UUID().uuidString)")
+            let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -131,8 +128,6 @@ struct ProviderThumbnailInfoTests {
                 thumbnails: thumbnails,
                 itemInfo: itemInfo)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func bitmap(side: Int = 4, red: CGFloat = 0.2) throws -> CGImage {

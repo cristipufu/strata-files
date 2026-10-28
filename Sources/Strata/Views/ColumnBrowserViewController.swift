@@ -37,7 +37,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private weak var renameWhenLoaded: ColumnPane?
     private var selectWhenLoaded: (pane: ColumnPane, urls: [URL], scroll: Bool)?
 
-    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs = .shared,
+    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs,
          thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared, copies: CopyProviders = .live,
          clipboard: Clipboard = .shared) {
         self.directoryReader = directoryReader
@@ -47,10 +47,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         self.copies = copies
         self.clipboard = clipboard
         showHidden = { preferences.showHidden }
-        sortComparator = { a, b in
-            if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
-            return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
-        }
+        sortComparator = Self.defaultOrder(for: preferences)
         self.scrollView = scrollView
         super.init(nibName: nil, bundle: nil)
     }
@@ -70,9 +67,11 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         preview = nil
     }
 
-    static func defaultOrder(_ a: FileEntry, _ b: FileEntry) -> Bool {
-        if Prefs.shared.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
-        return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
+    static func defaultOrder(for preferences: Prefs) -> @MainActor (FileEntry, FileEntry) -> Bool {
+        { a, b in
+            if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
+            return a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending
+        }
     }
 
     override func loadView() {
@@ -466,10 +465,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     /// Row height and text size changed (Settings ▸ Appearance).
     func restyle() {
-        for pane in panes {
-            pane.tableView.rowHeight = FileViewStyle.columnHeight(for: preferences)
-            pane.tableView.reloadData()
-        }
+        for pane in panes { pane.restyle() }
     }
 
     // MARK: - Rename
@@ -502,7 +498,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         let entry = pane.entries[row]
         pane.tableView.scrollRowToVisible(row)
         guard let cell = pane.tableView.view(atColumn: 0, row: row, makeIfNecessary: true) as? ColumnCellView else { return false }
-        let font = FileViewTypography(preferences: preferences).font
+        let font = pane.typography.font
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: false, font: font)
         let labelFrame = cell.nameCell.convert(cell.nameCell.textField?.frame ?? cell.bounds, to: pane.tableView)
         // Tall enough for the name's text size (a bezeled field needs a little more than the line).
@@ -536,6 +532,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let folder: URL
     let preferences: Prefs
+    private(set) var typography: FileViewTypography
     var isRoot = false
     var width: CGFloat = 230
     private(set) var entries: [FileEntry] = []
@@ -582,6 +579,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         self.folder = folder
         self.controller = controller
         preferences = controller.preferences
+        typography = FileViewTypography(preferences: controller.preferences)
         directoryReads = DirectoryReadSession(reader: controller.directoryReader)
         super.init(frame: .zero)
 
@@ -778,9 +776,15 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.reloadData(forRowIndexes: rows, columnIndexes: [0])
     }
 
+    func restyle() {
+        typography = FileViewTypography(preferences: preferences)
+        tableView.rowHeight = FileViewStyle.columnHeight(for: preferences)
+        tableView.reloadData()
+    }
+
     /// Width that shows the longest name in full.
     var fittingWidth: CGFloat {
-        let font = FileViewTypography(preferences: preferences).font
+        let font = typography.font
         let longest = entries.prefix(2000).map { ($0.name as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         return ceil(longest) + 18 + 7 + 22 + 30
     }
@@ -800,7 +804,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                        dimmed: entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                        cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
-                       preferences: preferences, thumbnails: controller?.thumbnails ?? .shared)
+                       preferences: preferences, typography: typography, thumbnails: controller?.thumbnails ?? .shared)
         return cell
     }
 

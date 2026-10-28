@@ -5,9 +5,8 @@ import Testing
 
 /// A preview never borrows the application's preferences, clipboard, credentials, copy roots or History.
 final class PreviewEnvironment {
-    let domain = "StrataPreviewTests.\(UUID().uuidString)"
-    let defaults: UserDefaults
     let preferences: Prefs
+    var defaults: UserDefaults { preferences.defaults }
     let pasteboard = NSPasteboard.withUniqueName()
     let services: BrowserServices
 
@@ -17,8 +16,7 @@ final class PreviewEnvironment {
          cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
          remoteConnector: RemoteConnector = RemoteConnector { _, _ in throw RemoteError.unknownServer }) throws {
         _ = NSApplication.shared
-        defaults = try #require(UserDefaults(suiteName: domain))
-        preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+        preferences = try Prefs.isolated()
         preferences.showIconPreviews = false
         let storage = SecureStorage.Context(directory: tree.url("environment/state"), caches: tree.url("environment/caches"), key: nil)
         let credentials = RemoteKeychain(access: KeychainAccess(
@@ -32,7 +30,7 @@ final class PreviewEnvironment {
             ?? CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
         let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
         let containerStore = ContainerStore()
-        services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: defaults), windows: windows,
+        services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                                               remote: remote, containers: containers, containerStore: containerStore,
                                               clipboard: Clipboard(pasteboard: pasteboard), directories: reader,
                                               thumbnails: makeThumbnails?(copies, containerStore), cloudFolders: cloudFolders)
@@ -40,7 +38,6 @@ final class PreviewEnvironment {
 
     isolated deinit {
         services.previews.close()
-        defaults.removePersistentDomain(forName: domain)
         pasteboard.releaseGlobally()
     }
 }

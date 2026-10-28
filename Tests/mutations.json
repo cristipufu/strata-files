@@ -1478,7 +1478,7 @@
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
     "find": "        sortComparator = metadata.ordered",
-    "replace": "        sortComparator = Self.defaultOrder",
+    "replace": "        sortComparator = Self.defaultOrder(for: preferences)",
     "rule": "Browser presentations deeper columns ignore the browser sort order",
     "tests": "BrowserPresentationsTests/deeperColumnsUseTheLiveComparatorAndKeepTheirOwnSelectionOnRootRefresh"
   },
@@ -1556,9 +1556,44 @@
   {
     "file": "Strata/Views/FileCollection.swift",
     "find": "self.font = font",
-    "replace": "self.font = FileViewStyle.nameFont",
+    "replace": "self.font = FileViewTypography(preferences: .shared).font",
     "rule": "Browser preferences inline rename uses another panes text size",
     "tests": "BrowserPreferencesTests/inlineRenameUsesTheOwningPanesTextSize"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "if preferences.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }",
+    "replace": "if Prefs.shared.foldersFirst, a.isFolder != b.isFolder { return a.isFolder }",
+    "rule": "Browser preferences columns start in another windows order",
+    "tests": "BrowserPreferencesTests/columnsStartInTheOrderTheirOwnWindowChooses"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },",
+    "replace": "foldersFirst: { Prefs.shared.foldersFirst },",
+    "rule": "Browser preferences deeper columns order folders by another windows setting",
+    "tests": "BrowserPreferencesTests/deeperColumnsOrderFoldersByTheirOwnWindowsPreference"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "func refreshListTypography() { listTypography = FileViewTypography(preferences: preferences) }",
+    "replace": "func refreshListTypography() {}",
+    "rule": "Browser preferences list rows keep the old text size after a change",
+    "tests": "BrowserPreferencesTests/fontsSpacingAndViewOptionsUpdateOnlyTheirNativeViews"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        typography = FileViewTypography(preferences: preferences)\n        tableView.rowHeight",
+    "replace": "        tableView.rowHeight",
+    "rule": "Browser preferences column rows keep the old text size after a change",
+    "tests": "BrowserPreferencesTests/fontsSpacingAndViewOptionsUpdateOnlyTheirNativeViews"
+  },
+  {
+    "file": "Strata/Previewing/PreviewBrowserController.swift",
+    "find": "        typography = FileViewTypography(preferences: preferences)\n        grid?.updateAppearance()",
+    "replace": "        grid?.updateAppearance()",
+    "rule": "Preview rows keep the old text size after a change",
+    "tests": "ColorThemeTests/spacePreviewUsesTheExistingPaletteAndTypographyWithoutReplacingItsContent"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",

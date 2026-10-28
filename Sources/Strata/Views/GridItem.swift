@@ -17,7 +17,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
     /// Git status, at the icon's top-right corner.
     let gitBadge = GitStatusBadge()
     let cloudBadge = CloudBadge()
-    private(set) var metrics = GridMetrics(iconSize: 64)
+    private(set) var metrics = GridMetrics(iconSize: 64, typography: .standard)
     private var name = ""
     private var matches: [Int] = []
     private var detail: String?
@@ -417,7 +417,7 @@ final class GridItem: NSCollectionViewItem {
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
                    git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil,
-                   preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+                   preferences: Prefs, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
         self.itemInfo.cancel(infoTicket)
         self.itemInfo = itemInfo
         infoTicket = nil
@@ -446,7 +446,7 @@ final class GridItem: NSCollectionViewItem {
     }
 
     /// Shows the icon (or the best cached thumbnail) now and asks Quick Look for a sharper one if needed.
-    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs = .shared,
+    func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs,
                    thumbnails: FileThumbnails = .shared) {
         self.thumbnails.cancel(thumbnailTicket)
         self.thumbnails = thumbnails

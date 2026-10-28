@@ -5,22 +5,17 @@ import Testing
 
 struct CreatedFolderOwnershipTests {
     private final class Environment {
-        let name = "StrataCreatedFolderTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let storage: SecureStorage.Context
         let history: OperationLog
         let queue: TransferQueue
 
         init(_ tree: TestTree) throws {
-            defaults = try #require(UserDefaults(suiteName: name))
-            let preferences = Prefs(defaults: defaults, domainName: name)
+            let preferences = try Prefs.isolated()
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                             key: SymmetricKey(data: Data(repeating: 7, count: 32)))
             history = OperationLog(storage: storage)
             queue = TransferQueue(preferences: preferences, history: history)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
     }
 
     @Test func emptyFolderCleanupNeverFollowsALinkForFinderRecords() throws {

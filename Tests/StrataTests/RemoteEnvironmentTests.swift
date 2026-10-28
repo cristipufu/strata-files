@@ -41,8 +41,6 @@ struct RemoteEnvironmentTests {
     }
 
     private final class Environment {
-        let domain = "StrataRemoteEnvironment.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
         let network = Network()
         let remote: RemoteServices
@@ -50,16 +48,15 @@ struct RemoteEnvironmentTests {
 
         init(_ tree: TestTree, folder: String, notifications: NotificationCenter, saved: [RemoteServer] = [],
              reader: DirectoryReader? = DirectoryReader { _, _, _ in [] }) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
+            preferences.defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
             preferences.showIconPreviews = false
             remote = RemoteServices(preferences: preferences, credentials: network.credentials(folder),
                 copyRoot: tree.url(folder + "/cache"), connector: network.connector, notifications: notifications)
             let storage = SecureStorage.Context(directory: tree.url(folder + "/state"), caches: tree.url(folder + "/state/Caches"), key: nil)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: CopyProviders(servers: remote.files, containers: .shared)),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
                 containers: .shared,
@@ -67,8 +64,6 @@ struct RemoteEnvironmentTests {
                 clipboard: .shared,
                 directories: reader)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func server(_ id: String = UUID().uuidString, name: String) -> RemoteServer {

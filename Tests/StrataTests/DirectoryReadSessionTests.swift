@@ -169,17 +169,18 @@ struct DirectoryReadSessionTests {
     }
 
     @Test func columnsRejectStaleReadsAndStopApplyingAfterTeardown() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("a.txt", "b.txt")
         let reads = Reads()
         defer { reads.stop() }
-        let controller = ColumnBrowserViewController(directoryReader: reads.reader)
+        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences)
         let pane = ColumnPane(folder: tree.root, controller: controller)
         let a = try #require(FileEntry(url: tree.url("a.txt")))
         let b = try #require(FileEntry(url: tree.url("b.txt")))
-        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let first = try #require(pane.directoryReads.task)
         let old = try await reads.request(0)
-        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let latest = try #require(pane.directoryReads.task)
         let current = try await reads.request(1)
         #expect(current.showHidden && !old.showHidden)
@@ -188,7 +189,7 @@ struct DirectoryReadSessionTests {
         old.finish(.failure(CocoaError(.fileReadNoPermission)))
         await first.value
         #expect(pane.entries.map(\.url) == [b.url])
-        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let removed = try #require(pane.directoryReads.task)
         let last = try await reads.request(2)
         pane.tearDown()
@@ -412,7 +413,7 @@ struct DirectoryReadSessionTests {
         try await reads.request(2).finish(.success([old]))
         await work.value
         #expect(views(browser.view, of: InlineRenameField.self).isEmpty)
-        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences))
         work = try #require(pane.directoryReads.task)
         try await reads.request(3).finish(.success([old, new]))
         await work.value
@@ -497,7 +498,8 @@ struct DirectoryReadSessionTests {
             request.finish(change == 3 ? .failure(CocoaError(.fileReadNoPermission)) : .success(entries))
             await work.value
             if change == 3 {
-                pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+                let order = ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences)
+                pane.load(showHidden: false, order: order)
                 let retry = try #require(pane.directoryReads.task)
                 try await reads.request(3).finish(.success(entries))
                 await retry.value

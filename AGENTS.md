@@ -17,8 +17,9 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
 - `Sources/CArchivePreview/` and `Sources/StrataArchiveWorker/` — the C archive parser and its sandboxed helper
   process.
 - `Sources/StrataCLI/` — the `strata` command.
-- `Tests/StrataTests/` — Swift Testing. Shared helpers in `Support/`: `TestTree`, and the injected clocks, readers and
-  volumes the principles below ask for (`TestClock`, `ControlledDirectoryReads`, `TestWork`, `ScratchVolume`).
+- `Tests/StrataTests/` — Swift Testing. Shared helpers in `Support/`: `TestTree`, `Prefs.isolated()`, and the injected
+  clocks, readers and volumes the principles below ask for (`TestClock`, `ControlledDirectoryReads`, `TestWork`,
+  `ScratchVolume`).
 - `Localization/*.json` — one file per language; `en.json` is generated from the code.
 - `docs/` — guides (themes, website, README translation, destructive actions); `docs/release-notes/<version>.md` is
   shown on GitHub and in the update window.
@@ -188,9 +189,11 @@ These apply everywhere below; the sections that follow add only what is specific
   injected `Prefs`.
 - **Settings.** Windows, panes, sidebars and View Options use the preferences and notification center in
   `BrowserServices`, and pass them into native file views, typography, rename fields and favorite operations. An
-  injected pane never reads or changes another environment's settings. Production windows share the application
-  services, and app-wide theme and material integration stays application-scoped. Test independent settings with
-  native headless views, including cached views and deeper columns, instead of changing shared preferences.
+  injected pane never reads or changes another environment's settings: file views have no app-wide font or sort
+  helpers, and `FileViewTypography.standard` is only a placeholder until a view gets its window's settings. Production
+  windows share the application services, and app-wide theme and material integration stays application-scoped. Test
+  independent settings with native headless views, including cached views and deeper columns, instead of changing
+  shared preferences.
 - **Connect to Server settings** (selected protocol, recent shares) belong to `BrowserServices.connectionSettings`.
   Keep the `connectKind` and `recentServers` formats, password removal and the ten-address limit, and inject them into
   new and editing sheets. Share requests belong to the sheet's `ServerMountSession`: detach an old request before
@@ -387,11 +390,14 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   tests included; only `main.swift` opts into application storage, before creating services. Tests inject
   `SecureStorage.Context` for independent stores and never use application storage or the real keychain. Keep
   authenticated store names relative to the injected root, and keep the owning History instance through Undo/Redo.
-- Preferences default to a private domain until `main.swift` selects the application domain. Inject `Prefs` with a
-  named `UserDefaults` suite and its own notification center, keep the suite alive through persistence checks, and
-  remove only that suite afterward. App-owned settings use the selected defaults; macOS-wide spring loading and
-  default-file-manager settings keep their system scope. Defaults registration is process-wide even across named
-  suites: keep app fallback values in the typed getters, and use another private suite to test inherited preferences.
+- Preferences default to a private domain until `main.swift` selects the application domain. Inject `Prefs.isolated()`:
+  its own suite and notification center in `Prefs.testPreferencesFolder` (one per test process, removed by a later run
+  once that process has ended), removed with the last object using it. Never make or remove a suite by hand, and never
+  in `~/Library/Preferences`: the system writes an emptied suite's file back after the process exits (a Python check
+  enforces this). Reopen a suite by its `domainName` to test persistence. App-owned settings use the selected defaults;
+  macOS-wide spring loading and default-file-manager settings keep their system scope. Defaults registration is
+  process-wide even across named suites: keep app fallback values in the typed getters, and use another private suite to
+  test inherited preferences.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`), matching the saved file
   identity: a restored item's old Trash path can be reused by another file, so a historical path alone is not
   ownership, and that reuse needs its own coverage. Keep parked originals alive through cleanup so their identities

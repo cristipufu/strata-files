@@ -17,6 +17,7 @@ import StrataPreviews
     private(set) var commandTarget: PreviewCommandTarget?
     var onAction: ((PreviewAction, PreviewCommandTarget) -> Void)?
     private let preferences: Prefs
+    private lazy var typography = FileViewTypography(preferences: preferences)
     private let thumbnails: FileThumbnails
     private let copies: CopyProviders
     private let scroll = NSScrollView()
@@ -204,6 +205,7 @@ import StrataPreviews
     }
 
     @objc private func appearanceChanged() {
+        typography = FileViewTypography(preferences: preferences)
         grid?.updateAppearance()
         outline.rowHeight = FileViewStyle.listHeight(for: preferences)
         let visible = outline.rows(in: outline.visibleRect)
@@ -532,7 +534,7 @@ import StrataPreviews
             let image = item.entry.map { thumbnails.icon(for: $0) }
                 ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : .data)
             cell.configure(name: item.name, icon: image, matches: [], dimmed: item.entry?.isHidden == true,
-                           thumbnails: thumbnails, typography: FileViewTypography(preferences: preferences))
+                           thumbnails: thumbnails, typography: typography)
             return cell
         }
         let identifier = NSUserInterfaceItemIdentifier("previewTextCell")

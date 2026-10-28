@@ -49,20 +49,17 @@ struct RemoteServerStoreTests {
     }
 
     private final class Environment {
-        let domain = "StrataServerStore.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let secrets = Secrets()
         let notifications = NotificationCenter()
         let registry = RemoteServerRegistry()
         let store: RemoteServerStore
         init() throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
             store = RemoteServerStore(preferences: preferences, credentials: RemoteKeychain(access: secrets.access),
                                       registry: registry, notifications: notifications)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func server(_ id: String = UUID().uuidString, name: String = "Fixture") -> RemoteServer {

@@ -5,23 +5,19 @@ import Testing
 
 struct TransferContextTests {
     private final class Environment {
-        let name = "StrataTransferContextTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let storage: SecureStorage.Context
         let history: OperationLog
         let queue: TransferQueue
 
         init(_ tree: TestTree) throws {
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
+            preferences = try Prefs.isolated()
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                              key: SymmetricKey(data: Data(repeating: 9, count: 32)))
             history = OperationLog(storage: storage)
             queue = TransferQueue(preferences: preferences, history: history)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
     }
 
     @Test func queueUsesItsOwnCurrentPreferencesAndExplicitOverrides() async throws {

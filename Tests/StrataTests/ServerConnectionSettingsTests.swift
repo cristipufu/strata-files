@@ -4,18 +4,14 @@ import Testing
 
 struct ServerConnectionSettingsTests {
     private final class Environment {
-        let domain = "StrataServerConnectionSettings.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let settings: ServerConnectionSettings
 
         init() throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
             settings = ServerConnectionSettings(preferences: preferences)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
@@ -27,14 +23,15 @@ struct ServerConnectionSettingsTests {
         first.defaults.set(["", "smb://one/share", "smb://two/share"], forKey: "recentServers")
         second.defaults.set(["smb://other/share"], forKey: "recentServers")
         second.defaults.set(2, forKey: "connectKind")
-        let other = try #require(second.defaults.persistentDomain(forName: second.domain))
+        let other = try #require(second.defaults.persistentDomain(forName: second.preferences.domainName))
         #expect(first.settings.kind == .share && second.settings.kind == .s3)
         #expect(first.settings.recents == ["smb://one/share", "smb://two/share"])
         for kind in [ServerConnectionSettings.Kind.share, .sftp, .s3] {
             first.settings.kind = kind
             #expect(first.defaults.integer(forKey: "connectKind") == kind.rawValue)
             let reopened = ServerConnectionSettings(preferences: Prefs(
-                defaults: try #require(UserDefaults(suiteName: first.domain)), domainName: first.domain))
+                defaults: try #require(UserDefaults(suiteName: first.preferences.domainName)),
+                domainName: first.preferences.domainName))
             #expect(reopened.kind == kind && reopened.recents == first.settings.recents)
         }
         first.defaults.set(99, forKey: "connectKind")
@@ -43,7 +40,7 @@ struct ServerConnectionSettingsTests {
         first.settings.clearRecents()
         #expect(first.settings.recents.isEmpty && first.defaults.object(forKey: "recentServers") == nil)
         #expect(first.defaults.integer(forKey: "connectKind") == 99)
-        #expect(NSDictionary(dictionary: other).isEqual(to: second.defaults.persistentDomain(forName: second.domain) ?? [:]))
+        #expect(NSDictionary(dictionary: other).isEqual(to: second.defaults.persistentDomain(forName: second.preferences.domainName) ?? [:]))
         withExtendedLifetime((first, second)) {}
     }
 

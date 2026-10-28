@@ -55,7 +55,8 @@ struct InlineRenameTests {
         let tree = try TestTree("photo.jpg")
         let entry = try #require(FileEntry(url: tree.url("photo.jpg")))
         var committed: String?
-        let field = InlineRenameField(name: entry.name, isFolder: false, centered: true, wraps: false)
+        let field = InlineRenameField(name: entry.name, isFolder: false, centered: true, wraps: false,
+                                      font: .systemFont(ofSize: 13))
         #expect(field.alignment == .center)
         #expect(field.usesSingleLineMode)
         #expect(field.cell?.wraps == false)
@@ -76,9 +77,10 @@ struct InlineRenameTests {
     }
 
     @Test func deeperColumnsPreserveSelectionAcrossRefreshAndRename() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("sub/", "sub/a.txt", "sub/b.txt", "top.txt")
         let rootEntries = try ["sub", "top.txt"].map { try #require(FileEntry(url: tree.url($0))) }
-        let columns = ColumnBrowserViewController()
+        let columns = ColumnBrowserViewController(preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
         let metadata = FileCollectionMetadata(ordered: { $0.name < $1.name }, canMeasure: { _ in false }, size: { _ in nil })
         columns.apply(FileCollectionContent(directory: tree.root, entries: rootEntries, matches: [:]),

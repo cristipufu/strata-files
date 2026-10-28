@@ -4,9 +4,7 @@ import Testing
 
 struct ViewOptionsTests {
     @Test func iconOptionsPersistAndUnknownValuesKeepTheDefault() throws {
-        let domain = "StrataViewOptionsTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
+        let defaults = try Prefs.isolated().defaults
         #expect(IconViewOptions.read(from: defaults) == IconViewOptions())
         let chosen = IconViewOptions(showsInfo: false, folderInfo: .size)
         chosen.save(in: defaults)
@@ -27,20 +25,24 @@ struct ViewOptionsTests {
     }
 
     @Test func hidingInfoCancelsItsPendingLabelAndSizeReplacesTheCount() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("folder/", "folder/a.txt", "folder/b.txt")
         let entry = try #require(FileEntry(url: tree.url("folder")))
         let item = GridItem()
-        item.configure(entry, matches: [], metrics: GridMetrics(iconSize: 64), showsInfo: true, dimmed: false, scale: 2)
+        let metrics = GridMetrics(iconSize: 64, typography: .standard)
+        item.configure(entry, matches: [], metrics: metrics, showsInfo: true, dimmed: false, scale: 2,
+                       preferences: preferences)
         // Keep a second reader alive so the count arrives after this item's option changes.
         var loaded = false
         let ticket = ItemInfoLoader.shared.request(entry, showHidden: Prefs.shared.showHidden) { _ in loaded = true }
         defer { ItemInfoLoader.shared.cancel(ticket) }
-        item.configure(entry, matches: [], metrics: GridMetrics(iconSize: 64), showsInfo: false, dimmed: false, scale: 2)
+        item.configure(entry, matches: [], metrics: metrics, showsInfo: false, dimmed: false, scale: 2,
+                       preferences: preferences)
         for _ in 0..<100 where !loaded { try await Task.sleep(for: .milliseconds(20)) }
         #expect(loaded)
         #expect(item.itemView.accessibilityLabel() == "folder")
-        item.configure(entry, matches: [], metrics: GridMetrics(iconSize: 64), showsInfo: true, dimmed: false, scale: 2,
-                       folderSizeText: "42 KB")
+        item.configure(entry, matches: [], metrics: metrics, showsInfo: true, dimmed: false, scale: 2,
+                       folderSizeText: "42 KB", preferences: preferences)
         #expect(item.itemView.accessibilityLabel() == "folder, 42 KB")
         #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/b.txt"])
     }

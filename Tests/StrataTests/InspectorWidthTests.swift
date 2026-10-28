@@ -78,10 +78,7 @@ struct InspectorWidthTests {
                                       mounts: [], ports: [], compose: labels(service))
         let web = ContainerInfo(id: String(repeating: "f", count: 64), name: "shop-web-" + String(repeating: "replica-", count: 8) + "1",
                                 image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [], compose: labels("web"))
-        let domain = "StrataInspectorWidth.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+        let preferences = try Prefs.isolated()
         let compose = ComposeInspectorView(preferences: preferences, store: ContainerStore(containers: [container, web]))
         compose.configure(tree.url("shop"))
         try #require(!compose.isHidden)

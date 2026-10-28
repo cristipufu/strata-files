@@ -4,48 +4,48 @@ import Testing
 @testable import Strata
 
 struct PreferencesTests {
-    private final class Domain {
-        let name = "StrataPreferencesTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
-        let preferences: Prefs
-
-        init() throws {
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
-        }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
-    }
-
     @Test func processPreferencesAreIsolatedFromTheAppInEveryConfiguration() {
         #expect(Prefs.shared.defaults !== UserDefaults.standard)
-        #expect(Prefs.shared.domainName.hasPrefix("dev.strata.tests."))
+        #expect(Prefs.shared.domainName.hasPrefix(Prefs.testPreferencesFolder.appending(path: "dev.strata.tests.").path))
         #expect(Prefs.shared === Prefs.shared)
     }
 
+    @Test func isolatedPreferencesLeaveNoSuiteOrFileOnceReleased() async throws {
+        var prefs: Prefs? = try Prefs.isolated()
+        let domain = try #require(prefs?.domainName)
+        #expect(domain.hasPrefix(Prefs.testPreferencesFolder.path))
+        let file = URL(filePath: domain + ".plist")
+        prefs?.showHidden = true
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: file.path) { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(FileManager.default.fileExists(atPath: file.path))
+        prefs = nil
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(UserDefaults.standard.persistentDomain(forName: domain)?.isEmpty ?? true)
+    }
+
     @Test func newWindowLocationsPreserveLegacyChoicesAndPersistCustomFolders() throws {
-        let domain = try Domain()
-        let other = try Domain()
-        let prefs = domain.preferences
+        let prefs = try Prefs.isolated()
+        let other = try Prefs.isolated()
         #expect(prefs.newWindowLocation == .lastVisited)
         #expect(prefs.customWindowFolder == nil)
-        domain.defaults.set(true, forKey: "newWindowsAtHome")
+        prefs.defaults.set(true, forKey: "newWindowsAtHome")
         #expect(prefs.newWindowLocation == .home)
-        domain.defaults.set("unknown", forKey: "newWindowLocation")
+        prefs.defaults.set("unknown", forKey: "newWindowLocation")
         #expect(prefs.newWindowLocation == .home)
-        domain.defaults.set(false, forKey: "newWindowsAtHome")
+        prefs.defaults.set(false, forKey: "newWindowsAtHome")
         #expect(prefs.newWindowLocation == .lastVisited)
         let chosen = URL(fileURLWithPath: "/Volumes/Work/项目 folder", isDirectory: true)
         prefs.customWindowFolder = chosen
         prefs.newWindowLocation = .custom
-        let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: domain.name)), domainName: domain.name)
+        let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: prefs.domainName)),
+                             domainName: prefs.domainName)
         #expect(reopened.newWindowLocation == .custom)
         #expect(reopened.customWindowFolder == chosen)
         reopened.newWindowLocation = .home
         #expect(reopened.customWindowFolder == chosen)
-        #expect(other.preferences.newWindowLocation == .lastVisited)
-        #expect(other.preferences.customWindowFolder == nil)
-        domain.defaults.set("relative/path", forKey: "customWindowFolder")
+        #expect(other.newWindowLocation == .lastVisited)
+        #expect(other.customWindowFolder == nil)
+        prefs.defaults.set("relative/path", forKey: "customWindowFolder")
         #expect(prefs.customWindowFolder == nil)
         prefs.customWindowFolder = URL(string: "https://example.com/folder")
         #expect(prefs.customWindowFolder == nil)
@@ -73,33 +73,30 @@ struct PreferencesTests {
     }
 
     @Test func creatingPreferencesDoesNotRegisterProcessWideDefaults() throws {
-        let name = "StrataPreferencesRegistrationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = try #require(ThrowawayDefaults.make())
         let before = defaults.volatileDomain(forName: UserDefaults.registrationDomain)
-        let prefs = Prefs(defaults: defaults, domainName: name)
+        let prefs = Prefs(defaults: defaults, domainName: defaults.domain)
         _ = prefs.foldersFirst
         _ = prefs.gridIconSize
         #expect(NSDictionary(dictionary: before).isEqual(to: defaults.volatileDomain(forName: UserDefaults.registrationDomain)))
-        #expect(prefs.defaults.persistentDomain(forName: name)?.isEmpty ?? true)
+        #expect(prefs.defaults.persistentDomain(forName: defaults.domain)?.isEmpty ?? true)
     }
 
     @Test func typedSettingsPreserveNativeDefaultsAndExistingKeys() throws {
-        let domain = try Domain()
-        let prefs = domain.preferences
-        domain.defaults.set(true, forKey: "showHiddenFiles")
-        domain.defaults.set(false, forKey: "foldersFirst")
-        domain.defaults.set("size", forKey: "sortColumn")
-        domain.defaults.set(false, forKey: "sortAscending")
-        domain.defaults.set(96.0, forKey: "gridIconSize")
+        let prefs = try Prefs.isolated()
+        prefs.defaults.set(true, forKey: "showHiddenFiles")
+        prefs.defaults.set(false, forKey: "foldersFirst")
+        prefs.defaults.set("size", forKey: "sortColumn")
+        prefs.defaults.set(false, forKey: "sortAscending")
+        prefs.defaults.set(96.0, forKey: "gridIconSize")
         #expect(prefs.showHidden && !prefs.foldersFirst)
         #expect(prefs.sortColumn == "size" && !prefs.sortAscending)
         #expect(prefs.gridIconSize == 96)
-        domain.defaults.set("NO", forKey: "foldersFirst")
-        domain.defaults.set("144", forKey: "gridIconSize")
+        prefs.defaults.set("NO", forKey: "foldersFirst")
+        prefs.defaults.set("144", forKey: "gridIconSize")
         #expect(!prefs.foldersFirst && prefs.gridIconSize == 144)
-        domain.defaults.removeObject(forKey: "foldersFirst")
-        domain.defaults.removeObject(forKey: "gridIconSize")
+        prefs.defaults.removeObject(forKey: "foldersFirst")
+        prefs.defaults.removeObject(forKey: "gridIconSize")
         #expect(prefs.foldersFirst && prefs.gridIconSize == 72)
         #expect(prefs.reopenWindows && prefs.openArchivesAsFolders && prefs.showIconPreviews)
         #expect(!prefs.dualPaneAddressBars)
@@ -115,6 +112,8 @@ struct PreferencesTests {
         #expect(prefs.nameTextSize == 16)
         prefs.nameTextSize = 1
         #expect(prefs.nameTextSize == 11)
+        prefs.nameTextSize = .nan
+        #expect(prefs.nameTextSize == 13 && FileViewTypography(preferences: prefs).font.pointSize == 13)
         prefs.sortColumn = "future-column"
         #expect(prefs.sortColumn == "name")
         prefs.favoritePaths = ["/one", "/two"]
@@ -123,7 +122,8 @@ struct PreferencesTests {
         prefs.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
         prefs.colorThemeOptions = .init(palette: .teal, tintsWindow: false)
         prefs.lastLocation = URL(fileURLWithPath: "/one", isDirectory: true)
-        let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: domain.name)), domainName: domain.name)
+        let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: prefs.domainName)),
+                             domainName: prefs.domainName)
         #expect(reopened.dualPaneAddressBars)
         #expect(reopened.favoritePaths == ["/one", "/two"])
         #expect(reopened.collapsedSidebarSections == ["favorites", "volumes"])
@@ -131,17 +131,17 @@ struct PreferencesTests {
         #expect(reopened.iconViewOptions == .init(showsInfo: false, folderInfo: .size))
         #expect(reopened.colorThemeOptions == .init(palette: .teal, tintsWindow: false))
         #expect(reopened.lastLocation?.path == "/one")
-        #expect(domain.defaults.stringArray(forKey: "collapsedSidebarSections") == ["favorites", "volumes"])
+        #expect(prefs.defaults.stringArray(forKey: "collapsedSidebarSections") == ["favorites", "volumes"])
     }
 
     @Test func independentSettingsDoNotChangeEachOtherOrBroadcastToOtherEnvironments() throws {
-        let first = try Domain()
-        let second = try Domain()
+        let first = try Prefs.isolated()
+        let second = try Prefs.isolated()
         let events = Mutex<[String]>([])
         let names: [Notification.Name] = [.prefsChanged, .appearanceChanged, .favoritesChanged,
                                          .viewOptionsChanged, .listColumnsChanged, .colorThemeChanged]
         var observers: [(NotificationCenter, NSObjectProtocol)] = []
-        for (label, center) in [("first", first.preferences.notifications), ("second", second.preferences.notifications),
+        for (label, center) in [("first", first.notifications), ("second", second.notifications),
                                 ("global", NotificationCenter.default)] {
             for name in names {
                 let observer = center.addObserver(forName: name, object: nil, queue: nil) { _ in
@@ -151,47 +151,47 @@ struct PreferencesTests {
             }
         }
         defer { for (center, observer) in observers { center.removeObserver(observer) } }
-        first.preferences.showHidden = true
-        first.preferences.theme = 2
-        first.preferences.favoritePaths = ["/one"]
-        first.preferences.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
-        first.preferences.hiddenListColumns = ["size"]
-        first.preferences.colorThemeOptions = .init(palette: .rose)
-        first.preferences.colorThemeOptions = .init(palette: .rose)
+        first.showHidden = true
+        first.theme = 2
+        first.favoritePaths = ["/one"]
+        first.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
+        first.hiddenListColumns = ["size"]
+        first.colorThemeOptions = .init(palette: .rose)
+        first.colorThemeOptions = .init(palette: .rose)
         #expect(events.withLock { $0 } == names.map { "first:" + $0.rawValue })
-        #expect(!second.preferences.showHidden)
-        #expect(second.preferences.theme == 0)
-        #expect(second.preferences.favoritePaths == nil)
-        #expect(second.preferences.iconViewOptions == IconViewOptions())
-        #expect(second.preferences.colorThemeOptions == ColorThemeOptions())
-        #expect(second.defaults.persistentDomain(forName: second.name)?.isEmpty ?? true)
-        second.preferences.favoritePaths = []
-        #expect(first.preferences.favoritePaths == ["/one"])
-        #expect(second.preferences.favoritePaths == [])
+        #expect(!second.showHidden)
+        #expect(second.theme == 0)
+        #expect(second.favoritePaths == nil)
+        #expect(second.iconViewOptions == IconViewOptions())
+        #expect(second.colorThemeOptions == ColorThemeOptions())
+        #expect(second.defaults.persistentDomain(forName: second.domainName)?.isEmpty ?? true)
+        second.favoritePaths = []
+        #expect(first.favoritePaths == ["/one"])
+        #expect(second.favoritePaths == [])
     }
 
     @Test func languageOverrideUsesOnlyItsOwnPersistentDomain() throws {
-        let domain = try Domain()
-        let fallback = try Domain()
-        fallback.preferences.language = "fr"
-        domain.defaults.addSuite(named: fallback.name)
-        defer { domain.defaults.removeSuite(named: fallback.name) }
+        let domain = try Prefs.isolated()
+        let fallback = try Prefs.isolated()
+        fallback.language = "fr"
+        domain.defaults.addSuite(named: fallback.domainName)
+        defer { domain.defaults.removeSuite(named: fallback.domainName) }
         #expect(domain.defaults.stringArray(forKey: "AppleLanguages") == ["fr"])
-        #expect(domain.preferences.language == "")
-        domain.preferences.language = "de"
-        #expect(domain.preferences.language == "de")
-        #expect(domain.defaults.persistentDomain(forName: domain.name)?["AppleLanguages"] as? [String] == ["de"])
-        domain.preferences.language = ""
-        #expect(domain.preferences.language == "")
-        #expect(domain.defaults.persistentDomain(forName: domain.name)?["AppleLanguages"] == nil)
+        #expect(domain.language == "")
+        domain.language = "de"
+        #expect(domain.language == "de")
+        #expect(domain.defaults.persistentDomain(forName: domain.domainName)?["AppleLanguages"] as? [String] == ["de"])
+        domain.language = ""
+        #expect(domain.language == "")
+        #expect(domain.defaults.persistentDomain(forName: domain.domainName)?["AppleLanguages"] == nil)
         #expect(domain.defaults.stringArray(forKey: "AppleLanguages") == ["fr"])
-        #expect(fallback.preferences.language == "fr")
+        #expect(fallback.language == "fr")
     }
 
     @Test func visitHistoryUsesItsOwnPreferencesAndKeepsRankingAfterReopening() throws {
         let tree = try TestTree("frequent/", "recent/", "other/")
-        let first = try Domain()
-        let second = try Domain()
+        let first = try Prefs.isolated()
+        let second = try Prefs.isolated()
         let date = Date(timeIntervalSince1970: 100_000)
         let history = Frecency(preferences: first.defaults, now: { date })
         for _ in 0..<3 { history.record(tree.url("frequent")) }

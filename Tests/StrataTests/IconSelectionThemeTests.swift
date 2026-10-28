@@ -7,7 +7,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let icon = GridItemView(frame: NSRect(x: 0, y: 0, width: 120, height: 150))
-        icon.configure(name: " ", matches: [], detail: nil, metrics: GridMetrics(iconSize: 64))
+        icon.configure(name: " ", matches: [], detail: nil, metrics: GridMetrics(iconSize: 64, typography: .standard))
         let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let point = NSPoint(x: icon.iconBoxRect.midX, y: icon.iconBoxRect.midY)
         for name in [NSAppearance.Name.aqua, .darkAqua] {

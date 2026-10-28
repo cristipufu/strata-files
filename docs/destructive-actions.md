@@ -131,6 +131,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Independent storage contexts and History Undo/Redo retain their key, directory and journal | `SecureStorage.Context`, `OperationLog.init`, `registerRedo`, `FileOps.registerMoveUndo` | `StorageContextTests`; mutations: “Storage isolation” |
 | Stores (History, index), content index reset, script files | `SecureStorage.write`, `SemanticIndex.reset`, `ProjectActions.removeStaleCommandFiles` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`, `resettingTheContentIndexRemovesOnlyItsStore`, `staleScriptFilesGoOnlyFromTheirFolder` |
 | Tests never touch your data, including optimized builds | `SecureStorage.current`, `isTestRun`, `caches` | `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
+| A test run keeps its settings in a temporary folder of its own and removes that suite and its file when it exits, never the app's | `Prefs.testPreferencesFolder`, `Prefs.registerTestCleanup` | `PreferencesTests/processPreferencesAreIsolatedFromTheAppInEveryConfiguration` (the suite's place); the exit itself can't be tested (see “Not mutated, and why”) |
 
 ## The proof: mutations
 
@@ -167,6 +168,7 @@ on any function that is in neither this table nor a mutation.
 | `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
 | `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
+| `App/Prefs :: registerTestCleanup` | Runs as a test process exits and removes only that run's own `dev.strata.tests.<id>` settings suite and file; a test can't watch its own process exit. |
 | `Index/IndexStore :: remove`, `unlink` | An in-memory tree, not files. |
 | `Toolbar/BrowserToolbar :: toolbarDidRemoveItem` | AppKit removed a toolbar control; this clears references to its UI object. No files. Native removal and persistence are tested in `ToolbarCustomizationTests`. |
 | `Dev/GitRepository :: execute` | Runs git with the arguments `runBlocking` hardened (mutated); git's own commands here (`status`, `config`, `ls-files`) change nothing. |
@@ -220,6 +222,7 @@ belong to.
 | `AI/PlanExecutor :: perform`, `moveBack` | `PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps`, `undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt`, `undoAndRedoOfAPlanTouchOnlyItsOwnItems` |
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` (`rename` here is a plan step's name, not a file call) | `PlanSafetyTests/*`, `RenameTests/*` |
 | `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
+| `App/Prefs :: registerTestCleanup` (a test run's own settings suite, at exit) | `PreferencesTests/processPreferencesAreIsolatedFromTheAppInEveryConfiguration` checks the suite's place; the exit itself is untested |
 | `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
 | `Browser/BrowserFileCommands :: rename` | `FileCommandOwnershipTests/*` |
 | `Browser/BrowserViewController+ArchiveBrowsing :: unpackForBrowsing` (makes the copy's folder) | `ArchiveSafetyTests/*` |

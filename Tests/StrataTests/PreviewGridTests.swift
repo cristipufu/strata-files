@@ -219,7 +219,7 @@ struct PreviewGridTests {
         let a = PreviewItem(.file(aEntry))
         let b = PreviewItem(.file(try #require(FileEntry(url: tree.url("b.png")))))
         func configure(_ item: PreviewItem, size: CGFloat) {
-            cell.configure(item, metrics: GridMetrics(iconSize: size), preferences: env.preferences, thumbnails: loader,
+            cell.configure(item, metrics: GridMetrics(iconSize: size, typography: .standard), preferences: env.preferences, thumbnails: loader,
                            requests: requests, scale: 1)
         }
         configure(a, size: 80)

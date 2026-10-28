@@ -13,12 +13,13 @@ struct ColumnRevealTests {
     /// item, which reveals it through the folder already selected in the first column. That folder's column has to
     /// come back; it used to stay closed, so the folder and everything in it vanished (issue #9).
     @Test func revealingThroughTheSelectedFolderReopensItsColumn() async throws {
+        let preferences = try Prefs.isolated()
         let made = FileManager.default.temporaryDirectory.appending(path: "strata-columns-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: made) }
         try FileManager.default.createDirectory(at: made.appending(path: "Parent/Old/inner"), withIntermediateDirectories: true)
         try "hi".write(to: made.appending(path: "Parent/notes.txt"), atomically: true, encoding: .utf8)
 
-        let columns = ColumnBrowserViewController()
+        let columns = ColumnBrowserViewController(preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 500)
         let entries = try await DirectoryLoader.load(made, showHidden: false)
         // Spelled as listed (the temporary folder is reached through a link), like the browser has them.

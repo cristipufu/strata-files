@@ -24,9 +24,7 @@ struct ColorThemeTests {
     }
 
     @Test func savedPaletteIsIndependentOfLightDarkAndUnknownValuesFollowTheSystem() throws {
-        let domain = "StrataColorThemeTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
+        let defaults = try Prefs.isolated().defaults
         #expect(ColorThemeOptions.read(from: defaults) == ColorThemeOptions())
         defaults.set(2, forKey: "theme")
         for palette in ColorTheme.allCases {
@@ -91,6 +89,7 @@ struct ColorThemeTests {
     }
 
     @Test func listsAndDeepColumnsHaveThemedRowsAndKeepTheirSelectionAndScrollPosition() async throws {
+        let preferences = try Prefs.isolated()
         let saved = ThemeStyle.options
         defer { ThemeStyle.apply(saved, windows: []) }
         let tree = try TestTree("a/b/c/note.txt")
@@ -100,7 +99,7 @@ struct ColorThemeTests {
         #expect(browser.outlineView(browser.outlineView, rowViewForItem: FileNode(entry: entry)) is ThemeRowView)
 
         let scroll = NSScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll)
+        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
         columns.select([tree.url("a/b/c/note.txt")])
@@ -173,7 +172,7 @@ struct ColorThemeTests {
         row.isSelected = true
         let icon = GridItemView(frame: NSRect(x: 0, y: 0, width: 120, height: 150))
         icon.appearance = appearance
-        icon.configure(name: " ", matches: [], detail: nil, metrics: GridMetrics(iconSize: 64))
+        icon.configure(name: " ", matches: [], detail: nil, metrics: GridMetrics(iconSize: 64, typography: .standard))
         let gallery = GalleryThumbnailItem()
         gallery.loadViewIfNeeded()
         gallery.view.appearance = appearance
@@ -250,7 +249,7 @@ struct ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: []) }
         let cell = NameCellView()
         let image = NSImage(size: NSSize(width: 18, height: 18))
-        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false)
+        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false, typography: .standard)
         let label = try #require(cell.textField)
         label.isEditable = true
         label.stringValue = "still typing.txt"

@@ -75,17 +75,14 @@ struct InspectorFolderOpeningTests {
     }
 
     private final class Environment {
-        let domain = "StrataInspectorFolderOpening.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders, reader: DirectoryReader? = nil) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
@@ -93,7 +90,6 @@ struct InspectorFolderOpeningTests {
                 clipboard: .shared,
                 directories: reader)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func open(_ folder: URL, in window: BrowserWindowController) async throws {
@@ -376,7 +372,7 @@ struct InspectorFolderOpeningTests {
             #expect(browser.isLoaded && browser.loadError == nil)
             if mode == .columns {
                 let child = ColumnPane(folder: tree.url("provider/child"), controller: browser.columns)
-                child.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+                child.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences))
                 await child.directoryReads.task?.value
                 #expect(child.entries.map(\.name) == ["item.txt"])
                 child.tearDown()

@@ -95,8 +95,6 @@ struct AsyncActionContextTests {
     }
 
     private final class Environment {
-        let domain = "StrataAsyncActionContext.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
         let storage: SecureStorage.Context
         let transfers: TransferQueue
@@ -109,8 +107,7 @@ struct AsyncActionContextTests {
         init(_ tree: TestTree, folder: String = "env", providers: [any CopyProvider] = [],
              browsing: RemoteBrowsing? = nil, engine: ContainerEngine? = nil,
              containers: [ContainerInfo] = []) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             storage = SecureStorage.Context(
                 directory: tree.url(folder + "/state"),
@@ -150,17 +147,13 @@ struct AsyncActionContextTests {
             let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName())
             services = BrowserServices.configured(
                 transfers: transfers,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
                 containers: containerFiles,
                 containerStore: containerStore,
                 clipboard: clipboard,
                 remoteBrowsing: browsing)
-        }
-
-        isolated deinit {
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 

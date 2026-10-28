@@ -151,12 +151,12 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
-                   cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs = .shared,
+                   cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs, typography: FileViewTypography,
                    thumbnails: FileThumbnails = .shared) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.displayName, icon: thumbnails.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
                            tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil,
-                           thumbnails: thumbnails, scale: scale, typography: FileViewTypography(preferences: preferences))
+                           thumbnails: thumbnails, scale: scale, typography: typography)
         applyTruncation()
         chevron.isHidden = !entry.isFolder
         setAccessibilityLabel(entry.isFolder

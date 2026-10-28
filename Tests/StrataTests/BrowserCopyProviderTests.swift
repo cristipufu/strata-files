@@ -199,8 +199,6 @@ struct BrowserCopyProviderTests {
     }
 
     private final class Environment {
-        let domain = "StrataBrowserCopyProviderTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
         let storage: SecureStorage.Context
         let history: OperationLog
@@ -213,9 +211,8 @@ struct BrowserCopyProviderTests {
         let services: BrowserServices
 
         init(_ tree: TestTree, folder: String, servers: [RemoteServer] = [], extraProviders: [any CopyProvider] = []) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
-            preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+            preferences = try Prefs.isolated()
+            preferences.defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
             preferences.showIconPreviews = false
             storage = SecureStorage.Context(
                 directory: tree.url(folder + "/state"),
@@ -250,7 +247,7 @@ struct BrowserCopyProviderTests {
             queue = TransferQueue(preferences: preferences, history: history, copies: copies)
             services = BrowserServices.configured(
                 transfers: queue,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
                 containers: .shared,
@@ -260,7 +257,6 @@ struct BrowserCopyProviderTests {
 
         isolated deinit {
             pasteboard.releaseGlobally()
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 

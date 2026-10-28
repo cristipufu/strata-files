@@ -6,21 +6,16 @@ import Synchronization
 @testable import Strata
 
 private final class HistoryEnvironment {
-    let domain = "StrataHistoryOwnership.\(UUID().uuidString)"
-    let defaults: UserDefaults
     let storage: SecureStorage.Context
     let history: OperationLog
     let queue: TransferQueue
 
     init(_ tree: TestTree, moveItems: OperationLog.Mover? = nil) throws {
-        defaults = try #require(UserDefaults(suiteName: domain))
         storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                         key: SymmetricKey(size: .bits256))
         history = OperationLog(storage: storage, moveItems: moveItems)
-        queue = TransferQueue(preferences: Prefs(defaults: defaults, domainName: domain), history: history)
+        queue = TransferQueue(preferences: try Prefs.isolated(), history: history)
     }
-
-    isolated deinit { defaults.removePersistentDomain(forName: domain) }
 }
 
 private final class HistoryMoveGate {

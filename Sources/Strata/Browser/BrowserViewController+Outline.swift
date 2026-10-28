@@ -67,7 +67,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                            cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
-                           typography: FileViewTypography(preferences: preferences))
+                           typography: listTypography)
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {

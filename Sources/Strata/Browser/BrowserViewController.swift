@@ -38,6 +38,8 @@ extension NSUserInterfaceItemIdentifier {
 final class BrowserViewController: NSViewController {
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
+    private(set) lazy var listTypography = FileViewTypography(preferences: preferences)
+    func refreshListTypography() { listTypography = FileViewTypography(preferences: preferences) }
     let loading: BrowserLoading
     var directoryReads: DirectoryReadSession { loading.reads }
 

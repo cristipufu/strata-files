@@ -4,28 +4,25 @@ import Testing
 
 struct BrowserSavedStateTests {
     private final class Environment {
-        let domain = "StrataSavedStateTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let services: BrowserServices
 
         init(_ tree: TestTree) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
-            let storage = SecureStorage.Context(directory: tree.url(domain), caches: tree.url(domain + "/Caches"), key: nil)
+            let state = tree.url(UUID().uuidString)
+            let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
             services = BrowserServices.configured(
                 transfers: transfers,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
                 containers: .shared,
                 containerStore: .shared,
                 clipboard: .shared)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {

@@ -146,10 +146,7 @@ struct ServerMountSessionTests {
 
     @Test func nativeSheetIgnoresLateMountResultsAndKeepsItsOwnRecents() async throws {
         _ = NSApplication.shared
-        let domain = "StrataMountSheet.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts()
         let owned = ServerMountSession(mounter: driver.mounter)
         let sheet = ConnectToServerController(settings: settings, mounts: owned)
@@ -187,10 +184,7 @@ struct ServerMountSessionTests {
 
     @Test func releasingTheSheetCancelsEvenWhenItsSessionIsRetained() async throws {
         _ = NSApplication.shared
-        let domain = "StrataMountSheetLifetime.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts(), owned = ServerMountSession(mounter: driver.mounter)
         var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned)
         weak var weakSheet: ConnectToServerController?

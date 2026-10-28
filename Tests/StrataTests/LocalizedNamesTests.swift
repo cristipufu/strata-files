@@ -70,7 +70,8 @@ struct LocalizedNamesTests {
         let cell = browser.outlineView(browser.outlineView, viewFor: column, item: node) as? NameCellView
         #expect(cell?.textField?.stringValue == "Zulu")
         let item = GridItem()
-        item.configure(a, matches: [], metrics: GridMetrics(iconSize: 64), showsInfo: false, dimmed: false, scale: 2)
+        item.configure(a, matches: [], metrics: GridMetrics(iconSize: 64, typography: .standard), showsInfo: false, dimmed: false, scale: 2,
+                       preferences: browser.preferences)
         #expect(item.itemView.accessibilityLabel() == "Zulu")
         #expect(TreemapItem(entry: a, bytes: 10).name == "Zulu")
         browser.setFilter("Zulu")

@@ -233,11 +233,8 @@ struct EdgeCaseSafetyTests {
     }
 
     @Test func emptyPathDecodeGuardsNeverAbortOnEmptyStrings() throws {
-        let suiteName = "strata.edgecase.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set("", forKey: "lastLocation")
-        let prefs = Prefs(defaults: defaults, domainName: suiteName)
+        let prefs = try Prefs.isolated()
+        prefs.defaults.set("", forKey: "lastLocation")
         #expect(prefs.lastLocation == nil)
 
         let ws = Workspace(name: "Empty", tabs: [[""]])
@@ -298,7 +295,7 @@ struct EdgeCaseSafetyTests {
     @Test func inlineRenameFieldCancelDiscardsEditsWithoutCommitting() {
         var committed: String?
         var ended = false
-        let field = InlineRenameField(name: "original.txt", isFolder: false, centered: false)
+        let field = InlineRenameField(name: "original.txt", isFolder: false, centered: false, font: .systemFont(ofSize: 13))
         field.onCommit = { committed = $0 }
         field.onEnd = { ended = true }
         field.stringValue = "half-typed.txt"

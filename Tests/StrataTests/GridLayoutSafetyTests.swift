@@ -31,7 +31,7 @@ struct GridLayoutSafetyTests {
 
     @Test func invalidIconSizesHaveFiniteMetrics() {
         for size: CGFloat in [CGFloat.nan, CGFloat.infinity, -CGFloat.infinity] {
-            let metrics = GridMetrics(iconSize: size)
+            let metrics = GridMetrics(iconSize: size, typography: .standard)
             #expect(metrics.iconSize.isFinite)
             #expect(metrics.minCellWidth.isFinite)
             #expect(metrics.itemHeight.isFinite)
