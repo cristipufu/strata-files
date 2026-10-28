@@ -264,75 +264,111 @@ final class InspectorRows: NSView {
     }
 }
 
-/// "Where": the folder's icon and name, with its path on one line underneath (all of it on hover). Clicking shows the
-/// folder.
+/// "Where": the folder's icon and its path, read in order and ending in the folder's name ("/Users/me"). A long path
+/// wraps after a slash rather than losing its start. Clicking shows the folder.
 final class InspectorLocationView: NSView {
     fileprivate(set) var action: () -> Void
     private let folder: URL
     private let path: URL
     let nameText: String
     let locationText: String
+    /// False when the location describes the folder (a server's address) instead of leading to it.
+    let locationLeadsHere: Bool
+    let pathLabel = NSTextField(wrappingLabelWithString: "")
 
     /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
-    init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil, action: @escaping () -> Void) {
+    init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil,
+         locationLeadsHere: Bool = true, action: @escaping () -> Void) {
         self.action = action
         self.folder = folder
         self.path = path
         self.nameText = shownName ?? FileManager.default.displayName(atPath: path.path)
-        self.locationText = shownLocation ?? Format.tildePath(path.deletingLastPathComponent())
+        // The top of the disk has nothing above it; its name ("Macintosh HD") is the whole location.
+        self.locationText = shownLocation ?? (path.path == "/" ? "" : Format.tildePath(path.deletingLastPathComponent()))
+        self.locationLeadsHere = locationLeadsHere
         super.init(frame: .zero)
         let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        let name = NSTextField(labelWithString: nameText)
-        name.font = .systemFont(ofSize: 12)
-        name.lineBreakMode = .byTruncatingMiddle
-        let location = NSTextField(labelWithString: locationText)
-        location.font = .systemFont(ofSize: 11)
-        location.textColor = InspectorColors.secondary
-        location.lineBreakMode = .byTruncatingHead
-        for label in [name, location] {
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            label.translatesAutoresizingMaskIntoConstraints = false
-        }
+        // A path names the folder as it's stored ("Xcode.app", not "Xcode"; "a:b", not "a/b"), so it can't read as
+        // another place. VoiceOver keeps Finder's display name.
+        let stored = shownName ?? (path.path == "/" ? nameText : path.lastPathComponent)
+        pathLabel.attributedStringValue = Self.text(name: stored, location: locationText, leadsHere: locationLeadsHere)
+        pathLabel.baseWritingDirection = .leftToRight
+        pathLabel.isSelectable = false
+        pathLabel.maximumNumberOfLines = 0
+        pathLabel.lineBreakMode = .byWordWrapping
+        pathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pathLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
-        addSubview(name)
-        addSubview(location)
+        addSubview(pathLabel)
+        // Centred on the path's first line. An image view's baseline is its image's height, so aligning baselines
+        // placed the icon by whatever size the folder's icon image had at the time.
+        let firstLine = NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 12))
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor),
-            icon.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor, constant: 3),
+            icon.centerYAnchor.constraint(equalTo: pathLabel.topAnchor, constant: firstLine / 2),
             icon.widthAnchor.constraint(equalToConstant: 16),
             icon.heightAnchor.constraint(equalToConstant: 16),
-            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 5),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            name.topAnchor.constraint(equalTo: topAnchor),
-            location.leadingAnchor.constraint(equalTo: name.leadingAnchor),
-            location.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            location.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
-            location.bottomAnchor.constraint(equalTo: bottomAnchor),
+            pathLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 5),
+            pathLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            pathLabel.topAnchor.constraint(equalTo: topAnchor),
+            pathLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        toolTip = Format.tildePath(path)
+        // The same path as plain text: a server's or a container's own, never Strata's copy of it.
+        toolTip = Self.plain(pathLabel.stringValue)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(String(localized: "Show “\(name.stringValue)”", comment: "Inspector: the item’s folder, as a button that shows it"))
+        setAccessibilityLabel(String(localized: "Show “\(nameText)”", comment: "Inspector: the item’s folder, as a button that shows it"))
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The path leading to the folder in secondary ink, then the folder's name; a description (a server's address)
+    /// goes on its own line under the name instead. Dynamic ink follows theme and appearance changes.
+    /// A path reads left to right whatever the script of its names. Each part is isolated (U+2066/U+2068…U+2069),
+    /// so a name's direction marks can't reorder the slashes or the other parts.
+    static func text(name: String, location: String, leadsHere: Bool) -> NSAttributedString {
+        let font = NSFont.systemFont(ofSize: 12)
+        let result = NSMutableAttributedString()
+        if leadsHere, !location.isEmpty {
+            let leading = location.hasSuffix("/") ? location : location + "/"
+            result.append(NSAttributedString(string: "\u{2066}" + leading + "\u{2069}",
+                                             attributes: [.font: font, .foregroundColor: InspectorColors.secondary]))
+        }
+        result.append(NSAttributedString(string: "\u{2068}" + name + "\u{2069}",
+                                         attributes: [.font: font, .foregroundColor: InspectorColors.primary]))
+        if !leadsHere, !location.isEmpty {
+            result.append(NSAttributedString(string: "\n\u{2068}" + location + "\u{2069}", attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: InspectorColors.secondary,
+            ]))
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.baseWritingDirection = .leftToRight
+        result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
+        return result
+    }
+
+    /// Shown text without its invisible direction isolates.
+    static func plain(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { !(0x2066...0x2069).contains($0.value) }))
+    }
+
     /// Shows the same folder, the same way (its action shows the same place too).
     func showsSamePlace(as other: InspectorLocationView) -> Bool {
         folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText
+            && locationLeadsHere == other.locationLeadsHere
     }
 
     override var firstBaselineOffsetFromTop: CGFloat {
-        subviews.compactMap { $0 as? NSTextField }.first?.firstBaselineOffsetFromTop ?? 12
+        pathLabel.firstBaselineOffsetFromTop
     }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }
 
-    /// The icon and both lines are one button.
+    /// The icon and the whole path are one button.
     override func hitTest(_ point: NSPoint) -> NSView? {
         frame.contains(point) ? self : nil
     }

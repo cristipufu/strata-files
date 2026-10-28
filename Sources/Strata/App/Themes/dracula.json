@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "dracula",
+  "name": "Dracula",
+  "comment": "Color theme: the Dracula palette, a proper name; Alucard in light appearance and Dracula in dark",
+  "order": 160,
+  "seed": [
+    1,
+    0.475,
+    0.776
+  ],
+  "light": {
+    "content": "#fffbeb",
+    "sidebar": "#ece9df",
+    "inspector": "#ece9df",
+    "preview": "#fffbeb",
+    "chrome": "#dedccf",
+    "alternatingRow": "#ece9df",
+    "selection": "#ebc8c8",
+    "accent": "#a3144d"
+  },
+  "dark": {
+    "content": "#282a36",
+    "sidebar": "#21222c",
+    "inspector": "#21222c",
+    "preview": "#191a21",
+    "chrome": "#343746",
+    "alternatingRow": "#21222c",
+    "selection": "#734668",
+    "accent": "#ff79c6"
+  }
+}

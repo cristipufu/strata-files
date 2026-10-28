@@ -415,6 +415,7 @@
     "Cancel the whole move (Esc)": "移動全体をキャンセル（Esc）",
     "Cancelled.": "キャンセルしました。",
     "Can’t be compared": "比較できません",
+    "Catppuccin": "Catppuccin",
     "Change All": "すべてを変更",
     "Change All…": "すべてを変更…",
     "Change Case": "大文字/小文字を変更",
@@ -614,6 +615,7 @@
     "downloaded from “%@”": "「%@」からダウンロード",
     "Downloading": "ダウンロード中",
     "Downloads": "ダウンロード",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "「フルディスクアクセス」のリストにドラッグ",
     "Drag me into the list": "このアイコンをリストにドラッグ",
     "Drop files here": "ここにファイルをドロップ",
@@ -1539,6 +1541,7 @@
     "To do": "未完了",
     "Toggle Inspector": "インスペクタの表示/非表示を切り替える",
     "Toggle Sidebar": "サイドバーの表示/非表示を切り替える",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML書類",
     "too many items to sync: only the first %@ of each side were compared": "同期する項目が多すぎます: 両側の最初の%@項目のみ比較しました",
     "Top %@ of %lld results": {

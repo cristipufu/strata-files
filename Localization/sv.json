@@ -492,6 +492,7 @@
     "Cancel the whole move (Esc)": "Avbryt hela flytten (Esc)",
     "Cancelled.": "Avbrutet.",
     "Can’t be compared": "Kan inte jämföras",
+    "Catppuccin": "Catppuccin",
     "Change All": "Ändra alla",
     "Change All…": "Ändra alla…",
     "Change Case": "Ändra skiftläge",
@@ -702,6 +703,7 @@
     "downloaded from “%@”": "hämtad från ”%@”",
     "Downloading": "Hämtar",
     "Downloads": "Hämtade filer",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Dra till listan Fullständig skivåtkomst",
     "Drag me into the list": "Dra mig till listan",
     "Drop files here": "Släpp filer här",
@@ -1663,6 +1665,7 @@
     "To do": "Att göra",
     "Toggle Inspector": "Visa/göm inspektören",
     "Toggle Sidebar": "Visa/göm sidofält",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML-dokument",
     "too many items to sync: only the first %@ of each side were compared": "för många objekt att synkronisera: endast de första %@ på varje sida jämfördes",
     "Top %@ of %lld results": {

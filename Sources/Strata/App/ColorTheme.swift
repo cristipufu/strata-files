@@ -38,9 +38,16 @@ nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable,
 
     package var seed: ThemeRGB { definition?.seed ?? ThemeRGB(red: 0.38, green: 0.44, blue: 0.67) }
 
+    /// A published scheme's own colors for this appearance, or nil when they derive from the seed.
+    package func statedColors(dark: Bool) -> ThemeColors? {
+        guard let colors = definition?.colors else { return nil }
+        return dark ? colors.dark : colors.light
+    }
+
     package func surface(_ role: ThemeSurfaceRole, dark: Bool) -> NSColor {
-        seed.surface(role, dark: dark, tintStrength: definition?.tintStrength ?? 1,
-                     brightnessShift: dark ? (definition?.darkShift ?? 0) : (definition?.lightShift ?? 0))
+        if let stated = statedColors(dark: dark) { return stated.surface(role).color }
+        return seed.surface(role, dark: dark, tintStrength: definition?.tintStrength ?? 1,
+                            brightnessShift: dark ? (definition?.darkShift ?? 0) : (definition?.lightShift ?? 0))
     }
 
     /// Light selections use a stronger shade of the pastel surfaces; dark selections keep readable light text.
@@ -51,6 +58,7 @@ nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable,
         let rgb = seed
         return NSColor(name: nil) { appearance in
             if highContrast || appearance.isHighContrast { return .selectedContentBackgroundColor }
+            if let stated = self.statedColors(dark: appearance.isDark) { return stated.selection.color }
             if appearance.isDark { return rgb.selectionColor }
             let surface = self.surface(.chrome, dark: false)
             return surface.blended(withFraction: 0.08, of: .black) ?? surface
@@ -90,6 +98,10 @@ nonisolated package struct ThemeRGB: Equatable, Sendable {
     package var luminance: CGFloat {
         func linear(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
         return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+
+    package func contrast(with other: Self) -> CGFloat {
+        (max(luminance, other.luminance) + 0.05) / (min(luminance, other.luminance) + 0.05)
     }
 
     package var selectionRGB: Self {
@@ -172,9 +184,10 @@ nonisolated package struct ColorThemeOptions: Equatable, Sendable {
 
     package func accentColor(highContrast: Bool) -> NSColor {
         guard palette != .system else { return .controlAccentColor }
-        let rgb = seed.selectionRGB
+        let rgb = seed.selectionRGB, palette = palette
         return NSColor(name: nil) { appearance in
             if highContrast || appearance.isHighContrast { return .labelColor }
+            if let stated = palette.statedColors(dark: appearance.isDark) { return stated.accent.color }
             let lift: CGFloat = appearance.isDark ? 0.90 : 0
             let scale: CGFloat = appearance.isDark ? 1 : 0.80
             return NSColor(srgbRed: (rgb.red + (1 - rgb.red) * lift) * scale,

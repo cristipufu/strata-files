@@ -31,6 +31,27 @@ Copy an existing file, such as `sage.json`, and change its ID, English name, tra
   muted palettes. `lightnessShift` adjusts the shared surface levels: light accepts −0.02 through 0.04, dark accepts
   −0.12 through 0.04. Use modest adjustments and inspect both appearances.
 
+## Published color schemes
+
+A palette with its own published values, such as Catppuccin, can state each appearance's colors exactly instead of
+deriving them. Replace `tintStrength` and `lightnessShift` with a `light` and a `dark` object, each listing every
+surface, the emphasized selection and the accent as `#RRGGBB` in sRGB (see `catppuccin.json`, which uses Latte when
+light and Mocha when dark):
+
+```json
+"light": { "content": "#eff1f5", "sidebar": "#e6e9ef", "inspector": "#e6e9ef", "preview": "#eff1f5",
+           "chrome": "#ccd0da", "alternatingRow": "#e6e9ef", "selection": "#d8c9f4", "accent": "#702fc5" },
+"dark":  { "content": "#1e1e2e", "sidebar": "#181825", "inspector": "#181825", "preview": "#11111b",
+           "chrome": "#313244", "alternatingRow": "#181825", "selection": "#5b4e74", "accent": "#cba6f7" }
+```
+
+- `content` is the file list and toolbar, `sidebar` and `inspector` the side panels, `preview` text fields and file
+  previews, `chrome` the selection of an unfocused list, and `alternatingRow` striped rows.
+- Strata keeps black text on light colors and white text on dark ones: every light surface and selection needs a
+  relative luminance of at least 0.4, every dark one at most 0.12. The accent needs 4.5:1 contrast with every
+  surface; a published accent may need a deeper shade (Catppuccin Latte's Mauve is deepened to read on Surface 0).
+- `seed` is still required: switches, checkboxes and other filled controls draw white on a deep shade of it.
+
 Strata derives coordinated content, sidebar, inspector, preview, toolbar and alternating-row surfaces. macOS owns
 controls, focus and materials. Every theme supports System, Light and Dark appearance, Window tint off, Reduce
 Transparency and Increase Contrast. Increase Contrast restores native colors.

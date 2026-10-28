@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "comment": "Color theme: the Tokyo Night palette, a proper name; Day in light appearance and Night in dark",
+  "order": 170,
+  "seed": [
+    0.478,
+    0.635,
+    0.969
+  ],
+  "light": {
+    "content": "#e1e2e7",
+    "sidebar": "#d0d5e3",
+    "inspector": "#d0d5e3",
+    "preview": "#e1e2e7",
+    "chrome": "#c4c8da",
+    "alternatingRow": "#d0d5e3",
+    "selection": "#b7c1e3",
+    "accent": "#1d5095"
+  },
+  "dark": {
+    "content": "#1a1b26",
+    "sidebar": "#16161e",
+    "inspector": "#16161e",
+    "preview": "#0c0e14",
+    "chrome": "#292e42",
+    "alternatingRow": "#16161e",
+    "selection": "#283457",
+    "accent": "#7aa2f7"
+  }
+}

@@ -492,6 +492,7 @@
     "Cancel the whole move (Esc)": "Annuleer het hele verplaatsen (Esc)",
     "Cancelled.": "Geannuleerd.",
     "Can’t be compared": "Niet te vergelijken",
+    "Catppuccin": "Catppuccin",
     "Change All": "Wijzig alles",
     "Change All…": "Wijzig alles…",
     "Change Case": "Wijzig hoofdlettergebruik",
@@ -702,6 +703,7 @@
     "downloaded from “%@”": "gedownload van ‘%@’",
     "Downloading": "Downloaden",
     "Downloads": "Downloads",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Sleep naar de lijst “Volledige schijftoegang”",
     "Drag me into the list": "Sleep mij naar de lijst",
     "Drop files here": "Zet bestanden hier neer",
@@ -1663,6 +1665,7 @@
     "To do": "Te doen",
     "Toggle Inspector": "Inspector aan/uit",
     "Toggle Sidebar": "Navigatiekolom aan/uit",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML-document",
     "too many items to sync: only the first %@ of each side were compared": "te veel onderdelen om te synchroniseren: alleen de eerste %@ aan elke kant zijn vergeleken",
     "Top %@ of %lld results": {

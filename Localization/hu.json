@@ -492,6 +492,7 @@
     "Cancel the whole move (Esc)": "A teljes áthelyezés megszakítása (Esc)",
     "Cancelled.": "Megszakítva.",
     "Can’t be compared": "Nem hasonlítható össze",
+    "Catppuccin": "Catppuccin",
     "Change All": "Az összes módosítása",
     "Change All…": "Az összes módosítása…",
     "Change Case": "Kis- és nagybetűk módosítása",
@@ -702,6 +703,7 @@
     "downloaded from “%@”": "letöltve innen: „%@”",
     "Downloading": "Letöltés folyamatban",
     "Downloads": "Letöltések",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Húzza a Teljes lemezhozzáférés listába",
     "Drag me into the list": "Húzzon be a listába",
     "Drop files here": "Húzza ide a fájlokat",
@@ -1663,6 +1665,7 @@
     "To do": "Teendő",
     "Toggle Inspector": "Felügyelő megjelenítése/elrejtése",
     "Toggle Sidebar": "Oldalsáv megjelenítése/elrejtése",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML-dokumentum",
     "too many items to sync: only the first %@ of each side were compared": "túl sok elem a szinkronizáláshoz: csak az oldalak első %@ eleme lett összehasonlítva",
     "Top %@ of %lld results": {

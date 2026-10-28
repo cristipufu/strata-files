@@ -569,6 +569,7 @@
     "Cancel the whole move (Esc)": "Zrušit celý přesun (Esc)",
     "Cancelled.": "Zrušeno.",
     "Can’t be compared": "Nelze porovnat",
+    "Catppuccin": "Catppuccin",
     "Change All": "Změnit vše",
     "Change All…": "Změnit vše…",
     "Change Case": "Změnit velikost písmen",
@@ -790,6 +791,7 @@
     "downloaded from “%@”": "staženo z „%@“",
     "Downloading": "Stahování",
     "Downloads": "Stahování",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Přetáhněte do seznamu Plný přístup k disku",
     "Drag me into the list": "Přetáhněte mě do seznamu",
     "Drop files here": "Přetáhněte soubory sem",
@@ -1787,6 +1789,7 @@
     "To do": "K provedení",
     "Toggle Inspector": "Zobrazit/skrýt Inspektor",
     "Toggle Sidebar": "Zobrazit/skrýt boční panel",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "Dokument TOML",
     "too many items to sync: only the first %@ of each side were compared": "příliš mnoho položek k synchronizaci: porovnáno bylo jen prvních %@ na každé straně",
     "Top %@ of %lld results": {

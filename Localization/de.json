@@ -492,6 +492,7 @@
     "Cancel the whole move (Esc)": "Das gesamte Bewegen abbrechen (Esc)",
     "Cancelled.": "Abgebrochen.",
     "Can’t be compared": "Nicht vergleichbar",
+    "Catppuccin": "Catppuccin",
     "Change All": "Alle ändern",
     "Change All…": "Alle ändern …",
     "Change Case": "Groß-/Kleinschreibung ändern",
@@ -702,6 +703,7 @@
     "downloaded from “%@”": "geladen von „%@“",
     "Downloading": "Wird geladen",
     "Downloads": "Downloads",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "In die Liste „Festplattenvollzugriff“ ziehen",
     "Drag me into the list": "Zieh mich in die Liste",
     "Drop files here": "Dateien hier ablegen",
@@ -1663,6 +1665,7 @@
     "To do": "Offen",
     "Toggle Inspector": "Inspektor ein-/ausblenden",
     "Toggle Sidebar": "Seitenleiste ein-/ausblenden",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML-Dokument",
     "too many items to sync: only the first %@ of each side were compared": "zu viele Objekte zum Synchronisieren: nur die ersten %@ jeder Seite wurden verglichen",
     "Top %@ of %lld results": {

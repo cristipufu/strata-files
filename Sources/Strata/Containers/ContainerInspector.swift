@@ -304,11 +304,13 @@ final class ContainerInspectorView: NSView {
         }
     }
 
+    /// Detail text truncates rather than holding the Inspector at its width: a dragged divider always wins.
     static func small(_ text: String, color: NSColor) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.font = .systemFont(ofSize: 11)
         field.textColor = color
         field.lineBreakMode = .byTruncatingTail
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return field
     }
 }
@@ -347,6 +349,8 @@ private final class MountRow: NSView {
             details.append(ContainerInspectorView.small(String(localized: "read-only", comment: "Inspector, Mounts: the container can't change it"),
                                                         color: InspectorColors.tertiary))
         }
+        // Where it comes from (a volume's 64-character ID) truncates first; equal priorities leave AppKit to choose.
+        if details.count > 1 { details[0].setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal) }
         let detail = NSStackView(views: details)
         detail.orientation = .horizontal
         detail.spacing = 6
@@ -599,6 +603,7 @@ private final class ServiceRow: NSView {
         name.font = .systemFont(ofSize: 12, weight: .medium)
         name.textColor = InspectorColors.primary
         name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         var parts: [NSView] = [dot, name]
         if service.containers.isEmpty {
             parts.append(ContainerInspectorView.small(String(localized: "not created", comment: "Inspector, Compose: a service with no container yet"),
@@ -608,6 +613,8 @@ private final class ServiceRow: NSView {
             let link = LinkButton(container.name, font: .systemFont(ofSize: 11)) { open(container.id) }
             link.toolTip = [container.status, String(localized: "Show its files", comment: "Inspector, Compose: tooltip on a container")]
                 .filter { !$0.isEmpty }.joined(separator: " · ")
+            // A container's longer name ("shop-web-1") truncates before its service's.
+            link.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
             parts.append(link)
         }
         let row = NSStackView(views: parts)

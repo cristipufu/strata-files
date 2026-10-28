@@ -415,6 +415,7 @@
     "Cancel the whole move (Esc)": "전체 이동 취소(Esc)",
     "Cancelled.": "취소되었습니다.",
     "Can’t be compared": "비교할 수 없음",
+    "Catppuccin": "Catppuccin",
     "Change All": "모두 변경",
     "Change All…": "모두 변경…",
     "Change Case": "대소문자 변경",
@@ -614,6 +615,7 @@
     "downloaded from “%@”": "“%@”에서 다운로드",
     "Downloading": "다운로드 중",
     "Downloads": "다운로드",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "전체 디스크 접근 권한 목록으로 드래그",
     "Drag me into the list": "목록으로 드래그하십시오",
     "Drop files here": "여기에 파일 놓기",
@@ -1539,6 +1541,7 @@
     "To do": "할 일",
     "Toggle Inspector": "인스펙터 토글",
     "Toggle Sidebar": "사이드바 토글",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML 문서",
     "too many items to sync: only the first %@ of each side were compared": "동기화할 항목이 너무 많음: 양쪽에서 처음 %@개만 비교함",
     "Top %@ of %lld results": {

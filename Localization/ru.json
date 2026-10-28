@@ -648,6 +648,7 @@
     "Cancel the whole move (Esc)": "Отменить все перемещение (Esc)",
     "Cancelled.": "Отменено.",
     "Can’t be compared": "Невозможно сравнить",
+    "Catppuccin": "Catppuccin",
     "Change All": "Изменить все",
     "Change All…": "Изменить все…",
     "Change Case": "Изменить регистр",
@@ -880,6 +881,7 @@
     "downloaded from “%@”": "загружено с «%@»",
     "Downloading": "Загрузка",
     "Downloads": "Загрузки",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Перетащите в список «Доступ ко всему диску»",
     "Drag me into the list": "Перетащите меня в список",
     "Drop files here": "Перетащите файлы сюда",
@@ -1913,6 +1915,7 @@
     "To do": "Сделать",
     "Toggle Inspector": "Показать/скрыть инспектор",
     "Toggle Sidebar": "Показать/скрыть боковое меню",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "Документ TOML",
     "too many items to sync: only the first %@ of each side were compared": "слишком много объектов для синхронизации: сравнены только первые %@ с каждой стороны",
     "Top %@ of %lld results": {

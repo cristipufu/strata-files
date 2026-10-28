@@ -569,6 +569,7 @@
     "Cancel the whole move (Esc)": "Anulează întreaga mutare (Esc)",
     "Cancelled.": "Anulat.",
     "Can’t be compared": "Nu poate fi comparat",
+    "Catppuccin": "Catppuccin",
     "Change All": "Modifică tot",
     "Change All…": "Modifică tot…",
     "Change Case": "Schimbă tipul literelor",
@@ -790,6 +791,7 @@
     "downloaded from “%@”": "descărcat de pe „%@”",
     "Downloading": "Se descarcă",
     "Downloads": "Descărcări",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Trage în lista Acces complet la disc",
     "Drag me into the list": "Trage-mă în listă",
     "Drop files here": "Plasează fișierele aici",
@@ -1787,6 +1789,7 @@
     "To do": "De făcut",
     "Toggle Inspector": "Afișează/ascunde inspectorul",
     "Toggle Sidebar": "Afișează/ascunde bara laterală",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "Document TOML",
     "too many items to sync: only the first %@ of each side were compared": "prea multe articole de sincronizat: au fost comparate doar primele %@ de pe fiecare parte",
     "Top %@ of %lld results": {

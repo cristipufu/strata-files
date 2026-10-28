@@ -126,6 +126,10 @@ struct InspectorProviderTests {
         (inspector.infoRows.shown.first { $0.title == title }?.value as? NSTextField)?.stringValue
     }
 
+    private func shownLocation(_ inspector: InspectorViewController) -> String? {
+        locationRow(inspector).map { InspectorLocationView.plain($0.pathLabel.stringValue) }
+    }
+
     private func locationRow(_ inspector: InspectorViewController) -> InspectorLocationView? {
         inspector.infoRows.shown.first { $0.title == String(localized: "Where", comment: "Inspector row: the folder the item is in") }?.value as? InspectorLocationView
     }
@@ -188,6 +192,8 @@ struct InspectorProviderTests {
         #expect(rowText(controller.split.inspector, String(localized: "Size", comment: "Inspector row: how big the item is")) == "—")
         #expect(locationRow(controller.split.inspector)?.nameText == "First Cloud")
         #expect(locationRow(controller.split.inspector)?.locationText == serverA.address)
+        // At the server's top the address describes the server: it goes under the name, not before it as a path.
+        #expect(shownLocation(controller.split.inspector) == "First Cloud\n" + serverA.address)
         #expect(controller.split.inspector.projectView.isHidden)
         #expect(controller.split.inspector.composeView.isHidden)
         controller.navigate(to: URL(fileURLWithPath: "/"))
@@ -199,6 +205,8 @@ struct InspectorProviderTests {
         inspectorA.show(entries: [configEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         #expect(locationRow(inspectorA)?.nameText == "app")
         #expect(locationRow(inspectorA)?.locationText == "First Cloud:/srv")
+        #expect(shownLocation(inspectorA) == "First Cloud:/srv/app")
+        #expect(locationRow(inspectorA)?.toolTip == "First Cloud:/srv/app", "Hover shows the server's path, not Strata's copy.")
         #expect(rowText(inspectorA, String(localized: "Created", comment: "Inspector row: creation date")) == nil)
         #expect(inspectorA.tagsCard.isHidden && inspectorA.commentsCard.isHidden && inspectorA.permissionsCard.isHidden)
 
@@ -209,6 +217,7 @@ struct InspectorProviderTests {
         inspectorA.show(entries: [configEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         #expect(locationRow(inspectorA)?.nameText == "app")
         #expect(locationRow(inspectorA)?.locationText == "Renamed First:/srv")
+        #expect(shownLocation(inspectorA) == "Renamed First:/srv/app")
         inspectorA.show(entries: [], folder: topEntry, folderSize: { _ in nil }, canMeasure: { _ in true })
         #expect(inspectorA.titleLabel.stringValue == "Renamed First")
         #expect(second.remote.servers.server(id: serverID)?.name == "Second Cloud")

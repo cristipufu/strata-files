@@ -375,23 +375,25 @@ final class InspectorViewController: NSViewController {
             target = (entry.url.deletingLastPathComponent(), entry.url)
         }
         let shownFolder = (apparent ?? entry.url).deletingLastPathComponent()
-        // In a container's files: the folder in the container ("etc", in “web:/”), not Strata's copy of it.
-        let inContainer: (name: String, location: String)? = container.flatMap { copy in
+        // In a container's files: the folder in the container ("web:/etc"), not Strata's copy of it. At the top, the
+        // container's name with its engine under it.
+        let inContainer: (name: String, location: String, leadsHere: Bool)? = container.flatMap { copy in
             guard let path = containerPath, path != "/" else { return nil }
             let folder = (path as NSString).deletingLastPathComponent
-            return folder == "/" ? (copy.source.name, copy.source.engineName)
-                : ((folder as NSString).lastPathComponent, "\(copy.source.name):" + ((folder as NSString).deletingLastPathComponent))
+            return folder == "/" ? (copy.source.name, copy.source.engineName, false)
+                : ((folder as NSString).lastPathComponent, "\(copy.source.name):" + ((folder as NSString).deletingLastPathComponent), true)
         } ?? server.flatMap { copy in
-            // On a server: the folder there ("app", in “web-1:/srv”).
+            // On a server: the folder there ("web-1:/srv/app"); at the top, the server's name with its address.
             guard let path = serverPath, path != "/" else { return nil }
             let folder = RemotePath.parent(path)
-            return folder == "/" ? (copy.server.name, copy.server.address)
-                : (RemotePath.name(folder), "\(copy.server.name):" + RemotePath.parent(folder))
+            return folder == "/" ? (copy.server.name, copy.server.address, false)
+                : (RemotePath.name(folder), "\(copy.server.name):" + RemotePath.parent(folder), true)
         }
         if !isCopy || inContainer != nil {
             rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
                          InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inContainer?.name,
-                                               location: inContainer?.location) { [weak self] in
+                                               location: inContainer?.location,
+                                               locationLeadsHere: inContainer?.leadsHere ?? true) { [weak self] in
                              self?.onShowFolder?(target.folder, target.item)
                          }))
         }

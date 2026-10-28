@@ -492,6 +492,7 @@
     "Cancel the whole move (Esc)": "Tüm taşımadan vazgeç (Esc)",
     "Cancelled.": "Vazgeçildi.",
     "Can’t be compared": "Karşılaştırılamıyor",
+    "Catppuccin": "Catppuccin",
     "Change All": "Tümünü Değiştir",
     "Change All…": "Tümünü Değiştir…",
     "Change Case": "Büyük/Küçük Harfi Değiştir",
@@ -702,6 +703,7 @@
     "downloaded from “%@”": "“%@” kaynağından indirildi",
     "Downloading": "İndiriliyor",
     "Downloads": "İndirilenler",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Tam Disk Erişimi listesine sürükleyin",
     "Drag me into the list": "Beni listeye sürükleyin",
     "Drop files here": "Dosyaları buraya bırakın",
@@ -1663,6 +1665,7 @@
     "To do": "Yapılacak",
     "Toggle Inspector": "Denetçiyi Aç/Kapat",
     "Toggle Sidebar": "Kenar Çubuğunu Aç/Kapat",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML belgesi",
     "too many items to sync: only the first %@ of each side were compared": "eşzamanlanacak çok fazla öğe var: her iki tarafın yalnızca ilk %@ öğesi karşılaştırıldı",
     "Top %@ of %lld results": {

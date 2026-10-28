@@ -646,6 +646,7 @@
     "Cancel the whole move (Esc)": "Скасувати все переміщення (Esc)",
     "Cancelled.": "Скасовано.",
     "Can’t be compared": "Неможливо порівняти",
+    "Catppuccin": "Catppuccin",
     "Change All": "Змінити всі",
     "Change All…": "Змінити всі…",
     "Change Case": "Змінити регістр",
@@ -878,6 +879,7 @@
     "downloaded from “%@”": "завантажено з «%@»",
     "Downloading": "Викачування",
     "Downloads": "Викачане",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "Перетягніть у список «Повний доступ до диска»",
     "Drag me into the list": "Перетягніть мене в список",
     "Drop files here": "Перетягніть файли сюди",
@@ -1911,6 +1913,7 @@
     "To do": "Зробити",
     "Toggle Inspector": "Перемкнути інспектор",
     "Toggle Sidebar": "Перемкнути бічну панель",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "Документ TOML",
     "too many items to sync: only the first %@ of each side were compared": "забагато елементів для синхронізації: порівняно лише перші %@ з кожного боку",
     "Top %@ of %lld results": {

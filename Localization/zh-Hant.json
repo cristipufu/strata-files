@@ -415,6 +415,7 @@
     "Cancel the whole move (Esc)": "取消整個搬移（Esc）",
     "Cancelled.": "已取消。",
     "Can’t be compared": "無法比較",
+    "Catppuccin": "Catppuccin",
     "Change All": "全部更改",
     "Change All…": "全部更改⋯",
     "Change Case": "更改大小寫",
@@ -614,6 +615,7 @@
     "downloaded from “%@”": "下載自「%@」",
     "Downloading": "下載中",
     "Downloads": "下載項目",
+    "Dracula": "Dracula",
     "Drag into the Full Disk Access list": "拖到「完全取用磁碟」列表中",
     "Drag me into the list": "將我拖到列表中",
     "Drop files here": "將檔案拖放到這裡",
@@ -1539,6 +1541,7 @@
     "To do": "待辦",
     "Toggle Inspector": "切換檢閱器",
     "Toggle Sidebar": "切換側邊欄",
+    "Tokyo Night": "Tokyo Night",
     "TOML document": "TOML文件",
     "too many items to sync: only the first %@ of each side were compared": "要同步的項目過多：僅比較了每側的前%@個",
     "Top %@ of %lld results": {
