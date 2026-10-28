@@ -47,7 +47,8 @@ cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
 cp "$bins/StrataArchiveWorker" "$app/Contents/Helpers/StrataArchiveWorker"
 # SwiftPM resources are shipped with the app, so theme discovery also works away from the checkout.
 cp -R "$bins/Strata_StrataTheme.bundle" "$app/Contents/Resources/Strata_StrataTheme.bundle"
-cp Resources/ArchivePreviewNotice.txt "$app/Contents/Resources/ArchivePreviewNotice.txt"
+# Credits for the third-party software Strata includes or builds on (Sparkle, libarchive) travel with the app.
+cp THIRD_PARTY_NOTICES.md "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 if [[ -n "${STRATA_VERSION:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $STRATA_VERSION" "$app/Contents/Info.plist"

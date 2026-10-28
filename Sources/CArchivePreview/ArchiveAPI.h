@@ -1,7 +1,7 @@
 /* Public libarchive ABI declarations, from libarchive 3.7.4 archive.h/archive_entry.h.
  * https://github.com/libarchive/libarchive/tree/v3.7.4/libarchive
  * The macOS SDK ships libarchive.2 but does not ship these headers.
- * No libarchive implementation is bundled. See Resources/ArchivePreviewNotice.txt. */
+ * No libarchive implementation is bundled. See THIRD_PARTY_NOTICES.md. */
 #include <sys/types.h>
 #include <stdint.h>
 #include <time.h>
