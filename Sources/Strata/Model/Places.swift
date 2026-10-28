@@ -76,7 +76,7 @@ enum Places {
             Place(title: fm.displayName(atPath: url.path), url: url, symbol: symbol)
         }
         var places = [
-            Place(title: NSUserName(), url: home, symbol: "house"),
+            named(home, "house"),
             named(home.appending(path: "Desktop"), "menubar.dock.rectangle"),
             named(home.appending(path: "Documents"), "doc"),
             named(home.appending(path: "Downloads"), "arrow.down.circle"),
