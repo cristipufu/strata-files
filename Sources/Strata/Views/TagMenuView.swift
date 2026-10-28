@@ -43,6 +43,7 @@ final class TagMenuView: NSView {
         })
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

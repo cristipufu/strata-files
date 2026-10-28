@@ -65,6 +65,7 @@ package final class EPUBPreviewHeader: NSView {
         ])
         updateSelection()
     }
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     package func show(_ book: EPUBBook) {

@@ -18,7 +18,8 @@ extension ColorThemeTests {
         await content.measurement.task?.value
         let result = try #require(content.measurement.result), text = content.measurement.text
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-            window.appearance = try #require(NSAppearance(named: appearanceName))
+            let appearance = try #require(NSAppearance(named: appearanceName))
+            window.appearance = appearance
             for highContrast in [false, true] {
                 for palette in ColorTheme.allCases {
                     ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [window], highContrast: highContrast)

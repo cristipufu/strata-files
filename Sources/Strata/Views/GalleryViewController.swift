@@ -19,6 +19,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private(set) var entries: [FileEntry] = []

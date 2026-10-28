@@ -343,7 +343,7 @@ struct InspectorFolderOpeningTests {
         let before = tree.snapshot(), calls = Calls(held: false, holdInvalidations: true)
         let copies = CopyProviders([Provider(root: tree.url("provider"), calls: calls)])
         var session: DirectoryReadSession? = DirectoryReadSession(reader: DirectoryReader(copies: copies))
-        weak var released = session
+        weak let released = session
         var received = 0
         let work = try #require(session).load(tree.url("provider"), showHidden: false, applications: .standard,
                                              invalidateCopy: true) { _, _ in received += 1 }

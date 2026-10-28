@@ -99,6 +99,7 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         updateColorTheme()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func updateColorTheme() {
@@ -177,6 +178,7 @@ final class InspectorRows: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Text rows: values wrap in full (long sizes) and can be selected and copied.
@@ -322,6 +324,7 @@ final class InspectorLocationView: NSView {
         setAccessibilityLabel(String(localized: "Show “\(nameText)”", comment: "Inspector: the item’s folder, as a button that shows it"))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// The path leading to the folder in secondary ink, then the folder's name; a description (a server's address)

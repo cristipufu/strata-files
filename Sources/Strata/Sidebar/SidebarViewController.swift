@@ -77,6 +77,7 @@ final class SidebarViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit { cloudRead?.cancel() }
@@ -578,6 +579,7 @@ final class SidebarCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private var tint: NSColor?

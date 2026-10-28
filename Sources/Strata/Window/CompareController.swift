@@ -59,6 +59,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {

@@ -273,7 +273,7 @@ struct WorkspaceOwnershipTests {
         let tree = try TestTree("keep")
         var env: Environment? = try Environment(tree)
         let before = tree.snapshot()
-        weak var services = env?.services
+        weak let services = env?.services
         let store = try #require(env?.services.workspaces)
         let saved = Workspace(name: "Work", tabs: [[tree.root.path]])
         store.save(saved, from: [])

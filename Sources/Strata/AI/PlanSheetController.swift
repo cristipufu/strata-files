@@ -50,6 +50,7 @@ final class PlanSheetController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Presenting
@@ -556,6 +557,7 @@ final class PlanRowView: NSTableCellView {
         for view in [checkbox, icon, before, arrow, after] { addSubview(view) }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func toggled(_ sender: NSButton) {
@@ -704,6 +706,7 @@ final class WellView: NSView {
         layer?.masksToBounds = true
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var wantsUpdateLayer: Bool { true }
@@ -736,6 +739,7 @@ final class BadgeView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func set(_ source: Plan.Source?) {
@@ -793,6 +797,7 @@ private final class AppIconBadge: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var wantsUpdateLayer: Bool { true }

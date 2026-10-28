@@ -59,7 +59,8 @@ struct PreviewCancellationTests {
             let content = PreviewArchiveContent(copies: environment.services.copies)
             var exported: PreviewArchiveLease?
             defer { prompt.cancel(); content.close(); session.close() }
-            session.select(try #require(session.roots.first { $0.name == "a.txt" }))
+            let item = try #require(session.roots.first { $0.name == "a.txt" })
+            session.select(item)
             content.select(in: session)
             let first = try #require(content.task)
             var requests = prompt.started.makeAsyncIterator()
@@ -67,7 +68,8 @@ struct PreviewCancellationTests {
             try #require(prompt.pending != nil)
             switch action {
             case "selection":
-                session.select(try #require(session.roots.first { $0.name == "ab.txt" }))
+                let item = try #require(session.roots.first { $0.name == "ab.txt" })
+                session.select(item)
                 content.select(in: session)
             case "command":
                 content.export(try #require(PreviewCommandTarget(session: session)), session: session) { exported = $0 }
@@ -123,7 +125,8 @@ struct PreviewCancellationTests {
         }
         let content = PreviewArchiveContent(copies: environment.services.copies)
         defer { probe.first.finish(.failure(CancellationError())); content.close(); session.close() }
-        session.select(try #require(session.roots.first { $0.name == "a.txt" }))
+        let item = try #require(session.roots.first { $0.name == "a.txt" })
+        session.select(item)
         let target = try #require(PreviewCommandTarget(session: session))
         var delivered: [PreviewArchiveLease] = []
         content.export(target, session: session) { delivered.append($0) }

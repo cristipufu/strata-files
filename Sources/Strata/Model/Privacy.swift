@@ -130,6 +130,7 @@ final class WelcomeSheetController: NSWindowController {
         panel.contentView = content
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func present(on parent: NSWindow) {

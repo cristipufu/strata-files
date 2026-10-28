@@ -59,6 +59,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// `thumbnail` is the file to show a Quick Look thumbnail of in place of `image`, when Quick Look has one.
@@ -175,6 +176,7 @@ final class TextCellView: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ text: String, alignment: NSTextAlignment, dimmed: Bool = false) {
@@ -228,6 +230,7 @@ final class GroupHeaderCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(title text: String, detail info: String, icon image: NSImage) {

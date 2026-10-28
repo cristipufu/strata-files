@@ -43,6 +43,7 @@ package class PreviewView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     deinit { task?.cancel() }
@@ -184,6 +185,7 @@ package final class PreviewFooter: NSView {
         ])
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     /// Shows the footer with `parts` joined by middots, and an optional right-aligned `note` (such as truncation).
@@ -251,6 +253,7 @@ final class PreviewMessageView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 

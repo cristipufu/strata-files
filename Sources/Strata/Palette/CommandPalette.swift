@@ -393,6 +393,7 @@ final class PaletteCell: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ item: PaletteItem, matches: [Int]) {
@@ -576,6 +577,7 @@ final class ShadowedGlass: NSView {
         }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {

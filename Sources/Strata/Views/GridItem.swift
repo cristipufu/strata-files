@@ -52,6 +52,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
         setAccessibilityRole(.image)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func updateColorTheme() {

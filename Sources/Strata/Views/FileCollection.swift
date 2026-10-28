@@ -477,6 +477,7 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
 
     private var baseLength = 0
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func begin(in window: NSWindow?) {

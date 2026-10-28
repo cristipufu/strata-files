@@ -77,6 +77,7 @@ final class GitBranchPill: NSView {
         setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

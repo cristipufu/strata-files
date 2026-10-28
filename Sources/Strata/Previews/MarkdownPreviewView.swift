@@ -15,6 +15,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {

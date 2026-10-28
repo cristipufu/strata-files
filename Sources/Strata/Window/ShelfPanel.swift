@@ -102,6 +102,7 @@ final class ShelfWell: NSView, NSDraggingSource {
         refresh()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func add(_ urls: [URL]) {

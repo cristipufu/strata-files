@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import Testing
 @testable import Strata
 
@@ -81,13 +82,14 @@ struct BrowserPresentationsTests {
         let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let content = FileCollectionContent(directory: tree.root, entries: root, matches: [:])
-        var descending = false, comparisons = 0
-        let metadata = FileCollectionMetadata(ordered: {
+        let descending = Mutex(false)
+        var comparisons = 0
+        let metadata = FileCollectionMetadata(ordered: { a, b in
             comparisons += 1
-            return descending ? $0.name > $1.name : $0.name < $1.name
+            return descending.withLock { $0 } ? a.name > b.name : a.name < b.name
         }, canMeasure: { _ in false }, size: { _ in nil })
         columns.apply(content, metadata: metadata, animated: false)
-        descending = true
+        descending.withLock { $0 = true }
         columns.select([root[0].url], scroll: false)
         let pane = try #require(views(columns.view, of: ColumnPane.self).first { $0.folder.fileViewKey == root[0].url.fileViewKey })
         await pane.directoryReads.task?.value
@@ -189,7 +191,7 @@ struct BrowserPresentationsTests {
             containerStore: .shared,
             clipboard: .shared,
             directories: reader))
-        weak var owner = browser
+        weak let owner = browser
         browser?.setStoredMode(.list)
         _ = browser?.view
         browser?.load(tree.root)

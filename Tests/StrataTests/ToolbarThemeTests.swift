@@ -109,7 +109,8 @@ extension ColorThemeTests {
         let parent = material.superview
         let nativeOrder = root.subviews
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            host.appearance = try #require(NSAppearance(named: name))
+            let appearance = try #require(NSAppearance(named: name))
+            host.appearance = appearance
             var previous: NSColor?
             for palette in [ColorTheme.blue, .green, .rose, .purple] {
                 ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [], highContrast: false)

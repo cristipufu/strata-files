@@ -606,8 +606,8 @@
   },
   {
     "file": "Strata/Containers/ContainerDrag.swift",
-    "find": "Result { try TransferEngine.copyForExport(source, to: url) }",
-    "replace": "Result { try? FileManager.default.removeItem(at: url); try TransferEngine.copyForExport(source, to: url) }",
+    "find": "Result { _ = try TransferEngine.copyForExport(source, to: url) }",
+    "replace": "Result { try? FileManager.default.removeItem(at: url); _ = try TransferEngine.copyForExport(source, to: url) }",
     "rule": "Security review: file promises never replace existing drop targets",
     "tests": "ContainerTests/aDraggedOut"
   },

@@ -52,6 +52,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit {
@@ -639,6 +640,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         addSubview(divider)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

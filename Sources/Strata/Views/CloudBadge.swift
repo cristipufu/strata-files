@@ -49,6 +49,7 @@ final class CloudBadge: NSImageView, ColorThemeUpdating {
         setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Clicks and drags go to the row or icon underneath (an image view would otherwise take them).

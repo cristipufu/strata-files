@@ -49,6 +49,7 @@ package final class EPUBPreviewView: PreviewView {
         header.onSelect = { [weak self] _ in self?.chapterChanged() }
         openBook()
     }
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
     isolated deinit { stop(); NotificationCenter.default.removeObserver(self) }
 

@@ -221,11 +221,11 @@ nonisolated enum TextExtractor {
 
     // MARK: - HTML and Markdown
 
-    private static let entity = try! NSRegularExpression(pattern: "&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);", options: [])
     private static let namedEntities: [String: String] = [
         "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ", "mdash": "—", "ndash": "–", "hellip": "…",
         "rsquo": "’", "lsquo": "‘", "rdquo": "”", "ldquo": "“", "copy": "©", "reg": "®", "trade": "™", "euro": "€", "pound": "£",
         "middot": "·", "bull": "•", "deg": "°", "times": "×",
+        "AMP": "&", "LT": "<", "GT": ">", "QUOT": "\"", "COPY": "©", "REG": "®", "TRADE": "™",
     ]
 
     /// Elements whose contents aren't text a reader sees.
@@ -270,8 +270,7 @@ nonisolated enum TextExtractor {
             let closing = j < n && bytes[j] == UInt8(ascii: "/")
             if closing { j += 1 }
             let nameStart = j
-            while j < n, (bytes[j] | 0x20) >= UInt8(ascii: "a") && (bytes[j] | 0x20) <= UInt8(ascii: "z")
-                    || (bytes[j] >= UInt8(ascii: "0") && bytes[j] <= UInt8(ascii: "9") && j > nameStart) { j += 1 }
+            while j < n, isLetter(bytes[j]) || (isDigit(bytes[j], hex: false) && j > nameStart) { j += 1 }
             guard j > nameStart, let end = close(from: j) else { return nil }
             return (String(decoding: bytes[nameStart..<j].map(lower), as: UTF8.self), closing, end + 1)
         }
@@ -323,7 +322,7 @@ nonisolated enum TextExtractor {
             i = found.end
         }
         let title = (firstElement("title") ?? firstElement("h1")).map { decodeEntities(strip($0)) }
-        return ExtractedText(text: decodeEntities(String(decoding: text, as: UTF8.self)), title: title, source: .html)
+        return ExtractedText(text: String(decoding: decodeEntities(text), as: UTF8.self), title: title, source: .html)
     }
 
     /// Replaces each tag with a space (linear: a "<" with no ">" after it is kept as text).
@@ -345,27 +344,62 @@ nonisolated enum TextExtractor {
         return output + pending
     }
 
+    /// Replaces character references ("&amp;", "&#38;", "&#x26;") in one pass. Unknown names, malformed references
+    /// and numbers that aren't a character (0, surrogates, past U+10FFFF) stay as written.
     static func decodeEntities(_ text: String) -> String {
         guard text.contains("&") else { return text }
-        let ns = text as NSString
-        var output = ""
-        var last = 0
-        for match in entity.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            output += ns.substring(with: NSRange(location: last, length: match.range.location - last))
-            let name = ns.substring(with: match.range(at: 1))
-            var decoded: String?
-            if name.hasPrefix("#x") || name.hasPrefix("#X") {
-                decoded = UInt32(name.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
-            } else if name.hasPrefix("#") {
-                decoded = UInt32(name.dropFirst()).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
+        return String(decoding: decodeEntities(Array(text.utf8)), as: UTF8.self)
+    }
+
+    static func decodeEntities(_ bytes: [UInt8]) -> [UInt8] {
+        guard bytes.contains(UInt8(ascii: "&")) else { return bytes }
+        var output: [UInt8] = []
+        output.reserveCapacity(bytes.count)
+        var i = 0
+        while i < bytes.count {
+            if bytes[i] == UInt8(ascii: "&"), let (character, end) = reference(in: bytes, at: i) {
+                output.append(contentsOf: character.utf8)
+                i = end
             } else {
-                decoded = namedEntities[name.lowercased()]
+                output.append(bytes[i])
+                i += 1
             }
-            output += decoded ?? ns.substring(with: match.range)
-            last = match.range.location + match.range.length
         }
-        output += ns.substring(from: last)
         return output
+    }
+
+    /// The character the reference at `start` (its "&") stands for, and the index past its ";".
+    private static func reference(in bytes: [UInt8], at start: Int) -> (String, Int)? {
+        var i = start + 1
+        let numeric = i < bytes.count && bytes[i] == UInt8(ascii: "#")
+        if numeric { i += 1 }
+        let hex = numeric && i < bytes.count && bytes[i] | 0x20 == UInt8(ascii: "x")
+        if hex { i += 1 }
+        let first = i
+        while i < bytes.count, numeric ? isDigit(bytes[i], hex: hex) : isLetter(bytes[i]) { i += 1 }
+        guard i > first, i < bytes.count, bytes[i] == UInt8(ascii: ";") else { return nil }
+        let body = String(decoding: bytes[first..<i], as: UTF8.self)
+        let character = numeric ? character(body, radix: hex ? 16 : 10) : namedEntities[body]
+        return character.map { ($0, i + 1) }
+    }
+
+    private static func character(_ digits: String, radix: Int) -> String? {
+        guard let value = UInt32(digits, radix: radix), value != 0 else { return nil }
+        // HTML reads 128–159 as Windows-1252, as legacy pages meant them ("&#150;" is "–"); the five numbers it
+        // leaves undefined stay as written.
+        if (0x80...0x9F).contains(value) { return String(bytes: [UInt8(value)], encoding: .windowsCP1252) }
+        return Unicode.Scalar(value).map { String(Character($0)) }
+    }
+
+    private static let letters = UInt8(ascii: "a")...UInt8(ascii: "z")
+    private static let decimalDigits = UInt8(ascii: "0")...UInt8(ascii: "9")
+    private static let hexLetters = UInt8(ascii: "a")...UInt8(ascii: "f")
+
+    /// `byte | 0x20` lowercases an ASCII letter and maps nothing else into a–z.
+    private static func isLetter(_ byte: UInt8) -> Bool { letters.contains(byte | 0x20) }
+
+    private static func isDigit(_ byte: UInt8, hex: Bool) -> Bool {
+        decimalDigits.contains(byte) || hex && hexLetters.contains(byte | 0x20)
     }
 
     static func markdownTitle(_ text: String) -> String? {

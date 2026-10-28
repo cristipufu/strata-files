@@ -439,7 +439,7 @@ struct InspectorProviderTests {
         var pending: DispatchWorkItem?
         var inspector: InspectorViewController? = InspectorViewController(services: env.services, previewScheduler: { pending = $0 })
         _ = inspector?.view
-        weak var released = inspector
+        weak let released = inspector
         let entry = try #require(FileEntry(url: tree.url("item.txt")))
         inspector?.show(entries: [entry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         let work = try #require(pending)

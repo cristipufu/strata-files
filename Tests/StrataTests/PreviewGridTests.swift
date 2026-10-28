@@ -185,7 +185,8 @@ struct PreviewGridTests {
         for (index, width) in [4097, 4096].enumerated() {
             let context = try #require(CGContext(data: nil, width: width, height: 1, bitsPerComponent: 8, bytesPerRow: width * 4,
                                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-            generator.pending[index].1(try #require(context.makeImage()), false)
+            let image = try #require(context.makeImage())
+            generator.pending[index].1(image, false)
             if index == 0 { try await wait { generator.pending.count == 2 }; #expect(delivered == 0) }
             else { try await wait { delivered == 1 } }
         }

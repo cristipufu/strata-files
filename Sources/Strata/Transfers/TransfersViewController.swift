@@ -23,6 +23,7 @@ final class TransfersViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
@@ -243,6 +244,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
         update()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private func makeButton(_ symbol: String, _ label: String.LocalizationValue, _ action: Selector) -> NSButton {

@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import Testing
 @testable import Strata
 
@@ -45,20 +46,20 @@ struct DockMenuTests {
     @Test func everyRequestUsesCurrentFavoritesWithoutOpeningAnything() throws {
         let old = URL(fileURLWithPath: "/old")
         let new = URL(fileURLWithPath: "/new")
-        var places = [Place(title: "Old", url: old, symbol: "folder")]
+        let places = Mutex([Place(title: "Old", url: old, symbol: "folder")])
         var opened: [URL] = []
         var requested = 0
-        let dock = DockMenu(favorites: { requested += 1; return places },
+        let dock = DockMenu(favorites: { requested += 1; return places.withLock { $0 } },
                             newWindow: { Issue.record("Unexpected new window") }, recents: { Issue.record("Unexpected recents") },
                             openFolder: { opened.append($0) })
         #expect(dock.build().items.last?.submenu?.items.map(\.title) == ["Old"])
-        places = [Place(title: "New", url: new, symbol: "folder")]
+        places.withLock { $0 = [Place(title: "New", url: new, symbol: "folder")] }
         let rebuilt = dock.build()
         #expect(rebuilt.items.last?.submenu?.items.map(\.title) == ["New"])
         #expect(opened.isEmpty)
         try invoke(#require(rebuilt.items.last?.submenu?.items.first))
         #expect(opened == [new])
-        places = []
+        places.withLock { $0 = [] }
         #expect(dock.build().items.count == 2)
         #expect(requested == 3)
         withExtendedLifetime(dock) {}

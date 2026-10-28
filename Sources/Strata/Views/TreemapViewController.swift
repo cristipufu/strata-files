@@ -13,6 +13,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private(set) var items: [TreemapItem] = []
@@ -202,6 +203,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         setAccessibilityLabel(String(localized: "Disk usage", comment: "Accessibility label of the disk usage map"))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private var mapRect: CGRect { bounds.insetBy(dx: padding, dy: padding) }
@@ -697,6 +699,7 @@ final class TreemapLegendView: NSView {
         setAccessibilityRole(.group)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -767,6 +770,7 @@ private final class LegendEntry: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {

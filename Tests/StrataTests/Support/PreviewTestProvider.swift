@@ -36,7 +36,7 @@ nonisolated final class PreviewTestProvider: CopyProvider, Sendable {
             // Deliberately deliver a held success even after cancellation: callers must reject it.
             guard let bytes = data[url.path] else { throw CocoaError(.fileReadNoSuchFile) }
             try bytes.write(to: url, options: .atomic)
-            state.withLock { $0.missing.remove(url.path) }
+            state.withLock { _ = $0.missing.remove(url.path) }
         }
     }
     func fetchSelection(_ urls: [URL], limit: Int64) async {}

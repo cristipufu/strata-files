@@ -346,7 +346,7 @@ struct TransferContextTests {
         let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
         defer { controller.window?.contentViewController = nil }
         var other = controller.otherBrowser
-        weak var closedBrowser = other
+        weak let closedBrowser = other
         try await waitForBrowser(controller.browser)
         try await waitForBrowser(try #require(other))
         controller.browser.setMode(.list, remember: false)

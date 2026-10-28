@@ -118,6 +118,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         ThemeStyle.apply(to: window)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func windowDidEnterFullScreen(_ notification: Notification) {

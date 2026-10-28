@@ -80,6 +80,7 @@ import AppKit
         updateView(mode: .list, size: 80, canBrowse: false, canGoBack: false)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func updateView(mode: PreviewViewMode, size: Double, canBrowse: Bool, canGoBack: Bool) {

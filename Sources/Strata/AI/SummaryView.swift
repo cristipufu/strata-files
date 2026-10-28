@@ -55,6 +55,7 @@ final class SummaryView: NSView {
         render()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Actions
@@ -268,6 +269,7 @@ final class CardView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 
@@ -306,6 +308,7 @@ private final class BulletRow: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func updateLayer() {
@@ -345,6 +348,7 @@ final class ShimmerView: NSView {
         heightAnchor.constraint(equalToConstant: 66).isActive = true
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

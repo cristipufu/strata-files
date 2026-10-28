@@ -63,6 +63,7 @@ package final class HTMLPreviewView: PreviewView {
         prepare()
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
     isolated deinit { stop(); NotificationCenter.default.removeObserver(self) }
 

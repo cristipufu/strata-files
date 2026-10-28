@@ -20,6 +20,7 @@ package final class DelimitedPreviewView: PreviewView {
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func show(_ table: DelimitedTable) {

@@ -100,6 +100,7 @@ final class PaneHostViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
@@ -224,6 +225,7 @@ private final class PaneHeaderView: NSVisualEffectView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(title: String, symbol: String, active: Bool, showsPathBar: Bool) {
@@ -288,6 +290,7 @@ final class PaneContainerViewController: NSSplitViewController {
         add(first)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func add(_ host: PaneHostViewController) {

@@ -148,6 +148,7 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],

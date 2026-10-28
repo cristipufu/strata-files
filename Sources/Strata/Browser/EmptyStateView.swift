@@ -39,6 +39,7 @@ final class EmptyStateView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show(symbol name: String, title: String, message: String = "", button: (String, () -> Void)? = nil) {
@@ -105,6 +106,7 @@ final class FilterPill: NSView {
         isHidden = true
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func update(query text: String, matches: Int) {

@@ -364,7 +364,8 @@ extension PreviewArchiveTests {
         let tree = try TestTree("pack.tar", "cache/", "outside/keep")
         try #require(chmod(tree.url("cache").path, 0o700) == 0)
         try Data(ContainerTests.tarFile("a", "owned")+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        var list: acl_t? = try #require(acl_init(1))
+        let created: acl_t = try #require(acl_init(1))
+        var list: acl_t? = created
         defer { if let list { acl_free(UnsafeMutableRawPointer(list)) } }
         var entry: acl_entry_t?
         try #require(acl_create_entry(&list, &entry) == 0)
@@ -428,7 +429,8 @@ extension PreviewArchiveTests {
         content.session.archiveAccess.requestPassword = { _ in
             await withCheckedContinuation { answer = $0; signal.yield(()) }
         }
-        content.session.select(try #require(content.session.roots.first))
+        let item = try #require(content.session.roots.first)
+        content.session.select(item)
         coordinator.perform(.copy, target: try #require(PreviewCommandTarget(session: content.session)))
         let task = try #require(content.archiveContent.commandTask)
         var iterator = started.makeAsyncIterator()

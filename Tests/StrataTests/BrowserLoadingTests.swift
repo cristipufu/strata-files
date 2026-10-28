@@ -172,7 +172,7 @@ struct BrowserLoadingTests {
         let reads = ControlledDirectoryReads(), capacity = CapacityReads()
         defer { reads.stop() }
         var loading: BrowserLoading? = BrowserLoading(reader: reads.reader, capacity: { await capacity.read($0) })
-        weak var owner = loading
+        weak let owner = loading
         loading?.navigate(to: tree.root, newFolder: true)
         var changes = 0
         reload(try #require(loading), capacityChanged: { changes += 1 })
@@ -200,7 +200,7 @@ struct BrowserLoadingTests {
             let reads = ControlledDirectoryReads()
             defer { reads.stop() }
             var loading: BrowserLoading? = BrowserLoading(reader: reads.reader, capacity: { _ in nil })
-            weak var owner = loading
+            weak let owner = loading
             let node = FileNode(entry: try #require(FileEntry(url: tree.url("folder"))))
             var completions = 0
             let work = try #require(loading).loadChildren(of: node, showHidden: false, applications: .standard) { _ in completions += 1 }

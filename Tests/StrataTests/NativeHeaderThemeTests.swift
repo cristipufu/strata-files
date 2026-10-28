@@ -116,8 +116,8 @@ extension ColorThemeTests {
         let header = try #require(table.headerView)
         let native = table.tableColumns.map(\.headerCell)
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-            window.appearance = try #require(chosenAppearance)
+            let chosenAppearance = try #require(NSAppearance(named: name))
+            window.appearance = chosenAppearance
             for active in [false, true] {
                 window.drawsAsActive = active
                 for width in [CGFloat(100), 300] {

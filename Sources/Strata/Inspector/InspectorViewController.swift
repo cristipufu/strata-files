@@ -70,6 +70,7 @@ final class InspectorViewController: NSViewController {
         infoEditor.hide()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { return nil }
 
     override func loadView() {

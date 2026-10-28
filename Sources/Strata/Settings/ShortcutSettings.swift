@@ -115,6 +115,7 @@ final class RecorderButton: NSButton {
         refresh()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func refresh() {

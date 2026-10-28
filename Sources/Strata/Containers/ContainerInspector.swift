@@ -51,6 +51,7 @@ final class ContainerInspectorView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// The selection (a container's files, or a Compose project's folder). Nil hides the cards. Rebuilt only when
@@ -368,6 +369,7 @@ private final class MountRow: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 
@@ -390,6 +392,7 @@ final class ActionButton: NSButton {
         self.action = #selector(clicked)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func clicked() { onClick() }
@@ -411,6 +414,7 @@ final class LinkButton: NSButton {
         self.action = #selector(clicked)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func resetCursorRects() {
@@ -459,6 +463,7 @@ final class ComposeInspectorView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// The folder shown (nil, or a folder without Compose, hides the card).
@@ -655,6 +660,7 @@ private final class ServiceRow: NSView {
             : String(localized: "Not Running", comment: "Container state: stopped, exited or created")))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 

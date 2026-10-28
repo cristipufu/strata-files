@@ -107,6 +107,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         NSLayoutConstraint.activate(constraints)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func mouseDown(with event: NSEvent) {
@@ -496,6 +497,7 @@ final class CrumbButton: NSButton {
         (cell as? NSButtonCell)?.lineBreakMode = .byTruncatingTail
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
@@ -547,6 +549,7 @@ final class ChevronButton: NSButton {
                                      comment: "Menu of a folder's subfolders; the folder's name"))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 14, height: 22) }

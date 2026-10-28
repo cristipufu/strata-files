@@ -56,6 +56,7 @@ final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowCont
         addSplitViewItem(inspectorItem)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidLoad() {

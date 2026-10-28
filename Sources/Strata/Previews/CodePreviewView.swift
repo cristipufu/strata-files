@@ -34,6 +34,7 @@ package final class CodePreviewView: PreviewView {
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
@@ -150,6 +151,7 @@ final class LineNumberRuler: NSRulerView {
         reservedThicknessForAccessoryView = 0
     }
 
+    @available(*, unavailable)
     required init(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

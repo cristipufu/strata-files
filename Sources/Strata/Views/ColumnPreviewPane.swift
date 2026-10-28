@@ -87,6 +87,7 @@ final class ColumnPreviewPane: NSView {
         self.init(frame: frame, thumbnails: .shared, itemInfo: .shared)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {

@@ -19,6 +19,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     weak var fileDelegate: FileCollectionViewDelegate?

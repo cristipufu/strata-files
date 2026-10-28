@@ -55,6 +55,7 @@ final class TagDotsView: NSView {
         setAccessibilityRole(.image)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {

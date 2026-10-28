@@ -251,7 +251,7 @@ struct ProviderMediaInfoTests {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
         let reads = Reads(held: true)
         var loader: MediaInfoLoader? = MediaInfoLoader(reader: { await reads.read($0) })
-        weak var released = loader
+        weak let released = loader
         var updates = 0
         loader?.onUpdate = { _ in updates += 1 }
         loader?.request(entry)

@@ -44,6 +44,7 @@ final class GitStatusBadge: NSView {
         setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {

@@ -64,6 +64,7 @@ final class FolderTreeController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     var onSelect: ((SidebarTarget) -> Void)?

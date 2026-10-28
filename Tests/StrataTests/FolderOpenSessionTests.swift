@@ -91,7 +91,7 @@ struct FolderOpenSessionTests {
         let tree = try TestTree("result/")
         let before = tree.snapshot(), reads = Reads()
         var session: FolderOpenSession? = FolderOpenSession()
-        weak var released = session
+        weak let released = session
         var calls = 0
         let task = try #require(session).open(operation: { try await reads.open() }) { _ in calls += 1 }
         session = nil

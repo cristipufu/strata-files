@@ -77,6 +77,7 @@ extension ColorThemeTests {
 private final class InspectorInkSample: NSView {
     let color: NSColor
     init(color: NSColor) { self.color = color; super.init(frame: NSRect(x: 0, y: 0, width: 8, height: 8)) }
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
         ThemeStyle.surface(.inspector).setFill()

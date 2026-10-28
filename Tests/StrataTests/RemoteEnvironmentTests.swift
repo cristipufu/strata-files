@@ -152,11 +152,11 @@ struct RemoteEnvironmentTests {
         let tree = try TestTree("left/keep"), center = NotificationCenter()
         let server = server(name: "Fixture")
         var environment: Environment? = try Environment(tree, folder: "left", notifications: center, saved: [server])
-        weak var remote = environment?.remote
-        weak var store = remote?.servers
-        weak var sessions = remote?.sessions
-        weak var status = remote?.status
-        weak var connections = remote?.connections
+        weak let remote = environment?.remote
+        weak let store = remote?.servers
+        weak let sessions = remote?.sessions
+        weak let status = remote?.status
+        weak let connections = remote?.connections
         weak var sidebar: SidebarViewController?
         try autoreleasepool {
             let native = SidebarViewController(services: try #require(environment?.services))

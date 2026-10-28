@@ -156,7 +156,7 @@ struct PreviewSessionTests {
         let before = tree.snapshot(), reads = ControlledDirectoryReads()
         defer { reads.stop() }
         var session: PreviewSession? = PreviewSession(reader: reads.reader)
-        weak var released = session
+        weak let released = session
         session?.show(try #require(FileEntry(url: tree.url("folder"))), showHidden: false, applications: .standard)
         let task = try #require(session?.task), request = try await reads.request(0)
         session = nil
@@ -199,7 +199,7 @@ struct PreviewSessionTests {
         let environment = try PreviewEnvironment(tree, reader: reads.reader)
         let before = tree.snapshot()
         var browser: BrowserViewController? = BrowserViewController(services: environment.services)
-        weak var released = browser
+        weak let released = browser
         environment.services.previews.show(try #require(FileEntry(url: tree.url("folder"))), from: try #require(browser), present: false)
         let content = try #require(environment.services.previews.content)
         let task = try #require(content.session.task), request = try await reads.request(0)

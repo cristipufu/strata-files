@@ -28,6 +28,7 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         setAccessibilityLabel(String(localized: "Tags", comment: "Finder tags (accessibility label or caption)"))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// As tall as its tokens need at its width, so no tag hides past the first line.
@@ -259,6 +260,7 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
         refresh()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Lists the tags matching what's typed: names that start with it first, then names that contain it.
@@ -434,6 +436,7 @@ private final class TagSuggestionCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -471,6 +474,7 @@ final class TagEditorController: NSViewController, NSPopoverDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {

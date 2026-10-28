@@ -41,6 +41,7 @@ final class ConflictSheetController: NSWindowController {
         loadDetails()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Presenting
@@ -401,6 +402,7 @@ final class ItemCard: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ facts: ItemFacts, comparedTo other: ItemFacts) {
@@ -500,6 +502,7 @@ final class PillView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -532,6 +535,7 @@ final class DiffBox: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -576,6 +580,7 @@ final class DiffView: NSView {
         widthAnchor.constraint(greaterThanOrEqualToConstant: gutterWidth + textWidth).isActive = true
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     var contentHeight: CGFloat { CGFloat(rows.count) * Self.rowHeight + Self.padding * 2 }

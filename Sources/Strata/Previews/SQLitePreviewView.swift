@@ -22,6 +22,7 @@ package final class SQLitePreviewView: PreviewView {
         })
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {

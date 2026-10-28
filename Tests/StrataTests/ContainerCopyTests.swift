@@ -198,11 +198,12 @@ extension ContainerTests {
 
     @Test func aDraggedOutItemNeverReplacesWhatsAtTheDrop() async throws {
         let tree = try TestTree("from/", "from/item/", "from/item/a.txt", "from/item/out -> /etc", "to/", "to/item/", "to/item/mine.txt")
-        let item = ContainerDragItem(source: tree.url("from/item"))
+        let source = tree.url("from/item")
         // The provider blocks until it's written, as on the drag's own queue: on a thread of its own here too.
         func write(to url: URL) async -> Error? {
             await withCheckedContinuation { done in
                 DispatchQueue.global().async {
+                    let item = ContainerDragItem(source: source)
                     ContainerPromises.shared.filePromiseProvider(item, writePromiseTo: url) { done.resume(returning: $0) }
                 }
             }

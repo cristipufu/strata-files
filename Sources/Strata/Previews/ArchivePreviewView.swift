@@ -20,6 +20,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
@@ -169,6 +170,7 @@ final class ArchiveNameCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(name: String, icon image: NSImage) {

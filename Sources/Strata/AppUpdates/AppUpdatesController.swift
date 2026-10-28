@@ -20,6 +20,7 @@ final class AppUpdatesController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Whether `url` is the Strata that's running, which its own updater installs.
@@ -276,6 +277,7 @@ private final class AppUpdateRow: NSView {
         updateAccessibility()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func showDetails(_ app: InstalledApp) {

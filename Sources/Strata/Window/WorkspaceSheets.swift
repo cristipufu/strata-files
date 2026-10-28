@@ -18,6 +18,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {

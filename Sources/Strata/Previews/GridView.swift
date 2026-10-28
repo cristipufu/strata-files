@@ -127,6 +127,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         ])
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     package func show(_ data: GridData) {
@@ -199,6 +200,7 @@ final class GridCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// `leading` marks the first column, which keeps clear of the preview's rounded corner; `secondary` dims the text.

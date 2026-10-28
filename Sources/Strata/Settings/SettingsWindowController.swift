@@ -40,6 +40,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ThemeStyle.bind(window)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show() {

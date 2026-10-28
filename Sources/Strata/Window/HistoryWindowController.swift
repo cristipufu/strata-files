@@ -68,6 +68,7 @@ final class HistoryWindowController: NSWindowController {
         reload()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func reload() {
@@ -200,6 +201,7 @@ private final class HistoryCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: OperationLog.Entry, summary: String, when: String, canUndo: Bool, undo: @escaping () -> Void) {

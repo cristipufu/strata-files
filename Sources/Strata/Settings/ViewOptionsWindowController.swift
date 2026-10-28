@@ -13,6 +13,7 @@ final class ViewOptionsWindowController: NSWindowController {
         panel.center()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show() { showWindow(nil) }

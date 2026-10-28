@@ -44,7 +44,7 @@ struct ContainerTests {
         return (path, received.get)
     }
 
-    final class Received: @unchecked Sendable {
+    nonisolated final class Received: @unchecked Sendable {
         private let lock = NSLock()
         private var value = ""
         func set(_ text: String) { lock.lock(); value = text; lock.unlock() }

@@ -71,6 +71,7 @@ import StrataPreviews
         }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit {

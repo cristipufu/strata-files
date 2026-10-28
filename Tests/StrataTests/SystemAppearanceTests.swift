@@ -14,8 +14,8 @@ extension ColorThemeTests {
                 split.splitView.autosaveName = nil
                 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
                                       styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-                let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-                window.appearance = try #require(chosenAppearance)
+                let chosenAppearance = try #require(NSAppearance(named: name))
+                window.appearance = chosenAppearance
                 window.toolbarStyle = .unified
                 window.toolbar = NSToolbar(identifier: "NativeThemeTest")
                 window.titlebarAppearsTransparent = transparent

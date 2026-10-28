@@ -363,6 +363,7 @@ private final class SuggestionCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ suggestion: PathSuggestion) {

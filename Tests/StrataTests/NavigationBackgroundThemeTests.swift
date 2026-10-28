@@ -71,8 +71,8 @@ extension ColorThemeTests {
         let icons = [back.image, forward.image]
         let labels = [back.label, forward.label]
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-            window.appearance = try #require(chosenAppearance)
+            let chosenAppearance = try #require(NSAppearance(named: name))
+            window.appearance = chosenAppearance
             for palette in ColorTheme.allCases {
                 for (tintsWindow, highContrast) in [(true, false), (false, false), (true, true)] {
                     ThemeStyle.apply(ColorThemeOptions(palette: palette, tintsWindow: tintsWindow),

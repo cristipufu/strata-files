@@ -45,6 +45,7 @@ final class ProjectInspectorView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ info: ProjectInfo?) {
@@ -349,6 +350,7 @@ final class FlowView: NSView {
         super.init(frame: .zero)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
@@ -414,6 +416,7 @@ private final class KindChip: NSView {
         setAccessibilityLabel(info.detail.map { "\(info.kind.title), \($0)" } ?? info.kind.title)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
@@ -454,6 +457,7 @@ private final class BranchLine: NSView {
         toolTip = git.branch.oid.map { "HEAD \(String($0.prefix(12)))" }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
@@ -530,6 +534,7 @@ final class StatusItem: NSView {
         configureAccessibility(title)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private func configureAccessibility(_ title: String) {
@@ -626,6 +631,7 @@ private final class ArtifactRow: NSView {
         update(artifact, selected: selected)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func update(_ artifact: ProjectArtifact, selected: Bool) {
@@ -700,6 +706,7 @@ private final class ScriptRow: NSView {
         menu = makeMenu()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }

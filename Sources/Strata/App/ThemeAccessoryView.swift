@@ -13,6 +13,7 @@ package final class ThemeAccessoryView: NSView, ColorThemeUpdating {
         updateColorTheme()
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     package func updateColorTheme() {

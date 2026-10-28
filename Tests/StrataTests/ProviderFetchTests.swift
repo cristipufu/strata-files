@@ -240,7 +240,7 @@ struct ProviderFetchTests {
         let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: .failure, gate: gate)]))
         let before = tree.snapshot()
         var browser: BrowserViewController? = BrowserViewController(services: environment.services)
-        weak var released = browser
+        weak let released = browser
         var actions = 0
         let work = try #require(browser?.afterFetching([item]) { actions += 1 })
         await gate.started(1)
@@ -337,7 +337,7 @@ struct ProviderFetchTests {
             let state = State([item])
             let copies = CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: outcome)])
             var lifetime: Lifetime? = Lifetime()
-            weak var released = lifetime
+            weak let released = lifetime
             let job = CopyFetchJob([item], copies: copies, then: retaining(try #require(lifetime)))
             lifetime = nil
             #expect(released != nil)

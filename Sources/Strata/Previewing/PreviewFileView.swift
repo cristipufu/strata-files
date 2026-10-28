@@ -55,6 +55,7 @@ import UniformTypeIdentifiers
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ item: PreviewItem?, root: FileEntry?, materialized: URL? = nil) {

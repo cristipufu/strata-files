@@ -133,7 +133,8 @@ struct ArchiveSecurityReviewTests {
 
     @Test func lockedArchiveItemsLoseFlagsPrivilegesAndAccessLists() throws {
         let tree = try TestTree("box/", "box/tool", "box/sub/", "box/sub/file", "keep")
-        var list: acl_t? = try #require(acl_init(1))
+        let created: acl_t = try #require(acl_init(1))
+        var list: acl_t? = created
         defer { if let list { acl_free(UnsafeMutableRawPointer(list)) } }
         var entry: acl_entry_t?
         try #require(acl_create_entry(&list, &entry) == 0)

@@ -15,6 +15,7 @@ package final class QuickLookPreviewView: NSView {
         super.init(frame: frame)
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { return nil }
 
     package override func viewWillMove(toWindow newWindow: NSWindow?) {
