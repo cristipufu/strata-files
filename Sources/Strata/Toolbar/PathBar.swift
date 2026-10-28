@@ -229,7 +229,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         if path == home || path.hasPrefix(home + "/") {
             root = home
             // Icon only, unless home is the folder being shown.
-            parts.append((path == home ? NSUserName() : "", URL(fileURLWithPath: home), "house.fill"))
+            parts.append((path == home ? FileManager.default.displayName(atPath: home) : "", URL(fileURLWithPath: home), "house.fill"))
         } else if path.hasPrefix("/Volumes/"), let name = path.split(separator: "/").dropFirst().first {
             root = "/Volumes/\(name)"
             parts.append((String(name), URL(fileURLWithPath: root), "externaldrive.fill"))
