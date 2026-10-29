@@ -297,7 +297,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
             close(parent)
         }
 
-        func names() throws -> [String] { try ScratchVolume.names(in: fd) }
+        func names() throws -> [String] { try ChosenFile.names(in: fd) }
     }
 
     /// Detaches the disks mounted in `folders` and removes them; what couldn't be done, said. A folder whose image is
@@ -406,7 +406,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         let fd = openat(folder, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return errno == ENOENT }
         defer { close(fd) }
-        return (try? names(in: fd).isEmpty) == true
+        return (try? ChosenFile.names(in: fd).isEmpty) == true
     }
 
     /// Whether `name` in the opened `folder` is a file, itself and not a link, or already gone.
@@ -414,29 +414,6 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         var info = stat()
         guard fstatat(folder, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return errno == ENOENT }
         return info.st_mode & S_IFMT == S_IFREG
-    }
-
-    /// The names in the opened `folder`, read without looking at the items, which may go meanwhile. A listing that
-    /// fails partway fails whole.
-    private static func names(in folder: Int32) throws -> [String] {
-        let copy = dup(folder)
-        guard copy >= 0, let stream = fdopendir(copy) else {
-            let failure = errno
-            if copy >= 0 { close(copy) }
-            throw POSIXError(POSIXErrorCode(rawValue: failure) ?? .EIO)
-        }
-        defer { closedir(stream) }
-        rewinddir(stream)
-        var names: [String] = []
-        while true {
-            errno = 0
-            guard let entry = readdir(stream) else {
-                if errno != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                return names
-            }
-            guard let name = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
-            if name != ".", name != ".." { names.append(name) }
-        }
     }
 
     /// The ways hdiutil may write `path`: as given or resolved, with or without the /private that /var stands for. Only a

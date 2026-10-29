@@ -119,27 +119,43 @@ nonisolated package final class ChosenFile: Sendable {
         }
     }
 
-    /// Capture both names and identities. A failed listing refuses this directory before deleting its children.
+    /// Capture both names and identities, each identity as its name is read. A failed listing refuses this directory
+    /// before deleting its children.
     package static func entries(in fd: Int32) throws -> [(name: String, identity: FileIdentity)] {
-        let copy = dup(fd)
-        guard copy >= 0, let entries = fdopendir(copy) else {
-            if copy >= 0 { close(copy) }
-            throw POSIXError(.EIO)
-        }
-        defer { closedir(entries) }
-        rewinddir(entries)
         var children: [(name: String, identity: FileIdentity)] = []
-        while true {
-            errno = 0
-            guard let entry = readdir(entries) else {
-                guard errno == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                return children
-            }
-            guard let child = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
-            guard child != ".", child != ".." else { continue }
+        try forEachName(in: fd) { child in
             var info = stat()
             guard fstatat(fd, child, &info, AT_SYMLINK_NOFOLLOW) == 0 else { throw POSIXError(.ESTALE) }
             children.append((child, .from(info)))
+        }
+        return children
+    }
+
+    /// The names in an open folder, read without looking at the items.
+    package static func names(in fd: Int32) throws -> [String] {
+        var names: [String] = []
+        try forEachName(in: fd) { names.append($0) }
+        return names
+    }
+
+    /// A listing that fails partway, or holds a name that isn't text, fails whole.
+    private static func forEachName(in fd: Int32, _ body: (String) throws -> Void) throws {
+        let copy = dup(fd)
+        guard copy >= 0, let stream = fdopendir(copy) else {
+            let failure = errno
+            if copy >= 0 { close(copy) }
+            throw POSIXError(POSIXErrorCode(rawValue: failure) ?? .EIO)
+        }
+        defer { closedir(stream) }
+        rewinddir(stream)
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else {
+                guard errno == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                return
+            }
+            guard let name = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
+            if name != ".", name != ".." { try body(name) }
         }
     }
 }

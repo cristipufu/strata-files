@@ -41,11 +41,10 @@ nonisolated enum CloudFolders {
         if let fd = try? ChosenFile.openDirectory(root.path) {
             defer { close(fd) }
             // Only physical account folders at this level; never follow a link supplied by a different folder.
-            for child in (try? ChosenFile.entries(in: fd)) ?? [] where !child.name.hasPrefix(".") {
+            for name in (try? ChosenFile.names(in: fd)) ?? [] where !name.hasPrefix(".") {
                 var info = stat()
-                guard fstatat(fd, child.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
-                      info.st_mode & S_IFMT == S_IFDIR else { continue }
-                urls.append(root.appending(path: child.name, directoryHint: .isDirectory))
+                guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR else { continue }
+                urls.append(root.appending(path: name, directoryHint: .isDirectory))
             }
         }
         return urls.map { CloudFolder(url: $0, title: fm.displayName(atPath: $0.path)) }

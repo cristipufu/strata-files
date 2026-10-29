@@ -4548,8 +4548,8 @@
     "file": "Strata/Model/ChosenFile.swift",
     "rule": "Security follow-up: directory snapshots close their stream before recursion",
     "tests": "ChosenFileFollowupTests/snapshotsClose",
-    "find": "        defer { closedir(entries) }",
-    "replace": "        defer { _ = entries }"
+    "find": "        defer { closedir(stream) }",
+    "replace": "        defer { _ = stream }"
   },
   {
     "file": "Strata/Model/ChosenFile.swift",
