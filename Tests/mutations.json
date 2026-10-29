@@ -5534,5 +5534,545 @@
     "replace": "\"xar\", \"iso\"]",
     "rule": "A cabinet or OneNote package isn't taken for an archive",
     "tests": "CabinetArchiveTests/cabinetsAndOneNotePackagesAreArchivesByName|CabinetArchiveTests/aOneNotePackageOpensInSpaceAsItsTreeWithoutExtracting"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: the first revision labeled live is shown, not the last",
+    "find": "                manifests[id] = Manifest(dependency: dependency, nodes: nodes[index..<end], encrypted: encoding != 0)\n                if role == Self.activeView, context == .zero { live = id }",
+    "replace": "                manifests[id] = Manifest(dependency: dependency, nodes: nodes[index..<end], encrypted: encoding != 0)\n                if role == Self.activeView, context == .zero, live == nil { live = id }",
+    "tests": "OneNoteReaderTests/aPageShowsItsLiveRevision"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a page version from history is shown as the page",
+    "find": "                manifests[id] = Manifest(dependency: dependency, nodes: nodes[index..<end], encrypted: encoding != 0)\n                if role == Self.activeView, context == .zero { live = id }",
+    "replace": "                manifests[id] = Manifest(dependency: dependency, nodes: nodes[index..<end], encrypted: encoding != 0)\n                if role == Self.activeView { live = id }",
+    "tests": "OneNoteReaderTests/aPageShowsItsLiveRevision"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a role declaration doesn't relabel the live revision",
+    "find": "                let context = node.id == NodeID.revisionRoleAndContextDeclaration ? try ExtendedGUID(&cursor) : .zero\n                if role == Self.activeView, context == .zero { live = id }",
+    "replace": "                let context = node.id == NodeID.revisionRoleAndContextDeclaration ? try ExtendedGUID(&cursor) : .zero\n                _ = (id, role, context)",
+    "tests": "OneNoteReaderTests/aPageShowsItsLiveRevision"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a revision leaves out what it depends on",
+    "find": "            next = manifest.dependency",
+    "replace": "            next = .zero",
+    "tests": "OneNoteReaderTests/aRevisionIncludesWhatItDependsOn"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a revision chain may run one longer than its limit",
+    "find": "            guard chain.count < limits.dependencies else { throw OneStoreError.tooLarge }",
+    "replace": "            guard chain.count <= limits.dependencies else { throw OneStoreError.tooLarge }",
+    "tests": "OneNoteReaderTests/eachLimitHoldsExactlyAtItsBoundary"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: read-only objects declared with large reference counts are left out",
+    "find": "                                                           readOnlyObjectDeclaration2, readOnlyObjectDeclaration2Large]",
+    "replace": "                                                           readOnlyObjectDeclaration2]",
+    "tests": "OneNoteReaderTests/everyWayOfStoringReferences"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a password-protected section is read as plain",
+    "find": "            guard !manifest.encrypted else { throw OneStoreError.encrypted }",
+    "replace": "            _ = manifest.encrypted",
+    "tests": "OneNoteReaderTests/otherFilesVersionsAndPasswordsAreToldApart"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: nodes of an unfinished transaction are read",
+    "find": "            if listID == nil { listID = id; expected = committed[id] }",
+    "replace": "            if listID == nil { listID = id; expected = nil }",
+    "tests": "OneNoteReaderTests/nodesATransactionNeverCommittedAreIgnored"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a section of another version is read",
+    "find": "            guard oldestReader == 0x2A else",
+    "replace": "            guard oldestReader >= 0x2A else",
+    "tests": "OneNoteReaderTests/otherFilesVersionsAndPasswordsAreToldApart"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a page read spends what earlier reads spent",
+    "find": "        spent = Spent()\n        return try body()",
+    "replace": "        return try body()",
+    "tests": "OneNoteReaderTests/eachListingAndEachPageReadHasTheWholeBudgetToItself"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: compressed offsets are read unscaled",
+    "find": "        let (offset, offsetOverflow) = storedOffset.multipliedReportingOverflow(by: stpFormat >= 2 ? 8 : 1)",
+    "replace": "        let (offset, offsetOverflow) = storedOffset.multipliedReportingOverflow(by: 1)",
+    "tests": "OneNoteReaderTests/everyWayOfStoringReferences"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a reference's widths are read from the wrong format",
+    "find": "        let offsetWidth = [8, 4, 2, 4][stpFormat], countWidth = [4, 8, 1, 2][cbFormat]",
+    "replace": "        let offsetWidth = [8, 4, 4, 2][stpFormat], countWidth = [4, 8, 1, 2][cbFormat]",
+    "tests": "OneNoteReaderTests/everyWayOfStoringReferences"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a structure one byte over the chunk limit is read",
+    "find": "        guard chunk.count <= limits.chunk, chunk.count <= limits.bytes - spent.bytes else {",
+    "replace": "        guard chunk.count <= limits.chunk + 1, chunk.count <= limits.bytes - spent.bytes else {",
+    "tests": "OneNoteReaderTests/theChunkLogAndArrayLimits"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: transaction log entries aren't counted",
+    "find": "                spent.nodes += 1\n                guard spent.nodes <= limits.nodes else { throw OneStoreError.tooLarge }\n                let list: UInt32",
+    "replace": "                let list: UInt32",
+    "tests": "OneNoteReaderTests/theChunkLogAndArrayLimits"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a transaction log that loops is followed",
+    "find": "            guard visited.insert(fragment.offset).inserted, fragment.count >= 12 else { throw OneStoreError.malformed }",
+    "replace": "            guard fragment.count >= 12 else { throw OneStoreError.malformed }",
+    "tests": "OneNoteReaderTests/theChunkLogAndArrayLimits"
+  },
+  {
+    "file": "Strata/Previews/OneStorePropertySet.swift",
+    "rule": "OneNote: property sets nest without limit",
+    "find": "    private mutating func propertyIDs(depth: Int) throws -> [UInt32] {\n        guard depth <= nesting else { throw OneStoreError.tooLarge }",
+    "replace": "    private mutating func propertyIDs(depth: Int) throws -> [UInt32] {\n        guard depth <= nesting + 1 else { throw OneStoreError.tooLarge }",
+    "tests": "OneNoteReaderTests/countsPastTheirDataAreRefused"
+  },
+  {
+    "file": "Strata/Previews/OneStorePropertySet.swift",
+    "rule": "OneNote: an array of property sets is as long as its count says",
+    "find": "        guard count <= arrayElements else { throw OneStoreError.tooLarge }",
+    "replace": "",
+    "tests": "OneNoteReaderTests/theChunkLogAndArrayLimits"
+  },
+  {
+    "file": "Strata/Previews/OneStorePropertySet.swift",
+    "rule": "OneNote: an empty link address stands for the field code's",
+    "find": "        return units.isEmpty ? nil : String(decoding: units, as: UTF16.self)",
+    "replace": "        return String(decoding: units, as: UTF16.self)",
+    "tests": "OneNoteReaderTests/runsSurviveEmptyRuns"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: one damaged page hides the whole section",
+    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            return nil",
+    "replace": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            throw OneStoreError.malformed",
+    "tests": "OneNoteReaderTests/aDamagedPageIsLeftOut|OneNoteReaderTests/aDamagedSeriesIsLeftOut"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: reaching a limit while listing leaves out the pages after it without a word",
+    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            return nil",
+    "replace": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed, OneStoreError.tooLarge {\n            return nil",
+    "tests": "OneNoteReaderTests/eachListingAndEachPageReadHasTheWholeBudgetToItself"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a damaged page series fails the whole section",
+    "find": "                  let spaces = try damageLeftOut({ try store.properties(of: series) })?",
+    "replace": "                  let spaces = try Optional(store.properties(of: series))?",
+    "tests": "OneNoteReaderTests/aDamagedSeriesIsLeftOut"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page listed twice shows twice",
+    "find": "            for space in spaces where listed.insert(space).inserted {",
+    "replace": "            for space in spaces {",
+    "tests": "OneNoteReaderTests/aDamagedSeriesIsLeftOut"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a space without a page counts toward the page limit",
+    "find": "                guard let page = try damageLeftOut({ try page(in: space) }) ?? nil else { continue }\n                guard pages.count < limits.pages else { throw OneStoreError.tooLarge }",
+    "replace": "                guard pages.count < limits.pages else { throw OneStoreError.tooLarge }\n                guard let page = try damageLeftOut({ try page(in: space) }) ?? nil else { continue }",
+    "tests": "OneNoteReaderTests/eachLimitHoldsExactlyAtItsBoundary"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a level below one is the deepest",
+    "find": "map { Int(Int32(truncatingIfNeeded: $0)) }",
+    "replace": "map { Int($0) }",
+    "tests": "OneNoteReaderTests/aDamagedSeriesIsLeftOut"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page title keeps its control and direction characters",
+    "find": "        return OneNotePage(title: DisplayText.oneLine(String(title)),",
+    "replace": "        return OneNotePage(title: String(title),",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page may read one object fewer than its limit",
+    "find": "        guard visits <= limits.visitsPerPage else",
+    "replace": "        guard visits < limits.visitsPerPage else",
+    "tests": "OneNoteReaderTests/eachLimitHoldsExactlyAtItsBoundary"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a reference to an object the revision doesn't have costs nothing",
+    "find": "        visits += 1\n        guard visits <= limits.visitsPerPage else { throw OneStoreError.tooLarge }\n        guard let id, let stored = revision.objects[id], kinds.contains(stored.jcid), !damaged.contains(id) else {\n            return nil\n        }",
+    "replace": "        guard let id, let stored = revision.objects[id], kinds.contains(stored.jcid), !damaged.contains(id) else {\n            return nil\n        }\n        visits += 1\n        guard visits <= limits.visitsPerPage else { throw OneStoreError.tooLarge }",
+    "tests": "OneNoteReaderTests/eachLimitHoldsExactlyAtItsBoundary"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: items nest one deeper than the limit",
+    "find": "        guard path.count < limits.depth else",
+    "replace": "        guard path.count <= limits.depth else",
+    "tests": "OneNoteReaderTests/eachLimitHoldsExactlyAtItsBoundary"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a link loses the address its field code gives",
+    "find": "            if segment.field { address = segment.address }",
+    "replace": "            if segment.field { address = nil }",
+    "tests": "OneNoteReaderTests/pageContentKeepsItsStructureFormattingAndLinks"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field code without an address keeps the previous link's",
+    "find": "            if segment.field { address = segment.address }",
+    "replace": "            if segment.field { address = segment.address ?? address }",
+    "tests": "OneNoteReaderTests/aLinksAddressEndsWithItsLink"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field code shows as text",
+    "find": "            var run = OneNoteRun(text: String(segment.shown).replacingOccurrences(of: \"\\0\", with: \"\"))",
+    "replace": "            var run = OneNoteRun(text: stored.replacingOccurrences(of: \"\\0\", with: \"\"))",
+    "tests": "OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: hidden text shows",
+    "find": "            if format?.bool(PropertyID.hidden) == true { continue }\n",
+    "replace": "",
+    "tests": "OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field code's run loses the text it links",
+    "find": "            if format?.bool(PropertyID.hidden) == true { continue }",
+    "replace": "            if format?.bool(PropertyID.hidden) == true || segment.field { continue }",
+    "tests": "OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a link's address carries over to a later run",
+    "find": "            } else if !segment.field {\n                address = nil\n            }",
+    "replace": "            }",
+    "tests": "OneNoteReaderTests/aLinksAddressEndsWithItsLink"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field in plain text loses its address before the text it links",
+    "find": "            } else if !segment.field {",
+    "replace": "            } else {",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: an empty run between a field code and its text drops the link",
+    "find": "            guard !run.text.isEmpty else { continue }\n",
+    "replace": "",
+    "tests": "OneNoteReaderTests/runsSurviveEmptyRuns"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: run ends are counted without the text's terminating NUL",
+    "find": "        paragraph.units(PropertyID.richEditTextUnicode)\n",
+    "replace": "        paragraph.text(PropertyID.richEditTextUnicode).map { Array($0.utf16) }\n",
+    "tests": "OneNoteReaderTests/aLinksAddressEndsWithItsLink"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: text whose runs can't be told apart takes its first format",
+    "find": "        guard let ends = Self.runEnds(paragraph.bytes(PropertyID.textRunIndex), count: units.count, runs: formats.count)\n        else { return Self.plain(units) }",
+    "replace": "        let ends = Self.runEnds(paragraph.bytes(PropertyID.textRunIndex), count: units.count, runs: formats.count) ?? [units.count]",
+    "tests": "OneNoteReaderTests/runsSurviveEmptyRuns"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: text whose runs can't be told apart shows its field codes",
+    "find": "        let text = String(FieldText(stored).shown).replacingOccurrences(of: \"\\0\", with: \"\")",
+    "replace": "        let text = stored.replacingOccurrences(of: \"\\0\", with: \"\")",
+    "tests": "OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a link to a place in the notebook is taken for an address",
+    "find": "                if [\"\\\\l\", \"\\\\o\", \"\\\\t\"].contains(token.text.lowercased()) { _ = argument() }",
+    "replace": "                if [\"\\\\o\", \"\\\\t\"].contains(token.text.lowercased()) { _ = argument() }",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a hyperlink's switches show as text",
+    "find": "                if [\"\\\\l\", \"\\\\o\", \"\\\\t\"].contains(token.text.lowercased()) { _ = argument() }",
+    "replace": "                if [\"\\\\l\", \"\\\\t\"].contains(token.text.lowercased()) { _ = argument() }",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: an address without quotes isn't one",
+    "find": "        return (String(String.UnicodeScalarView(scalars[start..<index])), false)",
+    "replace": "        return start < 0 ? (\"\", false) : nil",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: one undefined byte turns a paragraph's Windows-1252 into Latin-1",
+    "find": "        bytes.map { windows1252[Int($0)] }",
+    "replace": "        Array((String(data: bytes, encoding: .windowsCP1252) ?? String(data: bytes, encoding: .isoLatin1) ?? \"\").utf16)",
+    "tests": "OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: an attachment's name keeps its path",
+    "find": "        return last\n",
+    "replace": "        return stored\n",
+    "tests": "OneNoteReaderTests/anAttachmentsNameIsNeverAPath"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a picture's data can run into the footer after it",
+    "find": "              length <= block.count - Self.fileDataHeader - Self.fileDataFooter else { return nil }",
+    "replace": "              length <= block.count - Self.fileDataHeader else { return nil }",
+    "tests": "OneNoteReaderTests/picturesAndFilesPointAtTheirBytes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a picture's block can lie past the end of the file",
+    "find": "              let block = fileData[guid], store.contains(block),",
+    "replace": "              let block = fileData[guid],",
+    "tests": "OneNoteReaderTests/picturesAndFilesPointAtTheirBytes"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page past its budget loses its pictures without a word",
+    "find": "        } catch OneStoreError.malformed {\n            return nil\n        }\n        var header = ByteCursor(bytes)",
+    "replace": "        } catch {\n            return nil\n        }\n        var header = ByteCursor(bytes)",
+    "tests": "OneNoteReaderTests/aPageThatRunsOutOfBudgetAtAPictureSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a name's separator hides behind a combining mark",
+    "find": "        let components = DisplayText.oneLine(stored).unicodeScalars.split { $0 == \"/\" || $0 == \"\\\\\" }",
+    "replace": "        let components = DisplayText.oneLine(stored).split { $0 == \"/\" || $0 == \"\\\\\" }",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a damaged object fails its whole page",
+    "find": "            damaged.insert(id)\n            return nil",
+    "replace": "            damaged.insert(id)\n            throw OneStoreError.malformed",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: an item below itself fails its page",
+    "find": "        guard !path.contains(id) else { return nil }",
+    "replace": "        guard !path.contains(id) else { throw OneStoreError.malformed }",
+    "tests": "OneNoteReaderTests/cyclesInListsRevisionsAndPagesStop"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a mark before an ordinary word takes it for a field",
+    "find": "        guard String(String.UnicodeScalarView(scalars[name..<index])).uppercased() == \"HYPERLINK\" else {",
+    "replace": "        guard !String(String.UnicodeScalarView(scalars[name..<index])).isEmpty else {",
+    "tests": "OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats|OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field name in lower case gives no address",
+    "find": "        guard String(String.UnicodeScalarView(scalars[name..<index])).uppercased() == \"HYPERLINK\" else {",
+    "replace": "        guard String(String.UnicodeScalarView(scalars[name..<index])) == \"HYPERLINK\" else {",
+    "tests": "OneNoteReaderTests/runsSurviveEmptyRuns"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a word after a switch is taken for the address",
+    "find": "            guard !argued, !switched else {",
+    "replace": "            guard !argued else {",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a Windows share's address is taken for a switch",
+    "find": "        return scalars.count == 2 && scalars[0] == \"\\\\\" && scalars[1].isASCII && scalars[1].properties.isAlphabetic",
+    "replace": "        return scalars.count >= 2 && scalars[0] == \"\\\\\"",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a no-break space doesn't separate a link's arguments",
+    "find": "        while index < scalars.count, scalars[index].properties.isWhitespace { index += 1 }\n        // The next field's mark ends this one.",
+    "replace": "        while index < scalars.count, scalars[index] == \" \" { index += 1 }\n        // The next field's mark ends this one.",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a quote that never closes loses the spaces before it",
+    "find": "            guard let token = token() else {\n                index = before\n                return\n            }",
+    "replace": "            guard let token = token() else { return }",
+    "tests": "OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page whose manifest is missing or damaged shows as empty",
+    "find": "        guard let manifest = try object(revision.roots[RootRole.content], of: Self.manifestKind) else {\n            throw OneStoreError.malformed\n        }",
+    "replace": "        guard let manifest = try object(revision.roots[RootRole.content], of: Self.manifestKind) else {\n            return content\n        }",
+    "tests": "OneNoteReaderTests/aPageWhoseManifestIsDamagedSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page whose page node is missing shows as empty",
+    "find": "            if manifest.properties.objects(PropertyID.contentChildNodes).allSatisfy({ $0 == .zero }) { return content }\n            throw OneStoreError.malformed",
+    "replace": "            return content",
+    "tests": "OneNoteReaderTests/aPageWithoutItsPageNodeSaysSoAndAFieldEndsAtTheNextMark"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: a name keeps its control characters",
+    "find": "            case .control, .lineSeparator, .paragraphSeparator: shown.append(\" \")",
+    "replace": "            case .lineSeparator, .paragraphSeparator: shown.append(\" \")",
+    "tests": "DisplayTextTests|OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: a name keeps its line separators",
+    "find": "            case .control, .lineSeparator, .paragraphSeparator: shown.append(\" \")",
+    "replace": "            case .control: shown.append(\" \")",
+    "tests": "DisplayTextTests|OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: words around a control character run together",
+    "find": "            case .control, .lineSeparator, .paragraphSeparator: shown.append(\" \")",
+    "replace": "            case .control, .lineSeparator, .paragraphSeparator: continue",
+    "tests": "DisplayTextTests|OneNoteReaderTests/fieldArgumentsSwitchesStrayMarksAndDamagedFormats"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: a name keeps its direction controls",
+    "find": "            case .format where !kept(scalar): continue\n",
+    "replace": "",
+    "tests": "DisplayTextTests|OneNoteReaderTests/extendedAsciiNamesAndFieldCodes"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: emoji and scripts lose their joiners",
+    "find": "        [0x200C, 0x200D].contains(scalar.value) || (0xE0020...0xE007F).contains(scalar.value)",
+    "replace": "        (0xE0020...0xE007F).contains(scalar.value)",
+    "tests": "DisplayTextTests"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: flags lose the tags that spell their region",
+    "find": "        [0x200C, 0x200D].contains(scalar.value) || (0xE0020...0xE007F).contains(scalar.value)",
+    "replace": "        [0x200C, 0x200D].contains(scalar.value)",
+    "tests": "DisplayTextTests"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "OneNote: a name keeps the blank fillers that hide its extension",
+    "find": "            case .otherLetter where scalar.properties.isDefaultIgnorableCodePoint: continue\n",
+    "replace": "",
+    "tests": "DisplayTextTests|OneNoteReaderTests/namesHideNoPathAndFieldsReadAcrossSpacesSharesAndPlaces"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a manifest without its end takes in the next one",
+    "find": "                guard let end = nodes[index...].firstIndex(where: { NodeID.manifestBounds.contains($0.id) }),",
+    "replace": "                guard let end = nodes[index...].firstIndex(where: { $0.id == NodeID.revisionManifestEnd }),",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: an object takes the null identity empty references name",
+    "find": "        guard id != .zero else { return }\n",
+    "replace": "",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a quote the next field's mark interrupts runs across it",
+    "find": "            guard let close = scalars[(index + 1)...].firstIndex(where: { $0 == \"\\\"\" || $0.value == 0xFDDF }),",
+    "replace": "            guard let close = scalars[(index + 1)...].firstIndex(where: { $0 == \"\\\"\" }),",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: an empty address is a link to nothing",
+    "find": "            address = token.text.isEmpty ? nil : token.text",
+    "replace": "            address = token.text",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a space after a field mark hides its name",
+    "find": "        let start = index\n        while index < scalars.count, scalars[index].properties.isWhitespace { index += 1 }\n        let name = index",
+    "replace": "        let start = index\n        let name = index",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a page title shows its field codes",
+    "find": "        let title = FieldText(properties.text(PropertyID.cachedTitleString) ?? \"\").shown",
+    "replace": "        let title = (properties.text(PropertyID.cachedTitleString) ?? \"\").unicodeScalars",
+    "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a field mark is taken for the field before it's argument",
+    "tests": "OneNoteReaderTests/aPageWithoutItsPageNodeSaysSoAndAFieldEndsAtTheNextMark",
+    "edits": [
+      {
+        "find": "        guard index < scalars.count, scalars[index].value != 0xFDDF else { return nil }",
+        "replace": "        guard index < scalars.count else { return nil }"
+      },
+      {
+        "find": "        while index < scalars.count, !scalars[index].properties.isWhitespace, scalars[index] != \"\\\"\",\n              scalars[index].value != 0xFDDF { index += 1 }",
+        "replace": "        while index < scalars.count, !scalars[index].properties.isWhitespace, scalars[index] != \"\\\"\" { index += 1 }"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a blank attachment name hides the one the file gives",
+    "find": ", last != \"..\",\n              !last.allSatisfy(\\.isWhitespace) else { return nil }",
+    "replace": ", last != \"..\" else { return nil }",
+    "tests": "OneNoteReaderTests/referencesInsideNestedSetsAndContextsAreReadPastInOrder"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: a manifest of null references fails its page",
+    "find": "allSatisfy({ $0 == .zero }) { return content }",
+    "replace": "isEmpty { return content }",
+    "tests": "OneNoteReaderTests/referencesInsideNestedSetsAndContextsAreReadPastInOrder"
+  },
+  {
+    "file": "Strata/Previews/OneStorePropertySet.swift",
+    "rule": "OneNote: context references aren't read past",
+    "find": "            if stream.more { contexts = try Self.identities(&cursor, table).ids }\n",
+    "replace": "",
+    "tests": "OneNoteReaderTests/referencesInsideNestedSetsAndContextsAreReadPastInOrder"
+  },
+  {
+    "file": "Strata/Previews/OneStorePropertySet.swift",
+    "rule": "OneNote: a nested set's references aren't read past",
+    "find": "        case .arrayOfPropertyValues: try skipArray(depth: depth)",
+    "replace": "        case .arrayOfPropertyValues: _ = try data.read(UInt32.self)",
+    "tests": "OneNoteReaderTests/referencesInsideNestedSetsAndContextsAreReadPastInOrder"
   }
 ]
