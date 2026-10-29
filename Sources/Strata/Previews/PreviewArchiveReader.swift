@@ -243,7 +243,31 @@ nonisolated package enum PreviewArchiveReader {
         }
     }
 
-    private static func error(for status: ArchiveService.Status) -> PreviewArchiveError? {
+    /// Extract's read, on the calling thread: the worker sends every entry of `archive` to `consume`, which reads the
+    /// pipe it is given through `reader` (see `ArchiveWriter`). The read's status, once its worker has ended.
+    package static func unpack(_ archive: FileHandle, reader: PipeReader, consume: (Int32) throws -> Void) throws
+        -> ArchiveService.Status {
+        let request = ArchiveService.Request(mode: .unpack).encoded(password: ArchiveService.Secret(""))
+        switch route {
+        case .service(let service):
+            let reply = try ArchiveService.unpack(encoded: request, to: service, archive: archive, reader: reader,
+                                                  consume: consume)
+            if !reply.ended { log.error("The archive service didn't confirm that a stopped read's worker ended.") }
+            return reply.outcome
+        case .harness:
+            try requireHarness()
+            guard let input = try ArchiveService.requestPipe(request) else { return .limit }
+            defer { try? input.close() }
+            let status = try ProcessRunner.stream(harness.path, ["--unpacking"], standardInput: input, file: archive,
+                                                  consume: consume)
+            return ArchiveService.Status(rawValue: status) ?? .unreadable
+        case .missingService:
+            log.error("The app has no archive service (Contents/XPCServices/StrataArchiveService.xpc).")
+            throw PreviewArchiveError.unreadable
+        }
+    }
+
+    package static func error(for status: ArchiveService.Status) -> PreviewArchiveError? {
         switch status {
         case .success: return nil
         case .password: return .password
@@ -277,10 +301,7 @@ nonisolated package enum PreviewArchiveReader {
     private static func sendThroughHarness(_ request: ArchiveService.Request, password: ArchiveService.Secret,
                                            archive: FileHandle, timeout: TimeInterval) async throws
         -> (Data, ArchiveService.Status) {
-        guard FileManager.default.isExecutableFile(atPath: harness.path) else {
-            log.error("Outside the app, archives are read through \(harness.path, privacy: .public), which the archive tests build.")
-            throw PreviewArchiveError.unreadable
-        }
+        try requireHarness()
         guard let input = try ArchiveService.requestPipe(request.encoded(password: password)) else {
             return (Data(), .limit)
         }
@@ -293,6 +314,13 @@ nonisolated package enum PreviewArchiveReader {
         let reply = ArchiveService.Reply(output: run.output, status: run.status, timedOut: run.timedOut,
                                          truncated: run.truncated || run.output.count > ArchiveService.outputLimit)
         return (reply.output, reply.outcome)
+    }
+
+    private static func requireHarness() throws {
+        guard FileManager.default.isExecutableFile(atPath: harness.path) else {
+            log.error("Outside the app, archives are read through \(harness.path, privacy: .public), which the archive tests build.")
+            throw PreviewArchiveError.unreadable
+        }
     }
 
     /// The worker's records, in a stream it ended or not: what was decoded before the stream ended, or turned out

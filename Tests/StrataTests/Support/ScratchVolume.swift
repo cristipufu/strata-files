@@ -9,6 +9,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
     private struct SharedDisk: Equatable {
         let folder: URL
         let mount: URL
+        let fileSystem: String
     }
 
     private struct Pool {
@@ -30,9 +31,11 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
     private let disk: SharedDisk
     private let state = Mutex(false)
 
-    static func make() async throws -> ScratchVolume {
+    /// `fileSystem` as `hdiutil create -fs` takes it: APFS, or ExFAT for a disk that keeps extended attributes in
+    /// "._" files beside its items.
+    static func make(fileSystem: String = "APFS") async throws -> ScratchVolume {
         try await withCheckedThrowingContinuation { done in
-            queue.async { done.resume(with: Result { try ScratchVolume() }) }
+            queue.async { done.resume(with: Result { try ScratchVolume(fileSystem: fileSystem) }) }
         }
     }
 
@@ -45,9 +48,9 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         }
     }
 
-    private init() throws {
+    private init(fileSystem: String) throws {
         _ = Self.registeredCleanup
-        let checkedOut = try Self.checkoutDisk()
+        let checkedOut = try Self.checkoutDisk(fileSystem)
         disk = checkedOut
         root = checkedOut.mount
     }
@@ -79,8 +82,10 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
     /// A path on the disk.
     func url(_ path: String) -> URL { root.appending(path: path) }
 
-    private static func checkoutDisk() throws -> SharedDisk {
-        while let candidate = pool.withLock({ $0.available.popLast() }) {
+    private static func checkoutDisk(_ fileSystem: String) throws -> SharedDisk {
+        while let candidate = pool.withLock({ pool in
+            pool.available.lastIndex { $0.fileSystem == fileSystem }.map { pool.available.remove(at: $0) }
+        }) {
             if FileManager.default.fileExists(atPath: candidate.mount.path), cleanDisk(candidate) {
                 return candidate
             }
@@ -91,7 +96,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
             let image = folder.appending(path: "disk")
-            _ = try hdiutil(["create", "-size", "64m", "-fs", "APFS", "-volname", "StrataTest", "-type", "SPARSE", image.path, "-quiet"])
+            _ = try hdiutil(["create", "-size", "64m", "-fs", fileSystem, "-volname", "StrataTest", "-type", "SPARSE", image.path, "-quiet"])
             let plist = try hdiutil(["attach", image.path + ".sparseimage", "-nobrowse", "-mountrandom", folder.path, "-plist"])
             let info = try PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any]
             let entities = info?["system-entities"] as? [[String: Any]] ?? []
@@ -99,7 +104,8 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
                 throw CocoaError(.fileNoSuchFile)
             }
             defer { free(real) }
-            let disk = SharedDisk(folder: folder, mount: URL(fileURLWithPath: String(cString: real), isDirectory: true))
+            let disk = SharedDisk(folder: folder, mount: URL(fileURLWithPath: String(cString: real), isDirectory: true),
+                                  fileSystem: fileSystem)
             pool.withLock { $0.all.append(disk) }
             return disk
         } catch {

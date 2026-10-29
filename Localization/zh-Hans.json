@@ -1701,6 +1701,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "无法将“%@”重新命名为“%@”：%@",
     "“%@” couldn’t have its download removed.": "无法移除“%@”的下载。",
     "“%@” couldn’t make that change": "“%@”无法进行该更改",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@”超出了 Strata 为读取归档设定的限制，因此未解压缩。",
     "“%@” has %lld more items in its own Trash.": {
       "other": "“%@”自身的废纸篓中还有%lld个项目。"
     },
@@ -1709,10 +1710,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "“%@”仅包含一个链接，因此未解压缩。",
     "“%@” in %@": "%2$@中的“%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "无法检查归档中的“%@”，因此未解压缩任何内容。",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "无法写入归档中的“%@”（%@），因此未解压缩任何内容。",
     "“%@” is a file, not a folder": "“%@”是文件，不是文件夹",
     "“%@” is already in the Trash.": "“%@”已在废纸篓中。",
     "“%@” is already on “%@”": "“%@”已在“%@”上",
     "“%@” is already there.": "“%@”已存在。",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "归档中的“%@”既是文件又是文件夹，因此未解压缩任何内容。",
     "“%@” is changed by this plan too": "此计划也会更改“%@”",
     "“%@” is empty.": "“%@”是空的。",
     "“%@” is new": "“%@”是新项目",

@@ -460,12 +460,16 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   coverage. `CArchiveSandbox`, `CArchivePreview`, `StrataArchiveService` and `StrataArchiveWorker` are C targets:
   exercise their real parser callbacks under Address and Undefined Behavior Sanitizer when changing them.
 - Archives are read only through the archive service's workers (docs/archive-sandbox.md): the preview pane's listing,
-  Space previews, copies out and the check before Extract. Extract itself still runs macOS's `tar`. The service is an
-  XPC service with an App Sandbox of its own, the way Apple documents to give part of an app a sandbox of its own
-  (helpers started with `Process` or `posix_spawn` can't get one, and `sandbox_init` is deprecated). It never reads an
-  archive: it starts one worker per read (Contents/Helpers, signed to inherit its sandbox), passing the request with its
-  password, the archive and the output as descriptors, and ends it as soon as the app stops the read, and after 25
-  seconds. The app waits for that confirmation before giving up its read slot.
+  Space previews, copies out, the check before Extract and Extract itself. The service is an XPC service with an App
+  Sandbox of its own, the way Apple documents to give part of an app a sandbox of its own (helpers started with
+  `Process` or `posix_spawn` can't get one, and `sandbox_init` is deprecated). It never reads an archive: it starts one
+  worker per read (Contents/Helpers, signed to inherit its sandbox), passing the request with its password, the archive
+  and the output as descriptors, and ends it as soon as the app stops the read, and after 25 seconds, except Extract's.
+  The app waits for that confirmation before giving up its read slot.
+- Extract's worker sends what it read and `ArchiveWriter` writes it: a worker can't write files, and Strata trusts none
+  of its stream. Make every item relative to a folder the writer opened, never through a link and never over another
+  item; parse Mac metadata in the worker, never in Strata. Test new records with crafted streams (`ArchiveWriterTests`),
+  as a compromised worker could send them, as well as with real archives.
 - A worker can't reach your files, the network or devices (it can read the system's files and the service's container),
   has its own CPU, memory, file-size, open-file and process limits, and exits with the read's status. Before reading it
   drops its bootstrap port, so it can't look up the pasteboard, LaunchServices or any other system service, and it

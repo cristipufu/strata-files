@@ -150,13 +150,15 @@ class MutationAuditTests(unittest.TestCase):
             (root / "Tests" / "StrataTests" / "ExtraTests.swift").write_text(
                 "extension SafetyTests {\n    @Test func refusesUpFront() {}\n}\n")
             (root / "Tests" / "StrataTests" / "QueueTests.swift").write_text(
-                "@Suite(.serialized) struct QueueTests {\n    @Test func keepsBoth() {}\n}\n")
+                "@Suite(.serialized) struct QueueTests {\n    @Test func keepsBoth() {}\n"
+                "    @Test(.archiveWorkerApp) func readsThroughTheWorker() {}\n"
+                "    @Test(arguments: [UInt8(0), UInt8(3)])\n    func eachCreator(_ creator: UInt8) {}\n}\n")
             previous = os.getcwd()
             try:
                 os.chdir(folder)
                 results = {}
                 filters = ["SafetyTests/refusesUpFront", "QueueTests/keepsBoth", "ExtraTests",
-                           "ExtraTests/refusesUpFront"]
+                           "ExtraTests/refusesUpFront", "QueueTests/readsThroughTheWorker", "QueueTests/eachCreator"]
                 for tests in filters:
                     (root / "Tests" / "mutations.json").write_text(json.dumps([{
                         "file": "Safety.swift", "find": "check()", "replace": "skip()", "rule": "Refusal",
@@ -168,6 +170,8 @@ class MutationAuditTests(unittest.TestCase):
                 self.assertEqual(results["ExtraTests"], [])
                 self.assertEqual(results["ExtraTests/refusesUpFront"],
                                  ["Refusal: tests `ExtraTests/refusesUpFront` match no test"])
+                self.assertEqual(results["QueueTests/readsThroughTheWorker"], [])
+                self.assertEqual(results["QueueTests/eachCreator"], [])
             finally:
                 os.chdir(previous)
 

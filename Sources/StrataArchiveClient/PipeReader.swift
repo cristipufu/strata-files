@@ -25,14 +25,9 @@ nonisolated package enum Pipes {
         while true {
             var woken = false
             if let wake {
-                var watched = [pollfd(fd: fd, events: Int16(POLLIN), revents: 0),
-                               pollfd(fd: wake, events: Int16(POLLIN), revents: 0)]
-                if poll(&watched, 2, -1) < 0 {
-                    if errno == EINTR { continue }
-                    return (data, .failed)
-                }
-                woken = watched[1].revents != 0
-                if woken && watched[0].revents == 0 { return (data, .stopped) }
+                guard let ready = ready(fd, wake: wake) else { return (data, .failed) }
+                woken = ready.woken
+                if woken && !ready.readable { return (data, .stopped) }
             }
             let count = chunk.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
             if count < 0 {
@@ -47,6 +42,31 @@ nonisolated package enum Pipes {
             data.append(contentsOf: chunk.prefix(count))
             if woken { return (data, .stopped) }
         }
+    }
+
+    /// One read of what has come, waiting for it: the bytes read into `buffer`, which isn't empty, or 0 once the writer
+    /// closed its end. Throws `CancellationError` as soon as `wake` becomes readable, and `POSIXError` when reading
+    /// fails.
+    package static func readSome(_ fd: Int32, into buffer: UnsafeMutableRawBufferPointer, wake: Int32?) throws -> Int {
+        while true {
+            if let wake {
+                guard let ready = ready(fd, wake: wake) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                if ready.woken { throw CancellationError() }
+            }
+            let count = Darwin.read(fd, buffer.baseAddress, buffer.count)
+            if count < 0 && errno == EINTR { continue }
+            guard count >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            return count
+        }
+    }
+
+    /// Waits until `fd` or `wake` can be read; nil when waiting fails.
+    private static func ready(_ fd: Int32, wake: Int32) -> (readable: Bool, woken: Bool)? {
+        var watched = [pollfd(fd: fd, events: Int16(POLLIN), revents: 0), pollfd(fd: wake, events: Int16(POLLIN), revents: 0)]
+        while poll(&watched, 2, -1) < 0 {
+            if errno != EINTR { return nil }
+        }
+        return (watched[0].revents != 0, watched[1].revents != 0)
     }
 }
 
@@ -74,4 +94,8 @@ nonisolated package final class PipeReader: @unchecked Sendable {
     }
 
     package func read(_ fd: Int32, limit: Int) -> (Data, Pipes.Ending) { Pipes.read(fd, limit: limit, wake: wake.read) }
+
+    package func readSome(_ fd: Int32, into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+        try Pipes.readSome(fd, into: buffer, wake: wake.read)
+    }
 }

@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "Impossibile rinominare “%@” in “%@”: %@",
     "“%@” couldn’t have its download removed.": "Impossibile rimuovere il download di “%@”.",
     "“%@” couldn’t make that change": "“%@” non è riuscito ad apportare la modifica",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@” supera i limiti che Strata imposta per la lettura degli archivi, quindi non è stato estratto.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "“%@” ha %lld altro elemento nel proprio Cestino.",
       "other": "“%@” ha altri %lld elementi nel proprio Cestino."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contiene solo un link, quindi non è stato estratto.",
     "“%@” in %@": "“%@” in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Impossibile verificare “%@” nell’archivio, quindi non è stato estratto nulla.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Impossibile scrivere “%@” dell’archivio (%@), quindi non è stato estratto nulla.",
     "“%@” is a file, not a folder": "“%@” è un file, non una cartella",
     "“%@” is already in the Trash.": "“%@” è già nel Cestino.",
     "“%@” is already on “%@”": "“%@” è già su “%@”",
     "“%@” is already there.": "“%@” esiste già.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” è sia un file sia una cartella nell’archivio, quindi non è stato estratto nulla.",
     "“%@” is changed by this plan too": "Anche “%@” viene modificato da questo piano",
     "“%@” is empty.": "“%@” è vuoto.",
     "“%@” is new": "“%@” è nuovo",

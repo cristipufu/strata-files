@@ -372,9 +372,6 @@ enum FileOps {
         var isDir: ObjCBool = false
         fm.fileExists(atPath: url.path, isDirectory: &isDir)
         let isPlainFolder = isDir.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
-        let rawExt = isPlainFolder ? "" : url.pathExtension
-        let ext = rawExt.utf8.count <= 64 ? rawExt : ""
-        let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
         var n = 1
         while true {
             let suffix = !copyStyle ? " \(n + 1)"
@@ -383,13 +380,22 @@ enum FileOps {
                 // The number stays plain digits ("copy 2"), whatever the region: it's part of a name on disk.
                 : nameText(String(localized: " copy \(String(n))", comment: "Added to a later duplicate’s name like Finder: “Report copy 2.pdf”. Keep the leading space."),
                            english: " copy \(n)")
-            let tail = suffix + (ext.isEmpty ? "" : "." + ext)
-            // Shorten the base so the new name still fits the 255-byte limit.
-            let fitted = TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count))
-            let candidate = directory.appending(path: fitted + tail)
+            let candidate = directory.appending(path: name(url.lastPathComponent, adding: suffix,
+                                                           keepingExtension: !isPlainFolder))
             if !TransferEngine.exists(candidate) { return candidate }
             n += 1
         }
+    }
+
+    /// `name` with `suffix` before its extension, as Finder names a copy ("Report 2.pdf", "Report copy.pdf"). A plain
+    /// folder's name has no extension to keep, an extension over 64 bytes isn't one, and the part before the suffix gives
+    /// way, whole characters at a time, so the name fits its 255 bytes.
+    nonisolated static func name(_ name: String, adding suffix: String, keepingExtension: Bool) -> String {
+        let found = keepingExtension ? (name as NSString).pathExtension : ""
+        let ext = found.utf8.count <= 64 ? found : ""
+        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        let tail = suffix + (ext.isEmpty ? "" : "." + ext)
+        return TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count)) + tail
     }
 
     private static let trashSound = NSSound(

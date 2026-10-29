@@ -15,7 +15,7 @@
 /* Strata's archive service: an XPC service with an App Sandbox of its own that never reads an archive itself. Each
  * request starts a worker (Contents/Helpers/StrataArchiveWorker), which inherits the sandbox, reads one archive with
  * limits of its own and exits with its status. The service ends a worker as soon as the app cancels its request, and
- * after 25 seconds. */
+ * after 25 seconds, except Extract's, which reads as long as the archive takes. */
 static int refusal;
 static char worker[PATH_MAX];
 
@@ -83,7 +83,8 @@ static pid_t start(xpc_object_t message) {
         char cpu[24], memory[24];
         snprintf(cpu, sizeof(cpu), "%llu", (unsigned long long)xpc_dictionary_get_uint64(message, "cpuLimit"));
         snprintf(memory, sizeof(memory), "%llu", (unsigned long long)xpc_dictionary_get_uint64(message, "memoryLimit"));
-        char *arguments[] = {"StrataArchiveWorker", "--cpu-limit", cpu, "--memory-limit", memory, NULL};
+        char *arguments[] = {"StrataArchiveWorker", "--cpu-limit", cpu, "--memory-limit", memory,
+                             xpc_dictionary_get_bool(message, "unpacking") ? "--unpacking" : NULL, NULL};
         pid = spawn_worker(request, archive, output, arguments);
     }
     if (request >= 0) close(request);
@@ -148,9 +149,11 @@ static void accept_connection(xpc_connection_t connection) {
         running = pid;
         xpc_retain(event);
         xpc_retain(connection);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, strata_archive_deadline * NSEC_PER_SEC), queue, ^{
-            if (running == pid) { past_deadline = 1; kill(pid, SIGKILL); }
-        });
+        if (!xpc_dictionary_get_bool(event, "unpacking")) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, strata_archive_deadline * NSEC_PER_SEC), queue, ^{
+                if (running == pid) { past_deadline = 1; kill(pid, SIGKILL); }
+            });
+        }
         dispatch_source_set_event_handler(exited, ^{
             running = 0;
             int status;

@@ -332,8 +332,8 @@
   },
   {
     "file": "Strata/Transfers/Archiver.swift",
-    "find": "                      resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {",
-    "replace": "                      true else {",
+    "find": "                  resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {",
+    "replace": "                  true else {",
     "rule": "Extraction keeps a link that leads outside the archive",
     "tests": "ArchiveSafetyTests"
   },
@@ -4215,11 +4215,229 @@
     "tests": "GitSafetyTests/canonicallyEquivalent"
   },
   {
-    "file": "Strata/Transfers/Archiver.swift",
-    "find": "\"--no-same-permissions\", \"--mac-metadata\",",
-    "replace": "\"--no-same-permissions\",",
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "for attribute in attributes where attribute.name != Self.accessList {",
+    "replace": "for attribute in attributes where attribute.name.isEmpty {",
     "rule": "Security review: guarded ZIP extraction preserves Mac resource forks",
-    "tests": "ArchiveSecurityReviewTests/macMetadata"
+    "tests": "ArchiveSecurityReviewTests/macMetadata|ArchiveWriterTests/macMetadata|ArchiveExtractTests/macMetadata"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        named(name) { openat(parent, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }",
+    "replace": "        named(name) { openat(parent, $0, O_RDONLY | O_DIRECTORY | O_CLOEXEC) }",
+    "rule": "Extract: an archive's item is written through a link",
+    "tests": "ArchiveWriterTests/nothingIsWrittenThroughALink"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "            if !itsOwnEntry, named(name, { fstatat(parent, $0, &info, AT_SYMLINK_NOFOLLOW) }).result == 0,",
+    "replace": "            if false, named(name, { fstatat(parent, $0, &info, AT_SYMLINK_NOFOLLOW) }).result == 0,",
+    "rule": "Extract: an entry inside a link is extracted instead of refused",
+    "tests": "ArchiveWriterTests/nothingIsWrittenThroughALink"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "edits": [
+      {
+        "find": "let fd = named(name) { openat(parent, $0, O_RDONLY | O_SYMLINK | O_CLOEXEC) }",
+        "replace": "let fd = named(name) { openat(parent, $0, O_RDONLY | O_CLOEXEC) }"
+      },
+      {
+        "find": "guard fstat(fd.result, &info) == 0, info.st_mode & S_IFMT == S_IFLNK else { throw failure(entry.path, ESTALE) }",
+        "replace": "guard fstat(fd.result, &info) == 0 else { throw failure(entry.path, ESTALE) }"
+      }
+    ],
+    "rule": "Extract: a link's metadata goes on what it leads to",
+    "tests": "ArchiveWriterTests/macMetadataGoesBack"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "sourceName.withUnsafeBufferPointer { linkat(source, $0.baseAddress!, parent, name, 0) }",
+    "replace": "sourceName.withUnsafeBufferPointer { linkat(source, $0.baseAddress!, parent, name, AT_SYMLINK_FOLLOW) }",
+    "rule": "Extract: a hard link to a link shares, and writes into, the file it leads to",
+    "tests": "ArchiveWriterTests/nothingIsWrittenThroughALink"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "openat(parent, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)",
+    "replace": "openat(parent, $0, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0o600)",
+    "rule": "Extract: an archive's entry replaces an earlier one of the same name",
+    "tests": "ArchiveWriterTests/aTakenNameGetsANumber"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "if let mode, fchmod(fd, mode) != 0 { throw failure(entry.path, errno) }",
+    "replace": "if let mode, fchmod(fd, entry.mode) != 0 { throw failure(entry.path, errno) }",
+    "rule": "Extract: an item keeps setuid bits, or permissions beyond a new folder's",
+    "tests": "ArchiveWriterTests/permissionsStayWithin"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "!part.isEmpty && part.count <= 255 && !part.contains(0) && part != Data(\".\".utf8) && part != Data(\"..\".utf8)",
+    "replace": "!part.isEmpty && part.count <= 255 && !part.contains(0) && part != Data(\".\".utf8)",
+    "rule": "Extract: a record names an item outside the folder being extracted into",
+    "tests": "ArchiveWriterTests/recordsNoWorkerSendsAreRefused"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        if let reserve, space.free - taken < reserve {",
+    "replace": "        if let reserve, space.free < reserve - reserve {",
+    "rule": "Extract: extracting fills the disk",
+    "tests": "ArchiveWriterTests/extractingStopsWhenTheDiskRunsLowOnSpace"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "            try makeRoom(for: Int64(attribute.value.count))",
+    "replace": "            try makeRoom(for: 0)",
+    "rule": "Extract: Mac metadata fills the disk unwatched",
+    "tests": "ArchiveWriterTests/macMetadataCountsTowardTheSpaceKeptFree|ArchiveWriterTests/anAttributeTooLargeForTheSpaceKeptFreeIsNeverWritten"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "                try makeRoom(for: 0)",
+    "replace": "",
+    "rule": "Extract: many small entries fill the disk unwatched",
+    "tests": "ArchiveWriterTests/extractingStopsWhenTheDiskRunsLowOnSpace"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        if opened.result < 0, opened.error == ENOENT, creating {\n            try makeRoom(for: 0)",
+    "replace": "        if opened.result < 0, opened.error == ENOENT, creating {",
+    "rule": "Extract: the folders an entry implies fill the disk unwatched",
+    "tests": "ArchiveWriterTests/foldersAnEntryImpliesCountTowardTheSpaceKeptFree"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        block = max(1, space.block)",
+    "replace": "        block = 4096",
+    "rule": "Extract: a disk with large blocks fills between checks",
+    "tests": "ArchiveWriterTests/onADiskWithLargeBlocksEachItemTakesAWholeBlock"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        return TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count)) + tail",
+    "replace": "        return base + tail",
+    "rule": "Extract: a taken name too long to take a number fails the extraction",
+    "tests": "ArchiveWriterTests/aTakenNameAtTheLengthLimitIsShortenedToTakeItsNumber|ArchiveWriterTests/numberedNamesKeepTheirExtension"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "    if (plain) {",
+    "replace": "    if (0) {",
+    "rule": "Extract: a zip macOS's libarchive wrongly refuses for an item of its own in __MACOSX is refused",
+    "tests": "ArchiveExtractTests/aZipsOwnItemsThatLookLikeMacMetadataAreKept"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "        open = opened(&a, &source, password, password_length, 0, &status, &entry);",
+    "replace": "        open = opened(&a, &source, password, password_length, 1, &status, &entry);",
+    "rule": "Extract: a zip refused for its Mac metadata is read again with it",
+    "tests": "ArchiveExtractTests/aZipsOwnItemsThatLookLikeMacMetadataAreKept"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "        if (extracting && (plain || needs_full_extraction(entry))) { result = strata_archive_needs_extraction; goto done; }",
+    "replace": "        if (extracting && needs_full_extraction(entry)) { result = strata_archive_needs_extraction; goto done; }",
+    "rule": "Previews: copying an item out of a zip read without Mac metadata drops its resource fork",
+    "tests": "ArchiveExtractTests/aZipsOwnItemsThatLookLikeMacMetadataAreKept"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "    archive_read_set_format_option(a, NULL, \"mac-ext\", mac_metadata ? \"1\" : NULL);",
+    "replace": "    archive_read_set_format_option(a, NULL, \"mac-ext\", NULL);",
+    "rule": "Extract: a zip's Mac metadata stays in __MACOSX instead of going back on its items",
+    "tests": "ArchiveExtractTests/aZipsMacMetadataGoesBackOnItsItemsAsInFinder"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "    if (!length || !kind) return skipped(a) ? 0 : failure(a);",
+    "replace": "    if (!length || !kind || !strncmp(path, \"__MACOSX\", 8)) return skipped(a) ? 0 : failure(a);",
+    "rule": "Extract: a zip's own items in __MACOSX are left out",
+    "tests": "ArchiveExtractTests/aZipsOwnItemsThatLookLikeMacMetadataAreKept"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "keepingExtension: !folder || Self.isPackage($0)",
+    "replace": "keepingExtension: !folder",
+    "rule": "Extract: a numbered app bundle loses its extension",
+    "tests": "ArchiveWriterTests/aFolderThatIsAPackageKeepsItsExtensionWhenNumbered"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "        if (n > 255 || length + (length ? 1 : 0) + n > 4096 || ++depth > 128) return -2;",
+    "replace": "        if (n > 255 || length + (length ? 1 : 0) + n > 4096) return -2;",
+    "rule": "Extract: a worker passes on entries deeper than Strata cleans up",
+    "tests": "ArchiveExtractTests/theWorkerRefusesEntriesMoreThan128FoldersDeep"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        checkedAfter = min(Self.checkedEvery, reserve / 4)",
+    "replace": "        checkedAfter = min(Self.checkedEvery, reserve * 4)",
+    "rule": "Extract: on a nearly full disk, extracting uses up the reserve before a check",
+    "tests": "ArchiveWriterTests/onANearlyFullDiskTheSpaceIsCheckedBeforeTheReserveIsGone"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "    archive_clear_error(a);",
+    "replace": "    extern int archive_read_support_format_mtree(struct archive *); archive_read_support_format_mtree(a); archive_clear_error(a);",
+    "rule": "Archives: a worker reads a manifest, whose reader opens the files it names",
+    "tests": "ArchiveExtractTests/aManifestNamingFilesIsNoArchive"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        let sourceName = (latest[Key(linked)] ?? linked.last!).map { CChar(bitPattern: $0) } + [0]",
+    "replace": "        let sourceName = linked.last!.map { CChar(bitPattern: $0) } + [0]",
+    "rule": "Extract: a hard link writes into an earlier item of its name than the one tar would share",
+    "tests": "ArchiveWriterTests/aHardLinkSharesTheLatestItemOfItsName"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (n == 2 && start[0] == '.' && start[1] == '.') return -1;",
+    "replace": "if (0) return -1;",
+    "rule": "Extract: the worker passes on an entry named to climb out",
+    "tests": "ArchiveExtractTests/theWorkerRefusesAnEntryNamedToClimbOut"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "(request[0] == strata_archive_unpack) != (unpacking != 0)) {",
+    "replace": "0) {",
+    "rule": "Extract: a worker reads with the other mode's limits",
+    "tests": "ArchiveExtractTests/onlyExtractsReadIsUnpacking"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (header < 82 || read32(m) != 0x00051607 || read32(m+4) != 0x00020000 || read16(m+24) != 2 || read32(m+26) != 9)",
+    "replace": "if (header < 82)",
+    "rule": "Extract: metadata copyfile refuses reaches Strata",
+    "tests": "ArchiveExtractTests/metadataCopyfileRefusesIsRefused"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (length > strata_archive_metadata_limit - *total) return 0;",
+    "replace": "if (0) return 0;",
+    "rule": "Extract: a worker sends Mac metadata past its limit",
+    "tests": "ArchiveExtractTests/metadataCopyfileRefusesIsRefused"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "            names = try self.names(inFolderAt: path)",
+    "replace": "            names = try FileManager.default.contentsOfDirectory(atPath: path)",
+    "rule": "Extract: files named like Mac metadata skip the check",
+    "tests": "ArchiveSafetyTests/filesNamedLikeMetadataAreCheckedToo"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "let top = try listed(root.path, keepingAttributes: keepsAttributes(root.path)).map { root.appending(path: $0) }",
+    "replace": "let top = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)",
+    "rule": "Extract: a file named like Mac metadata at the top is left out",
+    "tests": "ArchiveSecurityReviewTests/filesNamedLikeMetadataAreExtractedAndMarkedAsDownloaded"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveJob.swift",
+    "find": "TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
+    "replace": "TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
+    "rule": "Extract: Undo leaves what Extract made in place",
+    "tests": "TransferContextTests/undoingAnExtractTrashesOnlyWhatItMade"
   },
   {
     "file": "Strata/Model/TagStore.swift",
@@ -4573,8 +4791,8 @@
   },
   {
     "file": "CArchivePreview/ArchivePreview.c",
-    "find": "if (extracting && needs_full_extraction(entry))",
-    "replace": "if (0 && needs_full_extraction(entry))",
+    "find": "if (extracting && (plain || needs_full_extraction(entry)))",
+    "replace": "if (extracting && plain)",
     "rule": "Space preview archives: selective copy silently drops a resource fork",
     "tests": "PreviewArchiveTests"
   },

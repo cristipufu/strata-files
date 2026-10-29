@@ -56,12 +56,11 @@ final class TestTree {
     /// inside it).
     func snapshot() -> [String] { Self.listing(of: root) }
 
-    /// `snapshot` for any folder (a test server's, say).
+    /// `snapshot` for any folder (a test server's, say). Files named "._…" are listed too, which FileManager leaves out.
     static func listing(of root: URL) -> [String] {
         var items: [String] = []
         func walk(_ folder: String) {
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: root.appending(path: folder).path)) ?? []
-            for name in names {
+            for name in names(in: root.appending(path: folder).path) {
                 let relative = folder.isEmpty ? name : folder + "/" + name
                 let full = root.appending(path: relative).path
                 var info = stat()
@@ -81,6 +80,20 @@ final class TestTree {
         }
         walk("")
         return items.sorted()
+    }
+
+    /// Read from the folder itself, not through FileManager, which leaves out files named "._…". A directory record is
+    /// only as long as its name: `DirectoryEntryName` reads it within that length. A name that isn't text shows as a
+    /// marker, so a whole listing still has something there.
+    private static func names(in folder: String) -> [String] {
+        guard let stream = opendir(folder) else { return [] }
+        defer { closedir(stream) }
+        var names: [String] = []
+        while let entry = readdir(stream) {
+            let name = DirectoryEntryName.read(entry) ?? "<a name that isn't text>"
+            if name != ".", name != ".." { names.append(name) }
+        }
+        return names
     }
 
     /// Takes back out of your Trash exactly what this tree's items were moved to it as (History, a test run's own, has

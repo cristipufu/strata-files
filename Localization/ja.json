@@ -1701,6 +1701,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "「%@」の名前を「%@」に変更できませんでした: %@",
     "“%@” couldn’t have its download removed.": "「%@」のダウンロードしたものを削除できませんでした。",
     "“%@” couldn’t make that change": "「%@」でその変更を行えませんでした",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "「%@」はStrataがアーカイブの読み込みに設けている上限を超えているため、展開されませんでした。",
     "“%@” has %lld more items in its own Trash.": {
       "other": "「%@」のゴミ箱にはほかに%lld項目があります。"
     },
@@ -1709,10 +1710,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」にはリンクしか含まれていないため、展開されませんでした。",
     "“%@” in %@": "%2$@内の「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "アーカイブ内の「%@」を確認できなかったため、何も展開されませんでした。",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "アーカイブ内の「%@」を書き込めなかったため（%@）、何も展開されませんでした。",
     "“%@” is a file, not a folder": "「%@」はフォルダではなくファイルです",
     "“%@” is already in the Trash.": "「%@」はすでにゴミ箱にあります。",
     "“%@” is already on “%@”": "「%@」はすでに「%@」にあります",
     "“%@” is already there.": "「%@」はすでにあります。",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "アーカイブ内の「%@」がファイルとフォルダの両方であるため、何も展開されませんでした。",
     "“%@” is changed by this plan too": "「%@」もこのプランで変更されます",
     "“%@” is empty.": "「%@」は空です。",
     "“%@” is new": "「%@」は新規",

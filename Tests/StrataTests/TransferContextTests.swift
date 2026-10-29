@@ -80,7 +80,54 @@ struct TransferContextTests {
                                    "out/original.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
-    @Test func queuedArchivesRecordInTheirOwnersHistory() async throws {
+    @Test(.archiveWorkerApp) func undoingAnExtractTrashesOnlyWhatItMade() async throws {
+        // A name of its own, so the Trash never has to rename it: the cleanup below finds it by that name.
+        let payload = "payload \(UUID().uuidString)"
+        let tree = try TestTree("\(payload)/", "\(payload)/one.txt", "out/", "out/\(payload)/", "out/\(payload)/one.txt",
+                                "out/\(payload).bak", "state/")
+        let env = try Environment(tree)
+        let compress = ArchiveJob(.compress([tree.url("\(payload)/one.txt")]), undo: nil)
+        env.queue.add(compress)
+        await compress.finished()
+        let archive = try #require(compress.result)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        let extract = ArchiveJob(.extract(archive, into: tree.url("out")), undo: undo)
+        env.queue.add(extract)
+        await extract.finished()
+        undo.endUndoGrouping()
+        #expect(extract.state == .finished, "\(extract.errorMessage ?? "No extraction error reported")")
+        // The zip holds the folder with the file; that name is taken, so it lands numbered.
+        let before = ["out/", "out/\(payload).bak", "out/\(payload)/", "out/\(payload)/one.txt", "\(payload)/",
+                      "\(payload)/one.txt", "\(payload)/one.txt.zip", "state/", "state/Caches/", "state/history.sealed"].sorted()
+        let extracted = (before + ["out/\(payload) 2/", "out/\(payload) 2/one.txt"]).sorted()
+        #expect(tree.snapshot() == extracted)
+        // Each Undo's Redo brings the folder back out of the Trash. If a step fails in between, it comes out here: this
+        // History isn't the one `removeFromTrash` reads, so it's found where the Trash puts it, as the folder it was.
+        let identity = try #require(OperationLog.identity(tree.url("out/\(payload) 2").path))
+        let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: tree.url("out"),
+                                                create: false)
+        defer { TestTree.removeFromTrash(trash.appending(path: "\(payload) 2"), matching: identity) }
+        for _ in 0..<2 {
+            undo.undo()
+            await FileOps.undoWork?.value
+            #expect(tree.snapshot() == before)
+            undo.redo()
+            await FileOps.undoWork?.value
+            #expect(tree.snapshot() == extracted && tree.text("out/\(payload) 2/one.txt") == "\(payload)/one.txt")
+        }
+        // What took the extracted folder's place is never what Undo trashes.
+        try FileManager.default.moveItem(at: tree.url("out/\(payload) 2"), to: tree.url("out/extracted"))
+        try tree.add(["out/\(payload) 2"])
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.text("out/\(payload) 2") == "out/\(payload) 2")
+        #expect(tree.text("out/\(payload)/one.txt") == "out/\(payload)/one.txt")
+        #expect(tree.snapshot() == (before + ["out/extracted/", "out/extracted/one.txt", "out/\(payload) 2"]).sorted())
+    }
+
+    @Test(.archiveWorkerApp) func queuedArchivesRecordInTheirOwnersHistory() async throws {
         let tree = try TestTree("source/a.txt", "ab.txt", "out/", "state/")
         let env = try Environment(tree)
         let compress = ArchiveJob(.compress([tree.url("source")]), undo: nil)

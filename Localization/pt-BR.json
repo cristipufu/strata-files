@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "Não foi possível renomear “%@” para “%@”: %@",
     "“%@” couldn’t have its download removed.": "Não foi possível remover o download de “%@”.",
     "“%@” couldn’t make that change": "“%@” não conseguiu fazer essa alteração",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@” ultrapassa os limites que o Strata define para ler arquivos comprimidos, por isso não foi extraído.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "“%@” tem mais %lld item na própria Lixeira.",
       "other": "“%@” tem mais %lld itens na própria Lixeira."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contém apenas um link, por isso não foi extraído.",
     "“%@” in %@": "“%@” em %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Não foi possível verificar “%@” no arquivo comprimido, por isso nada foi extraído.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Não foi possível gravar “%@” do arquivo comprimido (%@), por isso nada foi extraído.",
     "“%@” is a file, not a folder": "“%@” é um arquivo, não uma pasta",
     "“%@” is already in the Trash.": "“%@” já está na Lixeira.",
     "“%@” is already on “%@”": "“%@” já está em “%@”",
     "“%@” is already there.": "“%@” já existe.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” é ao mesmo tempo um arquivo e uma pasta no arquivo comprimido, por isso nada foi extraído.",
     "“%@” is changed by this plan too": "“%@” também é alterado por este plano",
     "“%@” is empty.": "“%@” está vazio.",
     "“%@” is new": "“%@” é novo",

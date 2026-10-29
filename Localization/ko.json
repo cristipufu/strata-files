@@ -1701,6 +1701,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "‘%@’의 이름을 ‘%@’(으)로 변경할 수 없음: %@",
     "“%@” couldn’t have its download removed.": "‘%@’의 다운로드를 제거할 수 없습니다.",
     "“%@” couldn’t make that change": "‘%@’에서 해당 변경을 수행할 수 없음",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "‘%@’이(가) Strata가 아카이브를 읽을 때 정한 한도를 넘어 압축 해제하지 않았습니다.",
     "“%@” has %lld more items in its own Trash.": {
       "other": "‘%@’의 자체 휴지통에 %lld개 항목이 더 있습니다."
     },
@@ -1709,10 +1710,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "‘%@’에 링크만 있어 압축 해제하지 않았습니다.",
     "“%@” in %@": "%2$@의 ‘%1$@’",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "아카이브의 ‘%@’을(를) 확인할 수 없어 아무것도 압축 해제하지 않았습니다.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "아카이브의 ‘%@’을(를) 쓸 수 없어(%@) 아무것도 압축 해제하지 않았습니다.",
     "“%@” is a file, not a folder": "‘%@’은(는) 폴더가 아닌 파일임",
     "“%@” is already in the Trash.": "‘%@’은(는) 이미 휴지통에 있습니다.",
     "“%@” is already on “%@”": "‘%@’이(가) 이미 ‘%@’에 있음",
     "“%@” is already there.": "‘%@’이(가) 이미 있습니다.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "아카이브에서 ‘%@’이(가) 파일이면서 폴더이기도 하여 아무것도 압축 해제하지 않았습니다.",
     "“%@” is changed by this plan too": "‘%@’도 이 계획에 의해 변경됨",
     "“%@” is empty.": "‘%@’은(는) 비어 있습니다.",
     "“%@” is new": "‘%@’은(는) 새 항목임",

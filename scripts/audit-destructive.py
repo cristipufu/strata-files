@@ -155,13 +155,15 @@ def mutation_problems():
     # filter of a file's name alone also matches its tests, through the source location in their IDs, but
     # `File/name` doesn't: the name follows the suite there, not the file.
     tests, files = set(), set()
+    # A test may carry traits or arguments: `@Test(.serialized) func`, `@Test(arguments: [UInt8(0)]) func`.
+    test = r"@Test(?:\((?:[^()]|\([^()]*\))*\))?\s+func (\w+)"
     for path in glob.glob("Tests/StrataTests/*.swift"):
         text = Path(path).read_text()
         declaration = r"^\s*(?:@\w+(?:\([^)]*\))?\s+)*(?:struct|extension|final class|class)\s+(\w+)"
         suites = set(re.findall(declaration, text, re.M))
-        if "@Test func" in text:
+        if re.search(test, text):
             files.add(path.split("/")[-1].removesuffix(".swift"))
-        for name in re.findall(r"@Test func (\w+)", text):
+        for name in re.findall(test, text):
             for suite in suites:
                 tests.add((suite, name))
     for m in json.loads(Path("Tests/mutations.json").read_text()):

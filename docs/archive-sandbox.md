@@ -6,10 +6,10 @@ them, macOS's libarchive, is a large C library. If a crafted archive ever found 
 to reach your files.
 
 So Strata doesn't read archives itself. Listing one in the preview pane, looking inside it with Space, copying items
-out of it and checking it before Extract all happen in a separate worker process that runs in an App Sandbox, lives
-for exactly one read, and can be stopped the moment it isn't needed. Extract itself still runs macOS's `tar` with your
-access, since it writes your files; reading through a worker there too, with Strata writing the files, is the next
-step. This page explains how that works and why it ended up this way.
+out of it, checking it before Extract and Extract itself all happen in a separate worker process that runs in an App
+Sandbox, lives for exactly one read, and can be stopped the moment it isn't needed. The worker can't write a file, so
+for Extract it sends what it read and Strata writes the files, checking everything it's sent. This page explains how
+that works and why it ended up this way.
 
 ## Where we started
 
@@ -17,7 +17,7 @@ Space previews already ran each read in its own process. Strata started a small 
 as an open file, and read its output through a pipe. The worker locked itself down at startup with `sandbox_init` and
 a profile that denied almost everything: no files, no network, no other programs. The preview pane's listing and the
 check before Extract were another story: they ran macOS's `tar` and `zipinfo` with your access and parsed their text
-output.
+output, and Extract ran `tar` with your access too.
 
 It worked well, but it rested on an API Apple deprecated back in macOS 10.8, with the note "No longer supported". The
 compiler warned about it on every build, and the macOS 27 SDK goes further: processes that opt into those profiles
@@ -62,10 +62,12 @@ links only that, so the parser isn't even in its process.
    when released, and it never appears in a message, an argument or a log.
 2. **The service** starts the worker with exactly those three descriptors: the request as standard input, the archive
    as descriptor 3, the output pipe as standard output. The worker gets nothing else from the service.
-3. **The worker** sets its limits, reads the request, lists the archive or streams the chosen file into the output pipe,
-   and exits. Its exit status is the result: done, wrong password, too large, unsafe paths, unreadable.
+3. **The worker** sets its limits, reads the request, lists the archive or streams the chosen file, or for Extract
+   every entry, into the output pipe, and exits. Its exit status is the result: done, wrong password, too large, unsafe
+   paths, unreadable.
 4. **The service** passes that status back to the app.
-5. **The app** reads the output as it arrives and accepts only the worker's own length-prefixed records, at most 60 MB.
+5. **The app** reads the output as it arrives and accepts only the worker's own length-prefixed records, at most 60 MB
+   except for Extract's.
 
 **Listing.** A listing that reaches 50,000 entries or 60 MB of records ends with a mark saying there's more, and one
 stopped by its time or by an unsafe entry keeps the rows it read: the preview pane shows them with a note saying why.
@@ -76,6 +78,34 @@ holds: its entries, the size of its files, and whether any entry is encrypted. I
 preview's limits on how much it reads or lists apply, only the worker's own CPU, memory and time. It reports its
 totals as it goes, so a check cut short still gives lower bounds: if even those don't fit on the disk, Extract
 refuses, and a large total still asks before opening the archive as a folder.
+
+**Extracting.** For Extract, and for opening an archive as a folder, the worker sends every entry `tar` would write: its
+name, contents, permissions, times and Mac metadata, which goes back on its items, including the metadata a zip keeps in
+its `__MACOSX` folder. Only a zip's directory tells that metadata from the zip's own items: a damaged zip that can be
+read only from the start comes with the folder as entries, as `tar` writes it, and nothing is left out. Strata writes
+the entries into a private folder on the destination's disk, and trusts none of it, as if the worker had been
+compromised:
+
+- each record is checked before anything is made from it: a name that climbs out, an empty or overlong one, one more
+  than 128 folders deep (as in previews), an unknown kind or a malformed field ends the extraction;
+- every item is made relative to a folder Strata opened, one name at a time, never following a link, so nothing is
+  ever written through one, and never over another item: a second entry with a taken name, file or folder, gets a
+  number, the way Finder numbers a copy, and what's inside a numbered folder follows it;
+- permissions stay within what a new folder gets there, without setuid, setgid or sticky bits, as `tar` restores them
+  for you; times come back as `tar` sets them;
+- Mac metadata (resource forks, Finder info, extended attributes) goes back as `copyfile` puts it back, except access
+  lists. The worker reads it from the AppleDouble form archives keep it in, refusing what `copyfile` refuses, so Strata
+  never parses it;
+- it stops when the disk runs low on space, as the watchdog around `tar` did: it counts every item it makes, the
+  folders an entry implies included, as at least a block of that disk, reads the free space again before what it
+  counted could use up the reserve, and checks before writing anything large.
+
+What's written then goes through the checks it always went through before being put in place: links must stay inside
+it, special files go, and the archive's quarantine goes on everything. Those checks read every name in the folder
+itself, files named "._…" included, which `FileManager` leaves out, except on a disk that keeps extended attributes in
+"._" files beside its items (exFAT, FAT): those are the system's. Extract's worker has no 25-second deadline and no
+CPU limit, since both grow with the archive, and up to 4 GB of memory, for the largest dictionaries archivers use; Stop
+ends it like any other read.
 
 Stopping a read is just as direct. When you close a preview or move on, when the app's 20-second timeout passes, or
 when the output grows past its limit, the app stops reading and asks the service to end the worker, which it does on
@@ -91,12 +121,19 @@ and the service's container, a folder macOS creates for every sandboxed program.
 
 - can't start other programs (the sandbox would allow it, and libarchive can call external decompressors for a few
   formats);
-- gets 15 seconds of CPU time, 256 MB of memory, 32 open files and no core dumps. The service starts it with no
-  signal blocked: its own threads, like all Dispatch threads, block asynchronous signals, and a worker that inherited
-  that mask would never receive the kernel's SIGXCPU at its CPU limit;
-- has 25 seconds in all, after which the service ends it;
+- gets 15 seconds of CPU time, 256 MB of memory, 32 open files and no core dumps (Extract's: no CPU limit and 4 GB). The
+  service starts it with no signal blocked: its own threads, like all Dispatch threads, block asynchronous signals, and
+  a worker that inherited that mask would never receive the kernel's SIGXCPU at its CPU limit;
+- has 25 seconds in all, after which the service ends it (Extract's reads as long as the archive takes);
 - reads only the archive it was handed, and its only output is its pipe: its file size limit is zero, so it can't
-  put a byte into any file.
+  put a byte into any file. It reads every format libarchive reads but one, mtree: that's a manifest, not an archive,
+  and its reader takes each entry's contents from the file the entry names, which would let a "manifest" read any
+  file the worker can, instead of the archive. One kind of zip it reads twice: macOS's libarchive refuses an intact zip
+  with an item of its own in `__MACOSX` when it reads Mac metadata (after its check that no two items overlap, it tests
+  the wrong variable), and Finder extracts it. The worker reads such a zip again without Mac metadata, before it has
+  sent anything, unless the first read stopped at its limits: its items come as they are stored, its "._" files too, and
+  the overlap check still runs. Copying one item out of such a zip takes a full Extract, which keeps its Mac metadata in
+  those "._" files.
 
 **No system services.** App Sandbox lets every sandboxed program look up some system services through `launchd`, and a
 few could carry data out: we measured that a worker could reach the pasteboard and LaunchServices, which opens URLs. A
@@ -193,6 +230,10 @@ it could otherwise look up, such as the pasteboard. What it can't do is reach yo
 services, start other programs or put data into a file, and no process it runs outlives the read. That's the trade we
 made for building on the mechanism Apple supports.
 
+For Extract, a compromised worker could still decide what the extracted files hold, as the archive itself could, and
+make Strata refuse the archive. It can't make Strata write anywhere but the extraction's private folder, through a
+link or over anything, and what it sends is checked again before it's put in place.
+
 ## How this compares with Apple's tools
 
 Apple moves archive work out of the apps that ask for it too, but not the same way.
@@ -201,7 +242,7 @@ Apple moves archive work out of the apps that ask for it too, but not the same w
 |---|---|---|
 | Previews | Space reads each member through a fresh sandboxed worker | Quick Look preview extensions run in a sandbox with no network, by design [1, 2] |
 | Looking inside an archive | The preview pane, Space and copying out all read through a fresh worker per read, which can't look up system services | Finder doesn't look inside archives: double-clicking one hands it to Archive Utility to unpack [3] |
-| Unpacking | Extract still runs macOS's `tar` with your access (next: a worker reads, Strata writes) | Archive Utility hands the unpacking to separate helper processes, an ArchiveService and a SandboxedServiceRunner [3] |
+| Unpacking | Extract reads through a fresh worker too, and Strata writes what it sends, checking every item | Archive Utility hands the unpacking to separate helper processes, an ArchiveService and a SandboxedServiceRunner [3] |
 
 We couldn't find how tightly Archive Utility's helpers are confined, but its history shows where unpacking goes wrong:
 quarantine lost on long paths, which let an unsigned app skip Gatekeeper (CVE-2021-1810) [3, 4]; a helper holding Full
@@ -210,9 +251,9 @@ until macOS 26.4 (CVE-2026-28910) [6]. None of those were bugs in reading the ar
 it, the permissions of the process doing the work and the attributes of what it writes.
 
 So the parsing side here follows what Apple does for Quick Look, and adds a fresh process for every read and no system
-services at all. The writing side is where Archive Utility's bugs were, and it gets its own care: copying out keeps an
-archive's quarantine on what it writes and refuses links, special files and unsafe or ambiguous paths, and Extract
-will write through the same checks.
+services at all. The writing side is where Archive Utility's bugs were, and it gets its own care: Strata, never the
+worker, writes what an archive holds, never through a link or over another item, keeps the archive's quarantine on all
+of it, and refuses links that lead out, special files and unsafe paths.
 
 ## References
 

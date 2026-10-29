@@ -24,7 +24,7 @@ struct ArchiveSafetyTests {
     private func extract(_ archive: URL, into folder: URL) async throws -> URL {
         let inspection = await Archiver.inspect(archive)
         return try await TestWork.run {
-            try Archiver.extract(archive, kind: .tar, inspection: inspection, into: folder, control: Archiver.Control())
+            try Archiver.extract(archive, inspection: inspection, into: folder, control: Archiver.Control())
         }
     }
 
@@ -37,14 +37,14 @@ struct ArchiveSafetyTests {
         let partial = Archiver.Inspection(entries: 1, bytes: .max, limited: true), destination = tree.url("dest")
         await #expect(throws: Archiver.Failure.self) {
             try await TestWork.run {
-                try Archiver.extract(archive, kind: .tar, inspection: partial, into: destination, control: Archiver.Control())
+                try Archiver.extract(archive, inspection: partial, into: destination, control: Archiver.Control())
             }
         }
         #expect(tree.snapshot() == before)
         // One stopped by damage may have counted a size the archive doesn't hold, so it refuses nothing.
         let damaged = Archiver.Inspection(entries: 1, bytes: .max)
         let placed = try await TestWork.run {
-            try Archiver.extract(archive, kind: .tar, inspection: damaged, into: destination, control: Archiver.Control())
+            try Archiver.extract(archive, inspection: damaged, into: destination, control: Archiver.Control())
         }
         #expect(placed.lastPathComponent == "ok.txt" && tree.text("dest/ok.txt") == "payload/ok.txt")
     }
@@ -68,7 +68,7 @@ struct ArchiveSafetyTests {
         let encrypted = Archiver.Inspection(entries: 1, bytes: 1, encrypted: true, complete: true)
         await #expect(throws: Archiver.Failure.self) {
             try await TestWork.run {
-                try Archiver.extract(archive, kind: .tar, inspection: encrypted, into: destination, control: Archiver.Control())
+                try Archiver.extract(archive, inspection: encrypted, into: destination, control: Archiver.Control())
             }
         }
         #expect(tree.snapshot() == before)
@@ -122,12 +122,31 @@ struct ArchiveSafetyTests {
         // An empty folder matters too: plain rename would silently replace it with the extracted contents.
         await #expect(throws: (any Error).self) {
             try await TestWork.run {
-                try Archiver.extractContents(archive, kind: .tar, inspection: inspection, to: destination,
+                try Archiver.extractContents(archive, inspection: inspection, to: destination,
                                              control: Archiver.Control())
             }
         }
         #expect(OperationLog.identity(destination.path) == identity)
         #expect(tree.snapshot() == before)
+    }
+
+    @Test func filesNamedLikeMetadataAreCheckedToo() throws {
+        let tree = try TestTree("box/", "box/tool", "box/._tool", "box/sub/", "box/sub/._lonely", "._outside")
+        #expect(chmod(tree.url("box/._tool").path, 0o4755) == 0)
+        #expect(lchflags(tree.url("box/sub/._lonely").path, UInt32(UF_IMMUTABLE)) == 0)
+        let mark = Data("0081;00000000;Test;".utf8)
+        try Archiver.check(tree.url("box"), quarantine: mark)
+        // FileManager leaves out files named "._…", taking them for another file's metadata: the check reads every name.
+        for path in ["box/._tool", "box/sub/._lonely"] {
+            var info = stat()
+            #expect(lstat(tree.url(path).path, &info) == 0 && info.st_mode & S_ISUID == 0, "\(path)")
+            #expect(info.st_flags & UInt32(UF_IMMUTABLE) == 0, "\(path)")
+            var value = [UInt8](repeating: 0, count: 64)
+            let size = getxattr(tree.url(path).path, "com.apple.quarantine", &value, value.count, 0, XATTR_NOFOLLOW)
+            #expect(size == mark.count && Data(value.prefix(max(0, size))) == mark, "\(path)")
+        }
+        #expect(getxattr(tree.url("._outside").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) < 0)
+        #expect(tree.snapshot() == ["._outside", "box/", "box/._tool", "box/sub/", "box/sub/._lonely", "box/tool"])
     }
 
     @Test func specialFilesAndSetuidBitsAreDropped() throws {

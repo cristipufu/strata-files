@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "De naam van “%@” kon niet worden gewijzigd in “%@”: %@",
     "“%@” couldn’t have its download removed.": "De download van “%@” kon niet worden verwijderd.",
     "“%@” couldn’t make that change": "“%@” kon die wijziging niet doorvoeren",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@” gaat verder dan de grenzen die Strata stelt aan het lezen van archieven, dus het is niet uitgepakt.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "“%@” heeft nog %lld onderdeel in zijn eigen prullenmand.",
       "other": "“%@” heeft nog %lld onderdelen in zijn eigen prullenmand."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” bevat alleen een link, dus het is niet uitgepakt.",
     "“%@” in %@": "“%@” in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "“%@” in het archief kon niet worden gecontroleerd, dus er is niets uitgepakt.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "“%@” in het archief kon niet worden geschreven (%@), dus er is niets uitgepakt.",
     "“%@” is a file, not a folder": "“%@” is een bestand, geen map",
     "“%@” is already in the Trash.": "“%@” staat al in de prullenmand.",
     "“%@” is already on “%@”": "“%@” staat al op “%@”",
     "“%@” is already there.": "“%@” bestaat al.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” is in het archief zowel een bestand als een map, dus er is niets uitgepakt.",
     "“%@” is changed by this plan too": "“%@” wordt ook door dit plan gewijzigd",
     "“%@” is empty.": "“%@” is leeg.",
     "“%@” is new": "“%@” is nieuw",

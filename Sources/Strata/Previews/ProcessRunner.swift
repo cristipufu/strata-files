@@ -44,6 +44,14 @@ nonisolated package enum ProcessRunner {
         return result
     }
 
+    /// Runs `executable` on the calling thread while `consume` reads its output as it comes, from the pipe it is given;
+    /// the tool's exit status. A `consume` that throws ends the tool, and its error is rethrown once the tool has
+    /// exited.
+    package static func stream(_ executable: String, _ arguments: [String], standardInput: FileHandle? = nil,
+                               file: FileHandle? = nil, consume: (Int32) throws -> Void) throws -> Int32 {
+        try ProcessBox().stream(executable, arguments, standardInput: standardInput, file: file, consume: consume)
+    }
+
     /// The child stays unreaped until the same lock that guards signaling clears its PID. Foundation's Process
     /// reaps independently, which cannot provide that guarantee for a delayed SIGKILL.
     private final class ProcessBox: @unchecked Sendable {
@@ -54,12 +62,7 @@ nonisolated package enum ProcessRunner {
 
         func run(_ executable: String, _ arguments: [String], timeout: TimeInterval, standardInput: FileHandle?,
                  file: FileHandle?) throws -> Result {
-            let outputFD = try lock.withLock {
-                guard !cancelled else { throw CancellationError() }
-                let child = try Self.launch(executable, arguments, standardInput: standardInput, file: file)
-                pid = child.pid
-                return child.output
-            }
+            let outputFD = try start(executable, arguments, standardInput: standardInput, file: file)
             let deadline = DispatchWorkItem { [weak self] in
                 guard let self, lock.withLock({ () -> Bool in
                     guard pid != nil else { return false }
@@ -75,6 +78,33 @@ nonisolated package enum ProcessRunner {
             close(outputFD)
             let truncated = ending == .truncated, failed = ending == .failed
             if truncated || failed { terminate() }
+            let code = reap()
+            return Result(output: data, status: code, timedOut: lock.withLock { timedOut }, truncated: truncated, failed: failed)
+        }
+
+        func stream(_ executable: String, _ arguments: [String], standardInput: FileHandle?, file: FileHandle?,
+                    consume: (Int32) throws -> Void) throws -> Int32 {
+            let outputFD = try start(executable, arguments, standardInput: standardInput, file: file)
+            let consumed = Swift.Result { try consume(outputFD) }
+            close(outputFD)
+            if case .failure = consumed { terminate() }
+            let code = reap()
+            try consumed.get()
+            return code
+        }
+
+        private func start(_ executable: String, _ arguments: [String], standardInput: FileHandle?,
+                           file: FileHandle?) throws -> Int32 {
+            try lock.withLock {
+                guard !cancelled else { throw CancellationError() }
+                let child = try Self.launch(executable, arguments, standardInput: standardInput, file: file)
+                pid = child.pid
+                return child.output
+            }
+        }
+
+        /// Waits for the child to exit: its exit status, or the signal that ended it.
+        private func reap() -> Int32 {
             var status: Int32 = 0
             while true {
                 let finished = lock.withLock { () -> Bool in
@@ -90,8 +120,7 @@ nonisolated package enum ProcessRunner {
                 if finished { break }
                 usleep(1000)
             }
-            let code = status < 0 ? -1 : status & 0x7f == 0 ? (status >> 8) & 0xff : status & 0x7f
-            return Result(output: data, status: code, timedOut: lock.withLock { timedOut }, truncated: truncated, failed: failed)
+            return status < 0 ? -1 : status & 0x7f == 0 ? (status >> 8) & 0xff : status & 0x7f
         }
 
         /// Ends the process group. A read still in progress goes on until the pipe closes, so output already written is

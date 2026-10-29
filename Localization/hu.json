@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "„%@” átnevezése „%@” névre nem sikerült: %@",
     "“%@” couldn’t have its download removed.": "„%@” letöltését nem sikerült eltávolítani.",
     "“%@” couldn’t make that change": "„%@” nem tudta végrehajtani ezt a módosítást",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "„%@” túllépi a Strata által az archívumok olvasására szabott korlátokat, ezért nem lett kibontva.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "„%@” saját Kukájában további %lld elem van.",
       "other": "„%@” saját Kukájában további %lld elem van."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” csak egy hivatkozást tartalmaz, ezért nem lett kibontva.",
     "“%@” in %@": "„%@” itt: %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Az archívumban lévő „%@” nem ellenőrizhető, ezért semmi sem lett kibontva.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Az archívumban lévő „%@” nem írható (%@), ezért semmi sem lett kibontva.",
     "“%@” is a file, not a folder": "„%@” fájl, nem mappa",
     "“%@” is already in the Trash.": "„%@” már a Kukában van.",
     "“%@” is already on “%@”": "„%@” már megtalálható itt: „%@”",
     "“%@” is already there.": "„%@” már ott van.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Az archívumban „%@” egyszerre fájl és mappa, ezért semmi sem lett kibontva.",
     "“%@” is changed by this plan too": "Ez a terv ezt is módosítja: „%@”",
     "“%@” is empty.": "„%@” üres.",
     "“%@” is new": "„%@” új",

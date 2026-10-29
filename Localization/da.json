@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "»%@« kunne ikke omdøbes til »%@«: %@",
     "“%@” couldn’t have its download removed.": "Den hentede kopi af »%@« kunne ikke fjernes.",
     "“%@” couldn’t make that change": "»%@« kunne ikke foretage den ændring",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "»%@« går ud over de grænser, Strata sætter for læsning af arkiver, så det blev ikke udpakket.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "»%@« har %lld emne mere i sin egen papirkurv.",
       "other": "»%@« har %lld emner mere i sin egen papirkurv."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "»%@« indeholder kun et link, så det blev ikke udpakket.",
     "“%@” in %@": "»%@« i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "»%@« i arkivet kunne ikke kontrolleres, så intet blev udpakket.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "»%@« i arkivet kunne ikke skrives (%@), så intet blev udpakket.",
     "“%@” is a file, not a folder": "»%@« er en fil, ikke en mappe",
     "“%@” is already in the Trash.": "»%@« er allerede i papirkurven.",
     "“%@” is already on “%@”": "»%@« findes allerede på »%@«",
     "“%@” is already there.": "»%@« findes allerede.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "»%@« er både en fil og en mappe i arkivet, så intet blev udpakket.",
     "“%@” is changed by this plan too": "»%@« ændres også af denne plan",
     "“%@” is empty.": "»%@« er tom.",
     "“%@” is new": "»%@« er ny",

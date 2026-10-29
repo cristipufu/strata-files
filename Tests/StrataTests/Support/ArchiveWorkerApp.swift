@@ -3,9 +3,9 @@ import Testing
 @testable import Strata
 
 /// Archives are read by workers of the archive service, an XPC service with an App Sandbox of its own, which only an
-/// app can carry. Suites that read archives get `StrataArchiveHarness.app` assembled around the built service and worker
-/// once per test process, signed as scripts/build.sh signs the app's.
-nonisolated struct ArchiveWorkerApp: SuiteTrait, TestScoping {
+/// app can carry. Suites and tests that read archives get `StrataArchiveHarness.app` assembled around the built service
+/// and worker once per test process, signed as scripts/build.sh signs the app's.
+nonisolated struct ArchiveWorkerApp: SuiteTrait, TestTrait, TestScoping {
     struct AssemblyFailed: Error { let status: Int32 }
 
     func provideScope(for test: Test, testCase: Test.Case?,

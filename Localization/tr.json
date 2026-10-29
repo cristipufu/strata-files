@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "“%@” öğesinin adı “%@” olarak değiştirilemedi: %@",
     "“%@” couldn’t have its download removed.": "“%@” öğesinin indirilen kopyası silinemedi.",
     "“%@” couldn’t make that change": "“%@” bu değişikliği yapamadı",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@”, Strata’nın arşivleri okumak için koyduğu sınırları aştığı için ayıklanmadı.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "“%@” diskinin kendi Çöp Sepeti’nde %lld öğe daha var.",
       "other": "“%@” diskinin kendi Çöp Sepeti’nde %lld öğe daha var."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” yalnızca bir bağlantı içerdiği için ayıklanmadı.",
     "“%@” in %@": "%2$@ içinde “%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Arşivdeki “%@” denetlenemediği için hiçbir şey ayıklanmadı.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Arşivdeki “%@” yazılamadığı için (%@) hiçbir şey ayıklanmadı.",
     "“%@” is a file, not a folder": "“%@” bir dosya, klasör değil",
     "“%@” is already in the Trash.": "“%@” zaten Çöp Sepeti’nde.",
     "“%@” is already on “%@”": "“%@” zaten “%@” üzerinde var",
     "“%@” is already there.": "“%@” zaten var.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Arşivde “%@” hem dosya hem klasör olduğu için hiçbir şey ayıklanmadı.",
     "“%@” is changed by this plan too": "“%@” bu plan tarafından da değiştiriliyor",
     "“%@” is empty.": "“%@” boş.",
     "“%@” is new": "“%@” yeni",

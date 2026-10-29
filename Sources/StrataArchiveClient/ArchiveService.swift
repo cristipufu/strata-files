@@ -21,6 +21,9 @@ nonisolated package enum ArchiveService {
     package static let answerBackstop: TimeInterval = 60
 
     package static let requestLimit = 8192
+    /// For Extract: the most bytes in one chunk of contents, and in one entry's Mac metadata (CArchivePreview.h).
+    package static let chunkLimit = 65536
+    package static let metadataLimit = 64 << 20
 
     /// The identifier of the archive service inside the app at `app`; nil when the app has none.
     package static func identifier(inApp app: URL) -> String? {
@@ -78,8 +81,9 @@ nonisolated package enum ArchiveService {
     }
 
     package struct Request: Sendable {
-        /// What a worker does (CArchivePreview.h): list every entry, copy out the chosen path, or only count.
-        package enum Mode: UInt8, Sendable { case list = 0, extract = 1, survey = 2 }
+        /// What a worker does (CArchivePreview.h): list every entry, copy out the chosen path, only count, or send
+        /// everything for Extract to write.
+        package enum Mode: UInt8, Sendable { case list = 0, extract = 1, survey = 2, unpack = 3 }
         package let mode: Mode
         package let folder: Bool
         package let path: Data
@@ -142,7 +146,7 @@ nonisolated package enum ArchiveService {
     /// `requestLimit` is refused here, as over the limit; the worker's own bounds are far below it.
     package static func send(encoded request: Secret, limits: Limits = Limits(), to service: String, archive: FileHandle,
                              timeout: TimeInterval, outputLimit: Int = outputLimit) async throws -> Reply {
-        let exchange = try Exchange()
+        let exchange = Exchange(output: try PipeReader())
         let reply = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Reply, Error>) in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -159,6 +163,17 @@ nonisolated package enum ArchiveService {
         return reply
     }
 
+    /// Extract's read, on the calling thread, with no timeout or output limit: `consume` reads the worker's output as it
+    /// comes, from the pipe it is given, through `reader`, whose `stop()` stops it at once. A `consume` that throws stops
+    /// the read, and its error is rethrown once the service has ended the worker.
+    package static func unpack(encoded request: Secret, limits: Limits = Limits(), to service: String,
+                               archive: FileHandle, reader: PipeReader, consume: (Int32) throws -> Void) throws -> Reply {
+        try Exchange(output: reader).run(request, limits: limits, unpacking: true, service: service, archive: archive) {
+            try consume($0)
+            return (Data(), .finished)
+        }
+    }
+
     private final class Exchange: @unchecked Sendable {
         private let lock = NSLock()
         private var expired = false
@@ -166,12 +181,27 @@ nonisolated package enum ArchiveService {
         private let output: PipeReader
         private let replied = DispatchSemaphore(value: 0)
 
-        init() throws { output = try PipeReader() }
+        init(output: PipeReader) { self.output = output }
 
         func stop() { output.stop() }
 
         func run(_ request: Secret, limits: Limits, service: String, archive: FileHandle, timeout: TimeInterval,
                  outputLimit: Int) throws -> Reply {
+            try run(request, limits: limits, unpacking: false, service: service, archive: archive) { fd in
+                let deadline = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    lock.withLock { expired = true }
+                    output.stop()
+                }
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
+                defer { deadline.cancel() }
+                return output.read(fd, limit: outputLimit)
+            }
+        }
+
+        /// `read` reads the output pipe it is given and says how its output ended; one that throws stops the read.
+        func run(_ request: Secret, limits: Limits, unpacking: Bool, service: String, archive: FileHandle,
+                 read: (Int32) throws -> (Data, Pipes.Ending)) throws -> Reply {
             guard !output.isStopped else { throw CancellationError() }
             guard let requestPipe = try ArchiveService.requestPipe(request) else {
                 return Reply(output: Data(), status: Status.limit.rawValue, timedOut: false, truncated: false)
@@ -182,25 +212,20 @@ nonisolated package enum ArchiveService {
             xpc_connection_set_event_handler(connection) { _ in }
             xpc_connection_activate(connection)
             defer { xpc_connection_cancel(connection) }
-            send(limits, archive: archive, requestPipe: requestPipe, output: pipe.write, on: connection) { [self] answer in
+            send(limits, unpacking: unpacking, archive: archive, requestPipe: requestPipe, output: pipe.write,
+                 on: connection) { [self] answer in
                 lock.withLock { self.answer = answer }
                 replied.signal()
             }
             try? requestPipe.close()
             close(pipe.write)
-            let deadline = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                lock.withLock { expired = true }
-                output.stop()
-            }
-            let end = DispatchTime.now() + timeout
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: end, execute: deadline)
-            let (data, ending) = output.read(pipe.read, limit: outputLimit)
-            deadline.cancel()
+            let result = Result { try read(pipe.read) }
+            let ending = (try? result.get())?.1 ?? .stopped
             // A worker that closed its output has exited; any other the service ends now. The read ends only with the
             // service's answer, which follows the worker's end, so a stopped read never leaves a worker running.
             if ending != .finished { xpc_connection_send_message(connection, xpc_dictionary_create_empty()) }
             _ = replied.wait(timeout: .now() + ArchiveService.answerBackstop)
+            let data = try result.get().0
             return lock.withLock {
                 let answered: Int32? = if case .replied(let status) = answer { status } else { nil }
                 return Reply(output: data, status: ending == .finished ? answered : nil, timedOut: ending == .stopped && expired,
@@ -223,11 +248,12 @@ nonisolated package enum ArchiveService {
         private enum Answer { case replied(Int32?), unreachable, lost }
 
         /// The message, and with it its copies of the descriptors, is released once sent.
-        private func send(_ limits: Limits, archive: FileHandle, requestPipe: FileHandle, output: Int32,
+        private func send(_ limits: Limits, unpacking: Bool, archive: FileHandle, requestPipe: FileHandle, output: Int32,
                           on connection: xpc_connection_t, reply: @escaping @Sendable (Answer) -> Void) {
             let message = xpc_dictionary_create_empty()
             if let cpu = limits.cpuMicroseconds { xpc_dictionary_set_uint64(message, "cpuLimit", cpu) }
             if let memory = limits.memoryBytes { xpc_dictionary_set_uint64(message, "memoryLimit", memory) }
+            if unpacking { xpc_dictionary_set_bool(message, "unpacking", true) }
             xpc_dictionary_set_fd(message, "request", requestPipe.fileDescriptor)
             xpc_dictionary_set_fd(message, "archive", archive.fileDescriptor)
             xpc_dictionary_set_fd(message, "output", output)

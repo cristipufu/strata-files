@@ -8,6 +8,7 @@ import StrataArchiveClient
 // lower the worker's limits (--cpu-limit microseconds, --memory-limit bytes), the output limit (--output-limit bytes)
 // and the read's timeout (--timeout-ms), send the request once more without them after the first (--then-plain: the
 // output and status are then the second's), and exit with the service's own answer instead (--service-status).
+// Extract's read (--unpacking) has no timeout or output limit, and its output goes out as it comes.
 
 func option(_ name: String) -> Int? {
     let arguments = CommandLine.arguments
@@ -45,6 +46,19 @@ func run() async -> Int32 {
     do {
         let limits = ArchiveService.Limits(cpu: option("--cpu-limit").map { .microseconds($0) },
                                            memory: option("--memory-limit"))
+        if CommandLine.arguments.contains("--unpacking") {
+            let reader = try PipeReader()
+            let reply = try ArchiveService.unpack(encoded: request, limits: limits, to: service, archive: archive,
+                                                  reader: reader) { output in
+                var buffer = [UInt8](repeating: 0, count: 1 << 16)
+                while true {
+                    let count = try buffer.withUnsafeMutableBytes { try reader.readSome(output, into: $0) }
+                    if count == 0 { return }
+                    try FileHandle.standardOutput.write(contentsOf: buffer[..<count])
+                }
+            }
+            return (reply.ended ? reply.outcome : .unreadable).rawValue
+        }
         var reply = try await send(limits, outputLimit: option("--output-limit"),
                                    timeout: option("--timeout-ms").map { TimeInterval($0) / 1000 } ?? 20)
         if CommandLine.arguments.contains("--then-plain") { reply = try await send(ArchiveService.Limits(), outputLimit: nil) }

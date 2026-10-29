@@ -104,19 +104,19 @@ final class ArchiveJob {
                 url = try await Self.onWorkerThread { try Archiver.compress(items, control: control) }
                 register(url, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
-                let kind = try Self.kind(archive)
+                try Self.requireArchive(archive)
                 let inspection = try await inspect(archive)
                 let control = control
                 url = try await Self.onWorkerThread {
-                    try Archiver.extract(archive, kind: kind, inspection: inspection, into: folder, control: control)
+                    try Archiver.extract(archive, inspection: inspection, into: folder, control: control)
                 }
                 register(url, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
-                let kind = try Self.kind(archive)
+                try Self.requireArchive(archive)
                 let inspection = try await inspect(archive)
                 let control = control
                 try await Self.onWorkerThread {
-                    try Archiver.extractContents(archive, kind: kind, inspection: inspection, to: folder, control: control)
+                    try Archiver.extractContents(archive, inspection: inspection, to: folder, control: control)
                 }
                 url = folder
             }
@@ -152,11 +152,10 @@ final class ArchiveJob {
         FolderSizer.invalidate(url.deletingLastPathComponent())
     }
 
-    private static func kind(_ archive: URL) throws -> ArchiveKind {
-        guard let kind = ArchiveKind(fileName: archive.lastPathComponent) else {
+    private static func requireArchive(_ archive: URL) throws {
+        guard ArchiveKind(fileName: archive.lastPathComponent) != nil else {
             throw Archiver.Failure(message: String(localized: "“\(archive.lastPathComponent)” isn’t an archive Strata can open."))
         }
-        return kind
     }
 
     /// Runs blocking work on a thread of its own rather than tying up one of the task pool's few threads.

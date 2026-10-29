@@ -1701,6 +1701,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "無法將「%@」重新命名為「%@」：%@",
     "“%@” couldn’t have its download removed.": "無法移除「%@」的下載內容。",
     "“%@” couldn’t make that change": "「%@」無法進行該更改",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "「%@」超出了 Strata 為讀取封存檔設定的限制，因此未解壓縮。",
     "“%@” has %lld more items in its own Trash.": {
       "other": "「%@」本身的垃圾桶中還有%lld個項目。"
     },
@@ -1709,10 +1710,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」僅包含一個連結，因此未解壓縮。",
     "“%@” in %@": "%2$@中的「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "無法檢查封存檔中的「%@」，因此未解壓縮任何內容。",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "無法寫入封存檔中的「%@」（%@），因此未解壓縮任何內容。",
     "“%@” is a file, not a folder": "「%@」是檔案，不是檔案夾",
     "“%@” is already in the Trash.": "「%@」已在垃圾桶中。",
     "“%@” is already on “%@”": "「%@」已在「%@」上",
     "“%@” is already there.": "「%@」已存在。",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "封存檔中的「%@」既是檔案又是檔案夾，因此未解壓縮任何內容。",
     "“%@” is changed by this plan too": "此計畫也會更改「%@」",
     "“%@” is empty.": "「%@」是空的。",
     "“%@” is new": "「%@」是新項目",

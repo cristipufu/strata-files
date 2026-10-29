@@ -1830,6 +1830,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "« %@ » n’a pas pu être renommé en « %@ » : %@",
     "“%@” couldn’t have its download removed.": "Le téléchargement de « %@ » n’a pas pu être supprimé.",
     "“%@” couldn’t make that change": "« %@ » n’a pas pu effectuer cette modification",
+    "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "« %@ » dépasse les limites que Strata fixe pour la lecture des archives ; il n’a donc pas été extrait.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "« %@ » contient %lld autre élément dans sa propre corbeille.",
       "other": "« %@ » contient %lld autres éléments dans sa propre corbeille."
@@ -1839,10 +1840,12 @@
     "“%@” holds only a link, so it wasn’t extracted.": "« %@ » ne contient qu’un lien ; il n’a donc pas été extrait.",
     "“%@” in %@": "« %@ » dans %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "« %@ » dans l’archive n’a pas pu être vérifié ; rien n’a donc été extrait.",
+    "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "« %@ » dans l’archive n’a pas pu être écrit (%@) ; rien n’a donc été extrait.",
     "“%@” is a file, not a folder": "« %@ » est un fichier, pas un dossier",
     "“%@” is already in the Trash.": "« %@ » est déjà dans la corbeille.",
     "“%@” is already on “%@”": "« %@ » se trouve déjà sur « %@ »",
     "“%@” is already there.": "« %@ » existe déjà.",
+    "“%@” is both a file and a folder in the archive, so nothing was extracted.": "« %@ » est à la fois un fichier et un dossier dans l’archive ; rien n’a donc été extrait.",
     "“%@” is changed by this plan too": "« %@ » est aussi modifié par ce plan",
     "“%@” is empty.": "« %@ » est vide.",
     "“%@” is new": "« %@ » est nouveau",
