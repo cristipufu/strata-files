@@ -49,11 +49,12 @@ struct PreviewArchiveTests {
             .write(to: tree.url("pack.tar"))
         let file = try FileHandle(forReadingFrom: tree.url("pack.tar"))
         defer { try? file.close() }
-        // Copying out 1 MB fills the output pipe, which nobody reads once the read is stopped: the worker can only end
-        // when the service ends it. The harness reports "couldn't be read" unless the service confirmed it did.
+        // A read with no time stops reading as soon as its request is sent, so copying out 1 MB fills the output pipe:
+        // the worker can only end when the service ends it. The harness reports "couldn't be read" unless the service
+        // confirmed it did.
         var request = Data([1, 0, 0, 0, 0, 1, 0, 0, 0, 0])
         request.append(Data("a".utf8))
-        let stopped = try await harness(arguments: ["--timeout-ms", "1", "--service-status"], request: request, file: file)
+        let stopped = try await harness(arguments: ["--timeout-ms", "0", "--service-status"], request: request, file: file)
         // The service answered, so the worker is gone, and it ended it because the read was stopped, not at its own
         // deadline (which would answer "too large").
         #expect(stopped.status == 48)
@@ -230,9 +231,10 @@ struct PreviewArchiveTests {
     @Test func aListingPastItsTimeSaysSo() async throws {
         let tree = try TestTree("pack.tar")
         try Data(ContainerTests.tarFile("a", "kept") + [UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        // A thousandth of a second is too short even to start a worker.
+        // With no time at all, the read is stopped as soon as its request is sent, however quickly its worker could list
+        // it.
         await #expect {
-            _ = try await ArchiveLister.list(tree.url("pack.tar"), kind: .tar, timeout: 0.001)
+            _ = try await ArchiveLister.list(tree.url("pack.tar"), kind: .tar, timeout: 0)
         } throws: { error in
             guard case PreviewError.message(let text, _) = error else { return false }
             return text == PreviewArchiveError.limit.localizedDescription

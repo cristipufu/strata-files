@@ -193,7 +193,12 @@ nonisolated package enum ArchiveService {
                     lock.withLock { expired = true }
                     output.stop()
                 }
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
+                // With no time at all, the read is stopped as soon as its request is sent.
+                if timeout > 0 {
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
+                } else {
+                    deadline.perform()
+                }
                 defer { deadline.cancel() }
                 return output.read(fd, limit: outputLimit)
             }
