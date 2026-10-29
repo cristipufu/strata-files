@@ -10,7 +10,11 @@ final class TestTree {
     /// Spelled the way folder listings spell it (the temporary folder is reached through `/var`, a link).
     let root: URL
 
-    init(_ items: String...) throws {
+    convenience init(_ items: String...) throws {
+        try self.init(items)
+    }
+
+    init(_ items: [String]) throws {
         let made = FileManager.default.temporaryDirectory.appending(path: "strata-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: made, withIntermediateDirectories: true)
         guard let real = realpath(made.path, nil) else { throw CocoaError(.fileNoSuchFile) }
@@ -80,6 +84,12 @@ final class TestTree {
         }
         walk("")
         return items.sorted()
+    }
+
+    static func path(of fd: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(fd, F_GETPATH, &buffer) == 0 else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 
     /// Read from the folder itself, not through FileManager, which leaves out files named "._…". A directory record is

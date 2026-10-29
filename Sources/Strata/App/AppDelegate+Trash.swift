@@ -45,10 +45,10 @@ extension AppDelegate {
             BrowserViewController.present(alert, in: window) { response in
                 guard response == .alertFirstButtonReturn else { return }
                 Task {
-                    let failures = await Trash.empty()
-                    if failures.count < count { Sounds.emptiedTrash() }
+                    let emptied = await Trash.empty()
+                    if emptied.removed > 0 { Sounds.emptiedTrash() }
                     NotificationCenter.default.post(name: .trashChanged, object: nil)
-                    if !failures.isEmpty { BrowserViewController.report(failures, .delete, in: window) }
+                    if !emptied.failures.isEmpty { BrowserViewController.report(emptied.failures, .delete, in: window) }
                 }
             }
         }

@@ -188,60 +188,73 @@ enum Trash {
 
     // MARK: - Emptying
 
-    /// Deletes everything in every Trash for good, off the main thread. Returns the items that couldn't be deleted (a
-    /// locked file, say) with why. Each Trash's records file goes too: its Put Back records would be stale.
+    /// What emptying did: how many items went, and the items, or Trash folders, that couldn't (a locked file, say),
+    /// with why.
+    struct Emptied {
+        var removed = 0
+        var failures: [(url: URL, error: Error)] = []
+    }
+
+    /// Deletes everything in every Trash for good, off the main thread. Each Trash's records file goes too: its Put
+    /// Back records would be stale.
     @concurrent
-    static func empty() async -> [(url: URL, error: Error)] {
+    static func empty() async -> Emptied {
         empty(folders())
     }
 
     /// Deletes everything in `trashes`, which must be Trash folders (see `folders()`). Each Trash is opened once, never
     /// through a link, and everything is deleted relative to that open folder: swapping a folder for a link while it
-    /// runs can't redirect the deletion anywhere else.
-    nonisolated static func empty(_ trashes: [URL]) -> [(url: URL, error: Error)] {
-        var failures: [(url: URL, error: Error)] = []
+    /// runs can't redirect the deletion anywhere else. `listing` lists an open folder whole or fails.
+    nonisolated static func empty(_ trashes: [URL],
+                                  listing: (Int32) throws -> [String] = ChosenFile.names(in:)) -> Emptied {
+        var emptied = Emptied()
         for folder in trashes {
             let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-            guard fd >= 0 else { continue }
+            // One that's gone meanwhile has nothing to empty.
+            guard fd >= 0 else {
+                let error = errno
+                if error != ENOENT { emptied.failures.append(failure(folder, error)) }
+                continue
+            }
             defer { close(fd) }
             var listError: Int32 = 0
-            for name in entries(fd, error: &listError) {
-                let error = removeTree(in: fd, name)
-                if error != 0, name != ".DS_Store" {
-                    failures.append((folder.appending(path: name), POSIXError(POSIXErrorCode(rawValue: error) ?? .EIO)))
+            for name in entries(fd, listing, error: &listError) {
+                let error = removeTree(in: fd, name, listing: listing)
+                // The Trash's records file isn't one of its items, and one that went meanwhile (emptied elsewhere, say)
+                // wasn't deleted here and didn't fail.
+                guard name != ".DS_Store", error != ENOENT else { continue }
+                if error == 0 {
+                    emptied.removed += 1
+                } else {
+                    emptied.failures.append(failure(folder.appending(path: name), error))
                 }
             }
-            if listError != 0 {
-                failures.append((folder, POSIXError(POSIXErrorCode(rawValue: listError) ?? .EIO)))
-            }
+            if listError != 0 { emptied.failures.append(failure(folder, listError)) }
         }
-        return failures
+        return emptied
     }
 
-    /// The names in an open folder.
-    nonisolated private static func entries(_ fd: Int32, error: inout Int32) -> [String] {
-        let copy = dup(fd)
-        guard copy >= 0 else {
-            error = errno != 0 ? errno : EIO
+    nonisolated private static func failure(_ url: URL, _ code: Int32) -> (url: URL, error: Error) {
+        (url, POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO))
+    }
+
+    /// The names in an open folder: none from one that can't be listed whole, so that nothing in it is deleted as if
+    /// the rest weren't there, and `error` says why. Never ENOENT, which says that an item itself is gone.
+    nonisolated private static func entries(_ fd: Int32, _ listing: (Int32) throws -> [String],
+                                            error: inout Int32) -> [String] {
+        do {
+            return try listing(fd)
+        } catch let thrown {
+            let code = (thrown as? POSIXError)?.code.rawValue ?? EIO
+            error = code == ENOENT ? EIO : code
             return []
         }
-        guard let dir = fdopendir(copy) else {
-            error = errno != 0 ? errno : EIO
-            close(copy)
-            return []
-        }
-        defer { closedir(dir) }
-        var names: [String] = []
-        while let entry = readdir(dir) {
-            guard let name = DirectoryEntryName.read(entry) else { error = EILSEQ; return [] }
-            if name != ".", name != ".." { names.append(name) }
-        }
-        return names
     }
 
     /// Deletes `name` in the open folder `parent`: a file or link directly, a folder after its contents (opened without
     /// following links). Returns 0, or the first error (a locked file, say).
-    nonisolated private static func removeTree(in parent: Int32, _ name: String, depth: Int = 0) -> Int32 {
+    nonisolated private static func removeTree(in parent: Int32, _ name: String, depth: Int = 0,
+                                               listing: (Int32) throws -> [String]) -> Int32 {
         if unlinkat(parent, name, 0) == 0 { return 0 }
         let unlinkError = errno
         guard depth < 128 else { return ELOOP }
@@ -256,13 +269,15 @@ enum Trash {
         // Not a folder: why the file itself couldn't be deleted (locked, say).
         guard fd >= 0 else { return errno == ENOTDIR || errno == ELOOP ? unlinkError : errno }
         var firstError: Int32 = 0
-        for child in entries(fd, error: &firstError) {
-            let error = removeTree(in: fd, child, depth: depth + 1)
-            if firstError == 0 { firstError = error }
+        for child in entries(fd, listing, error: &firstError) {
+            let error = removeTree(in: fd, child, depth: depth + 1, listing: listing)
+            // One that went meanwhile never stands for a folder that's gone too, hiding why a sibling stayed.
+            if firstError == 0, error != ENOENT { firstError = error }
         }
         close(fd)
-        if unlinkat(parent, name, AT_REMOVEDIR) != 0, firstError == 0 { firstError = errno }
-        return firstError
+        // Gone after all: it held nothing, whatever its listing said.
+        guard unlinkat(parent, name, AT_REMOVEDIR) != 0 else { return 0 }
+        return firstError != 0 ? firstError : errno
     }
 
     // MARK: - Private

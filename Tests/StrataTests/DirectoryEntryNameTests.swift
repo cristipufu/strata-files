@@ -48,7 +48,9 @@ struct DirectoryEntryNameTests {
         #expect(CopyWriter.names(in: fd).sorted() == expected)
         switch kind {
         case "archive": Archiver.removeTree(folder)
-        case "trash": #expect(Trash.empty([folder]).isEmpty)
+        case "trash":
+            let emptied = Trash.empty([folder])
+            #expect(emptied.failures.isEmpty && emptied.removed == expected.count)
         default:
             let parent = try ChosenFile.openDirectory(tree.root.path)
             defer { close(parent) }

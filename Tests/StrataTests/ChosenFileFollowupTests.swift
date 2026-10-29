@@ -4,11 +4,7 @@ import Testing
 
 struct ChosenFileFollowupTests {
     private func descriptors(for path: String) -> [Int32] {
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        return (0..<getdtablesize()).filter { fd in
-            fcntl(fd, F_GETPATH, &buffer) == 0
-                && String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self) == path
-        }
+        (0..<getdtablesize()).filter { TestTree.path(of: $0) == path }
     }
 
     @Test func namesAreListedWithoutLookingAtTheItemsAndCloseTheirStream() throws {

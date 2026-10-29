@@ -15,6 +15,62 @@
   },
   {
     "file": "Strata/Model/Trash.swift",
+    "find": "            return try listing(fd)",
+    "replace": "            return (try? listing(fd)) ?? []",
+    "rule": "Empty Trash deletes from a folder it couldn't list whole, as if the rest weren't there",
+    "tests": "DeleteTests/aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "            let error = removeTree(in: fd, child, depth: depth + 1, listing: listing)",
+    "replace": "            let error = removeTree(in: fd, child, depth: depth + 1, listing: { try ChosenFile.names(in: $0) })",
+    "rule": "Empty Trash lists the folders inside a Trash its own way",
+    "tests": "DeleteTests/aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "        guard unlinkat(parent, name, AT_REMOVEDIR) != 0 else { return 0 }",
+    "replace": "        guard unlinkat(parent, name, AT_REMOVEDIR) != 0 else { return firstError }",
+    "rule": "Empty Trash reports a folder it removed as one it couldn't",
+    "tests": "DeleteTests/aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "                    emptied.removed += 1",
+    "replace": "                    _ = emptied",
+    "rule": "Empty Trash says nothing went when items did",
+    "tests": "DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse|DeleteTests/aLockedItemInTheTrashIsReportedAndTheRestGo"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "                if error != ENOENT { emptied.failures.append(failure(folder, error)) }",
+    "replace": "                _ = error",
+    "rule": "Empty Trash skips a Trash it can't open without a word",
+    "tests": "DeleteTests/aTrashThatCantBeOpenedIsReported"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "                guard name != \".DS_Store\", error != ENOENT else { continue }",
+    "replace": "                guard name != \".DS_Store\" else { continue }",
+    "rule": "Empty Trash reports an item that went meanwhile as one it couldn't delete",
+    "tests": "DeleteTests/anItemThatWentMeanwhileIsntAFailureAndHidesNoOther"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "            if firstError == 0, error != ENOENT { firstError = error }",
+    "replace": "            if firstError == 0 { firstError = error }",
+    "rule": "Empty Trash lets an item that went meanwhile hide why a locked one stayed",
+    "tests": "DeleteTests/anItemThatWentMeanwhileIsntAFailureAndHidesNoOther"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "            error = code == ENOENT ? EIO : code",
+    "replace": "            error = code",
+    "rule": "Empty Trash takes a folder whose listing says it's gone for one that went",
+    "tests": "DeleteTests/aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
     "find": "        isTrash(url) || isTrash(url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent))",
     "replace": "        isTrash(url)",
     "rule": "A Trash spelled through a link isn't recognized",
