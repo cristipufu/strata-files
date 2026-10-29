@@ -1,9 +1,9 @@
 # Reading archives in a sandbox
 
-Strata lets you look inside archives without extracting them: open a ZIP, a tar, a 7z or RAR, an EPUB or a comic book,
-preview what's in it, and copy just the parts you want. Those archives come from anywhere, and the code that reads
-them, macOS's libarchive, is a large C library. If a crafted archive ever found a bug in it, that bug must not be able
-to reach your files.
+Strata lets you look inside archives without extracting them: open a ZIP, a tar, a 7z or RAR, a Windows cabinet or
+OneNote package, an EPUB or a comic book, preview what's in it, and copy just the parts you want. Those archives come
+from anywhere, and the code that reads them, macOS's libarchive, is a large C library. If a crafted archive ever found a
+bug in it, that bug must not be able to reach your files.
 
 So Strata doesn't read archives itself. Listing one in the preview pane, looking inside it with Space, copying items
 out of it, checking it before Extract and Extract itself all happen in a separate worker process that runs in an App

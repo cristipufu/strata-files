@@ -150,13 +150,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 Archive previews use the libarchive library that ships with macOS; Strata does not bundle it. The declarations in
 `Sources/CArchivePreview/ArchiveAPI.h` follow libarchive 3.7.4's `archive.h` and `archive_entry.h`, and the
-encrypted-header 7z test fixture comes from libarchive's tests.
+encrypted-header 7z and the cabinet test fixtures come from libarchive's tests.
 <https://github.com/libarchive/libarchive/tree/v3.7.4/libarchive>
 
 ```text
 Copyright (c) 2003-2010 Tim Kientzle
 Copyright (c) 2016 Martin Matuska
 Copyright (c) 2013 Konrad Kleine (encrypted-header 7z test fixture)
+Copyright (c) 2010 Michihiro NAKAJIMA (cabinet test fixtures)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,

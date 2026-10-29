@@ -5527,5 +5527,12 @@
     "replace": "return true",
     "rule": "Book previews: only a wrapper for the actual cover receives the Cover label",
     "tests": "BookPreviewTests/coverWrappersAndUntitledSectionsNeverExposeInternalFilenames"
+  },
+  {
+    "file": "Strata/Previews/ArchiveLister.swift",
+    "find": "\"xar\", \"iso\", \"cab\", \"onepkg\"]",
+    "replace": "\"xar\", \"iso\"]",
+    "rule": "A cabinet or OneNote package isn't taken for an archive",
+    "tests": "CabinetArchiveTests/cabinetsAndOneNotePackagesAreArchivesByName|CabinetArchiveTests/aOneNotePackageOpensInSpaceAsItsTreeWithoutExtracting"
   }
 ]

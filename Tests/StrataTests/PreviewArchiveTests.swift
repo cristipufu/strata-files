@@ -691,7 +691,7 @@ extension PreviewArchiveTests {
     @Test func encryptedSevenZipHeadersReportUnsupportedEncryptionWithoutAskingForPasswords() async throws {
         let tree = try TestTree("encrypted.7z", "sibling")
         // libarchive 3.7.4 test_read_format_7zip_encryption_header.7z, BSD-2-Clause.
-        // Copyright (c) 2013 Konrad Kleine. See Resources/ArchivePreviewNotice.txt for the license.
+        // Copyright (c) 2013 Konrad Kleine. See THIRD_PARTY_NOTICES.md for the license.
         let bytes = try #require(Data(base64Encoded: "N3q8ryccAANRIXJ9gAAAAAAAAAAmAAAAAAAAABpax2mOWrqfd7a1ZaNBMYhQiWvQGsnBfkkay/HQXBOBu2bPs5JKmpm341p7Jd0wnGCbVjFcomL/ZlXY03qBVxd6mIOYY9Q5Tc1UwpeKFzLslyn3LOkF4rKHeVOmxeXUqu9CFAVF00x7gs+D622Asq0Cc25+Dpc1cvDJXakl4KDJRM9kxhcGEAEJcAAHCwEAASQG8QcBClMHTxry5UUdLtIMYQoB+2PQJgAA"))
         try bytes.write(to: tree.url("encrypted.7z"))
         let access = PreviewArchiveAccess()
