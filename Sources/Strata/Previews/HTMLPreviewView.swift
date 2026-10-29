@@ -20,12 +20,16 @@ package final class HTMLPreviewView: PreviewView {
     package private(set) var renderTask: Task<Void, Never>?
     package private(set) var rendered = false
     private var timeout: Task<Void, Never>?
+    private let timeLimit: @Sendable () async -> Void
     private var revision = 0
     private var stopped = false
     private weak var observedWindow: NSWindow?
 
-    package init(url: URL, openFile: ((URL) -> Void)? = nil, openLink: ((URL) -> Void)? = nil) {
+    /// `timeLimit` ends when WebKit has had long enough to render the page: its source is shown instead.
+    package init(url: URL, openFile: ((URL) -> Void)? = nil, openLink: ((URL) -> Void)? = nil,
+                 timeLimit: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(8)) }) {
         self.url = url
+        self.timeLimit = timeLimit
         selected = try? ChosenFile(url)
         self.openFile = openFile ?? Self.openInBrowser
         self.openLink = openLink ?? { NSWorkspace.shared.open($0) }
@@ -123,8 +127,9 @@ package final class HTMLPreviewView: PreviewView {
                 host.addSubview(spinner, positioned: .above, relativeTo: web)
                 web.load(URLRequest(url: document.url, cachePolicy: .reloadIgnoringLocalCacheData))
                 renderTask = nil
+                let timeLimit = timeLimit
                 timeout = Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(8))
+                    await timeLimit()
                     if !Task.isCancelled { self?.showSource(unavailable: true) }
                 }
             } catch {

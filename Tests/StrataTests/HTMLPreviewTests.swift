@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import Synchronization
 import WebKit
 import Testing
 @testable import Strata
@@ -202,7 +203,8 @@ import Testing
         <script>window.ran=true;document.getElementById('title').textContent='Executed'</script>
         <iframe src="page.html"></iframe><form action="page.html"><input type=submit></form>
         """)
-        let before = tree.snapshot(), view = HTMLPreviewView(url: url), window = window(view)
+        let before = tree.snapshot(), view = HTMLPreviewView(url: url, timeLimit: HTMLPreviewView.noTimeLimit)
+        let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
         let web = try #require(view.webView)
@@ -215,6 +217,20 @@ import Testing
         view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
         #expect(view.webView === web && view.rendered && !view.footer.isHidden)
         #expect(!window.isVisible && tree.snapshot() == before && tree.text("outside") == "outside")
+    }
+
+    @Test func aPageNotRenderedInTimeShowsItsSource() async throws {
+        let tree = try TestTree("folder/page.html", "outside")
+        let url = try page(tree), before = tree.snapshot()
+        // Its time is up as soon as WebKit starts.
+        let ended = Mutex(false)
+        let view = HTMLPreviewView(url: url, timeLimit: { ended.withLock { $0 = true } }), window = window(view)
+        defer { view.stop(); window.close(); window.contentView = nil }
+        try await wait { view.modeControl.selectedSegment == 1 }
+        #expect(ended.withLock { $0 } && !view.rendered && view.webView == nil)
+        let note = String(localized: "Preview unavailable. Showing source.")
+        #expect(view.footer.subviews.contains { ($0 as? NSTextField)?.stringValue == note && !$0.isHidden })
+        #expect(tree.snapshot() == before)
     }
 
     @Test func closedViewsDoNotRestartAndOpenInBrowserRequiresTheChosenFile() async throws {
@@ -255,7 +271,9 @@ extension HTMLPreviewTests {
         <script src="\(probe.url)"></script><meta http-equiv=refresh content="0;url=\(probe.url)">
         <h1>Offline</h1>
         """)
-        let view = HTMLPreviewView(url: url, openLink: { _ in Issue.record("An automatic navigation opened the browser.") })
+        let view = HTMLPreviewView(
+            url: url, openLink: { _ in Issue.record("An automatic navigation opened the browser.") },
+            timeLimit: HTMLPreviewView.noTimeLimit)
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
@@ -289,7 +307,8 @@ extension HTMLPreviewTests {
 
     @Test func reattachingToTheSameWindowRestartsOnlyTheNewWebKitLifetime() async throws {
         let tree = try TestTree("folder/page.html", "outside")
-        let view = HTMLPreviewView(url: try page(tree)), window = window(view)
+        let view = HTMLPreviewView(url: try page(tree), timeLimit: HTMLPreviewView.noTimeLimit)
+        let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
         let first = try #require(view.webView)
