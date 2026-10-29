@@ -1136,7 +1136,6 @@
     "Link · %@": "Dowiązanie · %@",
     "List": "Lista",
     "List columns": "Kolumny listy",
-    "Listing this archive took too long.": "Odczytywanie listy zawartości tego archiwum trwało zbyt długo.",
     "Loading…": "Wczytuję…",
     "Location": "Położenie",
     "Locations": "Miejsca",
@@ -1688,7 +1687,6 @@
     "Stop All": "Zatrzymaj wszystkie",
     "Stop and Quit": "Zatrzymaj i zakończ",
     "Stopped": "Zatrzymano",
-    "Stopped after %lld s": "Zatrzymano po %lld s",
     "Stopped · %@ of %@ done": "Zatrzymano · ukończono %@ z %@",
     "Stopped.": "Zatrzymano.",
     "Stopped: the disk was running out of space.": "Zatrzymano: na dysku kończyło się miejsce.",
@@ -2097,6 +2095,7 @@
       "other": "„%@” ma jeszcze %lld rzeczy we własnym Koszu."
     },
     "“%@” holds %@.": "„%@” zawiera %@.",
+    "“%@” holds at least %@.": "„%@” zawiera co najmniej %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” zawiera tylko dowiązanie, więc nie zostało rozpakowane.",
     "“%@” in %@": "„%@” w %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Nie udało się sprawdzić „%@” w archiwum, więc niczego nie rozpakowano.",

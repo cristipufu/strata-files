@@ -948,7 +948,6 @@
     "Link · %@": "Ligação · %@",
     "List": "Lista",
     "List columns": "Colunas da lista",
-    "Listing this archive took too long.": "Listar este arquivo demorou demasiado.",
     "Loading…": "A carregar…",
     "Location": "Localização",
     "Locations": "Localizações",
@@ -1460,7 +1459,6 @@
     "Stop All": "Parar todos",
     "Stop and Quit": "Parar e sair",
     "Stopped": "Interrompido",
-    "Stopped after %lld s": "Interrompido após %lld s",
     "Stopped · %@ of %@ done": "Interrompido · %@ de %@ concluídos",
     "Stopped.": "Interrompido.",
     "Stopped: the disk was running out of space.": "Interrompido: o disco estava a ficar sem espaço.",
@@ -1837,6 +1835,7 @@
       "other": "“%@” tem mais %lld elementos no respetivo Lixo."
     },
     "“%@” holds %@.": "“%@” contém %@.",
+    "“%@” holds at least %@.": "“%@” contém pelo menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contém apenas uma ligação, por isso não foi extraído.",
     "“%@” in %@": "“%@” em %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Não foi possível verificar “%@” no arquivo, por isso nada foi extraído.",

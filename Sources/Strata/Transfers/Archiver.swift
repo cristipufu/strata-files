@@ -12,23 +12,8 @@ nonisolated enum Archiver {
         var errorDescription: String? { message }
     }
 
-    /// What a listing says about an archive before it's extracted.
-    struct Inspection: Sendable {
-        var entries = 0
-        /// Files outside `__MACOSX`.
-        var files = 0
-        var bytes: Int64 = 0
-        /// Anything but plain files and folders, absolute paths, "..", or a listing not fully understood: only bsdtar's
-        /// secure extraction may unpack it.
-        var needsSecureTool = false
-        /// Password-protected entries.
-        var encrypted = false
-        /// The listing finished (no timeout, readable).
-        var complete = false
-
-        /// Entries the extraction will report, for progress.
-        var progressTotal: Int { entries }
-    }
+    /// What a survey of an archive says before it's extracted; its counts are lower bounds when it didn't finish.
+    typealias Inspection = PreviewArchiveSurvey
 
     /// Progress and cancellation, shared with the job that runs it.
     final class Control: @unchecked Sendable {
@@ -110,71 +95,14 @@ nonisolated enum Archiver {
 
     // MARK: - Extract
 
-    /// Lists `archive` to learn its size and whether it holds anything risky. Doesn't throw: an unreadable listing
-    /// just comes back incomplete, and extraction then uses the secure tool. Runs off the main thread.
+    /// Surveys `archive` in the archive service's sandboxed worker to learn its size and whether it's encrypted. A
+    /// link to an archive surveys the archive, which is what tar unpacks. Doesn't throw: a survey that didn't finish
+    /// comes back incomplete, with what it counted so far. Runs off the main thread.
     @concurrent
-    static func inspect(_ archive: URL, kind: ArchiveKind) async -> Inspection {
-        let (tool, arguments) = switch kind {
-        case .zip: ("/usr/bin/zipinfo", ["-s", archive.path])
-        case .tar: ("/usr/bin/tar", ["-tvf", archive.path])
-        }
-        guard let run = try? await ProcessRunner.run(tool, arguments, timeout: 60) else { return Inspection() }
-        var result = Inspection()
-        // Fails closed: any line that isn't the header, the totals or a fully understood entry sends the archive to
-        // bsdtar's secure extraction, and so does an entry count that differs from zipinfo's own totals.
-        var unexplained = 0
-        var reportedEntries: Int?
-        var headerEntries: Int?
-        for line in String(decoding: run.output, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.isEmpty { continue }
-            if kind == .zip, line.hasPrefix("Archive:") { continue }
-            // "Zip file size: 3923 bytes, number of entries: 20"
-            if kind == .zip, line.hasPrefix("Zip file size:"), let count = line.split(separator: " ").last.flatMap({ Int($0) }) {
-                headerEntries = count
-                continue
-            }
-            if kind == .zip, let total = zipTotal(line) {
-                reportedEntries = total
-                continue
-            }
-            // zipinfo -s: attributes version os size type method date time name (attributes: "-rw-r--r--", or
-            //             "-rw-a--" for zips made on Windows)
-            // tar -tv:    perms links owner group size month day time name [-> target]
-            let fields = line.split(separator: " ", maxSplits: 8, omittingEmptySubsequences: true)
-            guard fields.count == 9, fields[0].count == 10 || (kind == .zip && fields[0].count == 7),
-                  let size = Int64(fields[kind == .zip ? 3 : 4]) else {
-                unexplained += 1
-                continue
-            }
-            result.entries += 1
-            // A crafted listing can claim sizes that overflow: such an archive can't fit anyway.
-            let (sum, overflow) = result.bytes.addingReportingOverflow(max(0, size))
-            result.bytes = overflow ? .max : sum
-            if overflow { result.needsSecureTool = true }
-            var name = fields[8]
-            if kind == .tar, let arrow = name.range(of: " -> ") { name = name[..<arrow.lowerBound] }
-            // Unknown creator types stay unknown; the listing must never reinterpret them as plain files.
-            let type = fields[0].first
-            if type == "-", !name.hasPrefix("__MACOSX/") { result.files += 1 }
-            // zipinfo marks encrypted entries with a capital T or B ("TX", "Bx").
-            if kind == .zip, let flag = fields[4].first, flag == "T" || flag == "B" { result.encrypted = true }
-            if type != "-" && type != "d" || name.hasPrefix("/") || name.split(separator: "/").contains("..") {
-                result.needsSecureTool = true
-            }
-        }
-        result.complete = run.status == 0 && !run.timedOut && !run.truncated && result.entries > 0
-        if !result.complete || unexplained > 0
-            || (kind == .zip && (reportedEntries != result.entries || headerEntries != result.entries)) {
-            result.needsSecureTool = true
-        }
-        return result
-    }
-
-    /// zipinfo's closing line, "20 files, 1335 bytes uncompressed, 760 bytes compressed:  42.9%": the entry count.
-    private static func zipTotal(_ line: Substring) -> Int? {
-        let words = line.split(separator: " ", maxSplits: 2)
-        guard words.count == 3, words[1] == "file," || words[1] == "files,", words[2].contains("uncompressed") else { return nil }
-        return Int(words[0])
+    static func inspect(_ archive: URL) async -> Inspection {
+        guard let source = try? PreviewArchiveSource(archive.resolvingSymlinksInPath()),
+              let survey = try? await PreviewArchiveReader.survey(source, timeout: 30) else { return Inspection() }
+        return survey
     }
 
     /// Extracts `archive` into `folder` like Archive Utility: one top-level item keeps its name; several go in a folder
@@ -241,7 +169,9 @@ nonisolated enum Archiver {
         let fm = FileManager.default
         if inspection.encrypted { throw passwordProtected(archive) }
         let disk = root.deletingLastPathComponent()
-        if inspection.complete, let free = availableSpace(onDiskOf: disk), inspection.bytes > free - reserve(free: free) {
+        // If even what the survey knows the archive holds doesn't fit, the archive won't.
+        if let atLeast = inspection.lowerBound, let free = availableSpace(onDiskOf: disk),
+           atLeast > free - reserve(free: free) {
             let format = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
             let needed = format(inspection.bytes), usable = format(max(0, free - reserve(free: free)))
             throw Failure(message: String(localized: "There isn’t enough space to extract “\(archive.lastPathComponent)”: it needs \(needed), and \(usable) can be used."))
@@ -265,7 +195,7 @@ nonisolated enum Archiver {
     private static let passwordMarker = "\u{1}password"
 
     private static func passwordProtected(_ archive: URL) -> Failure {
-        Failure(message: String(localized: "“\(archive.lastPathComponent)” is password-protected. Open it with Archive Utility to enter the password."))
+        Failure(message: ArchiveLister.passwordProtected(archive.lastPathComponent))
     }
 
     /// Everything in `boundary` (a folder, or a single file) must stay inside it: a link may only point within it,

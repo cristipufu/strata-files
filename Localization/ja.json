@@ -854,7 +854,6 @@
     "Link · %@": "リンク · %@",
     "List": "リスト",
     "List columns": "リストの列",
-    "Listing this archive took too long.": "このアーカイブの一覧の取得に時間がかかりすぎました。",
     "Loading…": "読み込み中…",
     "Location": "場所",
     "Locations": "場所",
@@ -1346,7 +1345,6 @@
     "Stop All": "すべてを停止",
     "Stop and Quit": "停止して終了",
     "Stopped": "停止",
-    "Stopped after %lld s": "%lld秒後に停止しました",
     "Stopped · %@ of %@ done": "停止 · %@ / %@完了",
     "Stopped.": "停止しました。",
     "Stopped: the disk was running out of space.": "停止しました: ディスクの空き容量が不足しました。",
@@ -1707,6 +1705,7 @@
       "other": "「%@」のゴミ箱にはほかに%lld項目があります。"
     },
     "“%@” holds %@.": "「%@」の展開後のサイズは%@です。",
+    "“%@” holds at least %@.": "「%@」の展開後のサイズは%@以上です。",
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」にはリンクしか含まれていないため、展開されませんでした。",
     "“%@” in %@": "%2$@内の「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "アーカイブ内の「%@」を確認できなかったため、何も展開されませんでした。",

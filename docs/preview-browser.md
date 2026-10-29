@@ -95,10 +95,11 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   caught, all 44 Python regressions pass, 22 catalogs remain complete and both source audits pass. The preview
   cannot open the underlying browser's file-command palette while it has focus.
 
-- Selective archive stage implemented and reviewed. A standalone C helper reads a pinned
-  archive descriptor using macOS's libarchive. It has no filesystem, network or subprocess access after entering
-  its sandbox. Passwords arrive through stdin and stay with this preview; they never enter arguments, preferences,
-  logs or the keychain. Encrypted ZIP is supported; unsupported 7z/RAR encryption is reported without repeated prompts.
+- Selective archive stage implemented and reviewed. The archive service, an XPC service in the app with an App Sandbox
+  of its own, starts a worker for each read that inherits that sandbox and reads a pinned archive descriptor using
+  macOS's libarchive, kept from your files, the network and other programs. Passwords reach the worker through its
+  request pipe and stay with this preview; they never enter arguments, messages, preferences, logs or the keychain.
+  Encrypted ZIP is supported; unsupported 7z/RAR encryption is reported without repeated prompts.
 - Selected regular files render through the existing file preview. Explicit Copy stages exactly the chosen member
   or subtree for the owning clipboard and transfer queue; Paste and Move copies temporary sources, and normal Paste
   supplies conflict handling, History and Undo. Open also keeps its exported file alive beyond the preview. A delayed
@@ -109,9 +110,10 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   member's location, never a private staging path.
 - Limits are explicit: 32 MiB per automatic member preview, 60 MiB of worker output per selection, 128 MiB of preview
   cache including orphaned files, 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a
-  20-second worker deadline. The isolated helper also has a CPU limit and a sampled 256 MiB resident-memory ceiling;
-  this does not guarantee a per-allocation limit inside the system parser. System libarchive itself is not sanitizer
-  instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim space.
+  20-second read deadline (the service ends a worker after 25). Each worker also has a CPU limit and a sampled 256 MiB
+  resident-memory ceiling; this does not guarantee a per-allocation limit inside the system parser. System libarchive
+  itself is not sanitizer instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim
+  space.
 - Selective extraction deliberately refuses links, special files, duplicate/ambiguous paths and members with a
   resource fork. Full extraction remains available for those items; selective Copy never silently drops a fork.
   Only file data and quarantine are copied, with safe new permissions; other archive metadata is not applied.

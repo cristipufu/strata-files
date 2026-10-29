@@ -98,8 +98,25 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
-        .target(name: "CArchivePreview", linkerSettings: [.linkedLibrary("archive.2")]),
-        .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"]),
+        .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
+        .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
+        // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
+        // read, which inherits that sandbox (scripts/archive-service.sh assembles and signs both). The service links only
+        // CArchiveSandbox, never the parser.
+        .executableTarget(
+            name: "StrataArchiveService",
+            dependencies: ["CArchiveSandbox"],
+            exclude: ["Info.plist", "ArchiveService.entitlements"]
+        ),
+        .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"], exclude: ["ArchiveWorker.entitlements"]),
+        .target(name: "StrataArchiveClient", path: "Sources/StrataArchiveClient", swiftSettings: strataSwiftSettings),
+        // Test and development builds reach the service through this host, inside an app built around it.
+        .executableTarget(
+            name: "StrataArchiveHarness",
+            dependencies: ["StrataArchiveClient"],
+            path: "Sources/StrataArchiveHarness",
+            swiftSettings: strataSwiftSettings
+        ),
         .target(
             name: "StrataSupport",
             path: "Sources/Strata/Support",
@@ -123,7 +140,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchiveClient"],
             path: "Sources/Strata/Previews",
             swiftSettings: strataSwiftSettings
         ),
@@ -173,6 +190,7 @@ let package = Package(
                 "StrataModel",
                 "StrataPreviews",
                 "StrataIndex",
+                "StrataArchiveClient",
             ],
             path: "Tests/StrataTests",
             swiftSettings: [.defaultIsolation(MainActor.self)]

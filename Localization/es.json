@@ -948,7 +948,6 @@
     "Link · %@": "Enlace · %@",
     "List": "Lista",
     "List columns": "Columnas de la lista",
-    "Listing this archive took too long.": "Mostrar el contenido de este archivo comprimido ha tardado demasiado.",
     "Loading…": "Cargando…",
     "Location": "Ubicación",
     "Locations": "Ubicaciones",
@@ -1460,7 +1459,6 @@
     "Stop All": "Detener todos",
     "Stop and Quit": "Detener y salir",
     "Stopped": "Detenido",
-    "Stopped after %lld s": "Detenido después de %lld s",
     "Stopped · %@ of %@ done": "Detenido · %@ de %@ terminados",
     "Stopped.": "Detenido.",
     "Stopped: the disk was running out of space.": "Detenido: el disco se estaba quedando sin espacio.",
@@ -1837,6 +1835,7 @@
       "other": "«%@» tiene %lld ítems más en su propia Papelera."
     },
     "“%@” holds %@.": "«%@» contiene %@.",
+    "“%@” holds at least %@.": "«%@» contiene al menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» solo contiene un enlace, así que no se ha extraído.",
     "“%@” in %@": "«%@» en %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "No se ha podido comprobar «%@» del archivo comprimido, así que no se ha extraído nada.",

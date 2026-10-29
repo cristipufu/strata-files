@@ -5,6 +5,7 @@ import Testing
 @testable import Strata
 @testable import StrataPreviews
 
+@Suite(.archiveWorkerApp)
 struct BookPreviewTests {
     private func image(_ width: Int = 12, _ height: Int = 24) throws -> Data {
         let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,

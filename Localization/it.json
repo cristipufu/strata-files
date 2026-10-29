@@ -948,7 +948,6 @@
     "Link · %@": "Link · %@",
     "List": "Elenco",
     "List columns": "Colonne dell’elenco",
-    "Listing this archive took too long.": "L’elenco del contenuto di questo archivio ha richiesto troppo tempo.",
     "Loading…": "Caricamento…",
     "Location": "Posizione",
     "Locations": "Posizioni",
@@ -1460,7 +1459,6 @@
     "Stop All": "Interrompi tutti",
     "Stop and Quit": "Interrompi ed esci",
     "Stopped": "Interrotto",
-    "Stopped after %lld s": "Interrotto dopo %lld s",
     "Stopped · %@ of %@ done": "Interrotto · %@ di %@ completati",
     "Stopped.": "Interrotto.",
     "Stopped: the disk was running out of space.": "Interrotto: lo spazio sul disco stava per esaurirsi.",
@@ -1837,6 +1835,7 @@
       "other": "“%@” ha altri %lld elementi nel proprio Cestino."
     },
     "“%@” holds %@.": "“%@” contiene %@.",
+    "“%@” holds at least %@.": "“%@” contiene almeno %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contiene solo un link, quindi non è stato estratto.",
     "“%@” in %@": "“%@” in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Impossibile verificare “%@” nell’archivio, quindi non è stato estratto nulla.",

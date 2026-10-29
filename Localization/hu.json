@@ -948,7 +948,6 @@
     "Link · %@": "Hivatkozás · %@",
     "List": "Lista",
     "List columns": "Listaoszlopok",
-    "Listing this archive took too long.": "Az archívum tartalmának listázása túl sokáig tartott.",
     "Loading…": "Betöltés…",
     "Location": "Hely",
     "Locations": "Helyek",
@@ -1460,7 +1459,6 @@
     "Stop All": "Összes leállítása",
     "Stop and Quit": "Leállítás és kilépés",
     "Stopped": "Leállítva",
-    "Stopped after %lld s": "Leállítva %lld mp után",
     "Stopped · %@ of %@ done": "Leállítva · %@ / %@ kész",
     "Stopped.": "Leállítva.",
     "Stopped: the disk was running out of space.": "Leállítva: a lemezen kezdett elfogyni a hely.",
@@ -1837,6 +1835,7 @@
       "other": "„%@” saját Kukájában további %lld elem van."
     },
     "“%@” holds %@.": "„%@” tartalma %@.",
+    "“%@” holds at least %@.": "„%@” tartalma legalább %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” csak egy hivatkozást tartalmaz, ezért nem lett kibontva.",
     "“%@” in %@": "„%@” itt: %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Az archívumban lévő „%@” nem ellenőrizhető, ezért semmi sem lett kibontva.",

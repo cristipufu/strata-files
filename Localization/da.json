@@ -948,7 +948,6 @@
     "Link · %@": "Link · %@",
     "List": "Liste",
     "List columns": "Listekolonner",
-    "Listing this archive took too long.": "Det tog for lang tid at vise indholdet af dette arkiv.",
     "Loading…": "Indlæser…",
     "Location": "Placering",
     "Locations": "Lokaliteter",
@@ -1460,7 +1459,6 @@
     "Stop All": "Stop alle",
     "Stop and Quit": "Stop og slut",
     "Stopped": "Stoppet",
-    "Stopped after %lld s": "Stoppet efter %lld s",
     "Stopped · %@ of %@ done": "Stoppet · %@ af %@ færdige",
     "Stopped.": "Stoppet.",
     "Stopped: the disk was running out of space.": "Stoppet: disken var ved at løbe tør for plads.",
@@ -1837,6 +1835,7 @@
       "other": "»%@« har %lld emner mere i sin egen papirkurv."
     },
     "“%@” holds %@.": "»%@« indeholder %@.",
+    "“%@” holds at least %@.": "»%@« indeholder mindst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "»%@« indeholder kun et link, så det blev ikke udpakket.",
     "“%@” in %@": "»%@« i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "»%@« i arkivet kunne ikke kontrolleres, så intet blev udpakket.",

@@ -14,8 +14,11 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   archives), `Index`, `Sidebar`, `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower
   layers as internal library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`)
   imported by `Strata`, so the compiler enforces module boundaries and `IndexStore`'s private storage.
-- `Sources/CArchivePreview/` and `Sources/StrataArchiveWorker/` — the C archive parser and its sandboxed helper
-  process.
+- `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
+  the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
+  holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
+  `Sources/StrataArchiveClient/` sends it requests, and `Sources/StrataArchiveHarness/` hosts it for tests and
+  development builds.
 - `Sources/StrataCLI/` — the `strata` command.
 - `Tests/StrataTests/` — Swift Testing. Shared helpers in `Support/`: `TestTree`, `Prefs.isolated()`, and the injected
   clocks, readers and volumes the principles below ask for (`TestClock`, `ControlledDirectoryReads`, `TestWork`,
@@ -398,6 +401,9 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   macOS-wide spring loading and default-file-manager settings keep their system scope. Defaults registration is
   process-wide even across named suites: keep app fallback values in the typed getters, and use another private suite to
   test inherited preferences.
+- Never crash a process on purpose, not even to show that macOS stops it: each crash leaves a report in
+  `~/Library/Logs/DiagnosticReports` that outlives the test. Show the decision that prevents it instead, and check the
+  system's own behavior once by hand.
 - Tests that use the real Trash remove exactly what they put there (`tree.removeFromTrash()`), matching the saved file
   identity: a restored item's old Trash path can be reused by another file, so a historical path alone is not
   ownership, and that reuse needs its own coverage. Keep parked originals alive through cleanup so their identities
@@ -451,8 +457,28 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   suppressing them, retrying until green or skipping tests. Sanitizers don't instrument prebuilt system frameworks or
   prove unexecuted paths safe.
 - Apple's Undefined Behavior Sanitizer covers C-based languages, not Swift; accepting the flag is no evidence of Swift
-  coverage. `CArchivePreview` and the standalone `StrataArchiveWorker` are C targets: exercise their real parser
-  callbacks under Address and Undefined Behavior Sanitizer when changing them.
+  coverage. `CArchiveSandbox`, `CArchivePreview`, `StrataArchiveService` and `StrataArchiveWorker` are C targets:
+  exercise their real parser callbacks under Address and Undefined Behavior Sanitizer when changing them.
+- Archives are read only through the archive service's workers (docs/archive-sandbox.md): the preview pane's listing,
+  Space previews, copies out and the check before Extract. Extract itself still runs macOS's `tar`. The service is an
+  XPC service with an App Sandbox of its own, the way Apple documents to give part of an app a sandbox of its own
+  (helpers started with `Process` or `posix_spawn` can't get one, and `sandbox_init` is deprecated). It never reads an
+  archive: it starts one worker per read (Contents/Helpers, signed to inherit its sandbox), passing the request with its
+  password, the archive and the output as descriptors, and ends it as soon as the app stops the read, and after 25
+  seconds. The app waits for that confirmation before giving up its read slot.
+- A worker can't reach your files, the network or devices (it can read the system's files and the service's container),
+  has its own CPU, memory, file-size, open-file and process limits, and exits with the read's status. Before reading it
+  drops its bootstrap port, so it can't look up the pasteboard, LaunchServices or any other system service, and it
+  refuses to read if a right to launchd is left. Spawn children with no signal blocked and default signal handling:
+  Dispatch threads block asynchronous signals, and a child inheriting that mask never sees SIGXCPU or SIGTERM.
+- Keep the service's entitlements to the sandbox alone and the worker's to the sandbox and inheritance: each refuses to
+  read without them, and scripts/archive-service.sh, which lays out and signs both for scripts/build.sh and for the
+  tests, fails unless each signature carries exactly them. Local builds use their own service identifier
+  (`dev.strata.app.local.ArchiveService`), since a container belongs to the signature that made it. Suites that read
+  archives use `.archiveWorkerApp`, which builds `StrataArchiveHarness.app` around the real service and worker with that
+  script; its sandboxed services keep two fixed identifiers, since macOS keeps a container for each sandboxed identifier
+  and a command-line process can't remove it. A build run outside an app (`swift run`) can read archives only once those
+  tests have built it.
 - Treat file contents, authenticated saved data, process output and macOS callback values as external input.
   Validate array shapes, offsets, counts, parent/child links and cycles before indexing or walking them. Check CF type
   IDs before casts, and finite values and representable ranges before numeric conversion. Test empty, truncated,
@@ -476,7 +502,8 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   already read.
 - Pipes the app writes to suppress `SIGPIPE` on their own descriptor before use (`F_SETNOSIGPIPE`): a child can close
   its input after a connection check, and a throwing write alone doesn't prevent termination. Test the real transport
-  with a closed-reader fixture, and keep the signal policy local to its descriptor.
+  with a closed-reader fixture wherever another process holds the reader, and keep the signal policy local to its
+  descriptor.
 - A closed `QLPreviewView` can't accept another item. `QuickLookPreviewView` owns the native view for one window
   lifetime, rejects late completions after closing, and creates a new native view when moved to another window. Cover
   deferred selection work and the rich-preview fallback after closing with a controlled scheduler.

@@ -1042,7 +1042,6 @@
     "Link · %@": "Link · %@",
     "List": "Listă",
     "List columns": "Coloanele listei",
-    "Listing this archive took too long.": "Listarea conținutului acestei arhive a durat prea mult.",
     "Loading…": "Se încarcă…",
     "Location": "Locație",
     "Locations": "Locații",
@@ -1574,7 +1573,6 @@
     "Stop All": "Oprește tot",
     "Stop and Quit": "Oprește și ieși",
     "Stopped": "Oprit",
-    "Stopped after %lld s": "Oprit după %lld s",
     "Stopped · %@ of %@ done": "Oprit · %@ din %@ finalizate",
     "Stopped.": "Oprit.",
     "Stopped: the disk was running out of space.": "Oprit: discul rămânea fără spațiu.",
@@ -1967,6 +1965,7 @@
       "other": "„%@” mai are %lld de articole în propriul Coș."
     },
     "“%@” holds %@.": "„%@” conține %@.",
+    "“%@” holds at least %@.": "„%@” conține cel puțin %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” conține doar un link, așa că nu a fost extras.",
     "“%@” in %@": "„%@” în %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@” din arhivă nu a putut fi verificat, așa că nu s-a extras nimic.",

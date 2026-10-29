@@ -1,8 +1,12 @@
 import Foundation
 
-/// Shared by covers, page grids and chapters; cancellation drains the actual worker before returning its slot.
+/// Two workers at a time. Space previews (covers, page grids, chapters) share one allowance; the preview pane's listings
+/// and the surveys before Extract have one each, so none waits behind another. Cancellation drains the actual worker
+/// before returning its slot.
 package actor ArchiveReadAllowance {
     package static let shared = ArchiveReadAllowance()
+    package static let listings = ArchiveReadAllowance()
+    package static let surveys = ArchiveReadAllowance()
     private var active = 0
     private var waiting: [(UUID, CheckedContinuation<Void, Error>)] = []
     package func enter(_ id: UUID) async throws {

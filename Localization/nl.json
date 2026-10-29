@@ -948,7 +948,6 @@
     "Link · %@": "Link · %@",
     "List": "Lijst",
     "List columns": "Lijstkolommen",
-    "Listing this archive took too long.": "Het weergeven van de inhoud van dit archief duurde te lang.",
     "Loading…": "Laden…",
     "Location": "Locatie",
     "Locations": "Locaties",
@@ -1460,7 +1459,6 @@
     "Stop All": "Stop alles",
     "Stop and Quit": "Breek af en stop",
     "Stopped": "Afgebroken",
-    "Stopped after %lld s": "Gestopt na %lld s",
     "Stopped · %@ of %@ done": "Afgebroken · %@ van %@ klaar",
     "Stopped.": "Afgebroken.",
     "Stopped: the disk was running out of space.": "Gestopt: de schijf raakte vol.",
@@ -1837,6 +1835,7 @@
       "other": "“%@” heeft nog %lld onderdelen in zijn eigen prullenmand."
     },
     "“%@” holds %@.": "“%@” bevat %@.",
+    "“%@” holds at least %@.": "“%@” bevat minstens %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” bevat alleen een link, dus het is niet uitgepakt.",
     "“%@” in %@": "“%@” in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "“%@” in het archief kon niet worden gecontroleerd, dus er is niets uitgepakt.",

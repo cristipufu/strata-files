@@ -28,3 +28,6 @@ const char *archive_entry_hardlink(struct archive_entry *);
 mode_t archive_entry_filetype(struct archive_entry *);
 int64_t archive_entry_size(struct archive_entry *);
 time_t archive_entry_mtime(struct archive_entry *);
+int archive_entry_is_encrypted(struct archive_entry *);
+/* libarchive's own statuses: a warning still comes with a usable entry. */
+enum { ARCHIVE_EOF = 1, ARCHIVE_OK = 0, ARCHIVE_WARN = -20 };

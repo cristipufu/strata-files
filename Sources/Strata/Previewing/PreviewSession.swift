@@ -82,7 +82,10 @@ import StrataPreviews
                 do {
                     try Task.checkCancellation()
                     if let read { result = .success(try await read(entry.url, kind)) }
-                    else { result = .success(try PreviewArchiveReader.listing(await access.read())) }
+                    else {
+                        let listed = PreviewArchiveListing(records: try await access.read(), end: .complete)
+                        result = .success(try ArchiveLister.tree(listed, compressed: nil, named: entry.url.lastPathComponent))
+                    }
                 } catch { result = .failure(error) }
                 guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
                 archiveTask = nil

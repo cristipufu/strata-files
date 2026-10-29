@@ -854,7 +854,6 @@
     "Link · %@": "連結 · %@",
     "List": "列表",
     "List columns": "列表直欄",
-    "Listing this archive took too long.": "列出此封存檔的內容耗時過長。",
     "Loading…": "載入中⋯",
     "Location": "位置",
     "Locations": "位置",
@@ -1346,7 +1345,6 @@
     "Stop All": "停止全部",
     "Stop and Quit": "停止並結束",
     "Stopped": "已停止",
-    "Stopped after %lld s": "%lld秒後停止",
     "Stopped · %@ of %@ done": "已停止 · 已完成%@/%@",
     "Stopped.": "已停止。",
     "Stopped: the disk was running out of space.": "已停止：磁碟空間即將用盡。",
@@ -1707,6 +1705,7 @@
       "other": "「%@」本身的垃圾桶中還有%lld個項目。"
     },
     "“%@” holds %@.": "「%@」解壓縮後為%@。",
+    "“%@” holds at least %@.": "「%@」解壓縮後至少為%@。",
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」僅包含一個連結，因此未解壓縮。",
     "“%@” in %@": "%2$@中的「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "無法檢查封存檔中的「%@」，因此未解壓縮任何內容。",

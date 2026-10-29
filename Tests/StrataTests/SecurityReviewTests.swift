@@ -82,14 +82,23 @@ struct SecurityReviewTests {
     }
 
     @Test func archiveParsingObservesCancellationAndProcessTimeoutsLeaveLaterRunsAlone() async throws {
-        let run = ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 1 Oct 11 2026 file\n".utf8), status: 0, timedOut: false, truncated: false)
-        let task = Task { try ArchiveLister.parse(run, kind: .tar) }
+        let file = PreviewArchiveRecord(path: ["file"], kind: 1, size: 1, modified: .distantPast, body: nil)
+        let task = Task { try ArchiveLister.tree(PreviewArchiveListing(records: [file], end: .complete), compressed: nil, named: "pack.tar") }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
         let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap '' TERM; while :; do :; done"], timeout: 0.05)
         #expect(stopped.timedOut && stopped.status != 0)
         let healthy = try await ProcessRunner.run("/usr/bin/printf", ["kept"], timeout: 2)
         #expect(healthy.status == 0 && healthy.output == Data("kept".utf8) && !healthy.timedOut)
+    }
+
+    @Test func aToolStoppedAtItsTimeoutKeepsTheOutputItWritesAsItStops() async throws {
+        let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap 'printf flushed; exit 1' TERM; while :; do :; done"],
+                                                  timeout: 0.2)
+        // A machine too busy to run the trap before the delayed SIGKILL shows nothing either way, so only a shell that
+        // got to write is held to its output.
+        #expect(stopped.timedOut)
+        #expect(stopped.status == SIGKILL || (stopped.status == 1 && stopped.output == Data("flushed".utf8)))
     }
 
     @Test func storageFoldersAndCachesArePrivateWithoutChmodThroughLinks() throws {

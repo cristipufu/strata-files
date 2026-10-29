@@ -4,6 +4,7 @@ import Testing
 
 /// Extract: an archive only ever adds its own items inside the folder it's extracted into. Links leading out of it,
 /// entries named to climb out ("../"), special files and setuid bits never make it, and nothing there is replaced.
+@Suite(.archiveWorkerApp)
 struct ArchiveSafetyTests {
     /// A tar of `folder`'s contents, entries renamed by bsdtar's `-s` substitutions (to craft hostile names).
     private func tar(_ tree: TestTree, _ folder: String, named name: String, rename: [String] = []) async throws -> URL {
@@ -21,10 +22,56 @@ struct ArchiveSafetyTests {
     }
 
     private func extract(_ archive: URL, into folder: URL) async throws -> URL {
-        let inspection = await Archiver.inspect(archive, kind: .tar)
+        let inspection = await Archiver.inspect(archive)
         return try await TestWork.run {
             try Archiver.extract(archive, kind: .tar, inspection: inspection, into: folder, control: Archiver.Control())
         }
+    }
+
+    @Test func aSurveyThatDidntFinishStillRefusesAnArchiveThatCantFit() async throws {
+        let tree = try TestTree("payload/", "payload/ok.txt", "dest/")
+        let archive = try await tar(tree, "payload", named: "big.tar")
+        let before = tree.snapshot()
+        // What a survey counted before running into a limit is a lower bound: past the disk's free space, that alone
+        // refuses.
+        let partial = Archiver.Inspection(entries: 1, bytes: .max, limited: true), destination = tree.url("dest")
+        await #expect(throws: Archiver.Failure.self) {
+            try await TestWork.run {
+                try Archiver.extract(archive, kind: .tar, inspection: partial, into: destination, control: Archiver.Control())
+            }
+        }
+        #expect(tree.snapshot() == before)
+        // One stopped by damage may have counted a size the archive doesn't hold, so it refuses nothing.
+        let damaged = Archiver.Inspection(entries: 1, bytes: .max)
+        let placed = try await TestWork.run {
+            try Archiver.extract(archive, kind: .tar, inspection: damaged, into: destination, control: Archiver.Control())
+        }
+        #expect(placed.lastPathComponent == "ok.txt" && tree.text("dest/ok.txt") == "payload/ok.txt")
+    }
+
+    @Test func openingAnArchiveAsAFolderAsksWhenItsLargeOrItsSurveyDidntFinish() {
+        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, complete: true)))
+        #expect(BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30, complete: true)))
+        // A survey that ran into a limit counted only part of it.
+        #expect(BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, limited: true)))
+        // One stopped by damage or a password, or that counted nothing, says nothing about the size.
+        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 0, limited: true)))
+        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20)))
+        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30)))
+        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection()))
+    }
+
+    @Test func anEncryptedArchiveIsRefusedBeforeAnythingIsUnpacked() async throws {
+        let tree = try TestTree("payload/", "payload/ok.txt", "dest/")
+        let archive = try await tar(tree, "payload", named: "locked.tar")
+        let before = tree.snapshot(), destination = tree.url("dest")
+        let encrypted = Archiver.Inspection(entries: 1, bytes: 1, encrypted: true, complete: true)
+        await #expect(throws: Archiver.Failure.self) {
+            try await TestWork.run {
+                try Archiver.extract(archive, kind: .tar, inspection: encrypted, into: destination, control: Archiver.Control())
+            }
+        }
+        #expect(tree.snapshot() == before)
     }
 
     @Test func aLinkLeadingOutStopsTheWholeExtraction() async throws {
@@ -71,7 +118,7 @@ struct ArchiveSafetyTests {
         let before = tree.snapshot()
         let destination = tree.url("dest/copy")
         let identity = try #require(OperationLog.identity(destination.path))
-        let inspection = await Archiver.inspect(archive, kind: .tar)
+        let inspection = await Archiver.inspect(archive)
         // An empty folder matters too: plain rename would silently replace it with the extracted contents.
         await #expect(throws: (any Error).self) {
             try await TestWork.run {

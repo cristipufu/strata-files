@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Strata
 
+@Suite(.archiveWorkerApp)
 struct PreviewArchiveRootTests {
     @Test func tarRootDirectoriesAreSkippedWhileChosenMembersRemainExact() async throws {
         for root in [".", "./.", "./", "././."] {

@@ -948,7 +948,6 @@
     "Link · %@": "Bağlantı · %@",
     "List": "Liste",
     "List columns": "Liste sütunları",
-    "Listing this archive took too long.": "Bu arşivin listelenmesi çok uzun sürdü.",
     "Loading…": "Yükleniyor…",
     "Location": "Konum",
     "Locations": "Konumlar",
@@ -1460,7 +1459,6 @@
     "Stop All": "Tümünü Durdur",
     "Stop and Quit": "Durdur ve Çık",
     "Stopped": "Durduruldu",
-    "Stopped after %lld s": "%lld sn sonra durduruldu",
     "Stopped · %@ of %@ done": "Durduruldu · %@ / %@ tamamlandı",
     "Stopped.": "Durduruldu.",
     "Stopped: the disk was running out of space.": "Durduruldu: diskteki alan tükeniyordu.",
@@ -1837,6 +1835,7 @@
       "other": "“%@” diskinin kendi Çöp Sepeti’nde %lld öğe daha var."
     },
     "“%@” holds %@.": "“%@” içinde %@ veri var.",
+    "“%@” holds at least %@.": "“%@” içinde en az %@ veri var.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” yalnızca bir bağlantı içerdiği için ayıklanmadı.",
     "“%@” in %@": "%2$@ içinde “%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Arşivdeki “%@” denetlenemediği için hiçbir şey ayıklanmadı.",

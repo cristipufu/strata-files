@@ -23,6 +23,13 @@ extension BrowserViewController {
     /// Unpacking more than this asks first.
     private static let largeArchive: Int64 = 2 << 30
 
+    /// Whether opening an archive as a folder asks first: when it holds more than `largeArchive`, or when its survey ran
+    /// into a limit after counting some of it, which says only that it holds at least that much.
+    static func asksBeforeOpening(_ inspection: Archiver.Inspection) -> Bool {
+        guard let atLeast = inspection.lowerBound else { return false }
+        return inspection.complete ? atLeast > largeArchive : atLeast > 0
+    }
+
     /// Whether this pane shows (or the selection is) inside a read-only copy (an archive opened as a folder, or a
     /// container's files): changing things there is off.
     func isReadOnlyCopy(_ url: URL) -> Bool {
@@ -55,7 +62,7 @@ extension BrowserViewController {
             delegate?.browser(self, showArchiveCopy: folder)
             return
         }
-        guard let folder = ArchiveCache.folder(for: archive), let kind = ArchiveKind(fileName: archive.lastPathComponent) else {
+        guard let folder = ArchiveCache.folder(for: archive), ArchiveKind(fileName: archive.lastPathComponent) != nil else {
             let alert = NSAlert()
             alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
             alert.informativeText = String(localized: "It can’t be read.")
@@ -75,7 +82,7 @@ extension BrowserViewController {
         OpeningArchives.waiters[key] = [waiter]
         delegate?.browser(self, openingArchive: archive, stop: nil)
         Task { [weak self] in
-            let inspection = await Archiver.inspect(archive, kind: kind)
+            let inspection = await Archiver.inspect(archive)
             let activeWaiters = (OpeningArchives.waiters[key] ?? []).filter(\.isActive)
             // Keep unpacking while the opening pane or any waiting pane is still alive.
             guard let activeOwner = (self?.navigationRevision == startedRevision ? self : nil) ?? activeWaiters.first?.browser ?? self else {
@@ -83,10 +90,13 @@ extension BrowserViewController {
                 return
             }
             let activeWindow = activeOwner.view.window ?? window
-            if inspection.complete, inspection.bytes > Self.largeArchive {
+            if Self.asksBeforeOpening(inspection) {
                 let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
                 let alert = NSAlert()
-                alert.messageText = String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
+                alert.messageText = inspection.complete
+                    ? String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
+                    : String(localized: "“\(archive.lastPathComponent)” holds at least \(size).",
+                             comment: "An archive, then the least its unpacked size can be (“5 GB”): counting it didn’t finish")
                 alert.informativeText = String(localized: "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead.")
                 alert.addButton(withTitle: String(localized: "Open", comment: "Alert button: open the archive as a folder"))
                 alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))

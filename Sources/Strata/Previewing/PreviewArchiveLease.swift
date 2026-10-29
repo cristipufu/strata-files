@@ -91,25 +91,18 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
             }
         }
         guard safe(member), !records.isEmpty, records.count <= 50_000 else { throw PreviewArchiveError.unsafe }
-        var total = 0, seen: Set<String> = [], types: [String: UInt8] = [:], spellings: [String: Data] = [:]
+        var total = 0, names = ArchivePathNames()
         for record in records {
             guard safe(record.path), record.path.count >= member.count,
                   zip(record.path, member).allSatisfy({ $0.utf8.elementsEqual($1.utf8) }),
-                  record.kind == 1 || record.kind == 2, seen.insert(record.path.joined(separator: "/")).inserted,
+                  record.kind == 1 || record.kind == 2,
                   record.kind == 1 ? record.size >= 0 && record.body.map({ Int64($0.count) }) == record.size : record.size == 0 && record.body == nil else {
                 throw PreviewArchiveError.unsafe
             }
             let bytes = record.body?.count ?? 0
-            guard bytes <= PreviewArchiveReader.outputLimit - total else { throw PreviewArchiveError.limit }
+            guard bytes <= PreviewArchiveReader.memberLimit - total else { throw PreviewArchiveError.limit }
             total += bytes
-            for depth in 1...record.path.count {
-                let key = record.path.prefix(depth).joined(separator: "/"), raw = Data(key.utf8)
-                let type: UInt8 = depth == record.path.count ? record.kind : 2
-                guard types[key].map({ $0 == type }) ?? true,
-                      spellings[key].map({ $0 == raw }) ?? true,
-                      types.count < 100_000 || types[key] != nil else { throw PreviewArchiveError.unsafe }
-                types[key] = type; spellings[key] = raw
-            }
+            try names.add(record.path, kind: record.kind)
         }
     }
 

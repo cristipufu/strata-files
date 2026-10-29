@@ -2,6 +2,7 @@ import AppKit
 import Testing
 @testable import Strata
 
+@Suite(.archiveWorkerApp)
 struct PreviewProviderContentTests {
     @Test func folderBrowsingListsOnlyMetadataAndSelectionFetchesExactlyOneFile() async throws {
         let tree = try TestTree("copy/folder/a.txt", "copy/folder/b.txt", "copy/folder/sub/inside.txt", "outside/keep")

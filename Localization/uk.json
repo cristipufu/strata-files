@@ -1136,7 +1136,6 @@
     "Link · %@": "Посилання · %@",
     "List": "Список",
     "List columns": "Стовпці списку",
-    "Listing this archive took too long.": "Отримання списку вмісту цього архіву тривало надто довго.",
     "Loading…": "Завантаження…",
     "Location": "Розташування",
     "Locations": "Місця",
@@ -1688,7 +1687,6 @@
     "Stop All": "Зупинити всі",
     "Stop and Quit": "Зупинити й вийти",
     "Stopped": "Зупинено",
-    "Stopped after %lld s": "Зупинено через %lld с",
     "Stopped · %@ of %@ done": "Зупинено · виконано %@ із %@",
     "Stopped.": "Зупинено.",
     "Stopped: the disk was running out of space.": "Зупинено: на диску закінчувалося місце.",
@@ -2097,6 +2095,7 @@
       "other": "«%@» має ще %lld елемента у власному Смітнику."
     },
     "“%@” holds %@.": "«%@» містить %@.",
+    "“%@” holds at least %@.": "«%@» містить щонайменше %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» містить лише посилання, тому його не розпаковано.",
     "“%@” in %@": "«%@» у %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Не вдалося перевірити «%@» в архіві, тому нічого не розпаковано.",

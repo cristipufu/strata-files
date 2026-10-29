@@ -1042,7 +1042,6 @@
     "Link · %@": "Odkaz · %@",
     "List": "Seznam",
     "List columns": "Sloupce seznamu",
-    "Listing this archive took too long.": "Výpis obsahu tohoto archivu trval příliš dlouho.",
     "Loading…": "Načítání…",
     "Location": "Umístění",
     "Locations": "Místa",
@@ -1574,7 +1573,6 @@
     "Stop All": "Zastavit vše",
     "Stop and Quit": "Zastavit a ukončit",
     "Stopped": "Zastaveno",
-    "Stopped after %lld s": "Zastaveno po %lld s",
     "Stopped · %@ of %@ done": "Zastaveno · hotovo %@ z %@",
     "Stopped.": "Zastaveno.",
     "Stopped: the disk was running out of space.": "Zastaveno: na disku docházelo místo.",
@@ -1967,6 +1965,7 @@
       "other": "„%@“ má ve vlastním koši ještě %lld položek."
     },
     "“%@” holds %@.": "„%@“ obsahuje %@.",
+    "“%@” holds at least %@.": "„%@“ obsahuje nejméně %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@“ obsahuje jen odkaz, proto nebyl rozbalen.",
     "“%@” in %@": "„%@“ v %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@“ v archivu se nepodařilo ověřit, proto nebylo nic rozbaleno.",

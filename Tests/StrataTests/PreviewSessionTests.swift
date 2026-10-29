@@ -2,6 +2,7 @@ import AppKit
 import Testing
 @testable import Strata
 
+@Suite(.archiveWorkerApp)
 struct PreviewSessionTests {
     @Test func theNativePreviewReaderIsBoundedAndDoesNotWalkNestedOrHiddenFolders() async throws {
         let tree = try TestTree("folder/sub/inside", "folder/a", "folder/.hidden", "installed/app", "system/tool")
@@ -133,8 +134,8 @@ struct PreviewSessionTests {
         let before = tree.snapshot()
         let link = try #require(FileEntry(url: tree.url("folder/link")))
         let session = PreviewSession(reader: DirectoryReader { _, _, _ in [link] }, archiveReader: { _, _ in
-            try ArchiveLister.parse(ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 7 Oct 11 2026 nested/readme.txt\n".utf8),
-                                                         status: 0, timedOut: false, truncated: false), kind: .tar)
+            let readme = PreviewArchiveRecord(path: ["nested", "readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+            return try ArchiveLister.tree(PreviewArchiveListing(records: [readme], end: .complete), compressed: nil, named: "pack.tar")
         })
         session.show(try #require(FileEntry(url: tree.url("folder"))), showHidden: true, applications: .standard)
         await session.task?.value
@@ -216,8 +217,8 @@ struct PreviewSessionTests {
         let tree = try TestTree("pack.tar")
         let environment = try PreviewEnvironment(tree)
         let before = tree.snapshot()
-        let listing = try ArchiveLister.parse(ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 7 Oct 11 2026 readme.txt\n".utf8),
-                                                                   status: 0, timedOut: true, truncated: false), kind: .tar)
+        let readme = PreviewArchiveRecord(path: ["readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+        let listing = try ArchiveLister.tree(PreviewArchiveListing(records: [readme], end: .stopped(.limit)), compressed: nil, named: "pack.tar")
         let session = PreviewSession(reader: environment.services.directories, archiveReader: { _, _ in listing })
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
                                                thumbnails: environment.services.thumbnails, copies: environment.services.copies)

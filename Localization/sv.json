@@ -948,7 +948,6 @@
     "Link · %@": "Länk · %@",
     "List": "Lista",
     "List columns": "Listkolumner",
-    "Listing this archive took too long.": "Det tog för lång tid att lista arkivet.",
     "Loading…": "Läser in…",
     "Location": "Plats",
     "Locations": "Platser",
@@ -1460,7 +1459,6 @@
     "Stop All": "Stoppa alla",
     "Stop and Quit": "Stoppa och avsluta",
     "Stopped": "Stoppad",
-    "Stopped after %lld s": "Stoppades efter %lld s",
     "Stopped · %@ of %@ done": "Stoppad · %@ av %@ klara",
     "Stopped.": "Stoppad.",
     "Stopped: the disk was running out of space.": "Stoppades: skivan höll på att bli full.",
@@ -1837,6 +1835,7 @@
       "other": "”%@” har %lld objekt till i sin egen papperskorg."
     },
     "“%@” holds %@.": "”%@” innehåller %@.",
+    "“%@” holds at least %@.": "”%@” innehåller minst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "”%@” innehåller bara en länk, så det packades inte upp.",
     "“%@” in %@": "”%@” i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "”%@” i arkivet kunde inte kontrolleras, så inget packades upp.",

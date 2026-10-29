@@ -105,7 +105,7 @@ final class ArchiveJob {
                 register(url, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 let kind = try Self.kind(archive)
-                let inspection = try await inspect(archive, kind: kind)
+                let inspection = try await inspect(archive)
                 let control = control
                 url = try await Self.onWorkerThread {
                     try Archiver.extract(archive, kind: kind, inspection: inspection, into: folder, control: control)
@@ -113,7 +113,7 @@ final class ArchiveJob {
                 register(url, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
                 let kind = try Self.kind(archive)
-                let inspection = try await inspect(archive, kind: kind)
+                let inspection = try await inspect(archive)
                 let control = control
                 try await Self.onWorkerThread {
                     try Archiver.extractContents(archive, kind: kind, inspection: inspection, to: folder, control: control)
@@ -133,13 +133,13 @@ final class ArchiveJob {
     }
 
     /// Reads the archive's listing ("Preparing…" meanwhile) for its size and how many entries extraction will report.
-    private func inspect(_ archive: URL, kind: ArchiveKind) async throws -> Archiver.Inspection {
+    private func inspect(_ archive: URL) async throws -> Archiver.Inspection {
         state = .scanning
         onChange?(self)
-        let inspection = await Archiver.inspect(archive, kind: kind)
+        let inspection = await Archiver.inspect(archive)
         try Task.checkCancellation()
         if control.isCancelled { throw CancellationError() }
-        totalEntries = inspection.complete ? inspection.progressTotal : 0
+        totalEntries = inspection.complete ? inspection.entries : 0
         if inspection.complete { weight = max(1, Double(inspection.bytes)) }
         state = .running
         onChange?(self)

@@ -854,7 +854,6 @@
     "Link · %@": "链接 · %@",
     "List": "列表",
     "List columns": "列表栏",
-    "Listing this archive took too long.": "列出此归档的内容耗时过长。",
     "Loading…": "正在载入…",
     "Location": "位置",
     "Locations": "位置",
@@ -1346,7 +1345,6 @@
     "Stop All": "全部停止",
     "Stop and Quit": "停止并退出",
     "Stopped": "已停止",
-    "Stopped after %lld s": "%lld秒后停止",
     "Stopped · %@ of %@ done": "已停止 · 已完成%@/%@",
     "Stopped.": "已停止。",
     "Stopped: the disk was running out of space.": "已停止：磁盘空间即将用尽。",
@@ -1707,6 +1705,7 @@
       "other": "“%@”自身的废纸篓中还有%lld个项目。"
     },
     "“%@” holds %@.": "“%@”解压缩后为%@。",
+    "“%@” holds at least %@.": "“%@”解压缩后至少为%@。",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@”仅包含一个链接，因此未解压缩。",
     "“%@” in %@": "%2$@中的“%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "无法检查归档中的“%@”，因此未解压缩任何内容。",

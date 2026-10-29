@@ -4204,8 +4204,8 @@
     "file": "Strata/Previews/ArchiveLister.swift",
     "rule": "Security review: archive parsing honors cancellation",
     "tests": "SecurityReviewTests/archiveParsing",
-    "find": "while !remaining.isEmpty {\n            try Task.checkCancellation()",
-    "replace": "while !remaining.isEmpty {"
+    "find": "for record in listed.records {\n            try Task.checkCancellation()",
+    "replace": "for record in listed.records {"
   },
   {
     "file": "Strata/Dev/GitRepository.swift",
@@ -4577,6 +4577,104 @@
     "replace": "if (0 && needs_full_extraction(entry))",
     "rule": "Space preview archives: selective copy silently drops a resource fork",
     "tests": "PreviewArchiveTests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (!strata_archive_sandboxed()) return strata_archive_unsandboxed;",
+    "replace": "if (0) return strata_archive_unsandboxed;",
+    "rule": "Space preview archives: a worker reads archives without its own sandbox entitlement",
+    "tests": "PreviewArchiveTests/aServiceOrWorkerSignedWithoutItsSandboxRefusesToReadAnything"
+  },
+  {
+    "file": "StrataArchiveService/main.c",
+    "find": "refusal = !strata_archive_sandboxed() ? strata_archive_unsandboxed :",
+    "replace": "refusal = 0 ? strata_archive_unsandboxed :",
+    "rule": "Space preview archives: the archive service starts workers without its sandbox",
+    "tests": "PreviewArchiveTests/aServiceOrWorkerSignedWithoutItsSandboxRefusesToReadAnything"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (task_set_special_port(self, TASK_BOOTSTRAP_PORT, MACH_PORT_NULL) != KERN_SUCCESS) return 0;",
+    "replace": "if (0) return 0;",
+    "rule": "Space preview archives: a worker keeps its bootstrap port",
+    "tests": "PreviewArchiveTests/theWorkerListsWithoutExtractingAndReadsOnlyTheExactChosenMember"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (references && mach_port_mod_refs(self, launchd, MACH_PORT_RIGHT_SEND, all) != KERN_SUCCESS) return 0;",
+    "replace": "if (0) return 0;",
+    "rule": "Space preview archives: a worker keeps its send rights to launchd",
+    "tests": "PreviewArchiveTests/theWorkerListsWithoutExtractingAndReadsOnlyTheExactChosenMember"
+  },
+  {
+    "file": "StrataArchiveService/main.c",
+    "find": "if (running > 0) { stopped = 1; kill(running, SIGKILL); }\n            return;\n        }\n        started = 1;",
+    "replace": "return;\n        }\n        started = 1;",
+    "rule": "Space preview archives: the archive service ignores a request to stop a read",
+    "tests": "PreviewArchiveTests/aStoppedReadReturnsOnlyOnceTheServiceHasEndedItsWorker"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "if (extracting && status == ARCHIVE_WARN) { result = strata_archive_needs_extraction; goto done; }",
+    "replace": "if (0) { result = strata_archive_needs_extraction; goto done; }",
+    "rule": "Space preview archives: a copy out takes an entry libarchive warned about",
+    "tests": "PreviewArchiveTests/aWarningFromTheParser"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "find": "guard spellings[known].elementsEqual(part.utf8), types[known] == type, !(last && listed[known]) else {",
+    "replace": "guard types[known] == type, !(last && listed[known]) else {",
+    "rule": "Space preview archives: one name spelled two ways reaches a copy out",
+    "tests": "PreviewArchiveTests/theParserRefusesAliases"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "find": "types[known] == type, !(last && listed[known]) else {",
+    "replace": "types[known] == type else {",
+    "rule": "Space preview archives: a path listed twice reaches a copy out",
+    "tests": "PreviewArchiveTests/theParserRefusesAliases"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "if let atLeast = inspection.lowerBound, let free = availableSpace(onDiskOf: disk),",
+    "replace": "if inspection.complete, let atLeast = inspection.lowerBound, let free = availableSpace(onDiskOf: disk),",
+    "rule": "Extract: an archive a partial survey already shows can't fit is unpacked anyway",
+    "tests": "ArchiveSafetyTests/aSurveyThatDidntFinish"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "if inspection.encrypted { throw passwordProtected(archive) }",
+    "replace": "if false { throw passwordProtected(archive) }",
+    "rule": "Extract: an encrypted archive is unpacked without asking for its password",
+    "tests": "ArchiveSafetyTests/anEncryptedArchiveIsRefused"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "static int over_cpu(void) { return cpu_used() >= cpu_limit; }",
+    "replace": "static int over_cpu(void) { return 0; }",
+    "rule": "Space preview archives: a worker ignores its CPU limit",
+    "tests": "PreviewArchiveTests/aReadOverItsCPUOrMemoryLimitStopsAsTooLarge"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "static int over_memory(void) { return resident() >= memory_limit; }",
+    "replace": "static int over_memory(void) { return 0; }",
+    "rule": "Space preview archives: a worker ignores its memory limit",
+    "tests": "PreviewArchiveTests/aReadOverItsCPUOrMemoryLimitStopsAsTooLarge"
+  },
+  {
+    "file": "StrataArchiveClient/PipeReader.swift",
+    "find": "guard data.count + count <= limit else {",
+    "replace": "guard data.count + count <= Int.max else {",
+    "rule": "Space preview archives: the app keeps reading the archive service's output past its limit",
+    "tests": "PreviewArchiveTests/outputPastTheLimitStopsTheReadAndTheServiceStaysUsable"
+  },
+  {
+    "file": "StrataArchiveClient/ArchiveService.swift",
+    "find": "guard request.count <= requestLimit else { return nil }",
+    "replace": "guard request.count <= Int.max else { return nil }",
+    "rule": "Space preview archives: the app sends a request past its size limit",
+    "tests": "PreviewArchiveTests/requestsAreBoundedBeforeTheWorkerReadsThem"
   },
   {
     "file": "Strata/Previewing/PreviewMeasurement.swift",

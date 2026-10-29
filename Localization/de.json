@@ -948,7 +948,6 @@
     "Link · %@": "Link · %@",
     "List": "Liste",
     "List columns": "Listenspalten",
-    "Listing this archive took too long.": "Das Auflisten dieses Archivs hat zu lange gedauert.",
     "Loading…": "Laden …",
     "Location": "Ort",
     "Locations": "Orte",
@@ -1460,7 +1459,6 @@
     "Stop All": "Alle stoppen",
     "Stop and Quit": "Stoppen und beenden",
     "Stopped": "Gestoppt",
-    "Stopped after %lld s": "Nach %lld s gestoppt",
     "Stopped · %@ of %@ done": "Gestoppt · %@ von %@ erledigt",
     "Stopped.": "Gestoppt.",
     "Stopped: the disk was running out of space.": "Gestoppt: Auf dem Volume wurde der Speicherplatz knapp.",
@@ -1837,6 +1835,7 @@
       "other": "„%@“ hat %lld weitere Objekte in seinem eigenen Papierkorb."
     },
     "“%@” holds %@.": "„%@“ enthält %@.",
+    "“%@” holds at least %@.": "„%@“ enthält mindestens %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@“ enthält nur einen Link und wurde daher nicht entpackt.",
     "“%@” in %@": "„%@“ in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@“ im Archiv konnte nicht geprüft werden, daher wurde nichts entpackt.",

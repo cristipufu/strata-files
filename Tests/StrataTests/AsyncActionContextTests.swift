@@ -4,6 +4,7 @@ import Synchronization
 import Testing
 @testable import Strata
 
+@Suite(.archiveWorkerApp)
 struct AsyncActionContextTests {
     nonisolated private final class DummyBackend: RemoteBackend {
         var isAlive: Bool { true }

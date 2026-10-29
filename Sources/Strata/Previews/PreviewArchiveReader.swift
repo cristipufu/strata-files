@@ -1,4 +1,6 @@
 import Foundation
+import os
+import StrataArchiveClient
 import StrataModel
 import StrataSupport
 
@@ -34,6 +36,8 @@ nonisolated package final class PreviewArchiveSource: Sendable {
                 && a.changed.tv_nsec == b.changed.tv_nsec
         }
     }
+    package var size: Int64 { stamp.size }
+
     package init(_ url: URL) throws {
         guard url.isFileURL else { throw PreviewArchiveError.unreadable }
         chosen = try ChosenFile(url)
@@ -73,95 +77,291 @@ nonisolated package struct PreviewArchiveRecord: Sendable {
     }
 }
 
+/// The names of an archive's entries, as a tree of components: each is looked up once, so checking a path takes time in
+/// proportion to its length however deep it is. A path listed twice, one name spelled two ways (a Unicode alias), and a
+/// name that is both a file and a folder are refused before anything is written. A folder a deeper path implied may
+/// still be listed itself, once.
+nonisolated package struct ArchivePathNames {
+    private struct Component: Hashable { let parent: Int; let name: String }
+    private var components: [Component: Int] = [:], spellings: [Data] = [], types: [UInt8] = [], listed: [Bool] = []
+
+    package init() {}
+
+    /// Adds `parts`: the last of kind `kind` (2 for a folder), the rest folders.
+    package mutating func add(_ parts: [String], kind: UInt8) throws {
+        var parent = -1
+        for (depth, part) in parts.enumerated() {
+            let key = Component(parent: parent, name: part), last = depth == parts.count - 1
+            let type: UInt8 = last ? kind : 2
+            if let known = components[key] {
+                guard spellings[known].elementsEqual(part.utf8), types[known] == type, !(last && listed[known]) else {
+                    throw PreviewArchiveError.unsafe
+                }
+                if last { listed[known] = true }
+                parent = known
+            } else {
+                guard spellings.count < 100_000 else { throw PreviewArchiveError.limit }
+                parent = spellings.count
+                components[key] = parent
+                spellings.append(Data(part.utf8))
+                types.append(type)
+                listed.append(last)
+            }
+        }
+    }
+}
+
+/// What a survey counted, for the check before Extract. Counts from one that didn't finish are lower bounds; `limited`
+/// says it stopped at a limit (time, CPU, memory), which an archive too large to count in time meets.
+nonisolated package struct PreviewArchiveSurvey: Sendable, Equatable {
+    package var entries = 0
+    package var bytes: Int64 = 0
+    package var encrypted = false
+    package var complete = false
+    package var limited = false
+    package init(entries: Int = 0, bytes: Int64 = 0, encrypted: Bool = false, complete: Bool = false,
+                 limited: Bool = false) {
+        self.entries = entries; self.bytes = bytes; self.encrypted = encrypted; self.complete = complete
+        self.limited = limited
+    }
+
+    /// The size the archive holds at least: all of it when the survey finished, part of it when the survey ran into a
+    /// limit. A survey stopped by damage may have counted a size the archive doesn't hold, so it says nothing.
+    package var lowerBound: Int64? { complete || limited ? bytes : nil }
+}
+
+/// A listing of a whole archive. One cut short keeps what it read, and says why it stopped.
+nonisolated package struct PreviewArchiveListing: Sendable {
+    package enum End: Sendable, Equatable { case complete, moreEntries, stopped(PreviewArchiveError) }
+    package let records: [PreviewArchiveRecord]
+    package let end: End
+    package init(records: [PreviewArchiveRecord], end: End) { self.records = records; self.end = end }
+}
+
 /// Parses only the worker's bounded, length-delimited protocol. Text command listings never authorize extraction.
 nonisolated package enum PreviewArchiveReader {
     package static let previewLimit = 32 << 20
-    package static let outputLimit = 60 << 20
+    /// The most member data one selection reads.
+    package static let memberLimit = ArchiveService.byteLimit
+    private static let log = Logger(subsystem: "dev.strata.app", category: "archives")
 
-    package static var executable: URL {
-        let bundle = Bundle(for: PreviewArchiveBundle.self)
-        if bundle.bundleURL.pathExtension == "app" {
-            return bundle.bundleURL.appendingPathComponent("Contents/Helpers/StrataArchiveWorker")
-        }
-        return bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("StrataArchiveWorker")
+    /// Where archives are read: the app's archive service, whose identity comes from its own bundle; outside an app,
+    /// the harness; or nowhere, when the app lacks its service.
+    package enum Route: Equatable { case service(String), harness, missingService }
+    package static func route(for bundle: URL) -> Route {
+        guard bundle.pathExtension == "app" else { return .harness }
+        return ArchiveService.identifier(inApp: bundle).map(Route.service) ?? .missingService
     }
+    private static let route = route(for: Bundle(for: PreviewArchiveBundle.self).bundleURL)
+
+    /// Test and development builds aren't an app: they read through the host of an app built around the same service,
+    /// among the build's products (beside the test bundle, or the folder of a bare executable).
+    package static let harnessApp: URL = {
+        let bundle = Bundle(for: PreviewArchiveBundle.self).bundleURL
+        let products = bundle.pathExtension.isEmpty ? bundle : bundle.deletingLastPathComponent()
+        return products.appending(path: "StrataArchiveHarness.app")
+    }()
+    package static let harness = harnessApp.appending(path: "Contents/MacOS/StrataArchiveHarness")
 
     @concurrent package static func read(_ source: PreviewArchiveSource, member: [String]? = nil, directory: Bool = false,
                                 password: String? = nil) async throws -> [PreviewArchiveRecord] {
-        let allowance = ArchiveReadAllowance.shared, id = UUID()
+        let path = member?.joined(separator: "/") ?? ""
+        guard path.utf8.count <= 4096, (password?.utf8.count ?? 0) <= 1024,
+              !path.utf8.contains(0), !(password?.utf8.contains(0) ?? false) else { throw PreviewArchiveError.limit }
+        let request = ArchiveService.Request(mode: member != nil ? .extract : .list, folder: directory, path: Data(path.utf8))
+        let (output, status) = try await exchange(source, request, password: password, timeout: 20, allowance: .shared)
+        if let error = error(for: status) { throw error }
+        return try parse(output, member: member, directory: directory)
+    }
+
+    /// Lists the whole archive, keeping what a listing cut short by its limits, its time or an error read.
+    @concurrent package static func list(_ source: PreviewArchiveSource, timeout: TimeInterval) async throws
+        -> PreviewArchiveListing {
+        let (output, status) = try await exchange(source, ArchiveService.Request(mode: .list), password: nil,
+                                                  timeout: timeout, allowance: .listings)
+        let decoded = try decode(output, member: nil, directory: false)
+        guard let error = error(for: status) else { return decoded }
+        return PreviewArchiveListing(records: decoded.records, end: .stopped(error))
+    }
+
+    /// Counts what the archive holds without listing it, for the check before Extract.
+    @concurrent package static func survey(_ source: PreviewArchiveSource, timeout: TimeInterval) async throws
+        -> PreviewArchiveSurvey {
+        let (output, status) = try await exchange(source, ArchiveService.Request(mode: .survey), password: nil,
+                                                  timeout: timeout, allowance: .surveys)
+        var survey = decodeSurvey(output)
+        let error = error(for: status)
+        if error == .password { survey.encrypted = true }
+        if error == .limit { survey.limited = true }
+        return survey
+    }
+
+    /// The last snapshot of a survey's totals, complete only when the worker ended the stream itself.
+    package static func decodeSurvey(_ data: Data) -> PreviewArchiveSurvey {
+        let bytes = [UInt8](data)
+        guard bytes.count <= ArchiveService.outputLimit, bytes.starts(with: Array("SAS1".utf8)) else {
+            return PreviewArchiveSurvey()
+        }
+        func number(_ offset: Int) -> UInt64 { bigEndian(bytes[offset..<(offset + 8)]) }
+        var survey = PreviewArchiveSurvey(), offset = 4
+        while offset < bytes.count {
+            if bytes[offset] == endMark, offset + 1 == bytes.count {
+                survey.complete = true
+                break
+            }
+            guard bytes[offset] == snapshotMark, bytes.count - offset >= 18 else { break }
+            survey.entries = Int(clamping: number(offset + 1))
+            survey.bytes = Int64(clamping: number(offset + 9))
+            survey.encrypted = bytes[offset + 17] != 0
+            offset += 18
+        }
+        return survey
+    }
+
+    /// One read in the archive service, pinned to `source` and counted against the reads `allowance` permits at once.
+    private static func exchange(_ source: PreviewArchiveSource, _ request: ArchiveService.Request, password: String?,
+                                 timeout: TimeInterval, allowance: ArchiveReadAllowance) async throws
+        -> (Data, ArchiveService.Status) {
+        let id = UUID()
         try await withTaskCancellationHandler {
             try await allowance.enter(id)
         } onCancel: { Task { await allowance.cancel(id) } }
         defer { Task { await allowance.leave() } }
         try Task.checkCancellation()
-        let path = member?.joined(separator: "/") ?? ""
-        guard path.utf8.count <= 4096, (password?.utf8.count ?? 0) <= 1024,
-              !path.utf8.contains(0), !(password?.utf8.contains(0) ?? false) else { throw PreviewArchiveError.limit }
-        let file = try source.open()
-        defer { try? file.close() }
-        var input = Data([member == nil ? 0 : 1, directory ? 1 : 0])
-        for count in [path.utf8.count, password?.utf8.count ?? 0] {
-            var length = UInt32(count).bigEndian
-            withUnsafeBytes(of: &length) { input.append(contentsOf: $0) }
+        do {
+            let file = try source.open()
+            defer { try? file.close() }
+            let (output, status) = try await send(request, password: ArchiveService.Secret(password ?? ""), archive: file,
+                                                  timeout: timeout)
+            try Task.checkCancellation()
+            try source.verify(file)
+            return (output, status)
+        } catch let error as POSIXError {
+            // The archive is gone or changed while it was read (one still downloading does), or staging the read failed.
+            log.info("An archive couldn't be read: \(error.localizedDescription, privacy: .public)")
+            throw PreviewArchiveError.unreadable
         }
-        input.append(contentsOf: path.utf8)
-        if let password { input.append(contentsOf: password.utf8) }
-        defer { input.resetBytes(in: 0..<input.count) }
-        let run = try await ProcessRunner.run(executable.path, [], timeout: 20, input: input, file: file)
-        try Task.checkCancellation()
-        try source.verify(file)
-        guard !run.timedOut, !run.truncated, run.output.count <= outputLimit else { throw PreviewArchiveError.limit }
-        switch run.status {
-        case 0: break
-        case 40: throw PreviewArchiveError.password
-        case 41: throw PreviewArchiveError.limit
-        case 42: throw PreviewArchiveError.unsafe
-        case 45: throw PreviewArchiveError.encryption
-        case 46: throw PreviewArchiveError.needsExtraction
-        default: throw PreviewArchiveError.unreadable
-        }
-        return try parse(run.output, member: member, directory: directory)
     }
 
+    private static func error(for status: ArchiveService.Status) -> PreviewArchiveError? {
+        switch status {
+        case .success: return nil
+        case .password: return .password
+        case .limit: return .limit
+        case .unsafe: return .unsafe
+        case .encryption: return .encryption
+        case .needsExtraction: return .needsExtraction
+        case .unsandboxed:
+            log.error("Archive reads were refused as unconfined: check the App Sandbox entitlements and the bootstrap port drop.")
+            return .unreadable
+        case .unreadable, .missing, .stopped: return .unreadable
+        }
+    }
+
+    private static func send(_ request: ArchiveService.Request, password: ArchiveService.Secret, archive: FileHandle,
+                             timeout: TimeInterval) async throws -> (Data, ArchiveService.Status) {
+        switch route {
+        case .service(let service):
+            let reply = try await ArchiveService.send(request, password: password, to: service, archive: archive,
+                                                      timeout: timeout)
+            if !reply.ended { log.error("The archive service didn't confirm that a stopped read's worker ended.") }
+            return (reply.output, reply.outcome)
+        case .harness:
+            return try await sendThroughHarness(request, password: password, archive: archive, timeout: timeout)
+        case .missingService:
+            log.error("The app has no archive service (Contents/XPCServices/StrataArchiveService.xpc).")
+            throw PreviewArchiveError.unreadable
+        }
+    }
+
+    private static func sendThroughHarness(_ request: ArchiveService.Request, password: ArchiveService.Secret,
+                                           archive: FileHandle, timeout: TimeInterval) async throws
+        -> (Data, ArchiveService.Status) {
+        guard FileManager.default.isExecutableFile(atPath: harness.path) else {
+            log.error("Outside the app, archives are read through \(harness.path, privacy: .public), which the archive tests build.")
+            throw PreviewArchiveError.unreadable
+        }
+        guard let input = try ArchiveService.requestPipe(request.encoded(password: password)) else {
+            return (Data(), .limit)
+        }
+        defer { try? input.close() }
+        // Room for the harness's own read and its wait for the service to end the worker.
+        let run = try await ProcessRunner.run(harness.path, ["--timeout-ms", String(Int((timeout * 1000).rounded()))],
+                                              timeout: timeout + ArchiveService.answerBackstop + 5,
+                                              standardInput: input, file: archive)
+        if run.failed { return (run.output, .unreadable) }
+        let reply = ArchiveService.Reply(output: run.output, status: run.status, timedOut: run.timedOut,
+                                         truncated: run.truncated || run.output.count > ArchiveService.outputLimit)
+        return (reply.output, reply.outcome)
+    }
+
+    /// The worker's records, in a stream it ended or not: what was decoded before the stream ended, or turned out
+    /// unsafe, is kept.
+    package static func decode(_ data: Data, member: [String]?, directory: Bool) throws -> PreviewArchiveListing {
+        var records: [PreviewArchiveRecord] = []
+        do {
+            let end = try decode(data, member: member, directory: directory, into: &records)
+            return PreviewArchiveListing(records: records, end: end)
+        } catch let error as PreviewArchiveError {
+            return PreviewArchiveListing(records: records, end: .stopped(error))
+        }
+    }
+
+    /// The strict form, for a read that must be complete.
     package static func parse(_ data: Data, member: [String]?, directory: Bool) throws -> [PreviewArchiveRecord] {
-        guard data.count <= outputLimit, data.starts(with: Data("SAP1".utf8)) else { throw PreviewArchiveError.unreadable }
-        var offset = 4, records: [PreviewArchiveRecord] = []
-        var seen: Set<Data> = [], spellings: [String: Data] = [:], types: [String: UInt8] = [:]
+        let decoded = try decode(data, member: member, directory: directory)
+        switch decoded.end {
+        case .complete: return decoded.records
+        case .moreEntries: throw PreviewArchiveError.limit
+        case .stopped(let error): throw error
+        }
+    }
+
+    private static func bigEndian(_ bytes: some Collection<UInt8>) -> UInt64 { bytes.reduce(0) { ($0 << 8) | UInt64($1) } }
+
+    /// The worker's marks (CArchivePreview.h).
+    package static let endMark: UInt8 = 0, moreMark: UInt8 = 4, snapshotMark: UInt8 = 0x53
+
+    private static func decode(_ data: Data, member: [String]?, directory: Bool,
+                               into records: inout [PreviewArchiveRecord]) throws -> PreviewArchiveListing.End {
+        guard data.count <= ArchiveService.outputLimit, data.starts(with: Data("SAP1".utf8)) else {
+            throw PreviewArchiveError.unreadable
+        }
+        var offset = 4
+        var names = ArchivePathNames()
         func number(_ count: Int) throws -> UInt64 {
             guard count <= data.count - offset else { throw PreviewArchiveError.unreadable }
             defer { offset += count }
-            return data[offset..<(offset+count)].reduce(0) { ($0 << 8) | UInt64($1) }
+            return bigEndian(data[offset..<(offset+count)])
         }
         while offset < data.count {
             try Task.checkCancellation()
-            let kind = try number(1)
-            if kind == 0 {
-                guard offset == data.count, member == nil || !records.isEmpty else { throw PreviewArchiveError.unreadable }
-                return records
+            let mark = try number(1)
+            if mark == UInt64(endMark) || mark == UInt64(moreMark) {
+                guard offset == data.count, member == nil || (mark == UInt64(endMark) && !records.isEmpty) else {
+                    throw PreviewArchiveError.unreadable
+                }
+                return mark == UInt64(endMark) ? .complete : .moreEntries
             }
+            let kind = mark
             guard (1...3).contains(kind), records.count < 50_000 else { throw PreviewArchiveError.limit }
             let count = try number(4), size = try number(8), seconds = Int64(bitPattern: try number(8))
             guard (1...4096).contains(count), count <= data.count - offset, size <= Int64.max else { throw PreviewArchiveError.limit }
-            guard (-62_135_596_800...253_402_300_799).contains(seconds) else { throw PreviewArchiveError.unreadable }
+            // Years 1 to 9999. A listing shows an odd date at the nearest end; a copy refuses it.
+            let years: ClosedRange<Int64> = -62_135_596_800...253_402_300_799
+            guard member == nil || years.contains(seconds) else { throw PreviewArchiveError.unreadable }
+            let modified = Date(timeIntervalSince1970: Double(min(max(seconds, years.lowerBound), years.upperBound)))
             let bytes = data.subdata(in: offset..<(offset+Int(count)))
             offset += Int(count)
             guard let path = String(data: bytes, encoding: .utf8), !path.hasPrefix("/"), !path.hasSuffix("/"),
-                  !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || $0 == "\\" }),
-                  seen.insert(bytes).inserted else { throw PreviewArchiveError.unsafe }
+                  !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || $0 == "\\" }) else {
+                throw PreviewArchiveError.unsafe
+            }
             let parts = path.components(separatedBy: "/")
             guard parts.count <= 128, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.utf8.count <= 255 }) else {
                 throw PreviewArchiveError.unsafe
             }
-            // Reject Unicode aliases and file/folder conflicts before any filesystem writes.
-            for depth in 1...parts.count {
-                let prefix = parts.prefix(depth).joined(separator: "/"), raw = Data(prefix.utf8)
-                if let old = spellings[prefix], old != raw { throw PreviewArchiveError.unsafe }
-                guard spellings.count < 100_000 || spellings[prefix] != nil else { throw PreviewArchiveError.limit }
-                spellings[prefix] = raw
-                let type: UInt8 = depth == parts.count ? UInt8(kind) : 2
-                if let old = types[prefix], old != type { throw PreviewArchiveError.unsafe }
-                types[prefix] = type
-            }
+            try names.add(parts, kind: UInt8(kind))
             var body: Data?
             if let member {
                 let chosen = parts.count >= member.count && zip(parts, member).allSatisfy { $0.utf8.elementsEqual($1.utf8) }
@@ -173,41 +373,11 @@ nonisolated package enum PreviewArchiveReader {
                 }
             }
             records.append(PreviewArchiveRecord(path: parts, kind: UInt8(kind), size: Int64(size),
-                                                modified: Date(timeIntervalSince1970: Double(seconds)), body: body))
+                                                modified: modified, body: body))
         }
         throw PreviewArchiveError.unreadable
     }
-
-    package static func listing(_ records: [PreviewArchiveRecord]) throws -> ArchiveListing {
-        let root = ArchiveNode(name: "", isDirectory: true)
-        var nodes: [String: ArchiveNode] = ["": root], files = 0, folders = 0
-        var total: Int64 = 0
-        for record in records {
-            try Task.checkCancellation()
-            var parent = root
-            for depth in 1...record.path.count {
-                let key = record.path.prefix(depth).joined(separator: "/")
-                if let existing = nodes[key] { parent = existing; continue }
-                guard nodes.count < 100_000 else { throw PreviewArchiveError.limit }
-                let directory = depth < record.path.count || record.kind == 2
-                let node = ArchiveNode(name: record.path[depth-1], isDirectory: directory,
-                                       size: directory ? 0 : record.size, modified: record.modified)
-                parent.children.append(node)
-                nodes[key] = node
-                parent = node
-                if directory { folders += 1 } else {
-                    files += 1
-                    let (sum, overflow) = total.addingReportingOverflow(record.size)
-                    total = overflow ? .max : sum
-                }
-            }
-        }
-        for node in nodes.values where node.isDirectory {
-            node.children.sort { $0.isDirectory != $1.isDirectory ? $0.isDirectory : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        }
-        return ArchiveListing(root: Handoff(value: root), files: files, folders: folders, uncompressed: total, compressed: nil, note: nil)
-    }
 }
 
-/// Resolve beside this module in a test bundle, and inside Helpers in the shipping app.
+/// Tells the shipping app, whose service is in its bundle, from a test or development build.
 nonisolated private final class PreviewArchiveBundle: NSObject {}

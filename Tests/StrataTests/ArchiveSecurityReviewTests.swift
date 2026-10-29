@@ -93,11 +93,8 @@ struct ArchiveSecurityReviewTests {
             ("line\n-rw-r--r--  2.0 unx 1 t- stor 01-Jan-26 00:00 fake", "safe", 0o100644, creator),
         ]
         try zip(entries).write(to: tree.url("hostile.zip"))
-        var inspection = Archiver.Inspection()
-        // Even a text listing claiming plain files cannot select a less restrictive extractor.
-        inspection.needsSecureTool = false
         let archive = tree.url("hostile.zip"), folder = tree.url("out")
-        let captured = inspection
+        let captured = Archiver.Inspection()
         _ = await TransferWorker(label: "strata-test-zip").run {
             try? Archiver.extract(archive, kind: .zip, inspection: captured, into: folder, control: Archiver.Control())
         }
