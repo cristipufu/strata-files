@@ -29,10 +29,11 @@ nonisolated final class ThrowawayDefaults: UserDefaults {
     deinit { ThrowawaySuites.remove(domain) }
 }
 
-private nonisolated enum ThrowawaySuites {
+nonisolated enum ThrowawaySuites {
     private static let inUse = Mutex<Set<String>>([])
     private static let prepareRun: Void = {
-        removeFoldersOfEndedRuns()
+        markThisRun()
+        removeFoldersOfEndedRuns(in: Prefs.testPreferencesFolder.deletingLastPathComponent())
         atexit { ThrowawaySuites.removeAll() }
     }()
 
@@ -52,14 +53,34 @@ private nonisolated enum ThrowawaySuites {
         for domain in inUse.withLock({ $0 }) { remove(domain) }
     }
 
+    /// This run's folder names its process, so a later run can tell it has ended even once its number is given again.
+    private static func markThisRun() {
+        let folder = Prefs.testPreferencesFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? RunOwner.current?.marker.write(to: folder.appending(path: RunOwner.file))
+    }
+
     /// The system can write a suite's file back after its process exits, so a later run removes the folders of test
     /// processes that have ended; a run still going elsewhere keeps its own.
-    private static func removeFoldersOfEndedRuns() {
-        let runs = Prefs.testPreferencesFolder.deletingLastPathComponent()
-        for folder in (try? FileManager.default.contentsOfDirectory(at: runs, includingPropertiesForKeys: nil)) ?? [] {
-            guard let process = pid_t(folder.lastPathComponent), process > 0,
-                  kill(process, 0) != 0, errno == ESRCH else { continue }
+    static func removeFoldersOfEndedRuns(in runs: URL) {
+        for folder in (try? FileManager.default.contentsOfDirectory(at: runs, includingPropertiesForKeys: nil)) ?? []
+        where hasEnded(folder) {
             try? FileManager.default.removeItem(at: folder)
         }
+    }
+
+    /// Whether the run a folder belongs to has ended: as its marker names it, or, for a folder made before runs marked
+    /// theirs, as its name does, by number alone. One that can't be told about counts as running.
+    private static func hasEnded(_ folder: URL) -> Bool {
+        let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        do {
+            if let owner = try RunOwner(markerIn: fd) { return !owner.isRunning }
+        } catch {
+            return false
+        }
+        guard let process = pid_t(folder.lastPathComponent), process > 0 else { return false }
+        return kill(process, 0) != 0 && errno == ESRCH
     }
 }

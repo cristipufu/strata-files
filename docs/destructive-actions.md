@@ -201,8 +201,12 @@ on any function that is in neither this table nor a mutation.
   never adopt the item now at that path. Cleanup identifies each fixture item individually.
 - **Alerts and sheets.** What they decide is a plain function, and that function is tested (`deletionPlan`,
   `uploadChoice`, `FolderCompare.syncPlan`, `CommandLineTool.mayReplace`).
-- **Disks.** Moves across disks run against a disk image each test attaches and detaches (`ScratchVolume`). Ejecting
-  a disk (`Places.eject`, the sidebar's and the menu's Eject) only hands the volume to macOS; nothing of the user's
+- **Disks.** Moves across disks run against a disk image each test attaches and detaches (`ScratchVolume`). Each disk's
+  folder names the process that made it, and a test process's first disk removes those of processes that have ended: it
+  detaches only what's mounted on a folder inside, opened without following a link, and leaves a folder whose image is
+  still attached or that holds anything else (`ScratchVolume.sweep`, `ScratchVolumeTests`). An attempt that attached its
+  image before failing detaches that image's own disk, found by the image's path, which no other attempt has. Ejecting a
+  disk (`Places.eject`, the sidebar's and the menu's Eject) only hands the volume to macOS; nothing of the user's
   changes, and it isn't tested.
 
 ## Every function, by file
