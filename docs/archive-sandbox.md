@@ -91,6 +91,12 @@ compromised:
 - every item is made relative to a folder Strata opened, one name at a time, never following a link, so nothing is
   ever written through one, and never over another item: a second entry with a taken name, file or folder, gets a
   number, the way Finder numbers a copy, and what's inside a numbered folder follows it;
+- on a disk that keeps an item's extended attributes in "._name" beside it (exFAT, FAT, some shares), no item meets
+  its partner there ("._x" and "x", in either order, of any kind): made over a "._x", "x" would have the system take
+  it over or remove it, and a "._x" beside "x" would be taken for x's attributes, which the check that follows leaves
+  to the system, so the one that would meet the other gets a number, as on a taken name, and no hard link is made to
+  the system's "._x". A "._" item without its partner, or a "._" file's own "._._" one, is the archive's own and is
+  checked like any other;
 - permissions stay within what a new folder gets there, without setuid, setgid or sticky bits, as `tar` restores them
   for you; times come back as `tar` sets them;
 - Mac metadata (resource forks, Finder info, extended attributes) goes back as `copyfile` puts it back, except access

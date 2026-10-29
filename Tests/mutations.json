@@ -4301,8 +4301,8 @@
   },
   {
     "file": "Strata/Transfers/ArchiveWriter.swift",
-    "find": "        if opened.result < 0, opened.error == ENOENT, creating {\n            try makeRoom(for: 0)",
-    "replace": "        if opened.result < 0, opened.error == ENOENT, creating {",
+    "find": "        if opened.result < 0, opened.error == ENOENT, creating, !meets {\n            try makeRoom(for: 0)",
+    "replace": "        if opened.result < 0, opened.error == ENOENT, creating, !meets {",
     "rule": "Extract: the folders an entry implies fill the disk unwatched",
     "tests": "ArchiveWriterTests/foldersAnEntryImpliesCountTowardTheSpaceKeptFree"
   },
@@ -4319,6 +4319,90 @@
     "replace": "        return base + tail",
     "rule": "Extract: a taken name too long to take a number fails the extraction",
     "tests": "ArchiveWriterTests/aTakenNameAtTheLengthLimitIsShortenedToTakeItsNumber|ArchiveWriterTests/numberedNamesKeepTheirExtension"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "            let made = meetsAttributeFile(candidate, in: parent) ? (result: -1, error: EEXIST) : named(candidate, make)",
+    "replace": "            let made = named(candidate, make)",
+    "rule": "Extract: on exFAT an archive's item is made beside or over its \"._\" partner",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile|ArchiveExtractTests/onADiskThatKeepsAttributesBesideItsItemsAnItemMeetingItsAttributeFileIsNumbered"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        let besideItem = Archiver.attributedItem(of: name).map { exists(Data($0), in: folder) != false } ?? false",
+    "replace": "        let besideItem = false",
+    "rule": "Extract: on exFAT an archive's \"._x\" made beside its \"x\" escapes the check",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile|ArchiveExtractTests/onADiskThatKeepsAttributesBesideItsItemsAnItemMeetingItsAttributeFileIsNumbered"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "            && exists(attributeFile, in: folder) != false",
+    "replace": "            && false",
+    "rule": "Extract: on exFAT an archive's \"._x\" made before its \"x\" is silently taken over",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile|ArchiveExtractTests/onADiskThatKeepsAttributesBesideItsItemsAnItemMeetingItsAttributeFileIsNumbered"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        let overAttributeFile = Archiver.attributedItem(of: attributeFile).map { Data($0) == name } == true",
+    "replace": "        let overAttributeFile = true",
+    "rule": "Extract: on exFAT a \"._\" file is numbered beside its own \"._._\" one",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        let meets = opened.result < 0 && opened.error == ENOENT && creating && meetsAttributeFile(name, in: parent)",
+    "replace": "        let meets = false",
+    "rule": "Extract: on exFAT a folder made over the archive's own \"._d\" takes it over",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        if attributesInFiles, let item = Archiver.attributedItem(of: sourceData), exists(Data(item), in: source) != false {",
+    "replace": "        if false, attributesInFiles, let item = Archiver.attributedItem(of: sourceData), exists(Data(item), in: source) != false {",
+    "rule": "Extract: a hard link shares the system's file of another item's attributes",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        if attributesInFiles, let item = Archiver.attributedItem(of: sourceData), exists(Data(item), in: source) != false {",
+    "replace": "        if attributesInFiles, Archiver.attributedItem(of: sourceData) != nil {",
+    "rule": "Extract: on exFAT a hard link to the archive's own lone \"._x\" is refused",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        return [ENOENT, ENAMETOOLONG, EILSEQ, EINVAL].contains(found.error) ? false : nil",
+    "replace": "        return [ENOENT, EILSEQ, EINVAL].contains(found.error) ? false : nil",
+    "rule": "Extract: on exFAT an item whose \"._\" name is too long to exist is numbered",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/ArchiveWriter.swift",
+    "find": "        return [ENOENT, ENAMETOOLONG, EILSEQ, EINVAL].contains(found.error) ? false : nil",
+    "replace": "        return [ENOENT, ENAMETOOLONG, EILSEQ].contains(found.error) ? false : nil",
+    "rule": "Extract: on exFAT a name the disk can't hold fails as taken",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        return item.isEmpty || item.starts(with: prefix) || item == Array(\".\".utf8) || item == Array(\"..\".utf8) ? nil : item",
+    "replace": "        return item.isEmpty || item.starts(with: prefix) ? nil : item",
+    "rule": "Extract: on exFAT an archive's \"._.\" is taken for the folder's attributes",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        return Set(names.filter { name in attributedItem(of: name.utf8).map { all.contains($0) } == true && isFile(name) })",
+    "replace": "        return Set(names.filter { name in attributedItem(of: name.utf8).map { item in names.contains(String(decoding: item, as: UTF8.self)) } == true && isFile(name) })",
+    "rule": "Extract: on exFAT an archive's \"._é\" spelled unlike its \"é\" is left to the system unchecked",
+    "tests": "ArchiveWriterTests/onADiskWithoutItsOwnAttributesOnlyAFilesAttributeFileIsTheSystems"
+  },
+  {
+    "file": "Strata/Transfers/Archiver.swift",
+    "find": "        !(attributesKept { fgetattrlist(fd, &$0, $1, $2, 0) } ?? false)",
+    "replace": "        !(attributesKept { fgetattrlist(fd, &$0, $1, $2, 0) } ?? true)",
+    "rule": "Extract: a disk that can't say how it keeps attributes lets pairs through",
+    "tests": "ArchiveWriterTests/whereAttributesLiveInFilesNoItemMeetsItsAttributeFile"
   },
   {
     "file": "CArchivePreview/ArchivePreview.c",
@@ -4385,8 +4469,8 @@
   },
   {
     "file": "Strata/Transfers/ArchiveWriter.swift",
-    "find": "        let sourceName = (latest[Key(linked)] ?? linked.last!).map { CChar(bitPattern: $0) } + [0]",
-    "replace": "        let sourceName = linked.last!.map { CChar(bitPattern: $0) } + [0]",
+    "find": "        let sourceData = latest[Key(linked)] ?? linked.last!",
+    "replace": "        let sourceData = linked.last!",
     "rule": "Extract: a hard link writes into an earlier item of its name than the one tar would share",
     "tests": "ArchiveWriterTests/aHardLinkSharesTheLatestItemOfItsName"
   },

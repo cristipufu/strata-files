@@ -280,6 +280,40 @@ struct ArchiveExtractTests {
         await volume.eject()
     }
 
+    @Test func onADiskThatKeepsAttributesBesideItsItemsAnItemMeetingItsAttributeFileIsNumbered() async throws {
+        let volume = try await ScratchVolume.make(fileSystem: "ExFAT")
+        do {
+            let tree = try TestTree("payload/", "payload/x", "payload/._x", "alone/", "alone/._.DS_Store", "alone/file", "apfs/")
+            try await run("zip", ["-q", "../pair.zip", "x", "._x"], in: tree.url("payload"))
+            try await run("zip", ["-q", "../reversed.zip", "._x", "x"], in: tree.url("payload"))
+            try await run("zip", ["-q", "../alone.zip", "._.DS_Store", "file"], in: tree.url("alone"))
+            // There, the archive's "._x" would be taken for x's attributes and left unchecked as the system's, and, made
+            // first, would be taken over or removed when "x" is made: the later of the two gets a number.
+            #expect(try await extract(tree.url("pair.zip"), into: volume.root).lastPathComponent == "pair")
+            #expect(try await extract(tree.url("reversed.zip"), into: volume.root).lastPathComponent == "reversed")
+            #expect(TestTree.listing(of: volume.url("pair")) == ["._x 2", "x"])
+            #expect(TestTree.listing(of: volume.url("reversed")) == ["._x", "x 2"])
+            // A "._" file without its partner, as zips made from a Mac's USB stick hold, is the archive's own...
+            try FileManager.default.createDirectory(at: volume.url("plain"), withIntermediateDirectories: false)
+            #expect(try await extract(tree.url("alone.zip"), into: volume.url("plain")).lastPathComponent == "alone")
+            #expect(TestTree.listing(of: volume.url("plain")) == ["alone/", "alone/._.DS_Store", "alone/file"])
+            // ...but downloaded, it isn't extracted there: no "._" file takes the download's quarantine mark on such a
+            // disk, and an item that can't be marked isn't extracted.
+            try FileManager.default.copyItem(at: tree.url("alone.zip"), to: tree.url("downloaded.zip"))
+            try setAttribute("com.apple.quarantine", Data("0081;00000000;Test;".utf8), on: tree.url("downloaded.zip"))
+            try FileManager.default.createDirectory(at: volume.url("downloaded"), withIntermediateDirectories: false)
+            await #expect(throws: Archiver.Failure.self) {
+                _ = try await extract(tree.url("downloaded.zip"), into: volume.url("downloaded"))
+            }
+            #expect(TestTree.listing(of: volume.url("downloaded")) == [])
+            #expect(try await extract(tree.url("pair.zip"), into: tree.url("apfs")).lastPathComponent == "pair")
+            #expect(tree.snapshot() == ["alone.zip", "alone/", "alone/._.DS_Store", "alone/file", "apfs/", "apfs/pair/",
+                                        "apfs/pair/._x", "apfs/pair/x", "downloaded.zip", "pair.zip", "payload/", "payload/._x",
+                                        "payload/x", "reversed.zip"])
+        }
+        await volume.eject()
+    }
+
     @Test func aZipsMacMetadataGoesBackOnItsItemsAsInFinder() async throws {
         let tree = try TestTree("zipped/", "zipped/file", "tarred/", "tarred/__MACOSX/", "tarred/__MACOSX/notes.txt",
                                 "tarred/file", "orphan/", "orphan/__MACOSX/", "orphan/__MACOSX/docs/",

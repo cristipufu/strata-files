@@ -295,29 +295,47 @@ nonisolated enum Archiver {
         return names.filter { !attributeFiles.contains($0) }
     }
 
-    /// Of `names`, those the system would keep another's extended attributes in: "._name" beside "name", a plain file.
-    /// A "._" file never has one of its own, so "._._name" is always the archive's.
+    /// Of `names`, those the system would keep another's extended attributes in: a plain file named for an item beside it.
     static func attributeFiles(in names: [String], isFile: (String) -> Bool) -> Set<String> {
-        let all = Set(names)
-        return Set(names.filter { name in
-            let base = name.dropFirst(2)
-            return name.hasPrefix("._") && !base.hasPrefix("._") && all.contains(String(base)) && isFile(name)
-        })
+        let all = Set(names.map { Array($0.utf8) })
+        return Set(names.filter { name in attributedItem(of: name.utf8).map { all.contains($0) } == true && isFile(name) })
+    }
+
+    /// The item whose attributes a disk that keeps them in "._" files keeps in a file called `name`: "x" for "._x",
+    /// spelled with the very same bytes, as the system names the file after its item. Nil for any other name: no "._"
+    /// file takes attributes, so "._._x" is never one, and neither are "._." and "._..".
+    static func attributedItem(of name: some Collection<UInt8>) -> [UInt8]? {
+        let prefix = Array("._".utf8)
+        guard name.starts(with: prefix) else { return nil }
+        let item = Array(name.dropFirst(2))
+        return item.isEmpty || item.starts(with: prefix) || item == Array(".".utf8) || item == Array("..".utf8) ? nil : item
     }
 
     /// Whether the disk holding `path` keeps extended attributes itself; one it can't tell counts as keeping them, so
     /// that every name is checked.
     private static func keepsAttributes(_ path: String) -> Bool {
+        attributesKept { getattrlist(path, &$0, $1, $2, 0) } ?? true
+    }
+
+    /// A disk that can't tell counts as keeping them in files, so that Extract's writer numbers what could be taken for
+    /// them.
+    static func attributesInFiles(of fd: Int32) -> Bool {
+        !(attributesKept { fgetattrlist(fd, &$0, $1, $2, 0) } ?? false)
+    }
+
+    /// Nil when the disk can't tell.
+    private static func attributesKept(reading: (inout attrlist, UnsafeMutableRawPointer?, Int) -> Int32) -> Bool? {
         var request = attrlist()
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
         request.volattr = attrgroup_t(ATTR_VOL_INFO) | attrgroup_t(ATTR_VOL_CAPABILITIES)
         // The returned length, then the volume's capabilities and which of them it reports.
         var reply = [UInt32](repeating: 0, count: 9)
         let size = reply.count * MemoryLayout<UInt32>.size
-        guard reply.withUnsafeMutableBytes({ getattrlist(path, &request, $0.baseAddress, size, 0) }) == 0 else { return true }
+        guard reply.withUnsafeMutableBytes({ reading(&request, $0.baseAddress, size) }) == 0 else { return nil }
         let interfaces = Int(VOL_CAPABILITIES_INTERFACES), native = UInt32(VOL_CAP_INT_EXTENDED_ATTR)
         let capabilities = reply[1 + interfaces], valid = reply[5 + interfaces]
-        return valid & native == 0 || capabilities & native != 0
+        guard valid & native != 0 else { return nil }
+        return capabilities & native != 0
     }
 
     /// Checks one item inside the boundary at `rootPath`; whether it's a folder to check inside.

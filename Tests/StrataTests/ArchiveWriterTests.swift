@@ -60,13 +60,16 @@ struct ArchiveWriterTests {
     /// Writes `stream` into `folder`, handing it over a few bytes at a time so records straddle every read.
     @discardableResult
     private func write(_ stream: Data, into folder: URL, control: Archiver.Control = .init(),
-                       freeSpace: ((Int32) -> Int64?)? = nil, block: Int64 = 4096, memory: Int = 64 << 20) throws -> Bool {
+                       freeSpace: ((Int32) -> Int64?)? = nil, block: Int64 = 4096, memory: Int = 64 << 20,
+                       attributesInFiles: Bool? = nil) throws -> Bool {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY)
         try #require(fd >= 0)
         defer { close(fd) }
         var offset = 0
         return try ArchiveWriter.write(into: fd, permissions: 0o755, control: control,
-                                       space: { fd in freeSpace?(fd).map { ($0, block) } }, memory: memory) { buffer in
+                                       space: { fd in freeSpace?(fd).map { ($0, block) } },
+                                       attributesInFiles: { attributesInFiles ?? Archiver.attributesInFiles(of: $0) },
+                                       memory: memory) { buffer in
             let count = min(buffer.count, 7, stream.count - offset)
             stream.withUnsafeBytes { buffer.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0[offset..<(offset + count)])) }
             offset += count
@@ -158,6 +161,89 @@ struct ArchiveWriterTests {
         let files: Set = ["file", "._file", "._folder", "._lonely", "._._file"]
         // A "._" file never has attributes of its own kept beside it: "._._file" is the archive's.
         #expect(Archiver.attributeFiles(in: names) { files.contains($0) } == ["._file", "._folder"])
+        // The system names the file after its item's very bytes: "._é" in one Unicode form beside "é" in the other is
+        // the archive's.
+        let composed = "\u{E9}", decomposed = "e\u{301}"
+        #expect(Archiver.attributeFiles(in: ["._" + composed, decomposed]) { _ in true }.isEmpty)
+        #expect(Archiver.attributeFiles(in: ["._" + composed, composed]) { _ in true } == ["._" + composed])
+    }
+
+    @Test func whereAttributesLiveInFilesNoItemMeetsItsAttributeFile() async throws {
+        func stream(_ build: (inout Stream) -> Void) -> Data {
+            var stream = Stream()
+            build(&stream)
+            stream.end()
+            return stream.data
+        }
+        let forged = [Data("forged".utf8)]
+        let pair = stream { $0.entry(1, "._x", chunks: forged); $0.entry(1, "x") }
+        let note = [(name: "user.note", value: Data("kept".utf8))]
+        // exFAT keeps an item's attributes in "._name" beside it: the one would be taken for the other's, and making "x"
+        // removes a "._x" already there. Whichever would meet the other gets a number, as on a taken name, under any
+        // spelling the disk takes for the same name.
+        let volume = try await ScratchVolume.make(fileSystem: "ExFAT")
+        do {
+            let long = String(repeating: "l", count: 254)
+            let cases: [(String, Data, [String])] = [
+                ("before", pair, ["._x", "x 2"]),
+                ("after", stream { $0.entry(1, "x"); $0.entry(1, "._x", chunks: forged) }, ["._x 2", "x"]),
+                ("numbered", stream { $0.entry(1, "._x 2", chunks: forged); $0.entry(1, "x"); $0.entry(1, "x") },
+                 ["._x 2", "x", "x 3"]),
+                ("caseBefore", stream { $0.entry(1, "._X", chunks: forged); $0.entry(1, "x") }, ["._X", "x 2"]),
+                ("caseAfter", stream { $0.entry(1, "x"); $0.entry(1, "._X", chunks: forged) }, ["._X 2", "x"]),
+                ("folderBefore", stream { $0.entry(1, "._d", chunks: forged); $0.entry(2, "d") }, ["._d", "d 2/"]),
+                ("folderAfter", stream { $0.entry(1, "d"); $0.entry(2, "._d") }, ["._d 2/", "d"]),
+                ("implied", stream { $0.entry(1, "._d", chunks: forged); $0.entry(1, "d/f") }, ["._d", "d 2/", "d 2/f"]),
+                // The system's own file of an item's attributes is a taken name, as any.
+                ("takenItem", stream { $0.entry(1, "x", attributes: note); $0.entry(1, "x") }, ["._x", "x", "x 2"]),
+                ("takenFile", stream { $0.entry(1, "x", attributes: note); $0.entry(1, "._x") }, ["._x", "._x 2", "x"]),
+                // A "._" item without its partner, "._." or a "._" file's own "._._" one is the archive's, whichever comes
+                // first: the system keeps nothing for a "._" file. So is an item whose "._" name is longer than the disk
+                // takes: the system can't have made that.
+                ("alone", stream {
+                    $0.entry(1, "._.DS_Store"); $0.entry(1, "._o"); $0.entry(1, "._._o"); $0.entry(1, "._._p"); $0.entry(1, "._p")
+                    $0.entry(1, "._."); $0.entry(2, "._e"); $0.entry(1, "file"); $0.entry(1, long)
+                 }, ["._.", "._.DS_Store", "._._o", "._._p", "._e/", "._o", "._p", "file", long]),
+            ]
+            for (name, data, listing) in cases {
+                try FileManager.default.createDirectory(at: volume.url(name), withIntermediateDirectories: false)
+                #expect(try write(data, into: volume.url(name)), "\(name)")
+                #expect(TestTree.listing(of: volume.url(name)) == listing, "\(name)")
+            }
+            // A name the disk can't hold fails as the disk says, not as one taken.
+            try FileManager.default.createDirectory(at: volume.url("invalid"), withIntermediateDirectories: false)
+            let failure = #expect(throws: Archiver.Failure.self) {
+                try write(stream { $0.entry(1, Data([0x66, 0xFF])) }, into: volume.url("invalid"))
+            }
+            #expect(failure?.message.contains("(\(String(cString: strerror(EINVAL))))") == true)
+        }
+        await volume.eject()
+        // A disk that can't say how it keeps them counts as keeping them in files.
+        #expect(Archiver.attributesInFiles(of: -1))
+        // Links and hard links, which exFAT doesn't have, on a disk told it keeps attributes the same way, as a share can.
+        // "hardSource" holds an item and the system's file of its attributes, as such a disk keeps them.
+        let tree = try TestTree("linkBefore/", "linkAfter/", "hardNamed/", "hardSource/x", "hardSource/._x", "hardLone/",
+                                "hardPlain/", "native/")
+        let linked: [(String, Data)] = [
+            ("linkBefore", stream { $0.entry(3, "._l", link: "elsewhere"); $0.entry(1, "l") }),
+            ("linkAfter", stream { $0.entry(1, "l"); $0.entry(3, "._l", link: "elsewhere") }),
+            ("hardNamed", stream { $0.entry(1, "a"); $0.entry(4, "._a", link: "a") }),
+            ("hardLone", stream { $0.entry(1, "._x"); $0.entry(4, "y", link: "._x") }),
+            ("hardPlain", stream { $0.entry(1, "a"); $0.entry(4, "b", link: "a") }),
+        ]
+        for (name, data) in linked {
+            #expect(try write(data, into: tree.url(name), attributesInFiles: true), "\(name)")
+        }
+        // A hard link to "._x" beside "x" would share the system's file of x's attributes: it can't take another name.
+        #expect(throws: Archiver.Failure(message: "“y” in the archive couldn’t be written (\(String(cString: strerror(EPERM)))), so nothing was extracted.")) {
+            try write(stream { $0.entry(4, "y", link: "._x") }, into: tree.url("hardSource"), attributesInFiles: true)
+        }
+        // On a disk that keeps attributes itself, the pair is the archive's own.
+        #expect(try write(pair, into: tree.url("native")))
+        #expect(tree.snapshot() == ["hardLone/", "hardLone/._x", "hardLone/y", "hardNamed/", "hardNamed/._a 2", "hardNamed/a",
+                                    "hardPlain/", "hardPlain/a", "hardPlain/b", "hardSource/", "hardSource/._x", "hardSource/x",
+                                    "linkAfter/", "linkAfter/._l 2 -> elsewhere", "linkAfter/l", "linkBefore/",
+                                    "linkBefore/._l -> elsewhere", "linkBefore/l 2", "native/", "native/._x", "native/x"])
     }
 
     @Test func numberedNamesKeepTheirExtension() {

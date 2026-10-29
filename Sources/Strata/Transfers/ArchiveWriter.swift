@@ -8,7 +8,8 @@ import UniformTypeIdentifiers
 /// never through a link and never over another item (a taken name gets a number, as Finder numbers copies). Like tar, it
 /// restores permissions within the umask, without setuid, setgid or sticky bits, and times, giving folders theirs once
 /// nothing more is written inside them; Mac metadata goes back as copyfile puts it back. It stops when the disk runs low
-/// on space.
+/// on space. On a disk that keeps an item's extended attributes in "._name" beside it (exFAT, FAT, some shares), no item
+/// meets its partner there ("._x" and "x"): one that would gets a number, as on a taken name.
 nonisolated final class ArchiveWriter {
     private struct Times {
         var modified: timespec?, accessed: timespec?, created: timespec?
@@ -60,9 +61,11 @@ nonisolated final class ArchiveWriter {
     private static let openFolders = 64
     private static let accessList = Data("com.apple.acl.text".utf8)
     private static let installedMark = Data("com.apple.root.installed".utf8)
+    private static let attributeFilePrefix = Data("._".utf8)
 
     private let root: Int32
     private let permissions: mode_t
+    private let attributesInFiles: Bool
     private let control: Archiver.Control
     private let space: (Int32) -> (free: Int64, block: Int64)?
     private let read: (UnsafeMutableRawBufferPointer) throws -> Int
@@ -95,17 +98,19 @@ nonisolated final class ArchiveWriter {
     /// bounds what any item gets.
     static func write(into root: Int32, permissions: mode_t, control: Archiver.Control,
                       space: @escaping (Int32) -> (free: Int64, block: Int64)? = Archiver.space(of:),
+                      attributesInFiles: (Int32) -> Bool = Archiver.attributesInFiles(of:),
                       memory: Int = 64 << 20,
                       read: @escaping (UnsafeMutableRawBufferPointer) throws -> Int) throws -> Bool {
-        try ArchiveWriter(root: root, permissions: permissions, control: control, space: space, memory: memory,
-                          read: read).run()
+        try ArchiveWriter(root: root, permissions: permissions, control: control, space: space,
+                          attributesInFiles: attributesInFiles(root), memory: memory, read: read).run()
     }
 
     private init(root: Int32, permissions: mode_t, control: Archiver.Control,
-                 space: @escaping (Int32) -> (free: Int64, block: Int64)?, memory: Int,
+                 space: @escaping (Int32) -> (free: Int64, block: Int64)?, attributesInFiles: Bool, memory: Int,
                  read: @escaping (UnsafeMutableRawBufferPointer) throws -> Int) {
         self.root = root; self.permissions = permissions & 0o777; self.control = control
         self.space = space; self.memory = memory; self.read = read
+        self.attributesInFiles = attributesInFiles
     }
 
     deinit {
@@ -247,7 +252,9 @@ nonisolated final class ArchiveWriter {
 
     private func writeFile(_ entry: Entry) throws {
         let parent = try folder(entry.path.dropLast())
-        let (fd, _) = try create(entry.path) { openat(parent, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600) }
+        let (fd, _) = try create(entry.path, in: parent) {
+            openat(parent, $0, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        }
         defer { close(fd) }
         try copyContents(into: fd, entry.path)
         try finish(fd, entry, mode: entry.mode & 0o777 & permissions)
@@ -272,7 +279,9 @@ nonisolated final class ArchiveWriter {
     private func writeLink(_ entry: Entry) throws {
         let parent = try folder(entry.path.dropLast())
         let target = entry.link.map { CChar(bitPattern: $0) } + [0]
-        let (_, name) = try create(entry.path) { name in target.withUnsafeBufferPointer { symlinkat($0.baseAddress!, parent, name) } }
+        let (_, name) = try create(entry.path, in: parent) { name in
+            target.withUnsafeBufferPointer { symlinkat($0.baseAddress!, parent, name) }
+        }
         let fd = named(name) { openat(parent, $0, O_RDONLY | O_SYMLINK | O_CLOEXEC) }
         guard fd.result >= 0 else { throw failure(entry.path, fd.error) }
         defer { close(fd.result) }
@@ -291,8 +300,13 @@ nonisolated final class ArchiveWriter {
         guard source >= 0 else { throw failure(entry.path, errno) }
         defer { close(source) }
         let parent = try folder(entry.path.dropLast())
-        let sourceName = (latest[Key(linked)] ?? linked.last!).map { CChar(bitPattern: $0) } + [0]
-        let (_, name) = try create(entry.path) { name in
+        let sourceData = latest[Key(linked)] ?? linked.last!
+        // A "._" item beside its partner could be the system's file of that item's attributes.
+        if attributesInFiles, let item = Archiver.attributedItem(of: sourceData), exists(Data(item), in: source) != false {
+            throw failure(entry.path, EPERM)
+        }
+        let sourceName = sourceData.map { CChar(bitPattern: $0) } + [0]
+        let (_, name) = try create(entry.path, in: parent) { name in
             sourceName.withUnsafeBufferPointer { linkat(source, $0.baseAddress!, parent, name, 0) }
         }
         let first = try chunkLength()
@@ -313,7 +327,7 @@ nonisolated final class ArchiveWriter {
     /// a file is numbered only while the writer can remember it; a folder is numbered without an extension, unless it's
     /// a package ("Foo 2.app"). Numbering carries on from the last number any spelling of the name got, after trying the
     /// name itself.
-    private func create(_ path: [Data], folder: Bool = false,
+    private func create(_ path: [Data], in parent: Int32, folder: Bool = false,
                         _ make: (UnsafePointer<CChar>) -> Int32) throws -> (result: Int32, name: Data) {
         let name = path.last!, key = Key(path)
         var number = 1, spellings: Key?
@@ -322,7 +336,7 @@ nonisolated final class ArchiveWriter {
                 Data(FileOps.name($0, adding: " \(number)", keepingExtension: !folder || Self.isPackage($0)).utf8)
             }
             guard let candidate else { break }
-            let made = named(candidate, make)
+            let made = meetsAttributeFile(candidate, in: parent) ? (result: -1, error: EEXIST) : named(candidate, make)
             if made.result >= 0 {
                 if let spellings {
                     nextNumber[spellings] = number + 1
@@ -343,6 +357,29 @@ nonisolated final class ArchiveWriter {
             number = max(2, nextNumber[taken] ?? 2)
         }
         throw failure(path, EEXIST)
+    }
+
+    /// Whether `name` is in the opened `folder`, not followed if it's a link; nil when that can't be told. A name the disk
+    /// can't hold, too long or not in its alphabet, isn't there.
+    private func exists(_ name: Data, in folder: Int32) -> Bool? {
+        var info = stat()
+        let found = named(name) { fstatat(folder, $0, &info, AT_SYMLINK_NOFOLLOW) }
+        if found.result == 0 { return true }
+        return [ENOENT, ENAMETOOLONG, EILSEQ, EINVAL].contains(found.error) ? false : nil
+    }
+
+    /// On a disk that keeps attributes in "._" files, whether an item made as `name` in the opened `folder` would meet its
+    /// partner there, which counts as taking a taken name: made over a "._name", it would have the system take that file
+    /// over or remove it, and made as "._x" beside "x", it would be taken for x's attributes, which Extract's check leaves
+    /// to the system. The disk's own lookup finds a partner under any spelling it takes for the same name; one it can't
+    /// tell about counts as there.
+    private func meetsAttributeFile(_ name: Data, in folder: Int32) -> Bool {
+        guard attributesInFiles else { return false }
+        let attributeFile = Self.attributeFilePrefix + name
+        let overAttributeFile = Archiver.attributedItem(of: attributeFile).map { Data($0) == name } == true
+            && exists(attributeFile, in: folder) != false
+        let besideItem = Archiver.attributedItem(of: name).map { exists(Data($0), in: folder) != false } ?? false
+        return overAttributeFile || besideItem
     }
 
     /// Whether a folder of this name is a package, which keeps its extension.
@@ -408,7 +445,9 @@ nonisolated final class ArchiveWriter {
         let key = Key(path)
         let name = folderNames[key] ?? path.last!
         var opened = openFolder(name, in: parent)
-        if opened.result < 0, opened.error == ENOENT, creating {
+        // A folder that would meet its "._" partner is numbered, below.
+        let meets = opened.result < 0 && opened.error == ENOENT && creating && meetsAttributeFile(name, in: parent)
+        if opened.result < 0, opened.error == ENOENT, creating, !meets {
             try makeRoom(for: 0)
             let made = named(name) { mkdirat(parent, $0, permissions) }
             guard made.result == 0 || made.error == EEXIST else { throw failure(path, made.error) }
@@ -424,7 +463,7 @@ nonisolated final class ArchiveWriter {
             }
             guard numberedFolders.contains(info.st_ino) else { return opened.result }
             close(opened.result)
-        } else {
+        } else if !meets {
             guard opened.error == ENOTDIR else { throw failure(path, opened.error) }
             var info = stat()
             if !itsOwnEntry, named(name, { fstatat(parent, $0, &info, AT_SYMLINK_NOFOLLOW) }).result == 0,
@@ -436,7 +475,7 @@ nonisolated final class ArchiveWriter {
             throw fileAndFolder(path)
         }
         try makeRoom(for: 0)
-        let (_, numbered) = try create(path, folder: true) { mkdirat(parent, $0, permissions) }
+        let (_, numbered) = try create(path, in: parent, folder: true) { mkdirat(parent, $0, permissions) }
         let fd = openFolder(numbered, in: parent)
         var info = stat()
         guard fd.result >= 0, fstat(fd.result, &info) == 0 else {
