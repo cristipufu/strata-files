@@ -18,7 +18,7 @@ extension BrowserViewController {
 
     @objc func checkAppsForUpdates(_ sender: Any?) {
         let apps = selectedApps
-        guard !apps.isEmpty, let window = view.window, window.attachedSheet == nil else { return NSSound.beep() }
+        guard !apps.isEmpty, let window = view.window, window.attachedSheet == nil else { return Sounds.beep() }
         // This Strata alone: its own updater shows what's new and installs it.
         if apps.count == 1, AppUpdatesController.isThisCopyOfStrata(apps[0]), Updates.shared.canCheck {
             return Updates.shared.checkNow(sender)

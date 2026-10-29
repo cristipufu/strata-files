@@ -26,5 +26,18 @@ class TestIsolationTests(unittest.TestCase):
         self.assertEqual(offenders, [], "Use Prefs.isolated() for a new suite.")
 
 
+class SoundTests(unittest.TestCase):
+    """Strata plays sounds only through Sounds, which stays silent until the app turns it on, so tests play none."""
+
+    PLAYING = re.compile(r"\bNSSound\b|\bNSBeep\b|\bAudioServicesPlay\w*")
+
+    def test_sounds_play_only_through_sounds(self):
+        allowed = ROOT / "Sources" / "Strata" / "Support" / "Sounds.swift"
+        swift = sorted((ROOT / "Sources").rglob("*.swift")) + sorted(SWIFT_TESTS.rglob("*.swift"))
+        offenders = [path.relative_to(ROOT).as_posix() for path in swift
+                     if path != allowed and self.PLAYING.search(path.read_text(encoding="utf-8"))]
+        self.assertEqual(offenders, [], "Play sounds through Sounds, which keeps tests silent.")
+
+
 if __name__ == "__main__":
     unittest.main()

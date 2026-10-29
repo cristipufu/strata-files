@@ -1870,8 +1870,8 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Full Disk Access is on. You’re all set."
   },
   "notes": {
-    " copy": "Added to a duplicate’s name like Finder: “Report copy.pdf”. Keep the leading space. · FileOps.swift:378",
-    " copy %@": "Added to a later duplicate’s name like Finder: “Report copy 2.pdf”. Keep the leading space. · FileOps.swift:381",
+    " copy": "Added to a duplicate’s name like Finder: “Report copy.pdf”. Keep the leading space. · FileOps.swift:374",
+    " copy %@": "Added to a later duplicate’s name like Finder: “Report copy 2.pdf”. Keep the leading space. · FileOps.swift:377",
     "%@ (%lld bytes)": "InspectorViewController.swift:356",
     "%@ (%lld folders not measured)": "InspectorViewController.swift:305",
     "%@ (calculating…)": "Inspector: a total size still being worked out · InspectorViewController.swift:304",
@@ -2238,7 +2238,7 @@
     "Couldn’t create “%@”: %@": "PlanExecutor.swift:109",
     "Couldn’t install the strata command.": "SettingsWindowController.swift:320",
     "Couldn’t open this folder": "BrowserViewController.swift:522",
-    "Couldn’t undo “%@”": "FileOps.swift:425",
+    "Couldn’t undo “%@”": "FileOps.swift:417",
     "Cover": "Book preview: the cover page. · BookArchive.swift:146",
     "Covers": "Settings ▸ Search & Index: which folders the index includes · SettingsWindowController.swift:203",
     "Create New Tag “%@”": "In the tag picker: makes a new tag with the name you typed · TagEditor.swift:459",
@@ -3066,7 +3066,7 @@
     "The copy can’t be read back": "TransferEngine.swift:564, TransferEngine.swift:579",
     "The copy doesn’t match the original": "TransferEngine.swift:565, TransferEngine.swift:580",
     "The destination folder couldn’t be found": "TransferJob.swift:356",
-    "The disk has no Trash.": "Error when a disk cannot move files to the Trash · FileOps.swift:299",
+    "The disk has no Trash.": "Error when a disk cannot move files to the Trash · FileOps.swift:298",
     "The disk is full": "TransferEngine.swift:910",
     "The disk is read-only": "TransferEngine.swift:912",
     "The document is too long for the on-device model.": "AIModel.swift:91",

@@ -68,7 +68,7 @@ extension BrowserViewController {
         // where it came from.
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
         let copies = services.copies
-        guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return NSSound.beep() }
+        guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return Sounds.beep() }
         // Keep the cursor where it was: select the row that slides into the first removed one's place.
         let removed = Set(urls.map(Self.key))
         let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
@@ -287,7 +287,7 @@ extension BrowserViewController {
         // the server's address and path ("deploy@web-1:/srv/app"). Never the path of Strata's copy, which is gone when
         // it quits.
         let paths = urls.compactMap(copies.clipboardPath)
-        guard !paths.isEmpty else { return NSSound.beep() }
+        guard !paths.isEmpty else { return Sounds.beep() }
         services.clipboard.pasteboard.clearContents()
         services.clipboard.pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
     }

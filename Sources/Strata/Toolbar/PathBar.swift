@@ -436,7 +436,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
         }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         guard let first = matches.first else {
-            NSSound.beep()
+            Sounds.beep()
             return
         }
         let completed: String
@@ -454,7 +454,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 }
             }
             completed = String(first[..<end])
-            if completed.count == prefix.count { NSSound.beep() }
+            if completed.count == prefix.count { Sounds.beep() }
         }
         let newPath = (directory as NSString).appendingPathComponent(completed)
         field.stringValue = (newPath as NSString).abbreviatingWithTildeInPath + (matches.count == 1 ? "/" : "")
@@ -467,7 +467,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         animation.values = [0, -9, 9, -6, 6, -3, 3, 0]
         animation.duration = 0.4
         layer?.add(animation, forKey: "shake")
-        NSSound.beep()
+        Sounds.beep()
     }
 }
 

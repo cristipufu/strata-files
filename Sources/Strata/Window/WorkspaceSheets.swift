@@ -184,7 +184,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
 
     @objc private func save(_ sender: Any?) {
         let typed = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !typed.isEmpty else { return NSSound.beep() }
+        guard !typed.isEmpty else { return Sounds.beep() }
         // Saving over one keeps its name as it was written.
         let saved = workspaces.named(typed)?.name ?? typed
         let current = window.map(workspaces.ownedControllers(of:)) ?? []

@@ -24,11 +24,11 @@ extension BrowserViewController {
         guard let engine = store.engine else {
             // Never a shell on this Mac in Strata's copy.
             guard directory.map(copies.contains) == true else { return false }
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
         if let container = selectedContainers.first {
-            if !ContainerControl.openTerminal(in: container, at: "/", engine: engine) { NSSound.beep() }
+            if !ContainerControl.openTerminal(in: container, at: "/", engine: engine) { Sounds.beep() }
             return true
         }
         let selected = selectedEntries
@@ -36,13 +36,13 @@ extension BrowserViewController {
         guard let folder, let (source, top) = copies.copy(containing: folder) else {
             // The Containers folder itself: there's no container to open a shell in.
             guard directory.map(copies.contains) == true else { return false }
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
         let path = ContainerCopies.containerPath(of: folder.resolvingSymlinksInPath(), top: top) ?? "/"
         guard let container = store.container(id: source.id),
               ContainerControl.openTerminal(in: container, at: path, engine: engine) else {
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
         return true

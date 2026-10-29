@@ -409,6 +409,8 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   ownership, and that reuse needs its own coverage. Keep parked originals alive through cleanup so their identities
   can't be reused before the checks. Never empty, trash or delete a real Trash, even to show it's refused: test the
   decision (`FileOps.canTrash`, `deletionPlan`), and pass `Trash.empty(_:)` a fake folder.
+- Strata's sounds stay silent until `main.swift` turns them on, so tests that refuse or trash things play none: play
+  them through `Sounds`, never `NSSound`, `NSBeep` or `AudioServicesPlay…` (a Python check enforces this).
 - Never use `NSPasteboard.general` or Strata's own preferences. Inject
   `Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())` into the services; only the
   serialized `ClipboardTests` sets the global `Clipboard.pasteboard`.

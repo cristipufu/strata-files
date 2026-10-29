@@ -7,6 +7,7 @@ import AppKit
 
 SecureStorage.useApplicationStorage()
 Prefs.useApplicationPreferences()
+Sounds.useApplicationSounds()
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

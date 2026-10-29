@@ -74,7 +74,7 @@ extension BrowserViewController {
 
     func renameOnServer(_ url: URL, to name: String) {
         let copies = services.remote.copies
-        guard !Self.isServerTop(url, copies: copies) else { return NSSound.beep() }
+        guard !Self.isServerTop(url, copies: copies) else { return Sounds.beep() }
         let folder = url.deletingLastPathComponent()
         let files = services.remote.files
         runOnServer(in: folder) { [weak self] in
@@ -89,7 +89,7 @@ extension BrowserViewController {
     func deleteOnServer(_ urls: [URL]) {
         let copies = services.remote.copies
         let urls = Self.serverDeletionTargets(urls, copies: copies)
-        guard !urls.isEmpty, let window = view.window else { return NSSound.beep() }
+        guard !urls.isEmpty, let window = view.window else { return Sounds.beep() }
         let expected = Dictionary(urls.compactMap { copies.server(containing: $0).map { ($0.server.id, $0.server) } },
                                   uniquingKeysWith: { first, _ in first })
         let serverName = copies.server(containing: urls[0])?.server.name ?? serverName
@@ -202,7 +202,7 @@ extension BrowserViewController {
         guard let folder, let (server, top) = copies.server(containing: folder) else { return false }
         guard server.kind == .sftp, let path = RemoteCopies.remotePath(of: folder.resolvingSymlinksInPath(), top: top),
               ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path)) else {
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
         return true

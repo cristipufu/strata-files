@@ -326,7 +326,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         return openFolder(operation: {
             guard await copies.reveal(folder) else { throw CocoaError(.fileReadNoSuchFile) }
             return folder
-        }, failed: { _ in NSSound.beep() })
+        }, failed: { _ in Sounds.beep() })
     }
 
     private func open(_ target: SidebarTarget) {
@@ -345,7 +345,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// The containers of the engine Strata found, as folders.
     func openContainers() {
         guard let engine = services.containerStore.engine, let folder = try? services.copies.containerCopies.prepare(engine) else {
-            NSSound.beep()
+            Sounds.beep()
             return
         }
         navigate(to: folder)
@@ -355,7 +355,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @discardableResult
     func openContainer(_ id: String) -> Task<Void, Never> {
         let open = services.openContainer
-        return openFolder(operation: { try await open(id) }, failed: { _ in NSSound.beep() })
+        return openFolder(operation: { try await open(id) }, failed: { _ in Sounds.beep() })
     }
 
     /// Async destinations keep their originating pane, even when the other pane gets focus while waiting.
@@ -570,8 +570,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 return navigate(to: archive.deletingLastPathComponent(), select: archive)
             }
             // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
-            if services.copies.containerCopies.engineFolder(current) != nil { return NSSound.beep() }
-            if let (_, top) = services.remote.copies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return NSSound.beep() }
+            if services.copies.containerCopies.engineFolder(current) != nil { return Sounds.beep() }
+            if let (_, top) = services.remote.copies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return Sounds.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)

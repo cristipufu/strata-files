@@ -65,7 +65,7 @@ extension BrowserViewController {
 
     private func stepTextSize(_ delta: Double) {
         let size = min(max(preferences.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
-        guard size != preferences.nameTextSize else { return NSSound.beep() }
+        guard size != preferences.nameTextSize else { return Sounds.beep() }
         preferences.nameTextSize = size
     }
 

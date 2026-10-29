@@ -296,8 +296,4 @@ enum Trash {
     private static func parse(_ file: URL) async -> [String: DSStore.PutBack] {
         DSStore.putBackRecords(at: file)
     }
-
-    static let emptySound = NSSound(
-        contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/empty trash.aif",
-        byReference: true)
 }

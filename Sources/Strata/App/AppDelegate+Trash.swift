@@ -46,10 +46,7 @@ extension AppDelegate {
                 guard response == .alertFirstButtonReturn else { return }
                 Task {
                     let failures = await Trash.empty()
-                    if failures.count < count {
-                        Trash.emptySound?.stop()
-                        Trash.emptySound?.play()
-                    }
+                    if failures.count < count { Sounds.emptiedTrash() }
                     NotificationCenter.default.post(name: .trashChanged, object: nil)
                     if !failures.isEmpty { BrowserViewController.report(failures, .delete, in: window) }
                 }

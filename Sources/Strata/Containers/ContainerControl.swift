@@ -9,7 +9,7 @@ enum ContainerControl {
     static func run(_ action: ContainerAction, on containers: [ContainerInfo], in window: NSWindow?,
                     store: ContainerStore = .shared) {
         let targets = containers.filter { action.applies(to: $0.state) && store.busy[$0.id] == nil }
-        guard !targets.isEmpty else { return NSSound.beep() }
+        guard !targets.isEmpty else { return Sounds.beep() }
         let go = {
             Task {
                 let failures = await store.perform(action, on: targets)

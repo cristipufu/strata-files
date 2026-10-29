@@ -198,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.keyWindow ?? windowControllers.first?.window {
             alert.beginSheetModal(for: window)
         } else {
-            NSSound.beep()
+            Sounds.beep()
         }
     }
 

@@ -412,7 +412,7 @@ final class FolderTreeController: NSViewController {
         guard node.kind == .folder else { return }
         load(node) { [weak self] in
             // Expanded only with something inside (expanding asks to load again: an unreadable folder would loop).
-            guard node.children?.isEmpty == false else { return NSSound.beep() }
+            guard node.children?.isEmpty == false else { return Sounds.beep() }
             self?.outline.expandItem(node)
         }
     }

@@ -240,6 +240,7 @@ enum FileOps {
         defer {
             let logged = record ? history.recordMove("Move to Trash", moved, landed: landed) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
+            if !moved.isEmpty { Sounds.movedToTrash() }
         }
         for url in Self.outermost(urls) where Self.canTrash(url, copies: copies) {
             var result: NSURL?
@@ -249,8 +250,6 @@ enum FileOps {
                 landed.record([result as URL])
             }
         }
-        trashSound?.stop()
-        trashSound?.play()
         return moved
     }
 
@@ -308,10 +307,7 @@ enum FileOps {
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
         let entry = history.recordMove("Move to Trash", moved, landed: landed)
         registerMoveUndo(moved, "Move to Trash", undo, entry: entry, copies: copies, landed: landed, history: history)
-        if !moved.isEmpty {
-            trashSound?.stop()
-            trashSound?.play()
-        }
+        if !moved.isEmpty { Sounds.movedToTrash() }
         if let failure { throw failure }
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
     }
@@ -397,10 +393,6 @@ enum FileOps {
         let tail = suffix + (ext.isEmpty ? "" : "." + ext)
         return TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count)) + tail
     }
-
-    private static let trashSound = NSSound(
-        contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
-        byReference: true)
 
     /// Undo for something just made: it goes to the Trash; redoing brings it back. History follows both.
     private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?,

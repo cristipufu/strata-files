@@ -185,10 +185,10 @@ final class RecorderButton: NSButton {
         default:
             break
         }
-        guard let combo = Self.combo(from: event, flags: flags) else { return NSSound.beep() }
+        guard let combo = Self.combo(from: event, flags: flags) else { return Sounds.beep() }
         guard combo.isUsable else {
             // A plain key would stop typing (the list filters as you type): ⌘ or ⌃ is needed, or a function key.
-            NSSound.beep()
+            Sounds.beep()
             title = String(localized: "Add ⌘ or ⌃", comment: "Shortcut field: the keys pressed need Command or Control too")
             return
         }

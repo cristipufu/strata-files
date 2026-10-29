@@ -265,7 +265,7 @@ extension BrowserViewController {
     func openStackInTerminal() -> Bool {
         guard isStackContext else { return false }
         let folders = stackProjectFolders()
-        guard let terminal = preferences.terminalURL, !folders.isEmpty else { NSSound.beep(); return true }
+        guard let terminal = preferences.terminalURL, !folders.isEmpty else { Sounds.beep(); return true }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
@@ -275,7 +275,7 @@ extension BrowserViewController {
     @objc func openStackWithApplication(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? URL else { return }
         let folders = stackProjectFolders()
-        guard !folders.isEmpty else { return NSSound.beep() }
+        guard !folders.isEmpty else { return Sounds.beep() }
         for folder in folders { ProjectEditors.open(folder, with: app) }
     }
 

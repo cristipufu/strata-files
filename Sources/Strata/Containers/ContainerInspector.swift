@@ -220,7 +220,7 @@ final class ContainerInspectorView: NSView {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             let preferences = self.preferences
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
-                guard let app = preferences.terminalURL else { return NSSound.beep() }
+                guard let app = preferences.terminalURL else { return Sounds.beep() }
                 ProjectEditors.open(folder, with: app)
             }
             terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")
@@ -276,7 +276,7 @@ final class ContainerInspectorView: NSView {
             }
         }
         let terminal = ActionButton(String(localized: "Terminal", comment: "Inspector button: a shell in the container"), symbol: "terminal") {
-            guard let engine = store.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return NSSound.beep() }
+            guard let engine = store.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return Sounds.beep() }
         }
         terminal.isEnabled = container.isRunning
         terminal.toolTip = String(localized: "Open a shell in the container, in your terminal", comment: "Inspector: tooltip on Terminal")

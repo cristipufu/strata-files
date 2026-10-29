@@ -274,7 +274,7 @@ final class ProjectInspectorView: NSView {
 
     private func run(_ script: ProjectScript) {
         if let onRunScript { return onRunScript(script) }
-        if !ProjectActions.runInTerminal(script, projectName: info?.folder.lastPathComponent) { NSSound.beep() }
+        if !ProjectActions.runInTerminal(script, projectName: info?.folder.lastPathComponent) { Sounds.beep() }
     }
 
     @objc private func showMoreScripts() {
