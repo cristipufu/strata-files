@@ -22,7 +22,7 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     private let popover = NSPopover()
     private var shownIcon: TransferRing.Key?
 
-    init(itemIdentifier: NSToolbarItem.Identifier = .transfers, queue: TransferQueue = .shared) {
+    init(itemIdentifier: NSToolbarItem.Identifier = .transfers, queue: TransferQueue) {
         self.queue = queue
         controller = TransfersViewController(queue: queue)
         super.init(itemIdentifier: itemIdentifier)

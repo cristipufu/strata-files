@@ -149,7 +149,7 @@ struct ServerMountSessionTests {
         let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts()
         let owned = ServerMountSession(mounter: driver.mounter)
-        let sheet = ConnectToServerController(settings: settings, mounts: owned)
+        let sheet = ConnectToServerController(settings: settings, mounts: owned, connections: .shared)
         let addressField = try #require(views(sheet.view, of: NSComboBox.self).first)
         let picker = try #require(views(sheet.view, of: NSSegmentedControl.self).first)
         let buttons = views(sheet.view, of: NSButton.self)
@@ -186,7 +186,7 @@ struct ServerMountSessionTests {
         _ = NSApplication.shared
         let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts(), owned = ServerMountSession(mounter: driver.mounter)
-        var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned)
+        var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned, connections: .shared)
         weak var weakSheet: ConnectToServerController?
         weakSheet = sheet
         var callbacks = 0

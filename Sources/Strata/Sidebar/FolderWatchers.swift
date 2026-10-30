@@ -18,7 +18,7 @@ import Foundation
     private var sources: [String: [DirectoryWatcher]] = [:]
     private var order: [String] = []
 
-    init(budget: Budget = .shared, limit: Int = 48, directories: ApplicationsFolders = .standard) {
+    init(budget: Budget, limit: Int = 48, directories: ApplicationsFolders = .standard) {
         self.budget = budget
         self.limit = max(0, limit)
         self.directories = directories

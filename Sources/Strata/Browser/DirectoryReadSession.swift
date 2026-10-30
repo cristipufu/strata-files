@@ -42,7 +42,7 @@ nonisolated struct DirectoryReader: Sendable {
     private(set) var generation = 0
     private(set) var task: Task<Void, Never>?
 
-    init(reader: DirectoryReader = .live) { self.reader = reader }
+    init(reader: DirectoryReader) { self.reader = reader }
 
     isolated deinit { task?.cancel() }
 

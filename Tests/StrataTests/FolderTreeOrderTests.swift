@@ -3,7 +3,7 @@ import Testing
 
 struct FolderTreeOrderTests {
     @Test func trashStaysLastWhetherOrNotContainersAreAvailable() throws {
-        let tree = FolderTreeController(places: try PlaceChecks.isolated())
+        let tree = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: .shared)
         for containers in [false, true, false, true] {
             let roots = tree.currentRoots(hasContainers: containers)
             #expect(roots.first?.url == Places.home)

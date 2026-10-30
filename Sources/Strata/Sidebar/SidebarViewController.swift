@@ -73,8 +73,8 @@ final class SidebarViewController: NSViewController {
         tree = FolderTreeController(places: services.places,
                                     transfers: services.transfers, preferences: services.preferences,
                                     remote: services.remote, copies: services.copies,
-                                    containerStore: services.containerStore)
-        tree.clipboard = services.clipboard
+                                    containerStore: services.containerStore, clipboard: services.clipboard,
+                                    watchBudget: .shared)
         super.init(nibName: nil, bundle: nil)
     }
 

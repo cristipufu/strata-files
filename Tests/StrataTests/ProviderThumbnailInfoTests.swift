@@ -65,7 +65,7 @@ struct ProviderThumbnailInfoTests {
 
         func loader(copies: CopyProviders = .live,
                     cache: ThumbnailCache = ThumbnailCache(observesMemoryPressure: false)) -> FileThumbnails {
-            FileThumbnails(cache: cache, copies: copies, generate: { [self] request, completion in
+            FileThumbnails(cache: cache, copies: copies, containerStore: .shared, generate: { [self] request, completion in
                 requests.append((request, completion))
                 if let immediateImage { completion(immediateImage, false) }
             }, cancel: { [self] in cancelled.append($0) })
@@ -113,7 +113,7 @@ struct ProviderThumbnailInfoTests {
             preferences.showIconPreviews = true
             generator = Generator(immediateImage: image)
             let thumbnails = generator.loader(copies: copies)
-            let itemInfo = ItemInfoLoader(copies: copies, mediaReader: reader)
+            let itemInfo = ItemInfoLoader(copies: copies, containerStore: .shared, mediaReader: reader)
             let state = tree.url("state/\(UUID().uuidString)")
             let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             services = BrowserServices.configured(
@@ -251,7 +251,7 @@ struct ProviderThumbnailInfoTests {
         let entry = try #require(FileEntry(url: item)), folder = try #require(FileEntry(url: sub))
         let state = State([item]), reads = Reads()
         let copies = CopyProviders([Provider(root: tree.url("provider"), state: state)])
-        let loader = ItemInfoLoader(copies: copies, mediaReader: { await reads.read($0) }), before = tree.snapshot()
+        let loader = ItemInfoLoader(copies: copies, containerStore: .shared, mediaReader: { await reads.read($0) }), before = tree.snapshot()
 
         // Provider folders are never counted locally.
         #expect(!loader.needsLoading(folder))
@@ -288,6 +288,7 @@ struct ProviderThumbnailInfoTests {
         // Scheduled work whose copy becomes a placeholder before execution starts does not invoke the reader.
         let earlyState = State([]), earlyReads = Reads()
         let earlyLoader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: earlyState)]),
+                                    containerStore: .shared,
                                          mediaReader: { await earlyReads.read($0) })
         _ = earlyLoader.request(entry, showHidden: false) { _ in Issue.record("Invalidated copy must not publish") }
         let earlyTask = try #require(earlyLoader.tasks.values.first)
@@ -300,6 +301,7 @@ struct ProviderThumbnailInfoTests {
         // Running work whose copy becomes a placeholder before completion does not cache fallback size or dimensions.
         let midState = State([]), midReads = Reads(held: true)
         let midLoader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: midState)]),
+                                    containerStore: .shared,
                                        mediaReader: { await midReads.read($0) })
         _ = midLoader.request(entry, showHidden: false) { _ in Issue.record("Invalidated copy must not publish") }
         let midTask = try #require(midLoader.tasks.values.first)
@@ -314,6 +316,7 @@ struct ProviderThumbnailInfoTests {
         for oldFirst in [false, true] {
             let state = State([]), reads = Reads(held: true)
             let loader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: state)]),
+                                    containerStore: .shared,
                                         mediaReader: { await reads.read($0) })
             var delivered: [String] = []
             _ = loader.request(entry, showHidden: false) { delivered.append($0) }
@@ -334,7 +337,7 @@ struct ProviderThumbnailInfoTests {
 
         // Releasing the loader cancels its outstanding task without retaining it.
         let releaseReads = Reads(held: true)
-        var loader: ItemInfoLoader? = ItemInfoLoader(copies: .live, mediaReader: { await releaseReads.read($0) })
+        var loader: ItemInfoLoader? = ItemInfoLoader(copies: .live, containerStore: .shared, mediaReader: { await releaseReads.read($0) })
         weak let released = loader
         _ = loader?.request(entry, showHidden: false) { _ in Issue.record("Released loader must not publish") }
         let task = try #require(loader?.tasks.values.first)
@@ -371,7 +374,7 @@ struct ProviderThumbnailInfoTests {
         let nodeA = try #require(a.allRows.first { $0.url == item })
         let nameCol = try #require(a.outlineView.tableColumn(withIdentifier: .init("name")))
         let listCellBefore = try #require(a.outlineView(a.outlineView, viewFor: nameCol, item: nodeA) as? NameCellView)
-        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry)
+        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry, containerStore: .shared)
         #expect(listCellBefore.imageView?.image === fallbackIcon)
         #expect((a.previewPanel(nil, transitionImageFor: item as NSURL, contentRect: nil) as? NSImage) === fallbackIcon)
 

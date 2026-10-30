@@ -503,7 +503,7 @@ final class InspectorViewController: NSViewController {
         if !same { showProject(nil) }
         guard let url else { return }
         projectTask = Task { [weak self] in
-            let info = await ProjectInfo.load(for: url) { partial in
+            let info = await ProjectInfo.load(for: url, store: .shared) { partial in
                 guard !Task.isCancelled, let self, self.projectFolder == url else { return }
                 self.showProject(partial)
             }
@@ -526,7 +526,7 @@ final class InspectorViewController: NSViewController {
         guard let info = projectView.info, let root = notification.userInfo?["root"] as? URL else { return }
         let path = info.folder.standardizedFileURL.path
         guard path == root.path || path.hasPrefix(root.path + "/") else { return }
-        projectView.configure(info.withCurrentGit())
+        projectView.configure(info.withCurrentGit(store: .shared))
     }
 
     private func setRows(_ rows: [(String, NSView)]) {

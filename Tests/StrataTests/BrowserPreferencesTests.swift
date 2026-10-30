@@ -162,7 +162,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false
@@ -313,7 +313,10 @@ struct BrowserPreferencesTests {
         browser.addToSidebar(nil)
         #expect(first.preferences.favoritePaths == [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path))
 
-        let folderTree = FolderTreeController(places: second.services.places, preferences: second.preferences)
+        let folderTree = FolderTreeController(places: second.services.places, transfers: second.services.transfers,
+                                              preferences: second.preferences, remote: second.services.remote,
+                                              copies: second.services.copies, containerStore: second.services.containerStore,
+                                              clipboard: second.services.clipboard, watchBudget: .shared)
         let item = NSMenuItem()
         item.representedObject = tree.url("another")
         folderTree.perform(NSSelectorFromString("addFavorite:"), with: item)

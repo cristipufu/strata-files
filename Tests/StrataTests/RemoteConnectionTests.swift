@@ -356,7 +356,7 @@ struct RemoteConnectionTests {
         _ = NSApplication.shared
         let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let original = s3(), environment = Environment([original], secrets: [original.id: "Saved"])
-        let sheet = ConnectToServerController(editing: original, settings: settings, connections: environment.connections, sshHosts: { [] })
+        let sheet = ConnectToServerController(editing: original, settings: settings, mounts: ServerMountSession(mounter: .live), connections: environment.connections, sshHosts: { [] })
         let secret = try #require(views(sheet.view, of: NSSecureTextField.self).first)
         let buttons = views(sheet.view, of: NSButton.self)
         let connect = try #require(buttons.first { $0.action == NSSelectorFromString("connect:") })
@@ -393,7 +393,7 @@ struct RemoteConnectionTests {
         let original = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
         let environment = Environment([original])
         var sheet: ConnectToServerController? = ConnectToServerController(editing: original, settings: settings,
-            connections: environment.connections, sshHosts: { ["fixture.invalid"] })
+            mounts: ServerMountSession(mounter: .live), connections: environment.connections, sshHosts: { ["fixture.invalid"] })
         weak let weakSheet = sheet
         var callbacks = 0
         sheet!.onServer = { _ in callbacks += 1 }

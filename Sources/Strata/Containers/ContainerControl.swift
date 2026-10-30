@@ -7,7 +7,7 @@ enum ContainerControl {
     /// Does `action` to `containers` (those it applies to). Stopping, restarting or pausing several asks first; what
     /// fails is shown, with the engine's reason.
     static func run(_ action: ContainerAction, on containers: [ContainerInfo], in window: NSWindow?,
-                    store: ContainerStore = .shared) {
+                    store: ContainerStore) {
         let targets = containers.filter { action.applies(to: $0.state) && store.busy[$0.id] == nil }
         guard !targets.isEmpty else { return Sounds.beep() }
         let go = {
@@ -112,7 +112,7 @@ enum ContainerControl {
 /// The folder on this Mac a Compose project was launched from.
 enum StackProjects {
     static func workingDirectory(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
-                                 store: ContainerStore = .shared) -> URL? {
+                                 store: ContainerStore) -> URL? {
         guard copies.isStack(url) else { return nil }
         let name = url.lastPathComponent
         guard let path = store.containers.lazy.compactMap({ container -> String? in
@@ -126,7 +126,7 @@ enum StackProjects {
 
     /// `workingDirectory` when that folder is still on this Mac.
     static func existingFolder(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
-                               store: ContainerStore = .shared) -> URL? {
+                               store: ContainerStore) -> URL? {
         workingDirectory(of: url, copies: copies, store: store).flatMap(existing)
     }
 

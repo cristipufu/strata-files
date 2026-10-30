@@ -334,7 +334,7 @@ struct BookPreviewTests {
     @Test func coverFallbackIsSharedCachedAndFinishesWhenQuickLookHasNoThumbnail() async throws {
         let tree = try TestTree("book.epub", "outside/keep")
         let url = try epub(tree), entry = try #require(FileEntry(url: url))
-        let thumbnails = FileThumbnails(copies: .live, generate: { _, completion in completion(nil, false) })
+        let thumbnails = FileThumbnails(copies: .live, containerStore: .shared, generate: { _, completion in completion(nil, false) })
         #expect(thumbnails.canThumbnail(entry))
         let image: NSImage? = await withCheckedContinuation { continuation in
             var result: NSImage?
@@ -435,7 +435,7 @@ struct BookPreviewTests {
         let original = try Data(contentsOf: url)
         try original.write(to: tree.url("replacement"))
         var callback: FileThumbnails.Completion?
-        let loader = FileThumbnails(copies: .live, generate: { _, completion in callback = completion })
+        let loader = FileThumbnails(copies: .live, containerStore: .shared, generate: { _, completion in callback = completion })
         let (finished, signal) = AsyncStream<Void>.makeStream()
         var delivered = false
         loader.request(entry, size: 64, scale: 1, finished: { signal.yield() }) { _ in delivered = true }

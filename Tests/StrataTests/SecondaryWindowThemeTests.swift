@@ -23,7 +23,7 @@ extension ColorThemeTests {
         search.stringValue = "Rename"
         shortcuts.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search))
         let content = root.subviews.filter { !($0 is ThemeSurfaceView) }
-        let connect = ConnectToServerController(settings: ServerConnectionSettings(preferences: try Prefs.isolated()))
+        let connect = ConnectToServerController(settings: ServerConnectionSettings(preferences: try Prefs.isolated()), mounts: ServerMountSession(mounter: .live), connections: .shared)
         let connectFill = try #require(connect.view.subviews.compactMap { $0 as? ThemeSurfaceView }.first)
         let fields = secondaryDescendants(connect.view).compactMap { $0 as? NSTextField }.filter { $0.isEditable }
         let typed = "my-server.example"

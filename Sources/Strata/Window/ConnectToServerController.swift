@@ -38,8 +38,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private var connection: RemoteConnectionRequest?
     private(set) var connecting: Task<Void, Never>?
 
-    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession = ServerMountSession(),
-         connections: RemoteConnections = .shared, sshHosts: @escaping @MainActor () -> [String] = ConnectToServerController.sshConfigHosts) {
+    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession,
+         connections: RemoteConnections, sshHosts: @escaping @MainActor () -> [String] = ConnectToServerController.sshConfigHosts) {
         self.connections = connections
         self.sshHosts = sshHosts
         self.mounts = mounts

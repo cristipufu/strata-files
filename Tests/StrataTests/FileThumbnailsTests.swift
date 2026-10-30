@@ -9,7 +9,7 @@ struct FileThumbnailsTests {
         var cancelled: [QLThumbnailGenerator.Request] = []
 
         func loader(cache: ThumbnailCache = ThumbnailCache(observesMemoryPressure: false)) -> FileThumbnails {
-            FileThumbnails(cache: cache, copies: .live, generate: { [self] in requests.append(($0, $1)) },
+            FileThumbnails(cache: cache, copies: .live, containerStore: .shared, generate: { [self] in requests.append(($0, $1)) },
                            cancel: { [self] in cancelled.append($0) })
         }
     }

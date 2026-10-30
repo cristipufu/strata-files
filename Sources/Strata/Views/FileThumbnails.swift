@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
 final class FileThumbnails {
-    static let shared = FileThumbnails(copies: .live)
+    static let shared = FileThumbnails(copies: .live, containerStore: .shared)
 
     typealias Completion = @Sendable (CGImage?, Bool) -> Void
     typealias Generate = (QLThumbnailGenerator.Request, @escaping Completion) -> Void
@@ -49,7 +49,7 @@ final class FileThumbnails {
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
             completion(representation?.cgImage, cancelled)
@@ -275,7 +275,7 @@ final class FileThumbnails {
 
 /// Small facts shown under icons, read off the main thread: a folder's item count, an image's pixel size.
 @MainActor final class ItemInfoLoader {
-    static let shared = ItemInfoLoader(copies: .live)
+    static let shared = ItemInfoLoader(copies: .live, containerStore: .shared)
 
     private var cache: [String: String] = [:]
     private(set) var tasks: [String: Task<Void, Never>] = [:]
@@ -286,7 +286,7 @@ final class FileThumbnails {
     let containerStore: ContainerStore
     private let mediaReader: MediaInfoLoader.Reader
 
-    init(copies: CopyProviders, containerStore: ContainerStore = .shared, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
+    init(copies: CopyProviders, containerStore: ContainerStore, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
         self.copies = copies
         self.containerStore = containerStore
         self.mediaReader = mediaReader
@@ -435,7 +435,7 @@ final class FileThumbnails {
 }
 
 extension IconCache {
-    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore = ContainerCopies.store, containerStore: ContainerStore = .shared) -> NSImage {
+    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore = ContainerCopies.store, containerStore: ContainerStore) -> NSImage {
         // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
         // grey while it's stopped, orange while it's paused or only partly running.
         if entry.isDirectory, let (source, top) = containerCopies.copy(containing: entry.url),

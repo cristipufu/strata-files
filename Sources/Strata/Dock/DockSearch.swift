@@ -502,7 +502,7 @@ enum DockSearchItems {
             let isFolder = entry.isFolder
             let matches = Fuzzy.match(query.split(separator: " ").first.map(String.init) ?? query, entry.name)?.indices ?? []
             return PaletteItem(title: entry.name, subtitle: Format.tildePath(entry.url.deletingLastPathComponent()),
-                               icon: isFolder ? folderIcon : IconCache.shared.icon(for: entry), kind: isFolder ? .folder : .match,
+                               icon: isFolder ? folderIcon : BrowserServices.shared.thumbnails.icon(for: entry), kind: isFolder ? .folder : .match,
                                fixedScore: max(0, hit.score - 1000) / 2 + 8, titleMatches: matches, url: entry.url) {
                 if isFolder { show(entry.url) } else { NSWorkspace.shared.open(entry.url) }
             }

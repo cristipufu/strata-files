@@ -14,7 +14,7 @@ extension ProjectInfo {
     /// artifacts git tracks are dropped (a committed `bin/` is not a build artifact). `onUpdate` receives the result
     /// before sizes are known, so the inspector can show it immediately; the return value has sizes. Cancel the
     /// calling task when the selection changes: the size walks stop and nil is returned.
-    static func load(for folder: URL, store: GitStatusStore = .shared,
+    static func load(for folder: URL, store: GitStatusStore,
                      onUpdate: ((ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
         let folder = folder.standardizedFileURL
         var info = await ProjectDetector.detect(folder)
@@ -55,7 +55,7 @@ extension ProjectInfo {
 
     /// The same info with the git summary taken from the store's current snapshot. No I/O: use it when
     /// `.gitStatusDidChange` fires instead of reloading (which could re-measure artifacts).
-    func withCurrentGit(store: GitStatusStore = .shared) -> ProjectInfo {
+    func withCurrentGit(store: GitStatusStore) -> ProjectInfo {
         guard let repository = store.repository(containing: folder), let snapshot = store.snapshot(for: repository.root) else {
             return self
         }

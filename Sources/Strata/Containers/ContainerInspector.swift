@@ -33,7 +33,7 @@ final class ContainerInspectorView: NSView {
     }
 
     init(frame: NSRect = .zero, preferences: Prefs = .shared,
-         copies: ContainerCopyStore = ContainerCopies.store, store: ContainerStore = .shared) {
+         copies: ContainerCopyStore = ContainerCopies.store, store: ContainerStore) {
         self.preferences = preferences
         self.copies = copies
         self.store = store
@@ -447,7 +447,7 @@ final class ComposeInspectorView: NSView {
 
     static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
 
-    init(frame: NSRect = .zero, preferences: Prefs = .shared, store: ContainerStore = .shared) {
+    init(frame: NSRect = .zero, preferences: Prefs = .shared, store: ContainerStore) {
         self.preferences = preferences
         self.store = store
         super.init(frame: frame)
@@ -531,7 +531,7 @@ final class ComposeInspectorView: NSView {
     /// Working folders with links resolved, by the path a container gives.
     private static var resolvedCache: [String: String] = [:]
 
-    private static func compose(in folder: URL, store: ContainerStore = .shared) -> Shown? {
+    private static func compose(in folder: URL, store: ContainerStore) -> Shown? {
         let real = folder.resolvingSymlinksInPath().standardizedFileURL.path
         let containers = store.containers.filter { container in
             guard let directory = container.compose?.workingDirectory else { return false }

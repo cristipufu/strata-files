@@ -21,7 +21,7 @@ nonisolated package struct ServerMounter: Sendable {
     package private(set) var task: Task<Void, Never>?
     package var isConnecting: Bool { request != nil }
 
-    package init(mounter: ServerMounter = .live) { self.mounter = mounter }
+    package init(mounter: ServerMounter) { self.mounter = mounter }
 
     isolated deinit { cancel() }
 

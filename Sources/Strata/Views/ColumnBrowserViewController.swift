@@ -39,9 +39,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private weak var renameWhenLoaded: ColumnPane?
     private var selectWhenLoaded: (pane: ColumnPane, urls: [URL], scroll: Bool)?
 
-    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs,
+    init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader, preferences: Prefs,
          thumbnails: FileThumbnails, itemInfo: ItemInfoLoader, copies: CopyProviders,
-         clipboard: Clipboard = .shared) {
+         clipboard: Clipboard) {
         self.directoryReader = directoryReader
         self.preferences = preferences
         self.thumbnails = thumbnails

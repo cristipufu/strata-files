@@ -29,9 +29,9 @@ struct BrowserPresentationsTests {
         let metadata = FileCollectionMetadata(ordered: { comparisons += 1; return $0.name < $1.name },
                                               canMeasure: { _ in permissions += 1; return false },
                                               size: { sizes += 1; return $0.size })
-        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live),
-                                                       ColumnBrowserViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live),
-                                                       GalleryViewController(thumbnails: .shared, copies: .live), TreemapViewController(copies: .live)]
+        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared),
+                                                       ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared),
+                                                       GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared), TreemapViewController(copies: .live)]
         for controller in controllers {
             sizes = 0; permissions = 0; comparisons = 0
             controller.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
@@ -59,9 +59,9 @@ struct BrowserPresentationsTests {
         let tree = try TestTree("old/a.txt", "new/")
         let old = FileCollectionContent(directory: tree.url("old"), entries: try entries(tree, ["old/a.txt"]), matches: [:])
         let empty = FileCollectionContent(directory: tree.url("new"), entries: [], matches: [:])
-        let grid = GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
-        let columns = ColumnBrowserViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
-        let gallery = GalleryViewController(thumbnails: .shared, copies: .live)
+        let grid = GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
+        let gallery = GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared)
         for controller in [grid, columns, gallery] as [FileCollectionController] {
             controller.apply(old, metadata: metadata, animated: false)
             controller.apply(empty, metadata: metadata, animated: false)
@@ -79,7 +79,7 @@ struct BrowserPresentationsTests {
         let root = try entries(tree, ["folder", "other.txt"]), children = try entries(tree, ["folder/a.txt", "folder/z.txt"])
         let reads = ReadLog()
         let reader = DirectoryReader { folder, _, _ in await reads.record(folder); return children }
-        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
+        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let content = FileCollectionContent(directory: tree.root, entries: root, matches: [:])
         let descending = Mutex(false)
@@ -107,7 +107,7 @@ struct BrowserPresentationsTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("alpha.txt")
         let entry = try #require(FileEntry(url: tree.url("alpha.txt")))
-        let columns = ColumnBrowserViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
         columns.apply(FileCollectionContent(directory: tree.root, entries: [entry], matches: [entry.url: [0, 1]]),
                       metadata: metadata, animated: false)
         let pane = try #require(views(columns.view, of: ColumnPane.self).first)

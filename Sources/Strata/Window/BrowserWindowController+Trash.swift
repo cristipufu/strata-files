@@ -22,6 +22,7 @@ extension BrowserWindowController {
     func serverController(editing server: RemoteServer? = nil) -> ConnectToServerController {
         let origin = pane
         let controller = ConnectToServerController(editing: server, settings: services.connectionSettings,
+                                                   mounts: ServerMountSession(mounter: .live),
                                                    connections: services.remote.connections)
         controller.onConnected = { [weak self, weak origin] mounted in
             guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }

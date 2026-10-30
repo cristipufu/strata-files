@@ -50,7 +50,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
 
-    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue = .shared, preferences: Prefs? = nil) {
+    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue, preferences: Prefs? = nil) {
         self.transfers = transfers
         self.preferences = preferences ?? transfers.preferences
         self.left = left

@@ -18,7 +18,7 @@ final class TransfersViewController: NSViewController {
     private var rows: [ObjectIdentifier: TransferRowView] = [:]
     private var listHeight: NSLayoutConstraint!
 
-    init(queue: TransferQueue = .shared) {
+    init(queue: TransferQueue) {
         self.queue = queue
         super.init(nibName: nil, bundle: nil)
     }
