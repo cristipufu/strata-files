@@ -457,7 +457,7 @@ extension TransferTests {
             let restoring = Self.fixtureLocation(tree.url("from/b.txt"))
             let env = try HistoryEnvironment(tree, moveItems: { pairs, name in
                 if pairs.contains(where: { Self.fixtureLocation($0.to) == restoring }) { await gate.hold() }
-                try await FileOps.move(pairs, actionName: name, undo: nil, record: false, copies: .live)
+                try await FileOps.moveAsPart(pairs, copies: .live)
             })
             let destination = volume.url("out")
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)

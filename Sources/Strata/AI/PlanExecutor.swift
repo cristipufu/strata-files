@@ -16,7 +16,7 @@ enum PlanExecutor {
     /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
     /// `undoName` when given ("Rename 3 Items"), else that translation.
     static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
-                      copies: CopyProviders, history: OperationLog = .shared) async -> Outcome {
+                      copies: CopyProviders, history: OperationLog) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
         guard !touched.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) else {
@@ -84,7 +84,7 @@ final class PlanTransaction {
 
     var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
 
-    func record(_ name: String, history: OperationLog = .shared) -> UUID? {
+    func record(_ name: String, history: OperationLog) -> UUID? {
         // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
         history.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created,
                            containerIdentities: createdFolders.historyIdentities, landed: applied)
@@ -210,7 +210,7 @@ final class PlanTransaction {
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
     private static func move(_ pair: Pair, copies: CopyProviders) async throws {
         func move(_ from: URL, to: URL) async throws {
-            try await FileOps.move([(from: from, to: to)], actionName: "", undo: nil, record: false, copies: copies)
+            try await FileOps.moveAsPart([(from: from, to: to)], copies: copies)
         }
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")

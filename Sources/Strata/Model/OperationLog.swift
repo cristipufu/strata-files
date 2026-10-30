@@ -153,7 +153,7 @@ final class OperationLog {
         self.storage = storage
         self.copies = copies
         self.moveItems = moveItems ?? { pairs, name in
-            try await FileOps.move(pairs, actionName: name, undo: nil, record: false, copies: copies)
+            try await FileOps.moveAsPart(pairs, copies: copies)
         }
         file = storage.url("history.sealed")
         Self.waitForWrites()

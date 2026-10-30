@@ -217,7 +217,7 @@ import Testing
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
         try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt")), (from: tree.url("c.txt"), to: tree.url("d.txt"))],
-                               actionName: "Rename", undo: undo, copies: .live)
+                               actionName: "Rename", undo: undo, history: .shared, copies: .live)
         undo.endUndoGrouping()
         TransferEngine.hooks = .init()
         undo.undo()

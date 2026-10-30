@@ -89,7 +89,7 @@ struct DeleteScopeTests {
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
         let inside = copy.appending(path: "a.txt")
         try Data("x".utf8).write(to: inside)
-        try await FileOps.trashInBackground([inside], undo: nil, copies: .live)
+        try await FileOps.trashInBackground([inside], undo: nil, copies: .live, history: .shared)
         // Whatever went to the Trash despite this comes back out.
         defer {
             for entry in OperationLog.shared.entries {

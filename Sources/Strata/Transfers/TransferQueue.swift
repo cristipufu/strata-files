@@ -3,7 +3,7 @@ import AppKit
 /// Every copy and move in the app, and compressing and extracting. Transfer jobs start measuring and asking about
 /// conflicts right away, then copy one at a time per destination disk (same-volume moves are renames and never wait).
 final class TransferQueue {
-    static let shared = TransferQueue()
+    static let shared = TransferQueue(preferences: .shared, history: .shared, copies: .live)
 
     /// Posted (object: the queue) when jobs are added, removed, change state, or a few times a second while running.
     static let didChangeNotification = Notification.Name("StrataTransferQueueDidChange")
@@ -24,7 +24,7 @@ final class TransferQueue {
     let history: OperationLog
     let copies: CopyProviders
 
-    init(preferences: Prefs = .shared, history: OperationLog = .shared, copies: CopyProviders? = nil) {
+    init(preferences: Prefs = .shared, history: OperationLog, copies: CopyProviders? = nil) {
         self.preferences = preferences
         self.history = history
         self.copies = copies ?? .live

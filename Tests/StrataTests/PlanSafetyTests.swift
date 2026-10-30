@@ -112,7 +112,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live)
+        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(outcome.failures.isEmpty)
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Old/", "Old/x.txt", "b.txt", "dee.txt", "keep.txt"])
@@ -129,7 +129,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo, copies: .live)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Later/", "Later/e.txt"])
         // Something is saved into "Done" meanwhile; "Later" only gets Finder's records.
@@ -201,7 +201,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "dee.txt", "keep.txt"])
         // "dee.txt" is swapped for another file: undo leaves it, and puts back the rest.

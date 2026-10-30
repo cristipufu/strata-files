@@ -100,7 +100,7 @@ struct LocalizedNamesTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.txt", undo: undo, copies: .live)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.txt", undo: undo, copies: .live, history: .shared)
             undo.endUndoGrouping()
             #expect(tree.snapshot() == ["Originals.txt", "Renamed.txt", "Translated.txt", "other/", "other/Original.txt"], "\(mode)")
             #expect(tree.text("Renamed.txt") == "Original.txt" && tree.text("Translated.txt") == "Translated.txt")

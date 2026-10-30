@@ -128,7 +128,7 @@ struct StorageContextTests {
         let storage = context(tree, "state", key: key)
         let history = OperationLog(storage: storage, copies: .live)
         let moves = [(from: tree.url("a.txt"), to: tree.url("b.txt"))]
-        try await FileOps.move(moves, actionName: "Rename", undo: nil, record: false, copies: .live)
+        try await FileOps.moveAsPart(moves, copies: .live)
         let id = try #require(history.recordMove("Rename", moves))
         let entry = try #require(history.entries.first)
         let undo = UndoManager()

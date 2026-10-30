@@ -267,7 +267,7 @@ struct RemoteCopyOwnershipTests {
         let copyProviders = CopyProviders(servers: files, containers: ContainerFiles())
         let upload = RemoteUploadJob([tree.url("local/sub")], into: destination, expected: original,
                                      files: files, copies: copyProviders)
-        let queue = TransferQueue()
+        let queue = TransferQueue(history: .shared)
         queue.add(upload)
         await upload.finished()
         #expect(upload.state == .cancelled && editedBackend.changes.isEmpty)

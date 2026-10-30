@@ -1,17 +1,5 @@
 [
  {
-  "file": "Sources/Strata/AI/BatchRenameController.swift",
-  "default": "OperationLog.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/AI/PlanExecutor.swift",
-  "default": "OperationLog.shared",
-  "count": 2,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Browser/DirectoryReadSession.swift",
   "default": "DirectoryReader.live",
   "count": 1,
@@ -45,12 +33,6 @@
   "file": "Sources/Strata/Inspector/InspectorCard.swift",
   "default": "Prefs.shared",
   "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Model/FileOps.swift",
-  "default": "OperationLog.shared",
-  "count": 8,
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
@@ -116,12 +98,6 @@
  {
   "file": "Sources/Strata/Sidebar/FolderWatchers.swift",
   "default": "Budget.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Transfers/TransferQueue.swift",
-  "default": "OperationLog.shared",
   "count": 1,
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },

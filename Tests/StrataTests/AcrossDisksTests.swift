@@ -92,7 +92,7 @@ extension TransferTests {
         let tree = try TestTree("a.txt")
         let there = volume.url("a.txt")
         let undo = try await undoable { undo in
-            try await FileOps.move([(from: tree.url("a.txt"), to: there)], actionName: "Move", undo: undo, copies: .live)
+            try await FileOps.move([(from: tree.url("a.txt"), to: there)], actionName: "Move", undo: undo, history: .shared, copies: .live)
         }
         #expect(tree.snapshot().isEmpty && TestTree.listing(of: volume.root).contains("a.txt"))
         // Each way the item is a new file where it lands; undo and redo follow it there.

@@ -348,17 +348,17 @@ struct BrowserCopyProviderTests {
         #expect(FileOps.canTrash(localFile, copies: first.copies))
         #expect(SidebarViewController.canTrash([localFile], copies: first.copies))
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies)
+            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies, history: .shared)
         }
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies)
+            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies, history: .shared)
         }
         await #expect(throws: FileOps.insideArchiveError) {
-            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies)
+            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies, history: .shared)
         }
         await #expect(throws: FileOps.insideArchiveError) {
             try await FileOps.move([(from: localFile, to: topA.appending(path: "file.txt"))],
-                                   actionName: "Move", undo: nil, copies: first.copies)
+                                   actionName: "Move", undo: nil, history: .shared, copies: first.copies)
         }
         withExtendedLifetime((tree, first, second, browserA, browserB)) {}
     }

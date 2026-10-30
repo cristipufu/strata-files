@@ -15,7 +15,7 @@ enum FileOps {
     ])
 
     static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders,
-                       history: OperationLog = .shared) async throws -> URL {
+                       history: OperationLog) async throws -> URL {
         guard !ReadOnlyCopies.contains(url, copies: copies) else { throw insideArchiveError }
         // A name, never a path: whatever is typed, the item stays in its folder.
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
@@ -36,13 +36,9 @@ enum FileOps {
         return destination
     }
 
-    /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
-    /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
-    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true,
-                     history: OperationLog = .shared, copies: CopyProviders) async throws {
-        guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
-            throw insideArchiveError
-        }
+    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, history: OperationLog,
+                     copies: CopyProviders) async throws {
+        try refuseReadOnly(pairs, copies: copies)
         let landed = LandedFiles()
         for pair in pairs { landed.expect(pair.from, at: pair.to) }
         let (done, error) = await moveAll(pairs)
@@ -50,9 +46,26 @@ enum FileOps {
         for pair in pairs where !arrivedPaths.contains(pair.to.path) { landed.set(nil, at: pair.to) }
         for pair in done where landed.identity(at: pair.to) == nil { landed.record([pair.to]) }
         done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
-        let entry = record ? history.recordMove(actionName, done, landed: landed) : nil
+        let entry = history.recordMove(actionName, done, landed: landed)
         registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
         if let error { throw error }
+    }
+
+    /// Moves that are a step of another operation (an undo or redo, a plan's rename through a temporary name): History
+    /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z, so nothing is recorded or
+    /// registered.
+    static func moveAsPart(_ pairs: [Move], copies: CopyProviders) async throws {
+        try refuseReadOnly(pairs, copies: copies)
+        let (done, error) = await moveAll(pairs)
+        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
+        if let error { throw error }
+    }
+
+    /// Nothing inside an archive opened as a folder moves, in or out: it's a temporary copy.
+    private static func refuseReadOnly(_ pairs: [Move], copies: CopyProviders) throws {
+        guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
+            throw insideArchiveError
+        }
     }
 
     /// Moves each pair in order, stopping at the first error, and returns what moved and the error that stopped it.
@@ -179,7 +192,7 @@ enum FileOps {
     }
 
     static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders,
-                          history: OperationLog = .shared) throws -> URL {
+                          history: OperationLog) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
                             english: "untitled folder")
@@ -194,7 +207,7 @@ enum FileOps {
     /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
     /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
     static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders,
-                        history: OperationLog = .shared) throws -> URL {
+                        history: OperationLog) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = newFileName(extension: ext)
         var url = available(directory.appending(path: name), copyStyle: false)
@@ -234,7 +247,7 @@ enum FileOps {
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
     static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog = .shared) throws -> [Move] {
+                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog) throws -> [Move] {
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
@@ -301,7 +314,7 @@ enum FileOps {
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog = .shared) async throws {
+    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog) async throws {
         let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
@@ -455,7 +468,7 @@ enum FileOps {
 
     /// Registers, in the current undo group, flipping History entry `id` to `undone` (and back on redo), so the
     /// History window agrees with ⌘Z and ⇧⌘Z.
-    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager, history: OperationLog = .shared) {
+    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager, history: OperationLog) {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 history.setUndone(id, undone)
@@ -496,7 +509,7 @@ enum FileOps {
     /// and removed after Undo only while their recorded identities still match and they are empty.
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
                                  copies: CopyProviders, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
-                                 landed: LandedFiles? = nil, history: OperationLog = .shared) {
+                                 landed: LandedFiles? = nil, history: OperationLog) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? LandedFiles(moves.map(\.to))
         register(actionName, undo) { undo in

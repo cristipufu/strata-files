@@ -122,7 +122,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live, history: .shared)
             undo.endUndoGrouping()
             let renamed = before.map { $0.replacingOccurrences(of: "System/Applications/Same.app/", with: "System/Applications/Renamed.app/") }.sorted()
             #expect(tree.snapshot() == renamed, "\(mode)")
@@ -152,7 +152,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live, history: .shared)
             undo.endUndoGrouping()
             #expect(tree.snapshot() == before.map {
                 $0.replacingOccurrences(of: "System/Applications/Utilities/Tool.app/", with: "System/Applications/Utilities/Renamed.app/")
