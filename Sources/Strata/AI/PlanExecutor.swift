@@ -97,7 +97,8 @@ final class PlanTransaction {
         createdFolders = CreatedFolders()
         // Redone: only what undo put back, still there.
         let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
-        let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems
+        let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
+            ?? self.trashItems
         let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
         let fm = FileManager.default
         for folder in folders where !fm.fileExists(atPath: folder.path) {
@@ -126,10 +127,10 @@ final class PlanTransaction {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
-        // Redone: the Trash steps above wait, so what undo put back is checked again right before it moves.
-        let movable = restored.map { restored in moves.filter { restored.holds($0.from) } } ?? moves
-        if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
-            // Swaps and chains move together, through temporary names.
+        // Redone, the Trash steps above waited: what undo put back is checked again before it moves.
+        if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
+            // Swaps and chains move together, through temporary names, so they're checked before they start.
+            let movable = restored.map { restored in moves.filter { restored.holds($0.from) } } ?? moves
             for pair in movable { applied.expect(pair.from, at: pair.to) }
             let (moved, error) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
             let arrivedPaths = Set(moved.map(\.to.path))
@@ -140,8 +141,8 @@ final class PlanTransaction {
             outcome.results += moved.map(\.to)
             if let error { outcome.failures.append(error.localizedDescription) }
         } else {
-            for pair in movable {
-                // Each one waits for the one before: checked again as it goes.
+            for pair in moves {
+                // Each one waits for the one before: checked as it goes.
                 if let restored, !restored.holds(pair.from) { continue }
                 do {
                     applied.expect(pair.from, at: pair.to)

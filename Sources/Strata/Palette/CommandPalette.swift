@@ -147,6 +147,8 @@ final class CommandPalette: NSObject {
     }
 
     func close() {
+        pendingUpdate?.cancel()
+        pendingUpdate = nil
         ranker.cancel()
         guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
@@ -294,17 +296,19 @@ final class CommandPalette: NSObject {
     }
 
     private func runSelectedNow() {
-        let row = table.selectedRow
-        guard row >= 0, row < results.count else { return }
+        run(row: table.selectedRow)
+    }
+
+    /// A click chooses the row it's on, as shown: nothing to wait for, nor to rank again first.
+    @objc private func rowClicked() {
+        run(row: table.clickedRow)
+    }
+
+    private func run(row: Int) {
+        guard results.indices.contains(row) else { return }
         let item = results[row].item
         close()
         item.run()
-    }
-
-    /// A click chooses its row: nothing to wait for.
-    @objc private func rowClicked() {
-        finishTyping()
-        runSelectedNow()
     }
 
     private func moveSelection(_ delta: Int) {
@@ -343,6 +347,8 @@ extension CommandPalette: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        // Closing empties the results before the table hears of it.
+        guard results.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("PaletteCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PaletteCell ?? {
             let cell = PaletteCell()
@@ -504,7 +510,7 @@ final class PaletteRanker {
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
     private(set) var late: Task<Void, Never>?
     private(set) var pathLookup: Task<Void, Never>?
-    private var waitingRun: Task<Void, Never>?
+    private(set) var waitingRun: Task<Void, Never>?
     private var query = ""
 
     func rank(_ text: String) {
@@ -558,7 +564,11 @@ final class PaletteRanker {
     /// Runs `action` now, or once the typed path's lookup ends while one runs, so Return can go there: one waits at
     /// most however often it's asked, and a new query or `cancel` drops it.
     func afterPathLookup(_ action: @escaping () -> Void) {
-        guard let lookup = pathLookup else { return action() }
+        // A row chosen with the arrows stays chosen when the path arrives: nothing to wait for.
+        guard let lookup = pathLookup, !rowChosen else {
+            cancelWaitingRun()
+            return action()
+        }
         guard waitingRun == nil else { return }
         let asked = query
         waitingRun = Task { [weak self] in
@@ -569,13 +579,17 @@ final class PaletteRanker {
         }
     }
 
+    func cancelWaitingRun() {
+        waitingRun?.cancel()
+        waitingRun = nil
+    }
+
     func cancel() {
         late?.cancel()
         late = nil
         pathLookup?.cancel()
         pathLookup = nil
-        waitingRun?.cancel()
-        waitingRun = nil
+        cancelWaitingRun()
         query = ""
         scored = []
         results = []

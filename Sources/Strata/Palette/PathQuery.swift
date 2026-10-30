@@ -17,20 +17,14 @@ nonisolated final class PathQuery {
 
     private var listings: [URL: [(url: URL, isFolder: Bool)]] = [:]
 
-    /// A few lookups at once: one stuck on a server that stopped answering holds only itself, and stuck ones can't take
-    /// every thread there is.
-    private static let reads: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "dev.strata.path-queries"
-        queue.qualityOfService = .userInitiated
-        queue.maxConcurrentOperationCount = 4
-        return queue
-    }()
-
-    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads.
+    /// Runs `work` (file system reads) on a thread of its own, never the main thread or the threads Swift and Dispatch
+    /// share: a read stuck on a server that stopped answering holds only that thread, and no lookup after it waits.
     static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
         await withCheckedContinuation { continuation in
-            reads.addOperation { continuation.resume(returning: work()) }
+            let thread = Thread { continuation.resume(returning: work()) }
+            thread.name = "dev.strata.path-query"
+            thread.qualityOfService = .userInitiated
+            thread.start()
         }
     }
 

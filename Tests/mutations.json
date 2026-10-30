@@ -416,8 +416,8 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "        let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems",
-    "replace": "        let trashItems = self.trashItems",
+    "find": "                switch try await Self.trash(url, expecting: restored?.identity(at: url)) {",
+    "replace": "                switch try await Self.trash(url, expecting: nil) {",
     "rule": "Redo of a plan trashes a file swapped in since",
     "tests": "PlanSafetyTests"
   },

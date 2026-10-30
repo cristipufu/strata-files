@@ -474,10 +474,13 @@ import AppKit
             alert.informativeText = String(localized: "You won’t be able to open this folder until you give yourself access again.")
             alert.addButton(withTitle: String(localized: "Remove Access"))
             alert.addButton(withTitle: String(localized: "Cancel"))
+            let asked = FileIdentity.read(url.path)
             alert.beginSheetModal(for: window) { [weak self] response in
                 // Answered for the item asked about: if another is on show by now, its own settings stay as they are.
                 guard let self, self.url == url, isLoaded else { return }
-                if response == .alertFirstButtonReturn { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
+                // A folder put in its place meanwhile keeps its access; the menus show what's really there.
+                let same = asked != nil && FileIdentity.read(url.path) == asked
+                if response == .alertFirstButtonReturn, same { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
             }
             return
         }

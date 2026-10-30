@@ -279,6 +279,8 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.box.isKeyWindow, !self.results.isKeyWindow else { return }
+                // A Return still waiting for a typed path doesn't go there once you've moved on.
+                self.ranker.cancelWaitingRun()
                 self.results.orderOut(nil)
             }
         }

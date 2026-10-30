@@ -39,34 +39,54 @@ import Testing
     }
 
     /// Return while a typed path is looked up goes there once found: once however often it's pressed, never for a
-    /// query typed since, and a row chosen meanwhile stays chosen.
+    /// query typed since, and at once for a row chosen with the arrows, which the arriving path leaves chosen.
     @Test func returnWaitingForATypedPathRunsOnceForItsOwnQuery() async throws {
         let tree = try TestTree("note.txt")
         let ranker = PaletteRanker()
         ranker.goToPath = { _ in }
         var runs = 0
-        func settle() async throws {
-            for _ in 0..<200 { await Task.yield(); try await Task.sleep(for: .milliseconds(5)) }
-        }
         ranker.rank(tree.url("note.txt").path)
         for _ in 0..<3 { ranker.afterPathLookup { runs += 1 } }
+        let waiting = try #require(ranker.waitingRun)
         await ranker.pathLookup?.value
-        for _ in 0..<200 where runs == 0 { try await Task.sleep(for: .milliseconds(5)) }
-        try await settle()
-        #expect(runs == 1)
+        await waiting.value
+        #expect(runs == 1 && ranker.waitingRun == nil)
         ranker.rank(tree.url("note.txt").path)
         ranker.afterPathLookup { runs += 1 }
+        let dropped = try #require(ranker.waitingRun)
         ranker.rank("something else")
-        try await settle()
+        await dropped.value
         #expect(runs == 1)
         var kept: String?
         ranker.lateArrived = { kept = $0 }
         ranker.selectedTitle = { "Chosen row" }
         ranker.rank(tree.url("note.txt").path)
         ranker.rowChosen = true
+        ranker.afterPathLookup { runs += 1 }
+        #expect(runs == 2 && ranker.waitingRun == nil)
         await ranker.pathLookup?.value
         #expect(kept == "Chosen row")
         ranker.cancel()
         #expect(tree.snapshot() == ["note.txt"])
+    }
+
+    /// A lookup stuck on a server that stopped answering holds up no lookup after it.
+    @Test func aLookupThatNeverReturnsHoldsUpNoOther() async throws {
+        let gate = DispatchSemaphore(value: 0)
+        let (started, start) = AsyncStream<Void>.makeStream()
+        let stuck = Task { await PathQuery.offMain { start.yield(); gate.wait(); return 1 } }
+        for await _ in started { break }
+        let answered = CancelFlag()
+        let next = Task {
+            let value = await PathQuery.offMain { 2 }
+            answered.set()
+            return value
+        }
+        for _ in 0..<1000 where !answered.isSet { try await Task.sleep(for: .milliseconds(10)) }
+        let answeredFirst = answered.isSet
+        gate.signal()
+        #expect(answeredFirst)
+        #expect(await next.value == 2)
+        #expect(await stuck.value == 1)
     }
 }
