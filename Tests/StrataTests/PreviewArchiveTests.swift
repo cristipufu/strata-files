@@ -145,6 +145,8 @@ struct PreviewArchiveTests {
         for (status, name) in statuses { #expect(declared[name] == status.rawValue, "\(name)") }
         let bytes = try #require(worker.firstMatch(of: #/#define strata_archive_byte_limit \((\d+)ULL << (\d+)\)/#))
         #expect(try #require(Int(bytes.output.1)) << (try #require(Int(bytes.output.2))) == ArchiveService.byteLimit)
+        let file = try #require(worker.firstMatch(of: #/#define strata_archive_file_limit \((\d+)ULL << (\d+)\)/#))
+        #expect(try #require(Int(file.output.1)) << (try #require(Int(file.output.2))) == ArchiveService.fileLimit)
         func value(of name: String) throws -> Int {
             let match = try #require(try Regex("\\b\(name) = (0x[0-9A-Fa-f]+|[0-9]+)").firstMatch(in: worker), "\(name)")
             let text = String(try #require(match.output[1].substring))
@@ -153,7 +155,7 @@ struct PreviewArchiveTests {
         #expect(try value(of: "strata_archive_end") == Int(PreviewArchiveReader.endMark))
         #expect(try value(of: "strata_archive_end_more") == Int(PreviewArchiveReader.moreMark))
         #expect(try value(of: "strata_archive_snapshot") == Int(PreviewArchiveReader.snapshotMark))
-        for mode in [ArchiveService.Request.Mode.list, .extract, .survey] {
+        for mode in [ArchiveService.Request.Mode.list, .extract, .survey, .unpack, .stream] {
             #expect(try value(of: "strata_archive_\(mode)") == Int(mode.rawValue))
         }
     }
@@ -319,7 +321,7 @@ struct PreviewArchiveTests {
         // The source's metadata changed before the operation, so capture it again.
         let quarantined = try PreviewArchiveSource(tree.url("pack.tar"))
         let records = try await PreviewArchiveReader.read(quarantined, member: ["a"], directory: true)
-        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: quarantined, preview: false)
+        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: quarantined)
         let root = try #require(lease?.root), url = try #require(lease?.url)
         #expect(TestTree.listing(of: url) == ["deep/", "deep/file", "note.txt"])
         #expect(try String(contentsOf: url.appendingPathComponent("note.txt"), encoding: .utf8) == "chosen")
@@ -342,7 +344,7 @@ struct PreviewArchiveTests {
             let tree = try TestTree("pack.tar", "outside/keep", "sibling")
             let source = try archive(tree, [("a/note.txt", "chosen")])
             let records = try await PreviewArchiveReader.read(source, member: ["a"], directory: true)
-            var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: false)
+            var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source)
             let root = try #require(lease?.root), url = try #require(lease?.url)
             try FileManager.default.moveItem(at: url, to: tree.url("parked"))
             switch replacement {
@@ -384,7 +386,7 @@ struct PreviewArchiveTests {
             let bad = PreviewArchiveRecord(path: path, kind: 1, size: 1, modified: .distantPast, body: Data([2]))
             let before = tree.snapshot()
             await #expect(throws: (any Error).self) {
-                try await PreviewArchiveLease.materialize([valid, bad], member: ["a"], in: tree.url("cache"), source: source, preview: false)
+                try await PreviewArchiveLease.materialize([valid, bad], member: ["a"], in: tree.url("cache"), source: source)
             }
             #expect(tree.snapshot() == before)
         }
@@ -400,7 +402,7 @@ struct PreviewArchiveTests {
         var outsideBefore = stat()
         try #require(lstat(tree.url("outside").path, &outsideBefore) == 0)
         await #expect(throws: (any Error).self) {
-            try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: false)
+            try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source)
         }
         #expect(tree.snapshot() == before)
         var outsideAfter = stat()
@@ -452,8 +454,8 @@ struct PreviewArchiveTests {
     @Test func previewCacheIsBoundedIncludingOrphansAndNeverDeletesUnknownFiles() async throws {
         let tree = try TestTree("pack.tar", "outside/keep")
         let source = try archive(tree, [("a", "chosen")])
-        let records = try await PreviewArchiveReader.read(source, member: ["a"])
-        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: true)
+        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"),
+                                                                                         source: source, password: nil)
         let root = try #require(lease?.root)
         lease = nil
         #expect(!FileManager.default.fileExists(atPath: root.path))
@@ -463,7 +465,7 @@ struct PreviewArchiveTests {
         close(fd)
         let before = tree.snapshot()
         await #expect(throws: PreviewArchiveError.limit) {
-            try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: true)
+            try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"), source: source, password: nil)
         }
         #expect(tree.snapshot() == before && tree.text("outside/keep") == "outside/keep")
     }
@@ -557,10 +559,10 @@ extension PreviewArchiveTests {
         let b = PreviewArchiveRecord(path: ["b.txt"], kind: 1, size: 1, modified: .distantPast, body: Data("b".utf8))
         let (started, signal) = AsyncStream<String>.makeStream()
         var held: [String: CheckedContinuation<[PreviewArchiveRecord], Error>] = [:]
-        let access = PreviewArchiveAccess { _, member, _, _ in
+        let access = PreviewArchiveAccess(copying: { _, member, _, _ in
             guard let name = member?.first else { return [a,b] }
             return try await withCheckedThrowingContinuation { held[name] = $0; signal.yield(name) }
-        }
+        })
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
                                                thumbnails: environment.services.thumbnails, copies: environment.services.copies)
@@ -602,8 +604,8 @@ extension PreviewArchiveTests {
         let tree = try TestTree("pack.tar", "outside/keep")
         try Data(ContainerTests.tarFile("a", "owned")+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
         let source = try PreviewArchiveSource(tree.url("pack.tar"))
-        let records = try await PreviewArchiveReader.read(source, member: ["a"])
-        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: true)
+        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"),
+                                                                                         source: source, password: nil)
         let root = try #require(lease?.root)
         try FileManager.default.moveItem(at: root, to: tree.url("parked"))
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -641,18 +643,6 @@ extension PreviewArchiveTests {
 
 
 extension PreviewArchiveTests {
-    @Test func previewByteLimitRefusesAnOtherwiseValidSelectionBeforeCreatingScratch() async throws {
-        let tree = try TestTree("pack.tar", "outside/keep")
-        let source = try PreviewArchiveSource(tree.url("pack.tar"))
-        let body = Data(count: PreviewArchiveReader.previewLimit+1)
-        let record = PreviewArchiveRecord(path: ["large"], kind: 1, size: Int64(body.count), modified: .distantPast, body: body)
-        let before = tree.snapshot()
-        await #expect(throws: PreviewArchiveError.limit) {
-            try await PreviewArchiveLease.materialize([record], member: ["large"], in: tree.url("cache"), source: source, preview: true)
-        }
-        #expect(tree.snapshot() == before)
-    }
-
     @Test func inheritedAccessGrantsAreRemovedFromThePrivateStagingRoot() async throws {
         let tree = try TestTree("pack.tar", "cache/", "outside/keep")
         try #require(chmod(tree.url("cache").path, 0o700) == 0)
@@ -674,8 +664,8 @@ extension PreviewArchiveTests {
         try #require(acl_add_flag_np(flags, ACL_ENTRY_DIRECTORY_INHERIT) == 0)
         try #require(acl_set_file(tree.url("cache").path, ACL_TYPE_EXTENDED, list) == 0)
         let source = try PreviewArchiveSource(tree.url("pack.tar"))
-        let records = try await PreviewArchiveReader.read(source, member: ["a"])
-        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: true)
+        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"),
+                                                                                         source: source, password: nil)
         let root = try #require(lease?.root)
         if let cleaned = acl_get_file(root.path, ACL_TYPE_EXTENDED) {
             defer { acl_free(UnsafeMutableRawPointer(cleaned)) }
@@ -747,7 +737,7 @@ extension PreviewArchiveTests {
         try Data(ContainerTests.tarFile("a/note", "owned")+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
         let source = try PreviewArchiveSource(tree.url("pack.tar"))
         let records = try await PreviewArchiveReader.read(source, member: ["a"], directory: true)
-        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source, preview: false)
+        var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source)
         let note = try #require(lease?.url).appendingPathComponent("note")
         try FileManager.default.moveItem(at: note, to: tree.url("parked"))
         try Data("replacement".utf8).write(to: note)

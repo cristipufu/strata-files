@@ -140,9 +140,12 @@ nonisolated package struct PreviewArchiveListing: Sendable {
 
 /// Parses only the worker's bounded, length-delimited protocol. Text command listings never authorize extraction.
 nonisolated package enum PreviewArchiveReader {
-    package static let previewLimit = 32 << 20
     /// The most member data one selection reads.
     package static let memberLimit = ArchiveService.byteLimit
+    /// Where a streamed file's contents go, a chunk at a time.
+    package typealias Sink = (UnsafeRawBufferPointer) throws -> Void
+    /// What a worker counts against a streamed file's limit besides its contents: its mark and the record's fields.
+    package static let recordOverhead = 25
     private static let log = Logger(subsystem: "dev.strata.app", category: "archives")
 
     /// Where archives are read: the app's archive service, whose identity comes from its own bundle; outside an app,
@@ -165,13 +168,44 @@ nonisolated package enum PreviewArchiveReader {
 
     @concurrent package static func read(_ source: PreviewArchiveSource, member: [String]? = nil, directory: Bool = false,
                                 password: String? = nil) async throws -> [PreviewArchiveRecord] {
-        let path = member?.joined(separator: "/") ?? ""
-        guard path.utf8.count <= 4096, (password?.utf8.count ?? 0) <= 1024,
-              !path.utf8.contains(0), !(password?.utf8.contains(0) ?? false) else { throw PreviewArchiveError.limit }
-        let request = ArchiveService.Request(mode: member != nil ? .extract : .list, folder: directory, path: Data(path.utf8))
+        let path = try requested(member ?? [], password: password)
+        let request = ArchiveService.Request(mode: member != nil ? .extract : .list, folder: directory, path: path)
         let (output, status) = try await exchange(source, request, password: password, timeout: 20, allowance: .shared)
         if let error = error(for: status) { throw error }
         return try parse(output, member: member, directory: directory)
+    }
+
+    /// Copies one file out as it comes, never holding more of it than a chunk: once the worker has named it, `open` is
+    /// told its size and says where its contents go. It returns once all of them have gone there.
+    @concurrent package static func stream(_ source: PreviewArchiveSource, member: [String], password: String?,
+                                           open: @escaping @Sendable (Int64) throws -> Sink) async throws {
+        guard !member.isEmpty else { throw PreviewArchiveError.unsafe }
+        let path = try requested(member, password: password)
+        let request = ArchiveService.Request(mode: .stream, path: path)
+            .encoded(password: ArchiveService.Secret(password ?? ""))
+        // Copies have reads of their own, so a large one never holds up covers and pages.
+        let (status, complete) = try await withRead(source, allowance: .copies) { archive in
+            try await streamed(request, archive: archive, timeout: 20) { output, reader in
+                try copy(output, reader: reader, path: path, open: open)
+            }
+        }
+        if let error = error(for: status) { throw error }
+        guard complete else { throw PreviewArchiveError.unreadable }
+    }
+
+    private static func requested(_ member: [String], password: String?) throws -> Data {
+        let path = Data(member.joined(separator: "/").utf8)
+        guard path.count <= 4096, (password?.utf8.count ?? 0) <= 1024, !path.contains(0),
+              !(password?.utf8.contains(0) ?? false) else { throw PreviewArchiveError.limit }
+        return path
+    }
+
+    /// Reads a worker's copy of the file at `path` from `output` as it comes, and says whether it was all of it, read
+    /// to the end. Output that ends early is left to the read's status; output that goes on wrong is refused.
+    package static func copy(_ output: Int32, reader: PipeReader, path: Data, open: (Int64) throws -> Sink) throws
+        -> Bool {
+        var file = StreamedFile(output, reader: reader)
+        return try file.copy(path, open: open)
     }
 
     /// Lists the whole archive, keeping what a listing cut short by its limits, its time or an error read.
@@ -218,10 +252,17 @@ nonisolated package enum PreviewArchiveReader {
         return survey
     }
 
-    /// One read in the archive service, pinned to `source` and counted against the reads `allowance` permits at once.
     private static func exchange(_ source: PreviewArchiveSource, _ request: ArchiveService.Request, password: String?,
                                  timeout: TimeInterval, allowance: ArchiveReadAllowance) async throws
         -> (Data, ArchiveService.Status) {
+        try await withRead(source, allowance: allowance) { file in
+            try await send(request, password: ArchiveService.Secret(password ?? ""), archive: file, timeout: timeout)
+        }
+    }
+
+    /// One read in the archive service, pinned to `source` and counted against the reads `allowance` permits at once.
+    private static func withRead<T>(_ source: PreviewArchiveSource, allowance: ArchiveReadAllowance,
+                                    _ read: (FileHandle) async throws -> T) async throws -> T {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await allowance.enter(id)
@@ -231,11 +272,10 @@ nonisolated package enum PreviewArchiveReader {
         do {
             let file = try source.open()
             defer { try? file.close() }
-            let (output, status) = try await send(request, password: ArchiveService.Secret(password ?? ""), archive: file,
-                                                  timeout: timeout)
+            let result = try await read(file)
             try Task.checkCancellation()
             try source.verify(file)
-            return (output, status)
+            return result
         } catch let error as POSIXError {
             // The archive is gone or changed while it was read (one still downloading does), or staging the read failed.
             log.info("An archive couldn't be read: \(error.localizedDescription, privacy: .public)")
@@ -248,17 +288,51 @@ nonisolated package enum PreviewArchiveReader {
     package static func unpack(_ archive: FileHandle, reader: PipeReader, consume: (Int32) throws -> Void) throws
         -> ArchiveService.Status {
         let request = ArchiveService.Request(mode: .unpack).encoded(password: ArchiveService.Secret(""))
+        return try routed(request, archive: archive, harness: ["--unpacking"], consume: consume) {
+            try ArchiveService.unpack(encoded: request, to: $0, archive: archive, reader: reader, consume: consume)
+        }
+    }
+
+    /// A copy of one file, read on a Dispatch queue since reading its pipe waits; cancelling the task stops it at once.
+    /// The read's status once its worker has ended, and whether `consume` took the whole of its output.
+    private static func streamed(_ request: ArchiveService.Secret, archive: FileHandle, timeout: TimeInterval,
+                                 consume: @escaping @Sendable (Int32, PipeReader) throws -> Bool)
+        async throws -> (ArchiveService.Status, Bool) {
+        let reader = try PipeReader()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(with: Result {
+                        var result = false
+                        let milliseconds = String(Int((timeout * 1000).rounded()))
+                        let status = try routed(request, archive: archive,
+                                                harness: ["--streaming", "--timeout-ms", milliseconds],
+                                                consume: { result = try consume($0, reader) }) {
+                            try ArchiveService.stream(encoded: request, to: $0, archive: archive, timeout: timeout,
+                                                      reader: reader) { result = try consume($0, reader) }
+                        }
+                        return (status, result)
+                    })
+                }
+            }
+        } onCancel: { reader.stop() }
+    }
+
+    /// A read whose output `consume` takes as it comes: through the app's service with `read`, or the harness with
+    /// `harness` as its arguments.
+    private static func routed(_ request: ArchiveService.Secret, archive: FileHandle, harness arguments: [String],
+                               consume: (Int32) throws -> Void, read: (String) throws -> ArchiveService.Reply) throws
+        -> ArchiveService.Status {
         switch route {
         case .service(let service):
-            let reply = try ArchiveService.unpack(encoded: request, to: service, archive: archive, reader: reader,
-                                                  consume: consume)
+            let reply = try read(service)
             if !reply.ended { log.error("The archive service didn't confirm that a stopped read's worker ended.") }
             return reply.outcome
         case .harness:
             try requireHarness()
             guard let input = try ArchiveService.requestPipe(request) else { return .limit }
             defer { try? input.close() }
-            let status = try ProcessRunner.stream(harness.path, ["--unpacking"], standardInput: input, file: archive,
+            let status = try ProcessRunner.stream(harness.path, arguments, standardInput: input, file: archive,
                                                   consume: consume)
             return ArchiveService.Status(rawValue: status) ?? .unreadable
         case .missingService:
@@ -345,7 +419,12 @@ nonisolated package enum PreviewArchiveReader {
         }
     }
 
-    private static func bigEndian(_ bytes: some Collection<UInt8>) -> UInt64 { bytes.reduce(0) { ($0 << 8) | UInt64($1) } }
+    fileprivate static func bigEndian(_ bytes: some Collection<UInt8>) -> UInt64 {
+        bytes.reduce(0) { ($0 << 8) | UInt64($1) }
+    }
+
+    /// The modification times a copy takes: years 1 to 9999.
+    fileprivate static let years: ClosedRange<Int64> = -62_135_596_800...253_402_300_799
 
     /// The worker's marks (CArchivePreview.h).
     package static let endMark: UInt8 = 0, moreMark: UInt8 = 4, snapshotMark: UInt8 = 0x53
@@ -376,9 +455,9 @@ nonisolated package enum PreviewArchiveReader {
             let count = try number(4), size = try number(8), seconds = Int64(bitPattern: try number(8))
             guard (1...4096).contains(count), count <= data.count - offset, size <= Int64.max else { throw PreviewArchiveError.limit }
             // Years 1 to 9999. A listing shows an odd date at the nearest end; a copy refuses it.
-            let years: ClosedRange<Int64> = -62_135_596_800...253_402_300_799
-            guard member == nil || years.contains(seconds) else { throw PreviewArchiveError.unreadable }
-            let modified = Date(timeIntervalSince1970: Double(min(max(seconds, years.lowerBound), years.upperBound)))
+            guard member == nil || Self.years.contains(seconds) else { throw PreviewArchiveError.unreadable }
+            let shown = min(max(seconds, Self.years.lowerBound), Self.years.upperBound)
+            let modified = Date(timeIntervalSince1970: Double(shown))
             let bytes = data.subdata(in: offset..<(offset+Int(count)))
             offset += Int(count)
             guard let path = String(data: bytes, encoding: .utf8), !path.hasPrefix("/"), !path.hasSuffix("/"),
@@ -404,6 +483,77 @@ nonisolated package enum PreviewArchiveReader {
                                                 modified: modified, body: body))
         }
         throw PreviewArchiveError.unreadable
+    }
+}
+
+nonisolated private struct StreamedFile {
+    private let output: Int32
+    private let reader: PipeReader
+    private var buffered: [UInt8] = []
+    private var chunk = [UInt8](repeating: 0, count: 1 << 16)
+
+    init(_ output: Int32, reader: PipeReader) {
+        self.output = output
+        self.reader = reader
+    }
+
+    mutating func copy(_ path: Data, open: (Int64) throws -> PreviewArchiveReader.Sink) throws -> Bool {
+        guard let magic = try take(4) else { return false }
+        guard magic.elementsEqual("SAP1".utf8) else { throw PreviewArchiveError.unreadable }
+        guard let record = try take(21) else { return false }
+        guard record[0] == 1 else { throw record[0] == 3 ? PreviewArchiveError.unsafe : PreviewArchiveError.unreadable }
+        let length = PreviewArchiveReader.bigEndian(record[1..<5])
+        let size = PreviewArchiveReader.bigEndian(record[5..<13])
+        let seconds = Int64(bitPattern: PreviewArchiveReader.bigEndian(record[13..<21]))
+        guard length == UInt64(path.count) else { throw PreviewArchiveError.unsafe }
+        let overhead = PreviewArchiveReader.recordOverhead + path.count
+        guard size <= UInt64(ArchiveService.fileLimit - overhead) else { throw PreviewArchiveError.limit }
+        guard PreviewArchiveReader.years.contains(seconds) else { throw PreviewArchiveError.unreadable }
+        guard let name = try take(path.count) else { return false }
+        guard name.elementsEqual(path) else { throw PreviewArchiveError.unsafe }
+        guard try forward(size, to: try open(Int64(size))) else { return false }
+        guard let mark = try take(1) else { return false }
+        // Another record is the same path listed twice.
+        guard mark[0] == PreviewArchiveReader.endMark else {
+            throw (1...3).contains(mark[0]) ? PreviewArchiveError.unsafe : PreviewArchiveError.unreadable
+        }
+        guard try take(1) == nil else { throw PreviewArchiveError.unreadable }
+        return true
+    }
+
+    /// The next `count` bytes, or nil when the output ends first.
+    private mutating func take(_ count: Int) throws -> [UInt8]? {
+        while buffered.count < count {
+            guard try read() else { return nil }
+        }
+        defer { buffered.removeFirst(count) }
+        return Array(buffered.prefix(count))
+    }
+
+    /// Hands the next `size` bytes to `sink`, straight from each read once what came with the record is passed on;
+    /// false when the output ends first.
+    private mutating func forward(_ size: UInt64, to sink: PreviewArchiveReader.Sink) throws -> Bool {
+        var remaining = size
+        let early = Int(min(UInt64(buffered.count), remaining))
+        try buffered.withUnsafeBytes { try sink(UnsafeRawBufferPointer(rebasing: $0[..<early])) }
+        buffered.removeFirst(early)
+        remaining -= UInt64(early)
+        while remaining > 0 {
+            let count = try chunk.withUnsafeMutableBytes { try reader.readSome(output, into: $0) }
+            guard count > 0 else { return false }
+            let used = Int(min(UInt64(count), remaining))
+            try chunk.withUnsafeBytes { try sink(UnsafeRawBufferPointer(rebasing: $0[..<used])) }
+            buffered.append(contentsOf: chunk[used..<count])
+            remaining -= UInt64(used)
+        }
+        return true
+    }
+
+    /// Reads what has come; false once the output has ended.
+    private mutating func read() throws -> Bool {
+        let count = try chunk.withUnsafeMutableBytes { try reader.readSome(output, into: $0) }
+        buffered.append(contentsOf: chunk[..<count])
+        return count > 0
     }
 }
 

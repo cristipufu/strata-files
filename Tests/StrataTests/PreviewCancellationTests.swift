@@ -29,7 +29,7 @@ struct PreviewCancellationTests {
 
     private func session(_ tree: TestTree, environment: PreviewEnvironment,
                          reader: @escaping PreviewArchiveAccess.Reader) async throws -> PreviewSession {
-        let access = PreviewArchiveAccess(reader: reader)
+        let access = PreviewArchiveAccess(copying: reader)
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
         session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: false, applications: .standard)
         await session.task?.value
@@ -114,6 +114,40 @@ struct PreviewCancellationTests {
 
     private func allowQueuedCommandsToStart() async {
         await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+    }
+
+    @Test func aFileCopiedOutForAPreviewOrAnExportStreamsAndOnlyThePreviewTakesFromTheCache() async throws {
+        let tree = try TestTree("pack.tar", "outside/keep")
+        let environment = try PreviewEnvironment(tree), before = tree.snapshot()
+        var copies: [Bool] = []
+        let access = PreviewArchiveAccess(reader: { _, member, _, _ in self.records(member) },
+                                          copier: { source, member, folder, password, cached in
+            copies.append(cached)
+            return try await PreviewArchiveLease.stream(member: member, in: folder, source: source, password: password,
+                                                        cached: cached) { _, member, _, open in
+                let body = Data(member.joined().utf8)
+                let sink = try open(Int64(body.count))
+                try body.withUnsafeBytes { try sink($0) }
+            }
+        })
+        let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
+        session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: false, applications: .standard)
+        await session.task?.value
+        let content = PreviewArchiveContent(copies: environment.services.copies)
+        defer { content.close(); session.close() }
+        let item = try #require(session.roots.first { $0.name == "a.txt" })
+        session.select(item)
+        content.select(in: session)
+        await content.task?.value
+        #expect(try String(contentsOf: #require(content.lease).url, encoding: .utf8) == "a.txt")
+        var exported: PreviewArchiveLease?
+        content.export(try #require(PreviewCommandTarget(session: session)), session: session) { exported = $0 }
+        await content.commandTask?.value
+        #expect(try String(contentsOf: #require(exported).url, encoding: .utf8) == "a.txt" && copies == [true, false])
+        exported = nil; content.close(); session.close()
+        let left = tree.snapshot().filter { !$0.hasPrefix("environment/") }
+        #expect(left == before.filter { !$0.hasPrefix("environment/") })
+        withExtendedLifetime(environment) {}
     }
 
     @Test func replacementArchiveCommandsDrainThePreviousCommandBeforeReadingAgain() async throws {

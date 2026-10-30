@@ -67,7 +67,10 @@ links only that, so the parser isn't even in its process.
    paths, unreadable.
 4. **The service** passes that status back to the app.
 5. **The app** reads the output as it arrives and accepts only the worker's own length-prefixed records, at most 60 MB
-   except for Extract's.
+   except for Extract's and a copy of one file out of Space, for its preview or an export. That copy, up to 256 MB,
+   goes to its file as it comes, never more of it in memory than a chunk: the worker allows it only for a request that
+   streams one file, and for a preview the app takes the file's whole size from the preview cache before writing its
+   first byte.
 
 **Listing.** A listing that reaches 50,000 entries or 60 MB of records ends with a mark saying there's more, and one
 stopped by its time or by an unsafe entry keeps the rows it read: the preview pane shows them with a note saying why.

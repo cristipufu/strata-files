@@ -4539,8 +4539,8 @@
   },
   {
     "file": "CArchivePreview/ArchivePreview.c",
-    "find": "(request[0] == strata_archive_unpack) != (unpacking != 0)) {",
-    "replace": "0) {",
+    "find": "(request[0] == strata_archive_unpack) != (unpacking != 0) ||",
+    "replace": "0 ||",
     "rule": "Extract: a worker reads with the other mode's limits",
     "tests": "ArchiveExtractTests/onlyExtractsReadIsUnpacking"
   },
@@ -4881,18 +4881,18 @@
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Previewing/PreviewArchiveLease.swift",
-    "find": "records[0].size <= PreviewArchiveReader.previewLimit",
-    "replace": "true",
-    "rule": "Space preview archives: automatic previews exceed their byte limit",
-    "tests": "PreviewArchiveTests"
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "const uint64_t output_limit = streaming ? strata_archive_file_limit : strata_archive_byte_limit;",
+    "replace": "const uint64_t output_limit = strata_archive_file_limit;",
+    "rule": "Space preview archives: a copy into memory stops at its byte limit",
+    "tests": "PreviewArchiveTests/oversizedTruncatedAndNonUTF8MembersAreRefusedByTheRealWorker"
   },
   {
     "file": "Strata/Previewing/PreviewArchiveLease.swift",
-    "find": "guard existing <= cacheLimit - records[0].size else",
+    "find": "guard existing <= cacheLimit - size else",
     "replace": "guard true else",
     "rule": "Space preview archives: orphaned cache bytes do not count against the ceiling",
-    "tests": "PreviewArchiveTests"
+    "tests": "PreviewArchiveTests/previewCacheIsBoundedIncludingOrphansAndNeverDeletesUnknownFiles"
   },
   {
     "file": "Strata/Previewing/PreviewCoordinator.swift",
@@ -6547,5 +6547,124 @@
     "find": "        source?.removeFromSuperview(); source = nil\n        showSource(unavailable: true)\n",
     "replace": "        showSource(unavailable: true)\n",
     "tests": "HTMLPreviewTests/reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen|HTMLPreviewTests/actualWebKitRendersLocalCSSAndImagesWithoutExecutingContentScripts"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "rule": "Space preview archives: only one file streams",
+    "find": "        (request[0] == strata_archive_stream && request[1])) {",
+    "replace": "        0) {",
+    "tests": "PreviewArchiveStreamTests/theHarnessStreamsACopyWithinItsTime"
+  },
+  {
+    "file": "StrataArchiveClient/ArchiveService.swift",
+    "rule": "Space preview archives: a streamed copy out of time is over a limit",
+    "find": "} catch is CancellationError where lock.withLock({ expired }) {",
+    "replace": "} catch is CancellationError where false {",
+    "tests": "PreviewArchiveStreamTests/theHarnessStreamsACopyWithinItsTime"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "rule": "Space preview archives: a streamed copy takes exactly what the worker may send",
+    "find": "        let overhead = PreviewArchiveReader.recordOverhead + path.count\n",
+    "replace": "        let overhead = PreviewArchiveReader.recordOverhead + path.count + 1\n",
+    "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "rule": "Space preview archives: a streamed copy is of the file asked for",
+    "find": "        guard name.elementsEqual(path) else { throw PreviewArchiveError.unsafe }\n",
+    "replace": "",
+    "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "rule": "Space preview archives: a streamed copy holds one file and nothing after it",
+    "find": "        guard try take(1) == nil else { throw PreviewArchiveError.unreadable }\n",
+    "replace": "",
+    "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
+  },
+  {
+    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "rule": "Space preview archives: a path streamed twice is refused",
+    "find": "        guard mark[0] == PreviewArchiveReader.endMark else {",
+    "replace": "        guard true else {",
+    "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy takes its whole size from the cache first",
+    "find": "                        guard ftruncate(fd, off_t(size)) == 0 else {\n                            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)\n                        }\n",
+    "replace": "",
+    "tests": "PreviewArchiveStreamTests/aCopyTakesItsWholeSizeFromTheCacheBeforeItIsWritten"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy that falls short is refused",
+    "find": "guard let lease, written == size else",
+    "replace": "guard let lease else",
+    "tests": "PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy never writes past its size",
+    "find": "                guard Int64(bytes.count) <= self.size - written else { throw PreviewArchiveError.unreadable }\n",
+    "replace": "",
+    "tests": "PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy makes one file",
+    "find": "guard lease == nil, size >= 0 else",
+    "replace": "guard size >= 0 else",
+    "tests": "PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy is owned before it's written",
+    "find": "        receipts[path.joined(separator: \"/\")] = (.from(info), false)\n        return fd\n",
+    "replace": "        return fd\n",
+    "tests": "PreviewArchiveStreamTests/aDamagedArchiveLeavesNothingBehind|PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy whose archive changed is refused",
+    "find": "        let lease = try target.finish(quarantine: quarantine)\n        try Task.checkCancellation()\n        try source.verify(file)\n",
+    "replace": "        let lease = try target.finish(quarantine: quarantine)\n        try Task.checkCancellation()\n",
+    "tests": "PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a streamed copy keeps the archive's quarantine",
+    "find": "            try mark(fd, quarantine: quarantine)\n            close(fd)\n",
+    "replace": "            close(fd)\n",
+    "tests": "PreviewArchiveStreamTests/aFileLargerThanACopyIntoMemoryArrivesWholeWithItsQuarantine"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: only a preview's copy takes from the cache",
+    "find": "            if cached {\n",
+    "replace": "            if true {\n",
+    "tests": "PreviewArchiveStreamTests/aCopyTakesItsWholeSizeFromTheCacheBeforeItIsWritten"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveContent.swift",
+    "rule": "Space preview archives: an export of one file streams",
+    "find": "                if directory {\n",
+    "replace": "                if true {\n",
+    "tests": "PreviewCancellationTests/aFileCopiedOutForAPreviewOrAnExportStreamsAndOnlyThePreviewTakesFromTheCache"
+  },
+  {
+    "file": "Strata/Previewing/PreviewArchiveLease.swift",
+    "rule": "Space preview archives: a copy that can't be written says it's the disk's",
+    "find": "            do { return try body() } catch let error as POSIXError {",
+    "replace": "            do { return try body() } catch let error as POSIXError where false {",
+    "tests": "PreviewArchiveStreamTests/aCopyThatCantBeWrittenSaysSoRatherThanBlameTheArchive"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "rule": "Space preview archives: a streamed copy may be as large as its own limit",
+    "find": "const uint64_t output_limit = streaming ? strata_archive_file_limit : strata_archive_byte_limit;",
+    "replace": "const uint64_t output_limit = strata_archive_byte_limit;",
+    "tests": "PreviewArchiveStreamTests/aFileAsLargeAsACopyMayBeIsLetThroughAndOneByteMoreIsRefusedFromItsHeader"
   }
 ]

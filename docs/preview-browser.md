@@ -103,17 +103,17 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
 - Selected regular files render through the existing file preview. Explicit Copy stages exactly the chosen member
   or subtree for the owning clipboard and transfer queue; Paste and Move copies temporary sources, and normal Paste
   supplies conflict handling, History and Undo. Open also keeps its exported file alive beyond the preview. A delayed
-  Copy respects a newer clipboard choice. Small completed exports reuse their content for the preview.
+  Copy respects a newer clipboard choice. Completed exports of one file reuse their content for the preview.
 - Materialization uses private modes, clears inherited root ACLs, preserves archive quarantine and records each
   created identity before publication. Cleanup never adopts a replacement or removes foreign children. Closing,
   replacing the source or selection, and Cancel stop work and discard late responses. Copy Path remains the archive
   member's location, never a private staging path.
-- Limits are explicit: 32 MiB per automatic member preview, 60 MiB of worker output per selection, 128 MiB of preview
-  cache including orphaned files, 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a
-  20-second read deadline (the service ends a worker after 25). Each worker also has a CPU limit and a sampled 256 MiB
-  resident-memory ceiling; this does not guarantee a per-allocation limit inside the system parser. System libarchive
-  itself is not sanitizer instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim
-  space.
+- Limits are explicit: 256 MiB per file copied out, for a preview or an export, streamed to its file as it comes; 60 MiB
+  of worker output per folder copied out; 512 MiB of preview cache including orphaned files and preview copies still
+  being written; 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a 20-second read
+  deadline (the service ends a worker after 25). Each worker also has a CPU limit and a sampled 256 MiB resident-memory
+  ceiling; this does not guarantee a per-allocation limit inside the system parser. System libarchive itself is not
+  sanitizer instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim space.
 - Selective extraction deliberately refuses links, special files, duplicate/ambiguous paths and members with a
   resource fork. Full extraction remains available for those items; selective Copy never silently drops a fork.
   Only file data and quarantine are copied, with safe new permissions; other archive metadata is not applied.

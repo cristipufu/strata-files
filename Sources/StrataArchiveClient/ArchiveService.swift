@@ -15,6 +15,8 @@ nonisolated package enum ArchiveService {
     package static let byteLimit = 60 << 20
     /// The most a worker writes: its records and contents, and the end mark.
     package static let outputLimit = byteLimit + 1
+    /// The most a worker streaming one file writes before its end mark (CArchivePreview.h).
+    package static let fileLimit = 256 << 20
     /// The longest a read waits for the service's answer. A live service answers as soon as its worker is gone, at the
     /// latest at its own deadline, and one that went away answers at once: this only bounds a service that stopped
     /// answering without going away.
@@ -81,9 +83,9 @@ nonisolated package enum ArchiveService {
     }
 
     package struct Request: Sendable {
-        /// What a worker does (CArchivePreview.h): list every entry, copy out the chosen path, only count, or send
-        /// everything for Extract to write.
-        package enum Mode: UInt8, Sendable { case list = 0, extract = 1, survey = 2, unpack = 3 }
+        /// What a worker does (CArchivePreview.h): list every entry, copy out the chosen path, only count, send
+        /// everything for Extract to write, or copy out one file to be written as it comes.
+        package enum Mode: UInt8, Sendable { case list = 0, extract = 1, survey = 2, unpack = 3, stream = 4 }
         package let mode: Mode
         package let folder: Bool
         package let path: Data
@@ -163,6 +165,17 @@ nonisolated package enum ArchiveService {
         return reply
     }
 
+    /// A preview's copy of one file, on the calling thread: `consume` reads the worker's output as it comes, from the
+    /// pipe it is given, through `reader`, and returns once the output has ended. The timeout stops it at once, as
+    /// `reader.stop()` does, and a read stopped by the timeout is over a limit. A `consume` that throws stops the read,
+    /// and its error is rethrown once the service has ended the worker.
+    package static func stream(encoded request: Secret, limits: Limits = Limits(), to service: String,
+                               archive: FileHandle, timeout: TimeInterval, reader: PipeReader,
+                               consume: (Int32) throws -> Void) throws -> Reply {
+        try Exchange(output: reader).run(request, limits: limits, service: service, archive: archive, timeout: timeout,
+                                         consume: consume)
+    }
+
     /// Extract's read, on the calling thread, with no timeout or output limit: `consume` reads the worker's output as it
     /// comes, from the pipe it is given, through `reader`, whose `stop()` stops it at once. A `consume` that throws stops
     /// the read, and its error is rethrown once the service has ended the worker.
@@ -188,20 +201,38 @@ nonisolated package enum ArchiveService {
         func run(_ request: Secret, limits: Limits, service: String, archive: FileHandle, timeout: TimeInterval,
                  outputLimit: Int) throws -> Reply {
             try run(request, limits: limits, unpacking: false, service: service, archive: archive) { fd in
-                let deadline = DispatchWorkItem { [weak self] in
-                    guard let self else { return }
-                    lock.withLock { expired = true }
-                    output.stop()
-                }
-                // With no time at all, the read is stopped as soon as its request is sent.
-                if timeout > 0 {
-                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
-                } else {
-                    deadline.perform()
-                }
-                defer { deadline.cancel() }
-                return output.read(fd, limit: outputLimit)
+                within(timeout) { output.read(fd, limit: outputLimit) }
             }
+        }
+
+        func run(_ request: Secret, limits: Limits, service: String, archive: FileHandle, timeout: TimeInterval,
+                 consume: (Int32) throws -> Void) throws -> Reply {
+            try run(request, limits: limits, unpacking: false, service: service, archive: archive) { fd in
+                try within(timeout) {
+                    do {
+                        try consume(fd)
+                        return (Data(), .finished)
+                    } catch is CancellationError where lock.withLock({ expired }) {
+                        return (Data(), .stopped)
+                    }
+                }
+            }
+        }
+
+        private func within<T>(_ timeout: TimeInterval, _ body: () throws -> T) rethrows -> T {
+            let deadline = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                lock.withLock { expired = true }
+                output.stop()
+            }
+            // With no time at all, the read is stopped as soon as its request is sent.
+            if timeout > 0 {
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: deadline)
+            } else {
+                deadline.perform()
+            }
+            defer { deadline.cancel() }
+            return try body()
         }
 
         /// `read` reads the output pipe it is given and says how its output ended; one that throws stops the read.

@@ -41,7 +41,7 @@ import Foundation
         lease = nil
         error = nil
         guard case .member(_, let path) = session.selected?.source, let item = session.selected,
-              !item.isDirectory, let source = session.archiveAccess.source else { return }
+              !item.isDirectory, session.archiveAccess.source != nil else { return }
         let id = previewID, generation = session.generation, access = session.archiveAccess
         // Pages that can be dragged share the clipboard cache’s next-launch cleanup.
         let root = BookFormat.images.contains((item.name as NSString).pathExtension.lowercased()) ? clipboardRoot : previewRoot
@@ -49,10 +49,8 @@ import Foundation
         isLoading = true
         task = Task { [weak self, weak session] in
             let result: Result<PreviewArchiveLease, Error>
-            do {
-                let records = try await access.read(member: path)
-                result = .success(try await PreviewArchiveLease.materialize(records, member: path, in: root, source: source, preview: true))
-            } catch { result = .failure(error) }
+            do { result = .success(try await access.copy(member: path, into: root, cached: true)) }
+            catch { result = .failure(error) }
             guard let self, let session, !Task.isCancelled, previewID == id,
                   !session.isClosed, session.generation == generation, session.selected === item else { return }
             task = nil
@@ -83,8 +81,13 @@ import Foundation
             let result: Result<PreviewArchiveLease, Error>
             do {
                 try Task.checkCancellation()
-                let records = try await access.read(member: path, directory: directory)
-                result = .success(try await PreviewArchiveLease.materialize(records, member: path, in: root, source: source, preview: false))
+                if directory {
+                    let records = try await access.read(member: path, directory: true)
+                    result = .success(try await PreviewArchiveLease.materialize(records, member: path, in: root,
+                                                                                source: source))
+                } else {
+                    result = .success(try await access.copy(member: path, into: root, cached: false))
+                }
             } catch { result = .failure(error) }
             guard let self, let session, !Task.isCancelled, commandID == id, target.matches(session) else { return }
             commandTask = nil
@@ -93,8 +96,7 @@ import Foundation
             switch result {
             case .success(let lease):
                 completion(lease)
-                if commandID == id, target.matches(session), !directory, let item = target.item,
-                   item.size.map({ $0 <= PreviewArchiveReader.previewLimit }) == true {
+                if commandID == id, target.matches(session), !directory, let item = target.item {
                     onReady?(item, lease)
                     self.lease = lease
                 }

@@ -3,14 +3,24 @@ import AppKit
 /// Password and source ownership last only as long as this preview's archive. No credential is persisted.
 @MainActor final class PreviewArchiveAccess {
     typealias Reader = @MainActor (PreviewArchiveSource, [String]?, Bool, String?) async throws -> [PreviewArchiveRecord]
+    /// Its last argument says whether the copy is a preview's, taken from the cache (`PreviewArchiveLease.stream`).
+    typealias Copier = @MainActor (PreviewArchiveSource, [String], URL, String?, Bool) async throws
+        -> PreviewArchiveLease
     private let reader: Reader
+    private let copier: Copier
     private(set) var source: PreviewArchiveSource?
     private var password: String?
     var requestPassword: ((String) async -> String?)?
     var cancelPassword: (() -> Void)?
 
-    init(reader: @escaping Reader = { try await PreviewArchiveReader.read($0, member: $1, directory: $2, password: $3) }) {
+    init(reader: @escaping Reader = {
+             try await PreviewArchiveReader.read($0, member: $1, directory: $2, password: $3)
+         },
+         copier: @escaping Copier = {
+             try await PreviewArchiveLease.stream(member: $1, in: $2, source: $0, password: $3, cached: $4)
+         }) {
         self.reader = reader
+        self.copier = copier
     }
 
     func reset(_ source: PreviewArchiveSource? = nil) {
@@ -20,13 +30,23 @@ import AppKit
     }
 
     func read(member: [String]? = nil, directory: Bool = false, prompt: Bool = true) async throws -> [PreviewArchiveRecord] {
+        try await withPassword(prompt: prompt) { try await self.reader($0, member, directory, $1) }
+    }
+
+    func copy(member: [String], into folder: URL, cached: Bool) async throws -> PreviewArchiveLease {
+        try await withPassword(prompt: true) { try await self.copier($0, member, folder, $1, cached) }
+    }
+
+    /// Runs `read` with the password the archive takes, asking for it when the archive says so.
+    private func withPassword<T>(prompt: Bool, _ read: (PreviewArchiveSource, String?) async throws -> T)
+        async throws -> T {
         guard let source else { throw PreviewArchiveError.unreadable }
         var attempts = 0
         while true {
             try Task.checkCancellation()
             guard self.source === source else { throw CancellationError() }
             do {
-                let result = try await reader(source, member, directory, password)
+                let result = try await read(source, password)
                 try Task.checkCancellation()
                 guard self.source === source else { throw CancellationError() }
                 return result
