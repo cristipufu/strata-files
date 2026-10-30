@@ -449,11 +449,7 @@ nonisolated enum ModelPlanner {
         """
         let session = LanguageModelSession(instructions: instructions)
         let prompt = "Items:\n\(listing(request.items, now: request.now))\n\nInstruction: \(request.instruction)"
-        #if compiler(>=6.4)
-        let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 1200)
-        #else
-        let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 1200)
-        #endif
+        let options = GenerationOptions.greedy(maximumResponseTokens: 1200)
         let content = try await Deadline.run(25) {
             try await session.respond(to: prompt, schema: try schema(), options: options).content
         }

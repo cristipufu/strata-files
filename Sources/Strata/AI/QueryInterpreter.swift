@@ -110,7 +110,7 @@ nonisolated enum QueryInterpreter {
     static func askModel(_ text: String, now: Date, calendar: Calendar) async throws -> SearchFilter {
         let session = LanguageModelSession(model: SystemLanguageModel(useCase: .general), instructions: instructions(now: now, calendar: calendar))
         let response = try await session.respond(to: "Request: \(text)", schema: try schema(),
-                                                 options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 220))
+                                                 options: .greedy(maximumResponseTokens: 220))
         return decode(response.content, now: now, calendar: calendar)
     }
 
