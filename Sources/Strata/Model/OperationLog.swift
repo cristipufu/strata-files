@@ -331,7 +331,7 @@ final class OperationLog {
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
         let existing = entry.created.filter { Self.holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
-        if !existing.isEmpty { done += try FileOps.trash(existing, undo: nil, record: false) }
+        if !existing.isEmpty { done += try await FileOps.trashForOperation(existing, copies: .live) }
         // A mixed transfer can still undo its own copies after a moved item is replaced. Check every move too;
         // canUndo accepting part of an entry never gives ownership of the rest.
         let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {

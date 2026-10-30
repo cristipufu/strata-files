@@ -312,6 +312,16 @@ enum FileOps {
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
     }
 
+    /// `trash` for part of another operation that's under way already (undoing one from History): the items go to the
+    /// Trash away from the main thread, nothing is recorded or registered, and a disk without a Trash is an error.
+    static func trashForOperation(_ urls: [URL], copies: CopyProviders) async throws -> [Move] {
+        let (moved, _, noTrash, failure) = await trashItems(urls, copies: copies)
+        if !moved.isEmpty { Sounds.movedToTrash() }
+        if let failure { throw failure }
+        if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
+        return moved
+    }
+
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
     /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
     /// (a temporary copy). A link to a Trash is only a link.
