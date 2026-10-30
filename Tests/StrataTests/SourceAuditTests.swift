@@ -13,6 +13,11 @@ struct SourceAuditTests {
         #expect(status == 0, Comment(rawValue: output))
     }
 
+    @Test func theModelNamesNothingFromTheInterface() async throws {
+        let (status, output) = try await run("scripts/audit-layers.py")
+        #expect(status == 0, Comment(rawValue: output))
+    }
+
     @Test func defaultsFallingBackToAppWideInstancesHaveAReviewedReason() async throws {
         let (status, output) = try await run("scripts/audit-shared-defaults.py")
         #expect(status == 0, Comment(rawValue: output))

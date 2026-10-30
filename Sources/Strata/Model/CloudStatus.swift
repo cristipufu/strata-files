@@ -189,6 +189,9 @@ extension Notification.Name {
 final class CloudStore {
     static let shared = CloudStore()
 
+    /// The folders the app's windows show, as the app tells it at launch: only those are polled and kept.
+    var foldersShown: () -> Set<String> = { [] }
+
     private var statuses: [String: CloudStatus] = [:]
     /// Cloud folders read, most recently loaded last.
     private var folders: [String] = []
@@ -242,7 +245,7 @@ final class CloudStore {
     /// Forgets the oldest folders no window shows, past the limit.
     private func trim() {
         guard folders.count > Self.keptFolders else { return }
-        let shown = BrowserWindowController.foldersShown()
+        let shown = foldersShown()
         for key in folders where folders.count > Self.keptFolders && !shown.contains(key) { forget(key) }
     }
 
@@ -261,7 +264,7 @@ final class CloudStore {
     }
 
     private func foldersToPoll() -> [String] {
-        let shown = BrowserWindowController.foldersShown()
+        let shown = foldersShown()
         return folders.filter { key in
             forced[key] != nil || shown.contains(key) && items[key]?.contains { statuses[$0]?.isActive == true } == true
         }

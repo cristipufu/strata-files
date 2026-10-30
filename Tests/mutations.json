@@ -1083,7 +1083,7 @@
     "tests": "TransferContextTests/windowNavigationAndSuggestionsUseTheirOwnVisitHistory"
   },
   {
-    "file": "Strata/Browser/PlaceChecks.swift",
+    "file": "Strata/Model/PlaceChecks.swift",
     "find": "Array(visits.ranked().filter { isFolder($0.path) != false }.prefix(limit))",
     "replace": "Array(Frecency.shared.ranked().filter { isFolder($0.path) != false }.prefix(limit))",
     "rule": "Browser service ownership suggestions read global visits",
@@ -1673,7 +1673,7 @@
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
   {
-    "file": "Strata/Browser/PlaceChecks.swift",
+    "file": "Strata/Model/PlaceChecks.swift",
     "find": "Places.favorites(preferences: preferences, checks: self).map(\\.url)",
     "replace": "Places.favorites(preferences: .shared, checks: self).map(\\.url)",
     "rule": "Browser preferences path suggestions use another favorites store",

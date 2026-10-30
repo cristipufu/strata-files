@@ -1,14 +1,19 @@
 import Foundation
 
 /// Subsequence matching with fzf-like scoring: consecutive runs, word starts and prefixes rank higher.
-nonisolated enum Fuzzy {
-    struct Match {
-        let score: Int
+nonisolated package enum Fuzzy {
+    package struct Match {
+        package let score: Int
         /// Character offsets in the candidate that matched, for highlighting.
-        let indices: [Int]
+        package let indices: [Int]
+
+        package init(score: Int, indices: [Int]) {
+            self.score = score
+            self.indices = indices
+        }
     }
 
-    static func match(_ query: String, _ candidate: String) -> Match? {
+    package static func match(_ query: String, _ candidate: String) -> Match? {
         let q = query.lowercased().map { String($0) }
         let chars = Array(candidate)
         let lower = chars.map { $0.lowercased() }

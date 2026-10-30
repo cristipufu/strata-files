@@ -9,6 +9,7 @@ SecureStorage.useApplicationStorage()
 Prefs.useApplicationPreferences()
 Sounds.useApplicationSounds()
 let app = NSApplication.shared
+CloudStore.shared.foldersShown = BrowserWindowController.foldersShown
 let delegate = AppDelegate(browserServices: .shared)
 app.delegate = delegate
 app.run()

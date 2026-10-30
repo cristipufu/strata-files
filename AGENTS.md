@@ -39,6 +39,7 @@ python3 scripts/localize.py check --all --complete  # every supported language m
 python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthemed Inspector gray text
 python3 scripts/audit-main-thread.py     # no unreviewed blocking calls on the main thread
 python3 scripts/audit-shared-defaults.py # no unreviewed default falling back to an app-wide instance
+python3 scripts/audit-layers.py          # Sources/Strata/Model names no Browser, Window, Views… type
 python3 scripts/audit-destructive.py --check  # the map names every flagged function; mutations.json fits the code
 python3 -m unittest discover -s Tests -p 'test_*.py'  # checkers and generated resources
 ```
@@ -203,7 +204,10 @@ These apply everywhere below; the sections that follow add only what is specific
   keep panes weak, and one-shot fetch actions release their captures on every terminal path. Test teardown while
   finished jobs remain in the queue.
 - Keep `StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews` and `StrataIndex` free of dependencies on
-  `Browser`, `Window`, `Transfers`, `Remote` or `Containers`. `FileThumbnails` and `ItemInfoLoader` resolve container
+  `Browser`, `Window`, `Transfers`, `Remote` or `Containers`. The rest of `Sources/Strata/Model` compiles into the app,
+  where `scripts/audit-layers.py` keeps it from naming any interface type (Browser, Window, Views, Sidebar, Toolbar,
+  Inspector, Palette, Dock, Settings, Previewing): pass what it needs in, as `CloudStore.foldersShown` is set by
+  `main.swift`, or move the type down, as `Fuzzy` lives in `Support`. `FileThumbnails` and `ItemInfoLoader` resolve container
   and Compose stack icon marks and status text from their injected `CopyProviders` and `ContainerStore`; `FileDrop` and
   `ShelfWell` use their injected or active window's `CopyProviders`; `PathSuggestions` reads `showHidden` from its
   injected `Prefs`.
