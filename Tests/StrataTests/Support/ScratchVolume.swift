@@ -21,6 +21,22 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
 
     struct HdiutilFailure: Error, CustomStringConvertible {
         let description: String
+        /// What hdiutil exited with, when it failed by exiting so; nil when a signal stopped it, or when its output
+        /// couldn't be read or made sense of.
+        let status: Int32?
+
+        init(description: String, status: Int32? = nil) {
+            self.description = description
+            self.status = status
+        }
+
+        /// How `command` ended, and then what it said: a process a signal stopped has no exit status, only the
+        /// signal's number in its place.
+        init(_ command: String, ended reason: Process.TerminationReason, status: Int32, saying said: String) {
+            let exited = reason == .exit
+            let ended = "hdiutil \(command) " + (exited ? "exited with \(status)" : "was stopped by signal \(status)")
+            self.init(description: said.isEmpty ? ended : "\(ended): \(said)", status: exited ? status : nil)
+        }
     }
 
     private static let imageFile = "disk.sparseimage"
@@ -206,9 +222,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         } catch {
             // An attach can fail after attaching: the image made for this attempt, at a path no other has, is detached.
             do {
-                if let device = wholeDisk(of: folder.appending(path: imageFile).path, in: try attachedImages()) {
-                    try hdiutil(["detach", device, "-force"])
-                }
+                try detach(image: folder.appending(path: imageFile).path)
             } catch {
                 report("couldn't detach the image of \(folder.path): \(error)")
             }
@@ -348,16 +362,19 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         } catch {
             return "couldn't read \(folder.url.path): \(error)"
         }
+        var problems: [String] = []
         for name in names where name.hasPrefix("dmg.") {
-            guard let mount = mountPoint(name, in: folder.fd) else { continue }
             do {
-                try hdiutil(["detach", mount, "-force"])
+                // Each try detaches what's mounted here then, which another process may have detached meanwhile. A
+                // disk that unmounted but stays attached is left for `discard` to report: the only way back to it is a
+                // path, which a link could lead elsewhere.
+                try detach { mountPoint(name, in: folder.fd) }
             } catch {
-                // Another process may have detached it meanwhile.
-                if mountPoint(name, in: folder.fd) != nil { return "couldn't detach \(mount): \(error)" }
+                let mount = folder.url.appending(path: name).path
+                problems.append("couldn't detach the disk mounted on \(mount): \(error)")
             }
         }
-        return nil
+        return problems.isEmpty ? nil : problems.joined(separator: "; ")
     }
 
     /// Where the disk mounted on the folder `name` in the opened `folder` is mounted, as the system records it; nil when
@@ -429,6 +446,45 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         try? FileHandle.standardError.write(contentsOf: Data("ScratchVolume: \(problem)\n".utf8))
     }
 
+    /// Detaches the disk the image at `image` is attached as, if it is: an image Strata's tests made, at a path no
+    /// other has.
+    static func detach(image: String) throws {
+        try detach { wholeDisk(of: image, in: try attachedImages()) }
+    }
+
+    /// Detaches what `target` names, if it names anything, asking it again after each failed try: a failure is no
+    /// failure once there's nothing left, as when another process detached it meanwhile. A disk the system is busy
+    /// with can refuse for a moment, even forced (hdiutil exits with EBUSY), and can go anyway after saying so; it's
+    /// tried again after a pause, up to `retries` times, and by then its device name can be another disk's.
+    static func detach(retries: Int = 4, pause: () -> Void = { Thread.sleep(forTimeInterval: 0.5) },
+                       run: ([String]) throws -> Data = hdiutil, target: () throws -> String?) throws {
+        guard var current = try target() else { return }
+        for attempt in 0... {
+            do {
+                _ = try run(["detach", current, "-force"])
+                return
+            } catch let failure {
+                let busy = isBusy(failure)
+                // After the last busy try too, so a disk that goes anyway after saying so isn't reported.
+                if busy { pause() }
+                let next: String?
+                do {
+                    next = try target()
+                } catch {
+                    // Why the disk wouldn't go says more than a failed look after it.
+                    throw failure
+                }
+                guard let next else { return }
+                guard busy, attempt < retries else { throw failure }
+                current = next
+            }
+        }
+    }
+
+    private static func isBusy(_ error: Error) -> Bool {
+        (error as? HdiutilFailure)?.status == EBUSY
+    }
+
     /// Runs hdiutil; one that fails says why, in hdiutil's own words.
     @discardableResult
     static func hdiutil(_ arguments: [String]) throws -> Data {
@@ -462,12 +518,14 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         if case .failure = data { try? output.fileHandleForReading.close() }
         drained.wait()
         process.waitUntilExit()
+        let command = arguments.first ?? ""
         if case .failure(let error) = data {
-            throw HdiutilFailure(description: "couldn't read what hdiutil \(arguments.first ?? "") said: \(error)")
+            throw HdiutilFailure(description: "couldn't read what hdiutil \(command) said: \(error)")
         }
         guard process.terminationStatus == 0 else {
             let said = String(decoding: messages.withLock { $0 }, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw HdiutilFailure(description: "hdiutil \(arguments.first ?? "") exited with \(process.terminationStatus): \(said)")
+            throw HdiutilFailure(command, ended: process.terminationReason, status: process.terminationStatus,
+                                 saying: said)
         }
         return try data.get()
     }

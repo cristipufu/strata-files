@@ -70,7 +70,18 @@ struct ScratchVolumeTests {
         let (problems, attached, mount, device, left) = try await TestWork.run {
             () -> ([String], [String], String, String?, [String]) in
             let folders = ["strata-volume-ended", "strata-volume-running"].map { root.appending(path: $0) }
-            defer { cleanup.withLock { $0 = folders.flatMap(Self.detachEverything) } }
+            // This test's own images, whatever happened, mounted or not.
+            defer {
+                let problems = folders.compactMap { folder -> String? in
+                    do {
+                        try ScratchVolume.detach(image: folder.appending(path: "disk.sparseimage").path)
+                        return nil
+                    } catch {
+                        return "\(error)"
+                    }
+                }
+                cleanup.withLock { $0 = problems }
+            }
             // Attached as ScratchVolume attaches its disks.
             for folder in folders {
                 try ScratchVolume.hdiutil(["create", "-size", "64m", "-fs", "APFS", "-volname", "StrataSweep", "-type", "SPARSE",
@@ -86,9 +97,9 @@ struct ScratchVolumeTests {
             let ours = { (paths: [String]) in paths.filter { $0.contains(root.lastPathComponent) } }
             let attached = ours(try ScratchVolume.attachedImagePaths())
             // The running disk detaches by the whole disk its image's path names.
-            let device = ScratchVolume.wholeDisk(of: folders[1].appending(path: "disk.sparseimage").path,
-                                                 in: try ScratchVolume.attachedImages())
-            if let device { try ScratchVolume.hdiutil(["detach", device, "-force"]) }
+            let image = folders[1].appending(path: "disk.sparseimage").path
+            let device = ScratchVolume.wholeDisk(of: image, in: try ScratchVolume.attachedImages())
+            try ScratchVolume.detach(image: image)
             let left = ours(try ScratchVolume.attachedImagePaths())
             return (problems, attached, mount, device, left)
         }
@@ -101,22 +112,6 @@ struct ScratchVolumeTests {
         #expect(tree.snapshot() == ["strata-volume-linked/", "strata-volume-linked/dmg.link -> strata-volume-running/\(mount)",
                                     "strata-volume-linked/owner", "strata-volume-running/",
                                     "strata-volume-running/disk.sparseimage", "strata-volume-running/owner"])
-    }
-
-    /// Detaches whatever is mounted in `folder`, so a test leaves no disk behind whatever happened; what it couldn't.
-    nonisolated private static func detachEverything(in folder: URL) -> [String] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        return names.filter { $0.hasPrefix("dmg.") }.compactMap { name in
-            let mount = folder.appending(path: name).path
-            var mounted = stat(), parent = stat()
-            guard lstat(mount, &mounted) == 0, lstat(folder.path, &parent) == 0, mounted.st_dev != parent.st_dev else { return nil }
-            do {
-                try ScratchVolume.hdiutil(["detach", mount, "-force"])
-                return nil
-            } catch {
-                return "\(error)"
-            }
-        }
     }
 
     @Test func anImagesOwnDiskIsChosenNotItsContainerOrASlice() {
@@ -135,6 +130,66 @@ struct ScratchVolumeTests {
         #expect(ScratchVolume.wholeDisk(of: "/var/folders/x/T/strata-volume-C/disk.sparseimage", in: images) == nil)
     }
 
+    @Test func aBusyDiskIsTriedAgainAndWhatToDetachIsAskedAfreshEachTime() {
+        struct Unlisted: Error {}
+        let busy = ScratchVolume.HdiutilFailure(description: "Resource busy", status: EBUSY)
+        let refused = ScratchVolume.HdiutilFailure(description: "No such file or directory", status: ENOENT)
+        /// Detaches what `targets` name in turn (nil once there's nothing left) while hdiutil fails as `failures` say.
+        func detach(_ targets: [Result<String?, Error>], failing failures: [ScratchVolume.HdiutilFailure],
+                    retries: Int = 4) -> (detached: [String], pauses: Int, failure: Error?, unread: Int) {
+            var targets = targets, failures = failures, detached: [String] = [], pauses = 0, failure: Error?
+            let run: ([String]) throws -> Data = { arguments in
+                #expect(arguments.first == "detach" && arguments.last == "-force" && arguments.count == 3)
+                detached.append(arguments[1])
+                if !failures.isEmpty { throw failures.removeFirst() }
+                return Data()
+            }
+            do {
+                try ScratchVolume.detach(retries: retries, pause: { pauses += 1 }, run: run) {
+                    try (targets.isEmpty ? .failure(Unlisted()) : targets.removeFirst()).get()
+                }
+            } catch {
+                failure = error
+            }
+            return (detached, pauses, failure, targets.count)
+        }
+        func status(_ error: Error?) -> Int32? { (error as? ScratchVolume.HdiutilFailure)?.status }
+        // Busy, then free under another device name: each try detaches what's there then.
+        let moved = detach([.success("/dev/disk9"), .success("/dev/disk12")], failing: [busy])
+        #expect(moved.detached == ["/dev/disk9", "/dev/disk12"])
+        #expect(moved.pauses == 1 && moved.failure == nil && moved.unread == 0)
+        // A disk that went anyway after saying it was busy isn't followed to whatever took its device's name, even
+        // after the last try.
+        let gone = detach([.success("/dev/disk9"), .success(nil), .success("/dev/disk9")], failing: [busy])
+        #expect(gone.detached == ["/dev/disk9"])
+        #expect(gone.pauses == 1 && gone.failure == nil && gone.unread == 1)
+        let late = detach([.success("/dev/disk9"), .success("/dev/disk9"), .success(nil)], failing: [busy, busy],
+                          retries: 1)
+        #expect(late.detached == ["/dev/disk9", "/dev/disk9"])
+        #expect(late.pauses == 2 && late.failure == nil && late.unread == 0)
+        // One that stays busy fails with what its last detach said.
+        let stuck = detach(Array(repeating: .success("/dev/disk9"), count: 4), failing: [busy, busy, busy], retries: 2)
+        #expect(stuck.detached == ["/dev/disk9", "/dev/disk9", "/dev/disk9"])
+        #expect(stuck.pauses == 3 && status(stuck.failure) == EBUSY && stuck.unread == 0)
+        // Anything but busy fails at once, unless nothing is left by then; a look that fails after a busy disk keeps
+        // why it was busy.
+        let lasting = detach(Array(repeating: .success("/dev/disk9"), count: 3), failing: [refused])
+        #expect(lasting.detached == ["/dev/disk9"])
+        #expect(lasting.pauses == 0 && status(lasting.failure) == ENOENT && lasting.unread == 1)
+        let refusedLater = detach(Array(repeating: .success("/dev/disk9"), count: 3), failing: [busy, refused])
+        #expect(refusedLater.detached == ["/dev/disk9", "/dev/disk9"])
+        #expect(refusedLater.pauses == 1 && status(refusedLater.failure) == ENOENT && refusedLater.unread == 0)
+        let forgiven = detach([.success("/dev/disk9"), .success(nil)], failing: [refused])
+        #expect(forgiven.detached == ["/dev/disk9"])
+        #expect(forgiven.pauses == 0 && forgiven.failure == nil && forgiven.unread == 0)
+        let unlisted = detach([.success("/dev/disk9"), .failure(Unlisted())], failing: [busy])
+        #expect(unlisted.detached == ["/dev/disk9"])
+        #expect(unlisted.pauses == 1 && status(unlisted.failure) == EBUSY && unlisted.unread == 0)
+        // Nothing to detach is nothing to do.
+        let none = detach([.success(nil)], failing: [], retries: 0)
+        #expect(none.detached.isEmpty && none.pauses == 0 && none.failure == nil && none.unread == 0)
+    }
+
     @Test func aFailingHdiutilSaysWhy() async throws {
         let tree = try TestTree("empty/")
         let image = tree.url("empty/disk.sparseimage").path
@@ -144,6 +199,12 @@ struct ScratchVolumeTests {
         // hdiutil's own words follow its exit status.
         let said = failure?.description.components(separatedBy: ": ").dropFirst().joined(separator: ": ") ?? ""
         #expect(failure?.description.hasPrefix("hdiutil attach exited with ") == true && !said.isEmpty)
+        // Its exit status says whether trying again could help.
+        let status = try #require(failure?.status)
+        #expect(failure?.description.hasPrefix("hdiutil attach exited with \(status): ") == true && status != 0)
         #expect(tree.snapshot() == ["empty/"])
+        // A signal's number is no exit status.
+        let stopped = ScratchVolume.HdiutilFailure("detach", ended: .uncaughtSignal, status: SIGTERM, saying: "")
+        #expect(stopped.status == nil && stopped.description == "hdiutil detach was stopped by signal \(SIGTERM)")
     }
 }

@@ -204,9 +204,11 @@ on any function that is in neither this table nor a mutation.
   folder names the process that made it, and a test process's first disk removes those of processes that have ended: it
   detaches only what's mounted on a folder inside, opened without following a link, and leaves a folder whose image is
   still attached or that holds anything else (`ScratchVolume.sweep`, `ScratchVolumeTests`). An attempt that attached its
-  image before failing detaches that image's own disk, found by the image's path, which no other attempt has. Ejecting a
-  disk (`Places.eject`, the sidebar's and the menu's Eject) only hands the volume to macOS; nothing of the user's
-  changes, and it isn't tested.
+  image before failing detaches that image's own disk, found by the image's path, which no other attempt has. A disk
+  that says it's busy is tried again a few times, each time looking again at what's mounted in the folder, or at the
+  disk the image's path names, and none of it if it has gone meanwhile; between that look and the detach, as in a single
+  detach, hdiutil's device names leave a moment no look can close. Ejecting a disk (`Places.eject`, the sidebar's and
+  the menu's Eject) only hands the volume to macOS; nothing of the user's changes, and it isn't tested.
 
 ## Every function, by file
 
