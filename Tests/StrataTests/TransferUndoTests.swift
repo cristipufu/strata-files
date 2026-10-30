@@ -99,4 +99,26 @@ extension TransferTests {
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/"])
         #expect(tree.text("from/a.txt") == "someone else's")
     }
+
+    /// Retrying an undo item whose original couldn't be removed takes only the item it means, even when the failure
+    /// kept nothing to check it by: one put in the original's place since, as big and as old, isn't removed.
+    @Test func retryingAnUndoRemovalLeavesAnItemPutInItsPlace() throws {
+        let tree = try TestTree("from/a.txt", "to/")
+        let source = tree.url("from/a.txt"), destination = tree.url("to/a.txt")
+        let item = TransferItem(source: source, destination: destination, operation: .copyThenDelete,
+                                expected: FileIdentity.read(source.path))
+        try FileManager.default.copyItem(at: source, to: destination)
+        let copied = try FileManager.default.attributesOfItem(atPath: destination.path)[.modificationDate]
+        try FileManager.default.removeItem(at: source)
+        try Data("zrom/a.txt".utf8).write(to: source)
+        try FileManager.default.setAttributes([.modificationDate: try #require(copied)], ofItemAtPath: source.path)
+        let kept = TransferFailure(item: 0, stage: .removeSource, source: source, destination: destination,
+                                   message: "kept")
+        let retried = TransferEngine.retry(0, item, landed: FileIdentity.read(destination.path), failures: [kept],
+                                           options: .init(verify: false, clone: false), control: TransferControl(),
+                                           progress: TransferProgress())
+        #expect(!retried.sourceRemoved)
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/a.txt"])
+        #expect(tree.text("from/a.txt") == "zrom/a.txt")
+    }
 }

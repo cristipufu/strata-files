@@ -109,6 +109,8 @@ struct WorkspaceTests {
             == "/Users/me/Library/Mobile Documents")
         #expect(DiskOfPath.of("/Users/me/src/Library/CloudStorage/x", home: home) == "/")
         #expect(DiskOfPath.of("/Users/me/Documents/a", home: home) == "/")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Box/a", home: "/Users/me/")
+            == "/Users/me/Library/CloudStorage/Box")
         #expect(DiskOfPath.of("/Volumes", home: home) == "/")
     }
 

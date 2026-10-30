@@ -7075,10 +7075,10 @@
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "rule": "A retried undo item takes an item put in the place of the one it means",
+    "rule": "A retried undo removal removes an item put in the original's place",
     "find": "        guard item.means(FileIdentity.read(item.source.path)) else {",
     "replace": "        guard true else {",
-    "tests": "TransferTests/retryingAnUndoItemLeavesAnItemPutInItsPlace"
+    "tests": "TransferTests/retryingAnUndoRemovalLeavesAnItemPutInItsPlace"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
