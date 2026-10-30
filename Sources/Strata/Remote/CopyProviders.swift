@@ -58,10 +58,22 @@ nonisolated struct CopyProviders: Sendable {
     }
     var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
     func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
-    func containsPlaceholder(in urls: [URL]) -> Bool {
+    func containsPlaceholder(in urls: [URL]) -> Bool { Self.containsPlaceholder(in: urls, providers: providers) }
+
+    /// `containsPlaceholder` away from the main thread: it reads every item of a folder copied out of a server or a
+    /// container, which can hold thousands.
+    func containsPlaceholderOffMain(in urls: [URL]) async -> Bool {
+        await Self.containsPlaceholder(in: urls, of: providers)
+    }
+
+    @concurrent private static func containsPlaceholder(in urls: [URL], of providers: [any CopyProvider]) async -> Bool {
+        containsPlaceholder(in: urls, providers: providers)
+    }
+
+    nonisolated private static func containsPlaceholder(in urls: [URL], providers: [any CopyProvider]) -> Bool {
         func check(_ url: URL) -> Bool {
-            guard contains(url) else { return false }
-            if isPlaceholder(url) { return true }
+            guard let provider = providers.first(where: { $0.contains(url) }) else { return false }
+            if provider.isPlaceholder(url) { return true }
             var info = stat()
             guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return false }
             for name in (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? [] {

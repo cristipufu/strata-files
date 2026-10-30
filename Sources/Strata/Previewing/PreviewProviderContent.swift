@@ -79,7 +79,8 @@ import Foundation
                 else if !entry.isDirectory { try await copies.fetch([entry.url]) }
                 try Task.checkCancellation()
                 try parent?.withParent { _, _, _ in }
-                guard parent != nil, !copies.containsPlaceholder(in: [entry.url]), let fresh = FileEntry(url: entry.url) else {
+                let placeholder = await copies.containsPlaceholderOffMain(in: [entry.url])
+                guard parent != nil, !placeholder, let fresh = FileEntry(url: entry.url) else {
                     throw ContainerAPIError.notFound
                 }
                 let lease = action == .copy ? try await PreviewArchiveLease.exporting(entry.url, in: copies.clipboardRoot) : nil

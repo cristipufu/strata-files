@@ -3561,14 +3561,14 @@
   },
   {
     "file": "Strata/Transfers/TransferJob.swift",
-    "find": "guard !copies.containsPlaceholder(in: fromContainers) else { throw CocoaError(.fileReadUnknown) }",
+    "find": "guard !(await copies.containsPlaceholderOffMain(in: fromContainers)) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership transfer job copies an item that remained a placeholder",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
     "file": "Strata/Remote/RemoteJobs.swift",
-    "find": "guard !copies.containsPlaceholder(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }",
+    "find": "guard !(await copies.containsPlaceholderOffMain(in: elsewhere)) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership upload job uploads an item that remained a placeholder",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"

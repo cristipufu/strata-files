@@ -22,7 +22,8 @@ struct CopyProvidersTests {
         let name: String
         let calls: Calls
         var fails: String? = nil
-        var root: URL { URL(fileURLWithPath: "/strata-provider-fixture/" + name) }
+        var folder: URL? = nil
+        var root: URL { folder ?? URL(fileURLWithPath: "/strata-provider-fixture/" + name) }
         func contains(_ url: URL) -> Bool { url.path == root.path || url.path.hasPrefix(root.path + "/") }
         func isPlaceholder(_ url: URL) -> Bool { url.pathExtension == "pending" }
         func refresh(_ folder: URL) async { await record("refresh", [folder]) }
@@ -55,6 +56,20 @@ struct CopyProvidersTests {
             let neighbor = root.deletingLastPathComponent().appending(path: root.lastPathComponent + "-other/file")
             #expect(!CopyProviders.live.contains(neighbor) && !LazyCopies.contains(neighbor))
         }
+    }
+
+    /// A folder copied out of a server or a container is searched for items not fetched yet away from the main
+    /// thread, as deep as it goes and only inside the provider's copies.
+    @Test func placeholdersAreFoundAnywhereInsideACopy() async throws {
+        let tree = try TestTree("copy/", "copy/sub/", "copy/sub/deep.pending", "copy/plain/", "copy/plain/file.txt",
+                                "outside.pending")
+        let providers = CopyProviders([Provider(name: "tree", calls: Calls(), folder: tree.url("copy"))])
+        #expect(await providers.containsPlaceholderOffMain(in: [tree.url("copy")]))
+        #expect(!(await providers.containsPlaceholderOffMain(in: [tree.url("copy/plain")])))
+        #expect(!(await providers.containsPlaceholderOffMain(in: [tree.url("outside.pending")])))
+        #expect(providers.containsPlaceholder(in: [tree.url("copy/sub")]))
+        #expect(tree.snapshot() == ["copy/", "copy/plain/", "copy/plain/file.txt", "copy/sub/", "copy/sub/deep.pending",
+                                    "outside.pending"])
     }
 
     @Test func everyReadCapabilityRoutesToAnAdditionalProvider() async throws {
