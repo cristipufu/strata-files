@@ -59,6 +59,7 @@ final class BrowserServices {
     let files: BrowserFileCommands
     let visits: Frecency
     let places: PlaceChecks
+    let folderNames: FolderNames
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
     let containers: ContainerFiles
@@ -87,6 +88,7 @@ final class BrowserServices {
         self.files = BrowserFileCommands(transfers: transfers)
         self.visits = visits
         self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: PlaceChecks.read)
+        self.folderNames = FolderNames(read: FolderNames.read)
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing
         self.containers = containers

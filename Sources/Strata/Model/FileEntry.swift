@@ -153,6 +153,10 @@ nonisolated struct FileEntry: Sendable, Hashable {
         guard let values = try? url.resourceValues(forKeys: Set(Self.resourceKeys)) else { return nil }
         self.init(url: url, values: values)
     }
+
+    @concurrent static func read(_ url: URL) async -> FileEntry? {
+        FileEntry(url: url)
+    }
 }
 
 nonisolated enum DirectoryLoader {

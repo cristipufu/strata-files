@@ -28,7 +28,9 @@ final class Pane {
     /// The drag whose spring-loading last moved this pane: the rest of that dive adds no Back steps.
     var springDrag: Int?
     var forwardStack: [Destination] = []
-    var folderEntry: FileEntry?
+    /// The folder on show, for the Inspector when nothing's selected; read away from the main thread.
+    private(set) var folderEntry: FileEntry?
+    private var folderEntryRead: Task<Void, Never>?
     /// In column view, the folder of the focused column (deeper than `location`).
     var columnLocation: URL?
     var searchGeneration = 0
@@ -58,6 +60,7 @@ final class Pane {
         opening.cancel()
         host.pathBar.cancelEditing()
         browser.stopBackgroundWork()
+        folderEntryRead?.cancel()
         searchTask?.cancel()
         searchTask = nil
         duplicateSearch?.set()
@@ -66,12 +69,26 @@ final class Pane {
         folderSearch = nil
     }
 
+    /// Reads `url`'s entry for `folderEntry`, then `shown`; going elsewhere first drops it.
+    func readFolderEntry(_ url: URL, then shown: @escaping () -> Void) {
+        folderEntryRead?.cancel()
+        folderEntry = nil
+        folderEntryRead = Task { [weak self] in
+            let entry = await FileEntry.read(url)
+            guard !Task.isCancelled, let self else { return }
+            folderEntry = entry
+            folderEntryRead = nil
+            shown()
+        }
+    }
+
     /// Short description for the pane header.
     var title: (text: String, symbol: String) {
         switch destination {
         case .folder(let url):
             let shown = (browser.mode == .columns ? columnLocation : nil) ?? url
-            return (Places.displayName(shown, copies: browser.services.copies), Trash.isTrash(shown) ? "trash" : "folder")
+            let name = Places.displayName(shown, copies: browser.services.copies, names: browser.services.folderNames)
+            return (name, Trash.isTrash(shown) ? "trash" : "folder")
         case .search(let text, _): return (BrowserWindowController.searchTitle(text), "magnifyingglass")
         case .recents: return (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
         case .duplicates: return (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")
@@ -96,6 +113,7 @@ final class PaneHostViewController: NSViewController {
         self.browser = browser
         let services = browser.services
         pathBar = PathBar(preferences: services.preferences, places: services.places, copies: services.copies,
+                          names: services.folderNames,
                           embedded: true)
         header = PaneHeaderView(pathBar: pathBar)
         super.init(nibName: nil, bundle: nil)

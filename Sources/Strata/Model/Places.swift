@@ -113,6 +113,11 @@ enum Places {
         ownName(url, copies: copies) ?? FileManager.default.displayName(atPath: url.path)
     }
 
+    /// The same, with Finder's names as `names` last read them, for the folder on show, which mustn't wait on a disk.
+    static func displayName(_ url: URL, copies: CopyProviders, names: FolderNames) -> String {
+        ownName(url, copies: copies) ?? names.name(url)
+    }
+
     /// The same, with Finder's names as `checks` last read them, for lists that mustn't wait on a disk.
     static func displayName(_ url: URL, copies: CopyProviders, checks: PlaceChecks) -> String {
         ownName(url, copies: copies) ?? checks.name(url)

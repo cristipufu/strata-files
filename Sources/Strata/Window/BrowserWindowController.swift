@@ -56,7 +56,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
         self.services = services
-        pathBar = PathBar(preferences: services.preferences, places: services.places, copies: services.copies)
+        pathBar = PathBar(preferences: services.preferences, places: services.places, copies: services.copies,
+                          names: services.folderNames)
         let first = Pane(location: location, services: services)
         panes = [first]
         pane = first
@@ -100,6 +101,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(folderNamesRead), name: .folderNamesRead,
+                                               object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
         // The Inspector's Cloud row follows downloads and uploads.
@@ -281,12 +284,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let dualAddressBars = isDualPane && services.preferences.dualPaneAddressBars
         if dualAddressBars, pathBar.isEditing { pathBar.cancelEditing() }
         pathBarItem?.isHidden = dualAddressBars
+        for p in panes { syncPathBar(p.host.pathBar, for: p) }
+        showHeaderTitles()
+    }
+
+    private func showHeaderTitles() {
         for p in panes {
             let title = p.title
-            syncPathBar(p.host.pathBar, for: p)
             p.host.setHeader(visible: isDualPane, title: title.text, symbol: title.symbol, active: p === pane,
                              showsPathBar: services.preferences.dualPaneAddressBars)
         }
+    }
+
+    /// Finder's names arrived for folders on show: the title and the panes' headers use them.
+    @objc private func folderNamesRead() {
+        if case .folder(let location) = destination {
+            let shown = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
+            window?.title = Places.displayName(shown, copies: services.copies, names: services.folderNames)
+        }
+        showHeaderTitles()
     }
 
     private func syncPathBar(_ bar: PathBar, for p: Pane) {
@@ -442,7 +458,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         switch target {
         case .folder(let url):
             p.location = url
-            p.folderEntry = FileEntry(url: url)
+            p.readFolderEntry(url) { [weak self] in self?.refreshPanels() }
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
             if !ReadOnlyCopies.contains(url, copies: services.copies) && !services.copies.contains(url) {
@@ -470,7 +486,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             pathBar.url = url
             updateGitChrome()
             split.sidebar.highlight(.folder(url))
-            window?.title = Places.displayName(url, copies: services.copies)
+            window?.title = Places.displayName(url, copies: services.copies, names: services.folderNames)
             // Not a container's copy: dragging the title's icon would hand out what isn't fully read yet.
             window?.representedURL = services.copies.contains(url) ? nil : url
             setSearchField("")
@@ -925,12 +941,12 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
             if owner === pane { refreshOpeningNotice() }
         }
         owner.columnLocation = url
-        owner.folderEntry = FileEntry(url: url)
+        owner.readFolderEntry(url) { [weak self] in self?.refreshPanels() }
         updateHeaders()
         guard owner === pane else { return }
         pathBar.url = url
         updateGitChrome(on: pathBar, destination: owner.destination, location: url)
-        window?.title = Places.displayName(url, copies: services.copies)
+        window?.title = Places.displayName(url, copies: services.copies, names: services.folderNames)
         refreshPanels()
     }
 }

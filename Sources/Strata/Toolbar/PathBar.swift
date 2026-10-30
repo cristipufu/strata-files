@@ -35,6 +35,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let suggestionList = PathSuggestionList()
     private var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
+    private let names: FolderNames
     private let embedded: Bool
 
     var editorField: NSTextField { field }
@@ -47,14 +48,17 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
     }
 
-    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, copies: CopyProviders,
+    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, copies: CopyProviders, names: FolderNames,
          embedded: Bool = false) {
         self.copies = copies
+        self.names = names
         self.embedded = embedded
         suggestions = PathSuggestions(preferences: preferences, places: places)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
+        NotificationCenter.default.addObserver(self, selector: #selector(namesRead(_:)), name: .folderNamesRead,
+                                               object: names)
 
         crumbs.orientation = .horizontal
         crumbs.spacing = 0
@@ -143,7 +147,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let url else { return }
-        let parts = Self.components(of: url, copies: copies)
+        let parts = Self.components(of: url, copies: copies, names: names)
         let repoRootPath = gitRoot?.standardizedFileURL.path
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
@@ -162,7 +166,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 group.setCustomSpacing(2, after: branchPill)
             }
             if !isLast {
-                let chevron = ChevronButton(folder: part.url) { [weak self] target in
+                let name = part.title.isEmpty ? part.url.lastPathComponent : part.title
+                let chevron = ChevronButton(folder: part.url, name: name) { [weak self] target in
                     self?.onActivate?()
                     self?.onNavigate?(target, nil)
                 }
@@ -180,13 +185,22 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
     }
 
+    /// Finder's names arrived for folders along the path: the crumbs show them.
+    @objc private func namesRead(_ notification: Notification) {
+        guard !isEditing, title == nil, let path = url?.path,
+              let paths = notification.userInfo?["paths"] as? Set<String>,
+              paths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else { return }
+        rebuild()
+    }
+
     @objc private func crumbClicked(_ sender: CrumbButton) {
         onActivate?()
         guard let destination = sender.destination else { return }
         onNavigate?(destination, nil)
     }
 
-    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders = .live) -> [(title: String, url: URL, symbol: String?)] {
+    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders,
+                                   names: FolderNames) -> [(title: String, url: URL, symbol: String?)] {
         // Containers, then a container, then its folders from `/`.
         if let folder = copies.containerCopies.containersFolder(of: url) {
             var parts: [(title: String, url: URL, symbol: String?)] = [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
@@ -212,7 +226,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
-            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies)
+            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies,
+                                   names: names)
             parts.append((archive.lastPathComponent, top, "archivebox"))
             var current = top
             let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
@@ -229,7 +244,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
         if path == home || path.hasPrefix(home + "/") {
             root = home
             // Icon only, unless home is the folder being shown.
-            parts.append((path == home ? FileManager.default.displayName(atPath: home) : "", URL(fileURLWithPath: home), "house.fill"))
+            let homeURL = URL(fileURLWithPath: home)
+            parts.append((path == home ? names.name(homeURL) : "", homeURL, "house.fill"))
         } else if path.hasPrefix("/Volumes/"), let name = path.split(separator: "/").dropFirst().first {
             root = "/Volumes/\(name)"
             parts.append((String(name), URL(fileURLWithPath: root), "externaldrive.fill"))
@@ -246,7 +262,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if Trash.isTrash(current) {
                 parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
             } else {
-                parts.append((Places.displayName(current, copies: copies), current, nil))
+                parts.append((Places.displayName(current, copies: copies, names: names), current, nil))
             }
         }
         return parts
@@ -531,7 +547,7 @@ final class ChevronButton: NSButton {
     private let navigate: (URL) -> Void
     private var tracking: NSTrackingArea?
 
-    init(folder: URL, navigate: @escaping (URL) -> Void) {
+    init(folder: URL, name: String, navigate: @escaping (URL) -> Void) {
         self.folder = folder
         self.navigate = navigate
         super.init(frame: .zero)
@@ -545,7 +561,7 @@ final class ChevronButton: NSButton {
         target = self
         action = #selector(showMenu)
         toolTip = String(localized: "Folders in \(folder.lastPathComponent)", comment: "Menu of a folder's subfolders; the folder's name")
-        setAccessibilityLabel(String(localized: "Folders in \(FileManager.default.displayName(atPath: folder.path))",
+        setAccessibilityLabel(String(localized: "Folders in \(name)",
                                      comment: "Menu of a folder's subfolders; the folder's name"))
     }
 

@@ -367,12 +367,6 @@
  },
  {
   "file": "Sources/Strata/Toolbar/PathBar.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Toolbar/PathBar.swift",
   "call": "FileManager.default.fileExists",
   "count": 2,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
