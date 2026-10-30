@@ -447,6 +447,11 @@ extension BrowserViewController {
         if ordering.choice?.key == .tags { scheduleResort() }
     }
 
+    /// Items' own icons arrived (an app's, a package's, a special folder's): rows drawn with their kind's draw them.
+    @objc func iconsLoaded() {
+        reloadVisibleCells()
+    }
+
     /// Every view mode's visible items configured again (icons, badges, thumbnails).
     func reloadVisibleCells() {
         clipboardChanged()

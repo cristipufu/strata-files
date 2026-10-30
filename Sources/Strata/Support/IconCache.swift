@@ -1,6 +1,12 @@
 import AppKit
 import UniformTypeIdentifiers
 
+package extension Notification.Name {
+    /// Posted (object: the `IconCache`, userInfo `paths`: a `Set<String>`) when items' own icons have been read, ones
+    /// other than their kind's, for the rows showing them to draw them.
+    static let iconsLoaded = Notification.Name("StrataIconsLoaded")
+}
+
 /// Finder icons, cached per file type for documents and per path for folders and packages (which can have their own).
 package final class IconCache {
     package static let shared = IconCache()
@@ -96,26 +102,127 @@ package final class IconCache {
         return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 
-    package func icon(forPath path: String) -> NSImage {
+    /// Rows asking for icons not read yet, and the kind each shows meanwhile.
+    private var requested: [String: UTType] = [:]
+    /// The icons being read, away from the main thread.
+    package private(set) var loading: Task<Void, Never>?
+    /// What each kind's icon looks like, small, to tell an item's own icon from its kind's.
+    private var kindPixels: [String: [UInt8]] = [:]
+
+    /// The item's icon as last read. One not read yet shows its kind's icon (a link's, a folder's, or what its name
+    /// says) and is read away from the main thread with the others asked about meanwhile: reading one asks the disk,
+    /// and LaunchServices, which on a server takes seconds. `.iconsLoaded` says when ones other than their kind's
+    /// arrive.
+    package func icon(forPath path: String, folder: Bool = true, link: Bool = false) -> NSImage {
         if let cached = byPath.object(forKey: path as NSString) { return cached }
-        let image = currentIcon(forPath: path)
-        byPath.setObject(image, forKey: path as NSString)
-        return image
+        let kind = link ? .symbolicLink : Self.kind(ofPath: path, folder: folder)
+        requested[path] = kind
+        if loading == nil { loadRequested() }
+        return icon(forType: kind)
+    }
+
+    /// What the name says, for an item whose own icon isn't known yet: a folder unless it's a package, such as an app.
+    private static func kind(ofPath path: String, folder: Bool) -> UTType {
+        let named = UTType(filenameExtension: (path as NSString).pathExtension)
+        if folder { return named.flatMap { $0.conforms(to: .package) ? $0 : nil } ?? .folder }
+        return named ?? .data
+    }
+
+    private func loadRequested() {
+        loading = Task {
+            // The other rows being drawn ask too, and are read with this one.
+            await Task.yield()
+            let batch = requested
+            requested.removeAll()
+            let pixels = kindPixels(for: Set(batch.values))
+            let found = await Self.read(batch, kindPixels: pixels)
+            var changed: Set<String> = []
+            for (path, icon) in found {
+                guard let kind = batch[path] else { continue }
+                let shown = self.icon(forType: kind)
+                let image = switch icon {
+                case .known(let known): documentIcon(known)
+                case .ofItsKind: shown
+                case .own(let own): own.image
+                }
+                byPath.setObject(image, forKey: path as NSString)
+                if image !== shown { changed.insert(path) }
+            }
+            loading = nil
+            // Only a change redraws: every list showing one redraws its rows, and rows drawn ask again.
+            if !changed.isEmpty {
+                NotificationCenter.default.post(name: .iconsLoaded, object: self, userInfo: ["paths": changed])
+            }
+            if !requested.isEmpty { loadRequested() }
+        }
+    }
+
+    private func kindPixels(for kinds: Set<UTType>) -> [String: [UInt8]] {
+        for kind in kinds where kindPixels[kind.identifier] == nil {
+            kindPixels[kind.identifier] = Self.pixels(icon(forType: kind))
+        }
+        return kindPixels
+    }
+
+    nonisolated private enum Found: Sendable {
+        case known(KnownDocument.Kind)
+        case ofItsKind
+        case own(MadeElsewhere)
+    }
+
+    /// An icon made away from the main thread and handed to it, as Apple's NSImage restrictions allow ("one thread can
+    /// create an NSImage object, draw to the image buffer, and pass it off to the main thread for drawing"): it's drawn
+    /// once where it's made, then used only on the main thread.
+    nonisolated private struct MadeElsewhere: @unchecked Sendable {
+        let image: NSImage
+    }
+
+    @concurrent
+    private static func read(_ batch: [String: UTType], kindPixels: [String: [UInt8]]) async -> [String: Found] {
+        var found: [String: Found] = [:]
+        for (path, kind) in batch {
+            if let known = knownKind(path) {
+                found[path] = .known(known)
+                continue
+            }
+            let image = NSWorkspace.shared.icon(forFile: path)
+            let looks = pixels(image)
+            let ofItsKind = looks != nil && looks == kindPixels[kind.identifier]
+            found[path] = ofItsKind ? .ofItsKind : .own(MadeElsewhere(image: image))
+        }
+        return found
     }
 
     /// The icon the item at `path` has now, never one remembered: for a choice about it, such as whether to replace it.
     package func currentIcon(forPath path: String) -> NSImage {
-        let type = { (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.contentTypeKey]))?.contentType }
-        if let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: type()),
-           !Self.hasCustomIcon(path) {
-            return documentIcon(kind)
-        }
+        if let known = Self.knownKind(path) { return documentIcon(known) }
         return NSWorkspace.shared.icon(forFile: path)
+    }
+
+    /// A kind Strata draws a page for, unless the item has an icon of its own.
+    nonisolated private static func knownKind(_ path: String) -> KnownDocument.Kind? {
+        let type = { (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.contentTypeKey]))?.contentType }
+        guard let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: type()),
+              !hasCustomIcon(path) else { return nil }
+        return kind
+    }
+
+    /// The image at 32 pixels square, for telling icons apart.
+    nonisolated private static func pixels(_ image: NSImage) -> [UInt8]? {
+        let side = 32
+        var rect = NSRect(x: 0, y: 0, width: side, height: side)
+        guard let drawn = image.cgImage(forProposedRect: &rect, context: nil, hints: nil),
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let bytes = context.data else { return nil }
+        context.draw(drawn, in: CGRect(x: 0, y: 0, width: side, height: side))
+        return Array(UnsafeBufferPointer(start: bytes.assumingMemoryBound(to: UInt8.self), count: side * side * 4))
     }
 
     /// An icon pasted onto the item in Finder, which `URLResourceKey.customIconKey` doesn't report: Finder's
     /// kHasCustomIcon flag, in the high byte of the Finder flags at offset 8 of its Finder info.
-    private static func hasCustomIcon(_ path: String) -> Bool {
+    nonisolated private static func hasCustomIcon(_ path: String) -> Bool {
         var info = [UInt8](repeating: 0, count: 32)
         guard getxattr(path, "com.apple.FinderInfo", &info, info.count, 0, XATTR_NOFOLLOW) == info.count else {
             return false

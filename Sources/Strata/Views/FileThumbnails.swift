@@ -454,7 +454,7 @@ extension IconCache {
         if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType {
             return icon(forType: type)
         }
-        return icon(forPath: entry.url.path)
+        return icon(forPath: entry.url.path, folder: entry.isDirectory, link: entry.isSymlink)
     }
 }
 

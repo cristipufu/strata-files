@@ -349,19 +349,7 @@
  },
  {
   "file": "Sources/Strata/Support/IconCache.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Support/IconCache.swift",
   "call": "NSWorkspace.shared.icon(forFile",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Support/IconCache.swift",
-  "call": "getxattr(",
   "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },

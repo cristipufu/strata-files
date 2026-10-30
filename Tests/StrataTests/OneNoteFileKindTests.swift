@@ -62,7 +62,14 @@ import UniformTypeIdentifiers
                                     "link.one -> Notes.one"])
     }
 
-    @Test(.enabled(if: undeclared)) func oneNotesFilesHaveAPageDrawnForThem() throws {
+    /// An item's icon as read away from the main thread.
+    private func loaded(_ url: URL) async -> NSImage {
+        _ = IconCache.shared.icon(forPath: url.path)
+        while let loading = IconCache.shared.loading { await loading.value }
+        return IconCache.shared.icon(forPath: url.path)
+    }
+
+    @Test(.enabled(if: undeclared)) func oneNotesFilesHaveAPageDrawnForThem() async throws {
         let tree = try TestTree("Notes.one", "Custom.one", "folder.one/", "link.one -> Notes.one")
         try alias(in: tree)
         let star = NSImage(systemSymbolName: "star.fill", accessibilityDescription: nil)
@@ -72,19 +79,19 @@ import UniformTypeIdentifiers
         #expect(page !== packagePage)
         let notes = try #require(FileEntry(url: tree.url("Notes.one")))
         #expect(icons.icon(for: notes) === page)
-        #expect(icons.icon(forPath: tree.url("Notes.one").path) === page)
+        #expect(await loaded(tree.url("Notes.one")) === page)
         #expect(icons.currentIcon(forPath: tree.url("Notes.one").path) === page)
         #expect(icons.icon(forType: try #require(UTType(filenameExtension: "ONEPKG"))) === packagePage)
         // A folder named so isn't one, and a link or an alias keeps its own icon.
         for name in ["folder.one", "link.one", "alias.one"] {
             let entry = try #require(FileEntry(url: tree.url(name)))
             #expect(icons.icon(for: entry) !== page, "\(name)")
-            #expect(icons.icon(forPath: tree.url(name).path) !== page, "\(name)")
+            #expect(await loaded(tree.url(name)) !== page, "\(name)")
             #expect(icons.currentIcon(forPath: tree.url(name).path) !== page, "\(name)")
         }
         // An icon pasted onto a section in Finder shows wherever its path's icon does.
         #expect(icons.currentIcon(forPath: tree.url("Custom.one").path) !== page)
-        #expect(icons.icon(forPath: tree.url("Custom.one").path) !== page)
+        #expect(await loaded(tree.url("Custom.one")) !== page)
         #expect(try marked(page))
         #expect(tree.snapshot() == ["Custom.one", "Notes.one", "alias.one", "folder.one/", "link.one -> Notes.one"])
     }

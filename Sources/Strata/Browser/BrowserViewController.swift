@@ -232,6 +232,7 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded), name: .iconsLoaded, object: nil)
         // Cloud badges redraw the same way.
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
     }

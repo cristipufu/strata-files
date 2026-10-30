@@ -35,6 +35,8 @@ final class InspectorViewController: NSViewController {
     let composeView: ComposeInspectorView
     private var composeFolder: URL?
     private var shownURLs: [URL] = []
+    /// The items whose icons the icon view shows, to draw again when their own icons arrive.
+    private var iconItems: [FileEntry] = []
     private var previewWork: DispatchWorkItem?
     private var previewingContent = false
     let projectView: ProjectInspectorView
@@ -135,6 +137,7 @@ final class InspectorViewController: NSViewController {
         composeView.isHidden = true
         composeView.onOpenContainer = { [weak self] id in self?.onOpenContainer?(id) }
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
         let cards: [NSView] = [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
         for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
         let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel] + cards)
@@ -222,6 +225,17 @@ final class InspectorViewController: NSViewController {
     @objc private func containersChanged() {
         containerView.configure(url: shownURLs.first)
         composeView.configure(composeFolder)
+    }
+
+    @objc private func iconsLoaded(_ notification: Notification) {
+        guard !iconView.isHidden, let paths = notification.userInfo?["paths"] as? Set<String>,
+              iconItems.contains(where: { paths.contains($0.url.path) }) else { return }
+        showIcons(of: iconItems)
+    }
+
+    private func showIcons(of items: [FileEntry]) {
+        iconItems = items
+        iconView.image = items.count == 1 ? services.thumbnails.icon(for: items[0]) : stackedIcons(items)
     }
 
     @objc private func tagsChanged(_ notification: Notification) {
@@ -323,7 +337,7 @@ final class InspectorViewController: NSViewController {
                 preview.clear()
                 preview.isHidden = true
                 iconView.isHidden = false
-                iconView.image = stackedIcons(items)
+                showIcons(of: items)
             }
         }
     }
@@ -416,7 +430,7 @@ final class InspectorViewController: NSViewController {
         removeRichPreview()
         preview.clear()
         previewingContent = canPreview(entry)
-        iconView.image = services.thumbnails.icon(for: entry)
+        showIcons(of: [entry])
         iconView.isHidden = false
         preview.isHidden = true
         guard previewingContent else { return }

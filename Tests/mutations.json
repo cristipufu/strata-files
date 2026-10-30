@@ -6964,8 +6964,8 @@
   {
     "file": "Strata/Support/IconCache.swift",
     "rule": "Files: only a OneNote file itself has its drawn page by path, not a folder, a link or an alias",
-    "find": "        if let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: type()),",
-    "replace": "        if let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: UTType(filenameExtension: (path as NSString).pathExtension)),",
+    "find": "        guard let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: type()),",
+    "replace": "        guard let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: UTType(filenameExtension: (path as NSString).pathExtension)),",
     "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
   },
   {
@@ -6985,8 +6985,8 @@
   {
     "rule": "Files: a OneNote file with an icon pasted onto it keeps that icon by its path",
     "file": "Strata/Support/IconCache.swift",
-    "find": "           !Self.hasCustomIcon(path) {",
-    "replace": "           true {",
+    "find": "              !hasCustomIcon(path) else { return nil }",
+    "replace": "              true else { return nil }",
     "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
   },
   {
