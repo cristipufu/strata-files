@@ -33,7 +33,7 @@ struct OneNoteReaderTests {
         return OneStoreFixture.Revision(id: fixture.take(), dependency: dependency, context: context, objects: [
             .init(id: page, jcid: 0x0006_000B, content: .properties([])),
             .init(id: manifest, jcid: 0x0006_0037, content: .properties([(0x1C1F, .objects([page]))])),
-            .init(id: metadata, jcid: 0x0002_0030, content: .properties([(0x1CF3, OneStoreFixture.text(title))])),
+            .init(id: metadata, jcid: 0x0002_0030, content: .properties([(UInt32(0x1CF3), OneStoreFixture.text(title))])),
         ], roots: [(1, manifest), (2, metadata)])
     }
 

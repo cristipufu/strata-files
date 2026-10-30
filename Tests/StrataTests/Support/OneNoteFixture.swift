@@ -160,7 +160,7 @@ extension OneNoteFixture {
         var ids = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.name, ID(number: UInt32(100 + $0))) })
         func entry(_ id: ID, _ name: String, _ color: UInt32?, _ number: UInt32?) -> OneStoreFixture.Object {
             OneStoreFixture.Object(id: id, jcid: 0x0002_0001, content: .properties(
-                [(0x1D6B, OneStoreFixture.text(name))] + (color.map { [(0x1CBE, .u32($0))] } ?? [])
+                [(UInt32(0x1D6B), OneStoreFixture.text(name))] + (color.map { [(0x1CBE, .u32($0))] } ?? [])
                     + (number.map { [(0x1CB9, .u32($0))] } ?? [])))
         }
         func list(_ children: [ID]) -> OneStoreFixture.Object {

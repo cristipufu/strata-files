@@ -29,7 +29,7 @@ struct OneNoteContentsTests {
             OneStoreFixture.Object(id: root, jcid: 0x0002_0001, content: .properties([(0x1CF6, .objects([section]))]))
         }
         let named = OneStoreFixture.Object(id: section, jcid: 0x0002_0001,
-                                           content: .properties([(0x1D6B, OneStoreFixture.text("A.one"))]))
+                                           content: .properties([(UInt32(0x1D6B), OneStoreFixture.text("A.one"))]))
         let first = OneStoreFixture.Revision(id: ID(number: 3), objects: [list(), named], roots: [(1, root)])
         var again = OneStoreFixture.Revision(id: ID(number: 4), objects: [list()], roots: [(1, root)])
         again.dependency = first.id
