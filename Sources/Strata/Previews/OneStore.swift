@@ -20,6 +20,8 @@ nonisolated package struct StoredGUID: Hashable, Sendable {
 
     static let zero = StoredGUID(low: 0, high: 0)
     static let section = StoredGUID(braced: "{7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}")!
+    /// A notebook's table of contents (.onetoc2), which shares the format.
+    static let contents = StoredGUID(braced: "{43FF2FA1-EFD9-4C76-9EE2-10EA5722765F}")!
     static let revisionStore = StoredGUID(braced: "{109ADD3F-911B-49F5-A5D0-1791EDC8AED8}")!
     static let fileDataHeader = StoredGUID(braced: "{BDE316E7-2665-4511-A4C4-8D4D0B7A9EAC}")!
 
@@ -90,8 +92,8 @@ nonisolated struct FileNode {
     let data: Data
 }
 
-/// A OneNote section's revision store ([MS-ONESTORE]) read from an open file. Every offset, count and link in it is
-/// checked before it's followed, and what it may read is bounded.
+/// A OneNote revision store ([MS-ONESTORE]), a section's or a notebook's table of contents, read from an open file or
+/// from memory. Every offset, count and link in it is checked before it's followed, and what it may read is bounded.
 nonisolated package final class OneStore {
 
     /// What a preview reads at most: far beyond what real notebooks need, and short of what a crafted file could make
@@ -102,6 +104,9 @@ nonisolated package final class OneStore {
         var fragments = 100_000
         /// File nodes and transaction log entries.
         var nodes = 2_000_000
+        /// Global identification table entries a table of contents' revisions copy from the ones they depend on: a
+        /// node can copy a whole table, so they're counted apart. Real tables of contents copy tens.
+        var copiedEntries = 100_000
         var dependencies = 1_024
         var nesting = 8
         var arrayElements = 100_000
@@ -110,7 +115,9 @@ nonisolated package final class OneStore {
     }
 
     let limits: Limits
-    private let file: FileHandle
+    /// A section, or a notebook's table of contents.
+    let type: StoredGUID
+    private let bytes: Bytes
     private let size: UInt64
     private var committed: [UInt32: Int] = [:]
     private var spent = Spent()
@@ -119,14 +126,32 @@ nonisolated package final class OneStore {
         var bytes: UInt64 = 0
         var fragments = 0
         var nodes = 0
+        var copiedEntries = 0
     }
 
-    package init(_ file: FileHandle, limits: Limits = Limits()) throws {
-        self.file = file
+    /// `type` is the kind of file it must be: a section, or a notebook's table of contents.
+    package convenience init(_ file: FileHandle, limits: Limits = Limits(), type: StoredGUID = .section) throws {
+        try self.init(.file(file), limits: limits, type: type)
+    }
+
+    /// A table of contents read out of a package, small enough to hold.
+    package convenience init(_ data: Data, limits: Limits = Limits(), type: StoredGUID) throws {
+        try self.init(.memory(data), limits: limits, type: type)
+    }
+
+    private init(_ bytes: Bytes, limits: Limits, type: StoredGUID) throws {
+        self.bytes = bytes
         self.limits = limits
-        let header = try Self.reading { try Header(file) }
+        self.type = type
+        let header = try Self.reading { try Header(bytes, type: type) }
         (size, root) = (header.size, header.root)
         committed = try Self.reading { try committedNodes(log: header.log, transactions: header.transactions) }
+    }
+
+    /// Charged before the copying, so a node that names a whole table is refused before the work, not after.
+    func copying(_ count: UInt32) throws {
+        guard Int(count) <= limits.copiedEntries - spent.copiedEntries else { throw OneStoreError.tooLarge }
+        spent.copiedEntries += Int(count)
     }
 
     /// Runs one operation, such as listing a section's pages or reading a page, with the whole budget to itself.
@@ -144,22 +169,17 @@ nonisolated package final class OneStore {
         let log: FileChunk
         let root: FileChunk
 
-        init(_ file: FileHandle) throws {
-            var info = stat()
-            guard fstat(file.fileDescriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-                throw OneStoreError.malformed
-            }
-            size = UInt64(info.st_size)
+        init(_ bytes: Bytes, type: StoredGUID) throws {
+            size = try bytes.size()
             guard size >= 1024 else { throw OneStoreError.notOneNote }
-            var header = ByteCursor(try OneStore.read(file, at: 0, count: 1024))
-            // A notebook's table of contents (.onetoc2) shares the format but not this type.
-            guard try StoredGUID(&header) == .section else { throw OneStoreError.notOneNote }
+            var header = ByteCursor(try bytes.read(at: 0, count: 1024))
+            guard try StoredGUID(&header) == type else { throw OneStoreError.notOneNote }
             try header.skip(32)
             guard try StoredGUID(&header) == .revisionStore else { throw OneStoreError.unsupportedVersion }
             try header.skip(12)
-            // The oldest OneNote that may read the file: 2010's revision store, as the spec requires.
+            // The oldest OneNote that may read the file: 2010's revision store, as the spec requires of each kind.
             let oldestReader: UInt32 = try header.read()
-            guard oldestReader == 0x2A else { throw OneStoreError.unsupportedVersion }
+            guard oldestReader == (type == .contents ? 0x1B : 0x2A) else { throw OneStoreError.unsupportedVersion }
             try header.skip(0x60 - header.offset)
             transactions = Int(try header.read(UInt32.self))
             try header.skip(0xA0 - header.offset)
@@ -184,26 +204,53 @@ nonisolated package final class OneStore {
             throw OneStoreError.tooLarge
         }
         spent.bytes += chunk.count
-        return try Self.read(file, at: chunk.offset, count: Int(chunk.count))
+        return try bytes.read(at: chunk.offset, count: Int(chunk.count))
     }
 
     func contains(_ chunk: FileChunk) -> Bool {
         chunk.offset <= size && chunk.count <= size - chunk.offset
     }
 
-    private static func read(_ file: FileHandle, at offset: UInt64, count: Int) throws -> Data {
-        var data = Data(count: count)
-        var done = 0
-        try data.withUnsafeMutableBytes { buffer in
-            while done < count {
-                let read = pread(file.fileDescriptor, buffer.baseAddress! + done, count - done,
-                                 off_t(offset) + off_t(done))
-                if read < 0, errno == EINTR { continue }
-                guard read > 0 else { throw OneStoreError.malformed }
-                done += read
+    /// Where the store's bytes are: its file, read a block at a time, or memory.
+    private enum Bytes {
+        case file(FileHandle)
+        case memory(Data)
+
+        func size() throws -> UInt64 {
+            switch self {
+            case .file(let file):
+                var info = stat()
+                guard fstat(file.fileDescriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
+                    throw OneStoreError.malformed
+                }
+                return UInt64(info.st_size)
+            case .memory(let data):
+                return UInt64(data.count)
             }
         }
-        return data
+
+        func read(at offset: UInt64, count: Int) throws -> Data {
+            switch self {
+            case .file(let file):
+                var data = Data(count: count)
+                var done = 0
+                try data.withUnsafeMutableBytes { buffer in
+                    while done < count {
+                        let read = pread(file.fileDescriptor, buffer.baseAddress! + done, count - done,
+                                         off_t(offset) + off_t(done))
+                        if read < 0, errno == EINTR { continue }
+                        guard read > 0 else { throw OneStoreError.malformed }
+                        done += read
+                    }
+                }
+                return data
+            case .memory(let data):
+                guard offset <= UInt64(data.count), count <= data.count - Int(offset) else {
+                    throw OneStoreError.malformed
+                }
+                return data.subdata(in: data.startIndex + Int(offset)..<data.startIndex + Int(offset) + count)
+            }
+        }
     }
 
     // MARK: - Transactions and file node lists

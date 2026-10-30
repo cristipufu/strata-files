@@ -260,6 +260,10 @@
       "one": "%lld rad",
       "other": "%lld rader"
     },
+    "%lld sections": {
+      "one": "%lld avsnitt",
+      "other": "%lld avsnitt"
+    },
     "%lld selected": {
       "one": "%lld markerat",
       "other": "%lld markerade"
@@ -1369,6 +1373,7 @@
     "Searching…": "Söker…",
     "Secret Key": "Hemlig nyckel",
     "Section %lld": "Avsnitt %lld",
+    "Section group": "Avsnittsgrupp",
     "Select All": "Markera alla",
     "Select folders to move to the Trash": "Välj mappar att flytta till papperskorgen",
     "Select the files you want to change first.": "Markera filerna du vill ändra först.",
@@ -1659,6 +1664,7 @@
     "This list": "Den här listan",
     "This Mac doesn’t support Apple Intelligence.": "Den här Macen har inte stöd för Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Den här Macen har inte anslutit till den här servern tidigare. Kontrollera om möjligt att fingeravtrycket nedan stämmer med serverns.",
+    "This notebook lists no sections.": "Anteckningsboken har inga avsnitt.",
     "This page couldn’t be shown.": "Det gick inte att visa sidan.",
     "This page is too long to show in full.": "Sidan är för lång för att visas i sin helhet.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Avsnittet har ändrats sedan det öppnades. Markera det igen för att se det som det är nu.",

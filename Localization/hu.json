@@ -260,6 +260,10 @@
       "one": "%lld sor",
       "other": "%lld sor"
     },
+    "%lld sections": {
+      "one": "%lld szakasz",
+      "other": "%lld szakasz"
+    },
     "%lld selected": {
       "one": "%lld kijelölve",
       "other": "%lld kijelölve"
@@ -1369,6 +1373,7 @@
     "Searching…": "Keresés…",
     "Secret Key": "Titkos kulcs",
     "Section %lld": "%lld. szakasz",
+    "Section group": "Szakaszcsoport",
     "Select All": "Az összes kijelölése",
     "Select folders to move to the Trash": "Válassza ki a Kukába helyezendő mappákat",
     "Select the files you want to change first.": "Előbb jelölje ki a módosítandó fájlokat.",
@@ -1659,6 +1664,7 @@
     "This list": "Ez a lista",
     "This Mac doesn’t support Apple Intelligence.": "Ez a Mac nem támogatja az Apple Intelligence-t.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Ez a Mac még nem kapcsolódott ehhez a szerverhez. Ha teheti, ellenőrizze, hogy az alábbi ujjlenyomat egyezik-e a szerverével.",
+    "This notebook lists no sections.": "Ebben a jegyzetfüzetben nincsenek szakaszok.",
     "This page couldn’t be shown.": "Az oldalt nem sikerült megjeleníteni.",
     "This page is too long to show in full.": "Az oldal túl hosszú ahhoz, hogy teljes egészében megjelenjen.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Ez a szakasz megváltozott a megnyitása óta. Jelölje ki újra, hogy a jelenlegi állapotában lássa.",

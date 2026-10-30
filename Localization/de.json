@@ -260,6 +260,10 @@
       "one": "%lld Zeile",
       "other": "%lld Zeilen"
     },
+    "%lld sections": {
+      "one": "%lld Abschnitt",
+      "other": "%lld Abschnitte"
+    },
     "%lld selected": {
       "one": "%lld ausgewählt",
       "other": "%lld ausgewählt"
@@ -1369,6 +1373,7 @@
     "Searching…": "Suchen …",
     "Secret Key": "Geheimer Schlüssel",
     "Section %lld": "Abschnitt %lld",
+    "Section group": "Abschnittsgruppe",
     "Select All": "Alles auswählen",
     "Select folders to move to the Trash": "Ordner auswählen, die in den Papierkorb gelegt werden sollen",
     "Select the files you want to change first.": "Wähle zuerst die Dateien aus, die du ändern möchtest.",
@@ -1659,6 +1664,7 @@
     "This list": "Diese Liste",
     "This Mac doesn’t support Apple Intelligence.": "Dieser Mac unterstützt Apple Intelligence nicht.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Dieser Mac war noch nie mit diesem Server verbunden. Prüfe nach Möglichkeit, ob der Fingerabdruck unten mit dem des Servers übereinstimmt.",
+    "This notebook lists no sections.": "Dieses Notizbuch enthält keine Abschnitte.",
     "This page couldn’t be shown.": "Diese Seite konnte nicht angezeigt werden.",
     "This page is too long to show in full.": "Diese Seite ist zu lang, um sie vollständig anzuzeigen.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Dieser Abschnitt hat sich seit dem Öffnen geändert. Wähle ihn erneut aus, um ihn so zu sehen, wie er jetzt ist.",

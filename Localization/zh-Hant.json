@@ -205,6 +205,9 @@
     "%lld rows": {
       "other": "%lld列"
     },
+    "%lld sections": {
+      "other": "%lld 個節"
+    },
     "%lld selected": {
       "other": "已選取%lld個"
     },
@@ -1257,6 +1260,7 @@
     "Searching…": "正在搜尋⋯",
     "Secret Key": "私密存取金鑰",
     "Section %lld": "第 %lld 節",
+    "Section group": "節群組",
     "Select All": "全選",
     "Select folders to move to the Trash": "選擇要丟到垃圾桶的檔案夾",
     "Select the files you want to change first.": "請先選擇要更改的檔案。",
@@ -1535,6 +1539,7 @@
     "This list": "此列表",
     "This Mac doesn’t support Apple Intelligence.": "這部Mac不支援Apple Intelligence。",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "這部Mac之前未連接過此伺服器。如果可以，請檢查下方的指紋是否與伺服器的指紋相符。",
+    "This notebook lists no sections.": "此筆記本沒有節。",
     "This page couldn’t be shown.": "無法顯示此頁面。",
     "This page is too long to show in full.": "此頁面太長，無法完整顯示。",
     "This section changed since it was opened. Select it again to see it as it is now.": "此節在開啟後已變更。請再次選取以檢視目前內容。",

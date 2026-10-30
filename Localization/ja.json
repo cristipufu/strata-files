@@ -205,6 +205,9 @@
     "%lld rows": {
       "other": "%lld行"
     },
+    "%lld sections": {
+      "other": "%lld個のセクション"
+    },
     "%lld selected": {
       "other": "%lld項目を選択"
     },
@@ -1257,6 +1260,7 @@
     "Searching…": "検索中…",
     "Secret Key": "シークレットキー",
     "Section %lld": "セクション%lld",
+    "Section group": "セクション グループ",
     "Select All": "すべてを選択",
     "Select folders to move to the Trash": "ゴミ箱に入れるフォルダを選択",
     "Select the files you want to change first.": "先に変更したいファイルを選択してください。",
@@ -1535,6 +1539,7 @@
     "This list": "このリスト",
     "This Mac doesn’t support Apple Intelligence.": "このMacはApple Intelligenceに対応していません。",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "このMacはこのサーバに接続したことがありません。可能であれば、下のフィンガープリントがサーバのものと一致することを確認してください。",
+    "This notebook lists no sections.": "このノートブックにはセクションがありません。",
     "This page couldn’t be shown.": "このページを表示できませんでした。",
     "This page is too long to show in full.": "このページは長すぎるため、すべてを表示できません。",
     "This section changed since it was opened. Select it again to see it as it is now.": "このセクションは開いた後に変更されました。現在の内容を表示するには、もう一度選択してください。",

@@ -49,17 +49,27 @@ nonisolated enum RootRole {
     static let metadata: UInt32 = 2
 }
 
-/// The object spaces and revisions of a section. Nodes only notebooks (`.onetoc2`) use are left to a notebook reader.
+/// The object spaces and revisions of a section, or of a notebook's table of contents, which writes the older forms of
+/// a revision's start, its table and its objects.
 nonisolated extension OneStore {
     private enum NodeID {
         static let objectSpaceManifestRoot: UInt16 = 0x004
         static let objectSpaceManifestListReference: UInt16 = 0x008
         static let revisionManifestListReference: UInt16 = 0x010
+        static let revisionManifestStart4: UInt16 = 0x01B
         static let revisionManifestEnd: UInt16 = 0x01C
         static let revisionManifestStart6: UInt16 = 0x01E
         static let revisionManifestStart7: UInt16 = 0x01F
+        static let globalIDTableStart: UInt16 = 0x021
         static let globalIDTableStart2: UInt16 = 0x022
         static let globalIDTableEntry: UInt16 = 0x024
+        static let globalIDTableEntry2: UInt16 = 0x025
+        static let globalIDTableEntry3: UInt16 = 0x026
+        static let objectDeclarationWithRefCount: UInt16 = 0x02D
+        static let objectDeclarationWithRefCount2: UInt16 = 0x02E
+        static let objectRevisionWithRefCount: UInt16 = 0x041
+        static let objectRevisionWithRefCount2: UInt16 = 0x042
+        static let rootObjectReference2: UInt16 = 0x059
         static let rootObjectReference3: UInt16 = 0x05A
         static let revisionRoleDeclaration: UInt16 = 0x05C
         static let revisionRoleAndContextDeclaration: UInt16 = 0x05D
@@ -135,17 +145,22 @@ nonisolated extension OneStore {
     private func revisionManifests(in list: FileChunk) throws -> ([ExtendedGUID: Manifest], live: ExtendedGUID?) {
         let nodes = try self.nodes(in: list)
         var manifests: [ExtendedGUID: Manifest] = [:], live: ExtendedGUID?, index = nodes.startIndex
+        let bounds = type == .contents ? NodeID.manifestBounds.union([NodeID.revisionManifestStart4])
+                                       : NodeID.manifestBounds
         while index < nodes.endIndex {
             let node = nodes[index]
             var cursor = ByteCursor(node.data)
             index += 1
             switch node.id {
-            case NodeID.revisionManifestStart6, NodeID.revisionManifestStart7:
+            case NodeID.revisionManifestStart4 where type == .contents,
+                 NodeID.revisionManifestStart6, NodeID.revisionManifestStart7:
                 let id = try ExtendedGUID(&cursor), dependency = try ExtendedGUID(&cursor)
+                // The older start says when the revision was made, which nothing shown depends on.
+                if node.id == NodeID.revisionManifestStart4 { try cursor.skip(8) }
                 let role: UInt32 = try cursor.read(), encoding: UInt16 = try cursor.read()
                 let context = node.id == NodeID.revisionManifestStart7 ? try ExtendedGUID(&cursor) : .zero
                 // A manifest ends before the next one starts.
-                guard let end = nodes[index...].firstIndex(where: { NodeID.manifestBounds.contains($0.id) }),
+                guard let end = nodes[index...].firstIndex(where: { bounds.contains($0.id) }),
                       nodes[end].id == NodeID.revisionManifestEnd else { throw OneStoreError.malformed }
                 manifests[id] = Manifest(dependency: dependency, nodes: nodes[index..<end], encrypted: encoding != 0)
                 if role == Self.activeView, context == .zero { live = id }
@@ -172,23 +187,48 @@ nonisolated extension OneStore {
             chain.append(manifest)
             next = manifest.dependency
         }
-        var revision = Revision()
-        for manifest in chain.reversed() { try declare(manifest.nodes, into: &revision, inGroup: false) }
+        var revision = Revision(), table = GlobalIDTable()
+        for manifest in chain.reversed() {
+            table = try declare(manifest.nodes, into: &revision, inGroup: false, dependency: table)
+        }
         return revision
     }
 
     /// Applies a revision manifest's nodes, or an object group's, in order: later declarations of an object revise it.
-    private func declare(_ nodes: some Collection<FileNode>, into revision: inout Revision, inGroup: Bool) throws {
+    /// A table of contents' revision may copy entries of its table from `dependency`, the table of the revision it
+    /// depends on. Returns the table the nodes leave.
+    @discardableResult
+    private func declare(_ nodes: some Collection<FileNode>, into revision: inout Revision, inGroup: Bool,
+                         dependency: GlobalIDTable = GlobalIDTable()) throws -> GlobalIDTable {
         var table = GlobalIDTable()
+        let contents = type == .contents
         for node in nodes {
             var cursor = ByteCursor(node.data)
             switch node.id {
-            case NodeID.globalIDTableStart2:
+            case NodeID.globalIDTableStart where contents, NodeID.globalIDTableStart2:
                 table = GlobalIDTable()
             case NodeID.globalIDTableEntry:
                 let index: UInt32 = try cursor.read()
                 guard index < 0xFF_FFFF else { throw OneStoreError.malformed }
                 table.guids[index] = try StoredGUID(&cursor)
+            case NodeID.globalIDTableEntry2 where contents:
+                let from: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
+                guard to < 0xFF_FFFF, let guid = dependency.guids[from] else { throw OneStoreError.malformed }
+                try copying(1)
+                table.guids[to] = guid
+            case NodeID.globalIDTableEntry3 where contents:
+                let from: UInt32 = try cursor.read(), count: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
+                // Every entry copied must be there to copy, which bounds how many there are.
+                guard count <= dependency.guids.count, UInt64(to) + UInt64(count) <= 0xFF_FFFF else {
+                    throw OneStoreError.malformed
+                }
+                try copying(count)
+                for offset in 0..<count {
+                    guard from <= UInt32.max - offset, let guid = dependency.guids[from + offset] else {
+                        throw OneStoreError.malformed
+                    }
+                    table.guids[to + offset] = guid
+                }
             case NodeID.objectGroupListReference:
                 guard !inGroup, let group = node.reference else { throw OneStoreError.malformed }
                 try declare(try self.nodes(in: group), into: &revision, inGroup: true)
@@ -200,6 +240,25 @@ nonisolated extension OneStore {
                 let id = try table.identity(try cursor.read()), jcid: UInt32 = try cursor.read()
                 try cursor.skip(node.id == NodeID.objectDeclarationFileData3 ? 1 : 4)
                 revision.declare(id, StoredObject(jcid: jcid, content: .fileData(try Self.string(&cursor))))
+            case NodeID.objectDeclarationWithRefCount where contents,
+                 NodeID.objectDeclarationWithRefCount2 where contents:
+                guard let chunk = node.reference else { throw OneStoreError.malformed }
+                let id = try table.identity(try cursor.read())
+                // The type's index, then how its data is encoded, which must be plainly; such an object is always a
+                // property set.
+                let body: UInt16 = try cursor.read()
+                guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }
+                revision.declare(id, StoredObject(jcid: 0x0002_0000 | UInt32(body & 0x3FF),
+                                                  content: .properties(chunk, table)))
+            case NodeID.objectRevisionWithRefCount where contents, NodeID.objectRevisionWithRefCount2 where contents:
+                // New data for an object this revision or one it depends on declared, which keeps its type.
+                guard let chunk = node.reference else { throw OneStoreError.malformed }
+                let id = try table.identity(try cursor.read())
+                guard let revised = revision.objects[id] else { throw OneStoreError.malformed }
+                revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))
+            case NodeID.rootObjectReference2 where contents:
+                let id = try table.identity(try cursor.read())
+                revision.roots[try cursor.read()] = id
             case NodeID.rootObjectReference3:
                 let id = try ExtendedGUID(&cursor)
                 revision.roots[try cursor.read()] = id
@@ -209,6 +268,7 @@ nonisolated extension OneStore {
                 continue
             }
         }
+        return table
     }
 
     /// A StringInStorageBuffer: a count of UTF-16 code units, then the units.

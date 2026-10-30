@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
     private(set) var source: Source
     weak var parent: PreviewItem?
     var children: [PreviewItem]?
+    /// Where it comes in the order of the OneNote notebook its folder or archive holds.
+    var notebookPosition: Int?
 
     init(_ source: Source, parent: PreviewItem? = nil) {
         self.source = source

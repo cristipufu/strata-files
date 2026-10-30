@@ -56,6 +56,12 @@ struct OneStoreFixture {
         var roots: [(role: UInt32, id: ID)] = []
         /// Whether its manifest has its RevisionManifestEndFND, as it must.
         var ended = true
+        /// In a table of contents: whether its table copies the entries of its dependency's, at the same indices.
+        var copiesTable = false
+        /// In a table of contents: the objects it gives new data, declared by the revision it depends on.
+        var revised: Set<ID> = []
+        /// In a table of contents: nodes its global identification table holds after its own entries, as given.
+        var tableNodes: [(id: UInt16, data: [UInt8])] = []
     }
 
     struct Space {
@@ -66,6 +72,7 @@ struct OneStoreFixture {
     }
 
     var type = "{7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}"
+    static let contentsType = "{43FF2FA1-EFD9-4C76-9EE2-10EA5722765F}"
     var oldestReader: UInt32 = 0x2A
     var spaces: [Space] = []
     var root = ID.zero
@@ -87,12 +94,15 @@ struct OneStoreFixture {
     /// The node declaring each property set (0x0A4, 0x0A5, 0x0C4 or 0x0C5) and each file data object (0x072 or 0x073).
     var propertySetDeclaration: UInt16 = 0x0A4
     var fileDataDeclaration: UInt16 = 0x072
+    /// In a table of contents: how its objects' data is encoded (ObjectDeclarationWithRefCountBody.odcs), 0 for none.
+    var objectEncoding: UInt16 = 0
 
     /// The largest block the reader reads whole, and how many entries the transaction log holds.
     private(set) var largestReadBlock = 0
     private(set) var logEntryCount = 0
 
     private var bytes = [UInt8](repeating: 0, count: 1024)
+    private var contentsTables: [ID: GUIDTable] = [:]
     private var listCounts: [(UInt32, Int)] = []
     private var nextListID: UInt32 = 0x10
 
@@ -100,6 +110,7 @@ struct OneStoreFixture {
 
     mutating func data() -> Data {
         bytes = [UInt8](repeating: 0, count: 1024)
+        contentsTables = [:]
         listCounts = []
         nextListID = 0x10
         largestReadBlock = 0
@@ -204,7 +215,7 @@ struct OneStoreFixture {
 
     private mutating func writeHeader(log: (offset: UInt64, count: UInt64), root: (offset: UInt64, count: UInt64),
                                       transactions: UInt32) {
-        let notebook = type == "{43FF2FA1-EFD9-4C76-9EE2-10EA5722765F}"
+        let notebook = type == Self.contentsType
         var header = Self.guid(type) + ID(number: 77).guid + [UInt8](repeating: 0, count: 16)
         header += Self.guid("{109ADD3F-911B-49F5-A5D0-1791EDC8AED8}")
         header += (0..<3).flatMap { _ in ID.le(UInt32(notebook ? 0x1B : 0x2A)) } + ID.le(oldestReader)
@@ -217,6 +228,10 @@ struct OneStoreFixture {
     private mutating func write(space: Space) -> (offset: UInt64, count: UInt64) {
         var revisionNodes = [Node(id: 0x014, data: space.id.bytes + ID.le(UInt32(0)))]
         for revision in space.revisions {
+            if type == Self.contentsType {
+                revisionNodes += contentsRevision(revision)
+                continue
+            }
             let start: [UInt8] = revision.id.bytes + revision.dependency.bytes + ID.le(revision.role)
                 + ID.le(revision.encoding)
             revisionNodes.append(revision.context == .zero ? Node(id: 0x01E, data: start)
@@ -233,6 +248,53 @@ struct OneStoreFixture {
         return list([Node(id: 0x00C, data: space.id.bytes), Node(id: 0x010, reference: revisions, data: [])])
     }
 
+    /// A revision as a notebook's table of contents writes one: the older start with its time, then its table, its
+    /// objects declared with their reference counts and its roots by CompactID, all in the manifest itself.
+    private mutating func contentsRevision(_ revision: Revision) -> [Node] {
+        var nodes = [Node(id: 0x01B, data: revision.id.bytes + revision.dependency.bytes + ID.le(UInt64(0))
+                          + ID.le(revision.role) + ID.le(revision.encoding))]
+        var table = GUIDTable(offset: firstTableIndex)
+        let previous = revision.copiesTable ? contentsTables[revision.dependency]?.guids ?? [] : []
+        previous.forEach { table.add(guid: $0) }
+        for object in revision.objects {
+            table.add(object.id)
+            if case .properties(let properties) = object.content {
+                Self.references(properties).forEach { table.add($0) }
+            }
+        }
+        revision.roots.forEach { table.add($0.id) }
+        contentsTables[revision.id] = table
+        nodes.append(Node(id: 0x021, data: [0]))
+        // All but the last copied entry as one range (GlobalIdTableEntry3FNDX), the last on its own (Entry2FNDX).
+        let start = UInt32(table.offset), copied = UInt32(previous.count)
+        if copied > 1 { nodes.append(Node(id: 0x026, data: ID.le(start) + ID.le(copied - 1) + ID.le(start))) }
+        if copied > 0 { nodes.append(Node(id: 0x025, data: ID.le(start + copied - 1) + ID.le(start + copied - 1))) }
+        nodes += Self.entries(of: table, from: previous.count)
+        nodes += revision.tableNodes.map { Node(id: $0.id, data: $0.data) }
+        nodes.append(Node(id: 0x028, data: []))
+        for object in revision.objects {
+            let set: [UInt8]
+            switch object.content {
+            case .properties(let properties): set = Self.propertySet(properties, table: table)
+            case .raw(let damaged): set = damaged
+            case .fileData: continue
+            }
+            let block = append(set + [UInt8](repeating: 0, count: (8 - set.count % 8) % 8))
+            if revision.revised.contains(object.id) {
+                // ObjectRevisionWithRefCountFNDX: the CompactID, then a reference count in its byte's top 6 bits.
+                nodes.append(Node(id: 0x041, reference: block, data: ID.le(table.compact(object.id)) + [1 << 2]))
+                continue
+            }
+            // The CompactID, the type's index in the low 10 bits of the body that follows, and a reference count.
+            let body = ID.le(table.compact(object.id)) + ID.le(UInt16(object.jcid & 0x3FF) | objectEncoding << 10)
+                + [0, 0, 0, 0] + [1]
+            nodes.append(Node(id: 0x02D, reference: block, data: body))
+        }
+        nodes += revision.roots.map { Node(id: 0x059, data: ID.le(table.compact($0.id)) + ID.le($0.role)) }
+        if revision.ended { nodes.append(Node(id: 0x01C, data: [])) }
+        return nodes
+    }
+
     /// An object group: its own global identification table, then each object's declaration.
     private mutating func objectGroup(_ objects: [Object]) -> (offset: UInt64, count: UInt64) {
         var table = GUIDTable(offset: firstTableIndex)
@@ -243,9 +305,7 @@ struct OneStoreFixture {
             }
         }
         var nodes = [Node(id: 0x0B4, data: ID(number: 500).bytes), Node(id: 0x022, data: [])]
-        nodes += table.guids.enumerated().map {
-            Node(id: 0x024, data: ID.le(UInt32($0.offset + table.offset)) + $0.element)
-        }
+        nodes += Self.entries(of: table)
         nodes.append(Node(id: 0x028, data: []))
         for object in objects {
             let identity = ID.le(table.compact(object.id)) + ID.le(object.jcid)
@@ -273,12 +333,23 @@ struct OneStoreFixture {
         return list(nodes)
     }
 
+    /// A global identification table's entries (GlobalIdTableEntryFNDX) from its `start`th on.
+    private static func entries(of table: GUIDTable, from start: Int = 0) -> [Node] {
+        table.guids.enumerated().dropFirst(start).map {
+            Node(id: 0x024, data: ID.le(UInt32($0.offset + table.offset)) + $0.element)
+        }
+    }
+
     struct GUIDTable {
         var offset = 0
         private(set) var guids: [[UInt8]] = []
 
         mutating func add(_ id: ID) {
-            if id != .zero, !guids.contains(id.guid) { guids.append(id.guid) }
+            if id != .zero { add(guid: id.guid) }
+        }
+
+        mutating func add(guid: [UInt8]) {
+            if !guids.contains(guid) { guids.append(guid) }
         }
 
         func compact(_ id: ID) -> UInt32 {

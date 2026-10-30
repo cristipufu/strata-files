@@ -315,6 +315,11 @@
       "few": "%lld rânduri",
       "other": "%lld de rânduri"
     },
+    "%lld sections": {
+      "one": "%lld secțiune",
+      "few": "%lld secțiuni",
+      "other": "%lld de secțiuni"
+    },
     "%lld selected": {
       "one": "%lld selectat",
       "few": "%lld selectate",
@@ -1481,6 +1486,7 @@
     "Searching…": "Se caută…",
     "Secret Key": "Cheie secretă",
     "Section %lld": "Secțiunea %lld",
+    "Section group": "Grup de secțiuni",
     "Select All": "Selectează tot",
     "Select folders to move to the Trash": "Selectează dosarele de mutat în Coș",
     "Select the files you want to change first.": "Selectează mai întâi fișierele pe care vrei să le modifici.",
@@ -1783,6 +1789,7 @@
     "This list": "Această listă",
     "This Mac doesn’t support Apple Intelligence.": "Acest Mac nu acceptă Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Acest Mac nu s-a mai conectat la acest server. Dacă poți, verifică dacă amprenta de mai jos corespunde cu cea a serverului.",
+    "This notebook lists no sections.": "Acest blocnotes nu are secțiuni.",
     "This page couldn’t be shown.": "Această pagină nu a putut fi afișată.",
     "This page is too long to show in full.": "Această pagină este prea lungă pentru a fi afișată integral.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Această secțiune s-a schimbat de când a fost deschisă. Selecteaz-o din nou ca să o vezi așa cum este acum.",

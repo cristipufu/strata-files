@@ -205,6 +205,9 @@
     "%lld rows": {
       "other": "%lld개 행"
     },
+    "%lld sections": {
+      "other": "섹션 %lld개"
+    },
     "%lld selected": {
       "other": "%lld개 선택됨"
     },
@@ -1257,6 +1260,7 @@
     "Searching…": "검색 중…",
     "Secret Key": "보안 액세스 키",
     "Section %lld": "섹션 %lld",
+    "Section group": "섹션 그룹",
     "Select All": "전체 선택",
     "Select folders to move to the Trash": "휴지통으로 이동할 폴더 선택",
     "Select the files you want to change first.": "먼저 변경할 파일을 선택하십시오.",
@@ -1535,6 +1539,7 @@
     "This list": "이 목록",
     "This Mac doesn’t support Apple Intelligence.": "이 Mac은 Apple Intelligence를 지원하지 않습니다.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "이 Mac은 이전에 이 서버에 연결한 적이 없습니다. 가능하면 아래의 지문이 서버의 지문과 일치하는지 확인하십시오.",
+    "This notebook lists no sections.": "이 전자 필기장에는 섹션이 없습니다.",
     "This page couldn’t be shown.": "이 페이지를 표시할 수 없습니다.",
     "This page is too long to show in full.": "이 페이지는 너무 길어서 전체를 표시할 수 없습니다.",
     "This section changed since it was opened. Select it again to see it as it is now.": "이 섹션은 연 이후 변경되었습니다. 현재 상태를 보려면 다시 선택하십시오.",

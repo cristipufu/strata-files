@@ -260,6 +260,10 @@
       "one": "%lld satır",
       "other": "%lld satır"
     },
+    "%lld sections": {
+      "one": "%lld bölüm",
+      "other": "%lld bölüm"
+    },
     "%lld selected": {
       "one": "%lld seçili",
       "other": "%lld seçili"
@@ -1369,6 +1373,7 @@
     "Searching…": "Aranıyor…",
     "Secret Key": "Gizli Anahtar",
     "Section %lld": "Bölüm %lld",
+    "Section group": "Bölüm grubu",
     "Select All": "Tümünü Seç",
     "Select folders to move to the Trash": "Çöp Sepeti’ne taşınacak klasörleri seçin",
     "Select the files you want to change first.": "Önce değiştirmek istediğiniz dosyaları seçin.",
@@ -1659,6 +1664,7 @@
     "This list": "Bu liste",
     "This Mac doesn’t support Apple Intelligence.": "Bu Mac, Apple Intelligence’ı desteklemiyor.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Bu Mac daha önce bu sunucuya bağlanmadı. Mümkünse aşağıdaki parmak izinin sunucununkiyle eşleştiğini denetleyin.",
+    "This notebook lists no sections.": "Bu not defterinde bölüm yok.",
     "This page couldn’t be shown.": "Bu sayfa gösterilemedi.",
     "This page is too long to show in full.": "Bu sayfa tamamı gösterilemeyecek kadar uzun.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Bu bölüm açıldığından beri değişti. Şimdiki halini görmek için yeniden seçin.",

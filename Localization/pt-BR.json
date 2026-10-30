@@ -260,6 +260,10 @@
       "one": "%lld linha",
       "other": "%lld linhas"
     },
+    "%lld sections": {
+      "one": "%lld seção",
+      "other": "%lld seções"
+    },
     "%lld selected": {
       "one": "%lld selecionado",
       "other": "%lld selecionados"
@@ -1369,6 +1373,7 @@
     "Searching…": "Buscando…",
     "Secret Key": "Chave Secreta",
     "Section %lld": "Seção %lld",
+    "Section group": "Grupo de seções",
     "Select All": "Selecionar Tudo",
     "Select folders to move to the Trash": "Selecione pastas para mover para a Lixeira",
     "Select the files you want to change first.": "Selecione primeiro os arquivos que deseja alterar.",
@@ -1659,6 +1664,7 @@
     "This list": "Esta lista",
     "This Mac doesn’t support Apple Intelligence.": "Este Mac não é compatível com Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Este Mac nunca se conectou a este servidor. Se puder, verifique se a impressão digital abaixo corresponde à do servidor.",
+    "This notebook lists no sections.": "Este bloco de anotações não tem seções.",
     "This page couldn’t be shown.": "Não foi possível mostrar esta página.",
     "This page is too long to show in full.": "Esta página é longa demais para ser mostrada por inteiro.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Esta seção mudou desde que foi aberta. Selecione-a novamente para vê-la como está agora.",

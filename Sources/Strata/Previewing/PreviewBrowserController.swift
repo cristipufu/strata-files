@@ -246,6 +246,8 @@ import StrataPreviews
     private func changed(_ change: PreviewSession.Change) {
         _ = view
         switch change {
+        case .order:
+            refreshTree()
         case .root:
             if shownGeneration != session.generation {
                 shownGeneration = session.generation

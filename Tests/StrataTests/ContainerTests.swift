@@ -206,9 +206,10 @@ struct ContainerTests {
         return block
     }
 
-    static func tarFile(_ name: String, _ content: String) -> [UInt8] {
-        let bytes = Array(content.utf8)
-        return tarHeader(name, size: bytes.count) + bytes + [UInt8](repeating: 0, count: (512 - bytes.count % 512) % 512)
+    static func tarFile(_ name: String, _ content: String) -> [UInt8] { tarFile(name, Array(content.utf8)) }
+
+    static func tarFile(_ name: String, _ bytes: [UInt8]) -> [UInt8] {
+        tarHeader(name, size: bytes.count) + bytes + [UInt8](repeating: 0, count: (512 - bytes.count % 512) % 512)
     }
 
     @Test func tarStreamsAreReadInAnyPieces() throws {

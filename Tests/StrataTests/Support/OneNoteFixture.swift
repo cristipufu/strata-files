@@ -142,3 +142,52 @@ struct OneNoteFixture {
         return nextNumber
     }
 }
+
+extension OneNoteFixture {
+    /// A notebook's table of contents listing `entries` in order, each with its color, if any, as OneNote stores it:
+    /// 0x00BBGGRR, and its ordering number, 1 on by default. `missing` names an entry its list holds but no object
+    /// declares; `encoding`, how its objects' data is encoded. `revised` saves it again, its list naming those, in a
+    /// revision that depends on the first, copies its table's entries and gives the list's object new data: a name not
+    /// among `entries` is a new section group, with no ordering number.
+    static func contents(_ entries: [(name: String, color: UInt32?)], ordering: [UInt32]? = nil, missing: Bool = false,
+                         encoding: UInt16 = 0, revised: [String]? = nil) -> Data {
+        typealias ID = OneStoreFixture.ID
+        var store = OneStoreFixture()
+        store.type = OneStoreFixture.contentsType
+        store.oldestReader = 0x1B
+        store.objectEncoding = encoding
+        let space = ID(number: 1), root = ID(number: 2)
+        var ids = Dictionary(uniqueKeysWithValues: entries.enumerated().map { ($1.name, ID(number: UInt32(100 + $0))) })
+        func entry(_ id: ID, _ name: String, _ color: UInt32?, _ number: UInt32?) -> OneStoreFixture.Object {
+            OneStoreFixture.Object(id: id, jcid: 0x0002_0001, content: .properties(
+                [(0x1D6B, OneStoreFixture.text(name))] + (color.map { [(0x1CBE, .u32($0))] } ?? [])
+                    + (number.map { [(0x1CB9, .u32($0))] } ?? [])))
+        }
+        func list(_ children: [ID]) -> OneStoreFixture.Object {
+            OneStoreFixture.Object(id: root, jcid: 0x0002_0001, content: .properties([(0x1CF6, .objects(children))]))
+        }
+        let first = entries.compactMap { ids[$0.name] } + (missing ? [ID(number: 999)] : [])
+        let numbers = ordering ?? entries.indices.map { UInt32($0 + 1) }
+        let declared = zip(entries, numbers).compactMap { item, number in
+            ids[item.name].map { entry($0, item.name, item.color, number) }
+        }
+        var revisions = [OneStoreFixture.Revision(id: ID(number: 3), objects: [list(first)] + declared,
+                                                  roots: [(1, root)])]
+        if let revised {
+            var added: [OneStoreFixture.Object] = []
+            for name in revised where ids[name] == nil {
+                ids[name] = ID(number: UInt32(200 + added.count))
+                added.append(entry(ids[name]!, name, nil, nil))
+            }
+            let order = list(revised.compactMap { ids[$0] })
+            var again = OneStoreFixture.Revision(id: ID(number: 4), objects: [order] + added, roots: [(1, root)])
+            again.dependency = ID(number: 3)
+            again.copiesTable = true
+            again.revised = [root]
+            revisions.append(again)
+        }
+        store.spaces = [OneStoreFixture.Space(id: space, revisions: revisions)]
+        store.root = space
+        return store.data()
+    }
+}

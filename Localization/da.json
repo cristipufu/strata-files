@@ -260,6 +260,10 @@
       "one": "%lld række",
       "other": "%lld rækker"
     },
+    "%lld sections": {
+      "one": "%lld sektion",
+      "other": "%lld sektioner"
+    },
     "%lld selected": {
       "one": "%lld valgt",
       "other": "%lld valgt"
@@ -1369,6 +1373,7 @@
     "Searching…": "Søger…",
     "Secret Key": "Hemmelig nøgle",
     "Section %lld": "Afsnit %lld",
+    "Section group": "Sektionsgruppe",
     "Select All": "Vælg alt",
     "Select folders to move to the Trash": "Vælg mapper, der skal flyttes til papirkurven",
     "Select the files you want to change first.": "Vælg først de filer, du vil ændre.",
@@ -1659,6 +1664,7 @@
     "This list": "Denne liste",
     "This Mac doesn’t support Apple Intelligence.": "Denne Mac understøtter ikke Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Denne Mac har ikke oprettet forbindelse til denne server før. Kontroller om muligt, at fingeraftrykket nedenfor svarer til serverens.",
+    "This notebook lists no sections.": "Denne notesbog har ingen sektioner.",
     "This page couldn’t be shown.": "Denne side kunne ikke vises.",
     "This page is too long to show in full.": "Denne side er for lang til at blive vist helt.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Denne sektion er ændret, siden den blev åbnet. Vælg den igen for at se den, som den er nu.",

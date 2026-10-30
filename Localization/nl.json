@@ -260,6 +260,10 @@
       "one": "%lld rij",
       "other": "%lld rijen"
     },
+    "%lld sections": {
+      "one": "%lld sectie",
+      "other": "%lld secties"
+    },
     "%lld selected": {
       "one": "%lld geselecteerd",
       "other": "%lld geselecteerd"
@@ -1369,6 +1373,7 @@
     "Searching…": "Zoeken…",
     "Secret Key": "Geheime sleutel",
     "Section %lld": "Sectie %lld",
+    "Section group": "Sectiegroep",
     "Select All": "Selecteer alles",
     "Select folders to move to the Trash": "Selecteer mappen om naar de prullenmand te verplaatsen",
     "Select the files you want to change first.": "Selecteer eerst de bestanden die je wilt wijzigen.",
@@ -1659,6 +1664,7 @@
     "This list": "Deze lijst",
     "This Mac doesn’t support Apple Intelligence.": "Deze Mac ondersteunt Apple Intelligence niet.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Deze Mac heeft nog niet eerder verbinding gemaakt met deze server. Controleer zo mogelijk of de vingerafdruk hieronder overeenkomt met die van de server.",
+    "This notebook lists no sections.": "Dit notitieblok heeft geen secties.",
     "This page couldn’t be shown.": "Deze pagina kon niet worden weergegeven.",
     "This page is too long to show in full.": "Deze pagina is te lang om volledig weer te geven.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Deze sectie is gewijzigd sinds ze werd geopend. Selecteer ze opnieuw om ze te zien zoals ze nu is.",

@@ -315,6 +315,11 @@
       "few": "%lld řádky",
       "other": "%lld řádků"
     },
+    "%lld sections": {
+      "one": "%lld oddíl",
+      "few": "%lld oddíly",
+      "other": "%lld oddílů"
+    },
     "%lld selected": {
       "one": "%lld vybraná položka",
       "few": "%lld vybrané položky",
@@ -1481,6 +1486,7 @@
     "Searching…": "Hledání…",
     "Secret Key": "Tajný klíč",
     "Section %lld": "Část %lld",
+    "Section group": "Skupina oddílů",
     "Select All": "Vybrat vše",
     "Select folders to move to the Trash": "Vyberte složky k přesunutí do koše",
     "Select the files you want to change first.": "Nejdříve vyberte soubory, které chcete změnit.",
@@ -1783,6 +1789,7 @@
     "This list": "Tento seznam",
     "This Mac doesn’t support Apple Intelligence.": "Tento Mac nepodporuje Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Tento Mac se k tomuto serveru dosud nepřipojil. Pokud můžete, ověřte, že níže uvedený otisk odpovídá otisku serveru.",
+    "This notebook lists no sections.": "Tento poznámkový blok neobsahuje žádné oddíly.",
     "This page couldn’t be shown.": "Tuto stránku se nepodařilo zobrazit.",
     "This page is too long to show in full.": "Tato stránka je příliš dlouhá na to, aby se zobrazila celá.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Tento oddíl se od otevření změnil. Vyberte ho znovu, abyste ho viděli v aktuální podobě.",

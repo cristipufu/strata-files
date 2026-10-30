@@ -372,6 +372,12 @@
       "many": "%lld строк",
       "other": "%lld строки"
     },
+    "%lld sections": {
+      "one": "%lld раздел",
+      "few": "%lld раздела",
+      "many": "%lld разделов",
+      "other": "%lld раздела"
+    },
     "%lld selected": {
       "one": "выбрано: %lld",
       "few": "выбрано: %lld",
@@ -1595,6 +1601,7 @@
     "Searching…": "Поиск…",
     "Secret Key": "Секретный ключ",
     "Section %lld": "Раздел %lld",
+    "Section group": "Группа разделов",
     "Select All": "Выбрать все",
     "Select folders to move to the Trash": "Выберите папки для перемещения в Корзину",
     "Select the files you want to change first.": "Сначала выберите файлы, которые нужно изменить.",
@@ -1909,6 +1916,7 @@
     "This list": "Этот список",
     "This Mac doesn’t support Apple Intelligence.": "Этот Mac не поддерживает Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Этот Mac еще не подключался к этому серверу. Если можете, убедитесь, что отпечаток ниже совпадает с отпечатком сервера.",
+    "This notebook lists no sections.": "В этой записной книжке нет разделов.",
     "This page couldn’t be shown.": "Не удалось показать эту страницу.",
     "This page is too long to show in full.": "Эта страница слишком длинная, чтобы показать её целиком.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Этот раздел изменился после открытия. Выберите его снова, чтобы увидеть, каким он стал.",

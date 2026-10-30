@@ -370,6 +370,12 @@
       "many": "%lld рядків",
       "other": "%lld рядка"
     },
+    "%lld sections": {
+      "one": "%lld розділ",
+      "few": "%lld розділи",
+      "many": "%lld розділів",
+      "other": "%lld розділу"
+    },
     "%lld selected": {
       "one": "вибрано %lld",
       "few": "вибрано %lld",
@@ -1593,6 +1599,7 @@
     "Searching…": "Пошук…",
     "Secret Key": "Секретний ключ",
     "Section %lld": "Розділ %lld",
+    "Section group": "Група розділів",
     "Select All": "Вибрати все",
     "Select folders to move to the Trash": "Виберіть папки для переміщення в Смітник",
     "Select the files you want to change first.": "Спершу виберіть файли, які потрібно змінити.",
@@ -1907,6 +1914,7 @@
     "This list": "Цей список",
     "This Mac doesn’t support Apple Intelligence.": "Цей Mac не підтримує Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Цей Mac ще не підʼєднувався до цього сервера. Якщо можете, перевірте, чи відбиток нижче збігається з відбитком сервера.",
+    "This notebook lists no sections.": "У цьому записнику немає розділів.",
     "This page couldn’t be shown.": "Не вдалося показати цю сторінку.",
     "This page is too long to show in full.": "Ця сторінка задовга, щоб показати її повністю.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Цей розділ змінився після відкриття. Виберіть його знову, щоб побачити, яким він є зараз.",

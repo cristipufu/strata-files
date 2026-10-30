@@ -260,6 +260,10 @@
       "one": "%lld rad",
       "other": "%lld rader"
     },
+    "%lld sections": {
+      "one": "%lld inndeling",
+      "other": "%lld inndelinger"
+    },
     "%lld selected": {
       "one": "%lld markert",
       "other": "%lld markert"
@@ -1369,6 +1373,7 @@
     "Searching…": "Søker…",
     "Secret Key": "Hemmelig nøkkel",
     "Section %lld": "Del %lld",
+    "Section group": "Inndelingsgruppe",
     "Select All": "Marker alt",
     "Select folders to move to the Trash": "Velg mapper som skal flyttes til papirkurven",
     "Select the files you want to change first.": "Marker filene du vil endre, først.",
@@ -1659,6 +1664,7 @@
     "This list": "Denne listen",
     "This Mac doesn’t support Apple Intelligence.": "Denne Macen støtter ikke Apple Intelligence.",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "Denne Macen har ikke koblet til denne tjeneren før. Kontroller om mulig at fingeravtrykket nedenfor samsvarer med tjenerens.",
+    "This notebook lists no sections.": "Denne notatblokken har ingen inndelinger.",
     "This page couldn’t be shown.": "Kunne ikke vise denne siden.",
     "This page is too long to show in full.": "Denne siden er for lang til å vises i sin helhet.",
     "This section changed since it was opened. Select it again to see it as it is now.": "Denne inndelingen er endret siden den ble åpnet. Velg den på nytt for å se den slik den er nå.",

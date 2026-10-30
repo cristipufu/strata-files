@@ -5587,8 +5587,8 @@
   {
     "file": "Strata/Previews/OneStore.swift",
     "rule": "OneNote: a section of another version is read",
-    "find": "            guard oldestReader == 0x2A else",
-    "replace": "            guard oldestReader >= 0x2A else",
+    "find": "guard oldestReader == (type == .contents ? 0x1B : 0x2A) else",
+    "replace": "guard oldestReader >= (type == .contents ? 0x1B : 0x2A) else",
     "tests": "OneNoteReaderTests/otherFilesVersionsAndPasswordsAreToldApart"
   },
   {
@@ -5986,7 +5986,7 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a manifest without its end takes in the next one",
-    "find": "                guard let end = nodes[index...].firstIndex(where: { NodeID.manifestBounds.contains($0.id) }),",
+    "find": "                guard let end = nodes[index...].firstIndex(where: { bounds.contains($0.id) }),",
     "replace": "                guard let end = nodes[index...].firstIndex(where: { $0.id == NodeID.revisionManifestEnd }),",
     "tests": "OneNoteReaderTests/fieldsMarksTitlesUnendedManifestsAndTheNullIdentity"
   },
@@ -6666,5 +6666,222 @@
     "find": "const uint64_t output_limit = streaming ? strata_archive_file_limit : strata_archive_byte_limit;",
     "replace": "const uint64_t output_limit = strata_archive_byte_limit;",
     "tests": "PreviewArchiveStreamTests/aFileAsLargeAsACopyMayBeIsLetThroughAndOneByteMoreIsRefusedFromItsHeader"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a table of contents reads only as its own version",
+    "find": "guard oldestReader == (type == .contents ? 0x1B : 0x2A) else",
+    "replace": "guard oldestReader == 0x1B || oldestReader == 0x2A else",
+    "tests": "OneNoteContentsTests/onlyATableOfContentsReadsAsOneAndOnlyAsOneOfItsVersion"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a table of contents takes its own version",
+    "find": "guard oldestReader == (type == .contents ? 0x1B : 0x2A) else",
+    "replace": "guard oldestReader == 0x2A else",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneStore.swift",
+    "rule": "OneNote: a file is read only as the kind it says it is",
+    "find": "guard try StoredGUID(&header) == type else",
+    "replace": "guard try StoredGUID(&header) != .zero else",
+    "tests": "OneNoteContentsTests/onlyATableOfContentsReadsAsOneAndOnlyAsOneOfItsVersion"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: the older revision start says when it was made",
+    "find": "                if node.id == NodeID.revisionManifestStart4 { try cursor.skip(8) }\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a root named by CompactID is a revision's root",
+    "find": "            case NodeID.rootObjectReference2 where contents:\n                let id = try table.identity(try cursor.read())\n                revision.roots[try cursor.read()] = id\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: a notebook's recycle bin isn't one of its sections",
+    "find": "guard let name = properties.text(Property.fileName), name != Self.recycleBin else",
+    "replace": "guard let name = properties.text(Property.fileName) else",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Previewing/PreviewListing.swift",
+    "rule": "Space: a notebook's sections sort by name in its order",
+    "find": "                if first != second { return order.ascending ? first < second : first > second }",
+    "replace": "                if first != second { return first > second }",
+    "tests": "OneNoteContentsTests/sortedByNameAPackagesItemsComeInItsNotebooksOrderBeforeTheRest"
+  },
+  {
+    "file": "Strata/Previewing/PreviewListing.swift",
+    "rule": "Space: a notebook's sections come before what it doesn't list",
+    "find": "                guard let second = b.notebookPosition else { return true }",
+    "replace": "                guard let second = b.notebookPosition else { return false }",
+    "tests": "OneNoteContentsTests/sortedByNameAPackagesItemsComeInItsNotebooksOrderBeforeTheRest"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContentsView.swift",
+    "rule": "OneNote: a file named as a table of contents that isn't one goes to Quick Look",
+    "find": "        } catch OneStoreError.notOneNote {\n            throw PreviewError.unsupported\n",
+    "replace": "        } catch OneStoreError.notOneNote {\n            throw PreviewError.message(\"\")\n",
+    "tests": "OneNoteContentsTests/itsPreviewListsTheNotebooksSectionsByTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContentsView.swift",
+    "rule": "OneNote: a notebook listing no sections says so",
+    "find": "        guard !contents.entries.isEmpty else {",
+    "replace": "        guard true else {",
+    "tests": "OneNoteContentsTests/itsPreviewListsTheNotebooksSectionsByTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContentsView.swift",
+    "rule": "OneNote: a section is named without its file's extension",
+    "find": "let shown = entry.isSection ? (entry.name as NSString).deletingPathExtension : entry.name",
+    "replace": "let shown = entry.name",
+    "tests": "OneNoteContentsTests/itsPreviewListsTheNotebooksSectionsByTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContentsView.swift",
+    "rule": "OneNote: a section's color is read as OneNote stores it",
+    "find": "NSColor(srgbRed: CGFloat(stored & 0xFF) / 255, green: CGFloat(stored >> 8 & 0xFF) / 255,\n                blue: CGFloat(stored >> 16 & 0xFF) / 255, alpha: 1)",
+    "replace": "NSColor(srgbRed: CGFloat(stored >> 16 & 0xFF) / 255, green: CGFloat(stored >> 8 & 0xFF) / 255,\n                blue: CGFloat(stored & 0xFF) / 255, alpha: 1)",
+    "tests": "OneNoteContentsTests/itsPreviewListsTheNotebooksSectionsByTheirColors"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a table of contents' revision copies a range of entries from the one it depends on",
+    "find": "                for offset in 0..<count {",
+    "replace": "                for offset in 0..<count where false {",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a table of contents' revision copies an entry from the one it depends on",
+    "find": "                table.guids[to] = guid\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a revision copies entries from the table of the one it depends on",
+    "find": "            table = try declare(manifest.nodes, into: &revision, inGroup: false, dependency: table)",
+    "replace": "            table = try declare(manifest.nodes, into: &revision, inGroup: false)",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a table of contents' object stored other than plainly is refused",
+    "find": "                guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/onlyATableOfContentsReadsAsOneAndOnlyAsOneOfItsVersion"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: a color with its high byte set is none",
+    "find": "properties.integer(Property.color).flatMap { $0 <= 0xFF_FFFF ? UInt32($0) : nil }",
+    "replace": "properties.integer(Property.color).map { UInt32(truncatingIfNeeded: $0) }",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: a section matches its file however capitalized",
+    "find": "        func key(_ name: String) -> String { name.lowercased() }",
+    "replace": "        func key(_ name: String) -> String { name }",
+    "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
+  },
+  {
+    "file": "Strata/Previewing/PreviewSession.swift",
+    "rule": "Space: a notebook package is listed in its notebook's order",
+    "find": "                        return try await Self.notebook(in: files, source: source)",
+    "replace": "                        return nil",
+    "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
+  },
+  {
+    "file": "Strata/Previewing/PreviewSession.swift",
+    "rule": "Space: a notebook folder is listed in its notebook's order",
+    "find": "                    if OneNoteContents.pick(entries.map(\\.name)) != nil {\n",
+    "replace": "                    if false {\n",
+    "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a table of contents' revision gives an object new data",
+    "find": "                revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: sections come by their ordering numbers",
+    "find": "                    ($0.element.ordering ?? .max, $0.offset) < ($1.element.ordering ?? .max, $1.offset)",
+    "replace": "                    $0.offset < $1.offset",
+    "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
+  },
+  {
+    "file": "Strata/Previewing/PreviewSession.swift",
+    "rule": "Space: a notebook folder's table of contents is read only once it's here",
+    "find": "              !isPlaceholder(files[index].url) else { return nil }",
+    "replace": "              true else { return nil }",
+    "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a range of copied entries is counted before it's copied",
+    "find": "                try copying(count)\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: a copied entry is counted",
+    "find": "                try copying(1)\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: an entry is copied only from one its dependency has",
+    "find": "guard to < 0xFF_FFFF, let guid = dependency.guids[from] else",
+    "replace": "guard to < 0xFF_FFFF, let guid = dependency.guids[from] ?? dependency.guids.values.first else",
+    "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: copied entries stay within the indices a table may have",
+    "find": "guard count <= dependency.guids.count, UInt64(to) + UInt64(count) <= 0xFF_FFFF else",
+    "replace": "guard count <= dependency.guids.count else",
+    "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
+  },
+  {
+    "file": "Strata/Previews/OneStoreRevision.swift",
+    "rule": "OneNote: only an object declared before gets new data",
+    "find": "                guard let revised = revision.objects[id] else { throw OneStoreError.malformed }",
+    "replace": "                let revised = revision.objects[id] ?? StoredObject(jcid: 0, content: .fileData(\"\"))",
+    "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: a table of contents larger than one read from a package is refused",
+    "find": "        guard source.size <= byteLimit else { throw OneStoreError.tooLarge }\n",
+    "replace": "",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Previewing/PreviewSession.swift",
+    "rule": "Space: a notebook folder takes its order once its table of contents is fetched",
+    "find": "        let entries = roots.compactMap(\\.entry).map { $0.url.path.utf8.elementsEqual(path) ? entry : $0 }\n        order { [isPlaceholder] in try await Self.notebook(among: entries, isPlaceholder: isPlaceholder) }\n    }",
+    "replace": "    }",
+    "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
+  },
+  {
+    "file": "Strata/Previews/OneNoteContents.swift",
+    "rule": "OneNote: a folder's table of contents is OneNote's own, before any other",
+    "find": "        return candidates.first { names[$0].lowercased() == fileName.lowercased() }\n            ?? candidates.min",
+    "replace": "        return candidates.min",
+    "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
   }
 ]

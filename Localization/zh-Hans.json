@@ -205,6 +205,9 @@
     "%lld rows": {
       "other": "%lld行"
     },
+    "%lld sections": {
+      "other": "%lld 个分区"
+    },
     "%lld selected": {
       "other": "已选择%lld个"
     },
@@ -1257,6 +1260,7 @@
     "Searching…": "正在搜索…",
     "Secret Key": "私有访问密钥",
     "Section %lld": "第 %lld 节",
+    "Section group": "分区组",
     "Select All": "全选",
     "Select folders to move to the Trash": "选择要移到废纸篓的文件夹",
     "Select the files you want to change first.": "请先选择要更改的文件。",
@@ -1535,6 +1539,7 @@
     "This list": "此列表",
     "This Mac doesn’t support Apple Intelligence.": "这台Mac不支持Apple智能。",
     "This Mac hasn’t connected to this server before. If you can, check that its fingerprint below matches the server’s.": "这台Mac之前未连接过此服务器。如果可以，请检查下方的指纹是否与服务器的指纹一致。",
+    "This notebook lists no sections.": "此笔记本没有分区。",
     "This page couldn’t be shown.": "无法显示此页面。",
     "This page is too long to show in full.": "此页面太长，无法完整显示。",
     "This section changed since it was opened. Select it again to see it as it is now.": "此分区在打开后已更改。请再次选择它以查看当前内容。",
