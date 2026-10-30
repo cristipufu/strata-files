@@ -47,11 +47,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
     }
 
-    init(frame: NSRect = .zero, visits: Frecency, preferences: Prefs, places: PlaceChecks, copies: CopyProviders,
+    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, copies: CopyProviders,
          embedded: Bool = false) {
         self.copies = copies
         self.embedded = embedded
-        suggestions = PathSuggestions(visits: visits, preferences: preferences, places: places)
+        suggestions = PathSuggestions(preferences: preferences, places: places)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true

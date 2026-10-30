@@ -40,6 +40,10 @@ import AppKit
     private var currentApp: URL?
     private var typeName: String?
     private(set) var factsTask: Task<Void, Never>?
+    /// The item whose settings the cards show: until the item on show's arrive, no change may be made, since it
+    /// would be made from what another item has.
+    private var loadedURL: URL?
+    private var isLoaded: Bool { loadedURL != nil && loadedURL == url }
     private let readFacts: (URL, Bool) async -> Facts
     private var appsTask: Task<Void, Never>?
     /// Whether `apps` lists every app that can open the item (read when the menu opens: it's slow to work out on every
@@ -173,8 +177,10 @@ import AppKit
         if !same {
             [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true }
             // Until the new item's settings arrive, nothing here may be changed: it would change the old one.
+            loadedURL = nil
             shownCommentChoice = nil
             comments.stringValue = ""
+            showPermissions(nil, nil)
             apps = []
             currentApp = nil
             typeName = nil
@@ -192,6 +198,7 @@ import AppKit
     }
 
     private func apply(_ facts: Facts, same: Bool) {
+        loadedURL = url
         if !same || comments.currentEditor() == nil {
             shownCommentChoice = facts.choice
             comments.stringValue = facts.comment
@@ -213,6 +220,7 @@ import AppKit
         factsTask?.cancel()
         appsTask?.cancel()
         appsTask = nil
+        loadedURL = nil
         shownCommentChoice = nil
         commentChoice = nil
         url = nil
@@ -221,12 +229,13 @@ import AppKit
     /// A locked item takes no changes but unlocking; only its owner can lock or unlock it.
     private func setEnabled(_ ownedByYou: Bool) {
         let isLocked = locked.state == .on
-        let loaded = shownCommentChoice != nil
+        let loaded = isLoaded && shownCommentChoice != nil
         comments.isEditable = loaded && !isLocked
         comments.isEnabled = loaded && !isLocked
         openWith.isEnabled = loaded && !isLocked && !apps.isEmpty
         changeAll.isEnabled = loaded && !isLocked && !apps.isEmpty
         locked.isEnabled = loaded && ownedByYou
+        for menu in accessMenus.values { menu.isEnabled = loaded && ownedByYou && !isLocked }
     }
 
     // MARK: - Open With
@@ -273,13 +282,13 @@ import AppKit
         if let currentApp, let index = apps.firstIndex(where: { $0.url == currentApp }) {
             openWith.selectItem(at: index)
         }
-        let enabled = shownCommentChoice != nil && locked.state == .off
+        let enabled = isLoaded && shownCommentChoice != nil && locked.state == .off
         openWith.isEnabled = enabled
         changeAll.isEnabled = enabled
     }
 
     @objc private func openWithChanged(_ sender: NSPopUpButton) {
-        guard let url, let app = sender.selectedItem?.representedObject as? URL else { return }
+        guard isLoaded, let url, let app = sender.selectedItem?.representedObject as? URL else { return }
         // Picking the app it already opens with changes nothing (and mustn't pin this file to it).
         guard app != currentApp else { return }
         let targetURL = url
@@ -301,7 +310,7 @@ import AppKit
     }
 
     @objc private func changeAllClicked(_ sender: Any?) {
-        guard let url, let app = openWith.selectedItem?.representedObject as? URL, let window else { return }
+        guard isLoaded, let url, let app = openWith.selectedItem?.representedObject as? URL, let window else { return }
         let kind = typeName
         let alert = NSAlert()
         let appName = apps.first { $0.url == app }?.name ?? app.deletingPathExtension().lastPathComponent
@@ -401,7 +410,7 @@ import AppKit
     // MARK: - Locked and permissions
 
     @objc private func lockedChanged(_ sender: NSSwitch) {
-        guard let url else { return }
+        guard isLoaded, let url else { return }
         do {
             try FileInfoEditing.setLocked(sender.state == .on, at: url.path)
             finish(nil, in: permissionsMessage)
@@ -456,7 +465,7 @@ import AppKit
     }
 
     @objc private func accessChanged(_ sender: NSPopUpButton) {
-        guard let url, let who = FileInfoEditing.Who(rawValue: sender.tag),
+        guard isLoaded, let url, let who = FileInfoEditing.Who(rawValue: sender.tag),
               let access = FileInfoEditing.Access(rawValue: sender.selectedTag()) else { return }
         // Taking your own access away from a folder shuts you out of it: ask first.
         if who == .owner, isFolder, access == .none || access == .writeOnly, let window {

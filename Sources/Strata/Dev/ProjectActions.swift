@@ -18,7 +18,7 @@ extension ProjectInfo {
                      onUpdate: ((ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
         let folder = folder.standardizedFileURL
         var info = await ProjectDetector.detect(folder)
-        let repository = store.repository(containing: folder)
+        let repository = await store.repositoryFound(containing: folder)
         let isRoot = repository?.rootPath == folder.path
         guard info.isProject || isRoot, !Task.isCancelled else { return nil }
 

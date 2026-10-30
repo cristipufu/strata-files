@@ -17,8 +17,18 @@ extension BrowserWindowController {
                 self?.navigate(to: url.deletingLastPathComponent(), select: url)
             }
         }
+        let places = services.places
         palette.lateItems = { [weak self] query in
-            (await self?.pathQueryItems(query) ?? []) + (await self?.indexItems(query) ?? [])
+            // Both at once: a folder walk on a slow disk mustn't hold up what the index finds.
+            async let found = self?.indexItems(query) ?? []
+            guard PathQuery.isPathQuery(query) else { return await found }
+            let visited = places.visited(limit: 400)
+            let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
+                                                      visited: visited)
+            let rows = PaletteItem.lookupRows(hits) { [weak self] url, isFolder in
+                if isFolder { self?.navigate(to: url) } else { self?.navigate(to: url.deletingLastPathComponent(), select: url) }
+            }
+            return rows + (await found)
         }
         palette.show(in: window, items: paletteItems())
     }
@@ -41,25 +51,6 @@ extension BrowserWindowController {
         }
     }
 
-    /// `github/acme`-style lookups, walking folders away from the main thread.
-    private func pathQueryItems(_ query: String) async -> [PaletteItem] {
-        guard PathQuery.isPathQuery(query) else { return [] }
-        let places = services.places
-        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
-        let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
-            + [Places.home] + visited.prefix(100)
-        let folderIcon = NSWorkspace.shared.icon(for: .folder)
-        return await PathQuery.resolveOffMain(query, roots: roots, visited: visited).map { hit in
-            let url = hit.url
-            let type = UTType(filenameExtension: url.pathExtension) ?? .data
-            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
-                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
-                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) { [weak self] in
-                if hit.isFolder { self?.navigate(to: url) } else { self?.navigate(to: url.deletingLastPathComponent(), select: url) }
-            }
-        }
-    }
-
     private func paletteItems() -> [PaletteItem] {
         var items: [PaletteItem] = []
         var seen: Set<String> = [location.path]
@@ -76,8 +67,7 @@ extension BrowserWindowController {
         }
         let places = services.places
         places.refresh()
-        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400)
-        for (rank, url) in visited.enumerated() where seen.insert(url.path).inserted {
+        for (rank, url) in places.visited(limit: 400).enumerated() where seen.insert(url.path).inserted {
             items.append(PaletteItem(title: Places.displayName(url, copies: services.copies, checks: places),
                                      subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
                                      kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })

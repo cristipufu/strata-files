@@ -17,10 +17,10 @@ nonisolated final class PathQuery {
 
     private var listings: [URL: [(url: URL, isFolder: Bool)]] = [:]
 
-    private static let reads = DispatchQueue(label: "dev.strata.path-queries", qos: .userInitiated)
+    private static let reads = DispatchQueue(label: "dev.strata.path-queries", qos: .userInitiated, attributes: .concurrent)
 
-    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads: a
-    /// folder on a server that stopped answering holds only that queue.
+    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads, and
+    /// each beside the others: a folder on a server that stopped answering holds only the lookup that asked.
     static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
         await withCheckedContinuation { continuation in
             reads.async { continuation.resume(returning: work()) }

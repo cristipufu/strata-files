@@ -34,6 +34,22 @@ struct TagColumnTests {
         #expect(tree.snapshot() == ["folder/", "folder/a"])
     }
 
+    /// A read that began before a tag change keeps nothing: what it read may be what the change replaced.
+    @Test func aReadFromBeforeAChangeKeepsNothing() async throws {
+        let tree = try TestTree("folder/a")
+        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore()
+        try write(["Red"], to: entry.url)
+        let reading = store.load([entry], in: tree.url("folder"))
+        try store.update([entry.url], adding: ["Blue"], removing: [], undo: nil)
+        await reading.value
+        #expect(store.cachedTags(for: entry.url).isEmpty)
+        _ = store.tags(for: entry.url)
+        while let read = store.requests { await read.value }
+        #expect(store.tags(for: entry.url).map(\.name) == ["Red", "Blue"])
+        store.forget("Blue")
+        #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
     /// A file's tags not read yet show in the tag field once the background read brings them.
     @Test func theTagFieldShowsTagsOnceTheyreRead() async throws {
         let tree = try TestTree("unread")

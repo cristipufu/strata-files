@@ -112,7 +112,8 @@ final class PlanTransaction {
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {
             do {
-                switch try await Self.trash(url) {
+                // Redone: only the very item undo put back, checked as it goes.
+                switch try await Self.trash(url, expecting: restored?.identity(at: url)) {
                 case .alreadyInTrash:
                     outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
                 case let .trashed(result, identity):
@@ -181,7 +182,6 @@ final class PlanTransaction {
         createdFolders.removeEmpty()
     }
 
-    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
     private nonisolated enum Trashed: Sendable {
         case alreadyInTrash
         /// Where it went, and what it is there, read as it landed.
@@ -189,9 +189,10 @@ final class PlanTransaction {
         case gone
     }
 
-    /// One item to the Trash, away from the main thread. One already in a Trash isn't: trashing it again would lose
-    /// where it came from.
-    @concurrent private static func trash(_ url: URL) async throws -> Trashed {
+    /// One item to the Trash, away from the main thread, and only if it's still `expecting` when given. One already in
+    /// a Trash isn't: trashing it again would lose where it came from.
+    @concurrent private static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
+        if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
         if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
         var result: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -199,6 +200,7 @@ final class PlanTransaction {
         return .trashed(landed, FileIdentity.read(landed.path))
     }
 
+    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
     private static func move(_ pair: Pair) async throws {
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")

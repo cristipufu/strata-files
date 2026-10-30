@@ -20,6 +20,11 @@ import Testing
         #expect(store.repository(containing: src)?.root.standardizedFileURL.path
                 == tree.url("repo").standardizedFileURL.path)
         #expect(notices == 1)
+        // Asked to decide by it, a folder not looked up yet waits for its answer.
+        let other = GitStatusStore()
+        other.isEnabled = true
+        #expect(await other.repositoryFound(containing: src)?.root.standardizedFileURL.path
+                == tree.url("repo").standardizedFileURL.path)
         // A folder in no repository is found to be in none, and says nothing.
         _ = store.repository(containing: tree.url("plain"))
         let observation = await store.observe(tree.url("plain"))

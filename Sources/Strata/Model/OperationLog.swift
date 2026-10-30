@@ -292,9 +292,15 @@ final class OperationLog {
         !entry.undone && !undoing.contains(entry.id)
     }
 
-    /// `canUndo`'s look at the items, for each of `entries`, away from the main thread.
+    /// `canUndo`'s look at the items, for each of `entries`, away from the main thread; a check that's been replaced
+    /// stops between entries.
     @concurrent static func itemsAllowUndo(_ entries: [Entry]) async -> [UUID: Bool] {
-        Dictionary(entries.map { ($0.id, itemsAllowUndo($0)) }, uniquingKeysWith: { first, _ in first })
+        var found: [UUID: Bool] = [:]
+        for entry in entries {
+            if Task.isCancelled { break }
+            found[entry.id] = itemsAllowUndo(entry)
+        }
+        return found
     }
 
     nonisolated private static func itemsAllowUndo(_ entry: Entry) -> Bool {
@@ -330,8 +336,16 @@ final class OperationLog {
         let containers = CreatedFolders(paths: entry.containers, recorded: entry.identities)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
-        let existing = entry.created.filter { Self.holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
-        if !existing.isEmpty { done += try await FileOps.trashForOperation(existing, copies: .live) }
+        // Each copy only while it's still the one the copy made, checked as it goes.
+        if !entry.created.isEmpty {
+            let (moved, failure) = await FileOps.trashForUndo(entry.created.map { URL(fileURLWithPath: $0) },
+                                                              owns: { Self.holdsOriginal(entry, $0.path) }, copies: .live)
+            done += moved
+            if let failure {
+                registerRedo(entry, done, undoManager, containers: containers)
+                throw failure
+            }
+        }
         // A mixed transfer can still undo its own copies after a moved item is replaced. Check every move too;
         // canUndo accepting part of an entry never gives ownership of the rest.
         let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {

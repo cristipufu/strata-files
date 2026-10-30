@@ -148,6 +148,8 @@ final class FolderTreeController: NSViewController {
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: containerStore)
+        // Disks are listed as last read: a mount is read in the background, and shows when that read ends.
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: places)
         remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: remote.servers)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)

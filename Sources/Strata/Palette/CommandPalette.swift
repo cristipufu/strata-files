@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// One thing the palette can do: jump to a folder, open a file, or run a command.
 struct PaletteItem {
@@ -42,6 +43,21 @@ struct PaletteItem {
     /// Stable native action identity, independent of the displayed or translated title.
     var commandID: String? = nil
     let run: () -> Void
+}
+
+extension PaletteItem {
+    /// Rows for a `github/acme`-style lookup's hits, each opened by `open` (with whether it's a folder).
+    static func lookupRows(_ hits: [PathQuery.Hit], open: @escaping (URL, Bool) -> Void) -> [PaletteItem] {
+        let folderIcon = NSWorkspace.shared.icon(for: .folder)
+        return hits.map { hit in
+            let url = hit.url
+            let type = UTType(filenameExtension: url.pathExtension) ?? .data
+            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
+                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
+                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches,
+                               url: url) { open(url, hit.isFolder) }
+        }
+    }
 }
 
 /// ⌘K: a floating glass panel that fuzzy-searches folders you visit, items in this folder, and every command.
@@ -259,8 +275,7 @@ final class CommandPalette: NSObject {
         get { ranker.goToPath }
         set { ranker.goToPath = newValue }
     }
-    /// Set by the owner: items computed for the current query, such as `github/acme` path lookups.
-    /// Set by the owner: slower items (index search) merged in when they arrive.
+    /// Set by the owner: slower items (`github/acme` path lookups, the index search) merged in when they arrive.
     var lateItems: ((String) async -> [PaletteItem])? {
         get { ranker.lateItems }
         set { ranker.lateItems = newValue }
@@ -268,6 +283,18 @@ final class CommandPalette: NSObject {
 
     private func runSelected() {
         finishTyping()
+        // A typed path still being looked up: Return goes there once it's found (or to what's selected if it isn't).
+        if let lookup = ranker.pathLookup {
+            Task { [weak self] in
+                await lookup.value
+                self?.runSelectedNow()
+            }
+            return
+        }
+        runSelectedNow()
+    }
+
+    private func runSelectedNow() {
         let row = table.selectedRow
         guard row >= 0, row < results.count else { return }
         let item = results[row].item
@@ -472,12 +499,16 @@ final class PaletteRanker {
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
     private(set) var late: Task<Void, Never>?
+    /// The typed path's lookup, while it runs.
+    private(set) var pathLookup: Task<Void, Never>?
     private var query = ""
 
     func rank(_ text: String) {
         query = text.trimmingCharacters(in: .whitespaces)
         late?.cancel()
         late = nil
+        pathLookup?.cancel()
+        pathLookup = nil
         scored = []
         guard !query.isEmpty else {
             results = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int]()) }
@@ -495,20 +526,22 @@ final class PaletteRanker {
         }
         scored.sort { $0.score > $1.score }
         results = scored.prefix(60).map { ($0.item, $0.matches) }
-        let asked = query, lateItems = lateItems
+        let asked = query
+        // A typed path is looked up away from the main thread: a folder on a server may not answer.
+        if goToPath != nil, asked.hasPrefix("/") || asked.hasPrefix("~") {
+            pathLookup = Task { [weak self] in
+                let path = await self?.pathItem(for: asked)
+                guard let self, !Task.isCancelled, self.query == asked else { return }
+                self.pathLookup = nil
+                if let path { self.merge([path]) }
+            }
+        }
+        guard let lateItems else { return }
         let delay = lateDelay
         late = Task { [weak self] in
-            // A typed path is looked up away from the main thread: a folder on a server may not answer.
-            if let path = await self?.pathItem(for: asked) {
-                guard let self, !Task.isCancelled, self.query == asked else { return }
-                self.merge([path])
-            }
-            var extra: [PaletteItem] = []
-            if let lateItems {
-                if delay > .zero { try? await Task.sleep(for: delay) }
-                guard !Task.isCancelled else { return }
-                extra = await lateItems(asked)
-            }
+            if delay > .zero { try? await Task.sleep(for: delay) }
+            guard !Task.isCancelled else { return }
+            let extra = await lateItems(asked)
             guard let self, !Task.isCancelled, self.query == asked else { return }
             self.late = nil
             self.merge(extra)
@@ -518,6 +551,8 @@ final class PaletteRanker {
     func cancel() {
         late?.cancel()
         late = nil
+        pathLookup?.cancel()
+        pathLookup = nil
         query = ""
         scored = []
         results = []
@@ -527,7 +562,8 @@ final class PaletteRanker {
         let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
         let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
         guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
-        let keeping = selectedTitle()
+        // The typed path, once found, is what Return takes; otherwise the row selected stays so.
+        let keeping = fresh.first { $0.kind == .path }?.title ?? selectedTitle()
         scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
         scored.sort { $0.score > $1.score }
         results = scored.prefix(60).map { ($0.item, $0.matches) }

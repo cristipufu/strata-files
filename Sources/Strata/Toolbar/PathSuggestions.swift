@@ -12,12 +12,10 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 /// relative one walks down from where you are and from folders you use (`github/acme`); a name alone finds folders with
 /// that name anywhere, from the index, those you open most first.
 final class PathSuggestions {
-    private let visits: Frecency
     private let preferences: Prefs
     private let places: PlaceChecks
 
-    init(visits: Frecency, preferences: Prefs, places: PlaceChecks) {
-        self.visits = visits
+    init(preferences: Prefs, places: PlaceChecks) {
         self.preferences = preferences
         self.places = places
     }
@@ -34,10 +32,9 @@ final class PathSuggestions {
     func begin(at current: URL?) {
         listings.removeAll()
         places.refresh()
-        visited = visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
+        visited = places.visited(limit: 400)
         let here = current ?? Places.home
-        let candidates = Places.favorites(preferences: preferences, checks: places).map(\.url)
-            + places.snapshot.volumes.filter { $0.symbol != "network" }.map(\.url) + [Places.home] + visited.prefix(100)
+        let candidates = places.lookupRoots(visited: visited, servers: false)
         roots = candidates.filter { !Privacy.measuringWouldPrompt($0, browsing: here) }
     }
 

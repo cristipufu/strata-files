@@ -50,6 +50,16 @@ final class PlaceChecks {
     /// Finder's name for a folder, as last read; its own name until then.
     func name(_ url: URL) -> String { snapshot.names[url.path] ?? url.lastPathComponent }
 
+    /// Visited folders, best first, at most `limit`, leaving out those a read found gone.
+    func visited(limit: Int) -> [URL] { Array(visits.ranked().filter { isFolder($0.path) != false }.prefix(limit)) }
+
+    /// Where `github/acme`-style lookups start: the favorites, the disks (servers too when `servers`), home and the
+    /// folders in `visited` used most.
+    func lookupRoots(visited: [URL], servers: Bool) -> [URL] {
+        Places.favorites(preferences: preferences, checks: self).map(\.url)
+            + snapshot.volumes.filter { servers || $0.symbol != "network" }.map(\.url) + [Places.home] + visited.prefix(100)
+    }
+
     /// Reads them all again, once the read under way (if any) is done.
     func refresh() {
         guard task == nil else {

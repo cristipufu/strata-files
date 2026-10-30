@@ -16,12 +16,21 @@ import Testing
                             fixedScore: hit.score, url: hit.url) {}
             }
         }
+        var kept: String?
+        ranker.lateArrived = { kept = $0 }
         ranker.rank(tree.url("note.txt").path)
-        #expect(ranker.results.isEmpty && ranker.isSearching)
+        #expect(ranker.results.isEmpty && ranker.pathLookup != nil)
+        await ranker.pathLookup?.value
         await ranker.late?.value
         #expect(ranker.results.first?.item.kind == .path)
         #expect(ranker.results.first?.item.url?.path == tree.url("note.txt").path)
-        #expect(!ranker.isSearching)
+        // The typed path arrives selected: Return goes there.
+        #expect(kept == ranker.results.first?.item.title)
+        #expect(!ranker.isSearching && ranker.pathLookup == nil)
+        // A path that isn't there offers nothing to go to.
+        ranker.rank(tree.url("missing").path)
+        await ranker.pathLookup?.value
+        #expect(!ranker.results.contains { $0.item.kind == .path })
         ranker.rank("proj/str")
         await ranker.late?.value
         #expect(ranker.results.contains { $0.item.url?.lastPathComponent == "strata" })

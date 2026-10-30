@@ -320,9 +320,8 @@ struct BrowserPreferencesTests {
         #expect(second.preferences.favoritePaths == [tree.url("another").standardizedFileURL.path])
         #expect(first.preferences.favoritePaths?.count == 2)
 
-        let a = PathSuggestions(visits: first.services.visits, preferences: first.preferences, places: first.services.places)
-        let b = PathSuggestions(visits: second.services.visits, preferences: second.preferences,
-                                places: second.services.places)
+        let a = PathSuggestions(preferences: first.preferences, places: first.services.places)
+        let b = PathSuggestions(preferences: second.preferences, places: second.services.places)
         a.begin(at: tree.url("elsewhere")); b.begin(at: tree.url("elsewhere"))
         let aMatches = await a.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))
         let bMatches = await b.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))

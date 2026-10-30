@@ -51,6 +51,14 @@ final class GitStatusStore {
         return nil
     }
 
+    /// The same, waiting for the lookup when it isn't known yet: for deciding something by it, such as which of a
+    /// project's folders git tracks.
+    func repositoryFound(containing folder: URL) async -> GitRepository? {
+        let path = folder.standardizedFileURL.path
+        if let cached = repositoriesByFolder[path] { return cached }
+        return await find(path).value
+    }
+
 
     /// The repository an item in the list belongs to: its parent folder's. (A nested repository's root is an
     /// untracked folder of the outer one, which is how it should look from outside.)
@@ -59,16 +67,22 @@ final class GitStatusStore {
     }
 
     private var finding: [String: (id: UUID, task: Task<GitRepository?, Never>)] = [:]
+    /// The newest lookup of each folder: only it may record what it found, however the lookups end.
+    private var newestFind: [String: UUID] = [:]
 
-    /// Looks for the repository holding `path` away from the main thread, once however often it's asked meanwhile.
+    /// Looks for the repository holding `path` away from the main thread, once however often it's asked meanwhile;
+    /// `fresh` looks again even then.
     @discardableResult
-    private func find(_ path: String) -> Task<GitRepository?, Never> {
-        if let finding = finding[path] { return finding.task }
+    private func find(_ path: String, fresh: Bool = false) -> Task<GitRepository?, Never> {
+        if !fresh, let finding = finding[path] { return finding.task }
         let enabled = isEnabled, id = UUID()
+        newestFind[path] = id
         let task = Task { [weak self] in
             let repository = enabled ? await Self.locate(path) : nil
             guard let self else { return repository }
             if finding[path]?.id == id { finding[path] = nil }
+            guard newestFind[path] == id else { return repository }
+            newestFind[path] = nil
             let known = repositoriesByFolder[path] != nil
             record(repository, at: path)
             if let repository, !known {
@@ -115,9 +129,7 @@ final class GitStatusStore {
     /// staging, commits and checkouts made anywhere refresh it, and runs status unless a watched snapshot is already
     /// current. Returns nil outside a repository.
     func observe(_ folder: URL) async -> GitObservation? {
-        let path = folder.standardizedFileURL.path
-        finding[path] = nil
-        guard let repository = await find(path).value else { return nil }
+        guard let repository = await find(folder.standardizedFileURL.path, fresh: true).value else { return nil }
         let root = repository.rootPath
         let watched = watchers[root] != nil
         let isFresh = snapshots[root].map { watched || Date().timeIntervalSince($0.date) < maximumAge } ?? false

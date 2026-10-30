@@ -36,6 +36,25 @@ private final class HistoryMoveGate {
 }
 
 extension TransferTests {
+    /// Undoing a copy from History sends to the Trash only the copies still the ones it made, checked as each goes: a
+    /// file put in one's place since stays.
+    @Test func historyUndoOfACopyTrashesOnlyItsOwnCopies() async throws {
+        let tree = try TestTree("from/a.txt", "from/b.txt", "to/", "state/")
+        defer { tree.removeFromTrash() }
+        let env = try HistoryEnvironment(tree)
+        let job = env.queue.enqueue([tree.url("from/a.txt"), tree.url("from/b.txt")], to: tree.url("to"), mode: .copy,
+                                    options: .init(verify: false, clone: false), undo: nil, conflicts: .keepBoth)
+        await job.finished()
+        let entry = try #require(env.history.entries.last)
+        try FileManager.default.removeItem(at: tree.url("to/b.txt"))
+        try Data("replacement".utf8).write(to: tree.url("to/b.txt"))
+        #expect(env.history.canUndo(entry))
+        try await env.history.undo(entry, undoManager: nil)
+        #expect(tree.text("to/b.txt") == "replacement")
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "from/b.txt", "state/", "state/Caches/", "state/history.sealed",
+                                    "to/", "to/b.txt"])
+    }
+
     @Test func historyRejectsItemsReplacedBeforeTransferRegistration() async throws {
         for mode in [TransferMode.copy, .move] {
             for replacement in ["file", "folder", "link", "missing"] {

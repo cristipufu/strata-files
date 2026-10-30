@@ -80,6 +80,17 @@ final class TagStore {
     }
 
     private var requested: Set<String> = []
+    /// How many times each item's tags were changed here: a read that began before a change mustn't put back what the
+    /// change replaced.
+    private var tagChanges: [String: Int] = [:]
+
+    /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile.
+    private func keep(_ read: [String: [FinderTag]], unchangedSince before: [String: Int]) {
+        for (path, list) in read where tagChanges[path, default: 0] == before[path, default: 0] {
+            cache[path] = list
+            stale.remove(path)
+        }
+    }
     private(set) var requests: Task<Void, Never>?
 
     private func request(_ path: String) {
@@ -94,8 +105,9 @@ final class TagStore {
             if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
             let paths = Array(requested)
             requested.removeAll()
+            let before = tagChanges
             let tags = await Self.readAll(paths, labels: NSWorkspace.shared.fileLabels)
-            for (path, list) in tags { cache[path] = list; stale.remove(path) }
+            keep(tags, unchangedSince: before)
             requests = nil
             NotificationCenter.default.post(name: .tagsLoaded, object: nil)
             // Asked about while these were read.
@@ -111,9 +123,10 @@ final class TagStore {
         loading.formUnion(folders)
         let paths = entries.map { $0.url.standardizedFileURL.path }
         let labels = NSWorkspace.shared.fileLabels
+        let before = tagChanges
         return Task {
             let tags = await Self.readAll(paths, labels: labels)
-            for (path, list) in tags { cache[path] = list; stale.remove(path) }
+            keep(tags, unchangedSince: before)
             loading.subtract(folders)
             NotificationCenter.default.post(name: .tagsLoaded, object: nil)
         }
@@ -228,6 +241,7 @@ final class TagStore {
                 guard let previousTags else { continue }
                 cache[path] = nil
                 stale.remove(path)
+                tagChanges[path, default: 0] += 1
                 previous.append((url, chosen.identity, previousTags))
                 changed.append(url)
             } catch {

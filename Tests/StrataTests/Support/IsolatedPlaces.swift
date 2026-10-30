@@ -13,7 +13,6 @@ extension PathSuggestions {
     /// Suggestions for `preferences`, with visits and checks of their own.
     convenience init(_ preferences: Prefs) {
         let visits = Frecency(preferences: preferences.defaults)
-        self.init(visits: visits, preferences: preferences,
-                  places: PlaceChecks(preferences: preferences, visits: visits, read: PlaceChecks.read))
+        self.init(preferences: preferences, places: PlaceChecks(preferences: preferences, visits: visits, read: PlaceChecks.read))
     }
 }

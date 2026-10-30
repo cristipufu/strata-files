@@ -49,6 +49,34 @@ import Testing
         release.finish()
         await first.value
         #expect(editor.comments.stringValue == "second")
+        // Moving on, the access menus can't change the new item from what the old one had, before its own arrive.
+        func popups(_ view: NSView) -> [NSPopUpButton] {
+            view.subviews.flatMap { ($0 as? NSPopUpButton).map { [$0] } ?? popups($0) }
+        }
+        #expect(!popups(editor.permissionsContent).isEmpty)
+        let modeBefore = FileInfoEditing.mode(at: tree.url("a.txt").path)
+        let (heldAgain, releaseAgain) = AsyncStream<Void>.makeStream()
+        let held = InfoEditor { url, apps in
+            if url.lastPathComponent == "a.txt" { for await _ in heldAgain {} }
+            return await InfoEditor.Facts.read(url, opensWithApps: apps)
+        }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 300), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = held.permissionsContent
+        defer { window.close(); window.contentView = nil }
+        held.show(try #require(FileEntry(url: tree.url("b.txt"))))
+        await held.factsTask?.value
+        let heldMenus = popups(held.permissionsContent)
+        #expect(!heldMenus.isEmpty)
+        held.show(try #require(FileEntry(url: tree.url("a.txt"))))
+        for menu in heldMenus {
+            #expect(!menu.isEnabled)
+            menu.selectItem(at: 0)
+            if let action = menu.action { NSApp.sendAction(action, to: menu.target, from: menu) }
+        }
+        #expect(FileInfoEditing.mode(at: tree.url("a.txt").path) == modeBefore)
+        releaseAgain.finish()
         editor.hide()
         #expect(FileInfoEditing.comment(at: tree.url("a.txt").path) == "first")
         #expect(FileInfoEditing.comment(at: tree.url("b.txt").path) == "second")

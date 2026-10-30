@@ -312,14 +312,33 @@ enum FileOps {
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
     }
 
-    /// `trash` for part of another operation that's under way already (undoing one from History): the items go to the
-    /// Trash away from the main thread, nothing is recorded or registered, and a disk without a Trash is an error.
-    static func trashForOperation(_ urls: [URL], copies: CopyProviders) async throws -> [Move] {
-        let (moved, _, noTrash, failure) = await trashItems(urls, copies: copies)
-        if !moved.isEmpty { Sounds.movedToTrash() }
-        if let failure { throw failure }
-        if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
-        return moved
+    /// `trash` for part of an undo under way (one from History): each item goes to the Trash away from the main thread
+    /// only if `owns` says it's still the one the operation left there, asked just before it goes. It stops at the
+    /// first failure, a disk without a Trash included, and returns what went and that failure; nothing is recorded
+    /// or registered.
+    static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool,
+                             copies: CopyProviders) async -> (moved: [Move], failure: Error?) {
+        let result = await trashOwned(urls, owns: owns, copies: copies)
+        if !result.moved.isEmpty { Sounds.movedToTrash() }
+        return result
+    }
+
+    @concurrent
+    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool,
+                                   copies: CopyProviders) async -> (moved: [Move], failure: Error?) {
+        var moved: [Move] = []
+        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {
+            var result: NSURL?
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+                if let result { moved.append((from: url, to: result as URL)) }
+            } catch let error as CocoaError where error.code == .featureUnsupported {
+                return (moved, NoTrash(urls: [url]))
+            } catch {
+                return (moved, error)
+            }
+        }
+        return (moved, nil)
     }
 
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would

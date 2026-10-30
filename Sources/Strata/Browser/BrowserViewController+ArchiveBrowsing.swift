@@ -130,7 +130,8 @@ extension BrowserViewController {
         let entry = folder.deletingLastPathComponent()
         let window = view.window
         // Nothing else is making this copy (it would be in `waiters`): what's there is left from an earlier attempt.
-        if fm.fileExists(atPath: entry.path) { ArchiveCache.setAside(entry) }
+        // Never extract into what's left: if it can't be set aside, it goes now.
+        if fm.fileExists(atPath: entry.path), ArchiveCache.setAside(entry) == nil { ArchiveCache.remove(entry) }
         do {
             try fm.createDirectory(at: entry, withIntermediateDirectories: true)
         } catch {

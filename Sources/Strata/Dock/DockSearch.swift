@@ -43,7 +43,10 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         self.restartDock = restartDock
         super.init()
         build()
-        ranker.lateItems = { query in await DockSearchItems.pathItems(query) + DockSearchItems.lateItems(query) }
+        ranker.lateItems = { query in
+            async let found = DockSearchItems.lateItems(query)
+            return await DockSearchItems.pathItems(query) + found
+        }
         ranker.goToPath = { url in DockSearchItems.show(url) }
         ranker.emptyResults = { source in
             let workspaces: [PaletteItem] = Array(source.filter { $0.kind == .workspace }.prefix(3))
@@ -418,8 +421,7 @@ enum DockSearchItems {
         var items: [PaletteItem] = []
         let services = BrowserServices.shared, places = services.places
         places.refresh()
-        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400)
-        for (rank, url) in visited.enumerated() where seen.insert(url.path).inserted {
+        for (rank, url) in places.visited(limit: 400).enumerated() where seen.insert(url.path).inserted {
             items.append(PaletteItem(title: Places.displayName(url, copies: services.copies, checks: places), subtitle: Format.tildePath(url.deletingLastPathComponent()),
                                      icon: folderIcon, kind: .folder, boost: max(0, 24 - rank / 2), url: url) { show(url) })
         }
@@ -475,24 +477,15 @@ enum DockSearchItems {
         ]
     }
 
-    /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them.
-    /// `github/acme`-style lookups, walking folders away from the main thread.
+    /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them, walking folders
+    /// away from the main thread.
     static func pathItems(_ query: String) async -> [PaletteItem] {
         guard PathQuery.isPathQuery(query) else { return [] }
-        let services = BrowserServices.shared, places = services.places
-        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
-        let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
-            + [Places.home] + visited.prefix(100)
-        let folderIcon = NSWorkspace.shared.icon(for: .folder)
-        return await PathQuery.resolveOffMain(query, roots: roots, visited: visited).map { hit in
-            let url = hit.url
-            let type = UTType(filenameExtension: url.pathExtension) ?? .data
-            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
-                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
-                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) {
-                show(url)
-            }
-        }
+        let places = BrowserServices.shared.places
+        let visited = places.visited(limit: 400)
+        let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
+                                                  visited: visited)
+        return PaletteItem.lookupRows(hits) { url, _ in show(url) }
     }
 
     /// Files and folders from the index (plain English understood), documents whose text matches, and a row that opens
