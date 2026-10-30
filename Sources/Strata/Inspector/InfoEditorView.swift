@@ -35,7 +35,7 @@ import AppKit
     private let commentsMessage = InfoEditor.messageLabel()
     private let openWithMessage = InfoEditor.messageLabel()
     private let permissionsMessage = InfoEditor.messageLabel()
-    private var apps: [App] = []
+    private var apps: [OpenWithApp] = []
     /// The app the item opens with now, and its type's name, as last read.
     private var currentApp: URL?
     private var typeName: String?
@@ -63,7 +63,7 @@ import AppKit
         let isLocked: Bool
         let names: (owner: String, group: String, ownedByYou: Bool)?
         let mode: mode_t?
-        let app: App?
+        let app: OpenWithApp?
         let typeName: String?
 
         @concurrent static func read(_ url: URL, opensWithApps: Bool) async -> Facts {
@@ -71,26 +71,8 @@ import AppKit
             return Facts(choice: Result { try ChosenFile(url) }, comment: FileInfoEditing.comment(at: path),
                          isLocked: FileInfoEditing.isLocked(at: path), names: FileInfoEditing.names(at: path),
                          mode: FileInfoEditing.mode(at: path),
-                         app: opensWithApps ? NSWorkspace.shared.urlForApplication(toOpen: url).map(App.init) : nil,
+                         app: opensWithApps ? NSWorkspace.shared.urlForApplication(toOpen: url).map(OpenWithApp.init) : nil,
                          typeName: opensWithApps ? InfoEditor.typeName(of: url) : nil)
-        }
-    }
-
-    /// An app in the Open With menu, with its name and a small icon, read where it's found.
-    nonisolated struct App: Sendable {
-        let url: URL
-        let name: String
-        let icon: CGImage?
-
-        init(_ url: URL) {
-            self.url = url
-            name = FileManager.default.displayName(atPath: url.path)
-            var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
-            icon = NSWorkspace.shared.icon(forFile: url.path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
-        }
-
-        @concurrent static func all(opening url: URL) async -> [App] {
-            NSWorkspace.shared.urlsForApplications(toOpen: url).prefix(40).map(App.init)
         }
     }
 
@@ -249,7 +231,7 @@ import AppKit
 
     // MARK: - Open With
 
-    private func showApps(current: App?, typeName: String?) {
+    private func showApps(current: OpenWithApp?, typeName: String?) {
         // Just the current app for now; the rest when the menu opens.
         apps = current.map { [$0] } ?? []
         currentApp = current?.url
@@ -265,7 +247,7 @@ import AppKit
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === openWith.menu, !appsComplete, appsTask == nil, let url else { return }
         appsTask = Task { [weak self] in
-            let found = await App.all(opening: url)
+            let found = await OpenWithApp.all(opening: url, limit: 40)
             guard !Task.isCancelled, let self, self.url == url else { return }
             self.appsTask = nil
             self.appsComplete = true
@@ -284,7 +266,7 @@ import AppKit
         }
         for app in apps {
             let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
-            item.image = app.icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) }
+            item.image = app.image
             item.representedObject = app.url
             openWith.menu?.addItem(item)
         }

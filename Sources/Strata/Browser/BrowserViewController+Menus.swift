@@ -88,22 +88,9 @@ extension BrowserViewController {
     private func addStackOpenItems(to menu: NSMenu) {
         guard !stackProjectFolders().isEmpty else { return }
         addMenuCommand(.openInTerminal, to: menu)
-        let apps = ProjectEditors.installed()
-        guard !apps.isEmpty else { return }
-        let submenu = NSMenu()
-        for app in apps {
-            let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: #selector(openStackWithApplication(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = app
-            let icon = NSWorkspace.shared.icon(forFile: app.path)
-            icon.size = NSSize(width: 16, height: 16)
-            item.image = icon
-            submenu.addItem(item)
-        }
-        let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-        openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
-        openWith.submenu = submenu
-        menu.addItem(openWith)
+        menu.addItem(OpenWithMenu(target: self, action: #selector(openStackWithApplication(_:))) {
+            ProjectEditors.installed().map(OpenWithApp.init)
+        }.item)
     }
 
     private func populateBackgroundContextMenu(_ menu: NSMenu) {
@@ -169,26 +156,10 @@ extension BrowserViewController {
             addTitledMenuItem(String(localized: "Open as Folder"), #selector(openArchiveAsFolder(_:)), "archivebox", to: menu)
         }
         if let first = selected.first, !first.isFolder {
-            let apps = NSWorkspace.shared.urlsForApplications(toOpen: first.url)
-            if !apps.isEmpty {
-                let defaultApp = NSWorkspace.shared.urlForApplication(toOpen: first.url)
-                let submenu = NSMenu()
-                for app in apps.prefix(24) {
-                    var title = FileManager.default.displayName(atPath: app.path)
-                    if app == defaultApp { title = String(localized: "\(title) (default)", comment: "Open With submenu: the app that opens the file by default") }
-                    let item = NSMenuItem(title: title, action: #selector(openWithApplication(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = app
-                    let icon = NSWorkspace.shared.icon(forFile: app.path)
-                    icon.size = NSSize(width: 16, height: 16)
-                    item.image = icon
-                    submenu.addItem(item)
-                }
-                let openWith = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
-                openWith.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
-                openWith.submenu = submenu
-                menu.addItem(openWith)
-            }
+            let file = first.url
+            menu.addItem(OpenWithMenu(target: self, action: #selector(openWithApplication(_:))) {
+                await OpenWithApp.all(opening: file, limit: 24)
+            }.item)
         }
         if !selectedApps.isEmpty { addMenuCommand(.checkAppsForUpdates, title: appUpdatesTitle, to: menu) }
         // iCloud Drive and File Provider folders: bring items here, or free their space.
