@@ -229,7 +229,7 @@ import AppKit
     /// A locked item takes no changes but unlocking; only its owner can lock or unlock it.
     private func setEnabled(_ ownedByYou: Bool) {
         let isLocked = locked.state == .on
-        let loaded = isLoaded && shownCommentChoice != nil
+        let loaded = isLoaded
         comments.isEditable = loaded && !isLocked
         comments.isEnabled = loaded && !isLocked
         openWith.isEnabled = loaded && !isLocked && !apps.isEmpty
@@ -282,7 +282,7 @@ import AppKit
         if let currentApp, let index = apps.firstIndex(where: { $0.url == currentApp }) {
             openWith.selectItem(at: index)
         }
-        let enabled = isLoaded && shownCommentChoice != nil && locked.state == .off
+        let enabled = isLoaded && locked.state == .off
         openWith.isEnabled = enabled
         changeAll.isEnabled = enabled
     }
@@ -475,7 +475,8 @@ import AppKit
             alert.addButton(withTitle: String(localized: "Remove Access"))
             alert.addButton(withTitle: String(localized: "Cancel"))
             alert.beginSheetModal(for: window) { [weak self] response in
-                guard let self else { return }
+                // Answered for the item asked about: if another is on show by now, its own settings stay as they are.
+                guard let self, self.url == url, isLoaded else { return }
                 if response == .alertFirstButtonReturn { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
             }
             return

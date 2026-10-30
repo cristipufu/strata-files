@@ -7013,7 +7013,7 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "rule": "History undo trashes a copy something else took the place of",
-    "find": "        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {",
+    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
     "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) {",
     "tests": "TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies"
   },
@@ -7023,5 +7023,19 @@
     "find": "        guard isLoaded, let url, let who",
     "replace": "        guard let url, let who",
     "tests": "InspectorBackgroundTests/getInfoShowsOnlyTheNewestItemsSettingsAndTakesNoChangeBeforeThem"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "rule": "History undo drops an owned copy inside a folder that isn't owned",
+    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
+    "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {",
+    "tests": "TransferTests/undoTrashesAnOwnedCopyInsideAFolderThatIsntOwned"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "rule": "A redone plan trashes an item put in the place of the one undo restored",
+    "find": "        if let expecting, FileIdentity.read(url.path) != expecting { return .gone }\n",
+    "replace": "",
+    "tests": "PlanSafetyTests/aRedoneTrashStepLeavesAnItemReplacedSince"
   }
 ]

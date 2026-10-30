@@ -21,11 +21,7 @@ extension BrowserWindowController {
         palette.lateItems = { [weak self] query in
             // Both at once: a folder walk on a slow disk mustn't hold up what the index finds.
             async let found = self?.indexItems(query) ?? []
-            guard PathQuery.isPathQuery(query) else { return await found }
-            let visited = places.visited(limit: 400)
-            let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
-                                                      visited: visited)
-            let rows = PaletteItem.lookupRows(hits) { [weak self] url, isFolder in
+            let rows = await PaletteItem.lookupRows(for: query, in: places) { [weak self] url, isFolder in
                 if isFolder { self?.navigate(to: url) } else { self?.navigate(to: url.deletingLastPathComponent(), select: url) }
             }
             return rows + (await found)

@@ -327,7 +327,8 @@ enum FileOps {
     private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool,
                                    copies: CopyProviders) async -> (moved: [Move], failure: Error?) {
         var moved: [Move] = []
-        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {
+        // Owned first: a copy inside a folder put in another's place is still the operation's own.
+        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)

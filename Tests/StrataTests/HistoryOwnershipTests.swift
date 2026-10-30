@@ -36,6 +36,17 @@ private final class HistoryMoveGate {
 }
 
 extension TransferTests {
+    /// Ownership decides before nesting does: a copy inside a folder that's no longer the operation's own still goes,
+    /// and the folder stays.
+    @Test func undoTrashesAnOwnedCopyInsideAFolderThatIsntOwned() async throws {
+        let tree = try TestTree("to/dir/a.txt", "to/dir/keep.txt")
+        defer { tree.removeFromTrash() }
+        let urls = [tree.url("to/dir"), tree.url("to/dir/a.txt")]
+        let (moved, failure) = await FileOps.trashForUndo(urls, owns: { $0.lastPathComponent == "a.txt" }, copies: .live)
+        #expect(failure == nil && moved.map(\.from) == [tree.url("to/dir/a.txt")])
+        #expect(tree.snapshot() == ["to/", "to/dir/", "to/dir/keep.txt"])
+    }
+
     /// Undoing a copy from History sends to the Trash only the copies still the ones it made, checked as each goes: a
     /// file put in one's place since stays.
     @Test func historyUndoOfACopyTrashesOnlyItsOwnCopies() async throws {

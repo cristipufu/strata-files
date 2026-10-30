@@ -45,7 +45,10 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         build()
         ranker.lateItems = { query in
             async let found = DockSearchItems.lateItems(query)
-            return await DockSearchItems.pathItems(query) + found
+            let rows = await PaletteItem.lookupRows(for: query, in: BrowserServices.shared.places) { url, _ in
+                DockSearchItems.show(url)
+            }
+            return rows + (await found)
         }
         ranker.goToPath = { url in DockSearchItems.show(url) }
         ranker.emptyResults = { source in
@@ -216,9 +219,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         case #selector(NSResponder.moveUp(_:)):
             moveSelection(-1)
         case #selector(NSResponder.insertNewline(_:)):
-            // ⌘Return shows the item in Strata instead of opening it.
+            // ⌘Return shows the item in Strata instead of opening it. A typed path still being looked up goes once found.
             finishTyping()
-            run(table.selectedRow, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+            let reveal = NSApp.currentEvent?.modifierFlags.contains(.command) == true
+            ranker.afterPathLookup { [weak self] in
+                guard let self else { return }
+                run(table.selectedRow, reveal: reveal)
+            }
         case #selector(NSResponder.cancelOperation(_:)):
             if field.stringValue.isEmpty { box.resignKey() }
             clear()
@@ -241,6 +248,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         finishTyping()
         let rows = ranker.results.count
         guard rows > 0 else { return }
+        ranker.rowChosen = true
         let row = max(0, min(rows - 1, table.selectedRow + delta))
         table.selectRowIndexes([row], byExtendingSelection: false)
         table.scrollRowToVisible(row)
@@ -475,17 +483,6 @@ enum DockSearchItems {
             command(.emptyTrash) { send(.emptyTrash) },
             command(.showShortcuts) { send(.showShortcuts) },
         ]
-    }
-
-    /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them, walking folders
-    /// away from the main thread.
-    static func pathItems(_ query: String) async -> [PaletteItem] {
-        guard PathQuery.isPathQuery(query) else { return [] }
-        let places = BrowserServices.shared.places
-        let visited = places.visited(limit: 400)
-        let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
-                                                  visited: visited)
-        return PaletteItem.lookupRows(hits) { url, _ in show(url) }
     }
 
     /// Files and folders from the index (plain English understood), documents whose text matches, and a row that opens

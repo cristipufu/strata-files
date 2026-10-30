@@ -46,8 +46,14 @@ struct PaletteItem {
 }
 
 extension PaletteItem {
-    /// Rows for a `github/acme`-style lookup's hits, each opened by `open` (with whether it's a folder).
-    static func lookupRows(_ hits: [PathQuery.Hit], open: @escaping (URL, Bool) -> Void) -> [PaletteItem] {
+    /// A `github/acme`-style lookup of `query` among `places`, walking folders away from the main thread; `open` gets
+    /// a row's item and whether it's a folder.
+    static func lookupRows(for query: String, in places: PlaceChecks,
+                           open: @escaping (URL, Bool) -> Void) async -> [PaletteItem] {
+        guard PathQuery.isPathQuery(query) else { return [] }
+        let visited = places.visited(limit: 400)
+        let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
+                                                  visited: visited)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return hits.map { hit in
             let url = hit.url
@@ -141,6 +147,7 @@ final class CommandPalette: NSObject {
     }
 
     func close() {
+        ranker.cancel()
         guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
         panel.orderOut(nil)
@@ -283,15 +290,7 @@ final class CommandPalette: NSObject {
 
     private func runSelected() {
         finishTyping()
-        // A typed path still being looked up: Return goes there once it's found (or to what's selected if it isn't).
-        if let lookup = ranker.pathLookup {
-            Task { [weak self] in
-                await lookup.value
-                self?.runSelectedNow()
-            }
-            return
-        }
-        runSelectedNow()
+        ranker.afterPathLookup { [weak self] in self?.runSelectedNow() }
     }
 
     private func runSelectedNow() {
@@ -302,13 +301,16 @@ final class CommandPalette: NSObject {
         item.run()
     }
 
+    /// A click chooses its row: nothing to wait for.
     @objc private func rowClicked() {
-        runSelected()
+        finishTyping()
+        runSelectedNow()
     }
 
     private func moveSelection(_ delta: Int) {
         finishTyping()
         guard !results.isEmpty else { return }
+        ranker.rowChosen = true
         let row = max(0, min(results.count - 1, table.selectedRow + delta))
         table.selectRowIndexes([row], byExtendingSelection: false)
         table.scrollRowToVisible(row)
@@ -493,14 +495,16 @@ final class PaletteRanker {
     /// How long typing must pause before the slow search starts (the index, documents' text): a keystroke in the
     /// meantime cancels it before it does any work.
     var lateDelay: Duration = .zero
-    /// A slow search is waiting or running.
-    var isSearching: Bool { late != nil }
+    /// A slow search, or the typed path's lookup, is waiting or running.
+    var isSearching: Bool { late != nil || pathLookup != nil }
+    /// A row was chosen (with the arrows) since the query: the typed path, arriving, leaves the selection alone.
+    var rowChosen = false
 
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
     private(set) var late: Task<Void, Never>?
-    /// The typed path's lookup, while it runs.
     private(set) var pathLookup: Task<Void, Never>?
+    private var waitingRun: Task<Void, Never>?
     private var query = ""
 
     func rank(_ text: String) {
@@ -509,6 +513,9 @@ final class PaletteRanker {
         late = nil
         pathLookup?.cancel()
         pathLookup = nil
+        waitingRun?.cancel()
+        waitingRun = nil
+        rowChosen = false
         scored = []
         guard !query.isEmpty else {
             results = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int]()) }
@@ -548,11 +555,27 @@ final class PaletteRanker {
         }
     }
 
+    /// Runs `action` now, or once the typed path's lookup ends while one runs, so Return can go there: one waits at
+    /// most however often it's asked, and a new query or `cancel` drops it.
+    func afterPathLookup(_ action: @escaping () -> Void) {
+        guard let lookup = pathLookup else { return action() }
+        guard waitingRun == nil else { return }
+        let asked = query
+        waitingRun = Task { [weak self] in
+            await lookup.value
+            guard let self, !Task.isCancelled, self.query == asked else { return }
+            self.waitingRun = nil
+            action()
+        }
+    }
+
     func cancel() {
         late?.cancel()
         late = nil
         pathLookup?.cancel()
         pathLookup = nil
+        waitingRun?.cancel()
+        waitingRun = nil
         query = ""
         scored = []
         results = []
@@ -562,8 +585,8 @@ final class PaletteRanker {
         let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
         let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
         guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
-        // The typed path, once found, is what Return takes; otherwise the row selected stays so.
-        let keeping = fresh.first { $0.kind == .path }?.title ?? selectedTitle()
+        // The typed path, once found, is what Return takes, unless a row was chosen meanwhile.
+        let keeping = (rowChosen ? nil : fresh.first { $0.kind == .path }?.title) ?? selectedTitle()
         scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
         scored.sort { $0.score > $1.score }
         results = scored.prefix(60).map { ($0.item, $0.matches) }

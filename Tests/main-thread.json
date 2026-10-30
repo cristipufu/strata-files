@@ -74,8 +74,8 @@
  {
   "file": "Sources/Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
   "call": "fm.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "count": 2,
+  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes. The second checks, once, that a leftover copy which couldn't be set aside is gone before extracting: a rare path, and extracting into it would mix old and new files."
  },
  {
   "file": "Sources/Strata/Browser/BrowserViewController+Cloud.swift",

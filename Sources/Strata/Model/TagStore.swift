@@ -83,6 +83,8 @@ final class TagStore {
     /// How many times each item's tags were changed here: a read that began before a change mustn't put back what the
     /// change replaced.
     private var tagChanges: [String: Int] = [:]
+    /// Reads under way: with none, no read can be from before a change, so the counts go.
+    private var readsUnderWay = 0
 
     /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile.
     private func keep(_ read: [String: [FinderTag]], unchangedSince before: [String: Int]) {
@@ -90,6 +92,8 @@ final class TagStore {
             cache[path] = list
             stale.remove(path)
         }
+        readsUnderWay -= 1
+        if readsUnderWay == 0 { tagChanges.removeAll() }
     }
     private(set) var requests: Task<Void, Never>?
 
@@ -106,6 +110,7 @@ final class TagStore {
             let paths = Array(requested)
             requested.removeAll()
             let before = tagChanges
+            readsUnderWay += 1
             let tags = await Self.readAll(paths, labels: NSWorkspace.shared.fileLabels)
             keep(tags, unchangedSince: before)
             requests = nil
@@ -124,6 +129,7 @@ final class TagStore {
         let paths = entries.map { $0.url.standardizedFileURL.path }
         let labels = NSWorkspace.shared.fileLabels
         let before = tagChanges
+        readsUnderWay += 1
         return Task {
             let tags = await Self.readAll(paths, labels: labels)
             keep(tags, unchangedSince: before)

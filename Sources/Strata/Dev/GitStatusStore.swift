@@ -59,16 +59,14 @@ final class GitStatusStore {
         return await find(path).value
     }
 
-
     /// The repository an item in the list belongs to: its parent folder's. (A nested repository's root is an
     /// untracked folder of the outer one, which is how it should look from outside.)
     func repository(forItem url: URL) -> GitRepository? {
         repository(containing: url.standardizedFileURL.deletingLastPathComponent())
     }
 
+    /// Each folder's newest lookup: only it may record what it found, however the lookups end.
     private var finding: [String: (id: UUID, task: Task<GitRepository?, Never>)] = [:]
-    /// The newest lookup of each folder: only it may record what it found, however the lookups end.
-    private var newestFind: [String: UUID] = [:]
 
     /// Looks for the repository holding `path` away from the main thread, once however often it's asked meanwhile;
     /// `fresh` looks again even then.
@@ -76,13 +74,10 @@ final class GitStatusStore {
     private func find(_ path: String, fresh: Bool = false) -> Task<GitRepository?, Never> {
         if !fresh, let finding = finding[path] { return finding.task }
         let enabled = isEnabled, id = UUID()
-        newestFind[path] = id
         let task = Task { [weak self] in
             let repository = enabled ? await Self.locate(path) : nil
-            guard let self else { return repository }
-            if finding[path]?.id == id { finding[path] = nil }
-            guard newestFind[path] == id else { return repository }
-            newestFind[path] = nil
+            guard let self, finding[path]?.id == id else { return repository }
+            finding[path] = nil
             let known = repositoriesByFolder[path] != nil
             record(repository, at: path)
             if let repository, !known {

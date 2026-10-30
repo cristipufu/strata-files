@@ -84,6 +84,21 @@ struct PlanSafetyTests {
         #expect(described(twice.steps) == ["rename a.txt c.txt"])
     }
 
+    /// A plan's Trash step, redone, takes only the very item it expects: one put in its place since stays.
+    @Test func aRedoneTrashStepLeavesAnItemReplacedSince() async throws {
+        let tree = try TestTree("a.txt", "b.txt")
+        defer { tree.removeFromTrash() }
+        let expected = try #require(FileIdentity.read(tree.url("a.txt").path))
+        try FileManager.default.removeItem(at: tree.url("a.txt"))
+        try Data("replacement".utf8).write(to: tree.url("a.txt"))
+        guard case .gone = try await PlanTransaction.trash(tree.url("a.txt"), expecting: expected) else {
+            Issue.record("A replacement was trashed")
+            return
+        }
+        #expect(tree.text("a.txt") == "replacement")
+        #expect(tree.snapshot() == ["a.txt", "b.txt"])
+    }
+
     @Test func runningAPlanDoesOnlyItsCheckedSteps() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt", "d.txt", "keep.txt", "Old/", "Old/x.txt")
         defer { tree.removeFromTrash() }

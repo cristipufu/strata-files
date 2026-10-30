@@ -126,19 +126,23 @@ final class PlanTransaction {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
-        if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
+        // Redone: the Trash steps above wait, so what undo put back is checked again right before it moves.
+        let movable = restored.map { restored in moves.filter { restored.holds($0.from) } } ?? moves
+        if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
             // Swaps and chains move together, through temporary names.
-            for pair in moves { applied.expect(pair.from, at: pair.to) }
-            let (moved, error) = await FileOps.moveAll(moves.map { (from: $0.from, to: $0.to) })
+            for pair in movable { applied.expect(pair.from, at: pair.to) }
+            let (moved, error) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
             let arrivedPaths = Set(moved.map(\.to.path))
-            for pair in moves where !arrivedPaths.contains(pair.to.path) { applied.set(nil, at: pair.to) }
+            for pair in movable where !arrivedPaths.contains(pair.to.path) { applied.set(nil, at: pair.to) }
             for pair in moved where applied.identity(at: pair.to) == nil { applied.record([pair.to]) }
             moved.forEach { applied.arrived($0.to) }
             done = moved.map { ($0.from, $0.to) }
             outcome.results += moved.map(\.to)
             if let error { outcome.failures.append(error.localizedDescription) }
         } else {
-            for pair in moves {
+            for pair in movable {
+                // Each one waits for the one before: checked again as it goes.
+                if let restored, !restored.holds(pair.from) { continue }
                 do {
                     applied.expect(pair.from, at: pair.to)
                     try await Self.move(pair)
@@ -182,7 +186,7 @@ final class PlanTransaction {
         createdFolders.removeEmpty()
     }
 
-    private nonisolated enum Trashed: Sendable {
+    nonisolated enum Trashed: Sendable {
         case alreadyInTrash
         /// Where it went, and what it is there, read as it landed.
         case trashed(URL, FileIdentity?)
@@ -191,7 +195,7 @@ final class PlanTransaction {
 
     /// One item to the Trash, away from the main thread, and only if it's still `expecting` when given. One already in
     /// a Trash isn't: trashing it again would lose where it came from.
-    @concurrent private static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
+    @concurrent static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
         if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
         if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
         var result: NSURL?
