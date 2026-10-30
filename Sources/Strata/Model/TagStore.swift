@@ -114,6 +114,12 @@ final class TagStore {
         stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })
     }
 
+    /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without
+    /// reading the disk again. Tagging itself checks `canTag(_: URL)` as it writes.
+    nonisolated static func canTag(_ entry: FileEntry) -> Bool {
+        !entry.isSymlink && !ReadOnlyCopies.contains(entry.url)
+    }
+
     /// Whether `url` can carry tags from Strata: not a link (its target's tags would change instead), and not inside an
     /// archive opened as a folder (a temporary copy).
     nonisolated static func canTag(_ url: URL) -> Bool {

@@ -3491,8 +3491,8 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "guard canPreview(entry),\n              entry.contentType?.conforms(to: .image) == true,",
-    "replace": "guard entry.contentType?.conforms(to: .image) == true,",
+    "find": "        guard canPreview(entry), entry.contentType?.conforms(to: .image) == true else { return nil }",
+    "replace": "        guard entry.contentType?.conforms(to: .image) == true else { return nil }",
     "rule": "Inspector provider ownership image dimensions read a placeholder or symlink",
     "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
   },

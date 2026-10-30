@@ -76,13 +76,14 @@ struct SecurityFollowupTests {
     }
 
     @Test(arguments: ["Changed", ""])
-    func commentEditsRefuseItemsReplacedWhileTyping(_ text: String) throws {
+    func commentEditsRefuseItemsReplacedWhileTyping(_ text: String) async throws {
         let tree = try TestTree("file", "sibling")
         let file = tree.url("file")
         try FileInfoEditing.setComment("Original", at: file.path)
         try FileInfoEditing.setComment("Sibling", at: tree.url("sibling").path)
-        let editor = InfoEditor()
+        let editor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         editor.show(try #require(FileEntry(url: file)))
+        await editor.factsTask?.value
         let field = try #require(editor.commentsContent.arrangedSubviews.first as? NSTextField)
         editor.controlTextDidBeginEditing(Notification(name: NSControl.textDidBeginEditingNotification, object: field))
         field.stringValue = text
@@ -100,12 +101,13 @@ struct SecurityFollowupTests {
         #expect(tree.snapshot() == ["file", "original", "sibling"])
     }
 
-    @Test func commentEditingStillSavesAndCancelsForItsChosenFile() throws {
+    @Test func commentEditingStillSavesAndCancelsForItsChosenFile() async throws {
         let tree = try TestTree("file", "other")
         try FileInfoEditing.setComment("Before", at: tree.url("file").path)
         try FileInfoEditing.setComment("Other", at: tree.url("other").path)
-        let editor = InfoEditor()
+        let editor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         editor.show(try #require(FileEntry(url: tree.url("file"))))
+        await editor.factsTask?.value
         let field = try #require(editor.commentsContent.arrangedSubviews.first as? NSTextField)
         let begin = Notification(name: NSControl.textDidBeginEditingNotification, object: field)
         let end = Notification(name: NSControl.textDidEndEditingNotification, object: field)
@@ -127,18 +129,19 @@ struct SecurityFollowupTests {
     }
 
     @Test(arguments: [false, true])
-    func focusedCommentsKeepTheirDisplayedItemBeforeTheFirstEditNotification(_ hide: Bool) throws {
+    func focusedCommentsKeepTheirDisplayedItemBeforeTheFirstEditNotification(_ hide: Bool) async throws {
         _ = NSApplication.shared
         let tree = try TestTree("file", "other")
         let file = tree.url("file")
         try FileInfoEditing.setComment("Original", at: file.path)
-        let editor = InfoEditor()
+        let editor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 150),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = editor.commentsContent
         defer { window.close(); window.contentView = nil }
         editor.show(try #require(FileEntry(url: file)))
+        await editor.factsTask?.value
         let field = try #require(editor.commentsContent.arrangedSubviews.first as? NSTextField)
         #expect(window.makeFirstResponder(field))
         let nativeEditor = try #require(field.currentEditor() as? NSTextView)

@@ -36,6 +36,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var dualPaneItem: NSToolbarItem?
     private var toolbarCustomization: BrowserToolbar?
     private var responderObservation: NSKeyValueObservation?
+    private var inspectorObservation: NSKeyValueObservation?
     /// Index changes re-run searches no more often than `indexRefreshInterval`.
     var indexRefreshScheduled = false
     var lastIndexRefresh = Date.distantPast
@@ -111,6 +112,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 guard let self, let view = window.firstResponder as? NSView,
                       let owner = self.panes.first(where: { view.isDescendant(of: $0.host.view) }), owner !== self.pane else { return }
                 self.activate(owner)
+            }
+        }
+        inspectorObservation = split.inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.split.inspectorItem.isCollapsed else { return }
+                self.refreshPanels()
             }
         }
         go(.folder(first.location), select: select, recordHistory: false)
@@ -824,6 +831,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }
         split.inspector.onOpenFolder = { [weak self] folder in self?.openFolder(folder) }
         split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }
+        // A hidden Inspector reads nothing about the selection; shown again, it catches up.
+        guard !split.inspectorItem.isCollapsed else { return }
         split.inspector.show(entries: browser.selectedEntries, folder: folder,
                              folderSize: { url in browser.folderSize(url, request: true) },
                              canMeasure: { entry in browser.canMeasure(entry) })

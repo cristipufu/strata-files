@@ -17,7 +17,7 @@ final class InspectorViewController: NSViewController {
     private let tagPicker = TagPicker(listWhileEditing: true, maxRows: 6)
     private var tagField: TagField { tagPicker.field }
     /// Comments, Open With, Locked and permissions, for one item.
-    private let infoEditor = InfoEditor()
+    let infoEditor: InfoEditor
     var infoCard: InspectorCard!
     var tagsCard: InspectorCard!
     var commentsCard: InspectorCard!
@@ -41,6 +41,10 @@ final class InspectorViewController: NSViewController {
     let summary = SummaryView()
     private var projectFolder: URL?
     private var projectTask: Task<Void, Never>?
+    /// The image size read for the item on show, by its path and modification date, and the read under way.
+    private var dimensions: (key: String, text: String?)?
+    private(set) var dimensionsTask: Task<Void, Never>?
+    private var shownRows: [(String, NSView)] = []
     /// A native preview for code, Markdown, JSON, CSV, SQLite and archives; Quick Look covers everything else.
     private(set) var richPreview: NSView?
     private let richBackdrop = NSBox()
@@ -60,12 +64,14 @@ final class InspectorViewController: NSViewController {
                                                 store: services.containerStore)
         self.projectView = ProjectInspectorView(files: services.files)
         self.previewScheduler = previewScheduler
+        infoEditor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         super.init(nibName: nil, bundle: nil)
     }
 
     isolated deinit {
         previewWork?.cancel()
         projectTask?.cancel()
+        dimensionsTask?.cancel()
         summary.url = nil
         infoEditor.hide()
     }
@@ -241,7 +247,8 @@ final class InspectorViewController: NSViewController {
         // Volumes, links and archives opened as folders don't take tags. A refresh while you type leaves your typing alone.
         // Typing in the tag field belongs to the items it was opened on: a new selection (or a hidden field) ends it,
         // applying what was typed to those items.
-        let taggable = !items.isEmpty && !items.contains { $0.isVolume || isReadOnlyCopy($0.url) || !TagStore.canTag($0.url) }
+        let taggable = !items.isEmpty
+            && !items.contains { $0.isVolume || isReadOnlyCopy($0.url) || !TagStore.canTag($0) }
         if tagField.currentEditor() != nil, !sameItems || !taggable {
             tagField.commit()
             view.window?.makeFirstResponder(nil)
@@ -355,8 +362,8 @@ final class InspectorViewController: NSViewController {
             rows.append((sizeTitle, InspectorRows.text(bytes < 1000 ? Format.bytes(bytes)
                 : String(localized: "\(Format.bytes(bytes)) (\(Int(bytes)) bytes)", comment: "plural"))))
         }
-        if let dimensions = imageDimensions(entry) {
-            rows.append((String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels"), InspectorRows.text(dimensions)))
+        if let dimensions = imageDimensions(entry, at: rows.count) {
+            rows.append((Self.dimensionsTitle, InspectorRows.text(dimensions)))
         }
         // A container's or a server's files have their modification dates; created and added would be the copy's.
         if !isCopy {
@@ -509,14 +516,36 @@ final class InspectorViewController: NSViewController {
     }
 
     private func setRows(_ rows: [(String, NSView)]) {
+        shownRows = rows
         infoRows.set(rows)
         infoCard.isHidden = rows.isEmpty
     }
 
-    private func imageDimensions(_ entry: FileEntry) -> String? {
-        guard canPreview(entry),
-              entry.contentType?.conforms(to: .image) == true,
-              let source = CGImageSourceCreateWithURL(entry.url as CFURL, nil),
+    private static let dimensionsTitle = String(localized: "Dimensions",
+                                                comment: "Inspector row: an image’s width × height in pixels")
+
+    /// An image's size once read; until then it's read away from the main thread and joins the rows at `index`.
+    private func imageDimensions(_ entry: FileEntry, at index: Int) -> String? {
+        dimensionsTask?.cancel()
+        dimensionsTask = nil
+        guard canPreview(entry), entry.contentType?.conforms(to: .image) == true else { return nil }
+        let key = "\(entry.url.path)|\(entry.modified?.timeIntervalSinceReferenceDate ?? 0)"
+        if let dimensions, dimensions.key == key { return dimensions.text }
+        let url = entry.url
+        dimensionsTask = Task { [weak self] in
+            let text = await Self.readDimensions(url)
+            guard !Task.isCancelled, let self, self.shownURLs == [url] else { return }
+            self.dimensions = (key, text)
+            guard let text, index <= self.shownRows.count else { return }
+            var rows = self.shownRows
+            rows.insert((Self.dimensionsTitle, InspectorRows.text(text)), at: index)
+            self.setRows(rows)
+        }
+        return nil
+    }
+
+    @concurrent private static func readDimensions(_ url: URL) async -> String? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = props[kCGImagePropertyPixelWidth] as? Int,
               let height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }

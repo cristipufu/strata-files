@@ -322,6 +322,7 @@ struct InspectorProviderTests {
         #expect(otherScheduled == 1)
         NotificationCenter.default.post(name: .containerFilesFetched, object: [photo])
         #expect(otherScheduled == 1)
+        await inspector.dimensionsTask?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == "19 × 11")
         #expect(scheduled.count == 1)
 
@@ -392,7 +393,7 @@ struct InspectorProviderTests {
         #expect(scheduled.isEmpty && inspector.preview.previewItem == nil && inspector.richPreview == nil)
     }
 
-    @Test func switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem() throws {
+    @Test func switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("first/keep.txt", "local.txt", "copy/remote.txt")
         let local = tree.url("local.txt")
@@ -417,6 +418,7 @@ struct InspectorProviderTests {
         let localEntry = try #require(FileEntry(url: local))
         inspector.show(entries: [localEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         #expect(!inspector.commentsCard.isHidden)
+        await inspector.infoEditor.factsTask?.value
         let commentField = try #require(descendants(inspector.commentsCard).compactMap { $0 as? NSTextField }.first { $0.isEditable })
         #expect(window.makeFirstResponder(commentField))
         let editor = try #require(commentField.currentEditor() as? NSTextView)
