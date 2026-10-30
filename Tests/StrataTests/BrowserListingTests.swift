@@ -183,4 +183,54 @@ struct BrowserListingTests {
         }
         #expect(tree.snapshot() == ["alpha.txt", "beta.txt", "gamma.txt"])
     }
+
+    /// Rows matched away from the main thread are the same as those matched at once, and are shown only for the very
+    /// rows they were worked out for: after a refresh they're refused, and the filter shown stays as it was.
+    @Test func matchesWorkedOutAwayShowOnlyForTheirRows() async throws {
+        let listing = BrowserListing()
+        let entries = ["alpha.txt", "beta.txt", "alphabet.txt", "gamma.txt"].map { entry($0) }
+        listing.replace(entries, preservingNodes: false, sort: { _ in })
+        let matches = try #require(await listing.matches(for: "alp"))
+        #expect(listing.show(matches))
+        let away = listing.rows.map(\.entry.name)
+        listing.setFilter("")
+        listing.setFilter("alp")
+        #expect(away == listing.rows.map(\.entry.name) && away.count == 2)
+        let stale = try #require(await listing.matches(for: "gam"))
+        listing.replace(entries.reversed(), preservingNodes: true, sort: { _ in })
+        #expect(!listing.show(stale))
+        #expect(listing.filter == "alp" && listing.rows.count == 2)
+    }
+
+    /// In a folder too big to match at once, typed letters are matched away from the main thread: each keystroke
+    /// builds on what was typed, not on what's shown yet; the rows show the newest text's matches; and going to
+    /// another folder drops a match still being worked out.
+    @Test func aBigFolderIsFilteredAsTypedAwayFromTheMainThread() async throws {
+        let tree = try TestTree("other/")
+        let count = BrowserViewController.filteredAwayAbove + 50
+        let entries = (0..<count).map { entry(String(format: "item %05d.txt", $0)) }
+            + [entry("zebra.txt"), entry("zebu.txt")]
+        let root = tree.root
+        let reader = DirectoryReader { url, _, _ in url.standardizedFileURL == root.standardizedFileURL ? entries : [] }
+        let browser = BrowserViewController(services: BrowserServices.configured(
+            transfers: .shared, visits: .shared, windows: .headless, remote: .shared, containers: .shared,
+            containerStore: .shared, clipboard: .shared, directories: reader))
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        #expect(browser.topLevelEntries.count == count + 2)
+        browser.outlineView.onType?("z")
+        browser.outlineView.onType?("e")
+        #expect(browser.typedFilter == "ze" && browser.filter.isEmpty)
+        await browser.filtering?.task.value
+        #expect(browser.filter == "ze")
+        #expect(browser.visibleRows.map(\.entry.name).sorted() == ["zebra.txt", "zebu.txt"])
+        browser.outlineView.onType?("b")
+        let pending = browser.filtering?.task
+        browser.load(tree.url("other"))
+        await pending?.value
+        await browser.directoryReads.task?.value
+        #expect(browser.filter.isEmpty && browser.typedFilter.isEmpty)
+        #expect(tree.snapshot() == ["other/"])
+    }
 }

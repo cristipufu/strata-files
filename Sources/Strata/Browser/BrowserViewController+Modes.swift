@@ -145,18 +145,18 @@ extension BrowserViewController: FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool {
         switch key {
         case .type(let text):
-            setFilter(filter + text)
+            setFilter(typedFilter + text)
         case .backspace:
-            guard !filter.isEmpty else { return false }
-            setFilter(String(filter.dropLast()))
+            guard !typedFilter.isEmpty else { return false }
+            setFilter(String(typedFilter.dropLast()))
         case .escape:
-            guard !filter.isEmpty else { return false }
+            guard !typedFilter.isEmpty else { return false }
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
             if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
-            if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
+            if typedFilter.isEmpty { toggleQuickLook(nil) } else { setFilter(typedFilter + " ") }
         case .tab:
             return onTab?() ?? false
         }

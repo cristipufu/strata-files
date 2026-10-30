@@ -96,6 +96,12 @@ final class BrowserViewController: NSViewController {
     /// Date and Kind widths from before showing results (they make room for "Where").
     private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     var filter: String { listing.filter }
+    /// A big folder's rows being matched against what was typed, away from the main thread, and that text.
+    private(set) var filtering: (text: String, task: Task<Void, Never>)?
+    /// What was typed to filter the rows by: they show it once it's matched, in a big folder a moment later.
+    var typedFilter: String { filtering?.text ?? filter }
+    /// Folders with more items are matched away from the main thread.
+    static let filteredAwayAbove = 2_000
     var availableCapacity: Int64? { loading.availableCapacity }
 
     let outlineView = FileOutlineView()
@@ -286,14 +292,14 @@ final class BrowserViewController: NSViewController {
         applyColumnVisibility(fitName: false)
         syncSortDescriptor()
 
-        ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
+        ov.onType = { [weak self] text in self?.setFilter((self?.typedFilter ?? "") + text) }
         ov.onBackspace = { [weak self] in
-            guard let self, !filter.isEmpty else { return false }
-            setFilter(String(filter.dropLast()))
+            guard let self, !typedFilter.isEmpty else { return false }
+            setFilter(String(typedFilter.dropLast()))
             return true
         }
         ov.onEscape = { [weak self] in
-            guard let self, !filter.isEmpty else { return false }
+            guard let self, !typedFilter.isEmpty else { return false }
             setFilter("")
             return true
         }
@@ -361,6 +367,7 @@ final class BrowserViewController: NSViewController {
         if isNewDirectory {
             cancelPendingActions()
             deferredApply = nil
+            cancelFiltering()
             listing.setFilter("")
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
@@ -690,6 +697,7 @@ final class BrowserViewController: NSViewController {
             outlineView.tableColumn(withIdentifier: .kind)?.width = 120
             outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
             fitNameColumn()
+            cancelFiltering()
             listing.setFilter("")
             filterPill.update(query: "", matches: 0)
         }
@@ -733,8 +741,29 @@ final class BrowserViewController: NSViewController {
     }
 
     func setFilter(_ text: String) {
+        cancelFiltering()
         guard text != filter else { return }
-        listing.setFilter(text)
+        guard !text.isEmpty, listing.nodes.count > Self.filteredAwayAbove else {
+            listing.setFilter(text)
+            return showFilter(text)
+        }
+        let listing = listing
+        let task = Task { [weak self] in
+            guard let matches = await listing.matches(for: text), !Task.isCancelled, let self else { return }
+            filtering = nil
+            // The rows changed meanwhile (a refresh): matched again against them.
+            guard listing.show(matches) else { return setFilter(text) }
+            showFilter(text)
+        }
+        filtering = (text, task)
+    }
+
+    func cancelFiltering() {
+        filtering?.task.cancel()
+        filtering = nil
+    }
+
+    private func showFilter(_ text: String) {
         outlineView.reloadData()
         if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
             outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)

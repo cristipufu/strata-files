@@ -174,6 +174,7 @@ extension BrowserViewController {
 
     func stopBackgroundWork() {
         cancelPendingActions()
+        cancelFiltering()
         resortWork?.cancel()
         resortWork = nil
         watchers = []
