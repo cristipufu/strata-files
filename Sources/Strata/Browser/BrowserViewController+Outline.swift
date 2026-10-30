@@ -165,7 +165,8 @@ extension BrowserViewController: NSTextFieldDelegate {
         field.isSelectable = false
         field.drawsBackground = false
         if let deferred = deferredApply, deferred.generation == generation {
-            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop)
+            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop,
+                  sortedBy: deferred.sortedBy)
         } else {
             deferredApply = nil
             let row = outlineView.row(forItem: node)

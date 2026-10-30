@@ -54,7 +54,7 @@ nonisolated struct DirectoryReader: Sendable {
 
     @discardableResult
     func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders,
-              invalidateCopy: Bool = false,
+              invalidateCopy: Bool = false, sortedBy: BrowserOrdering.Snapshot? = nil,
               receive: @escaping (Result<[FileEntry], Error>, Int) -> Void) -> Task<Void, Never> {
         invalidate()
         let generation = generation, reader = reader
@@ -65,7 +65,13 @@ nonisolated struct DirectoryReader: Sendable {
                     await reader.invalidate(folder)
                     try Task.checkCancellation()
                 }
-                result = .success(try await reader.load(folder, showHidden: showHidden, applications: applications))
+                let entries = try await reader.load(folder, showHidden: showHidden, applications: applications)
+                // Sorted here, away from the main thread: a folder of thousands of files took the list seconds.
+                if let sortedBy {
+                    result = .success(await BrowserOrdering.sorted(entries, by: sortedBy))
+                } else {
+                    result = .success(entries)
+                }
             }
             catch { result = .failure(error) }
             guard let self, generation == self.generation, !Task.isCancelled else { return }

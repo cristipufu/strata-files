@@ -6,6 +6,8 @@ import Foundation
     struct Delivery {
         let entries: [FileEntry]
         let fromTop: Bool
+        /// The order the entries were read in, if they were sorted as they were read.
+        let sortedBy: BrowserOrdering.Snapshot?
     }
 
     let reads: DirectoryReadSession
@@ -47,10 +49,12 @@ import Foundation
     }
 
     func reload(showHidden: Bool, applications: ApplicationsFolders, scrollToTop: Bool, invalidateCopy: Bool = false,
+                sortedBy: BrowserOrdering.Snapshot?,
                 receive: @escaping (Result<Delivery, Error>) -> Void, capacityChanged: @escaping () -> Void) {
         guard let directory else { return }
         cancelAuxiliaryReads()
-        reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy) { [weak self] result, generation in
+        reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy,
+                   sortedBy: sortedBy) { [weak self] result, generation in
             guard let self else { return }
             isLoadingFolder = false
             switch result {
@@ -58,7 +62,7 @@ import Foundation
                 error = nil
                 let fromTop = scrollToTop || opensAtTop
                 opensAtTop = false
-                receive(.success(Delivery(entries: entries, fromTop: fromTop)))
+                receive(.success(Delivery(entries: entries, fromTop: fromTop, sortedBy: sortedBy)))
             case .failure(let failure):
                 error = failure
                 isLoaded = true

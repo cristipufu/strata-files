@@ -151,6 +151,7 @@ final class BrowserViewController: NSViewController {
         let entries: [FileEntry]
         let preservingState: Bool
         let fromTop: Bool
+        let sortedBy: BrowserOrdering.Snapshot?
         let generation: Int
     }
     /// The folder read again while a name was being edited in place: shown once the edit ends.
@@ -405,14 +406,15 @@ final class BrowserViewController: NSViewController {
     private func reload(scrollToTop: Bool, invalidateCopy: Bool = false) {
         guard let url = directory else { return }
         loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
-                       invalidateCopy: invalidateCopy) { [weak self] result in
+                       invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let delivery):
                 TagStore.shared.load(delivery.entries, in: url)
                 CloudStore.shared.load(delivery.entries.map(\.url), in: url)
                 Privacy.markAccessible(url)
-                apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop)
+                apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
+                      sortedBy: delivery.sortedBy)
             case .failure:
                 showLoadError()
             }
@@ -423,17 +425,22 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
-    func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
+    /// `sortedBy`: the order `entries` were sorted in as they were read, if any; they're sorted here unless it's still
+    /// the order chosen.
+    func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false,
+               sortedBy: BrowserOrdering.Snapshot? = nil) {
         // Reloading the list would end a rename in progress, half typed.
         if isRenamingInPlace {
-            deferredApply = DeferredListing(entries: entries, preservingState: preservingState, fromTop: fromTop, generation: generation)
+            deferredApply = DeferredListing(entries: entries, preservingState: preservingState, fromTop: fromTop,
+                                            sortedBy: sortedBy, generation: generation)
             return
         }
         deferredApply = nil
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
         let selection = pendingSelection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
-        listing.replace(entries, preservingNodes: preservingState, sort: sort)
+        let presorted = sortedBy != nil && sortedBy == ordering.snapshot
+        listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
         loading.applied()
         outlineView.reloadData()
         if fromTop { scrollToTop() }
@@ -694,6 +701,15 @@ final class BrowserViewController: NSViewController {
     // MARK: - Sorting and filtering
 
     func sort(_ list: inout [FileNode]) { _ = ordering.sort(&list) }
+
+    /// Rows already in order: only the folders open in them are left to sort.
+    private func sortOpenFolders(_ list: inout [FileNode]) {
+        for node in list {
+            guard var children = node.children else { continue }
+            sort(&children)
+            node.children = children
+        }
+    }
 
     /// The same order feeds the native list and deeper columns.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool { ordering.ordered(a, b) }

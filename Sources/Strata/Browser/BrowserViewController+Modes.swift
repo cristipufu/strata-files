@@ -90,7 +90,8 @@ extension BrowserViewController {
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }
                 return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
-            })
+            },
+            sortedBy: ordering.snapshot)
         active.apply(content, metadata: metadata, animated: animated)
     }
 

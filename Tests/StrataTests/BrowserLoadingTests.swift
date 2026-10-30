@@ -24,7 +24,8 @@ struct BrowserLoadingTests {
     }
 
     private func reload(_ loading: BrowserLoading, capacityChanged: @escaping () -> Void = {}, receive: @escaping (Result<BrowserLoading.Delivery, Error>) -> Void = { _ in }) {
-        loading.reload(showHidden: false, applications: .standard, scrollToTop: false, receive: receive, capacityChanged: capacityChanged)
+        loading.reload(showHidden: false, applications: .standard, scrollToTop: false, sortedBy: nil, receive: receive,
+                       capacityChanged: capacityChanged)
     }
 
     @Test func refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation() async throws {

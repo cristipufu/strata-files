@@ -1155,8 +1155,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,\n                       invalidateCopy: invalidateCopy) { [weak self] result in\n            guard let self else { return }",
-    "replace": "loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,\n                       invalidateCopy: invalidateCopy) { [self] result in",
+    "find": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [weak self] result in\n            guard let self else { return }",
+    "replace": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [self] result in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   },
@@ -2452,8 +2452,8 @@
   },
   {
     "file": "Strata/Browser/BrowserOrdering.swift",
-    "find": "case .dimensions: result = compare(metadata.media(a)?.pixels ?? -1, metadata.media(b)?.pixels ?? -1)",
-    "replace": "case .dimensions: result = compare(metadata.media(a)?.width ?? -1, metadata.media(b)?.width ?? -1)",
+    "find": "case .dimensions: result = compare(media(a)?.pixels ?? -1, media(b)?.pixels ?? -1)",
+    "replace": "case .dimensions: result = compare(media(a)?.width ?? -1, media(b)?.width ?? -1)",
     "rule": "Browser ordering dimensions compare pixel count rather than width",
     "tests": "BrowserOrderingTests/everySortKeyUsesItsValueAndDirection"
   },

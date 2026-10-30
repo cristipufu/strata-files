@@ -98,6 +98,8 @@ struct FileCollectionMetadata {
     let ordered: @MainActor (FileEntry, FileEntry) -> Bool
     let canMeasure: @MainActor (FileEntry) -> Bool
     let size: @MainActor (FileEntry) -> Int64?
+    /// The same order, for folders sorted away from the main thread as they're read; nil when it can't be.
+    var sortedBy: BrowserOrdering.Snapshot?
 }
 
 /// What the browser needs from whichever presentation is active.

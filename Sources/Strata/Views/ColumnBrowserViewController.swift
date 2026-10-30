@@ -16,6 +16,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     var onLocationChange: ((URL) -> Void)?
     /// Order for columns this view loads itself (the first column keeps the browser's order).
     var sortComparator: @MainActor (FileEntry, FileEntry) -> Bool
+    /// The same order, for sorting those columns away from the main thread as they're read; nil when it can't be.
+    var sortedBy: BrowserOrdering.Snapshot?
     var showHidden: () -> Bool
     var defaultColumnWidth: CGFloat = 230
     var previewColumnWidth: CGFloat = 290
@@ -111,6 +113,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
         sortComparator = metadata.ordered
+        sortedBy = metadata.sortedBy
         setRoot(content.directory, entries: content.entries, matches: content.matches)
     }
 
@@ -290,7 +293,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
                 removeColumns(after: index)
                 let next = makePane(entry.url, depth: index + 1)
                 panes.append(next)
-                next.load(showHidden: showHidden(), order: sortComparator)
+                next.load(showHidden: showHidden(), order: sortComparator, sortedBy: sortedBy)
             }
         } else {
             removeColumns(after: index)
@@ -563,6 +566,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var generation: Int { directoryReads.generation }
     private var suppressSelection = false
     private var order: (@MainActor (FileEntry, FileEntry) -> Bool)?
+    private var sortedBy: BrowserOrdering.Snapshot?
     private struct DeferredEntries {
         let entries: [FileEntry]
         let matches: [String: [Int]]
@@ -666,8 +670,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     // MARK: Loading
 
-    func load(showHidden: Bool, order: @escaping @MainActor (FileEntry, FileEntry) -> Bool) {
+    func load(showHidden: Bool, order: @escaping @MainActor (FileEntry, FileEntry) -> Bool,
+              sortedBy: BrowserOrdering.Snapshot? = nil) {
         self.order = order
+        self.sortedBy = sortedBy
         self.showHidden = showHidden
         watchers = (controller?.applicationFolders ?? .standard).directories(for: FileEntry.openedFolder(folder)).compactMap { folder in
             DirectoryWatcher(url: folder) { [weak self] in self?.reload() }
@@ -688,7 +694,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 }
             }
         }
-        directoryReads.load(folder, showHidden: showHidden, applications: applications) { [weak self] result, _ in
+        let sortedBy = sortedBy
+        directoryReads.load(folder, showHidden: showHidden, applications: applications,
+                            sortedBy: sortedBy) { [weak self] result, _ in
             guard let self else { return }
             self.spinner.stopAnimation(nil)
             switch result {
@@ -697,7 +705,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 TagStore.shared.load(entries, in: self.folder)
                 CloudStore.shared.load(entries.map(\.url), in: self.folder)
                 self.message.isHidden = true
-                self.setEntries(self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
+                let presorted = sortedBy != nil && sortedBy == self.controller?.sortedBy
+                self.setEntries(presorted ? entries : self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
             case .failure(let error):
                 self.controller?.paneFailed(self)
                 // An unreadable folder says so instead of looking empty.
