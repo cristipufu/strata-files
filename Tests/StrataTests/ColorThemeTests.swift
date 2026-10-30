@@ -99,7 +99,7 @@ struct ColorThemeTests {
         #expect(browser.outlineView(browser.outlineView, rowViewForItem: FileNode(entry: entry)) is ThemeRowView)
 
         let scroll = NSScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences, copies: .live)
+        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("a/b/c/note.txt")])
@@ -249,7 +249,7 @@ struct ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: []) }
         let cell = NameCellView()
         let image = NSImage(size: NSSize(width: 18, height: 18))
-        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false, typography: .standard)
+        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false, thumbnails: .shared, typography: .standard)
         let label = try #require(cell.textField)
         label.isEditable = true
         label.stringValue = "still typing.txt"

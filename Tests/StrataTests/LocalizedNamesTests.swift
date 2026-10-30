@@ -71,7 +71,7 @@ struct LocalizedNamesTests {
         #expect(cell?.textField?.stringValue == "Zulu")
         let item = GridItem()
         item.configure(a, matches: [], metrics: GridMetrics(iconSize: 64, typography: .standard), showsInfo: false, dimmed: false, scale: 2,
-                       preferences: browser.preferences)
+                       preferences: browser.preferences, thumbnails: .shared, itemInfo: .shared)
         #expect(item.itemView.accessibilityLabel() == "Zulu")
         #expect(TreemapItem(entry: a, bytes: 10).name == "Zulu")
         browser.setFilter("Zulu")

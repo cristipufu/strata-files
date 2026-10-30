@@ -24,12 +24,6 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/Browser/Cells.swift",
-  "default": "FileThumbnails.shared",
-  "count": 2,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Browser/DirectoryReadSession.swift",
   "default": "DirectoryReader.live",
   "count": 1,
@@ -186,36 +180,6 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
-  "default": "FileThumbnails.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
-  "default": "ItemInfoLoader.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/ColumnBrowserViews.swift",
-  "default": "FileThumbnails.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/ColumnPreviewPane.swift",
-  "default": "FileThumbnails.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/ColumnPreviewPane.swift",
-  "default": "ItemInfoLoader.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Views/FileThumbnails.swift",
   "default": "ContainerStore.shared",
   "count": 3,
@@ -228,38 +192,8 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/Views/GalleryViewController.swift",
-  "default": "FileThumbnails.shared",
-  "count": 3,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/GridItem.swift",
-  "default": "FileThumbnails.shared",
-  "count": 3,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/GridItem.swift",
-  "default": "ItemInfoLoader.shared",
-  "count": 2,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Views/GridViewController.swift",
   "default": "Clipboard.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/GridViewController.swift",
-  "default": "FileThumbnails.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/GridViewController.swift",
-  "default": "ItemInfoLoader.shared",
   "count": 1,
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },

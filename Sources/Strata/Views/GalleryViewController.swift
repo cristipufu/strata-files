@@ -12,7 +12,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     /// The folder shown; background drops go into it.
     var directory: URL?
 
-    init(thumbnails: FileThumbnails = .shared, copies: CopyProviders, clipboard: Clipboard = .shared) {
+    init(thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard = .shared) {
         self.thumbnails = thumbnails
         self.copies = copies
         self.clipboard = clipboard
@@ -753,11 +753,11 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
 
     private(set) var entry: FileEntry?
     private let thumbnail = NSImageView()
-    private var thumbnails: FileThumbnails = .shared
+    private var thumbnails: FileThumbnails?
     private var ticket: FileThumbnails.Ticket?
     var onThumbnail: ((FileEntry, NSImage) -> Void)?
 
-    isolated deinit { thumbnails.cancel(ticket) }
+    isolated deinit { thumbnails?.cancel(ticket) }
 
     var dimmed = false {
         didSet { thumbnail.alphaValue = dimmed ? 0.45 : 1 }
@@ -798,8 +798,8 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
         imageView = thumbnail
     }
 
-    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat, thumbnails: FileThumbnails = .shared) {
-        self.thumbnails.cancel(ticket)
+    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat, thumbnails: FileThumbnails) {
+        self.thumbnails?.cancel(ticket)
         self.thumbnails = thumbnails
         ticket = nil
         self.entry = entry
@@ -819,7 +819,7 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        thumbnails.cancel(ticket)
+        thumbnails?.cancel(ticket)
         ticket = nil
         entry = nil
         onThumbnail = nil

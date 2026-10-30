@@ -162,7 +162,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(preferences: env.preferences, copies: .live)
+        let columns = ColumnBrowserViewController(preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live)
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false

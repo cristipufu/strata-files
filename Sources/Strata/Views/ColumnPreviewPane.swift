@@ -23,7 +23,7 @@ final class ColumnPreviewPane: NSView {
         itemInfo.cancel(infoTicket)
     }
 
-    init(frame: NSRect = .zero, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
+    init(frame: NSRect = .zero, thumbnails: FileThumbnails, itemInfo: ItemInfoLoader) {
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
         super.init(frame: frame)

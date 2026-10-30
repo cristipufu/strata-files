@@ -143,7 +143,8 @@ struct TagColumnTests {
         let tree = try TestTree("folder/a", "folder/z")
         let state = try TestTree()
         let environment = try PreviewEnvironment(state)
-        let columns = ColumnBrowserViewController(preferences: environment.preferences, copies: environment.services.copies,
+        let columns = ColumnBrowserViewController(preferences: environment.preferences, thumbnails: environment.services.thumbnails,
+                                                  itemInfo: environment.services.itemInfo, copies: environment.services.copies,
                                                    clipboard: environment.services.clipboard)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))

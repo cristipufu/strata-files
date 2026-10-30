@@ -153,7 +153,7 @@ final class ColumnCellView: NSTableCellView, ColorThemeUpdating {
 
     func configure(_ entry: FileEntry, matches: [Int], dimmed: Bool, git: GitBadge? = nil, tags: [FinderTag] = [],
                    cloud: CloudStatus? = nil, scale: CGFloat = 2, preferences: Prefs, typography: FileViewTypography,
-                   thumbnails: FileThumbnails = .shared) {
+                   thumbnails: FileThumbnails) {
         isFolder = entry.isFolder
         nameCell.configure(name: entry.displayName, icon: thumbnails.icon(for: entry), matches: matches, dimmed: dimmed, git: git,
                            tags: tags, cloud: cloud, thumbnail: preferences.showIconPreviews ? entry : nil,

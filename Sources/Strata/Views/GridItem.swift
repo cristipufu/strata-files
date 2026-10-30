@@ -366,8 +366,8 @@ final class GridItem: NSCollectionViewItem {
 
     let itemView = GridItemView()
     private(set) var entry: FileEntry?
-    private var thumbnails: FileThumbnails = .shared
-    private var itemInfo: ItemInfoLoader = .shared
+    private var thumbnails: FileThumbnails?
+    private var itemInfo: ItemInfoLoader?
     private var thumbnailTicket: FileThumbnails.Ticket?
     private var infoTicket: ItemInfoLoader.Ticket?
     /// Set by the grid; returns whether selections should be drawn emphasized.
@@ -375,8 +375,8 @@ final class GridItem: NSCollectionViewItem {
     var dimmed = false
 
     isolated deinit {
-        thumbnails.cancel(thumbnailTicket)
-        itemInfo.cancel(infoTicket)
+        thumbnails?.cancel(thumbnailTicket)
+        itemInfo?.cancel(infoTicket)
     }
 
     override func loadView() {
@@ -394,8 +394,8 @@ final class GridItem: NSCollectionViewItem {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        thumbnails.cancel(thumbnailTicket)
-        itemInfo.cancel(infoTicket)
+        thumbnails?.cancel(thumbnailTicket)
+        itemInfo?.cancel(infoTicket)
         thumbnailTicket = nil
         infoTicket = nil
         entry = nil
@@ -418,8 +418,8 @@ final class GridItem: NSCollectionViewItem {
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
                    git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil,
-                   preferences: Prefs, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared) {
-        self.itemInfo.cancel(infoTicket)
+                   preferences: Prefs, thumbnails: FileThumbnails, itemInfo: ItemInfoLoader) {
+        self.itemInfo?.cancel(infoTicket)
         self.itemInfo = itemInfo
         infoTicket = nil
         itemView.gitBadge.badge = git
@@ -448,8 +448,8 @@ final class GridItem: NSCollectionViewItem {
 
     /// Shows the icon (or the best cached thumbnail) now and asks Quick Look for a sharper one if needed.
     func loadImage(_ entry: FileEntry, size: CGFloat, scale: CGFloat, keepCurrent: Bool, preferences: Prefs,
-                   thumbnails: FileThumbnails = .shared) {
-        self.thumbnails.cancel(thumbnailTicket)
+                   thumbnails: FileThumbnails) {
+        self.thumbnails?.cancel(thumbnailTicket)
         self.thumbnails = thumbnails
         thumbnailTicket = nil
         let canThumbnail = preferences.showIconPreviews && thumbnails.canThumbnail(entry)

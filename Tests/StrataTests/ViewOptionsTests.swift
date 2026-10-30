@@ -31,18 +31,18 @@ struct ViewOptionsTests {
         let item = GridItem()
         let metrics = GridMetrics(iconSize: 64, typography: .standard)
         item.configure(entry, matches: [], metrics: metrics, showsInfo: true, dimmed: false, scale: 2,
-                       preferences: preferences)
+                       preferences: preferences, thumbnails: .shared, itemInfo: .shared)
         // Keep a second reader alive so the count arrives after this item's option changes.
         var loaded = false
         let ticket = ItemInfoLoader.shared.request(entry, showHidden: Prefs.shared.showHidden) { _ in loaded = true }
         defer { ItemInfoLoader.shared.cancel(ticket) }
         item.configure(entry, matches: [], metrics: metrics, showsInfo: false, dimmed: false, scale: 2,
-                       preferences: preferences)
+                       preferences: preferences, thumbnails: .shared, itemInfo: .shared)
         for _ in 0..<100 where !loaded { try await Task.sleep(for: .milliseconds(20)) }
         #expect(loaded)
         #expect(item.itemView.accessibilityLabel() == "folder")
         item.configure(entry, matches: [], metrics: metrics, showsInfo: true, dimmed: false, scale: 2,
-                       folderSizeText: "42 KB", preferences: preferences)
+                       folderSizeText: "42 KB", preferences: preferences, thumbnails: .shared, itemInfo: .shared)
         #expect(item.itemView.accessibilityLabel() == "folder, 42 KB")
         #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/b.txt"])
     }

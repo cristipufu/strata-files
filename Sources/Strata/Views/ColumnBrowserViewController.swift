@@ -40,7 +40,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private var selectWhenLoaded: (pane: ColumnPane, urls: [URL], scroll: Bool)?
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader = .live, preferences: Prefs,
-         thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared, copies: CopyProviders,
+         thumbnails: FileThumbnails, itemInfo: ItemInfoLoader, copies: CopyProviders,
          clipboard: Clipboard = .shared) {
         self.directoryReader = directoryReader
         self.preferences = preferences
