@@ -130,7 +130,7 @@ extension BrowserViewController {
         let entry = folder.deletingLastPathComponent()
         let window = view.window
         // Nothing else is making this copy (it would be in `waiters`): what's there is left from an earlier attempt.
-        if fm.fileExists(atPath: entry.path) { ArchiveCache.remove(entry) }
+        if fm.fileExists(atPath: entry.path) { ArchiveCache.setAside(entry) }
         do {
             try fm.createDirectory(at: entry, withIntermediateDirectories: true)
         } catch {
@@ -152,7 +152,7 @@ extension BrowserViewController {
             if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
             guard job.state == .finished, (try? ArchiveCache.finish(folder, from: archive)) != nil else {
                 // Only this job's own copy goes: nothing else was making it.
-                ArchiveCache.remove(entry)
+                ArchiveCache.setAside(entry)
                 if job.state == .failed, let message = job.errorMessage {
                     let alert = NSAlert()
                     alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")

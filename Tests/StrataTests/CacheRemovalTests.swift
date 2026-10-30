@@ -47,6 +47,23 @@ struct CacheRemovalTests {
         #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
     }
 
+    /// A copy set aside leaves its place at once and is removed away from the main thread; only a whole copy of the
+    /// cache is ever set aside.
+    @Test func aCopySetAsideLeavesAtOnceAndGoesAfter() async throws {
+        let tree = try TestTree("Trip.zip", "outside/", "outside/keep.txt")
+        let entry = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))
+        for url in [ArchiveCache.root, entry.appending(path: "contents"), tree.url("outside"), tree.root] {
+            #expect(ArchiveCache.setAside(url) == nil, "\(url.path)")
+            #expect(fm.fileExists(atPath: url.path), "\(url.path)")
+        }
+        let aside = try #require(ArchiveCache.setAside(entry))
+        #expect(!fm.fileExists(atPath: entry.path))
+        for _ in 0..<500 where fm.fileExists(atPath: aside.path) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(!fm.fileExists(atPath: aside.path))
+        #expect(ArchiveCache.setAside(entry) == nil)
+        #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
+    }
+
     @Test func aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive() throws {
         let tree = try TestTree("Trip.zip", "Trip 2.zip", "outside/", "outside/keep.txt")
         let older = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))

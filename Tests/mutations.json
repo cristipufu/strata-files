@@ -7002,5 +7002,12 @@
     "find": "        return .trashed(landed, FileIdentity.read(landed.path))",
     "replace": "        return .trashed(landed, nil)",
     "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "rule": "Only a whole copy of the archive cache is set aside",
+    "find": "        guard path.hasPrefix(rootPath + \"/\"), !path.dropFirst(rootPath.count + 1).contains(\"/\") else { return nil }",
+    "replace": "        guard path.hasPrefix(rootPath + \"/\") || true else { return nil }",
+    "tests": "CacheRemovalTests/aCopySetAsideLeavesAtOnceAndGoesAfter"
   }
 ]

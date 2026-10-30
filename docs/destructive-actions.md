@@ -244,7 +244,7 @@ belong to.
 | `Dev/ProjectActions :: openCommandFile` (its own script file), `removeStaleCommandFiles` | `CacheRemovalTests/staleScriptFilesGoOnlyFromTheirFolder`; `ContainerTests/theTerminalScriptQuotesEverything`, `terminalFileNamesArePlainASCII` |
 | `Dock/DockSearch :: restartDock` (`killall Dock`: the Dock relaunches, no files) | `DockSearchTests/*` for what's changed in its list |
 | `Index/IndexStore :: remove`, `unlink` (an in-memory tree, not files) | `PathQueryTests/*` |
-| `Model/ArchiveCache :: finish`, `touch` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies` |
+| `Model/ArchiveCache :: finish`, `touch`, `setAside` | `CacheRemovalTests/aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive`, `pruningTakesOnlyStaleCopies`, `aCopySetAsideLeavesAtOnceAndGoesAfter` |
 | `Model/CloudStatus :: removeDownload` | `DeleteScopeTests/removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadFreesOnlyWhatsAlsoInTheCloud`; `CloudFoldersTests/evictionRechecksUploadStateAndTheWholeChosenBatch` |
 | `Model/CreatedFolders :: makeMissing` | `CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested`, `redoUpdatesOwnershipForLiveAndSavedHistory`, `crossDiskUndoFinishesBeforeRemovingItsCreatedFolders` |
 | `Model/FileInfoEditing :: setComment`, `setLocked`, `setAccess` | `MetadataEditTests/aCommentChangesOnlyTheComment`, `lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem` |

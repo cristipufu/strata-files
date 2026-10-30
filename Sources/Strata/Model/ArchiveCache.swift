@@ -43,7 +43,7 @@ nonisolated enum ArchiveCache {
         let source = archive.resolvingSymlinksInPath().standardizedFileURL
         try Data(source.path.utf8).write(to: sourceFile(folder))
         for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {
-            remove(other.entry)
+            setAside(other.entry)
         }
     }
 
@@ -108,6 +108,19 @@ nonisolated enum ArchiveCache {
         let path = entry.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return }
         Archiver.removeTree(entry)
+    }
+
+    /// `remove` for the main thread: the copy's `<hash>` folder leaves its place at once (one rename, however big the
+    /// copy) and is removed away from the main thread. One left by a quit goes at the next prune, as an unfinished
+    /// copy. Returns where it was set aside; nil when it wasn't a whole copy of the cache, or wasn't there.
+    @discardableResult
+    static func setAside(_ entry: URL) -> URL? {
+        let path = entry.standardizedFileURL.path
+        guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return nil }
+        let aside = root.appending(path: "removing-" + UUID().uuidString, directoryHint: .isDirectory)
+        guard renamex_np(path, aside.path, UInt32(RENAME_EXCL)) == 0 else { return nil }
+        DispatchQueue.global(qos: .utility).async { remove(aside) }
+        return aside
     }
 
     // MARK: - Private
