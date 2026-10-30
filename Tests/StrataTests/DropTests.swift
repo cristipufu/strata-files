@@ -83,12 +83,13 @@ struct DropTests {
         #expect(!facts.isInside(dragged, link))
         #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .copy)
         #expect(!facts.opens(link))
-        await facts.reading?.value
+        await facts.settled()
         let paths = ["/Users/someone", "/Volumes/Share", "/Volumes/Share/a", "/Volumes/Share/link"]
         #expect(asked.withLock { $0 } == [paths])
         #expect(facts.isInside(dragged, link))
         #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .move)
         #expect(facts.opens(link))
-        #expect(facts.reading == nil && asked.withLock { $0.count } == 1)
+        await facts.settled()
+        #expect(asked.withLock { $0.count } == 1)
     }
 }

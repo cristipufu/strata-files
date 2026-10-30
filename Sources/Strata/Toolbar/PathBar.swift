@@ -599,7 +599,8 @@ final class ChevronButton: NSButton {
             let item = NSMenuItem(title: url.lastPathComponent, action: #selector(pick(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = url
-            let icon = (IconCache.shared.icon(forPath: url.path).copy() as? NSImage) ?? IconCache.shared.icon(forPath: url.path)
+            let folderIcon = IconCache.shared.icon(forPath: url.path, folder: true)
+            let icon = (folderIcon.copy() as? NSImage) ?? folderIcon
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon
             menu.addItem(item)

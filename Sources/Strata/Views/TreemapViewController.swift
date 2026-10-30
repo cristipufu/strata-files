@@ -443,7 +443,9 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
 
     /// Folder icons per path (they can be custom), document icons per type; no file reads beyond Finder's icon lookup.
     private func icon(for item: TreemapItem) -> NSImage {
-        guard !item.isFolder, let type = item.contentType else { return IconCache.shared.icon(forPath: item.url.path) }
+        guard !item.isFolder, let type = item.contentType else {
+            return IconCache.shared.icon(forPath: item.url.path, folder: item.isFolder)
+        }
         return IconCache.shared.icon(forType: type)
     }
 

@@ -441,7 +441,7 @@ enum DockSearchItems {
         }
         for place in Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes
         where seen.insert(place.url.path).inserted {
-            items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
+            items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path, folder: true),
                                      kind: .folder, boost: 4, url: place.url) { show(place.url) })
         }
         return items
@@ -461,7 +461,7 @@ enum DockSearchItems {
 
     private static func apps() -> [PaletteItem] {
         installedApps.map { url in
-            PaletteItem(title: FileManager.default.displayName(atPath: url.path), subtitle: "", icon: IconCache.shared.icon(forPath: url.path),
+            PaletteItem(title: FileManager.default.displayName(atPath: url.path), subtitle: "", icon: IconCache.shared.icon(forPath: url.path, folder: true),
                         kind: .app, boost: 6, url: url) {
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             }

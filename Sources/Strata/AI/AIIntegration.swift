@@ -41,7 +41,7 @@ enum StrataAI {
             }
             let score = hit.score.isFinite ? Int((min(max(hit.score, 0), 100) * 100).rounded()) : 0
             return PaletteItem(title: hit.title ?? hit.url.lastPathComponent, subtitle: subtitle,
-                               icon: IconCache.shared.icon(forPath: hit.url.path), kind: .match,
+                               icon: IconCache.shared.icon(forPath: hit.url.path, folder: false), kind: .match,
                                fixedScore: score) { open(hit.url) }
         }
     }

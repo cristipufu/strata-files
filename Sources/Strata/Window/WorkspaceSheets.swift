@@ -116,7 +116,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
     private func row(for controller: BrowserWindowController) -> NSView {
         let panes = zip(controller.snapshot, controller.snapshotModes).map { path, mode -> NSView in
             let url = URL(fileURLWithPath: path)
-            let icon = NSImageView(image: IconCache.shared.icon(forPath: path))
+            let icon = NSImageView(image: IconCache.shared.icon(forPath: path, folder: true))
             icon.imageScaling = .scaleProportionallyUpOrDown
             icon.widthAnchor.constraint(equalToConstant: 16).isActive = true
             icon.heightAnchor.constraint(equalToConstant: 16).isActive = true

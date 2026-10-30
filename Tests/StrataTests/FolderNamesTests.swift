@@ -5,15 +5,20 @@ import os
 
 struct FolderNamesTests {
     /// The path bar, the title and a pane's header name a folder by its own name until Finder's is read away from the
-    /// main thread; only names other than the folders' own are announced, and folders asked about meanwhile are read
-    /// next.
+    /// main thread; only names other than the folders' own are announced; a folder being read isn't read again, and a
+    /// read that hangs (a server that stopped answering) holds up no other.
     @Test func foldersGoByTheirOwnNamesUntilFindersAreRead() async throws {
-        let gate = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
+        let hold = DispatchSemaphore(value: 0), holding = CancelFlag()
         let asked = OSAllocatedUnfairLock(initialState: [[String]]())
+        let gone = URL(fileURLWithPath: "/Volumes/Gone/x"), docs = URL(fileURLWithPath: "/Volumes/Share/Docs")
+        let inside = docs.appending(path: "a")
         let names = FolderNames { paths in
             asked.withLock { $0.append(paths.sorted()) }
-            await withCheckedContinuation { continuation in gate.withLock { $0 = continuation } }
-            return ["/Volumes/Share/Docs": "Documents", "/Volumes/Share/Docs/a": "a"]
+            if paths.contains(gone.path) {
+                holding.set()
+                hold.wait()
+            }
+            return [gone.path: "x", docs.path: "Documents", inside.path: "a"].filter { paths.contains($0.key) }
         }
         let announced = OSAllocatedUnfairLock(initialState: [Set<String>]())
         let observer = NotificationCenter.default.addObserver(forName: .folderNamesRead, object: names, queue: nil) {
@@ -22,17 +27,16 @@ struct FolderNamesTests {
             announced.withLock { $0.append(paths) }
         }
         defer { NotificationCenter.default.removeObserver(observer) }
-        #expect(names.name(URL(fileURLWithPath: "/Volumes/Share/Docs")) == "Docs")
-        #expect(names.name(URL(fileURLWithPath: "/Volumes/Share/Docs/a")) == "a")
-        while gate.withLock({ $0 == nil }) { await Task.yield() }
-        #expect(names.name(URL(fileURLWithPath: "/Volumes/Share/Later")) == "Later")
-        gate.withLock { $0?.resume(); $0 = nil }
-        while gate.withLock({ $0 == nil }) { await Task.yield() }
-        #expect(names.name(URL(fileURLWithPath: "/Volumes/Share/Docs")) == "Documents")
-        gate.withLock { $0?.resume(); $0 = nil }
-        await names.task?.value
-        #expect(asked.withLock { $0 } == [["/Volumes/Share/Docs", "/Volumes/Share/Docs/a"], ["/Volumes/Share/Later"]])
-        #expect(announced.withLock { $0 } == [["/Volumes/Share/Docs"]])
+        #expect(names.name(gone) == "x")
+        for _ in 0..<1000 where !holding.isSet { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(names.name(gone) == "x")
+        #expect(names.name(docs) == "Docs" && names.name(inside) == "a")
+        for _ in 0..<1000 where names.name(docs) != "Documents" { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(names.name(docs) == "Documents")
+        #expect(announced.withLock { $0 } == [[docs.path]])
+        hold.signal()
+        await names.settled()
+        #expect(asked.withLock { $0 } == [[gone.path], [docs.path, inside.path]])
     }
 
     /// A pane's folder, read for the Inspector away from the main thread, is the one on show: going elsewhere drops

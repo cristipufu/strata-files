@@ -361,7 +361,7 @@ private final class SuggestionCell: NSTableCellView {
 
     func configure(_ suggestion: PathSuggestion) {
         self.suggestion = suggestion
-        icon.image = IconCache.shared.icon(forPath: suggestion.url.path)
+        icon.image = IconCache.shared.icon(forPath: suggestion.url.path, folder: true)
         location.stringValue = Format.tildePath(suggestion.url.deletingLastPathComponent())
         setAccessibilityLabel(Format.tildePath(suggestion.url))
         render()

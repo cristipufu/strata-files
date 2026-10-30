@@ -7051,5 +7051,19 @@
     "find": "        try chosen.withDescriptor { fd, info in\n            let flags = locked",
     "replace": "        try ChosenFile(chosen.url).withDescriptor { fd, info in\n            let flags = locked",
     "tests": "MetadataEditTests/lockingChangesOnlyTheItemShown"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "rule": "Redo of an undone copy finds none of its copies in the Trash",
+    "find": "                    for (move, identity) in zip(gone, identities) { inTrash.set(identity, at: move.to) }\n",
+    "replace": "",
+    "tests": "TransferTests/undoAndRedoOfACopyAndAMoveKeepTheirOrder"
+  },
+  {
+    "file": "Strata/Transfers/TransferQueue.swift",
+    "rule": "Undo moves back an item no longer the one the operation left",
+    "find": "            if let owns, !owns(move.from) { continue }\n",
+    "replace": "",
+    "tests": "TransferTests/undoMovesBackOnlyItemsStillTheOperations"
   }
 ]

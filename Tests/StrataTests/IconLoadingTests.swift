@@ -18,11 +18,11 @@ struct IconLoadingTests {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         let plain = tree.url("plain").path, custom = tree.url("custom").path
-        #expect(icons.icon(forPath: plain) === folder)
-        #expect(icons.icon(forPath: custom) === folder)
-        while let loading = icons.loading { await loading.value }
-        #expect(icons.icon(forPath: plain) === folder)
-        #expect(icons.icon(forPath: custom) !== folder)
+        #expect(icons.icon(forPath: plain, folder: true) === folder)
+        #expect(icons.icon(forPath: custom, folder: true) === folder)
+        await icons.loaded()
+        #expect(icons.icon(forPath: plain, folder: true) === folder)
+        #expect(icons.icon(forPath: custom, folder: true) !== folder)
         #expect(announced.withLock { $0.contains(custom) && !$0.contains(plain) })
         #expect(tree.snapshot() == ["custom/", "custom/Icon\r", "plain/"])
     }

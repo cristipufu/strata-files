@@ -23,22 +23,24 @@ final class DragFacts: DropDisk {
     }
 
     private let sequence: Int
-    private let read: @Sendable ([String]) async -> [String: Fact]
     private var facts: [String: Fact] = [:]
-    private var requested: Set<String> = []
-    private(set) var reading: Task<Void, Never>?
+    private var reads: BatchedReads<Fact>!
 
-    init(sequence: Int, read: @escaping @Sendable ([String]) async -> [String: Fact]) {
+    init(sequence: Int, read: @escaping @Sendable ([String]) -> [String: Fact]) {
         self.sequence = sequence
-        self.read = read
+        reads = BatchedReads(read: read) { [weak self] found in self?.facts.merge(found) { _, new in new } }
     }
 
     /// What's known of `path`; nil until it's been read (it's asked for).
     func fact(_ path: String) -> Fact? {
         if let fact = facts[path] { return fact }
-        requested.insert(path)
-        if reading == nil { readRequested() }
+        reads.request(path)
         return nil
+    }
+
+    /// Waits for the facts asked for so far.
+    func settled() async {
+        await reads.settled()
     }
 
     func isInside(_ urls: [URL], _ target: URL) -> Bool {
@@ -71,22 +73,7 @@ final class DragFacts: DropDisk {
         return parts.count > 1 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
     }
 
-    private func readRequested() {
-        let read = read
-        reading = Task { [weak self] in
-            // The other checks of this drag update ask too, and are read with this one.
-            await Task.yield()
-            guard let self else { return }
-            let paths = Array(requested)
-            requested.removeAll()
-            let found = await read(paths)
-            facts.merge(found) { _, new in new }
-            reading = nil
-            if !requested.isEmpty { readRequested() }
-        }
-    }
-
-    @concurrent static func read(_ paths: [String]) async -> [String: Fact] {
+    nonisolated static func read(_ paths: [String]) -> [String: Fact] {
         var facts: [String: Fact] = [:]
         for path in paths {
             let url = URL(fileURLWithPath: path)

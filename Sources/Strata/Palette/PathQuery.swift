@@ -23,15 +23,10 @@ nonisolated final class PathQuery {
         self.stop = stop
     }
 
-    /// Runs `work` (file system reads) on a thread of its own, never the main thread or the threads Swift and Dispatch
-    /// share: a read stuck on a server that stopped answering holds only that thread, and no lookup after it waits.
+    /// Runs `work` (file system reads) on a thread of its own (`OwnThread`): a read stuck on a server that stopped
+    /// answering holds only that thread, and no lookup after it waits.
     static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            let thread = Thread { continuation.resume(returning: work()) }
-            thread.name = "dev.strata.path-query"
-            thread.qualityOfService = .userInitiated
-            thread.start()
-        }
+        await OwnThread.run(work)
     }
 
     /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own. Replaced (the task's

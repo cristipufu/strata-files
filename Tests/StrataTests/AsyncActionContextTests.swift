@@ -500,14 +500,14 @@ struct AsyncActionContextTests {
         let runningContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.running.containerSymbol, .running)
         let stoppedContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.stopped.containerSymbol, .stopped)
         let runningStackIcon = IconCache.shared.markedIcon(ContainerIconMark.running.stackSymbol, .running)
-        let plainFolderIcon = IconCache.shared.icon(forPath: webFolderA.path)
+        let plainFolderIcon = IconCache.shared.icon(forPath: webFolderA.path, folder: true)
 
         #expect(first.services.thumbnails.icon(for: webEntryA) === runningContainerIcon)
         #expect(second.services.thumbnails.icon(for: webEntryA) === plainFolderIcon)
         #expect(first.services.thumbnails.icon(for: stackEntryA) === runningStackIcon)
-        #expect(second.services.thumbnails.icon(for: stackEntryA) === IconCache.shared.icon(forPath: stackFolderA.path))
+        #expect(second.services.thumbnails.icon(for: stackEntryA) === IconCache.shared.icon(forPath: stackFolderA.path, folder: true))
         #expect(second.services.thumbnails.icon(for: dbEntryB) === stoppedContainerIcon)
-        #expect(first.services.thumbnails.icon(for: dbEntryB) === IconCache.shared.icon(forPath: dbFolderB.path))
+        #expect(first.services.thumbnails.icon(for: dbEntryB) === IconCache.shared.icon(forPath: dbFolderB.path, folder: true))
 
         #expect(first.services.itemInfo.immediate(webEntryA, showHidden: false) == String(localized: "Running", comment: "Container state"))
         #expect(second.services.itemInfo.immediate(webEntryA, showHidden: false) == nil)

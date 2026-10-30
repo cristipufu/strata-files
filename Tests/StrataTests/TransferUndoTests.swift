@@ -32,4 +32,16 @@ extension TransferTests {
         await FileOps.undoWork?.value
         #expect(tree.snapshot() == done)
     }
+
+    /// An undo or redo step moves back only the items still the ones it means, asked just before each one goes: one
+    /// put in an item's place since stays where it is, and the rest go.
+    @Test func undoMovesBackOnlyItemsStillTheOperations() async throws {
+        let tree = try TestTree("to/a.txt", "to/b.txt", "from/")
+        let replaced = tree.url("to/b.txt").path
+        let moves = [TransferMove(from: tree.url("to/a.txt"), to: tree.url("from/a.txt")),
+                     TransferMove(from: tree.url("to/b.txt"), to: tree.url("from/b.txt"))]
+        TransferUndo.perform(actionName: "Move", undo: nil, queue: .shared) { (moves, { $0.path != replaced }) }
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
+    }
 }

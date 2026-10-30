@@ -216,8 +216,6 @@ enum BrowserViewMode: Int, CaseIterable {
 
 // MARK: - Drag and drop rules
 
-/// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
-/// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
 /// What a drop decision asks the disk.
 protocol DropDisk {
     func isInside(_ urls: [URL], _ target: URL) -> Bool
@@ -230,6 +228,8 @@ struct DiskNow: DropDisk {
     func sameVolume(_ a: URL, _ b: URL) -> Bool { FileDrop.sameVolume(a, b) }
 }
 
+/// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
+/// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
 enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.

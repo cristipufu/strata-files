@@ -358,7 +358,8 @@ enum TransferUndo {
                     let inTrash = LandedFiles()
                     for (move, identity) in zip(gone, identities) { inTrash.set(identity, at: move.to) }
                     trashed.settle(.renamed(gone.map { TransferMove(from: $0.from, to: $0.to) }, inTrash))
-                    return await movesBack(moved: moved, replaced: replaced, vacated: gone.map(\.from), owns: owns)
+                    let back = await movesBack(moved: moved, replaced: replaced, vacated: gone.map(\.from), owns: owns)
+                    return (back, owns)
                 }
                 if let entry = receipt.historyEntry {
                     queue.history.setUndone(entry, true)
@@ -372,15 +373,19 @@ enum TransferUndo {
 
     /// Moves `moves()` as an undo or redo step does: after the steps before, away from the main thread. The inverse is
     /// registered right away, so it lands on the right stack, and moves back what the step moved once that's known.
+    /// `moves()` also says which items are still the ones it means (nil: any), asked just before each one moves.
     static func perform(actionName: String, undo: UndoManager?, containers: Containers = .none, queue: TransferQueue,
-                        historyEntry: UUID? = nil, moves: @escaping () async -> [TransferMove]) {
+                        historyEntry: UUID? = nil,
+                        moves: @escaping () async -> ([TransferMove], (@Sendable (URL) -> Bool)?)) {
         let step = Step()
         if let undo {
             registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue,
                             historyEntry: historyEntry)
         }
         FileOps.afterUndoWork {
-            step.settle(await start(await moves(), containers: containers, queue: queue, historyEntry: historyEntry))
+            let (moving, owns) = await moves()
+            step.settle(await start(moving, owns: owns, containers: containers, queue: queue,
+                                    historyEntry: historyEntry))
         }
     }
 
@@ -415,18 +420,19 @@ enum TransferUndo {
             waiters = []
         }
 
-        /// What it moved that's still where it went (clashes may have renamed items on the way).
-        func landed() async -> [TransferMove] {
+        /// What it moved that's still where it went (clashes may have renamed items on the way), and which items are
+        /// those very ones, for checking again just before each moves back.
+        func landed() async -> (moves: [TransferMove], owns: @Sendable (URL) -> Bool) {
             if outcome == nil { await withCheckedContinuation { waiters.append($0) } }
             switch outcome {
             case .renamed(let done, let landed):
                 let still = Set(await landed.holding(done.map(\.to)))
-                return done.filter { still.contains($0.to) }
+                return (done.filter { still.contains($0.to) }, landed.owns)
             case .moving(let job):
                 await job.finished()
                 let still = Set(await job.landed.holding(job.completedMoves.map(\.to)))
-                return job.completedMoves.filter { still.contains($0.to) }
-            case .nothing, nil: return []
+                return (job.completedMoves.filter { still.contains($0.to) }, job.landed.owns)
+            case .nothing, nil: return ([], { _ in false })
             }
         }
     }
@@ -440,8 +446,10 @@ enum TransferUndo {
                 let next = Step()
                 registerInverse(of: next, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue, historyEntry: historyEntry)
                 FileOps.afterUndoWork {
-                    let back = await step.landed().reversed().map(\.reversed)
-                    next.settle(await start(back, containers: containers, queue: queue, historyEntry: historyEntry))
+                    let (landed, owns) = await step.landed()
+                    let back = landed.reversed().map(\.reversed)
+                    next.settle(await start(back, owns: owns, containers: containers, queue: queue,
+                                            historyEntry: historyEntry))
                 }
             }
         }
@@ -450,13 +458,13 @@ enum TransferUndo {
 
     /// Same-disk moves are renames, done away from the main thread; anything crossing disks becomes a queued job with
     /// progress.
-    fileprivate static func start(_ moves: [TransferMove], containers: Containers, queue: TransferQueue,
-                                  historyEntry: UUID?) async -> Step.Outcome {
+    fileprivate static func start(_ moves: [TransferMove], owns: (@Sendable (URL) -> Bool)?, containers: Containers,
+                                  queue: TransferQueue, historyEntry: UUID?) async -> Step.Outcome {
         guard !moves.isEmpty else { return .nothing }
         // Made first, so the destination's disk can be told (a missing folder has none).
         try? containers.prepare(continueAfterFailure: true)
         if let historyEntry { queue.history.updateContainerIdentities(historyEntry, containers.historyIdentities) }
-        guard let (done, identities) = await renameOnOneDisk(moves) else {
+        guard let (done, identities) = await renameOnOneDisk(moves, owns: owns) else {
             // Part of an undo or redo: History already has the operation.
             let job = queue.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                                    logHistory: false)
@@ -472,10 +480,11 @@ enum TransferUndo {
         return .renamed(done, landed)
     }
 
-    /// Renames each item, unless they're on more than one disk (nil). An item is what it was before it went: on one
-    /// disk a rename keeps it, so one put at the destination meanwhile is never taken for it.
+    /// Renames each item still one `owns` means, checked just before it goes, unless they're on more than one disk
+    /// (nil). An item is what it was before it went: on one disk a rename keeps it, so one put at the destination
+    /// meanwhile is never taken for it.
     @concurrent
-    private static func renameOnOneDisk(_ moves: [TransferMove]) async
+    private static func renameOnOneDisk(_ moves: [TransferMove], owns: (@Sendable (URL) -> Bool)?) async
         -> (done: [TransferMove], identities: [FileIdentity?])? {
         let oneDisk = moves.allSatisfy {
             TransferEngine.device($0.from) == TransferEngine.device($0.to.deletingLastPathComponent())
@@ -485,6 +494,7 @@ enum TransferUndo {
         var identities: [FileIdentity?] = []
         for move in moves {
             var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
+            if let owns, !owns(move.from) { continue }
             for _ in 0..<64 {
                 let identity = FileIdentity.read(move.from.path)
                 let err = TransferEngine.rename(move.from, to: target)

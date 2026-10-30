@@ -154,6 +154,7 @@ extension BrowserViewController: FileCollectionViewDelegate {
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
+            finishFiltering()
             if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
             if typedFilter.isEmpty { toggleQuickLook(nil) } else { setFilter(typedFilter + " ") }

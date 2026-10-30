@@ -238,7 +238,7 @@ final class BrowserViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded), name: .iconsLoaded, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
         // Cloud badges redraw the same way.
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
     }
@@ -305,6 +305,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.onReturn = { [weak self] in
             guard let self else { return }
+            finishFiltering()
             if filter.isEmpty && !preferences.returnOpens { renameSelection(nil) } else { openSelection(nil) }
         }
         ov.onNameClick = { [weak self] row in
@@ -313,7 +314,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.onSpace = { [weak self] in
             guard let self else { return }
-            if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
+            if typedFilter.isEmpty { toggleQuickLook(nil) } else { setFilter(typedFilter + " ") }
         }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
         ov.onDragEnd = { [weak self] in
@@ -763,6 +764,14 @@ final class BrowserViewController: NSViewController {
         filtering = nil
     }
 
+    /// Return acts on the rows for what was typed: a match still being worked out is made now, once.
+    func finishFiltering() {
+        guard let text = filtering?.text else { return }
+        cancelFiltering()
+        listing.setFilter(text)
+        showFilter(text)
+    }
+
     private func showFilter(_ text: String) {
         outlineView.reloadData()
         if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
@@ -786,7 +795,7 @@ final class BrowserViewController: NSViewController {
     }
 
     func resortAfterMetadata() {
-        guard ordering.choice != nil, filter.isEmpty else { return }
+        guard ordering.choice != nil, typedFilter.isEmpty else { return }
         if isRenamingInPlace { deferredMetadataOrder = true; return }
         if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs

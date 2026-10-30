@@ -64,9 +64,9 @@ import UniformTypeIdentifiers
 
     /// An item's icon as read away from the main thread.
     private func loaded(_ url: URL) async -> NSImage {
-        _ = IconCache.shared.icon(forPath: url.path)
-        while let loading = IconCache.shared.loading { await loading.value }
-        return IconCache.shared.icon(forPath: url.path)
+        _ = IconCache.shared.icon(forPath: url.path, folder: true)
+        await IconCache.shared.loaded()
+        return IconCache.shared.icon(forPath: url.path, folder: true)
     }
 
     @Test(.enabled(if: undeclared)) func oneNotesFilesHaveAPageDrawnForThem() async throws {
@@ -125,7 +125,7 @@ import UniformTypeIdentifiers
         let tree = try TestTree("Later.one/")
         let url = tree.url("Later.one")
         let page = try page("one")
-        #expect(IconCache.shared.icon(forPath: url.path) !== page)
+        #expect(IconCache.shared.icon(forPath: url.path, folder: true) !== page)
         try FileManager.default.removeItem(at: url)
         try Data("section".utf8).write(to: url)
         #expect(ItemCard(caption: "Existing", url: url).imageView.image === page)

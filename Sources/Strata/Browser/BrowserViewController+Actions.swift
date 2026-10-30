@@ -449,7 +449,10 @@ extension BrowserViewController {
     }
 
     /// Items' own icons arrived (an app's, a package's, a special folder's): rows drawn with their kind's draw them.
-    @objc func iconsLoaded() {
+    @objc func iconsLoaded(_ notification: Notification) {
+        guard let paths = notification.userInfo?["paths"] as? Set<String>, paths.contains(where: { path in
+            listing.node(for: URL(fileURLWithPath: path)) != nil || columnController?.shows(path) == true
+        }) else { return }
         reloadVisibleCells()
     }
 

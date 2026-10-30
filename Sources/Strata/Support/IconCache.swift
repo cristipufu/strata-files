@@ -17,6 +17,7 @@ package final class IconCache {
 
     private init() {
         byPath.countLimit = 4000
+        reads = BatchedReads(read: Self.read) { [weak self] found in self?.keep(found) }
     }
 
     /// The same image each time for a type, which views compare to tell an icon from a thumbnail.
@@ -102,23 +103,27 @@ package final class IconCache {
         return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 
-    /// Rows asking for icons not read yet, and the kind each shows meanwhile.
-    private var requested: [String: UTType] = [:]
-    /// The icons being read, away from the main thread.
-    package private(set) var loading: Task<Void, Never>?
+    /// The kind each icon being read shows meanwhile.
+    private var shownKinds: [String: UTType] = [:]
     /// What each kind's icon looks like, small, to tell an item's own icon from its kind's.
     private var kindPixels: [String: [UInt8]] = [:]
+    private var reads: BatchedReads<Found>!
 
     /// The item's icon as last read. One not read yet shows its kind's icon (a link's, a folder's, or what its name
     /// says) and is read away from the main thread with the others asked about meanwhile: reading one asks the disk,
     /// and LaunchServices, which on a server takes seconds. `.iconsLoaded` says when ones other than their kind's
     /// arrive.
-    package func icon(forPath path: String, folder: Bool = true, link: Bool = false) -> NSImage {
+    package func icon(forPath path: String, folder: Bool, link: Bool = false) -> NSImage {
         if let cached = byPath.object(forKey: path as NSString) { return cached }
         let kind = link ? .symbolicLink : Self.kind(ofPath: path, folder: folder)
-        requested[path] = kind
-        if loading == nil { loadRequested() }
+        shownKinds[path] = kind
+        reads.request(path)
         return icon(forType: kind)
+    }
+
+    /// Waits for the icons asked for so far.
+    package func loaded() async {
+        await reads.settled()
     }
 
     /// What the name says, for an item whose own icon isn't known yet: a folder unless it's a package, such as an app.
@@ -128,46 +133,34 @@ package final class IconCache {
         return named ?? .data
     }
 
-    private func loadRequested() {
-        loading = Task {
-            // The other rows being drawn ask too, and are read with this one.
-            await Task.yield()
-            let batch = requested
-            requested.removeAll()
-            let pixels = kindPixels(for: Set(batch.values))
-            let found = await Self.read(batch, kindPixels: pixels)
-            var changed: Set<String> = []
-            for (path, icon) in found {
-                guard let kind = batch[path] else { continue }
-                let shown = self.icon(forType: kind)
-                let image = switch icon {
-                case .known(let known): documentIcon(known)
-                case .ofItsKind: shown
-                case .own(let own): own.image
-                }
-                byPath.setObject(image, forKey: path as NSString)
-                if image !== shown { changed.insert(path) }
+    private func keep(_ found: [String: Found]) {
+        var changed: Set<String> = []
+        for (path, icon) in found {
+            guard let kind = shownKinds.removeValue(forKey: path) else { continue }
+            let shown = self.icon(forType: kind)
+            let image = switch icon {
+            case .known(let known): documentIcon(known)
+            case .made(let made): made.pixels != nil && made.pixels == pixels(of: kind) ? shown : made.image
             }
-            loading = nil
-            // Only a change redraws: every list showing one redraws its rows, and rows drawn ask again.
-            if !changed.isEmpty {
-                NotificationCenter.default.post(name: .iconsLoaded, object: self, userInfo: ["paths": changed])
-            }
-            if !requested.isEmpty { loadRequested() }
+            byPath.setObject(image, forKey: path as NSString)
+            if image !== shown { changed.insert(path) }
+        }
+        // Only a change redraws: every list showing one redraws its rows, and rows drawn ask again.
+        if !changed.isEmpty {
+            NotificationCenter.default.post(name: .iconsLoaded, object: self, userInfo: ["paths": changed])
         }
     }
 
-    private func kindPixels(for kinds: Set<UTType>) -> [String: [UInt8]] {
-        for kind in kinds where kindPixels[kind.identifier] == nil {
-            kindPixels[kind.identifier] = Self.pixels(icon(forType: kind))
-        }
-        return kindPixels
+    private func pixels(of kind: UTType) -> [UInt8]? {
+        if let known = kindPixels[kind.identifier] { return known }
+        let made = Self.pixels(icon(forType: kind))
+        kindPixels[kind.identifier] = made
+        return made
     }
 
     nonisolated private enum Found: Sendable {
         case known(KnownDocument.Kind)
-        case ofItsKind
-        case own(MadeElsewhere)
+        case made(MadeElsewhere)
     }
 
     /// An icon made away from the main thread and handed to it, as Apple's NSImage restrictions allow ("one thread can
@@ -175,20 +168,18 @@ package final class IconCache {
     /// once where it's made, then used only on the main thread.
     nonisolated private struct MadeElsewhere: @unchecked Sendable {
         let image: NSImage
+        let pixels: [UInt8]?
     }
 
-    @concurrent
-    private static func read(_ batch: [String: UTType], kindPixels: [String: [UInt8]]) async -> [String: Found] {
+    nonisolated private static func read(_ paths: [String]) -> [String: Found] {
         var found: [String: Found] = [:]
-        for (path, kind) in batch {
+        for path in paths {
             if let known = knownKind(path) {
                 found[path] = .known(known)
-                continue
+            } else {
+                let image = NSWorkspace.shared.icon(forFile: path)
+                found[path] = .made(MadeElsewhere(image: image, pixels: pixels(image)))
             }
-            let image = NSWorkspace.shared.icon(forFile: path)
-            let looks = pixels(image)
-            let ofItsKind = looks != nil && looks == kindPixels[kind.identifier]
-            found[path] = ofItsKind ? .ofItsKind : .own(MadeElsewhere(image: image))
         }
         return found
     }

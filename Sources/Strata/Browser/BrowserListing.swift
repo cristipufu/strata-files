@@ -78,6 +78,7 @@ final class BrowserListing {
     }
 
     func replaceGroups(_ groups: [ResultGroup]) {
+        generation += 1
         nodes = groups.compactMap { group in
             guard let first = group.entries.first else { return nil }
             let header = FileNode(entry: first)
@@ -109,6 +110,7 @@ final class BrowserListing {
             if entry != node.entry { changed.append((node, entry)) }
         }
         if !changed.isEmpty, sorted { return nil }
+        if !changed.isEmpty { generation += 1 }
         for (node, entry) in changed { node.entry = entry }
         return changed.map { $0.0 }
     }
@@ -128,7 +130,8 @@ final class BrowserListing {
     func reorderRoots(_ sorted: [FileNode]) {
         generation += 1
         nodes = sorted
-        applyFilter()
+        // Matches are shown by how well they match, not in the folder's order: the same nodes keep their rows.
+        if filter.isEmpty { rows = nodes }
     }
 
     /// What `text` matches, best first, worked out away from the main thread (a folder of a hundred thousand items
@@ -174,7 +177,8 @@ final class BrowserListing {
 
     private func show(_ order: [(index: Int, indices: [Int])]) {
         for node in nodes { node.matchIndices = [] }
-        rows = order.map { match in
+        rows = order.compactMap { match in
+            guard nodes.indices.contains(match.index) else { return nil }
             let node = nodes[match.index]
             node.matchIndices = match.indices
             return node
