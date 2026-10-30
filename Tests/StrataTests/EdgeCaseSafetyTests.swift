@@ -310,21 +310,27 @@ struct EdgeCaseSafetyTests {
         let replacement = tree.url("replacement.txt")
         let store = TagStore()
         defer { store.forget("Strata Edge Test") }
+        // Tags are read in the background: what's there once that read is done.
+        func current(_ url: URL) async -> [String] {
+            _ = store.tags(for: url)
+            while let reading = store.requests { await reading.value }
+            return store.tags(for: url).map(\.name)
+        }
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
         try store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
         undo.endUndoGrouping()
-        #expect(store.tags(for: doc).map(\.name) == ["Strata Edge Test"])
+        #expect(await current(doc) == ["Strata Edge Test"])
 
         try FileManager.default.removeItem(at: doc)
         try FileManager.default.moveItem(at: replacement, to: doc)
         store.invalidate(tree.root)
-        #expect(store.tags(for: doc).isEmpty)
+        #expect(await current(doc).isEmpty)
 
         undo.undo()
         store.invalidate(tree.root)
-        #expect(store.tags(for: doc).isEmpty)
+        #expect(await current(doc).isEmpty)
         #expect(tree.snapshot() == ["doc.txt"])
     }
 

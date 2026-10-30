@@ -26,10 +26,17 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         cell?.wraps = true
         cell?.isScrollable = false
         setAccessibilityLabel(String(localized: "Tags", comment: "Finder tags (accessibility label or caption)"))
+        // Tags not known yet are read in the background: shown once they arrive, unless you're typing.
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsLoaded), name: .tagsLoaded, object: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func tagsLoaded() {
+        guard currentEditor() == nil, !urls.isEmpty else { return }
+        reload()
+    }
 
     /// As tall as its tokens need at its width, so no tag hides past the first line.
     override var intrinsicContentSize: NSSize {

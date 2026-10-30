@@ -69,16 +69,38 @@ final class TagStore {
     /// Last known tags only: sorting must never read extended attributes inside its comparator.
     func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
 
-    /// `url`'s tags, in the order they were added.
+    /// `url`'s tags, in the order they were added, as last read. One not read yet, or changed since, is read away from
+    /// the main thread with the others asked about meanwhile, and `.tagsLoaded` says when: a list of search results
+    /// read each row's tags as it drew it. Changing tags reads them from disk first, never from here.
     func tags(for url: URL) -> [FinderTag] {
         let path = url.standardizedFileURL.path
         if let cached = cache[path], !stale.contains(path) { return cached }
-        if loading.contains(url.deletingLastPathComponent().standardizedFileURL.path) { return cache[path] ?? [] }
-        if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
-        let tags = Self.read(path, labels: NSWorkspace.shared.fileLabels)
-        cache[path] = tags
-        stale.remove(path)
-        return tags
+        if !loading.contains(url.deletingLastPathComponent().standardizedFileURL.path) { request(path) }
+        return cache[path] ?? []
+    }
+
+    private var requested: Set<String> = []
+    private(set) var requests: Task<Void, Never>?
+
+    private func request(_ path: String) {
+        requested.insert(path)
+        if requests == nil { readRequested() }
+    }
+
+    private func readRequested() {
+        requests = Task {
+            // The other rows being drawn ask too, and are read with this one.
+            await Task.yield()
+            if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
+            let paths = Array(requested)
+            requested.removeAll()
+            let tags = await Self.readAll(paths, labels: NSWorkspace.shared.fileLabels)
+            for (path, list) in tags { cache[path] = list; stale.remove(path) }
+            requests = nil
+            NotificationCenter.default.post(name: .tagsLoaded, object: nil)
+            // Asked about while these were read.
+            if !requested.isEmpty { readRequested() }
+        }
     }
 
     /// Reads the tags of a folder's items off the main thread, then shows them (cells redraw on `.tagsChanged`).

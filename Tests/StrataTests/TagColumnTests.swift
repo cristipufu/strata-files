@@ -20,6 +20,9 @@ struct TagColumnTests {
         store.invalidate(tree.root)
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Alpha"])
         try write(["Beta"], to: entry.url)
+        // Read again in the background: the last known tags until then.
+        #expect(store.tags(for: entry.url).map(\.name) == ["Alpha"])
+        await store.requests?.value
         #expect(store.tags(for: entry.url).map(\.name) == ["Beta"])
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Beta"])
         store.invalidate(tree.root)
@@ -29,6 +32,18 @@ struct TagColumnTests {
         store.invalidate(nil)
         #expect(store.cachedTags(for: entry.url).isEmpty)
         #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
+    /// A file's tags not read yet show in the tag field once the background read brings them.
+    @Test func theTagFieldShowsTagsOnceTheyreRead() async throws {
+        let tree = try TestTree("unread")
+        try write(["Read Later"], to: tree.url("unread"))
+        let field = TagField(frame: .zero)
+        field.urls = [tree.url("unread")]
+        #expect((field.objectValue as? [String]) != ["Read Later"])
+        while let reading = TagStore.shared.requests { await reading.value }
+        #expect(field.objectValue as? [String] == ["Read Later"])
+        #expect(tree.snapshot() == ["unread"])
     }
 
     @Test func nativeColumnShowsCustomNamesAndKeepsItsSavedVisibility() async throws {
