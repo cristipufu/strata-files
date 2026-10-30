@@ -61,7 +61,9 @@ final class TestTree {
     func snapshot() -> [String] { Self.listing(of: root) }
 
     /// `snapshot` for any folder (a test server's, say). Files named "._…" are listed too, which FileManager leaves out.
+    /// History is written in the background: what's been written is listed.
     static func listing(of root: URL) -> [String] {
+        OperationLog.waitForWrites()
         var items: [String] = []
         func walk(_ folder: String) {
             for name in names(in: root.appending(path: folder).path) {

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 extension Notification.Name {
     static let operationLogChanged = Notification.Name("StrataOperationLogChanged")
@@ -116,6 +117,34 @@ final class OperationLog {
     private var retiredTransfers: Set<UUID> = []
     typealias Mover = ([FileOps.Move], String) async throws -> Void
     private let moveItems: Mover
+    private let unsaved = Unsaved()
+
+    /// History is written away from the main thread, one write at a time, each time the latest entries: encoding and
+    /// sealing a History of big operations after every change held the app. Opening a History and quitting wait for
+    /// the writes under way.
+    nonisolated private static let writes = DispatchQueue(label: "Strata.History.writes")
+
+    /// The entries waiting to be written, if any.
+    nonisolated private final class Unsaved: Sendable {
+        private let entries = Mutex<[Entry]?>(nil)
+
+        /// Keeps `latest` for the next write; true when no write is waiting already.
+        func keep(_ latest: [Entry]) -> Bool {
+            entries.withLock { waiting in
+                defer { waiting = latest }
+                return waiting == nil
+            }
+        }
+
+        func take() -> [Entry]? {
+            entries.withLock { waiting in
+                defer { waiting = nil }
+                return waiting
+            }
+        }
+    }
+
+    nonisolated static func waitForWrites() { writes.sync {} }
 
     init(storage: SecureStorage.Context = SecureStorage.current, moveItems: Mover? = nil) {
         self.storage = storage
@@ -123,6 +152,7 @@ final class OperationLog {
             try await FileOps.move(pairs, actionName: name, undo: nil, record: false)
         }
         file = storage.url("history.sealed")
+        Self.waitForWrites()
         entries = Self.readEntries(from: file, storage: storage)
         // Never import a plain history file: anything running as you could plant one, and undoing its entries would
         // move files with Strata's access. One from an earlier build is simply removed.
@@ -245,7 +275,7 @@ final class OperationLog {
     }
 
     /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
-    private func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
+    nonisolated private static func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
         guard !path.isEmpty else { return false }
         guard let recorded = entry.identities[path] else { return TransferEngine.exists(URL(fileURLWithPath: path)) }
         return FileIdentity.matchesHistory(recorded, at: path)
@@ -254,13 +284,26 @@ final class OperationLog {
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
     /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
     func canUndo(_ entry: Entry) -> Bool {
-        guard !entry.undone, !undoing.contains(entry.id) else { return false }
+        mayUndo(entry) && Self.itemsAllowUndo(entry)
+    }
+
+    /// Whether `entry` is neither undone nor being undone: what `canUndo` knows without looking at its items.
+    func mayUndo(_ entry: Entry) -> Bool {
+        !entry.undone && !undoing.contains(entry.id)
+    }
+
+    /// `canUndo`'s look at the items, for each of `entries`, away from the main thread.
+    @concurrent static func itemsAllowUndo(_ entries: [Entry]) async -> [UUID: Bool] {
+        Dictionary(entries.map { ($0.id, itemsAllowUndo($0)) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    nonisolated private static func itemsAllowUndo(_ entry: Entry) -> Bool {
         // A place counts as free when nothing is there, it's the item itself (a case-only rename), or another move in
         // the same entry will vacate it first ("trash X, rename Y to X").
         let destinations = Set(entry.pairs.map { $0[1] })
         let movesBack = !entry.pairs.isEmpty && entry.pairs.allSatisfy { pair in
             holdsOriginal(entry, pair[1])
-                && (Self.identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]) || destinations.contains(pair[0]))
+                && (identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]) || destinations.contains(pair[0]))
         }
         switch entry.kind {
         case .move:
@@ -287,15 +330,15 @@ final class OperationLog {
         let containers = CreatedFolders(paths: entry.containers, recorded: entry.identities)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
-        let existing = entry.created.filter { holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
+        let existing = entry.created.filter { Self.holdsOriginal(entry, $0) }.map { URL(fileURLWithPath: $0) }
         if !existing.isEmpty { done += try FileOps.trash(existing, undo: nil, record: false) }
         // A mixed transfer can still undo its own copies after a moved item is replaced. Check every move too;
         // canUndo accepting part of an entry never gives ownership of the rest.
-        let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {
+        let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {
             (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
         }.filter { move in
             Self.identity(move.to.path) == nil || Self.identity(move.to.path) == Self.identity(move.from.path)
-                || entry.pairs.contains { $0[1] == move.to.path && holdsOriginal(entry, $0[1]) }
+                || entry.pairs.contains { $0[1] == move.to.path && Self.holdsOriginal(entry, $0[1]) }
         }
         if !back.isEmpty {
             do {
@@ -338,7 +381,13 @@ final class OperationLog {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(entries) { try? storage.write(data, to: file) }
+        if unsaved.keep(entries) {
+            let unsaved = unsaved, storage = storage, file = file
+            Self.writes.async {
+                guard let entries = unsaved.take(), let data = try? JSONEncoder().encode(entries) else { return }
+                try? storage.write(data, to: file)
+            }
+        }
         NotificationCenter.default.post(name: .operationLogChanged, object: self)
     }
 }

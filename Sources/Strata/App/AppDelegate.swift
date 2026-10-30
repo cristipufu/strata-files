@@ -239,6 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         saveSession()
         FileIndex.shared.saveNow()
+        OperationLog.waitForWrites()
         // Containers' and servers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at
         // next launch). An SFTP connection's ssh ends by itself when Strata does (its input closes).
         ContainerCopies.setAsideForRemoval()

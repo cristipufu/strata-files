@@ -1801,8 +1801,8 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {",
-    "replace": "let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {",
+    "find": "let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {",
+    "replace": "let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { Self.holdsOriginal(entry, $0[1]) }).map {",
     "rule": "Mixed History Undo checks ownership of moved items even when an owned copy remains",
     "tests": "HistoryOwnershipTests/mixedHistoryUndoSkipsReplacedMovesWhileUndoingItsOwnCopy"
   },
