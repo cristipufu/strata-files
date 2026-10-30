@@ -373,10 +373,10 @@ enum TransferUndo {
 
     /// Moves `moves()` as an undo or redo step does: after the steps before, away from the main thread. The inverse is
     /// registered right away, so it lands on the right stack, and moves back what the step moved once that's known.
-    /// `moves()` also says what each item must be, by its path (nil: any), checked just before each one moves.
+    /// `moves()` also says what each item must be, by its path, checked just before each one moves.
     static func perform(actionName: String, undo: UndoManager?, containers: Containers = .none, queue: TransferQueue,
                         historyEntry: UUID? = nil,
-                        moves: @escaping () async -> ([TransferMove], [String: FileIdentity]?)) {
+                        moves: @escaping () async -> ([TransferMove], [String: FileIdentity])) {
         let step = Step()
         if let undo {
             registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue,
@@ -458,10 +458,10 @@ enum TransferUndo {
 
     /// Same-disk moves are renames, done away from the main thread; anything crossing disks becomes a queued job with
     /// progress.
-    /// `expected`: what each item must be, by its path (nil: any). One without a recorded identity isn't moved.
-    fileprivate static func start(_ moves: [TransferMove], expected: [String: FileIdentity]?, containers: Containers,
+    /// `expected`: what each item must be, by its path. One without a recorded identity isn't moved.
+    fileprivate static func start(_ moves: [TransferMove], expected: [String: FileIdentity], containers: Containers,
                                   queue: TransferQueue, historyEntry: UUID?) async -> Step.Outcome {
-        let moves = expected.map { expected in moves.filter { expected[$0.from.path] != nil } } ?? moves
+        let moves = moves.filter { expected[$0.from.path] != nil }
         guard !moves.isEmpty else { return .nothing }
         // Made first, so the destination's disk can be told (a missing folder has none).
         try? containers.prepare(continueAfterFailure: true)
@@ -486,7 +486,7 @@ enum TransferUndo {
     /// disk (nil). An item is what it was before it went: on one disk a rename keeps it, so one put at the destination
     /// meanwhile is never taken for it.
     @concurrent
-    private static func renameOnOneDisk(_ moves: [TransferMove], expected: [String: FileIdentity]?) async
+    private static func renameOnOneDisk(_ moves: [TransferMove], expected: [String: FileIdentity]) async
         -> (done: [TransferMove], identities: [FileIdentity?])? {
         let oneDisk = moves.allSatisfy {
             TransferEngine.device($0.from) == TransferEngine.device($0.to.deletingLastPathComponent())
@@ -495,10 +495,11 @@ enum TransferUndo {
         var done: [TransferMove] = []
         var identities: [FileIdentity?] = []
         for move in moves {
-            if let expected, FileIdentity.read(move.from.path) != expected[move.from.path] { continue }
+            // Read once, just before it goes, and kept: a rename keeps what the item is.
+            let identity = FileIdentity.read(move.from.path)
+            guard identity != nil, identity == expected[move.from.path] else { continue }
             var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
             for _ in 0..<64 {
-                let identity = FileIdentity.read(move.from.path)
                 let err = TransferEngine.rename(move.from, to: target)
                 if err == 0 {
                     done.append(TransferMove(from: move.from, to: target))

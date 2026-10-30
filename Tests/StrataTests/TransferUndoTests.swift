@@ -3,6 +3,13 @@ import Testing
 @testable import Strata
 
 extension TransferTests {
+    /// What each move's item is now, by its path: what an undo step means to move.
+    static func identities(_ moves: [TransferMove]) -> [String: FileIdentity] {
+        Dictionary(uniqueKeysWithValues: moves.compactMap { move in
+            FileIdentity.read(move.from.path).map { (move.from.path, $0) }
+        })
+    }
+
     /// ⌘Z of a copy and of a move on one disk returns before anything moves: the work runs away from the main thread,
     /// after the steps before it. ⇧⌘Z pressed before that work ran still finds the items where it left them: the copy
     /// comes back out of the Trash, then the move is made again, and nothing else changes.
@@ -63,5 +70,32 @@ extension TransferTests {
                                            logHistory: false, expected: expected).finished()
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
         #expect(tree.text("to/b.txt") == "someone else's")
+    }
+
+    /// Retrying a failed item of an undo or redo takes only the item it means: one put in its place since is neither
+    /// copied nor changed, and the retry says so.
+    @Test func retryingAnUndoItemLeavesAnItemPutInItsPlace() throws {
+        let tree = try TestTree("from/a.txt", "to/")
+        let source = tree.url("from/a.txt"), destination = tree.url("to/a.txt")
+        let item = TransferItem(source: source, destination: destination, operation: .copy,
+                                expected: FileIdentity.read(source.path))
+        let location = Self.fixtureLocation(destination)
+        TransferEngine.hooks.beforeVerify = { url in
+            guard Self.fixtureLocation(url) == location else { return }
+            try? Data("corrupted".utf8).write(to: url)
+        }
+        defer { TransferEngine.hooks = .init() }
+        let first = TransferEngine.perform(0, item, options: .init(verify: true, clone: false),
+                                           control: TransferControl(), progress: TransferProgress())
+        TransferEngine.hooks = .init()
+        #expect(first.outcome == .partial && first.failures.first?.stage == .verify)
+        try FileManager.default.removeItem(at: source)
+        try Data("someone else's".utf8).write(to: source)
+        let retried = TransferEngine.retry(0, item, landed: first.landed, failures: first.failures,
+                                           options: .init(verify: true, clone: false), control: TransferControl(),
+                                           progress: TransferProgress())
+        #expect(retried.outcome == .failed && retried.failures.first?.stage == .item)
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/"])
+        #expect(tree.text("from/a.txt") == "someone else's")
     }
 }

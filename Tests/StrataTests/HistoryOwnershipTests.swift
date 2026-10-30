@@ -171,7 +171,8 @@ extension TransferTests {
                 // A same-name move in another tree must not trigger the installed fault.
                 let other = try TestTree("from/a.txt", "to/")
                 let elsewhere = [TransferMove(from: other.url("from/a.txt"), to: other.url("to/" + targetName))]
-                TransferUndo.perform(actionName: "Move", undo: nil, queue: env.queue) { (elsewhere, nil) }
+                let own = Self.identities(elsewhere)
+                TransferUndo.perform(actionName: "Move", undo: nil, queue: env.queue) { (elsewhere, own) }
                 await FileOps.undoWork?.value
                 #expect(other.text("to/" + targetName) == "from/a.txt")
                 #expect(other.snapshot() == ["from/", "to/", "to/" + targetName])
@@ -183,7 +184,8 @@ extension TransferTests {
                              TransferMove(from: tree.url("from/folder"), to: tree.url("to/folder")),
                              TransferMove(from: tree.url("from/link"), to: tree.url("to/link")),
                              TransferMove(from: tree.url("from/ab.txt"), to: tree.url("from/ab.txt/nested"))]
-                TransferUndo.perform(actionName: "Move", undo: undo, queue: env.queue) { (moves, nil) }
+                let owned = Self.identities(moves)
+                TransferUndo.perform(actionName: "Move", undo: undo, queue: env.queue) { (moves, owned) }
                 undo.endUndoGrouping()
                 await FileOps.undoWork?.value
                 TransferEngine.hooks = .init()

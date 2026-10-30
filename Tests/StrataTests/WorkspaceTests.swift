@@ -94,15 +94,22 @@ struct WorkspaceTests {
         #expect(DiskOfPath.volume(of: "/Users/me") == nil)
     }
 
-    /// Reads are kept apart by disk, and a cloud storage folder answers through its own provider, so it counts as one.
+    /// Reads are kept apart by disk; a cloud storage account in your home's Library, or iCloud Drive, answers through
+    /// its own provider, so it counts as one, and a folder elsewhere that's merely named so doesn't.
     @Test func diskOfAPath() {
-        #expect(DiskOfPath.of("/Volumes/Share/a/b") == "/Volumes/Share")
-        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/OneDrive-Work/Docs/a.docx")
+        let home = "/Users/me"
+        #expect(DiskOfPath.of("/Volumes/Share/a/b", home: home) == "/Volumes/Share")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/OneDrive-Work/Docs/a.docx", home: home)
             == "/Users/me/Library/CloudStorage/OneDrive-Work")
-        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Dropbox") == "/Users/me/Library/CloudStorage/Dropbox")
-        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/com~apple~CloudDocs/a")
-            == "/Users/me/Library/Mobile Documents/com~apple~CloudDocs")
-        #expect(DiskOfPath.of("/Users/me/Documents/a") == "/" && DiskOfPath.of("/Volumes") == "/")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Dropbox", home: home)
+            == "/Users/me/Library/CloudStorage/Dropbox")
+        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/com~apple~CloudDocs/a", home: home)
+            == "/Users/me/Library/Mobile Documents")
+        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/iCloud~com~app/b", home: home)
+            == "/Users/me/Library/Mobile Documents")
+        #expect(DiskOfPath.of("/Users/me/src/Library/CloudStorage/x", home: home) == "/")
+        #expect(DiskOfPath.of("/Users/me/Documents/a", home: home) == "/")
+        #expect(DiskOfPath.of("/Volumes", home: home) == "/")
     }
 
     @Test func theInnermostShareWins() {

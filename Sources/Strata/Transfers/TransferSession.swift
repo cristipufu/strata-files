@@ -102,6 +102,11 @@ nonisolated struct TransferItem: Sendable {
     /// What the item must be (for an undo or redo, the item it means): one put in its place since is left where it
     /// is. Nil for any item there.
     var expected: FileIdentity?
+
+    /// Whether `identity`, read at its source, is the item it means.
+    func means(_ identity: FileIdentity?) -> Bool {
+        expected.map { identity == $0 } ?? true
+    }
     var outcome: Outcome = .pending
 }
 

@@ -450,9 +450,11 @@ extension BrowserViewController {
 
     /// Items' own icons arrived (an app's, a package's, a special folder's): rows drawn with their kind's draw them.
     @objc func iconsLoaded(_ notification: Notification) {
-        guard let paths = notification.userInfo?["paths"] as? Set<String>,
-              paths.contains(where: { listing.node(for: URL(fileURLWithPath: $0, isDirectory: false)) != nil })
-                || columnController?.showsAny(of: paths) == true else { return }
+        guard let paths = notification.userInfo?["paths"] as? Set<String> else { return }
+        // A hidden Columns view reads nothing now: it draws its rows again when it's shown.
+        if effectiveMode != .columns, columnController != nil { columnsMissedIcons = true }
+        guard paths.contains(where: { listing.node(for: URL(fileURLWithPath: $0, isDirectory: false)) != nil })
+                || effectiveMode == .columns && columnController?.showsAny(of: paths) == true else { return }
         reloadVisibleCells()
     }
 

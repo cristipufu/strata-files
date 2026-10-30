@@ -64,11 +64,10 @@ nonisolated enum TransferEngine {
             return result
         }
 
-        // Checked just before it goes: an undo or redo never takes what has taken its item's place.
-        if let expected = item.expected, FileIdentity.read(item.source.path) != expected {
-            result.outcome = .skipped
-            return result
-        }
+        // Read once, just before it goes: an undo or redo never takes what has taken its item's place, and a rename
+        // keeps what the item is.
+        let identity = FileIdentity.read(item.source.path)
+        guard item.means(identity) else { return fail(changedSince) }
         var operation = item.operation
         if operation == .rename {
             var trashed: URL?
@@ -76,8 +75,6 @@ nonisolated enum TransferEngine {
                 result.replacedIdentity = FileIdentity.read(item.destination.path)
                 do { trashed = try trash(item.destination) } catch { return fail(trashMessage(item.destination, error)) }
             }
-            // A rename keeps what the item is.
-            let identity = FileIdentity.read(item.source.path)
             let code = rename(item.source, to: item.destination)
             if code == 0 {
                 result.landed = identity
@@ -111,10 +108,9 @@ nonisolated enum TransferEngine {
             return fail(fatal)
         }
         // Swapped in the moment before the copy began: what was copied isn't the item meant, and its copy goes.
-        if let expected = item.expected, copy.sourceIdentities[item.source.path] != expected {
+        guard item.means(copy.sourceIdentities[item.source.path]) else {
             removeIfPresent(target, in: target, created: copy.created)
-            result.outcome = .skipped
-            return result
+            return fail(changedSince)
         }
         if copy.cloned {
             progress.update {
@@ -251,8 +247,10 @@ nonisolated enum TransferEngine {
     private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                                         control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
-        if let expected = item.expected, FileIdentity.read(item.source.path) != expected {
-            result.outcome = .skipped
+        guard item.means(FileIdentity.read(item.source.path)) else {
+            result.failures.append(TransferFailure(item: index, stage: .item, source: item.source,
+                                                   destination: item.destination, message: changedSince))
+            result.outcome = .failed
             return result
         }
         var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
@@ -264,13 +262,13 @@ nonisolated enum TransferEngine {
             let sameRoot = destination == item.destination || (landed != nil && FileIdentity.read(item.destination.path) == landed)
             guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {
                 result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
-                    destination: destination, message: String(localized: "The items have moved or been changed since."),
+                    destination: destination, message: changedSince,
                     retryTarget: failure.retryTarget))
                 continue
             }
             guard retryTarget.matchesSource(failure.source) else {
                 result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
-                    destination: destination, message: String(localized: "The items have moved or been changed since."),
+                    destination: destination, message: changedSince,
                     retryTarget: failure.retryTarget))
                 continue
             }
@@ -341,7 +339,7 @@ nonisolated enum TransferEngine {
                 || (removeRetry != nil && removeRetry?.matchesSource(item.source) == false) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination,
-                                                       message: String(localized: "The items have moved or been changed since."),
+                                                       message: changedSince,
                                                        retryTarget: removeRetry))
                 result.outcome = .partial
                 return result
@@ -827,6 +825,8 @@ nonisolated enum TransferEngine {
         }
         return nil
     }
+
+    private static var changedSince: String { String(localized: "The items have moved or been changed since.") }
 
     /// Removes the original after a cross-volume move. Returns an error message, or nil on success.
     private static func removeSource(_ url: URL, destination: URL? = nil, landed: FileIdentity? = nil,

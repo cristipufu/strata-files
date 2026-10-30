@@ -72,6 +72,10 @@ extension BrowserViewController {
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
     func installActiveView() {
         presentations.install(effectiveMode, in: self)
+        if effectiveMode == .columns, columnsMissedIcons {
+            columnsMissedIcons = false
+            columnController?.refreshVisibleRows()
+        }
     }
 
     /// Hands the current rows (sorted, filtered, with match highlights) to the active presentation.

@@ -102,6 +102,8 @@ final class BrowserViewController: NSViewController {
     var typedFilter: String { filtering?.text ?? filter }
     /// Folders with more items are matched away from the main thread.
     static let filteredAwayAbove = 2_000
+    /// Items' own icons arrived while the Columns view was hidden.
+    var columnsMissedIcons = false
     var availableCapacity: Int64? { loading.availableCapacity }
 
     let outlineView = FileOutlineView()

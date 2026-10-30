@@ -157,4 +157,28 @@ extension TransferTests {
         #expect(TestTree.listing(of: away) == ["b.txt"])
         #expect(try String(contentsOf: b, encoding: .utf8) == "someone else's")
     }
+
+    /// Undo's own move back across disks hands what each item must be to its queued job: one put in an item's place
+    /// before the job reaches it stays where it is, and the others come back.
+    @Test func undoAcrossDisksChecksEachItemAsItsJobReachesIt() async throws {
+        let volume = try await ScratchVolume.make()
+        let tree = try TestTree("back/")
+        let away = volume.url("away")
+        try FileManager.default.createDirectory(at: away, withIntermediateDirectories: false)
+        let a = away.appending(path: "a.txt"), b = away.appending(path: "b.txt")
+        try Data("a.txt".utf8).write(to: a)
+        try Data("b.txt".utf8).write(to: b)
+        let moves = [TransferMove(from: a, to: tree.url("back/a.txt")),
+                     TransferMove(from: b, to: tree.url("back/b.txt"))]
+        let expected = Self.identities(moves)
+        try swap(b)
+        TransferUndo.perform(actionName: "Move", undo: nil, queue: .shared) { (moves, expected) }
+        await FileOps.undoWork?.value
+        await settle {
+            tree.snapshot().contains("back/a.txt") && !TransferQueue.shared.jobs.contains { $0.state.isActive }
+        }
+        #expect(tree.snapshot() == ["back/", "back/a.txt"])
+        #expect(TestTree.listing(of: away) == ["b.txt"])
+        #expect(try String(contentsOf: b, encoding: .utf8) == "someone else's")
+    }
 }
