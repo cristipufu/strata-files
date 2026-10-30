@@ -453,9 +453,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         refreshVisibleRows()
     }
 
-    /// Whether any column lists the item at `path`.
-    func shows(_ path: String) -> Bool {
-        panes.contains { $0.entries.contains { $0.url.path == path } }
+    func showsAny(of paths: Set<String>) -> Bool {
+        panes.contains { $0.entries.contains { paths.contains($0.url.path) } }
     }
 
     /// Re-reads what visible rows show (clipboard dimming, git badges, fetched thumbnails and previews).

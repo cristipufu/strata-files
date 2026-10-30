@@ -168,7 +168,7 @@ These apply everywhere below; the sections that follow add only what is specific
   `resourceValues`, `lstat`, extended attributes, real paths, aliases), LaunchServices (`NSWorkspace` icons, app
   lookups, packages), the keychain, processes and waits, Accessibility, image reads, and anything that grows with a
   folder, a selection or History. On a server or a sleeping disk each of these takes seconds, and the window freezes.
-  Read in a `@concurrent` function, an actor, a job's worker, or `PathQuery.offMain` for reads that may hang on a
+  Read in a `@concurrent` function, an actor, a job's worker, or `OwnThread.run` for reads that may hang on a
   server that stopped answering; recheck ownership after the suspension, then apply on the main actor. Lists show what
   was last read and update when a read arrives (`PlaceChecks`, `TagStore.tags`, `GitStatusStore.repository`,
   `InfoEditor.Facts`); a hidden view reads nothing. A change you ask for on one item may stay synchronous, as may an

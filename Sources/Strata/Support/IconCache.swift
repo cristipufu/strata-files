@@ -121,7 +121,6 @@ package final class IconCache {
         return icon(forType: kind)
     }
 
-    /// Waits for the icons asked for so far.
     package func loaded() async {
         await reads.settled()
     }

@@ -67,7 +67,7 @@ struct DropTests {
     }
 
     /// While a drag moves, its checks go by what the paths say until the disk's answers arrive, read away from the main
-    /// thread once per drag for every path asked about; then they go by those, and ask nothing more.
+    /// thread once per drag for every path asked about, a batch per disk; then they go by those, and ask nothing more.
     @Test func aDragsChecksAreReadOnceAwayFromTheMainThread() async {
         let asked = OSAllocatedUnfairLock(initialState: [[String]]())
         let facts = DragFacts(sequence: 7) { paths in
@@ -84,12 +84,12 @@ struct DropTests {
         #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .copy)
         #expect(!facts.opens(link))
         await facts.settled()
-        let paths = ["/Users/someone", "/Volumes/Share", "/Volumes/Share/a", "/Volumes/Share/link"]
-        #expect(asked.withLock { $0 } == [paths])
+        let batches: Set = [["/Users/someone"], ["/Volumes/Share", "/Volumes/Share/a", "/Volumes/Share/link"]]
+        #expect(Set(asked.withLock { $0 }) == batches)
         #expect(facts.isInside(dragged, link))
         #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .move)
         #expect(facts.opens(link))
         await facts.settled()
-        #expect(asked.withLock { $0.count } == 1)
+        #expect(asked.withLock { $0.count } == 2)
     }
 }

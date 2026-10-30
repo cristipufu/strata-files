@@ -24,7 +24,6 @@ final class FolderNames {
         return url.lastPathComponent
     }
 
-    /// Waits for the names asked for so far.
     func settled() async {
         await reads.settled()
     }
@@ -34,7 +33,7 @@ final class FolderNames {
         if names.count > 5_000 { names.removeAll(keepingCapacity: true) }
         var renamed: Set<String> = []
         for (path, name) in found {
-            if name != URL(fileURLWithPath: path).lastPathComponent { renamed.insert(path) }
+            if name != (path as NSString).lastPathComponent { renamed.insert(path) }
             names[path] = name
         }
         if !renamed.isEmpty {

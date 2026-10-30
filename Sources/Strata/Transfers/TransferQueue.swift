@@ -493,8 +493,8 @@ enum TransferUndo {
         var done: [TransferMove] = []
         var identities: [FileIdentity?] = []
         for move in moves {
-            var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
             if let owns, !owns(move.from) { continue }
+            var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to
             for _ in 0..<64 {
                 let identity = FileIdentity.read(move.from.path)
                 let err = TransferEngine.rename(move.from, to: target)

@@ -1,15 +1,16 @@
 import Foundation
 
 /// Reads asked for while views draw, made together away from the main thread and handed to `arrived` on it. A path
-/// being read isn't read again meanwhile, and each batch runs on a thread of its own (`OwnThread`): one that hangs on
-/// a server that stopped answering holds up only the paths it has, and no other work.
+/// being read isn't read again meanwhile. Each disk has one batch at a time, on a thread of its own (`OwnThread`): one
+/// that hangs on a server that stopped answering holds up only that server's paths, and the threads stay as few as
+/// the disks.
 package final class BatchedReads<Value: Sendable> {
     private let read: @Sendable ([String]) -> [String: Value]
     private let arrived: ([String: Value]) -> Void
-    private var waiting: [String] = []
+    private var waiting: [String: [String]] = [:]
     private var reading: Set<String> = []
     private var collecting: Task<Void, Never>?
-    private var batches: [UUID: Task<Void, Never>] = [:]
+    private var batches: [String: Task<Void, Never>] = [:]
 
     package init(read: @escaping @Sendable ([String]) -> [String: Value],
                  arrived: @escaping ([String: Value]) -> Void) {
@@ -20,15 +21,16 @@ package final class BatchedReads<Value: Sendable> {
     /// Asks for `path`'s value, once while it's being read: with the others asked for until this run of drawing ends.
     package func request(_ path: String) {
         guard reading.insert(path).inserted else { return }
-        waiting.append(path)
+        waiting[Self.disk(of: path), default: []].append(path)
         guard collecting == nil else { return }
         collecting = Task { [weak self] in
             await Task.yield()
-            self?.readWaiting()
+            guard let self else { return }
+            collecting = nil
+            for disk in waiting.keys where batches[disk] == nil { readWaiting(on: disk) }
         }
     }
 
-    /// Waits for every read asked for so far.
     package func settled() async {
         while true {
             if let collecting {
@@ -41,16 +43,22 @@ package final class BatchedReads<Value: Sendable> {
         }
     }
 
-    private func readWaiting() {
-        collecting = nil
-        let paths = waiting, id = UUID(), read = read
-        waiting.removeAll()
-        batches[id] = Task { [weak self] in
+    private func readWaiting(on disk: String) {
+        guard let paths = waiting.removeValue(forKey: disk) else { return }
+        let read = read
+        batches[disk] = Task { [weak self] in
             let values = await OwnThread.run { read(paths) }
             guard let self else { return }
-            batches[id] = nil
+            batches[disk] = nil
             reading.subtract(paths)
             arrived(values)
+            readWaiting(on: disk)
         }
+    }
+
+    /// The disk a path is on, by what it says: one under /Volumes is that disk's, anything else the startup disk's.
+    package static func disk(of path: String) -> String {
+        let parts = path.split(separator: "/", maxSplits: 2)
+        return parts.count > 1 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
     }
 }

@@ -74,11 +74,11 @@ import Testing
     @Test func aLookupThatNeverReturnsHoldsUpNoOther() async throws {
         let gate = DispatchSemaphore(value: 0)
         let (started, start) = AsyncStream<Void>.makeStream()
-        let stuck = Task { await PathQuery.offMain { start.yield(); gate.wait(); return 1 } }
+        let stuck = Task { await OwnThread.run { start.yield(); gate.wait(); return 1 } }
         for await _ in started { break }
         let answered = CancelFlag()
         let next = Task {
-            let value = await PathQuery.offMain { 2 }
+            let value = await OwnThread.run { 2 }
             answered.set()
             return value
         }

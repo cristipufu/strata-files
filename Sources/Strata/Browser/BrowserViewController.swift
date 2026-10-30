@@ -773,6 +773,8 @@ final class BrowserViewController: NSViewController {
     }
 
     private func showFilter(_ text: String) {
+        // Metadata that arrived while filtered (sizes, say) orders the rows now.
+        if text.isEmpty { scheduleResort() }
         outlineView.reloadData()
         if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
             outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)

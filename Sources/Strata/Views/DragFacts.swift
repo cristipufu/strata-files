@@ -38,7 +38,6 @@ final class DragFacts: DropDisk {
         return nil
     }
 
-    /// Waits for the facts asked for so far.
     func settled() async {
         await reads.settled()
     }
@@ -57,7 +56,9 @@ final class DragFacts: DropDisk {
 
     func sameVolume(_ a: URL, _ b: URL) -> Bool {
         let first = fact(a.path), second = fact(b.path)
-        guard let first, let second else { return Self.volumeRoot(a.standardized.path) == Self.volumeRoot(b.standardized.path) }
+        guard let first, let second else {
+            return BatchedReads<Fact>.disk(of: a.standardized.path) == BatchedReads<Fact>.disk(of: b.standardized.path)
+        }
         return first.device != nil && first.device == second.device
     }
 
@@ -66,12 +67,6 @@ final class DragFacts: DropDisk {
 
     /// Whether `folder` is a package (an app); taken to be one until that's known.
     func isPackage(_ folder: URL) -> Bool { fact(folder.path)?.isPackage != false }
-
-    /// The disk a path is on, by what it says: one under /Volumes is that disk's, anything else the startup disk's.
-    private static func volumeRoot(_ path: String) -> String {
-        let parts = path.split(separator: "/", maxSplits: 2)
-        return parts.count > 1 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
-    }
 
     nonisolated static func read(_ paths: [String]) -> [String: Fact] {
         var facts: [String: Fact] = [:]

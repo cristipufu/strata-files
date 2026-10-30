@@ -23,18 +23,12 @@ nonisolated final class PathQuery {
         self.stop = stop
     }
 
-    /// Runs `work` (file system reads) on a thread of its own (`OwnThread`): a read stuck on a server that stopped
-    /// answering holds only that thread, and no lookup after it waits.
-    static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await OwnThread.run(work)
-    }
-
     /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own. Replaced (the task's
     /// cancelled), it stops reading folders.
     static func resolveOffMain(_ query: String, roots: [URL], visited: [URL]) async -> [Hit] {
         let stop = CancelFlag()
         return await withTaskCancellationHandler {
-            await offMain { PathQuery(stop: stop).resolve(query, roots: roots, visited: visited) }
+            await OwnThread.run { PathQuery(stop: stop).resolve(query, roots: roots, visited: visited) }
         } onCancel: {
             stop.set()
         }

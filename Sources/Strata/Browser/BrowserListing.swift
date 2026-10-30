@@ -130,8 +130,7 @@ final class BrowserListing {
     func reorderRoots(_ sorted: [FileNode]) {
         generation += 1
         nodes = sorted
-        // Matches are shown by how well they match, not in the folder's order: the same nodes keep their rows.
-        if filter.isEmpty { rows = nodes }
+        applyFilter()
     }
 
     /// What `text` matches, best first, worked out away from the main thread (a folder of a hundred thousand items

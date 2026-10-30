@@ -102,7 +102,7 @@ final class PathSuggestions {
         if let cached = listings[key] {
             folders = cached
         } else {
-            folders = await PathQuery.offMain { Self.subfolders(of: directory, showHidden: showHidden) }
+            folders = await OwnThread.run { Self.subfolders(of: directory, showHidden: showHidden) }
             listings[key] = folders
         }
         var hits: [PathSuggestion] = []

@@ -636,7 +636,7 @@ final class PaletteRanker {
     private func pathItem(for query: String) async -> PaletteItem? {
         guard let goToPath, query.hasPrefix("/") || query.hasPrefix("~") else { return nil }
         let path = (query as NSString).expandingTildeInPath
-        let found = await PathQuery.offMain { () -> (isFolder: Bool, icon: CGImage?)? in
+        let found = await OwnThread.run { () -> (isFolder: Bool, icon: CGImage?)? in
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
             var rect = NSRect(x: 0, y: 0, width: 64, height: 64)

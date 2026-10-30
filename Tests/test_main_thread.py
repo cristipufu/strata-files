@@ -39,7 +39,7 @@ class MainThreadAuditTests(unittest.TestCase):
             f"actor Reader {{\n    func read() -> Bool {{ {call} }}\n}}\n",
             f"func read() {{\n    DispatchQueue.global(qos: .utility).async {{ _ = {call} }}\n}}\n",
             f"func read() async {{\n    _ = await worker.run {{ {call} }}\n}}\n",
-            f"func read() async {{\n    _ = await PathQuery.offMain {{ {call} }}\n}}\n",
+            f"func read() async {{\n    _ = await OwnThread.run {{ {call} }}\n}}\n",
             f"func read() {{\n    Task.detached {{ _ = {call} }}\n}}\n",
         ]:
             self.assertEqual(self.check(code), [], code)

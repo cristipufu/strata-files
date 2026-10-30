@@ -14,7 +14,6 @@ final class Pane {
     var destination: Destination {
         didSet {
             opening.cancel()
-            folderEntryRead?.cancel()
             guard destination != oldValue else { return }
             navigationRevision += 1
             browser.cancelPendingActions()

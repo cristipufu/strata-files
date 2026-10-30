@@ -48,7 +48,7 @@ OFF_MAIN = re.compile("|".join([
     r"\b(?!main\b)\w+\.async(?:After)?\s*(?:\([^)]*\))?\s*(?:\{|$)",
     r"\bTask\.detached\b",
     r"\bworker\.run\b",
-    r"\boffMain\b",
+    r"\bOwnThread\.run\b",
     r"\bblocking\s*(?:\(|\{)",
     r"\bThread\s*\{",
     r"\baddOperation\b",
