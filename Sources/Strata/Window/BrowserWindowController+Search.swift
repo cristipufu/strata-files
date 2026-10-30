@@ -136,15 +136,13 @@ extension BrowserWindowController {
         let validContentQuery = contentQuery.flatMap { $0.count >= 3 ? $0 : nil }
         let contentHits = validContentQuery != nil
             ? await StrataAI.index.search(validContentQuery ?? "", limit: 15) : []
-        guard generation == p.searchGeneration, p.destination == target else { return }
         var entries = result.hits.map(FileEntry.init(hit:))
         let known = Set(entries.map { $0.url.standardizedFileURL.path })
-        let byContent = contentHits
-            .filter { hit in
-                !known.contains(hit.url.standardizedFileURL.path) && (scope.map { hit.url.path.hasPrefix($0.path + "/") } ?? true)
-            }
-            .compactMap { FileEntry(url: $0.url) }
-            .filter { entry in structural.map { $0.matches(entry) } ?? true }
+        let contentURLs = contentHits.map(\.url).filter { url in
+            !known.contains(url.standardizedFileURL.path) && (scope.map { url.path.hasPrefix($0.path + "/") } ?? true)
+        }
+        let byContent = await Self.entries(contentURLs).filter { entry in structural.map { $0.matches(entry) } ?? true }
+        guard generation == p.searchGeneration, p.destination == target else { return }
         entries += byContent
         let total = result.total + byContent.count
         p.browser.showResults(entries, total: total)
@@ -292,10 +290,14 @@ extension BrowserWindowController {
                                           message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
                 }
             }, isCancelled: { cancelled.isSet }) ?? []
+            let shown = Array(groups.prefix(500))
+            // Each copy's details are read away from the main thread: up to 500 groups of them.
+            let found = await Self.entries(shown.flatMap { $0.paths.map { URL(fileURLWithPath: $0) } })
+            let byPath = Dictionary(found.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
             guard generation == p.searchGeneration, p.destination == .duplicates else { return }
             let reclaimable = groups.map(\.reclaimable).saturatingSum
-            let rows = groups.prefix(500).map { group in
-                let entries = group.paths.compactMap { FileEntry(url: URL(fileURLWithPath: $0)) }
+            let rows = shown.map { group in
+                let entries = group.paths.compactMap { byPath[URL(fileURLWithPath: $0).path] }
                 let name = (group.paths.first as NSString?)?.lastPathComponent ?? ""
                 let detail = [
                     String(localized: "\(group.paths.count) copies", comment: "plural"),
