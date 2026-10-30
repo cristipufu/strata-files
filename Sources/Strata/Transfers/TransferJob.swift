@@ -82,8 +82,10 @@ final class TransferJob {
     /// look finished while they're still being created.
     private static let fileWeight: Double = 64 * 1024
 
+    /// `expected`: what each item must be, by its path (an undo's or redo's own items).
     init(mode: TransferMode, moves: [TransferMove], destination: URL, options: TransferEngine.Options,
-         undo: UndoManager?, conflicts: ConflictResolver, queue: TransferQueue) {
+         undo: UndoManager?, conflicts: ConflictResolver, queue: TransferQueue,
+         expected: [String: FileIdentity]? = nil) {
         self.mode = mode
         self.sources = moves.map(\.from)
         self.destination = destination
@@ -93,7 +95,10 @@ final class TransferJob {
         self.undoManager = undo
         self.queue = queue
         self.worker = TransferWorker(label: "dev.strata.transfer")
-        self.items = moves.map { TransferItem(source: $0.from.standardizedFileURL, destination: $0.to, operation: .copy) }
+        self.items = moves.map {
+            TransferItem(source: $0.from.standardizedFileURL, destination: $0.to, operation: .copy,
+                         expected: expected?[$0.from.path])
+        }
     }
 
     // MARK: - Derived values

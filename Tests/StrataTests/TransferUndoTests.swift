@@ -37,11 +37,31 @@ extension TransferTests {
     /// put in an item's place since stays where it is, and the rest go.
     @Test func undoMovesBackOnlyItemsStillTheOperations() async throws {
         let tree = try TestTree("to/a.txt", "to/b.txt", "from/")
-        let replaced = tree.url("to/b.txt").path
-        let moves = [TransferMove(from: tree.url("to/a.txt"), to: tree.url("from/a.txt")),
-                     TransferMove(from: tree.url("to/b.txt"), to: tree.url("from/b.txt"))]
-        TransferUndo.perform(actionName: "Move", undo: nil, queue: .shared) { (moves, { $0.path != replaced }) }
+        let a = tree.url("to/a.txt"), b = tree.url("to/b.txt")
+        let expected = try [a.path: #require(FileIdentity.read(a.path)), b.path: #require(FileIdentity.read(b.path))]
+        try FileManager.default.removeItem(at: b)
+        try Data("someone else's".utf8).write(to: b)
+        let moves = [TransferMove(from: a, to: tree.url("from/a.txt")),
+                     TransferMove(from: b, to: tree.url("from/b.txt"))]
+        TransferUndo.perform(actionName: "Move", undo: nil, queue: .shared) { (moves, expected) }
         await FileOps.undoWork?.value
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
+        #expect(tree.text("to/b.txt") == "someone else's")
+    }
+
+    /// A move queued for an undo or redo takes only the very items it means, checked as the job reaches each: one put
+    /// in an item's place since stays where it is, and the others go.
+    @Test func aQueuedUndoMoveTakesOnlyTheItemsItMeans() async throws {
+        let tree = try TestTree("to/a.txt", "to/b.txt", "from/")
+        let a = tree.url("to/a.txt"), b = tree.url("to/b.txt")
+        let expected = try [a.path: #require(FileIdentity.read(a.path)), b.path: #require(FileIdentity.read(b.path))]
+        try FileManager.default.removeItem(at: b)
+        try Data("someone else's".utf8).write(to: b)
+        let moves = [TransferMove(from: a, to: tree.url("from/a.txt")),
+                     TransferMove(from: b, to: tree.url("from/b.txt"))]
+        await TransferQueue.shared.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
+                                           logHistory: false, expected: expected).finished()
+        #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
+        #expect(tree.text("to/b.txt") == "someone else's")
     }
 }

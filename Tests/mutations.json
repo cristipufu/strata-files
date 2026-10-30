@@ -7062,8 +7062,15 @@
   {
     "file": "Strata/Transfers/TransferQueue.swift",
     "rule": "Undo moves back an item no longer the one the operation left",
-    "find": "            if let owns, !owns(move.from) { continue }\n",
+    "find": "            if let expected, FileIdentity.read(move.from.path) != expected[move.from.path] { continue }\n",
     "replace": "",
     "tests": "TransferTests/undoMovesBackOnlyItemsStillTheOperations"
+  },
+  {
+    "file": "Strata/Transfers/TransferEngine.swift",
+    "rule": "A queued undo move takes an item put in the place of the one it means",
+    "find": "        // Checked just before it goes: an undo or redo never takes what has taken its item's place.\n        if let expected = item.expected, FileIdentity.read(item.source.path) != expected {\n            result.outcome = .skipped\n            return result\n        }\n",
+    "replace": "        // Checked just before it goes: an undo or redo never takes what has taken its item's place.\n",
+    "tests": "TransferTests/aQueuedUndoMoveTakesOnlyTheItemsItMeans|TransferTests/aQueuedUndoMoveAcrossDisksTakesOnlyTheItemsItMeans"
   }
 ]

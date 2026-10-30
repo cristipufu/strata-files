@@ -135,4 +135,26 @@ extension TransferTests {
         #expect(try String(contentsOf: to.appending(path: "a.txt"), encoding: .utf8) == "a.txt")
         await volume.eject()
     }
+
+    /// Moving back across disks for an undo or redo copies and removes only the very items it means, checked as the
+    /// job reaches each: one put in an item's place since is neither copied nor removed.
+    @Test func aQueuedUndoMoveAcrossDisksTakesOnlyTheItemsItMeans() async throws {
+        let volume = try await ScratchVolume.make()
+        let tree = try TestTree("back/")
+        let away = volume.url("away")
+        try FileManager.default.createDirectory(at: away, withIntermediateDirectories: false)
+        let a = away.appending(path: "a.txt"), b = away.appending(path: "b.txt")
+        try Data("a.txt".utf8).write(to: a)
+        try Data("b.txt".utf8).write(to: b)
+        let expected = try [a.path: #require(FileIdentity.read(a.path)), b.path: #require(FileIdentity.read(b.path))]
+        try swap(b)
+        let moves = [TransferMove(from: a, to: tree.url("back/a.txt")),
+                     TransferMove(from: b, to: tree.url("back/b.txt"))]
+        await TransferQueue.shared.enqueue(moves: moves, mode: .move, options: .init(verify: false, clone: false),
+                                           undo: nil, conflicts: .keepBoth, logHistory: false,
+                                           expected: expected).finished()
+        #expect(tree.snapshot() == ["back/", "back/a.txt"])
+        #expect(TestTree.listing(of: away) == ["b.txt"])
+        #expect(try String(contentsOf: b, encoding: .utf8) == "someone else's")
+    }
 }

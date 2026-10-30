@@ -50,6 +50,9 @@ final class LandedFiles {
         Self.holds(url, identities)
     }
 
+    /// What each item was when it landed, by its path.
+    var recorded: [String: FileIdentity] { identities }
+
     /// `holds`, for checking away from the main thread, item by item as each is about to change.
     var owns: @Sendable (URL) -> Bool {
         let identities = identities

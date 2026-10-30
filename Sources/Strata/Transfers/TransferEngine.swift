@@ -64,6 +64,11 @@ nonisolated enum TransferEngine {
             return result
         }
 
+        // Checked just before it goes: an undo or redo never takes what has taken its item's place.
+        if let expected = item.expected, FileIdentity.read(item.source.path) != expected {
+            result.outcome = .skipped
+            return result
+        }
         var operation = item.operation
         if operation == .rename {
             var trashed: URL?
@@ -104,6 +109,12 @@ nonisolated enum TransferEngine {
         if let fatal = copy.fatal {
             if !copy.destinationExisted { removeIfPresent(target, in: target, created: copy.created) }
             return fail(fatal)
+        }
+        // Swapped in the moment before the copy began: what was copied isn't the item meant, and its copy goes.
+        if let expected = item.expected, copy.sourceIdentities[item.source.path] != expected {
+            removeIfPresent(target, in: target, created: copy.created)
+            result.outcome = .skipped
+            return result
         }
         if copy.cloned {
             progress.update {
@@ -240,6 +251,10 @@ nonisolated enum TransferEngine {
     private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                                         control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
+        if let expected = item.expected, FileIdentity.read(item.source.path) != expected {
+            result.outcome = .skipped
+            return result
+        }
         var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
         var latestSourceIdentities = failures.lazy.compactMap { $0.retryTarget?.sourceIdentities }.first { !$0.isEmpty } ?? [:]
         for failure in retryFailures(failures) {

@@ -99,6 +99,9 @@ nonisolated struct TransferItem: Sendable {
     var copyStyleName = false
     var bytes: Int64 = 0
     var files = 1
+    /// What the item must be (for an undo or redo, the item it means): one put in its place since is left where it
+    /// is. Nil for any item there.
+    var expected: FileIdentity?
     var outcome: Outcome = .pending
 }
 
