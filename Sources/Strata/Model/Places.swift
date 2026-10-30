@@ -56,7 +56,7 @@ enum Places {
     }
 
     /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead.
-    static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs = .shared) {
+    static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs) {
         let folders = urls.map(\.standardizedFileURL).filter { url in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
@@ -71,7 +71,7 @@ enum Places {
         preferences.favoritePaths = current.map(\.path)
     }
 
-    static func removeFavorite(_ url: URL, preferences: Prefs = .shared) {
+    static func removeFavorite(_ url: URL, preferences: Prefs) {
         let path = url.standardizedFileURL.path
         preferences.favoritePaths = favorites(preferences: preferences).map(\.url.standardizedFileURL.path).filter { $0 != path }
     }

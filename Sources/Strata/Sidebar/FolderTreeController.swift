@@ -51,7 +51,7 @@ final class FolderTreeController: NSViewController {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(places: PlaceChecks, transfers: TransferQueue, preferences: Prefs = .shared, remote: RemoteServices,
+    init(places: PlaceChecks, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
          copies: CopyProviders, containerStore: ContainerStore,
          clipboard: Clipboard, watchBudget: FolderWatchers.Budget) {
         watchers = FolderWatchers(budget: watchBudget)

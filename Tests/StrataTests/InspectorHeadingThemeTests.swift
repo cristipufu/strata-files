@@ -7,7 +7,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let content = NSTextField(labelWithString: "Selected file metadata")
-        let card = InspectorCard(id: "theme-test-\(UUID().uuidString)", title: "Information", symbol: "info.circle", content: content)
+        let card = InspectorCard(id: "theme-test-\(UUID().uuidString)", title: "Information", symbol: "info.circle", content: content, preferences: .shared)
         func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
         let views = descendants(card)
         let title = try #require(views.compactMap { $0 as? NSTextField }.first { $0.stringValue == "Information" })

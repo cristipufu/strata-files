@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class ViewOptionsWindowController: NSWindowController {
-    init(preferences: Prefs = .shared) {
+    init(preferences: Prefs) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 410, height: 650),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = String(localized: "View Options", comment: "Title of the window opened with Command-J")
@@ -26,7 +26,7 @@ struct ViewOptionsView: View {
     @State private var previews: Bool
     @State private var hiddenColumns: Set<String>
 
-    init(preferences: Prefs = .shared) {
+    init(preferences: Prefs) {
         self.preferences = preferences
         _options = State(initialValue: preferences.iconViewOptions)
         _iconSize = State(initialValue: preferences.gridIconSize)

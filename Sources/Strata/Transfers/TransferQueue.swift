@@ -24,7 +24,7 @@ final class TransferQueue {
     let history: OperationLog
     let copies: CopyProviders
 
-    init(preferences: Prefs = .shared, history: OperationLog, copies: CopyProviders? = nil) {
+    init(preferences: Prefs, history: OperationLog, copies: CopyProviders? = nil) {
         self.preferences = preferences
         self.history = history
         self.copies = copies ?? .live

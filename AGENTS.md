@@ -161,8 +161,7 @@ These apply everywhere below; the sections that follow add only what is specific
   `BrowserServices`. Injected code never falls back to application-wide stores, and notifications are scoped by their
   owner even when environments share a notification center. Pass the owner's instance as an argument nobody can leave
   out: a parameter or property defaulting to `.shared` or `.live` fails `scripts/audit-shared-defaults.py` unless
-  `Tests/shared-defaults.json` lists it with a reviewed reason (the entries dated 2026-10-30 predate the rule; remove
-  them when their code changes).
+  `Tests/shared-defaults.json` lists it with a reviewed reason.
 - **One owner per asynchronous request**: a pane, sheet, session or provider actor. Replacing the request, navigating,
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over

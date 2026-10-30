@@ -21,7 +21,7 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     static let horizontalPadding: CGFloat = 8
 
     init(id: String, title: String, symbol: String, content: NSView, accessory: NSView? = nil,
-         preferences: Prefs = .shared) {
+         preferences: Prefs) {
         self.id = id
         self.preferences = preferences
         self.content = content

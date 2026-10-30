@@ -32,7 +32,7 @@ struct FolderWatcherTests {
         let budget = FolderWatchers.Budget(limit: 1)
         weak var released: FolderTreeController?
         try autoreleasepool {
-            let controller = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: budget)
+            let controller = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, preferences: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: budget)
             released = controller
             _ = controller.view
             let outline = try #require(controller.focusView as? NSOutlineView)
@@ -52,7 +52,7 @@ struct FolderWatcherTests {
         let tree = try TestTree("chosen/child/")
         let before = tree.snapshot(), budget = FolderWatchers.Budget(limit: 1)
         try autoreleasepool {
-            let controller = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: budget)
+            let controller = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, preferences: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: budget)
             _ = controller.view
             let outline = try #require(controller.focusView as? NSOutlineView)
             let rows = Rows([tree.url("chosen")])

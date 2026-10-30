@@ -32,7 +32,7 @@ final class ContainerInspectorView: NSView {
         let busy: ContainerAction?
     }
 
-    init(frame: NSRect = .zero, preferences: Prefs = .shared,
+    init(frame: NSRect = .zero, preferences: Prefs,
          copies: ContainerCopyStore = ContainerCopies.store, store: ContainerStore) {
         self.preferences = preferences
         self.copies = copies
@@ -447,7 +447,7 @@ final class ComposeInspectorView: NSView {
 
     static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
 
-    init(frame: NSRect = .zero, preferences: Prefs = .shared, store: ContainerStore) {
+    init(frame: NSRect = .zero, preferences: Prefs, store: ContainerStore) {
         self.preferences = preferences
         self.store = store
         super.init(frame: frame)
