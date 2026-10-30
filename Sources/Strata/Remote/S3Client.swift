@@ -169,7 +169,7 @@ nonisolated final class S3Client: Sendable {
     }
 
     /// A request's answer, read up to `maxBody` (a service that won't stop talking is cut off, not held in memory).
-    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    @concurrent private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         let (bytes, response) = try await session.bytes(for: request)
         if response.expectedContentLength > Int64(Self.maxBody) { throw S3Error.tooLarge }
         var body = Data()
@@ -183,19 +183,19 @@ nonisolated final class S3Client: Sendable {
     // MARK: - Operations
 
     /// What's directly inside `prefix` ("" for the top, else ending in "/"): its folders and objects.
-    func list(_ prefix: String) async throws -> [S3Item] {
+    @concurrent func list(_ prefix: String) async throws -> [S3Item] {
         // The folder's own marker object ("photos/" inside "photos/") isn't an item of it.
         try await pages(prefix, delimiter: true).filter { $0.key != prefix }
     }
 
     /// Every object under `prefix`, at any depth (to copy, rename or delete a folder).
-    func listAll(_ prefix: String) async throws -> [S3Item] {
+    @concurrent func listAll(_ prefix: String) async throws -> [S3Item] {
         try await pages(prefix, delimiter: false)
     }
 
     /// A listing, page after page. A service repeating a continuation token, or saying there's more while sending
     /// nothing, is stopped rather than followed forever; so is one past a million keys.
-    private func pages(_ prefix: String, delimiter: Bool) async throws -> [S3Item] {
+    @concurrent private func pages(_ prefix: String, delimiter: Bool) async throws -> [S3Item] {
         var items: [S3Item] = []
         var token: String?
         var seen: Set<String> = []
@@ -218,7 +218,7 @@ nonisolated final class S3Client: Sendable {
         return items
     }
 
-    func head(_ key: String) async throws -> S3Item? {
+    @concurrent func head(_ key: String) async throws -> S3Item? {
         let (body, response) = try await send(request("HEAD", key: key))
         if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
         try Self.check(response, body)
@@ -230,7 +230,7 @@ nonisolated final class S3Client: Sendable {
 
     /// The object at `key` into `destination` (replaced): at most `limit` bytes (the size it was listed with); `stop`
     /// ends it between chunks, as does cancelling the task.
-    func download(_ key: String, to destination: URL, limit: Int64 = .max, progress: @escaping @Sendable (Int64) -> Void = { _ in },
+    @concurrent func download(_ key: String, to destination: URL, limit: Int64 = .max, progress: @escaping @Sendable (Int64) -> Void = { _ in },
                   stop: StopFlag = StopFlag()) async throws {
         let (bytes, response) = try await session.bytes(for: request("GET", key: key))
         guard let http = response as? HTTPURLResponse else { throw S3Error.badResponse }
@@ -265,7 +265,7 @@ nonisolated final class S3Client: Sendable {
     }
 
     /// The local file at `source` to `key` (replacing what's there). Up to 5 GB. `progress` gets the bytes sent.
-    func upload(_ source: URL, to key: String, progress: @escaping @Sendable (Int64) -> Void = { _ in }) async throws {
+    @concurrent func upload(_ source: URL, to key: String, progress: @escaping @Sendable (Int64) -> Void = { _ in }) async throws {
         let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size <= 5 << 30 else { throw S3Error.tooLarge }
         var request = try request("PUT", key: key, headers: ["Content-Length": String(size)], payloadHash: S3Signer.unsignedPayload)
@@ -275,13 +275,13 @@ nonisolated final class S3Client: Sendable {
     }
 
     /// An empty "folder/" marker, so a new folder shows before anything is in it.
-    func makeFolder(_ prefix: String) async throws {
+    @concurrent func makeFolder(_ prefix: String) async throws {
         let (body, response) = try await session.upload(for: request("PUT", key: prefix, headers: ["Content-Length": "0"]), from: Data())
         try Self.check(response, body.prefix(Self.maxBody))
     }
 
     /// A server-side copy (no download), up to 5 GB.
-    func copy(_ key: String, to newKey: String) async throws {
+    @concurrent func copy(_ key: String, to newKey: String) async throws {
         let source = "/" + bucket + "/" + S3Signer.encode(key, keepSlash: true)
         let (body, response) = try await send(request("PUT", key: newKey, headers: ["x-amz-copy-source": source]))
         try Self.check(response, body)
@@ -289,7 +289,7 @@ nonisolated final class S3Client: Sendable {
         guard body.range(of: Data("<CopyObjectResult".utf8)) != nil, S3ErrorParser.parse(body).code.isEmpty else { throw S3Error.badResponse }
     }
 
-    func delete(_ key: String) async throws {
+    @concurrent func delete(_ key: String) async throws {
         guard !key.isEmpty else { throw S3Error.badResponse }
         let (body, response) = try await send(request("DELETE", key: key))
         try Self.check(response, body)
