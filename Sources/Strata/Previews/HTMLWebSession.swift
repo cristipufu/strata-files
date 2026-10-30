@@ -26,7 +26,6 @@ import StrataModel
     private var remainingBytes: Int
     private var initial = true
     private var closed = false
-    package var onFinish: (() -> Void)?
     package var onFailure: (() -> Void)?
     /// When WebKit starts showing the document, before what it asks for besides has come.
     package var onCommit: (() -> Void)?
@@ -79,7 +78,7 @@ import StrataModel
         let pending = requests.values
         requests = [:]
         pending.forEach { $0.cancel() }
-        onFinish = nil; onFailure = nil; onCommit = nil
+        onFailure = nil; onCommit = nil
         read = nil
     }
 
@@ -159,7 +158,6 @@ import StrataModel
     }
 
     package func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { if !closed { onCommit?() } }
-    package func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if !closed { onFinish?() } }
     package func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }
     package func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }
     package func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { if !closed { onFailure?() } }

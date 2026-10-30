@@ -7,7 +7,7 @@ nonisolated package struct HTMLPreviewResource: Sendable {
     package let data: Data
     package let mime: String
 
-    /// A picture a book or a page holds, no larger than 2048 pixels a side, within what's left of its document's
+    /// A picture for a preview's WebKit page, no larger than 2048 pixels a side, within what's left of its document's
     /// `pixels` and `bytes`: a photo stays a JPEG, anything else becomes a PNG. One refused from its header costs
     /// nothing; one decoded costs its pixels whether it fits the bytes left or not, since decoding is the work they
     /// bound.
@@ -81,6 +81,7 @@ package actor HTMLPreviewDocument {
             guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, FileIdentity.from(info) == chosen.identity,
                   info.st_size >= 0, info.st_size <= TextFile.limit else { throw PreviewError.unsupported }
             let bytes = try Self.bytes(fd, limit: TextFile.limit)
+            try Task.checkCancellation()
             guard let text = TextFile.decode(bytes), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw PreviewError.unsupported
             }
@@ -124,6 +125,10 @@ package actor HTMLPreviewDocument {
 
     package func verify() throws {
         try Task.checkCancellation()
+        try unchanged()
+    }
+
+    private func unchanged() throws {
         try chosen.withParent { _, _, current in
             guard Stamp(current) == stamp else { throw POSIXError(.ESTALE) }
         }
@@ -136,6 +141,8 @@ package actor HTMLPreviewDocument {
         let key = parts.joined(separator: "/")
         let raw = Data(key.utf8)
         if let cached = cache[raw] { return cached }
+        // Once counted, an attempt runs to its end: the next WebKit lifetime reads through this document too, and would
+        // refuse one stopped partway.
         guard attempts.count < Self.requestLimit, attempts.insert(raw).inserted else { throw PreviewError.unsupported }
         let ext = (key as NSString).pathExtension.lowercased()
         let css = ext == "css"
@@ -168,26 +175,11 @@ package actor HTMLPreviewDocument {
             remainingBytes -= max(0, data.count - bytes.count)
             resource = HTMLPreviewResource(data: data, mime: "text/css; charset=utf-8")
         } else {
-            guard let image = CGImageSourceCreateWithData(bytes as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-                  CGImageSourceGetCount(image) > 0, CGImageSourceGetCount(image) <= 32,
-                  let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
-                  let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
-                  width > 0, height > 0, width <= min(8_000_000, remainingPixels) / height else { throw PreviewError.unsupported }
-            remainingPixels -= width * height
-            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(image, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: 2048,
-            ] as CFDictionary) else { throw PreviewError.unsupported }
-            let output = NSMutableData()
-            guard let writer = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else { throw PreviewError.unsupported }
-            CGImageDestinationAddImage(writer, thumbnail, nil)
-            guard CGImageDestinationFinalize(writer), output.length <= remainingBytes else { throw PreviewError.unsupported }
-            remainingBytes -= output.length
-            resource = HTMLPreviewResource(data: output as Data, mime: "image/png")
+            resource = try HTMLPreviewResource.picture(bytes, pixels: &remainingPixels, bytes: &remainingBytes)
         }
         var after = stat()
         guard fstat(fd, &after) == 0, Stamp(info) == Stamp(after) else { throw POSIXError(.ESTALE) }
-        try verify()
+        try unchanged()
         cache[raw] = resource
         return resource
     }
@@ -213,7 +205,6 @@ package actor HTMLPreviewDocument {
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
         let data = try handle.read(upToCount: limit + 1) ?? Data()
         guard data.count <= limit else { throw PreviewError.unsupported }
-        try Task.checkCancellation()
         return data
     }
 }

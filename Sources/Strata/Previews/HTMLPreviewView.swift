@@ -1,40 +1,26 @@
 import AppKit
-import WebKit
 import StrataTheme
 import StrataModel
 
 /// Static HTML with the existing source reader one click away. Document colors stay with the document.
-package final class HTMLPreviewView: PreviewView {
+package final class HTMLPreviewView: WebPreviewView {
     package let modeControl = NSSegmentedControl(labels: [String(localized: "Preview"), String(localized: "Source")], trackingMode: .selectOne, target: nil, action: nil)
     private let browserButton = NSButton(title: String(localized: "Open in Browser"), target: nil, action: nil)
     private let host = NSView()
     private let url: URL
     private let selected: ChosenFile?
-    private let spinner = NSProgressIndicator()
     private let openFile: (URL) -> Void
-    private let openLink: (URL) -> Void
     private var source: CodePreviewView?
     private var document: HTMLPreviewDocument?
-    private var session: HTMLWebSession?
-    package private(set) var webView: WKWebView?
-    package private(set) var renderTask: Task<Void, Never>?
-    package private(set) var rendered = false
-    private var timeout: Task<Void, Never>?
-    private let timeLimit: @Sendable () async -> Void
-    private var revision = 0
-    private var stopped = false
-    private weak var observedWindow: NSWindow?
 
-    /// `timeLimit` ends when WebKit has had long enough to render the page: its source is shown instead.
-    package init(url: URL, openFile: ((URL) -> Void)? = nil, openLink: ((URL) -> Void)? = nil,
-                 timeLimit: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(8)) }) {
+    /// `timeLimit` ends when WebKit has had long enough to start showing the page: its source is shown instead.
+    package init(url: URL, openFile: ((URL) -> Void)? = nil,
+                 openLink: @escaping (URL) -> Void = PreviewWebPage.usualOpenLink,
+                 timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
         self.url = url
-        self.timeLimit = timeLimit
         selected = try? ChosenFile(url)
         self.openFile = openFile ?? Self.openInBrowser
-        self.openLink = openLink ?? { NSWorkspace.shared.open($0) }
-        super.init(frame: .zero)
-        ThemeStyle.bind(self, to: .preview)
+        super.init(page: PreviewWebPage(timeLimit: timeLimit, openLink: openLink))
         ThemeStyle.bind(host, to: .preview)
         let bar = NSStackView(views: [modeControl, NSView(), browserButton])
         bar.orientation = .horizontal
@@ -57,37 +43,10 @@ package final class HTMLPreviewView: PreviewView {
             host.topAnchor.constraint(equalTo: separator.bottomAnchor), host.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             host.leadingAnchor.constraint(equalTo: contentView.leadingAnchor), host.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
         ])
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(spinner)
-        NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: host.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: host.centerYAnchor)])
+        attach(page)
         footer.show(["HTML"], note: String(localized: "Scripts and online content are blocked."))
-        prepare()
+        open()
     }
-
-    @available(*, unavailable)
-    package required init?(coder: NSCoder) { fatalError() }
-    isolated deinit { stop(); NotificationCenter.default.removeObserver(self) }
-
-    package override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if let window, window !== newWindow {
-            stop()
-            NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: window)
-            observedWindow = nil
-        }
-        super.viewWillMove(toWindow: newWindow)
-    }
-    package override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard let window, window !== observedWindow else { return }
-        NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
-        observedWindow = window
-        NotificationCenter.default.addObserver(self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification, object: window)
-        if stopped { stopped = false; prepare() }
-    }
-    @objc private func windowClosed() { stop() }
 
     private func attach(_ view: NSView) {
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -98,69 +57,64 @@ package final class HTMLPreviewView: PreviewView {
         ])
     }
 
-    private func prepare() {
-        guard !stopped, webView == nil, renderTask == nil, modeControl.selectedSegment == 0 else { return }
-        spinner.startAnimation(nil)
-        let revision = revision, url = url, existing = document, selected = selected
-        renderTask = Task { [weak self] in
-            do {
-                let document: HTMLPreviewDocument
-                if let existing { document = existing }
-                else {
-                    guard let selected else { throw POSIXError(.ESTALE) }
-                    document = try await HTMLPreviewDocument.open(url, chosen: selected)
-                }
-                let rules = try await HTMLWebSession.contentRules()
-                try Task.checkCancellation()
-                try await document.verify()
-                guard let self, !stopped, self.revision == revision else { return }
-                self.document = document
-                let session = HTMLWebSession(url: document.url, read: { try await document.read($0) }, openLink: openLink)
-                let web = WKWebView(frame: .zero, configuration: session.configuration(rules: rules))
-                web.navigationDelegate = session; web.uiDelegate = session
-                web.allowsBackForwardNavigationGestures = false
-                web.allowsLinkPreview = false
-                self.session = session; webView = web
-                session.onFinish = { [weak self] in self?.finished() }
-                session.onFailure = { [weak self] in self?.showSource(unavailable: true) }
-                attach(web)
-                host.addSubview(spinner, positioned: .above, relativeTo: web)
-                web.load(URLRequest(url: document.url, cachePolicy: .reloadIgnoringLocalCacheData))
-                renderTask = nil
-                let timeLimit = timeLimit
-                timeout = Task { [weak self] in
-                    await timeLimit()
-                    if !Task.isCancelled { self?.showSource(unavailable: true) }
-                }
-            } catch {
-                guard let self, !Task.isCancelled, self.revision == revision else { return }
-                renderTask = nil
-                showSource(unavailable: true)
-            }
-        }
+    package override var isOpen: Bool { document != nil }
+
+    /// Reads the document while Preview is chosen, for every WebKit lifetime after until one can't show it; one that
+    /// can't be read shows its source.
+    package override func open() {
+        guard modeControl.selectedSegment == 0 else { return }
+        let url = url, selected = selected
+        load({ () -> HTMLPreviewDocument? in
+            guard let selected else { return nil }
+            return try? await HTMLPreviewDocument.open(url, chosen: selected)
+        }, apply: { [weak self] document in
+            guard let self else { return }
+            self.document = document
+            if document == nil { showSourceInstead() } else { showPage() }
+        })
     }
 
-    private func finished() {
-        rendered = true
-        spinner.stopAnimation(nil)
-        timeout?.cancel(); timeout = nil
+    package override func showPage() {
+        guard !stopped, modeControl.selectedSegment == 0, page.webView == nil, page.task == nil,
+              let document else { return }
+        page.show({
+            try await document.verify()
+            return PreviewWebPage.Document(url: document.url, read: { try await document.read($0) })
+        }, failed: { [weak self] _ in self?.previewFailed() })
+    }
+
+    /// A document that couldn't be shown, perhaps changed since it was read, is read again: its source now, and its page
+    /// when Preview is chosen next rather than again and again while it keeps failing. A page kept for coming back to
+    /// Preview that fails meanwhile shows again then, without a word over the source shown.
+    private func previewFailed() {
+        document = nil
+        if modeControl.selectedSegment == 0 { showSourceInstead() }
+    }
+
+    /// Read again, since the file may have changed since Source last showed it.
+    private func showSourceInstead() {
+        source?.removeFromSuperview(); source = nil
+        showSource(unavailable: true)
     }
 
     @objc package func modeChanged(_ sender: NSSegmentedControl) {
-        if sender.selectedSegment == 1 { showSource(unavailable: false) }
-        else {
-            source?.isHidden = true
-            webView?.isHidden = false
-            if !rendered { prepare() }
-            footer.show(["HTML"], note: String(localized: "Scripts and online content are blocked."))
+        guard !stopped else { return }
+        guard sender.selectedSegment == 0 else {
+            showSource(unavailable: false)
+            return
         }
+        source?.isHidden = true
+        page.isHidden = false
+        footer.show(["HTML"], note: String(localized: "Scripts and online content are blocked."))
+        if isOpen { showPage() } else if !isLoading { open() }
     }
 
+    /// A page WebKit has started showing stays, hidden, for coming back to Preview; one still starting stops.
     private func showSource(unavailable: Bool) {
         guard !stopped else { return }
         modeControl.selectedSegment = 1
-        if !rendered { clearWeb() }
-        webView?.isHidden = true
+        if !page.isShowing { cancelLoad(); page.clear() }
+        page.isHidden = true
         if source == nil {
             let selected = selected
             let view = CodePreviewView(source: {
@@ -172,23 +126,6 @@ package final class HTMLPreviewView: PreviewView {
         source?.isHidden = false
         footer.show(["HTML"], note: unavailable ? String(localized: "Preview unavailable. Showing source.") : nil)
         if !unavailable { footer.collapse(true) }
-    }
-
-    private func clearWeb() {
-        spinner.stopAnimation(nil)
-        revision += 1
-        renderTask?.cancel(); renderTask = nil
-        timeout?.cancel(); timeout = nil
-        session?.close(); session = nil
-        webView?.stopLoading()
-        webView?.navigationDelegate = nil; webView?.uiDelegate = nil
-        webView?.removeFromSuperview(); webView = nil
-        rendered = false
-    }
-
-    package func stop() {
-        stopped = true
-        clearWeb()
     }
 
     @objc package func openBrowser(_ sender: Any?) {

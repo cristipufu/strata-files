@@ -62,26 +62,6 @@ import WebKit
         return tree.url("folder/Notes.one")
     }
 
-    /// A PNG of `side` by `side` blank pixels in a few KB, its rows compressed as ImageIO expects them to be.
-    private func blank(_ side: Int) throws -> Data {
-        func bigEndian(_ value: UInt32) -> [UInt8] { (0..<4).map { UInt8(truncatingIfNeeded: value >> (24 - 8 * $0)) } }
-        func chunk(_ type: String, _ body: [UInt8]) -> [UInt8] {
-            let typed = Array(type.utf8) + body
-            var crc: UInt32 = .max
-            for byte in typed {
-                crc ^= UInt32(byte)
-                for _ in 0..<8 { crc = (crc >> 1) ^ (crc & 1 == 1 ? 0xEDB8_8320 : 0) }
-            }
-            return bigEndian(UInt32(body.count)) + typed + bigEndian(~crc)
-        }
-        let rows = Data(count: side * (1 + side / 8))
-        let deflated = try (rows as NSData).compressed(using: .zlib) as Data
-        let stream = [0x78, 0x9C] + Array(deflated) + bigEndian(UInt32(rows.count % 65521) << 16 | 1)
-        let header = bigEndian(UInt32(side)) + bigEndian(UInt32(side)) + [1, 0, 0, 0, 0]
-        return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + chunk("IHDR", header) + chunk("IDAT", stream)
-                    + chunk("IEND", []))
-    }
-
     private func window(_ view: NSView) -> NSWindow {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 540), styleMask: [.titled],
@@ -404,7 +384,7 @@ import WebKit
         let kinds: [(String, [UInt8])] = [
             ("png", try png()), ("heic", try encoded("public.heic")), ("jpeg2000", try encoded("public.jpeg-2000")),
             ("metafile", [0x01, 0, 0, 0] + Array(repeating: 0, count: 60)), ("junk", Array("BMjunkjunkjunk".utf8)),
-            ("huge", Array(try blank(6400))),
+            ("huge", Array(try TestPictures.blank(6400))),
         ]
         let guids = kinds.indices.map { String(format: "{%08X-2222-3333-4444-555555555555}", 0xA000_0000 + $0) }
         fixture.store.fileData = Array(zip(guids, kinds.map(\.1)))
@@ -429,7 +409,7 @@ import WebKit
 
     @MainActor @Test func aPageThatFailsSaysWhyWhenItKnows() throws {
         let tree = try TestTree("folder/", "outside")
-        let view = OneNotePreviewView(url: try section(tree), timeLimit: HTMLPreviewView.noTimeLimit)
+        let view = OneNotePreviewView(url: try section(tree), timeLimit: PreviewWebPage.noTimeLimit)
         defer { view.stop() }
         let locked = String(localized: "This section is protected with a password.")
         let changed = String(
@@ -453,7 +433,7 @@ import WebKit
     }
 
     @Test func aPictureCostsItsPixelsOnlyOnceDecoded() throws {
-        let huge = try blank(6400)
+        let huge = try TestPictures.blank(6400)
         // It's refused from its header, before anything decodes it.
         try #require((try? PreviewPicture(huge)) == nil)
         var pixels = 41_000_288, bytes = 1 << 20
@@ -543,7 +523,7 @@ import WebKit
         for (name, text) in [("Locked.one", String(localized: "This section is protected with a password.")),
                              ("Empty.one", String(localized: "This section has no pages.")),
                              ("Damaged.one", String(localized: "This file couldn’t be read."))] {
-            let view = OneNotePreviewView(url: tree.url("folder/\(name)"), timeLimit: HTMLPreviewView.noTimeLimit)
+            let view = OneNotePreviewView(url: tree.url("folder/\(name)"), timeLimit: PreviewWebPage.noTimeLimit)
             let window = window(view)
             await view.loadingTask?.value
             let messages = view.subviews.compactMap { $0 as? PreviewMessageView }
@@ -559,7 +539,7 @@ import WebKit
         let probe = try HTMLNetworkProbe()
         let tree = try TestTree("folder/", "outside")
         let url = try section(tree, pictures: 40, "<script>window.ran=1</script>\(probe.url)"), before = tree.snapshot()
-        let view = OneNotePreviewView(url: url, timeLimit: HTMLPreviewView.noTimeLimit), window = window(view)
+        let view = OneNotePreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit), window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         await view.loadingTask?.value
         await view.page.task?.value
@@ -612,7 +592,7 @@ import WebKit
         let index = try #require(fixture.store.spaces.firstIndex { $0.id == lost })
         fixture.store.spaces[index].declarations = [(OneStoreFixture.ID(number: 4242), 1, .zero)]
         try fixture.section([[broken, lost, fine]]).write(to: tree.url("folder/Notes.one"))
-        let view = OneNotePreviewView(url: tree.url("folder/Notes.one"), timeLimit: HTMLPreviewView.noTimeLimit)
+        let view = OneNotePreviewView(url: tree.url("folder/Notes.one"), timeLimit: PreviewWebPage.noTimeLimit)
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         await view.loadingTask?.value
@@ -631,14 +611,14 @@ import WebKit
     }
 
     @MainActor @Test func aDocumentShownLaterReplacesOneStillBeingMade() async throws {
-        let page = PreviewWebPage(timeLimit: HTMLPreviewView.noTimeLimit), window = window(page)
+        let page = PreviewWebPage(timeLimit: PreviewWebPage.noTimeLimit), window = window(page)
         defer { page.clear(); window.close(); window.contentView = nil }
         let (started, signal) = AsyncStream<Void>.makeStream()
         let held = HeldDocument()
         page.show({
             signal.yield()
             return try await held.document()
-        }, failure: { _ in "Failed" })
+        }, failed: says(page, "Failed"))
         let first = page.task
         var iterator = started.makeAsyncIterator()
         await iterator.next()
@@ -647,7 +627,7 @@ import WebKit
             PreviewWebPage.Document(url: second, read: { _ in
                 HTMLPreviewResource(data: Data("<p id=shown>Second</p>".utf8), mime: "text/html; charset=utf-8")
             })
-        }, failure: { _ in "Failed" })
+        }, failed: says(page, "Failed"))
         await page.task?.value
         let web = try #require(page.webView)
         let firstURL = try #require(URL(string: "\(HTMLPreviewDocument.scheme)://first/page.html"))
@@ -656,7 +636,7 @@ import WebKit
         try await wait { !web.isLoading }
         #expect(page.webView === web && web.url == second && page.problem.isHidden)
         // One that fails says what its failure says.
-        page.show({ throw PreviewError.unsupported }, failure: { _ in "Failed" })
+        page.show({ throw PreviewError.unsupported }, failed: says(page, "Failed"))
         await page.task?.value
         #expect(page.webView == nil && !page.problem.isHidden && page.problem.stringValue == "Failed")
         signal.finish()
@@ -671,7 +651,6 @@ import WebKit
             await iterator.next()
             finish.yield()
         }, openLink: { _ in Issue.record("Nothing was clicked") })
-        let failure: (Error?) -> String = { $0 == nil ? "Not shown in time" : "Failed" }
         var finished = over.makeAsyncIterator()
         let window = window(page)
         defer { page.clear(); window.close(); window.contentView = nil }
@@ -683,9 +662,9 @@ import WebKit
                 _ = try await held.document()
                 return HTMLPreviewResource(data: Data("<p>Late</p>".utf8), mime: "text/html; charset=utf-8")
             })
-        }, failure: failure)
+        }, failed: says(page, "Failed", late: "Not shown in time"))
         await page.task?.value
-        #expect(page.webView != nil && page.problem.isHidden)
+        #expect(page.webView != nil && page.problem.isHidden && !page.isShowing)
         end.yield()
         await finished.next()
         // It says what its preview says of a document WebKit couldn't show.
@@ -698,21 +677,29 @@ import WebKit
                 return HTMLPreviewResource(data: Data("<p>Shown</p><img src=late.png>".utf8),
                                            mime: "text/html; charset=utf-8")
             })
-        }, failure: { _ in "Failed" })
+        }, failed: says(page, "Failed"))
         await page.task?.value
         let web = try #require(page.webView)
         try await wait {
             let text = try? await web.evaluateJavaScript("document.querySelector('p')?.textContent")
             return text as? String == "Shown"
         }
+        #expect(page.isShowing)
         end.yield()
         await finished.next()
-        #expect(page.webView === web && page.problem.isHidden)
+        #expect(page.webView === web && page.problem.isHidden && page.isShowing)
+        page.clear()
+        #expect(!page.isShowing)
         end.finish()
         finish.finish()
         await held.release(PreviewWebPage.Document(url: shown, read: { _ in throw PreviewError.unsupported }))
     }
 }
+/// What a preview does with a page that failed: shows `text` in its place, or `late` when WebKit couldn't show it.
+@MainActor private func says(_ page: PreviewWebPage, _ text: String, late: String? = nil) -> (Error?) -> Void {
+    { [weak page] error in page?.showProblem(error == nil ? late ?? text : text) }
+}
+
 /// A document made only when the test says so.
 private actor HeldDocument {
     private var waiting: [CheckedContinuation<PreviewWebPage.Document, Never>] = []

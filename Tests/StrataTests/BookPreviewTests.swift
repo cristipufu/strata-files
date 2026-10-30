@@ -255,7 +255,7 @@ struct BookPreviewTests {
         let (events, signal) = AsyncStream<Int>.makeStream()
         let gate = EPUBBookLoadGate(started: signal)
         let view = EPUBPreviewView(url: url, loader: { _ in try await gate.read() },
-                                   timeLimit: HTMLPreviewView.noTimeLimit)
+                                   timeLimit: PreviewWebPage.noTimeLimit)
         _ = NSApplication.shared
         func window() -> NSWindow {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
@@ -363,7 +363,7 @@ struct BookPreviewTests {
         let tree = try TestTree("book.epub", "outside/keep")
         let url = try epub(tree)
         #expect(RichPreview.makeView(for: url, contentType: .epub) is EPUBPreviewView)
-        let view = EPUBPreviewView(url: url, timeLimit: HTMLPreviewView.noTimeLimit)
+        let view = EPUBPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

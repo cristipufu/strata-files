@@ -11,16 +11,16 @@ extension ColorThemeTests {
         _ = NSApplication.shared
         let tree = try TestTree("page.html", "outside")
         try Data("<body style='background:#123456;color:#fff'><h1>Keep this document</h1></body>".utf8).write(to: tree.url("page.html"))
-        let html = HTMLPreviewView(url: tree.url("page.html"), timeLimit: HTMLPreviewView.noTimeLimit)
+        let html = HTMLPreviewView(url: tree.url("page.html"), timeLimit: PreviewWebPage.noTimeLimit)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = html
         window.setContentSize(NSSize(width: 700, height: 500))
         defer { html.stop(); window.close(); window.contentView = nil }
-        let deadline = ContinuousClock.now + .seconds(25)
-        while !html.rendered, html.modeControl.selectedSegment == 0, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try await html.shown()
         let web = try #require(html.webView)
-        try #require(html.rendered)
+        try #require(html.page.isShowing)
+        let deadline = ContinuousClock.now + .seconds(25)
         html.modeControl.selectedSegment = 1; html.modeChanged(html.modeControl)
         func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
         let source = try #require(views(html).compactMap { $0 as? CodePreviewView }.first)

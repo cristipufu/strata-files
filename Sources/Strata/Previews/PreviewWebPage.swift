@@ -2,11 +2,12 @@ import AppKit
 import WebKit
 import StrataTheme
 
-/// One offline WebKit document at a time, for previews that page through a file: showing another, `clear` or a
-/// failure ends the one before with its session, its load and its time limit, and a late result never shows.
+/// One offline WebKit document at a time: showing another, `clear` or a failure ends the one before with its session,
+/// its load and its time limit, and a late result never shows.
 package final class PreviewWebPage: NSView {
     package typealias TimeLimit = @Sendable () async -> Void
     package static let usualTimeLimit: TimeLimit = { try? await Task.sleep(for: .seconds(8)) }
+    package static let usualOpenLink: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
     nonisolated package struct Document: Sendable {
         package let url: URL
@@ -21,19 +22,20 @@ package final class PreviewWebPage: NSView {
 
     package private(set) var webView: WKWebView?
     package private(set) var task: Task<Void, Never>?
+    /// From when WebKit starts showing the document, before what it asks for besides has come.
+    package private(set) var isShowing = false
     package let problem = NSTextField(wrappingLabelWithString: "")
     private let spinner = NSProgressIndicator()
     private let timeLimit: TimeLimit
     private let openLink: (URL) -> Void
     private var session: HTMLWebSession?
     private var timeout: Task<Void, Never>?
-    /// What the shown document's failures say: nil for WebKit's own, or for its time running out.
-    private var describe: ((Error?) -> String)?
+    private var failed: ((Error?) -> Void)?
     private var revision = 0
 
     /// `timeLimit` ends when WebKit has had long enough to start showing a document; one it hasn't by then fails.
     package init(timeLimit: @escaping TimeLimit = usualTimeLimit,
-                 openLink: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+                 openLink: @escaping (URL) -> Void = usualOpenLink) {
         self.timeLimit = timeLimit
         self.openLink = openLink
         super.init(frame: .zero)
@@ -53,12 +55,12 @@ package final class PreviewWebPage: NSView {
     package required init?(coder: NSCoder) { fatalError() }
     isolated deinit { clear() }
 
-    /// Shows the document `prepare` makes, or what `failure` says of why it couldn't be: the error that kept it from
-    /// being made, or nil when WebKit couldn't show it, in time or at all.
+    /// Shows the document `prepare` makes, or tells `failed` why it couldn't be: the error that kept it from being
+    /// made, or nil when WebKit couldn't show it, in time or at all.
     package func show(_ prepare: @escaping @Sendable () async throws -> Document,
-                      failure describe: @escaping (Error?) -> String) {
+                      failed: @escaping (Error?) -> Void) {
         clear()
-        self.describe = describe
+        self.failed = failed
         spinner.startAnimation(nil)
         let revision = revision
         task = Task { [weak self] in
@@ -87,6 +89,7 @@ package final class PreviewWebPage: NSView {
         session.onFailure = { [weak self] in self?.fail(nil) }
         // Once the page shows, pictures still coming never end it.
         session.onCommit = { [weak self] in
+            self?.isShowing = true
             self?.spinner.stopAnimation(nil)
             self?.timeout?.cancel(); self?.timeout = nil
         }
@@ -97,7 +100,8 @@ package final class PreviewWebPage: NSView {
                                      web.trailingAnchor.constraint(equalTo: trailingAnchor),
                                      web.topAnchor.constraint(equalTo: topAnchor),
                                      web.bottomAnchor.constraint(equalTo: bottomAnchor)])
-        web.load(URLRequest(url: document.url))
+        // Every document comes through its session, never from a cache.
+        web.load(URLRequest(url: document.url, cachePolicy: .reloadIgnoringLocalCacheData))
         let timeLimit = timeLimit
         timeout = Task { [weak self] in
             await timeLimit()
@@ -108,6 +112,7 @@ package final class PreviewWebPage: NSView {
     package func clear() {
         revision += 1; task?.cancel(); task = nil
         timeout?.cancel(); timeout = nil
+        failed = nil; isShowing = false
         spinner.stopAnimation(nil)
         problem.isHidden = true
         session?.close(); session = nil
@@ -115,10 +120,14 @@ package final class PreviewWebPage: NSView {
         webView?.removeFromSuperview(); webView = nil
     }
 
-    private func fail(_ error: Error?) {
-        let text = describe?(error) ?? ""
-        clear()
+    package func showProblem(_ text: String) {
         problem.stringValue = text
         problem.isHidden = false
+    }
+
+    private func fail(_ error: Error?) {
+        let failed = failed
+        clear()
+        failed?(error)
     }
 }

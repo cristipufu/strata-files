@@ -201,18 +201,25 @@ retain their media condition. No production JavaScript is injected.
 
 WebKit never receives file URLs or broad filesystem access. Its custom scheme reads only the selected document's
 folder, through no-follow descriptors and bounded reads. Selecting HTML in a provider or archive does not fetch its
-surrounding assets. Already-local CSS and raster images can load; images become bounded static PNG thumbnails.
+surrounding assets. Already-local CSS and raster images can load; images become bounded static thumbnails, a JPEG
+staying a JPEG and anything else becoming a PNG.
 External fonts, SVG asset files, data URLs and online resources stay blocked. Inline document markup and authored
 colors are retained. The panel, native controls and Source mode use the existing Strata theme.
 
 The document input limit is 512 KiB. Assets allow 32 distinct attempts and 8 MiB in all, including image conversion;
-CSS is limited to 256 KiB, image input to 4 MiB and eight million pixels each, with sixteen million pixels in all.
-Raster thumbnails are at most 2,048 pixels on an edge. A WebKit session also caps all requests, including repeated
-cached resources, at 32 and total response delivery at 9.5 MiB. A stalled render switches to Source after eight
-seconds. Oversized or unsupported documents use bounded Source with no unrestricted Quick Look fallback.
+CSS is limited to 256 KiB and image input to 4 MiB; images share sixteen million pixels in all, checked from their
+headers before decoding (`PreviewPicture`), and an attempt once counted runs to its end so a later WebKit lifetime
+can still use it. Raster thumbnails are at most 2,048 pixels on an edge. A WebKit session also caps all requests,
+including repeated cached resources, at 32 and total response delivery at 9.5 MiB. A page WebKit hasn't started
+showing within eight seconds switches to Source; once it shows, styles and pictures still coming never end it. A page
+kept behind Source that fails is shown again when Preview is chosen. Oversized or unsupported documents use bounded
+Source with no unrestricted Quick Look fallback.
 
 Cancellation stops the current WebKit lifetime, suppresses late scheme callbacks and rejects changed files.
-Reattachment starts a fresh lifetime. Theme changes preserve the current web view, Source text and selection.
+Reattachment starts a fresh lifetime for the document read at first. A page that can't be shown, its file changed
+since for one, shows its Source as it is now, and choosing Preview reads it again. The HTML, EPUB and OneNote previews
+share this lifecycle (`WebPreviewView`) and their WebKit page (`PreviewWebPage`). Theme changes preserve the current
+web view, Source text and selection.
 The browser action keeps the originally selected file and refuses a replacement; interactive pages run only when
 the user explicitly opens them externally.
 

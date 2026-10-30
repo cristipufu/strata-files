@@ -5508,9 +5508,9 @@
     "tests": "BookPreviewTests/archiveGridReconfigurationKeepsInFlightAndCachedPageThumbnails"
   },
   {
-    "file": "Strata/Previews/PagedPreviewView.swift",
-    "find": "if isOpen { entryChanged() } else { reopen() }",
-    "replace": "if isOpen { entryChanged() }",
+    "file": "Strata/Previews/WebPreviewView.swift",
+    "find": "if isOpen { showPage() } else { reopen() }",
+    "replace": "if isOpen { showPage() }",
     "rule": "Book previews: a detached initial load restarts in its new window",
     "tests": "BookPreviewTests/reattachingDuringTheInitialBookReadRestartsItAndRejectsItsOldCompletion"
   },
@@ -6354,8 +6354,8 @@
   {
     "file": "Strata/Previews/HTMLWebSession.swift",
     "rule": "Previews: a closed session lets go of what it reads from",
-    "find": "        onFinish = nil; onFailure = nil; onCommit = nil\n        read = nil\n",
-    "replace": "        onFinish = nil; onFailure = nil; onCommit = nil\n",
+    "find": "        onFailure = nil; onCommit = nil\n        read = nil\n",
+    "replace": "        onFailure = nil; onCommit = nil\n",
     "tests": "OneNotePreviewTests/aClosedSessionLetsGoOfWhatItReadsFrom"
   },
   {
@@ -6442,5 +6442,110 @@
     "find": "        case let error as OneStoreError where error == .encrypted || error == .unsupportedVersion:",
     "replace": "        case let error as OneStoreError where error == .encrypted:",
     "tests": "OneNotePreviewTests/aPageThatFailsSaysWhyWhenItKnows"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "HTML preview: an asset's pictures share the document's pixels",
+    "find": "            resource = try HTMLPreviewResource.picture(bytes, pixels: &remainingPixels, bytes: &remainingBytes)",
+    "replace": "            var pixels = remainingPixels\n            resource = try HTMLPreviewResource.picture(bytes, pixels: &pixels, bytes: &remainingBytes)",
+    "tests": "HTMLPreviewTests/assetPicturesShareTheDocumentsPixelsAndAPhotoStaysAJPEG"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: choosing Source stops reading the document for Preview",
+    "find": "if !page.isShowing { cancelLoad(); page.clear() }",
+    "replace": "if !page.isShowing { page.clear() }",
+    "tests": "HTMLPreviewTests/choosingSourceWhileTheDocumentIsReadStopsReadingItAndPreviewReadsItAgain"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: choosing Preview again reads a document it stopped reading",
+    "find": "if isOpen { showPage() } else if !isLoading { open() }",
+    "replace": "if isOpen { showPage() }",
+    "tests": "HTMLPreviewTests/choosingSourceWhileTheDocumentIsReadStopsReadingItAndPreviewReadsItAgain"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: WebKit starts only while Preview is chosen",
+    "find": "guard !stopped, modeControl.selectedSegment == 0, page.webView == nil, page.task == nil,",
+    "replace": "guard !stopped, page.webView == nil, page.task == nil,",
+    "tests": "HTMLPreviewTests/reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a page shown or starting isn't started again",
+    "find": "guard !stopped, modeControl.selectedSegment == 0, page.webView == nil, page.task == nil,",
+    "replace": "guard !stopped, modeControl.selectedSegment == 0,",
+    "tests": "HTMLPreviewTests/actualWebKitRendersLocalCSSAndImagesWithoutExecutingContentScripts"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a document that can't be read shows its source",
+    "find": "if document == nil { showSourceInstead() } else { showPage() }",
+    "replace": "if document != nil { showPage() }",
+    "tests": "HTMLPreviewTests/oversizedDocumentsUseSourceAndNeverFallBackToAnUnrestrictedPreview"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a page WebKit couldn't show shows its source",
+    "find": "}, failed: { [weak self] _ in self?.previewFailed() })",
+    "replace": "}, failed: { _ in })",
+    "tests": "HTMLPreviewTests/aPageNotRenderedInTimeShowsItsSource"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: the document is the one read at first, for every WebKit lifetime",
+    "find": "package override var isOpen: Bool { document != nil }",
+    "replace": "package override var isOpen: Bool { false }",
+    "tests": "HTMLPreviewTests/reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a page is showing once WebKit starts showing it",
+    "find": "            self?.isShowing = true\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a cleared page isn't showing",
+    "find": "        failed = nil; isShowing = false\n",
+    "replace": "        failed = nil\n",
+    "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
+  },
+  {
+    "file": "Strata/Previews/PagedPreviewView.swift",
+    "rule": "Previews: a page that can't be shown says why",
+    "find": "            page.showProblem(failure(error))",
+    "replace": "            _ = failure(error)",
+    "tests": "OneNotePreviewTests/aPageThatCantBeShownSaysSoAndTheOthersStillShow"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a closed view reads nothing when Preview is chosen",
+    "find": "        guard !stopped else { return }\n        guard sender.selectedSegment == 0 else {\n",
+    "replace": "        guard sender.selectedSegment == 0 else {\n",
+    "tests": "HTMLPreviewTests/closedViewsDoNotRestartAndOpenInBrowserRequiresTheChosenFile"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a page kept behind Source that fails stays out of sight",
+    "find": "        if modeControl.selectedSegment == 0 { showSourceInstead() }\n",
+    "replace": "        showSourceInstead()\n",
+    "tests": "HTMLPreviewTests/actualWebKitRendersLocalCSSAndImagesWithoutExecutingContentScripts"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a document that couldn't be shown is read again for Preview",
+    "find": "        document = nil\n        if modeControl.selectedSegment == 0 { showSourceInstead() }\n",
+    "replace": "        if modeControl.selectedSegment == 0 { showSourceInstead() }\n",
+    "tests": "HTMLPreviewTests/reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewView.swift",
+    "rule": "HTML preview: a document that couldn't be shown shows its source as it is now",
+    "find": "        source?.removeFromSuperview(); source = nil\n        showSource(unavailable: true)\n",
+    "replace": "        showSource(unavailable: true)\n",
+    "tests": "HTMLPreviewTests/reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen|HTMLPreviewTests/actualWebKitRendersLocalCSSAndImagesWithoutExecutingContentScripts"
   }
 ]

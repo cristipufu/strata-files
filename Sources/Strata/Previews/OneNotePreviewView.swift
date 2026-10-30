@@ -47,7 +47,7 @@ package final class OneNotePreviewView: PagedPreviewView {
             // Pages left out as damaged would otherwise be missed without a word.
             let missing = section.damaged > 0 ? [String(localized: "Some pages couldn’t be read.")] : []
             footer.show(["OneNote"] + missing, note: String(localized: "Scripts and online content are blocked."))
-            entryChanged()
+            showPage()
         })
     }
 

@@ -86,6 +86,29 @@ import Testing
         #expect(tree.snapshot() == before && tree.text("outside/secret.css") == "outside/secret.css")
     }
 
+    @Test func assetPicturesShareTheDocumentsPixelsAndAPhotoStaysAJPEG() async throws {
+        let tree = try TestTree("folder/page.html", "folder/a.png", "folder/b.png", "folder/photo.jpg", "outside")
+        let url = try page(tree)
+        // Sixteen million pixels each: the first takes all a document has.
+        let large = try TestPictures.blank(4000)
+        try large.write(to: tree.url("folder/a.png"))
+        try large.write(to: tree.url("folder/b.png"))
+        let photo = NSMutableData()
+        let writer = try #require(CGImageDestinationCreateWithData(photo, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImageFromSource(writer, try #require(CGImageSourceCreateWithData(image() as CFData, nil)), 0, nil)
+        try #require(CGImageDestinationFinalize(writer))
+        try (photo as Data).write(to: tree.url("folder/photo.jpg"))
+        let before = tree.snapshot()
+        let document = try await HTMLPreviewDocument.open(url), origin = document.url.deletingLastPathComponent()
+        let shown = try await document.read(origin.appendingPathComponent("a.png"))
+        #expect(shown.mime == "image/png" && CGImageSourceCreateWithData(shown.data as CFData, nil) != nil)
+        await #expect(throws: PreviewError.self) { try await document.read(origin.appendingPathComponent("b.png")) }
+        let another = try await HTMLPreviewDocument.open(url)
+        let jpeg = try await another.read(another.url.deletingLastPathComponent().appendingPathComponent("photo.jpg"))
+        #expect(jpeg.mime == "image/jpeg" && CGImageSourceCreateWithData(jpeg.data as CFData, nil) != nil)
+        #expect(tree.snapshot() == before && tree.text("outside") == "outside")
+    }
+
     @Test func encodedTraversalAuthoritiesAndSpecialFilesAreRefusedWithoutReadingThem() async throws {
         let tree = try TestTree("folder/page.html", "outside/keep", "outside/keep.css")
         let url = try page(tree), fifo = tree.url("folder/pipe.css")
@@ -135,7 +158,7 @@ import Testing
         var fallback = false
         let view = HTMLPreviewView(url: tree.url("folder/page.html"))
         view.fallback = { fallback = true }
-        let work = try #require(view.renderTask)
+        let work = try #require(view.loadingTask)
         await work.value
         #expect(view.webView == nil && view.modeControl.selectedSegment == 1 && !fallback)
         view.stop()
@@ -203,19 +226,34 @@ import Testing
         <script>window.ran=true;document.getElementById('title').textContent='Executed'</script>
         <iframe src="page.html"></iframe><form action="page.html"><input type=submit></form>
         """)
-        let before = tree.snapshot(), view = HTMLPreviewView(url: url, timeLimit: HTMLPreviewView.noTimeLimit)
+        let before = tree.snapshot(), view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
-        try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
+        try await view.shown()
         let web = try #require(view.webView)
-        #expect(view.rendered && !web.configuration.defaultWebpagePreferences.allowsContentJavaScript && !web.configuration.websiteDataStore.isPersistent)
+        #expect(view.page.isShowing && !web.configuration.defaultWebpagePreferences.allowsContentJavaScript && !web.configuration.websiteDataStore.isPersistent)
         // Application-side inspection verifies WebKit's result; no script is injected by the product.
         let value = try await web.evaluateJavaScript("[document.getElementById('title').textContent,getComputedStyle(document.getElementById('title')).color,document.getElementById('picture').naturalWidth,String(window.ran)].join('|')")
         #expect(value as? String == "Rendered|rgb(210, 20, 30)|8|undefined")
         view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
         #expect(view.modeControl.selectedSegment == 1 && view.webView === web && view.footer.isHidden)
         view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
-        #expect(view.webView === web && view.rendered && !view.footer.isHidden)
+        #expect(view.webView === web && view.page.isShowing && !view.footer.isHidden)
+        // A page kept behind Source that fails stays out of sight until Preview is chosen again.
+        view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
+        web.navigationDelegate?.webViewWebContentProcessDidTerminate?(web)
+        #expect(view.webView == nil && view.modeControl.selectedSegment == 1 && view.footer.isHidden)
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        try await view.shown()
+        #expect(view.page.isShowing && view.webView !== web && view.modeControl.selectedSegment == 0)
+        // One that fails there and can't be read again shows its source as it is now, not as Source last showed it.
+        let again = try #require(view.webView)
+        view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
+        again.navigationDelegate?.webViewWebContentProcessDidTerminate?(again)
+        try Data(repeating: 0x61, count: TextFile.limit + 1).write(to: url)
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        try await wait { view.modeControl.selectedSegment == 1 }
+        #expect(try await view.sourceText()?.hasPrefix("aaaa") == true)
         #expect(!window.isVisible && tree.snapshot() == before && tree.text("outside") == "outside")
     }
 
@@ -227,7 +265,7 @@ import Testing
         let view = HTMLPreviewView(url: url, timeLimit: { ended.withLock { $0 = true } }), window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await wait { view.modeControl.selectedSegment == 1 }
-        #expect(ended.withLock { $0 } && !view.rendered && view.webView == nil)
+        #expect(ended.withLock { $0 } && !view.page.isShowing && view.webView == nil)
         let note = String(localized: "Preview unavailable. Showing source.")
         #expect(view.footer.subviews.contains { ($0 as? NSTextField)?.stringValue == note && !$0.isHidden })
         #expect(tree.snapshot() == before)
@@ -238,10 +276,14 @@ import Testing
         let url = try page(tree)
         var opened: [URL] = []
         let view = HTMLPreviewView(url: url, openFile: { opened.append($0) })
-        let work = view.renderTask
+        let work = view.loadingTask
         view.stop()
         await work?.value
-        #expect(view.webView == nil && !view.rendered)
+        #expect(view.webView == nil && view.page.task == nil && view.modeControl.selectedSegment == 0)
+        // Closed, choosing Preview again reads nothing.
+        view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        #expect(view.loadingTask == nil && view.page.task == nil)
         view.openBrowser(nil)
         #expect(opened.isEmpty)
         let another = HTMLPreviewView(url: url, openFile: { opened.append($0) })
@@ -273,10 +315,10 @@ extension HTMLPreviewTests {
         """)
         let view = HTMLPreviewView(
             url: url, openLink: { _ in Issue.record("An automatic navigation opened the browser.") },
-            timeLimit: HTMLPreviewView.noTimeLimit)
+            timeLimit: PreviewWebPage.noTimeLimit)
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
-        try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
+        try await view.shown()
         let web = try #require(view.webView)
         let state = try await web.evaluateJavaScript("[document.getElementById('remote').complete, document.getElementById('remote').naturalWidth, document.querySelector('h1').textContent].join('|')")
         #expect(state as? String == "true|0|Offline")
@@ -305,21 +347,58 @@ extension HTMLPreviewTests {
         large.close()
     }
 
-    @Test func reattachingToTheSameWindowRestartsOnlyTheNewWebKitLifetime() async throws {
+    @Test func reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen() async throws {
         let tree = try TestTree("folder/page.html", "outside")
-        let view = HTMLPreviewView(url: try page(tree), timeLimit: HTMLPreviewView.noTimeLimit)
+        let url = try page(tree)
+        let view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
-        try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
+        func reattach() {
+            window.contentView = NSView()
+            #expect(view.webView == nil && !view.page.isShowing)
+            window.contentView = view
+            window.setContentSize(NSSize(width: 740, height: 540))
+        }
+        try await view.shown()
         let first = try #require(view.webView)
-        window.contentView = NSView()
-        #expect(view.webView == nil && !view.rendered)
-        window.contentView = view
-        window.setContentSize(NSSize(width: 740, height: 540))
-        try await wait { view.rendered || view.modeControl.selectedSegment == 1 }
-        #expect(view.webView != nil && view.webView !== first && view.rendered)
+        reattach()
+        try await view.shown()
+        #expect(view.webView != nil && view.webView !== first && view.page.isShowing)
+        // With Source chosen, nothing starts until Preview is chosen again.
+        view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
+        reattach()
+        #expect(view.webView == nil && view.page.task == nil && view.loadingTask == nil)
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        try await view.shown()
+        #expect(view.page.isShowing && view.modeControl.selectedSegment == 0)
+        // The document is the one read at first: changed since, it shows its source, and Preview reads it again.
+        try Data("<h1>Changed</h1>".utf8).write(to: url)
+        reattach()
+        try await wait { view.modeControl.selectedSegment == 1 }
+        let note = String(localized: "Preview unavailable. Showing source.")
+        #expect(view.webView == nil && view.footer.subviews.contains { ($0 as? NSTextField)?.stringValue == note && !$0.isHidden })
+        #expect(try await view.sourceText() == "<h1>Changed</h1>")
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        try await view.shown()
+        let changed = try await view.webView?.evaluateJavaScript("document.querySelector('h1').textContent")
+        #expect(changed as? String == "Changed" && view.modeControl.selectedSegment == 0)
         window.close()
         #expect(view.webView == nil && tree.text("outside") == "outside")
+    }
+
+    @Test func choosingSourceWhileTheDocumentIsReadStopsReadingItAndPreviewReadsItAgain() async throws {
+        let tree = try TestTree("folder/page.html", "outside")
+        let view = HTMLPreviewView(url: try page(tree), timeLimit: PreviewWebPage.noTimeLimit)
+        let window = window(view)
+        defer { view.stop(); window.close(); window.contentView = nil }
+        let reading = try #require(view.loadingTask)
+        view.modeControl.selectedSegment = 1; view.modeChanged(view.modeControl)
+        #expect(view.loadingTask == nil && !view.isLoading)
+        await reading.value
+        #expect(view.webView == nil && view.page.task == nil && view.footer.isHidden)
+        view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
+        try await view.shown()
+        #expect(view.page.isShowing && view.modeControl.selectedSegment == 0 && tree.text("outside") == "outside")
     }
 }
 

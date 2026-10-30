@@ -28,7 +28,7 @@ package final class EPUBPreviewView: PagedPreviewView {
             self.book = book
             header.show(book)
             footer.show(["EPUB"], note: String(localized: "Scripts and online content are blocked."))
-            entryChanged()
+            showPage()
         })
     }
 
