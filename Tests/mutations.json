@@ -1084,8 +1084,8 @@
   },
   {
     "file": "Strata/Toolbar/PathSuggestions.swift",
-    "find": "visited = Array(visits.ranked().prefix(400))",
-    "replace": "visited = Array(Frecency.shared.ranked().prefix(400))",
+    "find": "visited = visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\\.self)",
+    "replace": "visited = Frecency.shared.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\\.self)",
     "rule": "Browser service ownership suggestions read global visits",
     "tests": "TransferContextTests/windowNavigationAndSuggestionsUseTheirOwnVisitHistory"
   },
@@ -1098,8 +1098,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies,\n                                    containerStore: services.containerStore)",
-    "replace": "tree = FolderTreeController(preferences: services.preferences,\n                                    remote: services.remote, copies: services.copies,\n                                    containerStore: services.containerStore)",
+    "find": "                                    transfers: services.transfers, preferences: services.preferences,",
+    "replace": "                                    preferences: services.preferences,",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -1604,8 +1604,8 @@
   },
   {
     "file": "Strata/Model/Places.swift",
-    "find": "guard let paths = preferences.favoritePaths else { return defaultFavorites() }",
-    "replace": "guard let paths = Prefs.shared.favoritePaths else { return defaultFavorites() }",
+    "find": "guard let paths = preferences.favoritePaths else { return defaults }",
+    "replace": "guard let paths = Prefs.shared.favoritePaths else { return defaults }",
     "rule": "Browser preferences favorites come from another store",
     "tests": "BrowserPreferencesTests/windowsPanesAndSidebarsUseTheirOwnFavoritesAndPreferences"
   },
@@ -1674,8 +1674,8 @@
   },
   {
     "file": "Strata/Toolbar/PathSuggestions.swift",
-    "find": "Places.favorites(preferences: preferences).map(\\.url)",
-    "replace": "Places.favorites().map(\\.url)",
+    "find": "Places.favorites(preferences: preferences, checks: places).map(\\.url)",
+    "replace": "Places.favorites(preferences: .shared, checks: places).map(\\.url)",
     "rule": "Browser preferences path suggestions use another favorites store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },

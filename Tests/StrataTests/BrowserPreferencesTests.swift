@@ -313,15 +313,16 @@ struct BrowserPreferencesTests {
         browser.addToSidebar(nil)
         #expect(first.preferences.favoritePaths == [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path))
 
-        let folderTree = FolderTreeController(preferences: second.preferences)
+        let folderTree = FolderTreeController(places: second.services.places, preferences: second.preferences)
         let item = NSMenuItem()
         item.representedObject = tree.url("another")
         folderTree.perform(NSSelectorFromString("addFavorite:"), with: item)
         #expect(second.preferences.favoritePaths == [tree.url("another").standardizedFileURL.path])
         #expect(first.preferences.favoritePaths?.count == 2)
 
-        let a = PathSuggestions(visits: first.services.visits, preferences: first.preferences)
-        let b = PathSuggestions(visits: second.services.visits, preferences: second.preferences)
+        let a = PathSuggestions(visits: first.services.visits, preferences: first.preferences, places: first.services.places)
+        let b = PathSuggestions(visits: second.services.visits, preferences: second.preferences,
+                                places: second.services.places)
         a.begin(at: tree.url("elsewhere")); b.begin(at: tree.url("elsewhere"))
         let aMatches = await a.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))
         let bMatches = await b.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))

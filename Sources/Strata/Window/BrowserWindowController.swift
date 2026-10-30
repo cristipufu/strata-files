@@ -57,7 +57,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
         self.services = services
-        pathBar = PathBar(visits: services.visits, preferences: services.preferences, copies: services.copies)
+        pathBar = PathBar(visits: services.visits, preferences: services.preferences, places: services.places,
+                          copies: services.copies)
         let first = Pane(location: location, services: services)
         panes = [first]
         pane = first
@@ -616,7 +617,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
     private var ejectTargets: [URL] {
         // Volumes are listed once, then matched by path (a big selection mustn't list them per item).
-        let ejectable = Set(Places.volumes().filter(\.isEjectable).map { $0.url.standardizedFileURL.path })
+        let ejectable = Set(services.places.snapshot.volumes.filter(\.isEjectable).map { $0.url.standardizedFileURL.path })
         guard !ejectable.isEmpty else { return [] }
         let selected = browser.selectedURLs.filter { ejectable.contains($0.standardizedFileURL.path) }
         if !selected.isEmpty { return selected }
@@ -694,6 +695,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        // What's there may have changed while we were away: it's read again in the background, and the sidebar follows.
+        services.places.refresh()
         split.sidebar.reload()
         // Catch commits, checkouts and edits made in other apps while we were in the background (tags in Finder too).
         for p in panes { GitStatusStore.shared.invalidate(containing: p.location) }

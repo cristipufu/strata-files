@@ -45,15 +45,17 @@ final class FolderTreeController: NSViewController {
     private let remote: RemoteServices
     private let copies: CopyProviders
     private let containerStore: ContainerStore
+    private let places: PlaceChecks
     var clipboard: Clipboard
     var cloudFolders: [CloudFolder] = [] {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
+    init(places: PlaceChecks, transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
          copies: CopyProviders? = nil, containerStore: ContainerStore = .shared,
          clipboard: Clipboard = .shared, watchBudget: FolderWatchers.Budget = .shared) {
         watchers = FolderWatchers(budget: watchBudget)
+        self.places = places
         self.remote = remote
         self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
         self.containerStore = containerStore
@@ -163,8 +165,8 @@ final class FolderTreeController: NSViewController {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
         let home = Places.home
-        var fresh = [reuse(home, .folder) { FolderNode(url: home, title: FileManager.default.displayName(atPath: home.path), symbol: "house") }]
-        for volume in Places.volumes() {
+        var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
+        for volume in places.snapshot.volumes {
             let url = volume.url.standardizedFileURL
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
         }
@@ -624,7 +626,7 @@ extension FolderTreeController: NSMenuDelegate {
             return
         }
         add(String(localized: "Copy Path"), #selector(copyPath(_:)))
-        let isFavorite = Places.favorites(preferences: preferences).contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
+        let isFavorite = Places.favorites(preferences: preferences, checks: places).contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
         if !isFavorite {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))

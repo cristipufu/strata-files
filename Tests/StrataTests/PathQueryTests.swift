@@ -71,8 +71,8 @@ final class PathQueryTests {
         prefsHiddenOff.showHidden = false
         prefsHiddenOn.showHidden = true
 
-        let suggestOff = PathSuggestions(visits: Frecency(preferences: prefsHiddenOff.defaults), preferences: prefsHiddenOff)
-        let suggestOn = PathSuggestions(visits: Frecency(preferences: prefsHiddenOn.defaults), preferences: prefsHiddenOn)
+        let suggestOff = PathSuggestions(prefsHiddenOff)
+        let suggestOn = PathSuggestions(prefsHiddenOn)
 
         let offNames = await suggestOff.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)
         let onNames = await suggestOn.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)

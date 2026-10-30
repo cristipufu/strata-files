@@ -421,11 +421,15 @@ enum DockSearchItems {
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         var seen = Set<String>()
         var items: [PaletteItem] = []
-        for (rank, url) in Frecency.shared.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
-            items.append(PaletteItem(title: Places.displayName(url), subtitle: Format.tildePath(url.deletingLastPathComponent()),
+        let services = BrowserServices.shared, places = services.places
+        places.refresh()
+        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400)
+        for (rank, url) in visited.enumerated() where seen.insert(url.path).inserted {
+            items.append(PaletteItem(title: Places.displayName(url, copies: services.copies, checks: places), subtitle: Format.tildePath(url.deletingLastPathComponent()),
                                      icon: folderIcon, kind: .folder, boost: max(0, 24 - rank / 2), url: url) { show(url) })
         }
-        for place in Places.favorites() + Places.volumes() where seen.insert(place.url.path).inserted {
+        for place in Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes
+        where seen.insert(place.url.path).inserted {
             items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
                                      kind: .folder, boost: 4, url: place.url) { show(place.url) })
         }
@@ -478,8 +482,10 @@ enum DockSearchItems {
 
     /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them.
     static func pathItems(_ query: String, _ pathQuery: PathQuery) -> [PaletteItem] {
-        let visited = Array(Frecency.shared.ranked().prefix(400))
-        let roots = (Places.favorites() + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
+        let services = BrowserServices.shared, places = services.places
+        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
+        let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
+            + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
             let url = hit.url

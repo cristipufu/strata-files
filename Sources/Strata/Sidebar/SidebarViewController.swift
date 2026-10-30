@@ -70,7 +70,8 @@ final class SidebarViewController: NSViewController {
 
     init(services: BrowserServices = .shared) {
         self.services = services
-        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,
+        tree = FolderTreeController(places: services.places,
+                                    transfers: services.transfers, preferences: services.preferences,
                                     remote: services.remote, copies: services.copies,
                                     containerStore: services.containerStore)
         tree.clipboard = services.clipboard
@@ -107,7 +108,7 @@ final class SidebarViewController: NSViewController {
         }
         return nil
     }
-    private var sections: [SidebarSection] = []
+    private(set) var sections: [SidebarSection] = []
     private var cloudFolders: [CloudFolder] = []
     private(set) var cloudRead: Task<Void, Never>?
     /// Sections being opened and closed to match what you chose, not by you.
@@ -182,7 +183,8 @@ final class SidebarViewController: NSViewController {
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: services.remote.status)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
-        preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(favoritesChanged), name: .favoritesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: services.places)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
         preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
@@ -192,13 +194,14 @@ final class SidebarViewController: NSViewController {
 
     func reload() {
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
-            + Places.favorites(preferences: preferences).map(SidebarItem.init)
+            + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
         let home = Places.home.path
         let frequent = services.visits.ranked()
-            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0) }
+            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0)
+                && services.places.isFolder($0.path) != false }
             .prefix(5)
-            .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
+            .map { SidebarItem(Place(title: services.places.name($0), url: $0, symbol: "folder")) }
         sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
         let workspaces = services.workspaces.all.map { workspace in
             let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
@@ -232,7 +235,7 @@ final class SidebarViewController: NSViewController {
             SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
         }
         sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                                       items: Places.volumes().map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
+                                       items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
         // Servers you've connected to: an SFTP server or a bucket each, green while connected.
         let servers = services.remote.servers.all.map { server -> SidebarItem in
@@ -327,6 +330,11 @@ final class SidebarViewController: NSViewController {
     }
 
     @objc private func volumesChanged() { reload(); refreshCloudFolders() }
+
+    @objc private func favoritesChanged() {
+        services.places.refresh()
+        volumesChanged()
+    }
 
     /// The Containers item comes and goes with the engine; containers starting and stopping don't touch the sidebar.
     private var showsContainers = false

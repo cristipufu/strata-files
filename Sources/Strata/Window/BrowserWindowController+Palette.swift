@@ -41,8 +41,10 @@ extension BrowserWindowController {
     }
 
     private func pathQueryItems(_ query: String) -> [PaletteItem] {
-        let visited = Array(services.visits.ranked().prefix(400))
-        let roots = (Places.favorites(preferences: services.preferences) + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
+        let places = services.places
+        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
+        let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
+            + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
             let url = hit.url
@@ -68,12 +70,16 @@ extension BrowserWindowController {
             })
             if entry.isFolder { seen.insert(entry.url.path) }
         }
-        for (rank, url) in services.visits.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
-            items.append(PaletteItem(title: Places.displayName(url),
+        let places = services.places
+        places.refresh()
+        let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400)
+        for (rank, url) in visited.enumerated() where seen.insert(url.path).inserted {
+            items.append(PaletteItem(title: Places.displayName(url, copies: services.copies, checks: places),
                                      subtitle: Format.tildePath(url.deletingLastPathComponent()), icon: folderIcon,
                                      kind: .folder, boost: max(0, 24 - rank / 2), url: url) { [weak self] in self?.navigate(to: url) })
         }
-        for place in Places.favorites(preferences: services.preferences) + Places.volumes() where seen.insert(place.url.path).inserted {
+        for place in Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes
+        where seen.insert(place.url.path).inserted {
             items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
                                      kind: .folder, boost: 4, url: place.url) { [weak self] in self?.navigate(to: place.url) })
         }

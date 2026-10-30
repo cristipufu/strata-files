@@ -36,7 +36,7 @@ final class Frecency {
         if let data = try? JSONEncoder().encode(visits) { preferences.set(data, forKey: key) }
     }
 
-    /// Visited folders, best first, skipping ones that no longer exist.
+    /// Visited folders, best first. Whether each is still there is `PlaceChecks`' to say: this reads no disk.
     func ranked() -> [URL] {
         let now = now()
         return visits
@@ -44,7 +44,6 @@ final class Frecency {
             .map { (path: $0.key, score: score($0.value, now: now)) }
             .sorted { $0.score > $1.score }
             .map { URL(fileURLWithPath: $0.path, isDirectory: true) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     private func score(_ visit: Visit, now: Date) -> Double {

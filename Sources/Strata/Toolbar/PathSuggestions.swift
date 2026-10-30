@@ -14,10 +14,12 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 final class PathSuggestions {
     private let visits: Frecency
     private let preferences: Prefs
+    private let places: PlaceChecks
 
-    init(visits: Frecency = .shared, preferences: Prefs = .shared) {
+    init(visits: Frecency, preferences: Prefs, places: PlaceChecks) {
         self.visits = visits
         self.preferences = preferences
+        self.places = places
     }
 
     static let limit = 12
@@ -31,9 +33,11 @@ final class PathSuggestions {
     /// (Desktop, Documents… without Full Disk Access) or live on another machine are left out.
     func begin(at current: URL?) {
         listings.removeAll()
-        visited = Array(visits.ranked().prefix(400))
+        places.refresh()
+        visited = visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
         let here = current ?? Places.home
-        let candidates = (Places.favorites(preferences: preferences).map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
+        let candidates = Places.favorites(preferences: preferences, checks: places).map(\.url)
+            + places.snapshot.volumes.filter { $0.symbol != "network" }.map(\.url) + [Places.home] + visited.prefix(100)
         roots = candidates.filter { !Privacy.measuringWouldPrompt($0, browsing: here) }
     }
 

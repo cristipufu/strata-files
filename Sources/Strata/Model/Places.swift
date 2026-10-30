@@ -1,6 +1,6 @@
 import AppKit
 
-struct Place {
+nonisolated struct Place: Sendable, Equatable {
     let title: String
     let url: URL
     let symbol: String
@@ -28,23 +28,30 @@ enum Places {
         }
     }
 
-    /// Whether `url` is the root of a volume that can be ejected.
-    static func isEjectableVolume(_ url: URL) -> Bool {
-        volumes().contains { $0.isEjectable && $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
+
+    /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults; as
+    /// `checks` last read them, for lists that mustn't wait on a disk.
+    static func favorites(preferences: Prefs, checks: PlaceChecks) -> [Place] {
+        favorites(preferences: preferences, isFolder: { checks.isFolder($0) }, name: checks.name)
     }
 
-    /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults.
-    static func favorites() -> [Place] { favorites(preferences: .shared) }
-
+    /// The favorites read from disk now, for changing them.
     static func favorites(preferences: Prefs) -> [Place] {
-        guard let paths = preferences.favoritePaths else { return defaultFavorites() }
-        let defaults = defaultFavorites()
-        return paths.compactMap { path in
+        favorites(preferences: preferences, isFolder: { path in
             var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }, name: { FileManager.default.displayName(atPath: $0.path) })
+    }
+
+    /// A favorite not yet read counts as there; one of the default places only once it's been found.
+    private static func favorites(preferences: Prefs, isFolder: (String) -> Bool?, name: (URL) -> String) -> [Place] {
+        let defaults = defaultFavorites(isFolder: isFolder, name: name)
+        guard let paths = preferences.favoritePaths else { return defaults }
+        return paths.compactMap { path in
+            guard isFolder(path) != false else { return nil }
             let url = URL(fileURLWithPath: path)
             return defaults.first { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
-                ?? Place(title: FileManager.default.displayName(atPath: path), url: url, symbol: "folder")
+                ?? Place(title: name(url), url: url, symbol: "folder")
         }
     }
 
@@ -69,37 +76,50 @@ enum Places {
         preferences.favoritePaths = favorites(preferences: preferences).map(\.url.standardizedFileURL.path).filter { $0 != path }
     }
 
-    static func defaultFavorites() -> [Place] {
-        let fm = FileManager.default
+    private static let standardPlaces: [(path: String, symbol: String)] = [
+        ("", "house"), ("Desktop", "menubar.dock.rectangle"), ("Documents", "doc"), ("Downloads", "arrow.down.circle"),
+    ]
+    /// Common homes for source code get a spot without any setup.
+    private static let codeFolders = ["Developer", "Projects", "Code", "code", "src", "repos", "Documents/GitHub", "GitHub"]
+    private static var iCloud: URL { home.appending(path: "Library/Mobile Documents/com~apple~CloudDocs") }
+    private static let applications = URL(fileURLWithPath: "/Applications")
+
+    /// Every folder the default favorites are made of, or may be.
+    static var defaultCandidates: [URL] {
+        standardPlaces.map { $0.path.isEmpty ? home : home.appending(path: $0.path) } + [applications, iCloud]
+            + codeFolders.map { home.appending(path: $0) }
+    }
+
+    private static func defaultFavorites(isFolder: (String) -> Bool?, name: (URL) -> String) -> [Place] {
         // macOS's own names for its folders ("Schreibtisch", "Téléchargements"…), the same as Finder shows.
-        func named(_ url: URL, _ symbol: String) -> Place {
-            Place(title: fm.displayName(atPath: url.path), url: url, symbol: symbol)
-        }
-        var places = [
-            named(home, "house"),
-            named(home.appending(path: "Desktop"), "menubar.dock.rectangle"),
-            named(home.appending(path: "Documents"), "doc"),
-            named(home.appending(path: "Downloads"), "arrow.down.circle"),
-            named(URL(fileURLWithPath: "/Applications"), "square.grid.2x2"),
-        ]
-        // Common homes for source code get a spot without any setup.
-        for path in ["Developer", "Projects", "Code", "code", "src", "repos", "Documents/GitHub", "GitHub"] {
+        var places = standardPlaces.map { place in
+            let url = place.path.isEmpty ? home : home.appending(path: place.path)
+            return Place(title: name(url), url: url, symbol: place.symbol)
+        } + [Place(title: name(applications), url: applications, symbol: "square.grid.2x2")]
+        for path in codeFolders {
             let url = home.appending(path: path)
-            var isDir: ObjCBool = false
-            if fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
-               !places.contains(where: { $0.url.path.lowercased() == url.path.lowercased() }) {
+            if isFolder(url.path) == true, !places.contains(where: { $0.url.path.lowercased() == url.path.lowercased() }) {
                 places.append(Place(title: url.lastPathComponent, url: url, symbol: "chevron.left.forwardslash.chevron.right"))
             }
         }
-        let iCloud = home.appending(path: "Library/Mobile Documents/com~apple~CloudDocs")
-        if fm.fileExists(atPath: iCloud.path) {
-            places.append(named(iCloud, "icloud"))
+        if isFolder(iCloud.path) == true {
+            places.append(Place(title: name(iCloud), url: iCloud, symbol: "icloud"))
         }
         return places
     }
 
     /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
     static func displayName(_ url: URL, copies: CopyProviders = .live) -> String {
+        ownName(url, copies: copies) ?? FileManager.default.displayName(atPath: url.path)
+    }
+
+    /// The same, with Finder's names as `checks` last read them, for lists that mustn't wait on a disk.
+    static func displayName(_ url: URL, copies: CopyProviders, checks: PlaceChecks) -> String {
+        ownName(url, copies: copies) ?? checks.name(url)
+    }
+
+    /// The names Strata gives places itself.
+    private static func ownName(_ url: URL, copies: CopyProviders) -> String? {
         if Trash.isTrash(url) { return String(localized: "Trash", comment: "The Trash folder") }
         if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return archive.lastPathComponent
@@ -113,10 +133,11 @@ enum Places {
         if let (server, top) = copies.remoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL {
             return server.name
         }
-        return FileManager.default.displayName(atPath: url.path)
+        return nil
     }
 
-    static func volumes() -> [Place] {
+    /// The volumes mounted, read now: lists use `PlaceChecks`' last read.
+    nonisolated static func volumes() -> [Place] {
         let keys: [URLResourceKey] = [
             .volumeLocalizedNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey,
             .volumeIsBrowsableKey, .volumeIsRootFileSystemKey,

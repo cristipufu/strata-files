@@ -1,0 +1,90 @@
+import AppKit
+
+extension Notification.Name {
+    /// A `PlaceChecks` read found something changed; the object is the `PlaceChecks`.
+    static let placesChecked = Notification.Name("StrataPlacesChecked")
+}
+
+/// Which of the folders Strata offers (favorites, its default places, folders you visit) are there, what Finder calls
+/// them, and the disks mounted, read away from the main thread. The sidebar lists them each time a window comes
+/// forward, ⌘K and path suggestions each time they open: a folder on a server that stopped answering would hold the
+/// app until the server timed out. Lists show what was last read, and update when a read finds a change.
+final class PlaceChecks {
+    nonisolated struct Snapshot: Sendable, Equatable {
+        var volumes: [Place] = []
+        var folders: Set<String> = []
+        var missing: Set<String> = []
+        var names: [String: String] = [:]
+    }
+
+    private(set) var snapshot = Snapshot()
+    private let preferences: Prefs
+    private let visits: Frecency
+    private let read: ([String]) async -> Snapshot
+    private(set) var task: Task<Void, Never>?
+    private var readAgain = false
+
+    init(preferences: Prefs, visits: Frecency, read: @escaping ([String]) async -> Snapshot) {
+        self.preferences = preferences
+        self.visits = visits
+        self.read = read
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
+                     NSWorkspace.didRenameVolumeNotification] {
+            workspace.addObserver(self, selector: #selector(volumesChanged), name: name, object: nil)
+        }
+    }
+
+    isolated deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        task?.cancel()
+    }
+
+    @objc private func volumesChanged() { refresh() }
+
+    /// Whether `path` was a folder when last read; nil until it's been read.
+    func isFolder(_ path: String) -> Bool? {
+        snapshot.folders.contains(path) ? true : snapshot.missing.contains(path) ? false : nil
+    }
+
+    /// Finder's name for a folder, as last read; its own name until then.
+    func name(_ url: URL) -> String { snapshot.names[url.path] ?? url.lastPathComponent }
+
+    /// Reads them all again, once the read under way (if any) is done.
+    func refresh() {
+        guard task == nil else {
+            readAgain = true
+            return
+        }
+        let paths = (preferences.favoritePaths ?? []) + Places.defaultCandidates.map(\.path)
+            + visits.ranked().prefix(400).map(\.path)
+        let read = read
+        task = Task { [weak self] in
+            let found = await read(paths)
+            guard let self else { return }
+            self.task = nil
+            if found != self.snapshot {
+                self.snapshot = found
+                NotificationCenter.default.post(name: .placesChecked, object: self)
+            }
+            if self.readAgain {
+                self.readAgain = false
+                self.refresh()
+            }
+        }
+    }
+
+    @concurrent static func read(_ paths: [String]) async -> Snapshot {
+        var snapshot = Snapshot(volumes: Places.volumes())
+        for path in Set(paths) {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+                snapshot.folders.insert(path)
+                snapshot.names[path] = FileManager.default.displayName(atPath: path)
+            } else {
+                snapshot.missing.insert(path)
+            }
+        }
+        return snapshot
+    }
+}

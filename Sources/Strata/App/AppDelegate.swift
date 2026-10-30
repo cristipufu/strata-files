@@ -339,7 +339,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openWindow(at: newWindowLocation(current: current))
     }
 
-    private lazy var dockMenu = DockMenu(favorites: Places.favorites, newWindow: { [weak self] in
+    private lazy var dockMenu = DockMenu(favorites: {
+        Places.favorites(preferences: BrowserServices.shared.preferences, checks: BrowserServices.shared.places)
+    }, newWindow: { [weak self] in
         self?.newWindow(nil)
         NSApp.activate()
     }, recents: { [weak self] in
