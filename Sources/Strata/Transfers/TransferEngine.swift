@@ -66,7 +66,7 @@ nonisolated enum TransferEngine {
 
         // Read once, just before it goes: an undo or redo never takes what has taken its item's place, and a rename
         // keeps what the item is.
-        let identity = FileIdentity.read(item.source.path)
+        let identity = item.expected != nil || item.operation == .rename ? FileIdentity.read(item.source.path) : nil
         guard item.means(identity) else { return fail(changedSince) }
         var operation = item.operation
         if operation == .rename {
@@ -247,10 +247,11 @@ nonisolated enum TransferEngine {
     private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                                         control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
+        // Not the item it means, or not readable just now: nothing is touched, and what's left to repair stays as it
+        // was for the next retry.
         guard item.means(FileIdentity.read(item.source.path)) else {
-            result.failures.append(TransferFailure(item: index, stage: .item, source: item.source,
-                                                   destination: item.destination, message: changedSince))
-            result.outcome = .failed
+            result.failures = failures
+            result.outcome = landed == nil ? .failed : .partial
             return result
         }
         var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
@@ -826,7 +827,7 @@ nonisolated enum TransferEngine {
         return nil
     }
 
-    private static var changedSince: String { String(localized: "The items have moved or been changed since.") }
+    static var changedSince: String { String(localized: "The items have moved or been changed since.") }
 
     /// Removes the original after a cross-volume move. Returns an error message, or nil on success.
     private static func removeSource(_ url: URL, destination: URL? = nil, landed: FileIdentity? = nil,

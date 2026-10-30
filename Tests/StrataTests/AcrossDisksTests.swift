@@ -156,6 +156,7 @@ extension TransferTests {
         #expect(tree.snapshot() == ["back/", "back/a.txt"])
         #expect(TestTree.listing(of: away) == ["b.txt"])
         #expect(try String(contentsOf: b, encoding: .utf8) == "someone else's")
+        await volume.eject()
     }
 
     /// Undo's own move back across disks hands what each item must be to its queued job: one put in an item's place
@@ -174,11 +175,12 @@ extension TransferTests {
         try swap(b)
         TransferUndo.perform(actionName: "Move", undo: nil, queue: .shared) { (moves, expected) }
         await FileOps.undoWork?.value
-        await settle {
-            tree.snapshot().contains("back/a.txt") && !TransferQueue.shared.jobs.contains { $0.state.isActive }
-        }
+        let jobs = TransferQueue.shared.jobs.compactMap { $0 as? TransferJob }
+        let job = try #require(jobs.last { $0.sources.contains(a) })
+        await job.finished()
         #expect(tree.snapshot() == ["back/", "back/a.txt"])
         #expect(TestTree.listing(of: away) == ["b.txt"])
         #expect(try String(contentsOf: b, encoding: .utf8) == "someone else's")
+        await volume.eject()
     }
 }

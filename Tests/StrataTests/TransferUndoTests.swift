@@ -73,7 +73,7 @@ extension TransferTests {
     }
 
     /// Retrying a failed item of an undo or redo takes only the item it means: one put in its place since is neither
-    /// copied nor changed, and the retry says so.
+    /// copied nor changed, and what's left to repair stays as it was for a later retry.
     @Test func retryingAnUndoItemLeavesAnItemPutInItsPlace() throws {
         let tree = try TestTree("from/a.txt", "to/")
         let source = tree.url("from/a.txt"), destination = tree.url("to/a.txt")
@@ -94,7 +94,8 @@ extension TransferTests {
         let retried = TransferEngine.retry(0, item, landed: first.landed, failures: first.failures,
                                            options: .init(verify: true, clone: false), control: TransferControl(),
                                            progress: TransferProgress())
-        #expect(retried.outcome == .failed && retried.failures.first?.stage == .item)
+        #expect(retried.outcome == .partial && retried.failures.map(\.stage) == first.failures.map(\.stage))
+        #expect(retried.failures.first?.retryTarget != nil)
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/"])
         #expect(tree.text("from/a.txt") == "someone else's")
     }

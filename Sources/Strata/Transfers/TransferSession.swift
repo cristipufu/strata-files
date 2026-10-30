@@ -353,7 +353,7 @@ nonisolated extension TransferEngine {
     static func repairOwnedDirectory(_ source: URL, to destination: URL, owned: [String: FileIdentity],
                                      clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
         guard canRepair(source, into: destination, owned: owned) else {
-            return CopyOutcome(fatal: String(localized: "The items have moved or been changed since."),
+            return CopyOutcome(fatal: TransferEngine.changedSince,
                                destinationExisted: true)
         }
         var outcome = CopyOutcome()
@@ -381,7 +381,7 @@ nonisolated extension TransferEngine {
                           let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath),
                           descriptor.identity == expected else {
                         outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                         message: String(localized: "The items have moved or been changed since."),
+                                                         message: TransferEngine.changedSince,
                                                          identity: owned[dstPath]))
                         fts_set(fts, entry, FTS_SKIP)
                         continue
@@ -418,7 +418,7 @@ nonisolated extension TransferEngine {
                     removeIfPresent(dstURL, in: destination, created: owned.merging(outcome.created) { _, new in new })
                     if exists(dstURL) {
                         outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                         message: String(localized: "The items have moved or been changed since."),
+                                                         message: TransferEngine.changedSince,
                                                          identity: owned[dstPath]))
                         continue
                     }
