@@ -260,10 +260,6 @@ final class CommandPalette: NSObject {
         set { ranker.goToPath = newValue }
     }
     /// Set by the owner: items computed for the current query, such as `github/acme` path lookups.
-    var queryItems: ((String) -> [PaletteItem])? {
-        get { ranker.queryItems }
-        set { ranker.queryItems = newValue }
-    }
     /// Set by the owner: slower items (index search) merged in when they arrive.
     var lateItems: ((String) async -> [PaletteItem])? {
         get { ranker.lateItems }
@@ -459,7 +455,6 @@ final class PaletteRowView: NSTableRowView {
 /// folders boosted), path lookups (`github/acme`), and slower items (the index) merged in when they arrive.
 final class PaletteRanker {
     var source: [PaletteItem] = []
-    var queryItems: ((String) -> [PaletteItem])?
     var lateItems: ((String) async -> [PaletteItem])?
     var goToPath: ((URL) -> Void)?
     /// What shows with nothing typed (nothing, when not set).
@@ -476,7 +471,7 @@ final class PaletteRanker {
 
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
-    private var late: Task<Void, Never>?
+    private(set) var late: Task<Void, Never>?
     private var query = ""
 
     func rank(_ text: String) {
@@ -489,10 +484,6 @@ final class PaletteRanker {
             return
         }
         let query = self.query
-        if let path = pathItem(for: query) { scored.append((path, [], 1000)) }
-        if PathQuery.isPathQuery(query) {
-            for item in queryItems?(query) ?? [] { scored.append((item, item.titleMatches, item.fixedScore ?? 0)) }
-        }
         for item in source {
             if let match = Fuzzy.match(query, item.title) {
                 scored.append((item, match.indices, match.score + item.boost))
@@ -504,13 +495,20 @@ final class PaletteRanker {
         }
         scored.sort { $0.score > $1.score }
         results = scored.prefix(60).map { ($0.item, $0.matches) }
-        guard let lateItems else { return }
-        let asked = query
+        let asked = query, lateItems = lateItems
         let delay = lateDelay
         late = Task { [weak self] in
-            if delay > .zero { try? await Task.sleep(for: delay) }
-            guard !Task.isCancelled else { return }
-            let extra = await lateItems(asked)
+            // A typed path is looked up away from the main thread: a folder on a server may not answer.
+            if let path = await self?.pathItem(for: asked) {
+                guard let self, !Task.isCancelled, self.query == asked else { return }
+                self.merge([path])
+            }
+            var extra: [PaletteItem] = []
+            if let lateItems {
+                if delay > .zero { try? await Task.sleep(for: delay) }
+                guard !Task.isCancelled else { return }
+                extra = await lateItems(asked)
+            }
             guard let self, !Task.isCancelled, self.query == asked else { return }
             self.late = nil
             self.merge(extra)
@@ -537,14 +535,21 @@ final class PaletteRanker {
     }
 
     /// Typing a path (`~/…` or `/…`) offers to go straight there.
-    private func pathItem(for query: String) -> PaletteItem? {
+    private func pathItem(for query: String) async -> PaletteItem? {
         guard let goToPath, query.hasPrefix("/") || query.hasPrefix("~") else { return nil }
         let path = (query as NSString).expandingTildeInPath
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        let found = await PathQuery.offMain { () -> (isFolder: Bool, icon: CGImage?)? in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+            var rect = NSRect(x: 0, y: 0, width: 64, height: 64)
+            let icon = NSWorkspace.shared.icon(forFile: path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
+            return (isDirectory.boolValue, icon)
+        }
+        guard let found else { return nil }
         let url = URL(fileURLWithPath: path)
-        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? String(localized: "Open folder") : String(localized: "Reveal file"),
-                           icon: IconCache.shared.icon(forPath: path), kind: .path, url: url) { goToPath(url) }
+        let icon = found.icon.map { NSImage(cgImage: $0, size: NSSize(width: 32, height: 32)) } ?? IconCache.shared.icon(forType: .data)
+        return PaletteItem(title: Format.tildePath(url), subtitle: found.isFolder ? String(localized: "Open folder") : String(localized: "Reveal file"),
+                           icon: icon, kind: .path, fixedScore: 1000, url: url) { goToPath(url) }
     }
 }
 

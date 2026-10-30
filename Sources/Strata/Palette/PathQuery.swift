@@ -7,7 +7,7 @@ import Foundation
 /// folders are found too.
 /// A trailing `/` lists everything inside the matched folder.
 nonisolated final class PathQuery {
-    struct Hit {
+    struct Hit: Sendable {
         let url: URL
         let isFolder: Bool
         let score: Int
@@ -16,6 +16,21 @@ nonisolated final class PathQuery {
     }
 
     private var listings: [URL: [(url: URL, isFolder: Bool)]] = [:]
+
+    private static let reads = DispatchQueue(label: "dev.strata.path-queries", qos: .userInitiated)
+
+    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads: a
+    /// folder on a server that stopped answering holds only that queue.
+    static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            reads.async { continuation.resume(returning: work()) }
+        }
+    }
+
+    /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own.
+    static func resolveOffMain(_ query: String, roots: [URL], visited: [URL]) async -> [Hit] {
+        await offMain { PathQuery().resolve(query, roots: roots, visited: visited) }
+    }
 
     static func isPathQuery(_ query: String) -> Bool {
         query.contains("/") && !query.hasPrefix("/") && !query.hasPrefix("~")

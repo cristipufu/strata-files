@@ -63,7 +63,7 @@ final class PathSuggestions {
             }
             // Walking folders reads the disk: off the main thread, with a fresh cache each time.
             let roots = roots, visited = visited
-            let hits = await Self.offMain { PathQuery().resolve(typed, roots: roots, visited: visited) }
+            let hits = await PathQuery.resolveOffMain(typed, roots: roots, visited: visited)
             for hit in hits where hit.isFolder {
                 keep(PathSuggestion(url: hit.url, score: hit.score, matches: hit.nameMatches))
             }
@@ -105,7 +105,7 @@ final class PathSuggestions {
         if let cached = listings[key] {
             folders = cached
         } else {
-            folders = await Self.offMain { Self.subfolders(of: directory, showHidden: showHidden) }
+            folders = await PathQuery.offMain { Self.subfolders(of: directory, showHidden: showHidden) }
             listings[key] = folders
         }
         var hits: [PathSuggestion] = []
@@ -135,14 +135,6 @@ final class PathSuggestions {
         }
     }
 
-    private static let reads = DispatchQueue(label: "dev.strata.path-suggestions", qos: .userInitiated)
-
-    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads.
-    private static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            reads.async { continuation.resume(returning: work()) }
-        }
-    }
 }
 
 /// The list under the path bar while you edit it: a glass panel, one line per folder (its name, then where it is).

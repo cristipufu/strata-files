@@ -41,7 +41,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var indexRefreshScheduled = false
     var lastIndexRefresh = Date.distantPast
     let palette = CommandPalette()
-    var pathQuery = PathQuery()
     var browser: BrowserViewController { pane.browser }
     /// In dual pane, the pane that isn't focused (Copy and Move to Other Pane send there).
     var otherBrowser: BrowserViewController? { panes.first { $0 !== pane }?.browser }

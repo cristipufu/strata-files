@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 extension BrowserWindowController {
     @objc func showCommandPalette(_ sender: Any?) {
@@ -16,9 +17,9 @@ extension BrowserWindowController {
                 self?.navigate(to: url.deletingLastPathComponent(), select: url)
             }
         }
-        pathQuery = PathQuery()
-        palette.queryItems = { [weak self] query in self?.pathQueryItems(query) ?? [] }
-        palette.lateItems = { [weak self] query in await self?.indexItems(query) ?? [] }
+        palette.lateItems = { [weak self] query in
+            (await self?.pathQueryItems(query) ?? []) + (await self?.indexItems(query) ?? [])
+        }
         palette.show(in: window, items: paletteItems())
     }
 
@@ -40,16 +41,19 @@ extension BrowserWindowController {
         }
     }
 
-    private func pathQueryItems(_ query: String) -> [PaletteItem] {
+    /// `github/acme`-style lookups, walking folders away from the main thread.
+    private func pathQueryItems(_ query: String) async -> [PaletteItem] {
+        guard PathQuery.isPathQuery(query) else { return [] }
         let places = services.places
         let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
         let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
             + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
-        return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
+        return await PathQuery.resolveOffMain(query, roots: roots, visited: visited).map { hit in
             let url = hit.url
+            let type = UTType(filenameExtension: url.pathExtension) ?? .data
             return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
-                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forPath: url.path),
+                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
                                kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) { [weak self] in
                 if hit.isFolder { self?.navigate(to: url) } else { self?.navigate(to: url.deletingLastPathComponent(), select: url) }
             }

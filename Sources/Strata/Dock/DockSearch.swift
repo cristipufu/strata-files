@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import UniformTypeIdentifiers
 
 /// Settings ▸ General ▸ Search box in the Dock (off unless you turn it on). Apple's Dock takes no plug-ins, so Strata
 /// keeps a gap of empty spacer tiles in it (see `DockGapTiles`), right after its own icon, and floats its own search box
@@ -17,7 +18,6 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private let table = NSTableView()
     private let boxGlass = NSGlassEffectView()
     private let ranker = PaletteRanker()
-    private var pathQuery = PathQuery()
     private var follower: Timer?
     private let reader = DockReader()
     private var placed: NSRect?
@@ -43,11 +43,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         self.restartDock = restartDock
         super.init()
         build()
-        ranker.queryItems = { [weak self] query in
-            guard let self else { return [] }
-            return DockSearchItems.pathItems(query, pathQuery)
-        }
-        ranker.lateItems = { query in await DockSearchItems.lateItems(query) }
+        ranker.lateItems = { query in await DockSearchItems.pathItems(query) + DockSearchItems.lateItems(query) }
         ranker.goToPath = { url in DockSearchItems.show(url) }
         ranker.emptyResults = { source in
             let workspaces: [PaletteItem] = Array(source.filter { $0.kind == .workspace }.prefix(3))
@@ -165,7 +161,6 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     @objc private func boxBecameKey() {
         // What there is to find changes between visits (folders used, workspaces saved, apps installed).
         ranker.source = DockSearchItems.items()
-        pathQuery = PathQuery()
         ranker.rank(field.stringValue)
         showResults()
     }
@@ -481,16 +476,19 @@ enum DockSearchItems {
     }
 
     /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them.
-    static func pathItems(_ query: String, _ pathQuery: PathQuery) -> [PaletteItem] {
+    /// `github/acme`-style lookups, walking folders away from the main thread.
+    static func pathItems(_ query: String) async -> [PaletteItem] {
+        guard PathQuery.isPathQuery(query) else { return [] }
         let services = BrowserServices.shared, places = services.places
         let visited = services.visits.ranked().filter { places.isFolder($0.path) != false }.prefix(400).map(\.self)
         let roots = (Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes).map(\.url)
             + [Places.home] + visited.prefix(100)
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
-        return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
+        return await PathQuery.resolveOffMain(query, roots: roots, visited: visited).map { hit in
             let url = hit.url
+            let type = UTType(filenameExtension: url.pathExtension) ?? .data
             return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
-                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forPath: url.path),
+                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
                                kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) {
                 show(url)
             }
