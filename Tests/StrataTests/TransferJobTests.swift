@@ -39,6 +39,15 @@ import Testing
         }
     }
 
+    /// The destination is named as Finder names it, read away from the main thread as the job starts.
+    @Test func aJobNamesItsDestinationAsFinderDoes() async throws {
+        let tree = try TestTree("a.txt", "Tools.app/")
+        let job = await run([tree.url("a.txt")], to: tree.url("Tools.app"), .copy)
+        #expect(job.destinationName == FileManager.default.displayName(atPath: tree.url("Tools.app").path))
+        #expect(job.destinationName != "Tools.app")
+        #expect(tree.snapshot() == ["Tools.app/", "Tools.app/a.txt", "a.txt"])
+    }
+
     @Test func movingIntoItsOwnFolderChangesNothing() async throws {
         let tree = try TestTree("a.txt", "b.txt")
         let job = await run([tree.url("a.txt")], to: tree.root, .move)

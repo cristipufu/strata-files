@@ -8,6 +8,8 @@ final class TransferJob {
     let sources: [URL]
     /// The folder items go into (for undo jobs that restore to several places, the first one).
     let destination: URL
+    /// The destination folder's name as Finder shows it, once read away from the main thread; its own name until then.
+    private(set) var destinationName: String
     let options: TransferEngine.Options
 
     private(set) var state: TransferState = .queued
@@ -85,6 +87,7 @@ final class TransferJob {
         self.mode = mode
         self.sources = moves.map(\.from)
         self.destination = destination
+        destinationName = destination.lastPathComponent
         self.options = options
         self.resolver = conflicts
         self.undoManager = undo
@@ -204,6 +207,8 @@ final class TransferJob {
     private func run() async {
         state = .scanning
         changed()
+        let folder = destination
+        destinationName = await worker.run { FileManager.default.displayName(atPath: folder.path) }
         // From a container's files: everything copied out is fetched first (folders with all they hold).
         let copies = queue?.copies ?? .live
         let fromContainers = sources.filter(copies.contains)
@@ -220,10 +225,10 @@ final class TransferJob {
                 return finish()
             }
         }
-        plan()
+        await plan()
         await measure(items.indices.filter { items[$0].outcome == .pending })
         if !control.isCancelled { await resolveConflicts() }
-        if !control.isCancelled, let problem = spaceProblem() {
+        if !control.isCancelled, let problem = await spaceProblem() {
             errorMessage = problem
             return finish()
         }
@@ -237,16 +242,18 @@ final class TransferJob {
 
     private func runRetry(_ previous: [TransferFailure]) async {
         var entries: [Int: [TransferFailure]] = [:]
+        var replanned: [Int] = []
         for failure in previous {
             switch failure.stage {
             case .item:
                 items[failure.item].outcome = .pending
                 items[failure.item].decision = nil
-                planItem(failure.item)
+                replanned.append(failure.item)
             case .copy, .verify, .removeSource:
                 entries[failure.item, default: []].append(failure)
             }
         }
+        await plan(replanned)
         let pending = items.indices.filter { items[$0].outcome == .pending }
         progress.reset()
         totalBytes = 0
@@ -259,7 +266,7 @@ final class TransferJob {
         totalBytes = totalBytes.saturatingAdd(sizes.map { $0?.bytes ?? 0 }.saturatingSum)
         totalFiles += sizes.reduce(0) { $0 + ($1?.files ?? 0) }
 
-        if !control.isCancelled, let problem = spaceProblem() {
+        if !control.isCancelled, let problem = await spaceProblem() {
             errorMessage = problem
             failures += previous.filter { $0.stage != .item }
             return finish()
@@ -293,7 +300,8 @@ final class TransferJob {
 
     /// Waits for the destination disk if bytes need copying, then runs `body` in the running state.
     private func execute(needsDisk: Bool, _ body: () async -> Void) async {
-        if needsDisk, let queue, let disk = TransferEngine.device(destination) {
+        let destination = destination
+        if needsDisk, let queue, let disk = await worker.run({ TransferEngine.device(destination) }) {
             if !queue.isDiskFree(disk, for: self) {
                 isWaitingForDisk = true
                 state = .queued
@@ -339,22 +347,43 @@ final class TransferJob {
 
     // MARK: - Planning
 
-    private func plan() {
-        for index in items.indices { planItem(index) }
+    /// What planning needs to know of an item, read away from the main thread with every other item's.
+    private nonisolated struct Facts: Sendable {
+        let sourceExists: Bool
+        let folderExists: Bool
+        let inside: Bool
+        let sameDisk: Bool
+    }
+
+    private func plan() async {
+        await plan(Array(items.indices))
+    }
+
+    private func plan(_ indices: [Int]) async {
+        let places = indices.map { (source: items[$0].source, destination: items[$0].destination) }, moving = mode == .move
+        let facts = await worker.run { places.map { Self.facts($0.source, $0.destination, moving: moving) } }
+        for (index, facts) in zip(indices, facts) { planItem(index, facts) }
+    }
+
+    nonisolated private static func facts(_ source: URL, _ destination: URL, moving: Bool) -> Facts {
+        let folder = destination.deletingLastPathComponent()
+        return Facts(sourceExists: TransferEngine.exists(source), folderExists: TransferEngine.exists(folder),
+                     inside: isInside(folder.standardizedFileURL.path, source.path),
+                     sameDisk: moving && TransferEngine.device(source) == TransferEngine.device(folder))
     }
 
     /// Checks an item can be transferred at all and picks how: rename, copy, or copy then delete.
-    private func planItem(_ index: Int) {
+    private func planItem(_ index: Int, _ facts: Facts) {
         let item = items[index]
         let source = item.source
         let parent = source.deletingLastPathComponent().standardizedFileURL.path
         let folder = item.destination.deletingLastPathComponent().standardizedFileURL.path
         let sameFolder = parent == folder
-        if !TransferEngine.exists(source) {
+        if !facts.sourceExists {
             fail(index, String(localized: "The item couldn’t be found"))
-        } else if !TransferEngine.exists(item.destination.deletingLastPathComponent()) {
+        } else if !facts.folderExists {
             fail(index, String(localized: "The destination folder couldn’t be found"))
-        } else if Self.isInside(folder, source.path) {
+        } else if facts.inside {
             fail(index, mode == .copy ? String(localized: "A folder can’t be copied into itself")
                 : String(localized: "A folder can’t be moved into itself"))
         } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
@@ -364,8 +393,7 @@ final class TransferJob {
             items[index].operation = .copy
             items[index].copyStyleName = sameFolder && item.destination.lastPathComponent == source.lastPathComponent
         } else {
-            let sameDisk = TransferEngine.device(source) == TransferEngine.device(item.destination.deletingLastPathComponent())
-            items[index].operation = sameDisk ? .rename : .copyThenDelete
+            items[index].operation = facts.sameDisk ? .rename : .copyThenDelete
         }
     }
 
@@ -391,9 +419,10 @@ final class TransferJob {
 
     /// Asks about every name clash before any byte moves, so a long copy never stalls halfway on a question.
     private func resolveConflicts() async {
-        let clashes = items.indices.filter {
-            items[$0].outcome == .pending && !items[$0].copyStyleName && TransferEngine.exists(items[$0].destination)
-        }
+        let candidates = items.indices.filter { items[$0].outcome == .pending && !items[$0].copyStyleName }
+        let destinations = candidates.map { items[$0].destination }
+        let taken = await worker.run { destinations.map(TransferEngine.exists) }
+        let clashes = zip(candidates, taken).filter(\.1).map(\.0)
         for (position, index) in clashes.enumerated() {
             guard !control.isCancelled else { return }
             let decision = await decide(index, remaining: clashes.count - position)
@@ -482,14 +511,17 @@ final class TransferJob {
         // Two of the job's own items with one name (from different folders, say): the later one goes beside the one
         // this job just put there, whatever was decided for the name; replacing it would trash one of your originals.
         let placedByThisJob = placed.contains(item.destination.standardizedFileURL.path.lowercased())
+        // Checked away from the main thread: a copy to a slow disk waits for it between items, the window doesn't.
+        let destination = item.destination
+        let available = { (copyStyle: Bool) in await self.worker.run { FileOps.available(destination, copyStyle: copyStyle) } }
         if item.copyStyleName {
-            items[index].destination = FileOps.available(item.destination, copyStyle: true)
+            items[index].destination = await available(true)
         } else if item.decision == .keepBoth || placedByThisJob {
             items[index].decision = .keepBoth
-            items[index].destination = FileOps.available(item.destination, copyStyle: false)
+            items[index].destination = await available(false)
         } else if item.decision == .replace {
-            if !TransferEngine.exists(item.destination) { items[index].decision = nil }
-        } else if TransferEngine.exists(item.destination) {
+            if !(await worker.run { TransferEngine.exists(destination) }) { items[index].decision = nil }
+        } else if await worker.run({ TransferEngine.exists(destination) }) {
             let decision = await decide(index, remaining: 1)
             if decision == .merge {
                 await merge(index)
@@ -497,14 +529,30 @@ final class TransferJob {
             }
             apply(decision, to: index)
             if items[index].decision == .keepBoth {
-                items[index].destination = FileOps.available(item.destination, copyStyle: false)
+                items[index].destination = await available(false)
             }
         }
         return items[index].outcome == .pending && !control.isCancelled
     }
 
-    /// Bytes that will really land on the destination disk (clones on the same APFS volume are free).
-    private func spaceProblem() -> String? {
+    /// Bytes that will really land on the destination disk (clones on the same APFS volume are free), read away from
+    /// the main thread.
+    private func spaceProblem() async -> String? {
+        let destination = destination, clone = options.clone
+        let copies = items.filter { $0.outcome == .pending && $0.operation != .rename }.map { (source: $0.source, bytes: $0.bytes) }
+        guard let (needed, available, volumeName) = await worker.run({
+            Self.space(on: destination, clone: clone, copies: copies)
+        }), needed > available else { return nil }
+        let need = Format.bytes(needed), have = Format.bytes(available)
+        guard let volume = volumeName else {
+            return String(localized: "Not enough space on the disk: \(need) needed, \(have) available")
+        }
+        return String(localized: "Not enough space on “\(volume)”: \(need) needed, \(have) available")
+    }
+
+    /// The bytes `copies` need on `destination`'s disk and what it has, if it says.
+    nonisolated private static func space(on destination: URL, clone: Bool, copies: [(source: URL, bytes: Int64)])
+        -> (needed: Int64, available: Int64, volumeName: String?)? {
         guard let disk = TransferEngine.device(destination) else { return nil }
         let values = try? destination.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
                                                                .volumeAvailableCapacityKey,
@@ -512,27 +560,20 @@ final class TransferJob {
         // "Important usage" counts purgeable space on the startup disk but reads 0 on many other volumes.
         let available = max(values?.volumeAvailableCapacityForImportantUsage ?? 0, Int64(values?.volumeAvailableCapacity ?? 0))
         guard available > 0 else { return nil }
-        let clones = options.clone && (values?.volumeSupportsFileCloning ?? false)
-        let needed = items.filter { $0.outcome == .pending && $0.operation != .rename }
-            .filter { !(clones && TransferEngine.device($0.source) == disk) }
-            .map(\.bytes).saturatingSum
-        guard needed > available else { return nil }
-        let need = Format.bytes(needed), have = Format.bytes(available)
-        guard let volume = values?.volumeName else {
-            return String(localized: "Not enough space on the disk: \(need) needed, \(have) available")
-        }
-        return String(localized: "Not enough space on “\(volume)”: \(need) needed, \(have) available")
+        let clones = clone && (values?.volumeSupportsFileCloning ?? false)
+        let needed = copies.filter { !(clones && TransferEngine.device($0.source) == disk) }.map(\.bytes).saturatingSum
+        return (needed, available, values?.volumeName)
     }
 
     /// Whether `folder` is `item` or inside it, comparing real paths: a symlink can make a folder look like it's
     /// elsewhere, and copying a folder into itself recurses until names get too long. The item itself isn't
     /// resolved (moving or copying a symlink moves or copies the link, not what it points to).
-    static func isInside(_ folder: String, _ item: String) -> Bool {
+    nonisolated static func isInside(_ folder: String, _ item: String) -> Bool {
         isInside(resolvedFolder: realPath(folder), item)
     }
 
     /// `isInside` with `folder` already resolved by `realPath` (resolve it once when testing many items).
-    static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
+    nonisolated static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
         let parent = (item as NSString).deletingLastPathComponent
         let name = (item as NSString).lastPathComponent
         let resolved = parent == item ? item : (realPath(parent) as NSString).appendingPathComponent(name)
@@ -540,7 +581,7 @@ final class TransferJob {
     }
 
     /// The path with symlinks resolved (or standardized, if it doesn't exist).
-    static func realPath(_ path: String) -> String {
+    nonisolated static func realPath(_ path: String) -> String {
         guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
         defer { free(resolved) }
         return String(cString: resolved)

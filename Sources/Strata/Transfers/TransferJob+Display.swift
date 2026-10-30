@@ -32,10 +32,6 @@ extension TransferJob {
         }
     }
 
-    var destinationName: String {
-        FileManager.default.displayName(atPath: destination.path)
-    }
-
     /// "2.1 GB of 5.4 GB · 84 MB/s · about 40 s left", "Paused", "Done · 3 failed"…
     var statusText: String {
         if isAwaitingDecision { return String(localized: "Waiting for your decision") }

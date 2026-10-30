@@ -360,7 +360,7 @@ enum FileOps {
     }
 
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.
-    static func available(_ url: URL, copyStyle: Bool) -> URL {
+    nonisolated static func available(_ url: URL, copyStyle: Bool) -> URL {
         let fm = FileManager.default
         // lstat-based: a dangling symlink still takes the name.
         guard TransferEngine.exists(url) else { return url }
