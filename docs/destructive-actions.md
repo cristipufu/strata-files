@@ -226,7 +226,7 @@ belong to.
 
 | File :: function | Covered by |
 |---|---|
-| `AI/PlanExecutor :: perform`, `moveBack` | `PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps`, `undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt`, `undoAndRedoOfAPlanTouchOnlyItsOwnItems` |
+| `AI/PlanExecutor :: perform`, `moveBack`, `trash` | `PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps`, `undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt`, `undoAndRedoOfAPlanTouchOnlyItsOwnItems` |
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `needFolder`; `AI/RenameRules :: plan` (`rename` here is a plan step's name, not a file call) | `PlanSafetyTests/*`, `RenameTests/*` |
 | `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
 | `App/Prefs :: registerTestCleanup` (a test run's own settings suite, at exit) | `PreferencesTests/processPreferencesAreIsolatedFromTheAppInEveryConfiguration` checks the suite's place; the exit itself is untested |

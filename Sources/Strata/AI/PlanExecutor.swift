@@ -111,17 +111,15 @@ final class PlanTransaction {
         }
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {
-            // Already in a Trash: trashing it again would lose where it came from.
-            if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) {
-                outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
-                continue
-            }
             do {
-                var result: NSURL?
-                try fm.trashItem(at: url, resultingItemURL: &result)
-                if let result {
-                    trashed.append((url, result as URL))
-                    applied.record([result as URL])
+                switch try await Self.trash(url) {
+                case .alreadyInTrash:
+                    outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
+                case let .trashed(result, identity):
+                    trashed.append((url, result))
+                    applied.set(identity, at: result)
+                case .gone:
+                    break
                 }
             } catch {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
@@ -184,6 +182,23 @@ final class PlanTransaction {
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
+    private nonisolated enum Trashed: Sendable {
+        case alreadyInTrash
+        /// Where it went, and what it is there, read as it landed.
+        case trashed(URL, FileIdentity?)
+        case gone
+    }
+
+    /// One item to the Trash, away from the main thread. One already in a Trash isn't: trashing it again would lose
+    /// where it came from.
+    @concurrent private static func trash(_ url: URL) async throws -> Trashed {
+        if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
+        var result: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+        guard let landed = result as URL? else { return .gone }
+        return .trashed(landed, FileIdentity.read(landed.path))
+    }
+
     private static func move(_ pair: Pair) async throws {
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")

@@ -216,7 +216,8 @@ nonisolated enum PlanGenerator {
         var now = Date()
     }
 
-    static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
+    /// Away from the main thread: checking a plan looks at every item it would change.
+    @concurrent static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
         guard !request.items.isEmpty else { throw PlanError.nothingSelected }
         let rules = PlanRules.recipe(for: request.instruction, now: request.now)
         let useModel = allowModel && AIModel.isAvailable && (rules == nil || rules?.fullyUnderstood == false)

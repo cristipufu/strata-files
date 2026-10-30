@@ -6995,5 +6995,12 @@
     "find": "        byType[type.identifier] = image\n",
     "replace": "",
     "tests": "OneNoteFileKindTests/aTypesIconIsTheSameImageEachTime"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "rule": "A plan's trashed item is recorded as it landed, so undo puts it back",
+    "find": "        return .trashed(landed, FileIdentity.read(landed.path))",
+    "replace": "        return .trashed(landed, nil)",
+    "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps"
   }
 ]
