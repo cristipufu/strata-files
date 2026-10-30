@@ -121,22 +121,30 @@ extension BrowserViewController {
                 return
             }
             let runnerRevision = runner === self ? startedRevision : (postAlertWaiters.first?.revision ?? runner.navigationRevision)
-            runner.unpackForBrowsing(archive, into: folder, key: key, startedRevision: runnerRevision)
+            await runner.unpackForBrowsing(archive, into: folder, key: key, startedRevision: runnerRevision)
         }
     }
 
-    private func unpackForBrowsing(_ archive: URL, into folder: URL, key: String, startedRevision: Int) {
+    /// Nothing else is making this copy (it would be in `waiters`): what's at `entry` is left from an earlier attempt.
+    /// Never extracted into: it's set aside, or the copy isn't made.
+    @concurrent private static func prepareCopy(at entry: URL) async -> (any Error)? {
         let fm = FileManager.default
-        let entry = folder.deletingLastPathComponent()
-        let window = view.window
-        // Nothing else is making this copy (it would be in `waiters`): what's there is left from an earlier attempt.
         do {
-            // Never extract into what's left: if it can't be set aside, the copy isn't made.
-            if fm.fileExists(atPath: entry.path), ArchiveCache.setAside(entry) == nil {
+            let left = fm.fileExists(atPath: entry.path)
+            if left, ArchiveCache.setAside(entry) == nil, fm.fileExists(atPath: entry.path) {
                 throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: entry.path])
             }
             try fm.createDirectory(at: entry, withIntermediateDirectories: true)
+            return nil
         } catch {
+            return error
+        }
+    }
+
+    private func unpackForBrowsing(_ archive: URL, into folder: URL, key: String, startedRevision: Int) async {
+        let entry = folder.deletingLastPathComponent()
+        let window = view.window
+        if let error = await Self.prepareCopy(at: entry) {
             let failedWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
             for w in failedWaiters where w.isActive {
                 if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }

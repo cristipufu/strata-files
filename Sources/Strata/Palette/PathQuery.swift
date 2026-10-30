@@ -16,6 +16,12 @@ nonisolated final class PathQuery {
     }
 
     private var listings: [URL: [(url: URL, isFolder: Bool)]] = [:]
+    /// Set once the lookup's been replaced: it reads no more folders.
+    private let stop: CancelFlag?
+
+    init(stop: CancelFlag? = nil) {
+        self.stop = stop
+    }
 
     /// Runs `work` (file system reads) on a thread of its own, never the main thread or the threads Swift and Dispatch
     /// share: a read stuck on a server that stopped answering holds only that thread, and no lookup after it waits.
@@ -28,9 +34,15 @@ nonisolated final class PathQuery {
         }
     }
 
-    /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own.
+    /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own. Replaced (the task's
+    /// cancelled), it stops reading folders.
     static func resolveOffMain(_ query: String, roots: [URL], visited: [URL]) async -> [Hit] {
-        await offMain { PathQuery().resolve(query, roots: roots, visited: visited) }
+        let stop = CancelFlag()
+        return await withTaskCancellationHandler {
+            await offMain { PathQuery(stop: stop).resolve(query, roots: roots, visited: visited) }
+        } onCancel: {
+            stop.set()
+        }
     }
 
     static func isPathQuery(_ query: String) -> Bool {
@@ -127,6 +139,8 @@ nonisolated final class PathQuery {
         let all: [(url: URL, isFolder: Bool)]
         if let cached = listings[folder] {
             all = cached
+        } else if stop?.isSet == true {
+            return []
         } else {
             let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey]
             let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys)) ?? []

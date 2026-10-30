@@ -7020,8 +7020,8 @@
   {
     "file": "Strata/Inspector/InfoEditorView.swift",
     "rule": "Get Info changes an item's access before its settings are shown",
-    "find": "        guard isLoaded, let url, let who",
-    "replace": "        guard let url, let who",
+    "find": "        guard isLoaded, let url, let item = shownItem, let who",
+    "replace": "        guard let url, let item = shownItem ?? .some(Result { try ChosenFile(url) }), let who",
     "tests": "InspectorBackgroundTests/getInfoShowsOnlyTheNewestItemsSettingsAndTakesNoChangeBeforeThem"
   },
   {
@@ -7037,5 +7037,12 @@
     "find": "        if let expecting, FileIdentity.read(url.path) != expecting { return .gone }\n",
     "replace": "",
     "tests": "PlanSafetyTests/aRedoneTrashStepLeavesAnItemReplacedSince"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "rule": "An access change goes to a folder put in the place of the one shown",
+    "find": "        let path = chosen.url.path\n        func updated",
+    "replace": "        let path = chosen.url.path\n        let chosen = try ChosenFile(chosen.url)\n        func updated",
+    "tests": "MetadataEditTests/accessChangesOnlyTheItemShown"
   }
 ]

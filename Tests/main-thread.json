@@ -66,18 +66,6 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
-  "call": "fm.createDirectory",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
-  "call": "fm.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Browser/BrowserViewController+Cloud.swift",
   "call": "lstat(",
   "count": 1,

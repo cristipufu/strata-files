@@ -83,6 +83,16 @@ final class PathQueryTests {
         let dotNames = await suggestOff.suggestions(for: github.path + "/.s", in: github).map(\.url.lastPathComponent)
         #expect(dotNames == [".secret-repo"])
     }
+
+    /// A lookup replaced by the next keystroke reads no more folders.
+    @Test func aStoppedLookupReadsNoMoreFolders() throws {
+        let tree = try TestTree("alpha/beta/")
+        #expect(!PathQuery().resolve("alpha/be", roots: [tree.root], visited: []).isEmpty)
+        let stop = CancelFlag()
+        stop.set()
+        #expect(PathQuery(stop: stop).resolve("alpha/be", roots: [tree.root], visited: []).isEmpty)
+        #expect(tree.snapshot() == ["alpha/", "alpha/beta/"])
+    }
 }
 
 struct FuzzyTests {

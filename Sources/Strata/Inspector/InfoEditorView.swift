@@ -44,6 +44,9 @@ import AppKit
     /// would be made from what another item has.
     private var loadedURL: URL?
     private var isLoaded: Bool { loadedURL != nil && loadedURL == url }
+    /// The item whose settings are shown, held open as it was read: access changes go to it, never to one put in its
+    /// place since.
+    private var shownItem: Result<ChosenFile, any Error>?
     private let readFacts: (URL, Bool) async -> Facts
     private var appsTask: Task<Void, Never>?
     /// Whether `apps` lists every app that can open the item (read when the menu opens: it's slow to work out on every
@@ -178,6 +181,7 @@ import AppKit
             [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true }
             // Until the new item's settings arrive, nothing here may be changed: it would change the old one.
             loadedURL = nil
+            shownItem = nil
             shownCommentChoice = nil
             comments.stringValue = ""
             showPermissions(nil, nil)
@@ -199,6 +203,7 @@ import AppKit
 
     private func apply(_ facts: Facts, same: Bool) {
         loadedURL = url
+        shownItem = facts.choice
         if !same || comments.currentEditor() == nil {
             shownCommentChoice = facts.choice
             comments.stringValue = facts.comment
@@ -221,6 +226,7 @@ import AppKit
         appsTask?.cancel()
         appsTask = nil
         loadedURL = nil
+        shownItem = nil
         shownCommentChoice = nil
         commentChoice = nil
         url = nil
@@ -465,7 +471,7 @@ import AppKit
     }
 
     @objc private func accessChanged(_ sender: NSPopUpButton) {
-        guard isLoaded, let url, let who = FileInfoEditing.Who(rawValue: sender.tag),
+        guard isLoaded, let url, let item = shownItem, let who = FileInfoEditing.Who(rawValue: sender.tag),
               let access = FileInfoEditing.Access(rawValue: sender.selectedTag()) else { return }
         // Taking your own access away from a folder shuts you out of it: ask first.
         if who == .owner, isFolder, access == .none || access == .writeOnly, let window {
@@ -474,22 +480,24 @@ import AppKit
             alert.informativeText = String(localized: "You won’t be able to open this folder until you give yourself access again.")
             alert.addButton(withTitle: String(localized: "Remove Access"))
             alert.addButton(withTitle: String(localized: "Cancel"))
-            let asked = FileIdentity.read(url.path)
             alert.beginSheetModal(for: window) { [weak self] response in
                 // Answered for the item asked about: if another is on show by now, its own settings stay as they are.
                 guard let self, self.url == url, isLoaded else { return }
-                // A folder put in its place meanwhile keeps its access; the menus show what's really there.
-                let same = asked != nil && FileIdentity.read(url.path) == asked
-                if response == .alertFirstButtonReturn, same { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
+                if response == .alertFirstButtonReturn {
+                    apply(access, for: who, to: item, at: url)
+                } else {
+                    loadPermissions(url.path)
+                }
             }
             return
         }
-        apply(access, for: who, to: url)
+        apply(access, for: who, to: item, at: url)
     }
 
-    private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who, to url: URL) {
+    private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who,
+                       to item: Result<ChosenFile, any Error>, at url: URL) {
         do {
-            try FileInfoEditing.setAccess(access, for: who, at: url.path)
+            try FileInfoEditing.setAccess(access, for: who, of: item.get())
             finish(nil, in: permissionsMessage)
         } catch {
             finish(error, in: permissionsMessage)

@@ -89,6 +89,18 @@ struct MetadataEditTests {
         #expect(mode(tree.url("file.txt").path) == 0o664)
     }
 
+    /// Access chosen for an item shown goes only to that item: a folder put in its place since keeps its own.
+    @Test func accessChangesOnlyTheItemShown() throws {
+        let tree = try TestTree("folder/", "aside/")
+        let shown = try ChosenFile(tree.url("folder"))
+        try FileManager.default.moveItem(at: tree.url("folder"), to: tree.url("aside/folder"))
+        try FileManager.default.createDirectory(at: tree.url("folder"), withIntermediateDirectories: false)
+        let before = try #require(FileInfoEditing.mode(at: tree.url("folder").path))
+        #expect(throws: (any Error).self) { try FileInfoEditing.setAccess(.none, for: .owner, of: shown) }
+        #expect(FileInfoEditing.mode(at: tree.url("folder").path) == before)
+        #expect(tree.snapshot() == ["aside/", "aside/folder/", "folder/"])
+    }
+
     @Test func aCommentChangesOnlyTheComment() throws {
         let tree = try TestTree("a.txt", "b.txt", "link -> b.txt")
         setKeep(tree.url("a.txt").path)

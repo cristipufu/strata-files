@@ -109,7 +109,12 @@ nonisolated package enum FileInfoEditing {
 
     /// Changes access through the chosen descriptor, keeping everything else about its mode.
     package static func setAccess(_ access: Access, for who: Who, at path: String) throws {
-        let chosen = try ChosenFile(URL(fileURLWithPath: path))
+        try setAccess(access, for: who, of: ChosenFile(URL(fileURLWithPath: path)))
+    }
+
+    /// `setAccess` for the very item chosen: one put in its place since is refused.
+    package static func setAccess(_ access: Access, for who: Who, of chosen: ChosenFile) throws {
+        let path = chosen.url.path
         func updated(_ info: stat) throws -> mode_t {
             guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
             return mode(info.st_mode & 0o7777, setting: access, for: who, isFolder: info.st_mode & S_IFMT == S_IFDIR)

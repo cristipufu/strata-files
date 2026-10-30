@@ -70,7 +70,8 @@ extension PaletteItem {
 final class CommandPalette: NSObject {
     let panel: PalettePanel
     private let field = NSTextField()
-    private let table = NSTableView()
+    private let table = PressedRowTable()
+    private var pressedItem: PaletteItem?
     private let scroll = NSScrollView()
     private var heightConstraint: NSLayoutConstraint!
     private let ranker = PaletteRanker()
@@ -196,6 +197,7 @@ final class CommandPalette: NSObject {
         table.delegate = self
         table.target = self
         table.action = #selector(rowClicked)
+        table.pressed = { [weak self] row in self?.press(row) }
         table.refusesFirstResponder = true
 
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -292,16 +294,23 @@ final class CommandPalette: NSObject {
 
     private func runSelected() {
         finishTyping()
-        ranker.afterPathLookup { [weak self] in self?.runSelectedNow() }
+        ranker.afterPathLookup { [weak self] in
+            guard let self else { return }
+            run(row: table.selectedRow)
+        }
     }
 
-    private func runSelectedNow() {
-        run(row: table.selectedRow)
+    private func press(_ row: Int) {
+        pressedItem = results.indices.contains(row) ? results[row].item : nil
+        if pressedItem != nil { ranker.rowChosen = true }
     }
 
-    /// A click chooses the row it's on, as shown: nothing to wait for, nor to rank again first.
+    /// Runs the item the click went down on, even if results arrived while the button was held.
     @objc private func rowClicked() {
-        run(row: table.clickedRow)
+        guard table.clickedRow >= 0, let item = pressedItem else { return }
+        pressedItem = nil
+        close()
+        item.run()
     }
 
     private func run(row: Int) {
@@ -504,7 +513,10 @@ final class PaletteRanker {
     /// A slow search, or the typed path's lookup, is waiting or running.
     var isSearching: Bool { late != nil || pathLookup != nil }
     /// A row was chosen (with the arrows) since the query: the typed path, arriving, leaves the selection alone.
-    var rowChosen = false
+    /// A row chosen with the arrows or the mouse: a Return waiting for the typed path doesn't run it later.
+    var rowChosen = false {
+        didSet { if rowChosen { cancelWaitingRun() } }
+    }
 
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
@@ -519,8 +531,7 @@ final class PaletteRanker {
         late = nil
         pathLookup?.cancel()
         pathLookup = nil
-        waitingRun?.cancel()
-        waitingRun = nil
+        cancelWaitingRun()
         rowChosen = false
         scored = []
         guard !query.isEmpty else {
@@ -564,11 +575,8 @@ final class PaletteRanker {
     /// Runs `action` now, or once the typed path's lookup ends while one runs, so Return can go there: one waits at
     /// most however often it's asked, and a new query or `cancel` drops it.
     func afterPathLookup(_ action: @escaping () -> Void) {
-        // A row chosen with the arrows stays chosen when the path arrives: nothing to wait for.
-        guard let lookup = pathLookup, !rowChosen else {
-            cancelWaitingRun()
-            return action()
-        }
+        // A row chosen stays chosen when the path arrives: nothing to wait for.
+        guard let lookup = pathLookup, !rowChosen else { return action() }
         guard waitingRun == nil else { return }
         let asked = query
         waitingRun = Task { [weak self] in

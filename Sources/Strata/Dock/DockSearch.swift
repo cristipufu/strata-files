@@ -15,7 +15,8 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private let results = DockSearchPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 100),
                                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private let field = NSTextField()
-    private let table = NSTableView()
+    private let table = PressedRowTable()
+    private var pressedItem: PaletteItem?
     private let boxGlass = NSGlassEffectView()
     private let ranker = PaletteRanker()
     private var follower: Timer?
@@ -254,8 +255,16 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         table.scrollRowToVisible(row)
     }
 
+    private func press(_ row: Int) {
+        pressedItem = ranker.results.indices.contains(row) ? ranker.results[row].item : nil
+        if pressedItem != nil { ranker.rowChosen = true }
+    }
+
+    /// Runs the item the click went down on, even if results arrived while the button was held.
     @objc private func clickedRow() {
-        run(table.clickedRow, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+        guard table.clickedRow >= 0, let item = pressedItem else { return }
+        pressedItem = nil
+        run(item, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
     }
 
     private func run(_ row: Int, reveal: Bool) {
@@ -369,6 +378,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         table.dataSource = self
         table.delegate = self
         table.target = self
+        table.pressed = { [weak self] row in self?.press(row) }
         table.action = #selector(clickedRow)
         let scroll = NSScrollView()
         scroll.documentView = table
