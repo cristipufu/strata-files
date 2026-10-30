@@ -300,8 +300,9 @@ final class CommandPalette: NSObject {
     }
 
     @objc private func rowClicked() {
-        let byMouse = NSApp.currentEvent?.type == .leftMouseUp
-        guard table.clickedRow >= 0, let item = ranker.clickedItem(table.clickedRow, byMouse: byMouse) else { return }
+        let activation = table.activation
+        guard activation != .movedAway,
+              let item = ranker.clickedItem(table.clickedRow, byMouse: activation == .click) else { return }
         run(item)
     }
 
@@ -588,7 +589,7 @@ final class PaletteRanker {
         waitingRun = nil
     }
 
-    /// A click went down on `row`: what's there now is what the click runs.
+    /// A click went down on `row`: what's there now is what the click runs. -1 forgets it.
     func press(_ row: Int) {
         pressedItem = results.indices.contains(row) ? results[row].item : nil
         if pressedItem != nil { rowChosen = true }

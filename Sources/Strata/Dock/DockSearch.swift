@@ -255,10 +255,10 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     }
 
     @objc private func clickedRow() {
-        let event = NSApp.currentEvent
-        guard table.clickedRow >= 0,
-              let item = ranker.clickedItem(table.clickedRow, byMouse: event?.type == .leftMouseUp) else { return }
-        run(item, reveal: event?.modifierFlags.contains(.command) == true)
+        let activation = table.activation
+        guard activation != .movedAway,
+              let item = ranker.clickedItem(table.clickedRow, byMouse: activation == .click) else { return }
+        run(item, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
     }
 
     private func run(_ row: Int, reveal: Bool) {

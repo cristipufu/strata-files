@@ -94,6 +94,12 @@ nonisolated package enum FileInfoEditing {
 
     // MARK: - Locked and permissions
 
+    /// The item's own status (not a link's target's), read by path.
+    package static func status(at path: String) -> stat? {
+        var info = stat()
+        return lstat(path, &info) == 0 ? info : nil
+    }
+
     package static func isLocked(_ info: stat) -> Bool {
         info.st_flags & UInt32(UF_IMMUTABLE) != 0
     }

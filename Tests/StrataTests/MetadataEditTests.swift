@@ -90,6 +90,21 @@ struct MetadataEditTests {
         #expect(mode(tree.url("file.txt").path) == 0o664)
     }
 
+    /// Get Info shows the opened item's own settings, nothing once another has taken its place, and what's at the
+    /// path for an item it can't open (the startup disk), which it refuses to change.
+    @Test func getInfoShowsTheSettingsOfWhatItChanges() throws {
+        let tree = try TestTree("folder/", "aside/")
+        let shown = try ChosenFile(tree.url("folder"))
+        #expect(InfoEditor.status(of: .success(shown), at: tree.url("folder").path) != nil)
+        try FileManager.default.moveItem(at: tree.url("folder"), to: tree.url("aside/folder"))
+        try FileManager.default.createDirectory(at: tree.url("folder"), withIntermediateDirectories: false)
+        #expect(InfoEditor.status(of: .success(shown), at: tree.url("folder").path) == nil)
+        let startupDisk = Result { try ChosenFile(URL(fileURLWithPath: "/")) }
+        #expect(throws: (any Error).self) { try startupDisk.get() }
+        #expect(InfoEditor.status(of: startupDisk, at: "/") != nil)
+        #expect(tree.snapshot() == ["aside/", "aside/folder/", "folder/"])
+    }
+
     /// A lock chosen for an item shown goes only to that item: a folder put in its place since stays as it is.
     @Test func lockingChangesOnlyTheItemShown() throws {
         let tree = try TestTree("folder/", "aside/")

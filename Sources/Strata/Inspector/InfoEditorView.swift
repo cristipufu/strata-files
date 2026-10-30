@@ -76,8 +76,7 @@ import AppKit
         @concurrent static func read(_ url: URL, opensWithApps: Bool) async -> Facts {
             let path = url.path
             let choice = Result { try ChosenFile(url) }
-            // The settings shown are the opened item's own, as changes go to it.
-            let info = InfoEditor.status(of: choice)
+            let info = InfoEditor.status(of: choice, at: path)
             return Facts(choice: choice, comment: FileInfoEditing.comment(at: path),
                          isLocked: info.map(FileInfoEditing.isLocked) ?? false,
                          names: info.map(FileInfoEditing.names(of:)),
@@ -209,9 +208,13 @@ import AppKit
         }
     }
 
-    /// The chosen item's status, read through its open parent; nil once another has taken its place.
-    nonisolated static func status(of item: Result<ChosenFile, any Error>) -> stat? {
-        try? item.get().withParent { _, _, info in info }
+    /// What the switch and menus show: the opened item's own status, as changes go to it (nil once another has taken
+    /// its place). An item that couldn't be opened (the startup disk) shows what's at its path, and refuses changes.
+    nonisolated static func status(of item: Result<ChosenFile, any Error>, at path: String) -> stat? {
+        switch item {
+        case .success(let chosen): try? chosen.withParent { _, _, info in info }
+        case .failure: FileInfoEditing.status(at: path)
+        }
     }
 
     private func apply(_ facts: Facts, same: Bool) {
@@ -442,12 +445,13 @@ import AppKit
     /// After a change, made or refused: the switch and menus show the item as it is now, so a refused change puts
     /// them back. If another item has taken its place, they show nothing until that one's settings are read.
     private func showSettings(of item: Result<ChosenFile, any Error>) {
-        let info = Self.status(of: item)
+        guard let url else { return }
+        let info = Self.status(of: item, at: url.path)
         locked.state = info.map(FileInfoEditing.isLocked) == true ? .on : .off
         let names = info.map(FileInfoEditing.names(of:))
         showPermissions(names, info?.st_mode)
         setEnabled(names?.ownedByYou ?? false)
-        if info == nil, let url { readSettings(of: url, same: true) }
+        if info == nil { readSettings(of: url, same: true) }
     }
 
     private func showPermissions(_ names: (owner: String, group: String, ownedByYou: Bool)?, _ mode: mode_t?,
