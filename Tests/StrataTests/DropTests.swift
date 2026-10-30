@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+import os
 @testable import Strata
 
 /// Drag and drop, as every view decides it: a move on the same disk, a copy with Option or out of a read-only copy, and
@@ -63,5 +64,31 @@ struct DropTests {
             #expect(!SidebarViewController.canTrash(urls), "\(urls.map(\.path))")
         }
         #expect(tree.snapshot() == ["a.txt", "trash link -> \(Trash.home.path)"])
+    }
+
+    /// While a drag moves, its checks go by what the paths say until the disk's answers arrive, read away from the main
+    /// thread once per drag for every path asked about; then they go by those, and ask nothing more.
+    @Test func aDragsChecksAreReadOnceAwayFromTheMainThread() async {
+        let asked = OSAllocatedUnfairLock(initialState: [[String]]())
+        let facts = DragFacts(sequence: 7) { paths in
+            asked.withLock { $0.append(paths.sorted()) }
+            // The link leads into the dragged folder, and the share is on the same disk as the home folder.
+            return Dictionary(uniqueKeysWithValues: paths.map { path in
+                (path, DragFacts.Fact(realPath: path == "/Volumes/Share/link" ? "/Volumes/Share/a" : path, device: 1,
+                                      opens: true, isPackage: false))
+            })
+        }
+        let dragged = [URL(fileURLWithPath: "/Volumes/Share/a")]
+        let link = URL(fileURLWithPath: "/Volumes/Share/link"), home = URL(fileURLWithPath: "/Users/someone")
+        #expect(!facts.isInside(dragged, link))
+        #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .copy)
+        #expect(!facts.opens(link))
+        await facts.reading?.value
+        let paths = ["/Users/someone", "/Volumes/Share", "/Volumes/Share/a", "/Volumes/Share/link"]
+        #expect(asked.withLock { $0 } == [paths])
+        #expect(facts.isInside(dragged, link))
+        #expect(FileDrop.operation(dragged, into: home, mask: [.copy, .move], option: false, disk: facts) == .move)
+        #expect(facts.opens(link))
+        #expect(facts.reading == nil && asked.withLock { $0.count } == 1)
     }
 }

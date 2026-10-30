@@ -513,7 +513,8 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         let index = proposed.count == 2 ? proposed.item : -1
         // A folder the drag rests on springs open (never one of the dragged items or inside one).
         let resting = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url) && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
+            && !FileDrop.isInside(urls, entries[index].url, during: draggingInfo)
+            && fileDelegate?.fileView(self, canSpringLoad: entries[index].url, during: draggingInfo) == true
         springLoader.hover(resting ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
         guard !urls.isEmpty else { return hideDropHighlight() }
         if dropOperation.pointee == .on, entries.indices.contains(index), entries[index].isFolder,
@@ -547,7 +548,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
             ? entries[index].url : nil
         guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
     }

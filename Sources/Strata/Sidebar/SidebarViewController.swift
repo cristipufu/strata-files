@@ -486,8 +486,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let resting = index == NSOutlineViewDropOnItemIndex ? (item as? SidebarItem)?.url : nil
         springLoader.hover(resting.flatMap { folder in
             // A favorite can be a package (an app): springing would open its insides. Dropping on the Trash trashes.
-            urls.isEmpty || FileDrop.isInside(urls, folder) || NSWorkspace.shared.isFilePackage(atPath: folder.path)
-                || Trash.isTrash(folder) || !SpringLoader.canOpen(folder, browsing: nil) ? nil : folder
+            urls.isEmpty || FileDrop.isInside(urls, folder, during: info) || DragFacts.of(info).isPackage(folder)
+                || Trash.isTrash(folder) || !SpringLoader.canOpen(folder, browsing: nil, during: info) ? nil : folder
         }, drag: info.draggingSequenceNumber)
         if isReorder {
             if favoriteIndex(item, index) != nil { return .move }
@@ -532,7 +532,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             moveToTrash(urls)
             return true
         }
-        let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: copies)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
         services.transfers.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))

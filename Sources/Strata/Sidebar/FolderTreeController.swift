@@ -588,7 +588,9 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             trashVerdict = (info.draggingSequenceNumber, operation)
             return operation
         }
-        springLoader.hover(FileDrop.isInside(urls, node.url) || !SpringLoader.canOpen(node.url, browsing: nil) ? nil : node.url,
+        let springs = !FileDrop.isInside(urls, node.url, during: info)
+            && SpringLoader.canOpen(node.url, browsing: nil, during: info)
+        springLoader.hover(springs ? node.url : nil,
                            drag: info.draggingSequenceNumber)
         return FileDrop.operation(urls, into: node.url, info: info, copies: copies)
     }
@@ -602,7 +604,7 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             onTrash?(urls)
             return true
         }
-        let operation = FileDrop.operation(urls, into: node.url, info: info, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: node.url, info: info, copies: copies)
         guard !urls.isEmpty, !operation.isEmpty else { return false }
         transfers.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
                                      undo: view.window?.undoManager, conflicts: .sheet(for: view.window))

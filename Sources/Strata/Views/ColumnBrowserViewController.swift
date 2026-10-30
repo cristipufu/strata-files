@@ -840,7 +840,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let copies = controller?.copies ?? .live
         let urls = FileDrop.urls(info, copies: copies)
         let resting = !urls.isEmpty && dropOperation == .on && row >= 0 && row < entries.count && entries[row].isFolder
-            && !FileDrop.isInside(urls, entries[row].url) && SpringLoader.canOpen(entries[row].url, browsing: folder)
+            && !FileDrop.isInside(urls, entries[row].url, during: info)
+            && SpringLoader.canOpen(entries[row].url, browsing: folder, during: info)
         springLoader.hover(resting ? entries[row].url : nil, drag: info.draggingSequenceNumber)
         guard !urls.isEmpty else { return [] }
         if dropOperation == .on, row >= 0, row < entries.count, entries[row].isFolder {
@@ -857,7 +858,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let copies = controller?.copies ?? .live
         let urls = FileDrop.urls(info, copies: copies)
         let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
-        let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: copies)
         guard !operation.isEmpty, let controller else { return false }
         return controller.drop(urls, onto: target, from: self, copy: operation != .move)
     }

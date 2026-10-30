@@ -261,7 +261,7 @@ extension BrowserViewController {
                      proposedChildIndex index: Int) -> NSDragOperation {
         let urls = draggedURLs(info) ?? []
         isDragOver = true
-        springLoader.hover(springTarget(item, index, urls), drag: info.draggingSequenceNumber)
+        springLoader.hover(springTarget(item, index, urls, during: info), drag: info.draggingSequenceNumber)
         guard !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
         // The rules every view shares: never into itself, no moves that change nothing, nothing into an archive opened
         // as a folder, copies out of one.
@@ -278,7 +278,7 @@ extension BrowserViewController {
             dropTarget = isShowingResults ? nil : directory
         }
         guard let urls = draggedURLs(info), let target = dropTarget else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: info, copies: services.copies)
+        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: services.copies)
         guard !operation.isEmpty else { return false }
         transfer(urls, into: target, move: operation == .move)
         return true
@@ -286,10 +286,10 @@ extension BrowserViewController {
 
     /// The folder row a file drag rests on (not between rows, not one of the dragged items or inside one), to spring
     /// open.
-    private func springTarget(_ item: Any?, _ index: Int, _ dragged: [URL]) -> URL? {
+    private func springTarget(_ item: Any?, _ index: Int, _ dragged: [URL], during info: NSDraggingInfo) -> URL? {
         guard !dragged.isEmpty, index == NSOutlineViewDropOnItemIndex, let node = item as? FileNode, node.groupTitle == nil,
-              node.entry.isFolder, !FileDrop.isInside(dragged, node.url),
-              SpringLoader.canOpen(node.url, browsing: directory) else { return nil }
+              node.entry.isFolder, !FileDrop.isInside(dragged, node.url, during: info),
+              SpringLoader.canOpen(node.url, browsing: directory, during: info) else { return nil }
         return node.url
     }
 

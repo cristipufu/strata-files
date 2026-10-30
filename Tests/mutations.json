@@ -260,7 +260,7 @@
   },
   {
     "file": "Strata/Views/FileCollection.swift",
-    "find": "        if isInside(urls, target) { return [] }\n",
+    "find": "        if disk.isInside(urls, target) { return [] }\n",
     "replace": "",
     "rule": "A drop into the item itself is allowed",
     "tests": "DropTests"

@@ -510,7 +510,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         dragEnded()
         let urls = FileDrop.urls(info, copies: copies)
         guard let directory else { return false }
-        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: directory, info: info, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: nil, copy: operation != .move) ?? false
     }
@@ -569,9 +569,10 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
         let proposed = proposedIndexPath.pointee as IndexPath
         let index = proposed.count == 2 ? proposed.item : -1
         let onFolder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url)
+            && !FileDrop.isInside(urls, entries[index].url, during: draggingInfo)
         // A folder the drag rests on springs open.
-        let springs = onFolder && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
+        let springs = onFolder
+            && fileDelegate?.fileView(self, canSpringLoad: entries[index].url, during: draggingInfo) == true
         springLoader.hover(springs ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
         guard !urls.isEmpty else { return hideDropHighlight() }
         if onFolder {
@@ -597,7 +598,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
         let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
             ? entries[index].url : nil
         guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
+        let operation = FileDrop.dropOperation(urls, into: target, info: draggingInfo, copies: copies)
         guard !operation.isEmpty else { return false }
         return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
     }

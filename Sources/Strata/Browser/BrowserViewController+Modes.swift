@@ -131,8 +131,8 @@ extension BrowserViewController: FileCollectionViewDelegate {
         springLoad(folder, drag: drag)
     }
 
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool {
-        SpringLoader.canOpen(folder, browsing: directory)
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool {
+        SpringLoader.canOpen(folder, browsing: directory, during: info)
     }
 
     func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, copy: Bool) -> Bool {

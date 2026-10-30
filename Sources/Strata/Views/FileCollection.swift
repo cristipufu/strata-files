@@ -73,8 +73,8 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, renameClicked url: URL)
     /// A drag rested on `folder` long enough to spring it open; `drag` is the drag's sequence number.
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int)
-    /// Whether `folder` may spring open (readable, no privacy prompt).
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool
+    /// Whether `folder` may spring open (readable, no privacy prompt) during the drag `info` belongs to.
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool
 }
 
 extension FileCollectionViewDelegate {
@@ -82,7 +82,7 @@ extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {}
     func fileView(_ view: NSViewController, renameClicked url: URL) {}
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int) {}
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool { false }
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool { false }
 }
 
 /// The browser's current folder rows, already sorted and filtered. Views preserve their own selection policy.
@@ -218,6 +218,18 @@ enum BrowserViewMode: Int, CaseIterable {
 
 /// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
 /// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
+/// What a drop decision asks the disk.
+protocol DropDisk {
+    func isInside(_ urls: [URL], _ target: URL) -> Bool
+    func sameVolume(_ a: URL, _ b: URL) -> Bool
+}
+
+/// The disk as it is now: for the drop itself.
+struct DiskNow: DropDisk {
+    func isInside(_ urls: [URL], _ target: URL) -> Bool { FileDrop.isInside(urls, target) }
+    func sameVolume(_ a: URL, _ b: URL) -> Bool { FileDrop.sameVolume(a, b) }
+}
+
 enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
@@ -249,28 +261,49 @@ enum FileDrop {
 
     /// Whether `target` is one of `urls` or inside one of them, however either is spelled (`/tmp` is `/private/tmp`).
     static func isInside(_ urls: [URL], _ target: URL) -> Bool {
-        // Resolved once per drag update; items usually share a parent, so theirs are cached too.
         let resolvedTarget = TransferJob.realPath(target.standardizedFileURL.path)
         var parents: [String: String] = [:]
-        return urls.contains { url in
+        let items = urls.map { url in
             let parent = url.deletingLastPathComponent().path
             let real = parents[parent] ?? TransferJob.realPath(parent)
             parents[parent] = real
-            let item = (real as NSString).appendingPathComponent(url.lastPathComponent)
-            return resolvedTarget == item || resolvedTarget.hasPrefix(item == "/" ? "/" : item + "/")
+            return (real as NSString).appendingPathComponent(url.lastPathComponent)
         }
+        return isInside(items, resolvedTarget)
     }
 
+    /// `isInside` while a drag moves, from what `DragFacts` has read of the disk.
+    static func isInside(_ urls: [URL], _ target: URL, during info: NSDraggingInfo) -> Bool {
+        DragFacts.of(info).isInside(urls, target)
+    }
+
+    /// Whether path `target` is one of `items` or inside one, as spelled.
+    static func isInside(_ items: [String], _ target: String) -> Bool {
+        items.contains { item in target == item || target.hasPrefix(item == "/" ? "/" : item + "/") }
+    }
+
+    /// What dropping `urls` on `target` would do, while the drag moves: views ask on every move of the pointer, so
+    /// what the disk says comes from `DragFacts`.
     static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders = .live) -> NSDragOperation {
-        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: NSEvent.modifierFlags.contains(.option), copies: copies)
+        let option = NSEvent.modifierFlags.contains(.option)
+        return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies,
+                         disk: DragFacts.of(info))
+    }
+
+    /// What dropping `urls` on `target` does, decided from the disk as they're dropped.
+    static func dropOperation(_ urls: [URL], into target: URL, info: NSDraggingInfo,
+                              copies: CopyProviders = .live) -> NSDragOperation {
+        let option = NSEvent.modifierFlags.contains(.option)
+        return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies)
     }
 
     /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
     /// or nothing (into itself, back where it is, into a copy that can't change).
-    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool, copies: CopyProviders = .live) -> NSDragOperation {
+    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool,
+                          copies: CopyProviders = .live, disk: DropDisk = DiskNow()) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
-        if isInside(urls, target) { return [] }
+        if disk.isInside(urls, target) { return [] }
         let remoteCopies = copies.remoteCopies
         // Onto a server: copied there, or moved within that server.
         if remoteCopies.contains(target) {
@@ -285,7 +318,8 @@ enum FileDrop {
         }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
         if ReadOnlyCopies.contains(target, copies: copies) { return [] }
-        let wantsCopy = option || !sameVolume(first, target) || urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) })
+        let wantsCopy = option || !disk.sameVolume(first, target)
+            || urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) })
         let operation: NSDragOperation
         if wantsCopy || !mask.contains(.move) {
             operation = mask.contains(.copy) || mask.contains(.generic) ? .copy : []
@@ -298,16 +332,9 @@ enum FileDrop {
         return operation
     }
 
-    private static var volumeCache: (a: URL, b: URL, same: Bool)?
-
-    /// Called on every drag update, so the last answer is remembered.
     static func sameVolume(_ a: URL, _ b: URL) -> Bool {
-        if let cached = volumeCache, cached.a == a, cached.b == b { return cached.same }
-        let va = try? a.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let vb = try? b.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let same = if let va, let vb { va.isEqual(vb) } else { false }
-        volumeCache = (a, b, same)
-        return same
+        guard let first = TransferEngine.device(a) else { return false }
+        return first == TransferEngine.device(b)
     }
 }
 
