@@ -121,6 +121,8 @@ final class BrowserViewController: NSViewController {
     var watchers: [DirectoryWatcher] = []
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     var gitObservation: GitObservation?
+    /// Finding the repository the folder is in, away from the main thread.
+    var gitObserving: Task<Void, Never>?
     lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
@@ -365,7 +367,14 @@ final class BrowserViewController: NSViewController {
             watchers = applicationFolders.directories(for: FileEntry.openedFolder(url)).compactMap { folder in
                 DirectoryWatcher(url: folder) { [weak self] in self?.refresh() }
             }
-            gitObservation = GitStatusStore.shared.observe(url)
+            gitObservation = nil
+            gitObserving?.cancel()
+            let revision = navigationRevision
+            gitObserving = Task { [weak self] in
+                let observation = await GitStatusStore.shared.observe(url)
+                guard let self, !Task.isCancelled, navigationRevision == revision, directory == url else { return }
+                gitObservation = observation
+            }
             pendingSelection = select.map { [$0] } ?? []
         }
         // Revealing an item in the folder already showing selects it too.

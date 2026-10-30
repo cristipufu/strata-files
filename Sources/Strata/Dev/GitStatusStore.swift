@@ -41,12 +41,16 @@ final class GitStatusStore {
 
     // MARK: - Repositories
 
-    /// The repository whose work tree contains `folder`. Cached per folder; `observe` re-checks the disk.
+    /// The repository whose work tree contains `folder`, as last found. Not found yet, it's looked for away from the
+    /// main thread (an lstat or two at every level up to "/", each a round trip on a server) and nil until then; a
+    /// status change says when it's found. `observe` looks again.
     func repository(containing folder: URL) -> GitRepository? {
         let path = folder.standardizedFileURL.path
         if let cached = repositoriesByFolder[path] { return cached }
-        return locate(path)
+        find(path)
+        return nil
     }
+
 
     /// The repository an item in the list belongs to: its parent folder's. (A nested repository's root is an
     /// untracked folder of the outer one, which is how it should look from outside.)
@@ -54,9 +58,33 @@ final class GitStatusStore {
         repository(containing: url.standardizedFileURL.deletingLastPathComponent())
     }
 
+    private var finding: [String: (id: UUID, task: Task<GitRepository?, Never>)] = [:]
+
+    /// Looks for the repository holding `path` away from the main thread, once however often it's asked meanwhile.
     @discardableResult
-    private func locate(_ path: String) -> GitRepository? {
-        let repository = isEnabled ? GitRepository.locate(from: URL(fileURLWithPath: path, isDirectory: true)) : nil
+    private func find(_ path: String) -> Task<GitRepository?, Never> {
+        if let finding = finding[path] { return finding.task }
+        let enabled = isEnabled, id = UUID()
+        let task = Task { [weak self] in
+            let repository = enabled ? await Self.locate(path) : nil
+            guard let self else { return repository }
+            if finding[path]?.id == id { finding[path] = nil }
+            let known = repositoriesByFolder[path] != nil
+            record(repository, at: path)
+            if let repository, !known {
+                NotificationCenter.default.post(name: .gitStatusDidChange, object: self, userInfo: ["root": repository.root])
+            }
+            return repository
+        }
+        finding[path] = (id, task)
+        return task
+    }
+
+    @concurrent private static func locate(_ path: String) async -> GitRepository? {
+        GitRepository.locate(from: URL(fileURLWithPath: path, isDirectory: true))
+    }
+
+    private func record(_ repository: GitRepository?, at path: String) {
         if let cached = repositoriesByFolder[path], cached != repository {
             // A repository appeared or vanished (git init, rm -rf .git): every cached answer may be wrong now.
             repositoriesByFolder.removeAll()
@@ -65,7 +93,6 @@ final class GitStatusStore {
         }
         repositoriesByFolder[path] = .some(repository)
         if let repository { repositoriesByRoot[repository.rootPath] = repository }
-        return repository
     }
 
     func snapshot(for root: URL) -> GitStatusSnapshot? {
@@ -83,12 +110,14 @@ final class GitStatusStore {
 
     // MARK: - Observing
 
-    /// Starts tracking the repository containing `folder` while the returned token is alive: re-checks which
-    /// repository the folder is in, watches the work tree and git directory (FSEvents) so edits, staging, commits and
-    /// checkouts made anywhere refresh it, and runs status unless a watched snapshot is already current. Returns nil
-    /// outside a repository.
-    func observe(_ folder: URL) -> GitObservation? {
-        guard let repository = locate(folder.standardizedFileURL.path) else { return nil }
+    /// Starts tracking the repository containing `folder` while the returned token is alive: re-checks, away from the
+    /// main thread, which repository the folder is in, watches the work tree and git directory (FSEvents) so edits,
+    /// staging, commits and checkouts made anywhere refresh it, and runs status unless a watched snapshot is already
+    /// current. Returns nil outside a repository.
+    func observe(_ folder: URL) async -> GitObservation? {
+        let path = folder.standardizedFileURL.path
+        finding[path] = nil
+        guard let repository = await find(path).value else { return nil }
         let root = repository.rootPath
         let watched = watchers[root] != nil
         let isFresh = snapshots[root].map { watched || Date().timeIntervalSince($0.date) < maximumAge } ?? false
@@ -238,8 +267,11 @@ final class GitStatusStore {
     private func locateItem(path: String) -> (GitStatusSnapshot, String)? {
         guard let slash = path.lastIndex(of: "/") else { return nil }
         let parent = slash == path.startIndex ? "/" : String(path[..<slash])
-        let cached = repositoriesByFolder[parent]
-        guard let repository = cached ?? locate(parent), let snapshot = snapshots[repository.rootPath],
+        guard let cached = repositoriesByFolder[parent] else {
+            find(parent)
+            return nil
+        }
+        guard let repository = cached, let snapshot = snapshots[repository.rootPath],
               let relative = GitStatusSnapshot.relativePath(path, root: repository.rootPath), !relative.isEmpty else { return nil }
         return (snapshot, relative)
     }

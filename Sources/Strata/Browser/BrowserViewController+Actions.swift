@@ -177,6 +177,7 @@ extension BrowserViewController {
         resortWork?.cancel()
         resortWork = nil
         watchers = []
+        gitObserving?.cancel()
         gitObservation = nil
         loading.invalidate()
         sizer.cancelPending()
