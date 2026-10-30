@@ -37,6 +37,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 python3 scripts/localize.py extract     # after editing Swift files: regenerates Localization/en.json
 python3 scripts/localize.py check --all --complete  # every supported language must be complete
 python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthemed Inspector gray text
+python3 scripts/audit-main-thread.py     # no unreviewed blocking calls on the main thread
 python3 scripts/audit-destructive.py --check  # the map names every flagged function; mutations.json fits the code
 python3 -m unittest discover -s Tests -p 'test_*.py'  # checkers and generated resources
 ```
@@ -162,6 +163,19 @@ These apply everywhere below; the sections that follow add only what is specific
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over
   it, or navigate another pane. Recheck ownership after every suspension and callback.
+- **The main thread never waits.** Code runs on the main actor unless it says otherwise, so a call in an ordinary
+  function, or in a `Task {}` started from one, runs there. Keep off it: the file system (`FileManager`,
+  `resourceValues`, `lstat`, extended attributes, real paths, aliases), LaunchServices (`NSWorkspace` icons, app
+  lookups, packages), the keychain, processes and waits, Accessibility, image reads, and anything that grows with a
+  folder, a selection or History. On a server or a sleeping disk each of these takes seconds, and the window freezes.
+  Read in a `@concurrent` function, an actor, a job's worker, or `PathQuery.offMain` for reads that may hang on a
+  server that stopped answering; recheck ownership after the suspension, then apply on the main actor. Lists show what
+  was last read and update when a read arrives (`PlaceChecks`, `TagStore.tags`, `GitStatusStore.repository`,
+  `InfoEditor.Facts`); a hidden view reads nothing. A change you ask for on one item may stay synchronous, as may an
+  undo step that must register its redo inside the `UndoManager` callback. `scripts/audit-main-thread.py` lists
+  blocking calls in main-actor code, and CI and `swift test` fail on one not in `Tests/main-thread.json` with a
+  reviewed reason; the entries dated 2026-10-30 predate the rule, so move them off when their code changes. It can't
+  see what a synchronous helper does, so check helpers you call too.
 - **Cancel only your own work.** A Cancel action ends only its own request or ticket, and shared work stops when its
   last caller leaves. Only an explicit Disconnect or server removal ends a server's sessions.
 - **Pending work holds windows, panes, sheets and browsers weakly**, and one-shot actions release their captures on
@@ -516,7 +530,9 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
 
 ## Checking the real app
 
-Prefer headless tests. When a GUI check is needed: the debug build has the same bundle ID as an installed Strata, so
+Prefer headless tests. Debug builds log every main-thread stall over a tenth of a second (`MainThreadWatchdog`):
+watch `log stream --predicate 'category == "stalls"'` while trying a change, and use Instruments' Hangs to see where.
+When a GUI check is needed: the debug build has the same bundle ID as an installed Strata, so
 AppleScript `set frontmost` and keystrokes can land in the user's own copy. Activate the debug build by process ID
 (`NSRunningApplication(processIdentifier:)` from JXA), confirm it's frontmost, then post CGEvents; read a confirmation
 sheet's text before clicking a destructive button. Both builds share preferences: put back anything you change (view

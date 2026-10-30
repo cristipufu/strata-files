@@ -62,6 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        MainThreadWatchdog.start()
+        #endif
         // Starts Sparkle (in a release build): background checks if allowed, and Check for Updates….
         _ = Updates.shared
         FileIndex.shared.start()

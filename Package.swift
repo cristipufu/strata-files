@@ -21,6 +21,7 @@ let appOnlySources = [
     "AppDelegate+Trash.swift",
     "AppDelegate.swift",
     "MainMenu.swift",
+    "MainThreadWatchdog.swift",
     "NewWindowLocation.swift",
     "Prefs.swift",
     "ShortcutStore.swift",

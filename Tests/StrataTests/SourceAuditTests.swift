@@ -1,16 +1,27 @@
 import Foundation
 import Testing
 
-struct ThemeColorAuditTests {
+/// The source audits CI runs, run by `swift test` as well.
+struct SourceAuditTests {
     @Test func directSurfaceColorsHaveAReviewedReason() async throws {
+        let (status, output) = try await run("scripts/audit-theme-colors.py")
+        #expect(status == 0, Comment(rawValue: output))
+    }
+
+    @Test func blockingCallsOnTheMainThreadHaveAReviewedReason() async throws {
+        let (status, output) = try await run("scripts/audit-main-thread.py")
+        #expect(status == 0, Comment(rawValue: output))
+    }
+
+    private func run(_ script: String) async throws -> (Int32, String) {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let result: (Int32, String) = try await withCheckedThrowingContinuation { done in
+        return try await withCheckedThrowingContinuation { done in
             DispatchQueue.global(qos: .utility).async {
                 do {
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-                    process.arguments = ["python3", root.appending(path: "scripts/audit-theme-colors.py").path]
+                    process.arguments = ["python3", root.appending(path: script).path]
                     process.currentDirectoryURL = root
                     process.standardInput = FileHandle.nullDevice
                     let pipe = Pipe()
@@ -23,6 +34,5 @@ struct ThemeColorAuditTests {
                 } catch { done.resume(throwing: error) }
             }
         }
-        #expect(result.0 == 0, Comment(rawValue: result.1))
     }
 }
