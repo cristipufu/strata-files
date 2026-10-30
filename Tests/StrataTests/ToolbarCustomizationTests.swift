@@ -58,7 +58,14 @@ struct ToolbarCustomizationTests {
         let toolbar = try #require(first.window?.toolbar)
         #expect(toolbar.allowsUserCustomization && !toolbar.autosavesConfiguration)
         #expect(first.toolbarDefaultItemIdentifiers(toolbar) == BrowserToolbar.defaults)
-        #expect(BrowserToolbar.defaults.count == 15)
+        #expect(BrowserToolbar.defaults.count == 16)
+        // Reload belongs beside the view controls: a visible refresh button, without opening Customize Toolbar.
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        #expect(BrowserToolbar.defaults.contains(reload))
+        #expect(BrowserToolbar.allowed.filter { $0 == reload }.count == 1)
+        #expect(BrowserToolbar.defaults.firstIndex(of: reload).flatMap { index in
+            BrowserToolbar.defaults.firstIndex(of: .viewMode).map { $0 < index }
+        } == true)
         for command in BrowserToolbar.commands { #expect(first.toolbarAllowedItemIdentifiers(toolbar).contains(BrowserToolbar.identifier(command))) }
         let ids: [NSToolbarItem.Identifier] = [.toggleSidebar, BrowserToolbar.identifier(.newFolder), .flexibleSpace, .pathBar]
         toolbar.itemIdentifiers = ids
@@ -206,6 +213,23 @@ struct ToolbarCustomizationTests {
         #expect(!owner.validateToolbarItem(item))
         owner.performToolbarCommand(item)
         #expect(tree.snapshot() == ["left/", "left/a", "right/", "right/a"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+    @Test func reloadIsAvailableForAFolderAndDisabledWhileShowingResults() async throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+        for pane in owner.panes { await pane.browser.directoryReads.task?.value }
+        let toolbar = try #require(owner.window?.toolbar)
+        let id = BrowserToolbar.identifier(.reloadFolder)
+        toolbar.itemIdentifiers = [id]
+        let item = try #require(toolbar.items.first)
+        #expect(item.image?.name() == NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)?.name())
+        #expect(owner.validateToolbarItem(item))
+        owner.browser.showResults([], total: 0)
+        #expect(!owner.validateToolbarItem(item))
+        #expect(tree.snapshot() == ["left/", "right/"])
         withExtendedLifetime((environment, state)) {}
     }
 }

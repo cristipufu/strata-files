@@ -4,14 +4,18 @@ import AppKit
 final class BrowserToolbar {
     static let defaults: [NSToolbarItem.Identifier] = [
         .toggleSidebar, .sidebarMode, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar,
-        .flexibleSpace, .viewMode, .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector,
+        .flexibleSpace, .viewMode, identifier(.reloadFolder), .dualPane, .share, .search, .transfers,
+        .inspectorTrackingSeparator, .toggleInspector,
     ]
     static let commands: [StrataCommand] = [
         .newFolder, .newFile, .moveToTrash, .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
     ]
     static func identifier(_ command: StrataCommand) -> NSToolbarItem.Identifier { .init("command." + command.id) }
     static func command(_ id: NSToolbarItem.Identifier) -> StrataCommand? { commands.first { identifier($0) == id } }
-    static var allowed: [NSToolbarItem.Identifier] { defaults + commands.map(identifier) + [.space] }
+    static var allowed: [NSToolbarItem.Identifier] {
+        // Reload is both a default and an optional command: offer it once in Customize Toolbar.
+        defaults + commands.map(identifier).filter { !defaults.contains($0) } + [.space]
+    }
 
     /// AppKit creates this menu on demand. Keep the wrench in its existing state column, beside the display-mode
     /// checkmarks, rather than adding an image column that indents only Customize Toolbar.

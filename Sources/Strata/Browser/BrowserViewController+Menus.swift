@@ -462,6 +462,9 @@ extension BrowserViewController: NSMenuItemValidation {
         case #selector(toggleFoldersFirst(_:)):
             item.state = preferences.foldersFirst ? .on : .off
             return true
+        case #selector(reloadFolder(_:)):
+            // Results, Recents and Duplicates aren't a folder to read again.
+            return !isShowingResults
         case #selector(sortBy(_:)):
             let key = Self.sortMenuKeys.indices.contains(item.tag) ? Self.sortMenuKeys[item.tag].key.rawValue : ""
             item.state = outlineView.sortDescriptors.first?.key == key ? .on : .off
