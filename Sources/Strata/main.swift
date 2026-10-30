@@ -9,6 +9,6 @@ SecureStorage.useApplicationStorage()
 Prefs.useApplicationPreferences()
 Sounds.useApplicationSounds()
 let app = NSApplication.shared
-let delegate = AppDelegate()
+let delegate = AppDelegate(browserServices: .shared)
 app.delegate = delegate
 app.run()

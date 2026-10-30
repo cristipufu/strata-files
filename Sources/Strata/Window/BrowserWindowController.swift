@@ -54,7 +54,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var location: URL { pane.location }
 
-    init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices = .shared) {
+    init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices) {
         self.services = services
         pathBar = PathBar(preferences: services.preferences, places: services.places, copies: services.copies,
                           names: services.folderNames)

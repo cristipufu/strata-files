@@ -54,7 +54,7 @@ final class InspectorViewController: NSViewController {
 
     private let previewScheduler: (DispatchWorkItem) -> Void
 
-    init(services: BrowserServices = .shared,
+    init(services: BrowserServices,
          previewScheduler: @escaping (DispatchWorkItem) -> Void = {
              DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
          }) {

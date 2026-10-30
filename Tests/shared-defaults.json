@@ -12,18 +12,6 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/App/AppDelegate.swift",
-  "default": "BrowserServices.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Browser/BrowserViewController.swift",
-  "default": "BrowserServices.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Browser/DirectoryReadSession.swift",
   "default": "DirectoryReader.live",
   "count": 1,
@@ -56,12 +44,6 @@
  {
   "file": "Sources/Strata/Inspector/InspectorCard.swift",
   "default": "Prefs.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/InspectorViewController.swift",
-  "default": "BrowserServices.shared",
   "count": 1,
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
@@ -138,12 +120,6 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
-  "default": "BrowserServices.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Transfers/TransferQueue.swift",
   "default": "OperationLog.shared",
   "count": 1,
@@ -198,12 +174,6 @@
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  },
  {
-  "file": "Sources/Strata/Window/BrowserWindowController.swift",
-  "default": "BrowserServices.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
   "file": "Sources/Strata/Window/CompareController.swift",
   "default": "TransferQueue.shared",
   "count": 1,
@@ -212,12 +182,6 @@
  {
   "file": "Sources/Strata/Window/ConnectToServerController.swift",
   "default": "RemoteConnections.shared",
-  "count": 1,
-  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/Pane.swift",
-  "default": "BrowserServices.shared",
   "count": 1,
   "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
  }

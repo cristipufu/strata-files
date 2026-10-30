@@ -146,7 +146,7 @@ struct BrowserPresentationsTests {
     }
 
     @Test func presentationsAreLazyReusedAndAttachedOnlyToTheirOwnBrowser() throws {
-        let first = BrowserViewController(), second = BrowserViewController()
+        let first = BrowserViewController(services: .shared), second = BrowserViewController(services: .shared)
         first.setStoredMode(.list); second.setStoredMode(.list)
         _ = first.view; _ = second.view
         #expect(first.presentations.cached.isEmpty && second.presentations.cached.isEmpty)

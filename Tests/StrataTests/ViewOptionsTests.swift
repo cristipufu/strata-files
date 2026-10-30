@@ -49,7 +49,7 @@ struct ViewOptionsTests {
 
     @Test func folderSizesIncludeNestedAndHiddenFilesAndDoNotWalkLinks() async throws {
         let tree = try TestTree("folder/", "folder/a", "folder/.hidden", "folder/sub/", "folder/sub/b", "link -> folder")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         browser.load(tree.root)
         for _ in 0..<100 where !browser.isLoaded { try await Task.sleep(for: .milliseconds(20)) }

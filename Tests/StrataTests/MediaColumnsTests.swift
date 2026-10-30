@@ -57,7 +57,7 @@ struct MediaColumnsTests {
     }
 
     @Test func optionalColumnsRemainReachableInANarrowPane() throws {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         browser.view.frame = NSRect(x: 0, y: 0, width: 450, height: 500)
         browser.setMode(.list, remember: false)
         for column in browser.outlineView.tableColumns where column.identifier.rawValue != "location" { column.isHidden = false }
@@ -76,7 +76,7 @@ struct MediaColumnsTests {
         let tree = try TestTree("other.txt")
         try image(tree.url("wide.jpg"), width: 25, height: 6)
         try image(tree.url("tall.jpg"), width: 9, height: 100)
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(.list, remember: false)
         browser.load(tree.root)

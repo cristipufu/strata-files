@@ -106,7 +106,7 @@ struct InlineRenameTests {
 
     @Test func expandedSubfolderSelectionSurvivesBrowserRefresh() async throws {
         let tree = try TestTree("sub/", "sub/a.txt", "sub/b.txt")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         browser.load(tree.root)
         await wait { browser.outlineView.numberOfRows == 1 }

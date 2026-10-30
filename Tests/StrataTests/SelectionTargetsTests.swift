@@ -14,7 +14,7 @@ struct SelectionTargetsTests {
     }
 
     private func browser(_ tree: TestTree, _ mode: BrowserViewMode, items: Int) async -> BrowserViewController {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(mode, remember: false)
         browser.load(tree.root)
@@ -101,7 +101,7 @@ struct SelectionTargetsTests {
     // MARK: - Results (search, Recents, Large Files, Duplicates)
 
     private func results(_ tree: TestTree) -> BrowserViewController {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         return browser
     }

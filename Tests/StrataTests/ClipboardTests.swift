@@ -38,7 +38,7 @@ import Testing
     @Test func aPasteAfterCutMovesOnlyWhatWasCut() async throws {
         try await withPasteboard { _ in
             let tree = try TestTree("left/", "left/a.txt", "left/ab.txt", "left/b/", "left/b/c.txt", "right/", "right/d.txt")
-            let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+            let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
             let other = try #require(window.otherBrowser)
             try await loaded(window.browser, items: 3)
             try await loaded(other, items: 1)
@@ -78,7 +78,7 @@ import Testing
     @Test func aPasteAfterAnotherAppsCopyLeavesTheOriginals() async throws {
         try await withPasteboard { board in
             let tree = try TestTree("left/", "left/a.txt", "right/")
-            let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+            let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
             let other = try #require(window.otherBrowser)
             try await loaded(window.browser, items: 1)
             try await loaded(other, items: 0)

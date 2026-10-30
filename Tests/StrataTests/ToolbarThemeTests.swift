@@ -8,8 +8,8 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
@@ -59,7 +59,7 @@ extension ColorThemeTests {
     @Test func theToolbarKeepsItsNativeHeaderAndGeometryWhenThePaletteChanges() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: .shared)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),

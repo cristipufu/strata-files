@@ -24,7 +24,7 @@ struct LocalizedNamesTests {
         let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live)
         #expect(entries.first { $0.name == "Original.localized" }?.displayName == "Translated Folder")
         #expect(entries.first { $0.name == "Original.app" }?.displayName == "Translated App")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         browser.showResults(entries.map { $0.with(displayName: $0.name) }, total: 2)
         browser.select([tree.url("Original.app")])
@@ -60,7 +60,7 @@ struct LocalizedNamesTests {
         let tree = try TestTree("a.txt", "b.txt")
         let a = try localized(tree.url("a.txt"), as: "Zulu")
         let b = try localized(tree.url("b.txt"), as: "Alpha")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         browser.showResults([a, b], total: 2)
         browser.applySort(.name, ascending: true, remember: false)
@@ -86,7 +86,7 @@ struct LocalizedNamesTests {
     @Test func everyViewRenamesTheSelectedURLRatherThanItsTranslatedLabelAndUndoRestoresIt() async throws {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("Original.txt", "Translated.txt", "Originals.txt", "other/", "other/Original.txt")
-            let browser = BrowserViewController()
+            let browser = BrowserViewController(services: .shared)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
             browser.load(tree.root)
@@ -114,7 +114,7 @@ struct LocalizedNamesTests {
         let tree = try TestTree("left/", "left/a.txt", "right/", "right/a.txt")
         let left = try localized(tree.url("left/a.txt"), as: "Same label")
         let right = try localized(tree.url("right/a.txt"), as: "Same label")
-        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
         let other = try #require(window.otherBrowser)
         try await wait { window.browser.isLoaded && other.isLoaded }
         window.browser.showResults([left, right], total: 2)

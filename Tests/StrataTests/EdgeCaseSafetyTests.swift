@@ -124,7 +124,7 @@ struct EdgeCaseSafetyTests {
     @Test func previewPanelAndPreviewPaneHandleBoundaryInputsSafely() throws {
         let tree = try TestTree("a.txt")
         let entry = try #require(FileEntry(url: tree.url("a.txt")))
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         #expect(browser.previewPanel(nil, previewItemAt: -1) == nil)
         #expect(browser.previewPanel(nil, previewItemAt: 0) == nil)

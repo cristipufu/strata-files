@@ -93,7 +93,7 @@ struct ColorThemeTests {
         let saved = ThemeStyle.options
         defer { ThemeStyle.apply(saved, windows: []) }
         let tree = try TestTree("a/b/c/note.txt")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         let entry = try #require(FileEntry(url: tree.url("a")))
         #expect(browser.outlineView(browser.outlineView, rowViewForItem: FileNode(entry: entry)) is ThemeRowView)
@@ -133,7 +133,7 @@ struct ColorThemeTests {
         // Archive fixtures keep Quick Look’s external renderer out of this headless appearance test.
         let tree = try TestTree("one.zip", "two.zip", "three.zip")
         for mode in BrowserViewMode.ordered {
-            let browser = BrowserViewController()
+            let browser = BrowserViewController(services: .shared)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
             browser.load(tree.root)

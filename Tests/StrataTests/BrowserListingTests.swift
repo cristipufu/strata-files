@@ -96,7 +96,7 @@ struct BrowserListingTests {
         listing.replace([a, a], preservingNodes: false, sort: { _ in })
         #expect(listing.updateResults([entry("a.txt", size: 42), b], sorted: false) == nil)
         #expect(listing.nodes.map(\.entry) == [a, a])
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         browser.showResults([a, a], total: 2)
         let changedA = entry("a.txt", size: 42)
@@ -125,7 +125,7 @@ struct BrowserListingTests {
     }
 
     @Test func resultRefreshRetainsNativeSelectionAndResortsChangedValues() throws {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         _ = browser.view
         let a = entry("a.txt", size: 1), b = entry("b.txt", size: 2)
         browser.showResults([a, b], total: 2)

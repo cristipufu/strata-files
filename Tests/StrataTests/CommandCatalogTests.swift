@@ -14,7 +14,7 @@ struct CommandCatalogTests {
 
     private func window(at folder: URL, other: URL? = nil) throws -> BrowserWindowController {
         let _ = NSApplication.shared
-        let controller = BrowserWindowController(location: folder, secondPane: other)
+        let controller = BrowserWindowController(location: folder, secondPane: other, services: .shared)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")

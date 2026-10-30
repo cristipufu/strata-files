@@ -129,7 +129,7 @@ import Testing
 
     @Test func otherPaneCommandsSendOnlyTheFocusedPanesSelection() async throws {
         let tree = try TestTree("left/", "left/a.txt", "left/b.txt", "right/", "right/c.txt")
-        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
         let other = try #require(window.otherBrowser)
         await wait { window.browser.itemCount == 2 && other.itemCount == 1 }
         #expect(window.browser.directory?.lastPathComponent == "left" && other.directory?.lastPathComponent == "right")

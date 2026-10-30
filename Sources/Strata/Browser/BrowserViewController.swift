@@ -43,7 +43,7 @@ final class BrowserViewController: NSViewController {
     let loading: BrowserLoading
     var directoryReads: DirectoryReadSession { loading.reads }
 
-    init(services: BrowserServices = .shared) {
+    init(services: BrowserServices) {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
         loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)

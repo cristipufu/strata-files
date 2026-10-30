@@ -33,7 +33,7 @@ struct SearchViewModeTests {
     @Test func searchResultsAndMessagesShowListAndRestoreTheFoldersViewWhenCleared() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("a.zip", "b.zip")
-        let controller = BrowserWindowController(location: tree.root)
+        let controller = BrowserWindowController(location: tree.root, services: .shared)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -75,7 +75,7 @@ struct SearchViewModeTests {
         let saved = Prefs.shared.viewMode
         defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/a.zip")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: .shared)
         browser.loadViewIfNeeded()
         browser.setMode(.columns, remember: false)
         let entries = try ["left/a.zip", "right/a.zip"].map { try #require(FileEntry(url: tree.url($0))) }
@@ -102,7 +102,7 @@ struct SearchViewModeTests {
     @Test func availabilityFollowsTheFocusedPaneAndIgnoresResultsInTheOtherPane() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/b.zip")
-        let controller = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+        let controller = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -138,7 +138,7 @@ struct SearchViewModeTests {
         let saved = Prefs.shared.viewMode
         defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
         let tree = try TestTree("a.zip")
-        let controller = BrowserWindowController(location: tree.root)
+        let controller = BrowserWindowController(location: tree.root, services: .shared)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")

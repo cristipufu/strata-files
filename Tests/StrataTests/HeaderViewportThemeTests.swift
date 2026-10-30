@@ -9,8 +9,8 @@ extension ColorThemeTests {
         let tree = try TestTree()
         let names = (0..<90).map { "file-\($0).zip" }
         try tree.add(names)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil

@@ -8,8 +8,8 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil

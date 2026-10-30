@@ -3,7 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let browserServices: BrowserServices
 
-    init(browserServices: BrowserServices = .shared) {
+    init(browserServices: BrowserServices) {
         self.browserServices = browserServices
         super.init()
     }

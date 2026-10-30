@@ -46,7 +46,7 @@ final class Pane {
     var waiting: WaitingFolder?
     let host: PaneHostViewController
 
-    init(location: URL, services: BrowserServices = .shared) {
+    init(location: URL, services: BrowserServices) {
         browser = BrowserViewController(services: services)
         self.location = location.standardizedFileURL
         destination = .folder(self.location)

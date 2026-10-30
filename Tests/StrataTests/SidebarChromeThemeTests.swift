@@ -7,7 +7,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: .shared)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -56,7 +56,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: .shared)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -113,7 +113,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: .shared)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),

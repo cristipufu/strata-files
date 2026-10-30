@@ -68,7 +68,7 @@ final class SidebarViewController: NSViewController {
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
 
-    init(services: BrowserServices = .shared) {
+    init(services: BrowserServices) {
         self.services = services
         tree = FolderTreeController(places: services.places,
                                     transfers: services.transfers, preferences: services.preferences,
