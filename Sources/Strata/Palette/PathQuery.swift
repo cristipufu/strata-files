@@ -144,6 +144,7 @@ nonisolated final class PathQuery {
         } else {
             let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey]
             let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys)) ?? []
+            if stop?.isSet == true { return [] }
             all = urls.prefix(5000).map { url in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 return (url, values?.isDirectory == true && values?.isPackage != true)

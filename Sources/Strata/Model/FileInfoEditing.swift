@@ -94,25 +94,20 @@ nonisolated package enum FileInfoEditing {
 
     // MARK: - Locked and permissions
 
-    package static func isLocked(at path: String) -> Bool {
-        var info = stat()
-        return lstat(path, &info) == 0 && info.st_flags & UInt32(UF_IMMUTABLE) != 0
+    package static func isLocked(_ info: stat) -> Bool {
+        info.st_flags & UInt32(UF_IMMUTABLE) != 0
     }
 
     /// Locks or unlocks the item (not a link's target).
-    package static func setLocked(_ locked: Bool, at path: String) throws {
-        try ChosenFile(URL(fileURLWithPath: path)).withDescriptor { fd, info in
+    package static func setLocked(_ locked: Bool, of chosen: ChosenFile) throws {
+        try chosen.withDescriptor { fd, info in
             let flags = locked ? info.st_flags | UInt32(UF_IMMUTABLE) : info.st_flags & ~UInt32(UF_IMMUTABLE)
-            if fchflags(fd, flags) != 0 { throw posixError(path) }
+            if fchflags(fd, flags) != 0 { throw posixError(chosen.url.path) }
         }
     }
 
-    /// Changes access through the chosen descriptor, keeping everything else about its mode.
-    package static func setAccess(_ access: Access, for who: Who, at path: String) throws {
-        try setAccess(access, for: who, of: ChosenFile(URL(fileURLWithPath: path)))
-    }
-
-    /// `setAccess` for the very item chosen: one put in its place since is refused.
+    /// Changes access through the chosen descriptor, keeping everything else about its mode. An item put in the
+    /// chosen one's place since is refused.
     package static func setAccess(_ access: Access, for who: Who, of chosen: ChosenFile) throws {
         let path = chosen.url.path
         func updated(_ info: stat) throws -> mode_t {
@@ -131,9 +126,7 @@ nonisolated package enum FileInfoEditing {
     }
 
     /// The owner's and group's names, for the permissions list.
-    package static func names(at path: String) -> (owner: String, group: String, ownedByYou: Bool)? {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { return nil }
+    package static func names(of info: stat) -> (owner: String, group: String, ownedByYou: Bool) {
         var pw = passwd()
         var pwResult: UnsafeMutablePointer<passwd>?
         var pwBuffer = [CChar](repeating: 0, count: 4096)
@@ -155,11 +148,6 @@ nonisolated package enum FileInfoEditing {
             groupName = "\(info.st_gid)"
         }
         return (owner, groupName, info.st_uid == getuid())
-    }
-
-    package static func mode(at path: String) -> mode_t? {
-        var info = stat()
-        return lstat(path, &info) == 0 ? info.st_mode : nil
     }
 
     private static func posixError(_ path: String) -> Error {

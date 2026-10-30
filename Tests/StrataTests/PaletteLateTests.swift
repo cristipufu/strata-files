@@ -89,4 +89,24 @@ import Testing
         #expect(await next.value == 2)
         #expect(await stuck.value == 1)
     }
+
+    /// A mouse click runs the item it went down on, even if results changed while the button was held, and nothing
+    /// once the results were put away; Accessibility's press runs the row itself.
+    @Test func aClickRunsTheItemItWentDownOn() {
+        let ranker = PaletteRanker()
+        ranker.source = ["Alpha", "Banana", "Gamma"].map {
+            PaletteItem(title: $0, subtitle: "", icon: NSImage(), kind: .folder, fixedScore: nil, url: nil) {}
+        }
+        ranker.rank("a")
+        #expect(ranker.results.count == 3)
+        let pressed = ranker.results[1].item.title
+        ranker.press(1)
+        ranker.rank("gam")
+        #expect(ranker.clickedItem(1, byMouse: true)?.title == pressed)
+        #expect(ranker.clickedItem(0, byMouse: true) == nil)
+        ranker.press(0)
+        ranker.dropPending()
+        #expect(ranker.clickedItem(0, byMouse: true) == nil)
+        #expect(ranker.clickedItem(0, byMouse: false)?.title == "Gamma")
+    }
 }

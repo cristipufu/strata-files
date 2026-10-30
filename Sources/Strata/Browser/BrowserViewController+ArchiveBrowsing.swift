@@ -130,11 +130,10 @@ extension BrowserViewController {
     @concurrent private static func prepareCopy(at entry: URL) async -> (any Error)? {
         let fm = FileManager.default
         do {
-            let left = fm.fileExists(atPath: entry.path)
-            if left, ArchiveCache.setAside(entry) == nil, fm.fileExists(atPath: entry.path) {
-                throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: entry.path])
-            }
-            try fm.createDirectory(at: entry, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: entry.path) { ArchiveCache.setAside(entry) }
+            try fm.createDirectory(at: entry.deletingLastPathComponent(), withIntermediateDirectories: true)
+            // Fails if anything is still there.
+            try fm.createDirectory(at: entry, withIntermediateDirectories: false)
             return nil
         } catch {
             return error

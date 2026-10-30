@@ -61,13 +61,14 @@ struct MetadataEditTests {
 
     @Test func lockingTouchesOnlyThatItem() throws {
         let tree = try TestTree("a.txt", "b.txt", "link -> b.txt", "folder/", "folder/inner.txt")
-        try FileInfoEditing.setLocked(true, at: tree.url("a.txt").path)
-        try FileInfoEditing.setLocked(true, at: tree.url("link").path)
-        try FileInfoEditing.setLocked(true, at: tree.url("folder").path)
-        #expect(FileInfoEditing.isLocked(at: tree.url("a.txt").path) && FileInfoEditing.isLocked(at: tree.url("link").path))
-        #expect(!FileInfoEditing.isLocked(at: tree.url("b.txt").path))
-        #expect(!FileInfoEditing.isLocked(at: tree.url("folder/inner.txt").path))
-        try FileInfoEditing.setLocked(false, at: tree.url("a.txt").path)
+        try FileInfoEditing.setLocked(true, of: ChosenFile(URL(fileURLWithPath: tree.url("a.txt").path)))
+        try FileInfoEditing.setLocked(true, of: ChosenFile(URL(fileURLWithPath: tree.url("link").path)))
+        try FileInfoEditing.setLocked(true, of: ChosenFile(URL(fileURLWithPath: tree.url("folder").path)))
+        #expect(flags(tree.url("a.txt").path) & UInt32(UF_IMMUTABLE) != 0)
+        #expect(flags(tree.url("link").path) & UInt32(UF_IMMUTABLE) != 0)
+        #expect(flags(tree.url("b.txt").path) & UInt32(UF_IMMUTABLE) == 0)
+        #expect(flags(tree.url("folder/inner.txt").path) & UInt32(UF_IMMUTABLE) == 0)
+        try FileInfoEditing.setLocked(false, of: ChosenFile(URL(fileURLWithPath: tree.url("a.txt").path)))
         #expect(flags(tree.url("a.txt").path) & UInt32(UF_IMMUTABLE) == 0)
     }
 
@@ -75,18 +76,30 @@ struct MetadataEditTests {
         let tree = try TestTree("file.txt", "folder/", "folder/inner.txt", "link -> file.txt")
         chmod(tree.url("file.txt").path, 0o644)
         chmod(tree.url("folder/inner.txt").path, 0o644)
-        try FileInfoEditing.setAccess(.readWrite, for: .group, at: tree.url("file.txt").path)
+        try FileInfoEditing.setAccess(.readWrite, for: .group, of: ChosenFile(URL(fileURLWithPath: tree.url("file.txt").path)))
         #expect(mode(tree.url("file.txt").path) == 0o664)
-        try FileInfoEditing.setAccess(.none, for: .everyone, at: tree.url("folder").path)
+        try FileInfoEditing.setAccess(.none, for: .everyone, of: ChosenFile(URL(fileURLWithPath: tree.url("folder").path)))
         #expect(mode(tree.url("folder").path) & 0o7 == 0)
         chmod(tree.url("file.txt").path, 0)
-        try FileInfoEditing.setAccess(.readWrite, for: .owner, at: tree.url("file.txt").path)
-        try FileInfoEditing.setAccess(.readWrite, for: .group, at: tree.url("file.txt").path)
-        try FileInfoEditing.setAccess(.readOnly, for: .everyone, at: tree.url("file.txt").path)
+        try FileInfoEditing.setAccess(.readWrite, for: .owner, of: ChosenFile(URL(fileURLWithPath: tree.url("file.txt").path)))
+        try FileInfoEditing.setAccess(.readWrite, for: .group, of: ChosenFile(URL(fileURLWithPath: tree.url("file.txt").path)))
+        try FileInfoEditing.setAccess(.readOnly, for: .everyone, of: ChosenFile(URL(fileURLWithPath: tree.url("file.txt").path)))
         // Nothing inside the folder changes, and a link's target is never reached.
         #expect(mode(tree.url("folder/inner.txt").path) == 0o644)
-        #expect(throws: (any Error).self) { try FileInfoEditing.setAccess(.none, for: .owner, at: tree.url("link").path) }
+        #expect(throws: (any Error).self) { try FileInfoEditing.setAccess(.none, for: .owner, of: ChosenFile(URL(fileURLWithPath: tree.url("link").path))) }
         #expect(mode(tree.url("file.txt").path) == 0o664)
+    }
+
+    /// A lock chosen for an item shown goes only to that item: a folder put in its place since stays as it is.
+    @Test func lockingChangesOnlyTheItemShown() throws {
+        let tree = try TestTree("folder/", "aside/")
+        let shown = try ChosenFile(tree.url("folder"))
+        try FileManager.default.moveItem(at: tree.url("folder"), to: tree.url("aside/folder"))
+        try FileManager.default.createDirectory(at: tree.url("folder"), withIntermediateDirectories: false)
+        #expect(throws: (any Error).self) { try FileInfoEditing.setLocked(true, of: shown) }
+        #expect(flags(tree.url("folder").path) & UInt32(UF_IMMUTABLE) == 0)
+        #expect(flags(tree.url("aside/folder").path) & UInt32(UF_IMMUTABLE) == 0)
+        #expect(tree.snapshot() == ["aside/", "aside/folder/", "folder/"])
     }
 
     /// Access chosen for an item shown goes only to that item: a folder put in its place since keeps its own.

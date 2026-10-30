@@ -71,7 +71,6 @@ final class CommandPalette: NSObject {
     let panel: PalettePanel
     private let field = NSTextField()
     private let table = PressedRowTable()
-    private var pressedItem: PaletteItem?
     private let scroll = NSScrollView()
     private var heightConstraint: NSLayoutConstraint!
     private let ranker = PaletteRanker()
@@ -197,7 +196,7 @@ final class CommandPalette: NSObject {
         table.delegate = self
         table.target = self
         table.action = #selector(rowClicked)
-        table.pressed = { [weak self] row in self?.press(row) }
+        table.pressed = { [weak self] row in self?.ranker.press(row) }
         table.refusesFirstResponder = true
 
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -300,22 +299,18 @@ final class CommandPalette: NSObject {
         }
     }
 
-    private func press(_ row: Int) {
-        pressedItem = results.indices.contains(row) ? results[row].item : nil
-        if pressedItem != nil { ranker.rowChosen = true }
-    }
-
-    /// Runs the item the click went down on, even if results arrived while the button was held.
     @objc private func rowClicked() {
-        guard table.clickedRow >= 0, let item = pressedItem else { return }
-        pressedItem = nil
-        close()
-        item.run()
+        let byMouse = NSApp.currentEvent?.type == .leftMouseUp
+        guard table.clickedRow >= 0, let item = ranker.clickedItem(table.clickedRow, byMouse: byMouse) else { return }
+        run(item)
     }
 
     private func run(row: Int) {
         guard results.indices.contains(row) else { return }
-        let item = results[row].item
+        run(results[row].item)
+    }
+
+    private func run(_ item: PaletteItem) {
         close()
         item.run()
     }
@@ -512,11 +507,12 @@ final class PaletteRanker {
     var lateDelay: Duration = .zero
     /// A slow search, or the typed path's lookup, is waiting or running.
     var isSearching: Bool { late != nil || pathLookup != nil }
-    /// A row was chosen (with the arrows) since the query: the typed path, arriving, leaves the selection alone.
-    /// A row chosen with the arrows or the mouse: a Return waiting for the typed path doesn't run it later.
+    /// A row was chosen (with the arrows or the mouse) since the query: the typed path, arriving, leaves the
+    /// selection alone, and a Return waiting for it doesn't run.
     var rowChosen = false {
         didSet { if rowChosen { cancelWaitingRun() } }
     }
+    private var pressedItem: PaletteItem?
 
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
@@ -592,12 +588,32 @@ final class PaletteRanker {
         waitingRun = nil
     }
 
+    /// A click went down on `row`: what's there now is what the click runs.
+    func press(_ row: Int) {
+        pressedItem = results.indices.contains(row) ? results[row].item : nil
+        if pressedItem != nil { rowChosen = true }
+    }
+
+    /// What a click on `row` runs. A mouse click runs the item it went down on, even if results arrived while the
+    /// button was held, and nothing once they were dismissed; Accessibility's press runs the row itself.
+    func clickedItem(_ row: Int, byMouse: Bool) -> PaletteItem? {
+        defer { pressedItem = nil }
+        if byMouse { return pressedItem }
+        return results.indices.contains(row) ? results[row].item : nil
+    }
+
+    /// The results were put away: nothing waiting or pressed runs.
+    func dropPending() {
+        cancelWaitingRun()
+        pressedItem = nil
+    }
+
     func cancel() {
         late?.cancel()
         late = nil
         pathLookup?.cancel()
         pathLookup = nil
-        cancelWaitingRun()
+        dropPending()
         query = ""
         scored = []
         results = []

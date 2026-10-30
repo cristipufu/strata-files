@@ -20,7 +20,7 @@ import AppKit
     let permissionsContent = NSStackView()
     /// Whether the item has an app to open it with (folders and packages open as themselves).
     private(set) var hasOpenWith = false
-    /// What the permission rows were filled from (see `loadPermissions`).
+    /// What the permission rows were filled from (see `showPermissions`).
     private var permissionsShown: [String]?
 
     let comments = NSTextField()
@@ -75,9 +75,13 @@ import AppKit
 
         @concurrent static func read(_ url: URL, opensWithApps: Bool) async -> Facts {
             let path = url.path
-            return Facts(choice: Result { try ChosenFile(url) }, comment: FileInfoEditing.comment(at: path),
-                         isLocked: FileInfoEditing.isLocked(at: path), names: FileInfoEditing.names(at: path),
-                         mode: FileInfoEditing.mode(at: path),
+            let choice = Result { try ChosenFile(url) }
+            // The settings shown are the opened item's own, as changes go to it.
+            let info = InfoEditor.status(of: choice)
+            return Facts(choice: choice, comment: FileInfoEditing.comment(at: path),
+                         isLocked: info.map(FileInfoEditing.isLocked) ?? false,
+                         names: info.map(FileInfoEditing.names(of:)),
+                         mode: info?.st_mode,
                          app: opensWithApps ? NSWorkspace.shared.urlForApplication(toOpen: url).map(OpenWithApp.init) : nil,
                          typeName: opensWithApps ? InfoEditor.typeName(of: url) : nil)
         }
@@ -192,13 +196,22 @@ import AppKit
             appsTask = nil
             setEnabled(false)
         }
+        readSettings(of: entry.url, same: same)
+    }
+
+    private func readSettings(of url: URL, same: Bool) {
         factsTask?.cancel()
-        let url = entry.url, opensWithApps = hasOpenWith, readFacts = readFacts
+        let opensWithApps = hasOpenWith, readFacts = readFacts
         factsTask = Task { [weak self] in
             let facts = await readFacts(url, opensWithApps)
             guard !Task.isCancelled, let self, self.url == url else { return }
             self.apply(facts, same: same)
         }
+    }
+
+    /// The chosen item's status, read through its open parent; nil once another has taken its place.
+    nonisolated static func status(of item: Result<ChosenFile, any Error>) -> stat? {
+        try? item.get().withParent { _, _, info in info }
     }
 
     private func apply(_ facts: Facts, same: Bool) {
@@ -416,23 +429,25 @@ import AppKit
     // MARK: - Locked and permissions
 
     @objc private func lockedChanged(_ sender: NSSwitch) {
-        guard isLoaded, let url else { return }
+        guard isLoaded, let item = shownItem else { return }
         do {
-            try FileInfoEditing.setLocked(sender.state == .on, at: url.path)
+            try FileInfoEditing.setLocked(sender.state == .on, of: item.get())
             finish(nil, in: permissionsMessage)
         } catch {
             finish(error, in: permissionsMessage)
         }
-        locked.state = FileInfoEditing.isLocked(at: url.path) ? .on : .off
-        loadPermissions(url.path)
-        setEnabled(FileInfoEditing.names(at: url.path)?.ownedByYou ?? false)
+        showSettings(of: item)
     }
 
-    /// Fills the Locked switch and the access menus. `onlyIfChanged` (a refresh) leaves them alone when the owner,
-    /// group, mode and lock are what they show already; after a change they're always filled again, so a refused
-    /// change puts the menu back.
-    private func loadPermissions(_ path: String) {
-        showPermissions(FileInfoEditing.names(at: path), FileInfoEditing.mode(at: path))
+    /// After a change, made or refused: the switch and menus show the item as it is now, so a refused change puts
+    /// them back. If another item has taken its place, they show nothing until that one's settings are read.
+    private func showSettings(of item: Result<ChosenFile, any Error>) {
+        let info = Self.status(of: item)
+        locked.state = info.map(FileInfoEditing.isLocked) == true ? .on : .off
+        let names = info.map(FileInfoEditing.names(of:))
+        showPermissions(names, info?.st_mode)
+        setEnabled(names?.ownedByYou ?? false)
+        if info == nil, let url { readSettings(of: url, same: true) }
     }
 
     private func showPermissions(_ names: (owner: String, group: String, ownedByYou: Bool)?, _ mode: mode_t?,
@@ -484,25 +499,25 @@ import AppKit
                 // Answered for the item asked about: if another is on show by now, its own settings stay as they are.
                 guard let self, self.url == url, isLoaded else { return }
                 if response == .alertFirstButtonReturn {
-                    apply(access, for: who, to: item, at: url)
+                    apply(access, for: who, to: item)
                 } else {
-                    loadPermissions(url.path)
+                    showSettings(of: item)
                 }
             }
             return
         }
-        apply(access, for: who, to: item, at: url)
+        apply(access, for: who, to: item)
     }
 
     private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who,
-                       to item: Result<ChosenFile, any Error>, at url: URL) {
+                       to item: Result<ChosenFile, any Error>) {
         do {
             try FileInfoEditing.setAccess(access, for: who, of: item.get())
             finish(nil, in: permissionsMessage)
         } catch {
             finish(error, in: permissionsMessage)
         }
-        loadPermissions(url.path)
+        showSettings(of: item)
     }
 
     /// Clears or shows the last change's problem, in the card it happened in.

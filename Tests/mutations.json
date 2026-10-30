@@ -332,8 +332,8 @@
   },
   {
     "file": "Strata/Model/FileInfoEditing.swift",
-    "find": "if fchflags(fd, flags) != 0 { throw posixError(path) }",
-    "replace": "if chflags(path, flags) != 0 { throw posixError(path) }",
+    "find": "if fchflags(fd, flags) != 0 { throw posixError(chosen.url.path) }",
+    "replace": "if chflags(chosen.url.path, flags) != 0 { throw posixError(chosen.url.path) }",
     "rule": "Security review: locking never follows a chosen link",
     "tests": "MetadataEditTests"
   },
@@ -7044,5 +7044,12 @@
     "find": "        let path = chosen.url.path\n        func updated",
     "replace": "        let path = chosen.url.path\n        let chosen = try ChosenFile(chosen.url)\n        func updated",
     "tests": "MetadataEditTests/accessChangesOnlyTheItemShown"
+  },
+  {
+    "file": "Strata/Model/FileInfoEditing.swift",
+    "rule": "A lock change goes to a folder put in the place of the one shown",
+    "find": "        try chosen.withDescriptor { fd, info in\n            let flags = locked",
+    "replace": "        try ChosenFile(chosen.url).withDescriptor { fd, info in\n            let flags = locked",
+    "tests": "MetadataEditTests/lockingChangesOnlyTheItemShown"
   }
 ]

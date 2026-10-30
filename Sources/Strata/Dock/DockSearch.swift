@@ -16,7 +16,6 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
                                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private let field = NSTextField()
     private let table = PressedRowTable()
-    private var pressedItem: PaletteItem?
     private let boxGlass = NSGlassEffectView()
     private let ranker = PaletteRanker()
     private var follower: Timer?
@@ -255,16 +254,11 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         table.scrollRowToVisible(row)
     }
 
-    private func press(_ row: Int) {
-        pressedItem = ranker.results.indices.contains(row) ? ranker.results[row].item : nil
-        if pressedItem != nil { ranker.rowChosen = true }
-    }
-
-    /// Runs the item the click went down on, even if results arrived while the button was held.
     @objc private func clickedRow() {
-        guard table.clickedRow >= 0, let item = pressedItem else { return }
-        pressedItem = nil
-        run(item, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+        let event = NSApp.currentEvent
+        guard table.clickedRow >= 0,
+              let item = ranker.clickedItem(table.clickedRow, byMouse: event?.type == .leftMouseUp) else { return }
+        run(item, reveal: event?.modifierFlags.contains(.command) == true)
     }
 
     private func run(_ row: Int, reveal: Bool) {
@@ -288,8 +282,8 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.box.isKeyWindow, !self.results.isKeyWindow else { return }
-                // A Return still waiting for a typed path doesn't go there once you've moved on.
-                self.ranker.cancelWaitingRun()
+                // A Return still waiting for a typed path, or a click, doesn't run once you've moved on.
+                self.ranker.dropPending()
                 self.results.orderOut(nil)
             }
         }
@@ -378,7 +372,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         table.dataSource = self
         table.delegate = self
         table.target = self
-        table.pressed = { [weak self] row in self?.press(row) }
+        table.pressed = { [weak self] row in self?.ranker.press(row) }
         table.action = #selector(clickedRow)
         let scroll = NSScrollView()
         scroll.documentView = table
