@@ -1,0 +1,398 @@
+[
+ {
+  "file": "Sources/Strata/AI/BatchRenameController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/AI/BatchRenameController.swift",
+  "default": "OperationLog.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/AI/PlanExecutor.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/AI/PlanExecutor.swift",
+  "default": "OperationLog.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/App/AppDelegate.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController+Trash.swift",
+  "default": "CopyProviders.live",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/Cells.swift",
+  "default": "FileThumbnails.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/DirectoryReadSession.swift",
+  "default": "DirectoryReader.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/FileOutlineView.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Browser/MediaInfoLoader.swift",
+  "default": "CopyProviders.live",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerControl.swift",
+  "default": "ContainerStore.shared",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerDrag.swift",
+  "default": "CopyProviders.live",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerInspector.swift",
+  "default": "ContainerStore.shared",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerInspector.swift",
+  "default": "Prefs.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Dev/ProjectActions.swift",
+  "default": "GitStatusStore.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InspectorCard.swift",
+  "default": "Prefs.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InspectorViewController.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/FileEntry.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "default": "CopyProviders.live",
+  "count": 7,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "default": "OperationLog.shared",
+  "count": 8,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/Places.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/Places.swift",
+  "default": "Prefs.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Model/ServerMountSession.swift",
+  "default": "ServerMounter.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Remote/LazyCopies.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteJobs.swift",
+  "default": "RemoteFiles.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Settings/ViewOptionsWindowController.swift",
+  "default": "Prefs.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "Clipboard.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "ContainerStore.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "FolderWatchers.Budget.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "Prefs.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "RemoteServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
+  "default": "TransferQueue.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/FolderWatchers.swift",
+  "default": "Budget.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Transfers/CopyFetchJob.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Transfers/TransferQueue.swift",
+  "default": "OperationLog.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Transfers/TransferQueue.swift",
+  "default": "Prefs.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Transfers/TransfersToolbarItem.swift",
+  "default": "TransferQueue.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Transfers/TransfersViewController.swift",
+  "default": "TransferQueue.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+  "default": "Clipboard.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+  "default": "DirectoryReader.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+  "default": "FileThumbnails.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+  "default": "ItemInfoLoader.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnBrowserViews.swift",
+  "default": "FileThumbnails.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnPreviewPane.swift",
+  "default": "FileThumbnails.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/ColumnPreviewPane.swift",
+  "default": "ItemInfoLoader.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/FileCollection.swift",
+  "default": "CopyProviders.live",
+  "count": 7,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/FileThumbnails.swift",
+  "default": "ContainerStore.shared",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/FileThumbnails.swift",
+  "default": "CopyProviders.live",
+  "count": 4,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GalleryViewController.swift",
+  "default": "Clipboard.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GalleryViewController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GalleryViewController.swift",
+  "default": "FileThumbnails.shared",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridItem.swift",
+  "default": "FileThumbnails.shared",
+  "count": 3,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridItem.swift",
+  "default": "ItemInfoLoader.shared",
+  "count": 2,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridViewController.swift",
+  "default": "Clipboard.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridViewController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridViewController.swift",
+  "default": "FileThumbnails.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/GridViewController.swift",
+  "default": "ItemInfoLoader.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Views/TreemapViewController.swift",
+  "default": "CopyProviders.live",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Window/BrowserWindowController.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Window/CompareController.swift",
+  "default": "TransferQueue.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Window/ConnectToServerController.swift",
+  "default": "RemoteConnections.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ },
+ {
+  "file": "Sources/Strata/Window/Pane.swift",
+  "default": "BrowserServices.shared",
+  "count": 1,
+  "reason": "Predates the rule (2026-10-30): pass the owner's instance when this code changes."
+ }
+]

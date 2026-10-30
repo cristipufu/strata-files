@@ -13,6 +13,11 @@ struct SourceAuditTests {
         #expect(status == 0, Comment(rawValue: output))
     }
 
+    @Test func defaultsFallingBackToAppWideInstancesHaveAReviewedReason() async throws {
+        let (status, output) = try await run("scripts/audit-shared-defaults.py")
+        #expect(status == 0, Comment(rawValue: output))
+    }
+
     private func run(_ script: String) async throws -> (Int32, String) {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
