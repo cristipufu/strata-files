@@ -289,7 +289,8 @@ nonisolated struct ItemFacts: Sendable {
             }
         }
         let kind = FileEntry.kind(extension: url.pathExtension, isDirectory: isFolder, isPackage: values?.isPackage == true,
-                                  size: values?.fileSize.map(Int64.init), system: values?.localizedTypeDescription)
+                                  size: values?.fileSize.map(Int64.init), system: values?.localizedTypeDescription,
+                                  type: values?.contentType)
         return ItemFacts(url: url, isFolder: isFolder && values?.isPackage != true, kind: kind,
                          bytes: bytes, files: files, modified: values?.contentModificationDate, text: text, digest: digest)
     }
@@ -331,7 +332,7 @@ enum Thumbnails {
 final class ItemCard: NSView {
     let url: URL
     private let captionLabel = NSTextField(labelWithString: "")
-    private let imageView = ThumbnailView()
+    let imageView = ThumbnailView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let sizeLabel = NSTextField(labelWithString: "")
     private let dateLabel = NSTextField(labelWithString: "")
@@ -353,7 +354,7 @@ final class ItemCard: NSView {
             .font: NSFont.systemFont(ofSize: 10, weight: .semibold), .kern: 0.6, .foregroundColor: NSColor.secondaryLabelColor,
         ])
 
-        imageView.image = NSWorkspace.shared.icon(forFile: url.path)
+        imageView.image = IconCache.shared.currentIcon(forPath: url.path)
         imageView.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel.stringValue = url.lastPathComponent

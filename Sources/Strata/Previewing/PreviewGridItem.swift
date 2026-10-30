@@ -1,5 +1,4 @@
 import AppKit
-import UniformTypeIdentifiers
 
 enum PreviewViewMode: Int { case list, icons }
 
@@ -50,9 +49,7 @@ enum PreviewViewMode: Int { case list, icons }
         itemView.setAccessibilityHelp(item.kind)
         updateState()
         if keep { return }
-        let icon = item.entry.map(thumbnails.icon)
-            ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : UTType(filenameExtension: (item.name as NSString).pathExtension) ?? .data)
-        itemView.setImage(icon, animated: false)
+        itemView.setImage(item.icon(thumbnails), animated: false)
         if canRequestArchive {
             thumbnailBucket = bucket; thumbnailScale = scale; archiveSourceID = sourceID
             var delivered = false

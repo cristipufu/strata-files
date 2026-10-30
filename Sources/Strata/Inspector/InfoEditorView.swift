@@ -185,8 +185,7 @@ import AppKit
         fillAppMenu()
         // Nothing opens it: the menu says so, and Change All has nothing to change to.
         changeAll.isEnabled = !apps.isEmpty
-        let kind = (try? entry.url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
-        openWithNote.stringValue = kind.map {
+        openWithNote.stringValue = Self.typeName(of: entry.url).map {
             String(localized: "For this file. Change All… sets it for every “\($0)”.", comment: "Inspector, under Open With: a kind of document")
         } ?? String(localized: "For this file. Change All… sets it for every document like it.")
     }
@@ -234,9 +233,17 @@ import AppKit
         }
     }
 
+    /// Strata's name for a document it knows, as its Kind says; otherwise the system's, since Change All acts on the
+    /// file's type and a Kind of Strata's own, such as a small `.ts` file's TypeScript, names no type.
+    static func typeName(of url: URL) -> String? {
+        let values = try? url.resourceValues(forKeys: [.localizedTypeDescriptionKey, .contentTypeKey])
+        return KnownDocument.kind(extension: url.pathExtension, type: values?.contentType)?.name
+            ?? values?.localizedTypeDescription
+    }
+
     @objc private func changeAllClicked(_ sender: Any?) {
         guard let url, let app = openWith.selectedItem?.representedObject as? URL, let window else { return }
-        let kind = (try? url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
+        let kind = Self.typeName(of: url)
         let alert = NSAlert()
         let appName = FileManager.default.displayName(atPath: app.path)
         alert.messageText = kind.map { String(localized: "Open every “\($0)” with “\(appName)”?", comment: "A kind of document (“PDF document”), then an app") }

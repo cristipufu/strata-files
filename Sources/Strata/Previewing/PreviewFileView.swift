@@ -1,6 +1,5 @@
 import AppKit
 import StrataPreviews
-import UniformTypeIdentifiers
 
 /// The same native and rich file renderers used by Get Info, owned by this preview window's lifetime.
 @MainActor final class PreviewFileView: NSView {
@@ -73,13 +72,7 @@ import UniformTypeIdentifiers
         let entry = materialized.flatMap(FileEntry.init(url:)) ?? item?.entry ?? (item == nil ? root : nil)
         title.stringValue = item?.name ?? root.displayName
         detail.stringValue = item?.kind ?? root.kind
-        if let entry {
-            icon.image = thumbnails.icon(for: entry)
-        } else {
-            let type: UTType = item?.isDirectory == true ? .folder
-                : UTType(filenameExtension: ((item?.name ?? "") as NSString).pathExtension) ?? .data
-            icon.image = IconCache.shared.icon(forType: type)
-        }
+        icon.image = entry.map(thumbnails.icon) ?? item?.icon(thumbnails)
         guard let entry, !entry.isDirectory, !entry.isSymlink, !copies.isPlaceholder(entry.url), Self.isRegularFile(entry.url) else { return }
         // The session already lists a root archive. Its side pane stays a summary until a member is selected.
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }

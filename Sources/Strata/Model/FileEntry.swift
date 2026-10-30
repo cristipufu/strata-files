@@ -63,11 +63,14 @@ nonisolated struct FileEntry: Sendable, Hashable {
         "proto": String(localized: "Protocol Buffers definition", comment: "Kind of file"),
     ]
 
-    /// The Kind shown everywhere (list, inspector, conflict sheet, AI plans): the system's description, except for
-    /// source files macOS names wrong or not at all. `.ts` is ambiguous: small ones are TypeScript, large ones are
-    /// almost always MPEG transport-stream video.
-    static func kind(extension ext: String, isDirectory: Bool, isPackage: Bool, size: Int64?, system: String?) -> String {
+    /// The Kind shown everywhere (list, inspector, conflict sheet, Space, AI plans): the system's description, except
+    /// for source files macOS names wrong or not at all and the documents it has no type for (`KnownDocument`, by the
+    /// item's own `type`). `.ts` is ambiguous: small ones are TypeScript, large ones are almost always MPEG
+    /// transport-stream video.
+    static func kind(extension ext: String, isDirectory: Bool, isPackage: Bool, size: Int64?, system: String?,
+                     type: UTType?) -> String {
         let ext = ext.lowercased()
+        if !isDirectory, let document = KnownDocument.kind(extension: ext, type: type) { return document.name }
         if !isDirectory, let developer = developerKinds[ext], !(ext == "ts" || ext == "mts") || (size ?? 0) < 4_000_000 {
             return developer
         }
@@ -119,7 +122,8 @@ nonisolated struct FileEntry: Sendable, Hashable {
         created = values.creationDate
         added = values.addedToDirectoryDate
         kind = Self.kind(extension: url.pathExtension, isDirectory: isDirectory, isPackage: isPackage,
-                         size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription)
+                         size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription,
+                         type: values.contentType)
         contentType = values.contentType
     }
 

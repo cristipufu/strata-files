@@ -56,7 +56,7 @@ final class ShelfWell: NSView, NSDraggingSource {
     var activeWindow: () -> BrowserWindowController? = {
         NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first
     }
-    private let iconView = NSImageView()
+    let iconView = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let buttons = NSStackView()
     private var highlighted = false { didSet { needsDisplay = true } }
@@ -120,7 +120,7 @@ final class ShelfWell: NSView, NSDraggingSource {
             iconView.contentTintColor = .tertiaryLabelColor
             label.stringValue = String(localized: "Drop files here")
         } else {
-            iconView.image = items.count == 1 ? NSWorkspace.shared.icon(forFile: items[0].path)
+            iconView.image = items.count == 1 ? IconCache.shared.currentIcon(forPath: items[0].path)
                 : NSWorkspace.shared.icon(forFiles: items.map(\.path))
             iconView.contentTintColor = nil
             label.stringValue = items.count == 1 ? items[0].lastPathComponent
@@ -174,7 +174,8 @@ final class ShelfWell: NSView, NSDraggingSource {
         let draggingItems = zip(items.indices, zip(items, pasteboardWriters())).map { index, pair -> NSDraggingItem in
             let item = NSDraggingItem(pasteboardWriter: pair.1)
             let offset = CGFloat(min(index, 4)) * 4
-            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: NSWorkspace.shared.icon(forFile: pair.0.path))
+            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset),
+                                  contents: IconCache.shared.currentIcon(forPath: pair.0.path))
             return item
         }
         beginDraggingSession(with: draggingItems, event: event, source: self)

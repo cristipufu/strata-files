@@ -1,13 +1,11 @@
 import AppKit
 import StrataSupport
-import UniformTypeIdentifiers
 
 /// The contents of a zip or tar archive as an expandable tree, without extracting anything.
 package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private var root = ArchiveNode(name: "", isDirectory: true)
-    private var icons: [String: NSImage] = [:]
     private let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     private let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("size"))
     private let dateColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("date"))
@@ -133,12 +131,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
     }
 
     private func icon(for node: ArchiveNode) -> NSImage {
-        let ext = node.isDirectory ? "/" : (node.name as NSString).pathExtension.lowercased()
-        if let cached = icons[ext] { return cached }
-        let type: UTType = node.isDirectory ? .folder : UTType(filenameExtension: ext) ?? .data
-        let image = NSWorkspace.shared.icon(for: type)
-        icons[ext] = image
-        return image
+        IconCache.shared.icon(forType: node.contentType)
     }
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// The archive families Strata recognizes by name: the zip family, whose preview shows its size on disk and whose
 /// `__MACOSX` folder Expand drops, and the formats `tar` reads.
@@ -32,6 +33,11 @@ nonisolated package final class ArchiveNode {
     package var children: [ArchiveNode] = []
     /// Subfolders by name, only while the tree is being built.
     fileprivate var folders: [String: ArchiveNode] = [:]
+
+    /// What its name says it is: nothing in an archive declares a type.
+    package var contentType: UTType {
+        isDirectory ? .folder : UTType(filenameExtension: (name as NSString).pathExtension) ?? .data
+    }
 
     package init(name: String, isDirectory: Bool, size: Int64 = 0, modified: Date? = nil) {
         self.name = name

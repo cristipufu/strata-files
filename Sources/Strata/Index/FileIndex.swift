@@ -239,7 +239,7 @@ extension FileEntry {
                   modified: Date(timeIntervalSince1970: TimeInterval(hit.mtime)), created: nil, added: nil,
                   kind: hit.isDirectory && !hit.isPackage ? String(localized: "Folder", comment: "Kind of item: a folder")
                       : FileEntry.kind(extension: url.pathExtension, isDirectory: hit.isDirectory, isPackage: hit.isPackage,
-                                       size: hit.size, system: type?.localizedDescription),
+                                       size: hit.size, system: type?.localizedDescription, type: type),
                   contentType: type)
     }
 }

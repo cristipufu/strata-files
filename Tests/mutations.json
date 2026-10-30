@@ -6883,5 +6883,117 @@
     "find": "        return candidates.first { names[$0].lowercased() == fileName.lowercased() }\n            ?? candidates.min",
     "replace": "        return candidates.min",
     "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
+  },
+  {
+    "file": "Strata/Support/KnownDocument.swift",
+    "rule": "Files: OneNote's files have their kinds",
+    "find": "        \"one\": Kind(name: String(localized: \"OneNote section\", comment: \"Kind of file\"), symbol: \"book.closed.fill\"),\n",
+    "replace": "",
+    "tests": "OneNoteFileKindTests/onlyAnItemOfATypeNoAppDeclaresHasTheirKind"
+  },
+  {
+    "file": "Strata/Support/KnownDocument.swift",
+    "rule": "Files: only an item of a type no app declares has a OneNote kind, not a folder, a link, an alias or a declared type",
+    "find": "        kinds[ext.lowercased()].flatMap { type()?.isDynamic == true ? $0 : nil }",
+    "replace": "        kinds[ext.lowercased()]",
+    "tests": "OneNoteFileKindTests/onlyAnItemOfATypeNoAppDeclaresHasTheirKind|OneNoteFileKindTests/oneNotesFilesHaveTheirKinds|OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "rule": "Files: a listed item's OneNote kind follows its own type",
+    "find": "                         type: values.contentType)",
+    "replace": "                         type: UTType(filenameExtension: url.pathExtension))",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds"
+  },
+  {
+    "file": "Strata/Transfers/ConflictSheetController.swift",
+    "rule": "Files: the conflict sheet's OneNote kind follows the item's own type",
+    "find": "                                  type: values?.contentType)",
+    "replace": "                                  type: UTType(filenameExtension: url.pathExtension))",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "rule": "Files: an index result has its OneNote kind",
+    "find": "system: type?.localizedDescription, type: type),",
+    "replace": "system: type?.localizedDescription, type: nil),",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds"
+  },
+  {
+    "file": "Strata/Inspector/InfoEditorView.swift",
+    "rule": "Files: Get Info's Change All names a OneNote file's kind",
+    "find": "        return KnownDocument.kind(extension: url.pathExtension, type: values?.contentType)?.name\n            ?? values?.localizedTypeDescription",
+    "replace": "        return values?.localizedTypeDescription",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds"
+  },
+  {
+    "file": "Strata/Previewing/PreviewItem.swift",
+    "rule": "Files: Space names an archive's OneNote section by its kind",
+    "find": "system: type.localizedDescription, type: type)",
+    "replace": "system: type.localizedDescription, type: nil)",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds|OneNoteFileKindTests/spaceShowsAnArchivesSectionByItsKindAndPage"
+  },
+  {
+    "file": "Strata/Previewing/PreviewItem.swift",
+    "rule": "Files: Space shows an archive's OneNote section with its page",
+    "find": "        case .member(let node, _): IconCache.shared.icon(forType: node.contentType)",
+    "replace": "        case .member(let node, _): IconCache.shared.icon(forType: node.isDirectory ? .folder : .data)",
+    "tests": "OneNoteFileKindTests/spaceShowsAnArchivesSectionByItsKindAndPage"
+  },
+  {
+    "file": "Strata/Previewing/PreviewBrowserController.swift",
+    "rule": "Files: Space's list shows an archive member's own icon",
+    "find": "            cell.configure(name: item.name, icon: item.icon(thumbnails),",
+    "replace": "            cell.configure(name: item.name, icon: item.entry.map { thumbnails.icon(for: $0) } ?? IconCache.shared.icon(forType: .data),",
+    "tests": "OneNoteFileKindTests/spaceShowsAnArchivesSectionByItsKindAndPage"
+  },
+  {
+    "file": "Strata/Support/IconCache.swift",
+    "rule": "Files: a OneNote file of a type has its drawn page",
+    "find": "        let image = known.map(documentIcon) ?? NSWorkspace.shared.icon(for: type)",
+    "replace": "        let image = NSWorkspace.shared.icon(for: type)",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
+  },
+  {
+    "file": "Strata/Support/IconCache.swift",
+    "rule": "Files: a OneNote file's page carries its mark in color",
+    "find": "        let image = Self.drawing(kind.symbol, weight: .semibold, color: .systemIndigo, fraction: 0.38,",
+    "replace": "        let image = Self.drawing(kind.symbol, weight: .semibold, color: .labelColor, fraction: 0.38,",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
+  },
+  {
+    "file": "Strata/Support/IconCache.swift",
+    "rule": "Files: only a OneNote file itself has its drawn page by path, not a folder, a link or an alias",
+    "find": "        if let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: type()),",
+    "replace": "        if let kind = KnownDocument.kind(extension: (path as NSString).pathExtension, type: UTType(filenameExtension: (path as NSString).pathExtension)),",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
+  },
+  {
+    "file": "Strata/Transfers/ConflictSheetController.swift",
+    "rule": "Files: the conflict sheet shows an item's icon as it is now",
+    "find": "        imageView.image = IconCache.shared.currentIcon(forPath: url.path)",
+    "replace": "        imageView.image = IconCache.shared.icon(forPath: url.path)",
+    "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
+  },
+  {
+    "file": "Strata/Window/ShelfPanel.swift",
+    "rule": "Files: the Shelf shows an item's icon as it is now",
+    "find": "            iconView.image = items.count == 1 ? IconCache.shared.currentIcon(forPath: items[0].path)",
+    "replace": "            iconView.image = items.count == 1 ? IconCache.shared.icon(forPath: items[0].path)",
+    "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
+  },
+  {
+    "rule": "Files: a OneNote file with an icon pasted onto it keeps that icon by its path",
+    "file": "Strata/Support/IconCache.swift",
+    "find": "           !Self.hasCustomIcon(path) {",
+    "replace": "           true {",
+    "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
+  },
+  {
+    "file": "Strata/Support/IconCache.swift",
+    "rule": "Files: a type's icon is the same image each time",
+    "find": "        byType[type.identifier] = image\n",
+    "replace": "",
+    "tests": "OneNoteFileKindTests/aTypesIconIsTheSameImageEachTime"
   }
 ]

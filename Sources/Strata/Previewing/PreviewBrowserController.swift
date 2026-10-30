@@ -534,10 +534,8 @@ import StrataPreviews
             let identifier = NSUserInterfaceItemIdentifier("previewNameCell")
             let cell = outline.makeView(withIdentifier: identifier, owner: nil) as? NameCellView ?? NameCellView()
             cell.identifier = identifier
-            let image = item.entry.map { thumbnails.icon(for: $0) }
-                ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : .data)
-            cell.configure(name: item.name, icon: image, matches: [], dimmed: item.entry?.isHidden == true,
-                           thumbnails: thumbnails, typography: typography)
+            cell.configure(name: item.name, icon: item.icon(thumbnails), matches: [],
+                           dimmed: item.entry?.isHidden == true, thumbnails: thumbnails, typography: typography)
             return cell
         }
         let identifier = NSUserInterfaceItemIdentifier("previewTextCell")
