@@ -31,4 +31,16 @@ import Testing
         #expect(observation == nil && store.repository(containing: tree.url("plain")) == nil && notices == 1)
         #expect(tree.snapshot() == ["plain/", "repo/", "repo/.git/", "repo/.git/HEAD", "repo/src/"])
     }
+
+    /// Rows find their repository by plain string work: `/private/var/…` is spelled as `standardizedFileURL` would,
+    /// without asking the disk.
+    @Test func rowsSpellPrivateFoldersWithoutTheDisk() throws {
+        let tree = try TestTree("a")
+        #expect(GitStatusStore.shortSpelling(tree.root.path) == tree.root.standardizedFileURL.path)
+        #expect(GitStatusStore.shortSpelling("/private/tmp") == "/tmp")
+        #expect(GitStatusStore.shortSpelling("/private/etc/hosts") == "/etc/hosts")
+        #expect(GitStatusStore.shortSpelling("/private/variable/a") == "/private/variable/a")
+        #expect(GitStatusStore.shortSpelling("/Users/a") == "/Users/a")
+        #expect(tree.snapshot() == ["a"])
+    }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+import os
 @testable import Strata
 
 struct TagColumnTests {
@@ -60,6 +61,27 @@ struct TagColumnTests {
         while let reading = TagStore.shared.requests { await reading.value }
         #expect(field.objectValue as? [String] == ["Read Later"])
         #expect(tree.snapshot() == ["unread"])
+    }
+
+    /// A tag read redraws lists only when it found tags other than shown: every list redraws its rows and rows drawn
+    /// ask again, so a read that changes nothing redraws nothing.
+    @Test func readingTagsThatChangeNothingRedrawsNothing() async throws {
+        let tree = try TestTree("plain", "tagged")
+        try write(["Read Later"], to: tree.url("tagged"))
+        let store = TagStore()
+        let notices = OSAllocatedUnfairLock(initialState: 0)
+        let observer = NotificationCenter.default.addObserver(forName: .tagsLoaded, object: store, queue: nil) { _ in
+            notices.withLock { $0 += 1 }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        #expect(store.tags(for: tree.url("plain")).isEmpty)
+        while let reading = store.requests { await reading.value }
+        #expect(notices.withLock { $0 } == 0)
+        #expect(store.tags(for: tree.url("tagged")).isEmpty)
+        while let reading = store.requests { await reading.value }
+        #expect(notices.withLock { $0 } == 1)
+        #expect(store.tags(for: tree.url("tagged")).map(\.name) == ["Read Later"])
+        #expect(tree.snapshot() == ["plain", "tagged"])
     }
 
     @Test func nativeColumnShowsCustomNamesAndKeepsItsSavedVisibility() async throws {

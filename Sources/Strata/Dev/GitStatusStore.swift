@@ -260,15 +260,24 @@ final class GitStatusStore {
     }
 
     /// The hot path for list rows: plain string work on `url.path`, which the browser already standardizes. Other
-    /// spellings (`/private/tmp/…`, `..`) take one standardization.
+    /// spellings (`/private/tmp/…`, `..`) are standardized as strings too: rows are drawn on the main thread.
     private func locateItem(_ url: URL) -> (GitStatusSnapshot, String)? {
         let path = url.path
         if let found = locateItem(path: path) { return found }
         guard path.hasPrefix("/private/") || path.contains("/./") || path.contains("/../") || path.contains("//") else {
             return nil
         }
-        let standardized = url.standardizedFileURL.path
+        let standardized = Self.shortSpelling(url.standardized.path)
         return standardized == path ? nil : locateItem(path: standardized)
+    }
+
+    /// `/private/var/…` as `/var/…`, and so on for the aliases macOS fixes, the way `standardizedFileURL` spells
+    /// them, without asking the disk.
+    nonisolated static func shortSpelling(_ path: String) -> String {
+        for alias in ["/private/var", "/private/tmp", "/private/etc"] where path == alias || path.hasPrefix(alias + "/") {
+            return String(path.dropFirst("/private".count))
+        }
+        return path
     }
 
     private func locateItem(path: String) -> (GitStatusSnapshot, String)? {

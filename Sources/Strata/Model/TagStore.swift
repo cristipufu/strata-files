@@ -86,14 +86,19 @@ final class TagStore {
     /// Reads under way: with none, no read can be from before a change, so the counts go.
     private var readsUnderWay = 0
 
-    /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile.
-    private func keep(_ read: [String: [FinderTag]], unchangedSince before: [String: Int]) {
+    /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile. Returns whether any
+    /// differ from what was shown until now (an item not read yet showed none).
+    @discardableResult
+    private func keep(_ read: [String: [FinderTag]], unchangedSince before: [String: Int]) -> Bool {
+        var changed = false
         for (path, list) in read where tagChanges[path, default: 0] == before[path, default: 0] {
+            if (cache[path] ?? []) != list { changed = true }
             cache[path] = list
             stale.remove(path)
         }
         readsUnderWay -= 1
         if readsUnderWay == 0 { tagChanges.removeAll() }
+        return changed
     }
     private(set) var requests: Task<Void, Never>?
 
@@ -112,9 +117,10 @@ final class TagStore {
             let before = tagChanges
             readsUnderWay += 1
             let tags = await Self.readAll(paths, labels: NSWorkspace.shared.fileLabels)
-            keep(tags, unchangedSince: before)
+            // Only a change redraws: every list redraws its rows, and rows drawn ask again.
+            let changed = keep(tags, unchangedSince: before)
             requests = nil
-            NotificationCenter.default.post(name: .tagsLoaded, object: nil)
+            if changed { NotificationCenter.default.post(name: .tagsLoaded, object: self) }
             // Asked about while these were read.
             if !requested.isEmpty { readRequested() }
         }
@@ -134,7 +140,7 @@ final class TagStore {
             let tags = await Self.readAll(paths, labels: labels)
             keep(tags, unchangedSince: before)
             loading.subtract(folders)
-            NotificationCenter.default.post(name: .tagsLoaded, object: nil)
+            NotificationCenter.default.post(name: .tagsLoaded, object: self)
         }
     }
 
