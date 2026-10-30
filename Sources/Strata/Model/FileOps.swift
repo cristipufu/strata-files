@@ -312,34 +312,38 @@ enum FileOps {
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
     }
 
-    /// `trash` for part of an undo under way (one from History): each item goes to the Trash away from the main thread
-    /// only if `owns` says it's still the one the operation left there, asked just before it goes. It stops at the
-    /// first failure, a disk without a Trash included, and returns what went and that failure; nothing is recorded
-    /// or registered.
-    static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool,
-                             copies: CopyProviders) async -> (moved: [Move], failure: Error?) {
+    /// `trash` for part of an undo under way: each item goes to the Trash away from the main thread only if `owns` says
+    /// it's still the one the operation left there, asked just before it goes. It stops at the first failure, a disk
+    /// without a Trash included, and returns what went, what each is in the Trash (read as it lands) and that failure;
+    /// nothing is recorded or registered.
+    static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool, copies: CopyProviders) async
+        -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
         let result = await trashOwned(urls, owns: owns, copies: copies)
         if !result.moved.isEmpty { Sounds.movedToTrash() }
         return result
     }
 
     @concurrent
-    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool,
-                                   copies: CopyProviders) async -> (moved: [Move], failure: Error?) {
+    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool, copies: CopyProviders) async
+        -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
         var moved: [Move] = []
+        var identities: [FileIdentity?] = []
         // Owned first: a copy inside a folder put in another's place is still the operation's own.
         for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-                if let result { moved.append((from: url, to: result as URL)) }
+                if let result {
+                    moved.append((from: url, to: result as URL))
+                    identities.append(FileIdentity.read(result.path ?? ""))
+                }
             } catch let error as CocoaError where error.code == .featureUnsupported {
-                return (moved, NoTrash(urls: [url]))
+                return (moved, identities, NoTrash(urls: [url]))
             } catch {
-                return (moved, error)
+                return (moved, identities, error)
             }
         }
-        return (moved, nil)
+        return (moved, identities, nil)
     }
 
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would

@@ -42,7 +42,8 @@ extension TransferTests {
         let tree = try TestTree("to/dir/a.txt", "to/dir/keep.txt")
         defer { tree.removeFromTrash() }
         let urls = [tree.url("to/dir"), tree.url("to/dir/a.txt")]
-        let (moved, failure) = await FileOps.trashForUndo(urls, owns: { $0.lastPathComponent == "a.txt" }, copies: .live)
+        let (moved, _, failure) = await FileOps.trashForUndo(urls, owns: { $0.lastPathComponent == "a.txt" },
+                                                             copies: .live)
         #expect(failure == nil && moved.map(\.from) == [tree.url("to/dir/a.txt")])
         #expect(tree.snapshot() == ["to/", "to/dir/", "to/dir/keep.txt"])
     }
@@ -169,20 +170,22 @@ extension TransferTests {
                 defer { TransferEngine.hooks = .init() }
                 // A same-name move in another tree must not trigger the installed fault.
                 let other = try TestTree("from/a.txt", "to/")
-                TransferUndo.perform([TransferMove(from: other.url("from/a.txt"), to: other.url("to/" + targetName))],
-                                     actionName: "Move", undo: nil, queue: env.queue)
+                let elsewhere = [TransferMove(from: other.url("from/a.txt"), to: other.url("to/" + targetName))]
+                TransferUndo.perform(actionName: "Move", undo: nil, queue: env.queue) { elsewhere }
+                await FileOps.undoWork?.value
                 #expect(other.text("to/" + targetName) == "from/a.txt")
                 #expect(other.snapshot() == ["from/", "to/", "to/" + targetName])
                 let undo = UndoManager()
                 undo.groupsByEvent = false
                 undo.beginUndoGrouping()
-                TransferUndo.perform([TransferMove(from: tree.url("from/a.txt"), to: tree.url("to/a.txt")),
-                                      TransferMove(from: tree.url("from/b.txt"), to: tree.url("to/b.txt")),
-                                      TransferMove(from: tree.url("from/folder"), to: tree.url("to/folder")),
-                                      TransferMove(from: tree.url("from/link"), to: tree.url("to/link")),
-                                      TransferMove(from: tree.url("from/ab.txt"), to: tree.url("from/ab.txt/nested"))],
-                                     actionName: "Move", undo: undo, queue: env.queue)
+                let moves = [TransferMove(from: tree.url("from/a.txt"), to: tree.url("to/a.txt")),
+                             TransferMove(from: tree.url("from/b.txt"), to: tree.url("to/b.txt")),
+                             TransferMove(from: tree.url("from/folder"), to: tree.url("to/folder")),
+                             TransferMove(from: tree.url("from/link"), to: tree.url("to/link")),
+                             TransferMove(from: tree.url("from/ab.txt"), to: tree.url("from/ab.txt/nested"))]
+                TransferUndo.perform(actionName: "Move", undo: undo, queue: env.queue) { moves }
                 undo.endUndoGrouping()
+                await FileOps.undoWork?.value
                 TransferEngine.hooks = .init()
                 var moved = ["from/", "from/ab.txt", "outside/", "outside/keep", "state/", "state/Caches/", "to/", "to/b.txt",
                              "to/folder/", "to/folder/keep", "to/link -> ../outside"]

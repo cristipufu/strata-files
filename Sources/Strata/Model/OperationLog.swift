@@ -338,7 +338,7 @@ final class OperationLog {
         var done: [FileOps.Move] = []
         // Each copy only while it's still the one the copy made, checked as it goes.
         if !entry.created.isEmpty {
-            let (moved, failure) = await FileOps.trashForUndo(entry.created.map { URL(fileURLWithPath: $0) },
+            let (moved, _, failure) = await FileOps.trashForUndo(entry.created.map { URL(fileURLWithPath: $0) },
                                                               owns: { Self.holdsOriginal(entry, $0.path) }, copies: .live)
             done += moved
             if let failure {

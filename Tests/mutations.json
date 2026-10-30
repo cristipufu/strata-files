@@ -162,22 +162,22 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "                let existing = receipt.created.filter(receipt.landed.holds)",
-    "replace": "                let existing = receipt.created.filter { TransferEngine.exists($0) }",
+    "find": "                    let (gone, identities, _) = await FileOps.trashForUndo(created, owns: owns, copies: queue.copies)",
+    "replace": "                    let (gone, identities, _) = await FileOps.trashForUndo(created, owns: { TransferEngine.exists($0) }, copies: queue.copies)",
     "rule": "Undo of a copy trashes a file swapped in since",
     "tests": "TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "                let back = receipt.moved.filter { receipt.landed.holds($0.to) }.reversed().map(\\.reversed)",
-    "replace": "                let back = receipt.moved.reversed().map(\\.reversed)",
+    "find": "        let returning = moved.filter { owns($0.to) }",
+    "replace": "        let returning = moved",
     "rule": "Undo of a move job moves back a file swapped in since",
     "tests": "TrashUndoTests|TransferTests/aMoveJobAcross"
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "                await job.finished()\n                return job.completedMoves.filter { job.landed.holds($0.to) }",
-    "replace": "                return job.completedMoves.filter { job.landed.holds($0.to) }",
+    "find": "                await job.finished()\n                let still = Set(await job.landed.holding(job.completedMoves.map(\\.to)))",
+    "replace": "                let still = Set(await job.landed.holding(job.completedMoves.map(\\.to)))",
     "rule": "A redo doesn't wait for the undo's job",
     "tests": "TransferTests/undoAndRedoPressedAtOnceAcrossDisks"
   },
@@ -1028,8 +1028,8 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue, historyEntry: historyEntry)",
-    "replace": "registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared, historyEntry: historyEntry)",
+    "find": "            registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue,\n                            historyEntry: historyEntry)",
+    "replace": "            registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared,\n                            historyEntry: historyEntry)",
     "rule": "Transfer ownership repeated Redo loses its queue",
     "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
   },

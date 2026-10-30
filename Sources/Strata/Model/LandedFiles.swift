@@ -47,6 +47,25 @@ final class LandedFiles {
     }
 
     func holds(_ url: URL) -> Bool {
+        Self.holds(url, identities)
+    }
+
+    /// `holds`, for checking away from the main thread, item by item as each is about to change.
+    var owns: @Sendable (URL) -> Bool {
+        let identities = identities
+        return { Self.holds($0, identities) }
+    }
+
+    /// Those of `urls` that `holds`, read away from the main thread.
+    func holding(_ urls: [URL]) async -> [URL] {
+        await Self.holding(urls, identities)
+    }
+
+    @concurrent private static func holding(_ urls: [URL], _ identities: [String: FileIdentity]) async -> [URL] {
+        urls.filter { holds($0, identities) }
+    }
+
+    nonisolated private static func holds(_ url: URL, _ identities: [String: FileIdentity]) -> Bool {
         guard let identity = identities[url.path] else { return false }
         return FileIdentity.read(url.path) == identity
     }
