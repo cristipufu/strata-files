@@ -79,7 +79,7 @@ struct EdgeCaseSafetyTests {
                               styleMask: [.titled], backing: .buffered, defer: true)
         weak var weakController: TreemapViewController?
         do {
-            let controller = TreemapViewController()
+            let controller = TreemapViewController(copies: .live)
             weakController = controller
             window.contentView = controller.view
             controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 300)

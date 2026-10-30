@@ -14,7 +14,7 @@ enum FileOps {
         NSLocalizedDescriptionKey: String(localized: "Items in a read-only copy (an archive opened as a folder, or a container’s files) can’t be changed. Copy them out first."),
     ])
 
-    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders = .live,
+    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders,
                        history: OperationLog = .shared) async throws -> URL {
         guard !ReadOnlyCopies.contains(url, copies: copies) else { throw insideArchiveError }
         // A name, never a path: whatever is typed, the item stays in its folder.
@@ -39,7 +39,7 @@ enum FileOps {
     /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
     /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
     static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true,
-                     history: OperationLog = .shared, copies: CopyProviders = .live) async throws {
+                     history: OperationLog = .shared, copies: CopyProviders) async throws {
         guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
             throw insideArchiveError
         }
@@ -178,7 +178,7 @@ enum FileOps {
         return translated
     }
 
-    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders = .live,
+    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders,
                           history: OperationLog = .shared) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
@@ -193,7 +193,7 @@ enum FileOps {
 
     /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
     /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
-    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders = .live,
+    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders,
                         history: OperationLog = .shared) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = newFileName(extension: ext)
@@ -234,7 +234,7 @@ enum FileOps {
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
     static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true, copies: CopyProviders = .live, history: OperationLog = .shared) throws -> [Move] {
+                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog = .shared) throws -> [Move] {
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
@@ -301,7 +301,7 @@ enum FileOps {
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders = .live, history: OperationLog = .shared) async throws {
+    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog = .shared) async throws {
         let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
@@ -495,7 +495,7 @@ enum FileOps {
     /// moves have worked (the inverse flips it back). Containers made for the operation are recreated before Redo
     /// and removed after Undo only while their recorded identities still match and they are empty.
     static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 copies: CopyProviders = .live, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
+                                 copies: CopyProviders, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
                                  landed: LandedFiles? = nil, history: OperationLog = .shared) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? LandedFiles(moves.map(\.to))

@@ -15,8 +15,16 @@ final class FileOutlineView: NSOutlineView {
     var onDragEnd: (() -> Void)?
     /// A second, slower click on the name of the only selected row (Finder's click to rename).
     var onNameClick: ((Int) -> Void)?
-    var copies: CopyProviders = .live
+    let copies: CopyProviders
     private let clickToRename = ClickToRename()
+
+    init(copies: CopyProviders) {
+        self.copies = copies
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

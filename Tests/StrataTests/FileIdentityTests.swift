@@ -68,7 +68,7 @@ struct FileIdentityTests {
     @Test func decodedHistoryRecognizesBothFormatsAndRefusesReplacements() throws {
         let tree = try TestTree("state/", "cache/", "destination", "keep")
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("cache"), key: nil)
-        let history = OperationLog(storage: storage)
+        let history = OperationLog(storage: storage, copies: .live)
         let path = tree.url("destination").path
         let identity = try #require(FileIdentity.read(path))
         let current = try #require(OperationLog.identity(path))

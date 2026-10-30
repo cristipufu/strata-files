@@ -81,7 +81,7 @@ struct InspectorFolderOpeningTests {
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,

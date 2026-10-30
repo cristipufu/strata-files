@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
 final class FileThumbnails {
-    static let shared = FileThumbnails()
+    static let shared = FileThumbnails(copies: .live)
 
     typealias Completion = @Sendable (CGImage?, Bool) -> Void
     typealias Generate = (QLThumbnailGenerator.Request, @escaping Completion) -> Void
@@ -49,7 +49,7 @@ final class FileThumbnails {
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders = .live, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
             completion(representation?.cgImage, cancelled)
@@ -78,7 +78,7 @@ final class FileThumbnails {
     /// Whether to ask Quick Look for a thumbnail. Like Finder, every file is asked, so any type with a thumbnail
     /// (including ones an app adds) gets one, and Quick Look's "no thumbnail" keeps the icon. Folders, apps and other
     /// bundles, ordinary archives, disk images and executables are pictured by their icon, and links keep their arrow.
-    static func canThumbnail(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    static func canThumbnail(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         // A container's file not fetched yet has nothing to show.
         guard !entry.isFolder, !entry.isSymlink, !copies.isPlaceholder(entry.url) else { return false }
         if BookFormat.hasCover(entry.url) { return !entry.isPackage }
@@ -275,7 +275,7 @@ final class FileThumbnails {
 
 /// Small facts shown under icons, read off the main thread: a folder's item count, an image's pixel size.
 @MainActor final class ItemInfoLoader {
-    static let shared = ItemInfoLoader()
+    static let shared = ItemInfoLoader(copies: .live)
 
     private var cache: [String: String] = [:]
     private(set) var tasks: [String: Task<Void, Never>] = [:]
@@ -286,7 +286,7 @@ final class FileThumbnails {
     let containerStore: ContainerStore
     private let mediaReader: MediaInfoLoader.Reader
 
-    init(copies: CopyProviders = .live, containerStore: ContainerStore = .shared, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
+    init(copies: CopyProviders, containerStore: ContainerStore = .shared, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
         self.copies = copies
         self.containerStore = containerStore
         self.mediaReader = mediaReader
@@ -329,7 +329,7 @@ final class FileThumbnails {
         return true
     }
 
-    nonisolated static func canLoad(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    nonisolated static func canLoad(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !copies.contains(entry.url) }
         // A container's image not fetched yet: its size for now, its dimensions once it's here (not cached meanwhile).
         if copies.isPlaceholder(entry.url) { return false }

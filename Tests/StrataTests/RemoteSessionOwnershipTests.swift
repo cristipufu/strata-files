@@ -422,7 +422,7 @@ struct RemoteSessionOwnershipTests {
             let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live))
             services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: preferences.defaults),

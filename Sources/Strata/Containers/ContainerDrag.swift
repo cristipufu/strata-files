@@ -13,7 +13,7 @@ nonisolated final class ContainerDragItem: NSFilePromiseProvider {
     let source: URL
     let copies: CopyProviders
 
-    init(source: URL, copies: CopyProviders = .live) {
+    init(source: URL, copies: CopyProviders) {
         self.source = source
         self.copies = copies
         super.init()
@@ -25,7 +25,7 @@ nonisolated final class ContainerDragItem: NSFilePromiseProvider {
 
     /// An item of a container's files gets a promise; anything else drags as itself.
     @MainActor
-    static func writer(for url: URL, copies: CopyProviders = .live) -> NSPasteboardWriting {
+    static func writer(for url: URL, copies: CopyProviders) -> NSPasteboardWriting {
         copies.contains(url) ? ContainerDragItem(source: url, copies: copies) : url as NSURL
     }
 
@@ -81,7 +81,7 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
 
 extension FileDrop {
     /// Items of containers' files dragged within Strata (see `ContainerDragItem`).
-    static func containerItems(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
+    static func containerItems(_ pasteboard: NSPasteboard, copies: CopyProviders) -> [URL] {
         (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .strataContainerItem) }
             .filter { !$0.isEmpty }
             .map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) }

@@ -21,9 +21,9 @@ struct ColumnScrollingTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("a/b/c/note.txt")
         let scroll = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences)
+        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences, copies: .live)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("a/b/c/note.txt")])
         let strip = try #require(scroll.documentView)
         for _ in 0..<100 {
@@ -61,9 +61,9 @@ struct ColumnScrollingTests {
         let files = (0..<60).map { "file-\($0).txt" }
         try tree.add(files)
         let strip = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: strip, preferences: preferences)
+        let columns = ColumnBrowserViewController(scrollView: strip, preferences: preferences, copies: .live)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("file-0.txt")])
         columns.view.layoutSubtreeIfNeeded()
         let table = try #require(columns.focusView as? ColumnTableView)

@@ -66,11 +66,11 @@ struct FileCommandOwnershipTests {
         for _ in 0..<3 {
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: first.storage).entries.first?.undone == true)
+            #expect(OperationLog(storage: first.storage, copies: .live).entries.first?.undone == true)
             #expect(tree.snapshot() == ["a.txt", "ab.txt", "link -> a.txt", "other/", "other/a.txt"])
             undo.redo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: first.storage).entries.first?.undone == false)
+            #expect(OperationLog(storage: first.storage, copies: .live).entries.first?.undone == false)
             #expect(tree.snapshot() == ["ab.txt", "b.txt", "link -> a.txt", "other/", "other/a.txt"])
         }
         try FileManager.default.moveItem(at: renamed, to: tree.url("original.txt"))
@@ -100,15 +100,15 @@ struct FileCommandOwnershipTests {
             for _ in 0..<2 {
                 undo.undo()
                 await FileOps.undoWork?.value
-                #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+                #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
                 #expect(tree.snapshot() == ["keep.txt", "peer/", "peer/keep.txt"])
                 undo.redo()
                 await FileOps.undoWork?.value
-                #expect(OperationLog(storage: env.storage).entries.first?.undone == false)
+                #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == false)
                 #expect(tree.snapshot() == made)
             }
             // History has its own persisted entry; undoing it must still restore through the supplied native manager.
-            let reopened = OperationLog(storage: env.storage)
+            let reopened = OperationLog(storage: env.storage, copies: .live)
             let saved = try #require(reopened.entries.first)
             let historyUndo = undoManager()
             historyUndo.beginUndoGrouping()
@@ -144,7 +144,7 @@ struct FileCommandOwnershipTests {
         #expect(tree.snapshot() == ["ab.txt", "other/", "other/a.txt"])
         undo.undo()
         await FileOps.undoWork?.value
-        #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+        #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
         #expect(tree.snapshot() == ["a/", "a/inner.txt", "ab.txt", "link -> a", "other/", "other/a.txt"])
         let items = await PlanItem.load([tree.url("ab.txt")])
         let request = PlanGenerator.Request(instruction: "Rename", items: items, baseFolder: tree.root)

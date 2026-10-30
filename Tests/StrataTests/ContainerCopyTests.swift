@@ -203,7 +203,7 @@ extension ContainerTests {
         func write(to url: URL) async -> Error? {
             await withCheckedContinuation { done in
                 DispatchQueue.global().async {
-                    let item = ContainerDragItem(source: source)
+                    let item = ContainerDragItem(source: source, copies: .live)
                     ContainerPromises.shared.filePromiseProvider(item, writePromiseTo: url) { done.resume(returning: $0) }
                 }
             }

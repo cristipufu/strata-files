@@ -108,7 +108,7 @@ extension BrowserWindowController {
             }
             if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
                 // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
-                let name = Places.displayName(scope)
+                let name = Places.displayName(scope, copies: services.copies)
                 p.browser.showMessage(symbol: "lock", title: String(localized: "Open “\(name)” to search it"),
                                       message: String(localized: "macOS asks before apps read this folder. Open it in Strata once, then search it."))
                 showSummary("", for: p)
@@ -148,7 +148,7 @@ extension BrowserWindowController {
         p.browser.showResults(entries, total: total)
         var parts: [String]
         if let scope {
-            let name = Places.displayName(scope)
+            let name = Places.displayName(scope, copies: services.copies)
             parts = [total == 0 ? String(localized: "No results in “\(name)”")
                 : String(localized: "\(total) results in “\(name)”", comment: "plural")]
         } else {
@@ -196,7 +196,7 @@ extension BrowserWindowController {
         p.browser.showResults(entries, total: result.total)
         var parts: [String]
         if let scope {
-            let name = Places.displayName(scope)
+            let name = Places.displayName(scope, copies: services.copies)
             parts = [result.total == 0 ? String(localized: "No results in “\(name)”")
                 : String(localized: "\(result.total) results in “\(name)”", comment: "plural")]
         } else {
@@ -229,7 +229,7 @@ extension BrowserWindowController {
             p.folderSearch = search
             search.start()
         }
-        let name = Places.displayName(scope)
+        let name = Places.displayName(scope, copies: services.copies)
         let isCurrent = { generation == p.searchGeneration && p.destination == target }
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }

@@ -81,7 +81,7 @@ struct ProviderMediaInfoTests {
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
@@ -227,7 +227,7 @@ struct ProviderMediaInfoTests {
     @Test func cancelledReadsCannotEraseAReplacementForTheSameEntry() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
         for oldFirst in [false, true] {
-            let reads = Reads(held: true), loader = MediaInfoLoader(reader: { await reads.read($0) })
+            let reads = Reads(held: true), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
             var updates = 0
             loader.onUpdate = { _ in updates += 1 }
             loader.request(entry)
@@ -250,7 +250,7 @@ struct ProviderMediaInfoTests {
     @Test func releasingTheLoaderCancelsItsOutstandingReadWithoutRetainingIt() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
         let reads = Reads(held: true)
-        var loader: MediaInfoLoader? = MediaInfoLoader(reader: { await reads.read($0) })
+        var loader: MediaInfoLoader? = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         weak let released = loader
         var updates = 0
         loader?.onUpdate = { _ in updates += 1 }
@@ -267,7 +267,7 @@ struct ProviderMediaInfoTests {
 
     @Test func cancellingBeforeAReadStartsPreventsInvokingTheReader() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         loader.request(entry)
         let work = try #require(loader.tasks[entry])
         loader.cancelPending()
@@ -279,7 +279,7 @@ struct ProviderMediaInfoTests {
 
     @Test func emptyMetadataResultsAreCachedWithoutRepeatedReads() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(result: MediaInfo()), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(result: MediaInfo()), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         loader.request(entry)
         await loader.tasks[entry]?.value
         loader.request(entry)
@@ -308,7 +308,7 @@ struct ProviderMediaInfoTests {
 
     @Test func completionMayInvalidateAndRequestTheSameEntryAgain() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         var updates = 0
         var replacement: Task<Void, Never>?
         loader.onUpdate = { [weak loader] entry in

@@ -23,7 +23,7 @@ final class InspectorContainerEnvironment {
                                     notifications: NotificationCenter())
         let copies = CopyProviders(servers: remote.files, containers: containerFiles, clipboardRoot: tree.url(folder + "/clipboard"))
         services = BrowserServices.configured(
-            transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+            transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
             visits: Frecency(preferences: preferences.defaults),
             windows: .headless,
             remote: remote,

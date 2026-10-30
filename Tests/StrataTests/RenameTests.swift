@@ -127,7 +127,7 @@ final class RenameTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let outcome = await PlanExecutor.apply(plan, actionName: "Rename 2 Items", undo: undo)
+        let outcome = await PlanExecutor.apply(plan, actionName: "Rename 2 Items", undo: undo, copies: .live)
         undo.endUndoGrouping()
         #expect(outcome.failures.isEmpty)
         #expect(try text("one.txt") == "two.txt" && text("two.txt") == "one.txt")
@@ -156,7 +156,7 @@ final class RenameTests {
         let plan = try rules.plan(for: items, baseFolder: folder).get()
         #expect(plan.excluded.contains { $0.source?.lastPathComponent == "0.txt" && $0.problem?.contains("Album") == true })
         #expect(!plan.steps.contains { $0.source?.lastPathComponent == "0.txt" })
-        let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undo: nil)
+        let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undo: nil, copies: .live)
         #expect(outcome.failures.isEmpty)
         let inside = try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: plan.steps.first {
             $0.source?.lastPathComponent == "Album" }?.destination?.lastPathComponent ?? "Album").path)

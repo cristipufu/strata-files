@@ -107,7 +107,7 @@ final class OperationLog {
         }
     }
 
-    static let shared = OperationLog()
+    static let shared = OperationLog(copies: .live)
 
     private(set) var entries: [Entry] = []
     private let file: URL
@@ -146,10 +146,14 @@ final class OperationLog {
 
     nonisolated static func waitForWrites() { writes.sync {} }
 
-    init(storage: SecureStorage.Context = SecureStorage.current, moveItems: Mover? = nil) {
+    /// The environment's server and container copies: undo and redo refuse to change what's inside them.
+    private let copies: CopyProviders
+
+    init(storage: SecureStorage.Context = SecureStorage.current, copies: CopyProviders, moveItems: Mover? = nil) {
         self.storage = storage
+        self.copies = copies
         self.moveItems = moveItems ?? { pairs, name in
-            try await FileOps.move(pairs, actionName: name, undo: nil, record: false)
+            try await FileOps.move(pairs, actionName: name, undo: nil, record: false, copies: copies)
         }
         file = storage.url("history.sealed")
         Self.waitForWrites()
@@ -339,7 +343,7 @@ final class OperationLog {
         // Each copy only while it's still the one the copy made, checked as it goes.
         if !entry.created.isEmpty {
             let (moved, _, failure) = await FileOps.trashForUndo(entry.created.map { URL(fileURLWithPath: $0) },
-                                                              owns: { Self.holdsOriginal(entry, $0.path) }, copies: .live)
+                                                              owns: { Self.holdsOriginal(entry, $0.path) }, copies: copies)
             done += moved
             if let failure {
                 registerRedo(entry, done, undoManager, containers: containers)
@@ -374,7 +378,7 @@ final class OperationLog {
     /// ⌘Z right after a History undo redoes the whole operation in one step (recreating any folders it had made)
     /// and marks the entry live again once that has worked.
     private func registerRedo(_ entry: Entry, _ done: [FileOps.Move], _ undoManager: UndoManager?, containers: CreatedFolders) {
-        FileOps.registerMoveUndo(done, entry.name, undoManager, entry: entry.id, marksUndone: false,
+        FileOps.registerMoveUndo(done, entry.name, undoManager, entry: entry.id, copies: copies, marksUndone: false,
                                  containers: .make(containers), history: self)
     }
 

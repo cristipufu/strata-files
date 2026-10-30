@@ -16,13 +16,13 @@ enum PlanExecutor {
     /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
     /// `undoName` when given ("Rename 3 Items"), else that translation.
     static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
-                      copies: CopyProviders = .live, history: OperationLog = .shared) async -> Outcome {
+                      copies: CopyProviders, history: OperationLog = .shared) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
         guard !touched.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) else {
             return Outcome(failures: [FileOps.insideArchiveError.localizedDescription])
         }
-        let transaction = PlanTransaction(plan: plan)
+        let transaction = PlanTransaction(plan: plan, copies: copies)
         let outcome = await transaction.perform()
         // One History entry for the whole plan, named like its undo action.
         let entry = transaction.hasChanges ? transaction.record(actionName, history: history) : nil
@@ -49,6 +49,7 @@ final class PlanTransaction {
 
     private let folders: [URL]
     private let moves: [Pair]
+    private let copies: CopyProviders
     private let trashItems: [URL]
     private var created: [URL] = []
     private var done: [Pair] = []
@@ -61,7 +62,8 @@ final class PlanTransaction {
     private var restored: LandedFiles?
     private var queue: Task<Void, Never>?
 
-    init(plan: Plan) {
+    init(plan: Plan, copies: CopyProviders) {
+        self.copies = copies
         let enabled = plan.enabledSteps
         let moves = enabled.compactMap { step -> Pair? in
             guard step.kind == .rename || step.kind == .move, let from = step.source, let to = step.destination else { return nil }
@@ -146,7 +148,7 @@ final class PlanTransaction {
                 if let restored, !restored.holds(pair.from) { continue }
                 do {
                     applied.expect(pair.from, at: pair.to)
-                    try await Self.move(pair)
+                    try await Self.move(pair, copies: copies)
                     applied.arrived(pair.to)
                     done.append(pair)
                     outcome.results.append(pair.to)
@@ -173,7 +175,7 @@ final class PlanTransaction {
                 moved = await FileOps.moveAll(pairs).done.map { ($0.from, $0.to) }
             } else {
                 var done: [Pair] = []
-                for pair in pairs where (try? await Self.move(pair)) != nil { done.append(pair) }
+                for pair in pairs where (try? await Self.move(pair, copies: copies)) != nil { done.append(pair) }
                 moved = done
             }
             let arrived = Set(moved.map(\.to.path))
@@ -206,19 +208,22 @@ final class PlanTransaction {
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
-    private static func move(_ pair: Pair) async throws {
+    private static func move(_ pair: Pair, copies: CopyProviders) async throws {
+        func move(_ from: URL, to: URL) async throws {
+            try await FileOps.move([(from: from, to: to)], actionName: "", undo: nil, record: false, copies: copies)
+        }
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")
-            try await FileOps.move([(from: pair.from, to: temporary)], actionName: "", undo: nil, record: false)
+            try await move(pair.from, to: temporary)
             do {
-                try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil, record: false)
+                try await move(temporary, to: pair.to)
             } catch {
                 // Never leave the item under its hidden temporary name.
-                try? await FileOps.move([(from: temporary, to: pair.from)], actionName: "", undo: nil, record: false)
+                try? await move(temporary, to: pair.from)
                 throw error
             }
         } else {
-            try await FileOps.move([pair], actionName: "", undo: nil, record: false)
+            try await move(pair.from, to: pair.to)
         }
     }
 

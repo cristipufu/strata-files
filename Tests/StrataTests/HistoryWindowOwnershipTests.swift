@@ -12,7 +12,7 @@ struct HistoryWindowOwnershipTests {
         init(_ tree: TestTree, name: String) {
             storage = SecureStorage.Context(directory: tree.url("state/" + name),
                 caches: tree.url("state/" + name + "/Caches"), key: SymmetricKey(size: .bits256))
-            history = OperationLog(storage: storage)
+            history = OperationLog(storage: storage, copies: .live)
             undo.groupsByEvent = false
         }
 
@@ -52,7 +52,7 @@ struct HistoryWindowOwnershipTests {
         #expect(first.history.entries.isEmpty && left.numberOfRows(in: table) == 0)
         #expect(second.history.entries.map(\.id) == [b.id] && right.numberOfRows(in: table) == 1)
         #expect(try written(second.storage.url("history.sealed")) == secondSaved)
-        #expect(OperationLog(storage: first.storage).entries.isEmpty)
+        #expect(OperationLog(storage: first.storage, copies: .live).entries.isEmpty)
         #expect(tree.text("first/to/a.txt") == "first/to/a.txt")
         #expect(tree.text("second/to/a.txt") == "second/to/a.txt")
         #expect(tree.snapshot() == before)

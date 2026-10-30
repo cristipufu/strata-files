@@ -144,7 +144,7 @@ struct AsyncActionContextTests {
                     clipboardRoot: tree.url(folder + "/clipboard")
                 )
             }
-            transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
+            transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies)
             let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName())
             services = BrowserServices.configured(
                 transfers: transfers,

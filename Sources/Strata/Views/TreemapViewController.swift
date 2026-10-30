@@ -8,7 +8,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
     /// Double-click (or Return when the browser doesn't handle it) on a folder tile.
     var onDrill: ((URL) -> Void)?
 
-    init(copies: CopyProviders = .live) {
+    init(copies: CopyProviders) {
         self.copies = copies
         super.init(nibName: nil, bundle: nil)
     }

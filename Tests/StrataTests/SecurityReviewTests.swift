@@ -27,7 +27,7 @@ struct SecurityReviewTests {
                                 "source/sibling", "out/", "out/sibling", "state/")
         if merge { try tree.add(["out/top/", "out/top/own", "out/top/own-link -> ../sibling"]) }
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/cache"), key: nil)
-        let queue = TransferQueue(preferences: try Prefs.isolated(), history: OperationLog(storage: storage),
+        let queue = TransferQueue(preferences: try Prefs.isolated(), history: OperationLog(storage: storage, copies: .live),
                                   copies: CopyProviders([Provider(root: tree.url("source"))]))
         let resolver = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
         let job = queue.enqueue([tree.url("source/top")], to: tree.url("out"), mode: .copy, verify: true, undo: nil, conflicts: resolver)
@@ -139,7 +139,7 @@ struct SecurityReviewTests {
 
     @Test func deletionKeepsReplacementsAcrossTheConfirmation() async throws {
         let tree = try TestTree("chosen/", "chosen/file", "keep")
-        let request = try #require(BrowserViewController.deletionPlan([tree.url("chosen")]).choices.first)
+        let request = try #require(BrowserViewController.deletionPlan([tree.url("chosen")], copies: .live).choices.first)
         _ = try request.chosen.get()
         try FileManager.default.moveItem(at: tree.url("chosen"), to: tree.url("original"))
         try tree.add(["chosen/", "chosen/replacement"])
@@ -151,7 +151,7 @@ struct SecurityReviewTests {
     @Test func deletionKeepsAnAncestorReplacedByAnotherDirectoryOrLink() async throws {
         for link in [false, true] {
             let tree = try TestTree("parent/", "parent/file", "outside/", "outside/file")
-            let request = try #require(BrowserViewController.deletionPlan([tree.url("parent/file")]).choices.first)
+            let request = try #require(BrowserViewController.deletionPlan([tree.url("parent/file")], copies: .live).choices.first)
             _ = try request.chosen.get()
             try FileManager.default.moveItem(at: tree.url("parent"), to: tree.url("original"))
             try tree.add(link ? ["parent -> ./outside"] : ["parent/", "parent/file"])

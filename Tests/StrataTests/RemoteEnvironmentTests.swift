@@ -54,8 +54,10 @@ struct RemoteEnvironmentTests {
             remote = RemoteServices(preferences: preferences, credentials: network.credentials(folder),
                 copyRoot: tree.url(folder + "/cache"), connector: network.connector, notifications: notifications)
             let storage = SecureStorage.Context(directory: tree.url(folder + "/state"), caches: tree.url(folder + "/state/Caches"), key: nil)
+            let copies = CopyProviders(servers: remote.files, containers: .shared)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: CopyProviders(servers: remote.files, containers: .shared)),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies),
+                                         copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,

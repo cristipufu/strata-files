@@ -146,7 +146,7 @@ struct TagColumnTests {
         let columns = ColumnBrowserViewController(preferences: environment.preferences, copies: environment.services.copies,
                                                    clipboard: environment.services.clipboard)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("folder")])
         let strip = try #require((columns.view as? NSScrollView)?.documentView)
         let pane = try #require(strip.subviews.compactMap { $0 as? ColumnPane }.last)

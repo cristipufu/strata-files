@@ -173,7 +173,7 @@ struct DirectoryReadSessionTests {
         let tree = try TestTree("a.txt", "b.txt")
         let reads = Reads()
         defer { reads.stop() }
-        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences)
+        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences, copies: .live)
         let pane = ColumnPane(folder: tree.root, controller: controller)
         let a = try #require(FileEntry(url: tree.url("a.txt")))
         let b = try #require(FileEntry(url: tree.url("b.txt")))

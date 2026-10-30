@@ -41,7 +41,7 @@ struct WorkspaceOwnershipTests {
             preferences.showIconPreviews = false
             let state = tree.url(UUID().uuidString)
             let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live))
             services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: preferences.defaults),

@@ -15,7 +15,7 @@ final class CopyFetchJob {
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// `then` runs once everything is read (not when it fails or is stopped).
-    init(_ urls: [URL], copies: CopyProviders = .live, then: @escaping () -> Void) {
+    init(_ urls: [URL], copies: CopyProviders, then: @escaping () -> Void) {
         self.urls = urls
         self.copies = copies
         self.then = then

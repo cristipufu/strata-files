@@ -112,7 +112,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo)
+        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live)
         undo.endUndoGrouping()
         #expect(outcome.failures.isEmpty)
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Old/", "Old/x.txt", "b.txt", "dee.txt", "keep.txt"])
@@ -129,7 +129,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo, copies: .live)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Later/", "Later/e.txt"])
         // Something is saved into "Done" meanwhile; "Later" only gets Finder's records.
@@ -144,7 +144,7 @@ struct PlanSafetyTests {
         for replacement in ["folder", "file", "link"] {
             let tree = try TestTree("c.txt", "keep.txt", "Done-other/", "outside/", "outside/.DS_Store")
             let plan = await validate([.move(tree.url("c.txt"), into: "Done")], selecting: ["c.txt"], in: tree)
-            let transaction = PlanTransaction(plan: plan)
+            let transaction = PlanTransaction(plan: plan, copies: .live)
             let result = await transaction.perform()
             try #require(result.applied == 1 && result.failures.isEmpty)
             try FileManager.default.moveItem(at: tree.url("Done"), to: tree.url("Saved"))
@@ -168,7 +168,7 @@ struct PlanSafetyTests {
             let tree = try TestTree("c.txt", "keep.txt")
             let plan = await validate([.move(tree.url("c.txt"), into: "Done/Nested")], selecting: ["c.txt"], in: tree)
             if missingSource { try FileManager.default.moveItem(at: tree.url("c.txt"), to: tree.url("Saved.txt")) }
-            let transaction = PlanTransaction(plan: plan)
+            let transaction = PlanTransaction(plan: plan, copies: .live)
             let result = await transaction.perform()
             #expect(result.applied == (missingSource ? 0 : 1))
             #expect(result.failures.count == (missingSource ? 1 : 0))
@@ -201,7 +201,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "dee.txt", "keep.txt"])
         // "dee.txt" is swapped for another file: undo leaves it, and puts back the rest.

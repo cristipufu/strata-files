@@ -109,7 +109,7 @@ enum Places {
     }
 
     /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
-    static func displayName(_ url: URL, copies: CopyProviders = .live) -> String {
+    static func displayName(_ url: URL, copies: CopyProviders) -> String {
         ownName(url, copies: copies) ?? FileManager.default.displayName(atPath: url.path)
     }
 

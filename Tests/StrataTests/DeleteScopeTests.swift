@@ -39,7 +39,7 @@ struct DeleteScopeTests {
         // A folder only named like one, and a link to it, are ordinary items.
         for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path)), "\(path)") }
         // Delete Immediately refuses it up front, and goes on with the rest.
-        let plan = BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")])
+        let plan = BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
         #expect(plan.refused.map(\.standardizedFileURL.path) == [Trash.home, tree.url("home link/.Trash")].map(\.standardizedFileURL.path))
         #expect(plan.candidates.map(\.path) == [tree.url("a.txt").standardizedFileURL.path])
         #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
@@ -89,7 +89,7 @@ struct DeleteScopeTests {
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
         let inside = copy.appending(path: "a.txt")
         try Data("x".utf8).write(to: inside)
-        try await FileOps.trashInBackground([inside], undo: nil)
+        try await FileOps.trashInBackground([inside], undo: nil, copies: .live)
         // Whatever went to the Trash despite this comes back out.
         defer {
             for entry in OperationLog.shared.entries {

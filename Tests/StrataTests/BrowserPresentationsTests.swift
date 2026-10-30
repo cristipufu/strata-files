@@ -29,9 +29,9 @@ struct BrowserPresentationsTests {
         let metadata = FileCollectionMetadata(ordered: { comparisons += 1; return $0.name < $1.name },
                                               canMeasure: { _ in permissions += 1; return false },
                                               size: { sizes += 1; return $0.size })
-        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences),
-                                                       ColumnBrowserViewController(preferences: preferences),
-                                                       GalleryViewController(), TreemapViewController()]
+        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences, copies: .live),
+                                                       ColumnBrowserViewController(preferences: preferences, copies: .live),
+                                                       GalleryViewController(copies: .live), TreemapViewController(copies: .live)]
         for controller in controllers {
             sizes = 0; permissions = 0; comparisons = 0
             controller.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
@@ -59,9 +59,9 @@ struct BrowserPresentationsTests {
         let tree = try TestTree("old/a.txt", "new/")
         let old = FileCollectionContent(directory: tree.url("old"), entries: try entries(tree, ["old/a.txt"]), matches: [:])
         let empty = FileCollectionContent(directory: tree.url("new"), entries: [], matches: [:])
-        let grid = GridViewController(preferences: preferences)
-        let columns = ColumnBrowserViewController(preferences: preferences)
-        let gallery = GalleryViewController()
+        let grid = GridViewController(preferences: preferences, copies: .live)
+        let columns = ColumnBrowserViewController(preferences: preferences, copies: .live)
+        let gallery = GalleryViewController(copies: .live)
         for controller in [grid, columns, gallery] as [FileCollectionController] {
             controller.apply(old, metadata: metadata, animated: false)
             controller.apply(empty, metadata: metadata, animated: false)
@@ -79,7 +79,7 @@ struct BrowserPresentationsTests {
         let root = try entries(tree, ["folder", "other.txt"]), children = try entries(tree, ["folder/a.txt", "folder/z.txt"])
         let reads = ReadLog()
         let reader = DirectoryReader { folder, _, _ in await reads.record(folder); return children }
-        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences)
+        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences, copies: .live)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let content = FileCollectionContent(directory: tree.root, entries: root, matches: [:])
         let descending = Mutex(false)
@@ -107,7 +107,7 @@ struct BrowserPresentationsTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("alpha.txt")
         let entry = try #require(FileEntry(url: tree.url("alpha.txt")))
-        let columns = ColumnBrowserViewController(preferences: preferences)
+        let columns = ColumnBrowserViewController(preferences: preferences, copies: .live)
         columns.apply(FileCollectionContent(directory: tree.root, entries: [entry], matches: [entry.url: [0, 1]]),
                       metadata: metadata, animated: false)
         let pane = try #require(views(columns.view, of: ColumnPane.self).first)
@@ -134,7 +134,7 @@ struct BrowserPresentationsTests {
             permissionReads.append($0.name)
             return $0.name != "guarded"
         }, size: { sizeReads.append($0.name); return sizes[$0.name] })
-        let map = TreemapViewController()
+        let map = TreemapViewController(copies: .live)
         map.apply(FileCollectionContent(directory: all[0].url.deletingLastPathComponent(), entries: all, matches: [:]),
                   metadata: metadata, animated: false)
         #expect(permissionReads == ["known", "pending", "guarded"])

@@ -153,8 +153,12 @@ final class PathSuggestionList: NSObject {
     private static let rowHeight: CGFloat = 30
     private static let maxVisibleRows = 9
     private static let footerHeight: CGFloat = 26
+    private let copies: CopyProviders
+    private let names: FolderNames
 
-    override init() {
+    init(copies: CopyProviders, names: FolderNames) {
+        self.copies = copies
+        self.names = names
         super.init()
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -297,7 +301,7 @@ extension PathSuggestionList: NSTableViewDataSource, NSTableViewDelegate {
             cell.identifier = id
             return cell
         }()
-        cell.configure(items[row])
+        cell.configure(items[row], copies: copies, names: names)
         cell.isRowSelected = row == tableView.selectedRow
         return cell
     }
@@ -326,6 +330,7 @@ private final class SuggestionCell: NSTableCellView {
     private let name = NSTextField(labelWithString: "")
     private let location = NSTextField(labelWithString: "")
     private var suggestion: PathSuggestion?
+    private var title = ""
     var isRowSelected = false {
         didSet { if isRowSelected != oldValue { render() } }
     }
@@ -359,8 +364,9 @@ private final class SuggestionCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ suggestion: PathSuggestion) {
+    func configure(_ suggestion: PathSuggestion, copies: CopyProviders, names: FolderNames) {
         self.suggestion = suggestion
+        title = Places.displayName(suggestion.url, copies: copies, names: names)
         icon.image = IconCache.shared.icon(forPath: suggestion.url.path, folder: true)
         location.stringValue = Format.tildePath(suggestion.url.deletingLastPathComponent())
         setAccessibilityLabel(Format.tildePath(suggestion.url))
@@ -369,7 +375,6 @@ private final class SuggestionCell: NSTableCellView {
 
     private func render() {
         guard let suggestion else { return }
-        let title = Places.displayName(suggestion.url)
         let text = NSMutableAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor,
         ])

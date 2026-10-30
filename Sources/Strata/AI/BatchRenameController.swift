@@ -37,7 +37,7 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
 
     /// `urls` in the order the window shows them, which is the order they're numbered in.
-    init(urls: [URL], baseFolder: URL, undo: UndoManager?, copies: CopyProviders = .live, history: OperationLog = .shared) {
+    init(urls: [URL], baseFolder: URL, undo: UndoManager?, copies: CopyProviders, history: OperationLog = .shared) {
         self.urls = urls
         self.baseFolder = baseFolder
         self.undo = undo

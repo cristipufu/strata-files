@@ -89,7 +89,7 @@ struct ProviderFetchTests {
             preferences.showIconPreviews = false
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
@@ -118,7 +118,7 @@ struct ProviderFetchTests {
 
     @Test func cancellingFromTheStartNotificationPreventsTheCompletionAction() async {
         var actions = 0, completions = 0
-        let job = CopyFetchJob([]) { actions += 1 }
+        let job = CopyFetchJob([], copies: .live) { actions += 1 }
         job.onChange = { job in if job.state == .running { job.cancel() } }
         job.onFinish = { _ in completions += 1 }
         job.start()

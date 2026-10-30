@@ -12,7 +12,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     /// The folder shown; background drops go into it.
     var directory: URL?
 
-    init(thumbnails: FileThumbnails = .shared, copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
+    init(thumbnails: FileThumbnails = .shared, copies: CopyProviders, clipboard: Clipboard = .shared) {
         self.thumbnails = thumbnails
         self.copies = copies
         self.clipboard = clipboard

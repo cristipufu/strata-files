@@ -99,9 +99,9 @@ struct ColorThemeTests {
         #expect(browser.outlineView(browser.outlineView, rowViewForItem: FileNode(entry: entry)) is ThemeRowView)
 
         let scroll = NSScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences)
+        let columns = ColumnBrowserViewController(scrollView: scroll, preferences: preferences, copies: .live)
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("a/b/c/note.txt")])
         let strip = try #require(scroll.documentView)
         for _ in 0..<100 {

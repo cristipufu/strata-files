@@ -117,7 +117,7 @@ struct ProviderThumbnailInfoTests {
             let state = tree.url("state/\(UUID().uuidString)")
             let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
@@ -334,7 +334,7 @@ struct ProviderThumbnailInfoTests {
 
         // Releasing the loader cancels its outstanding task without retaining it.
         let releaseReads = Reads(held: true)
-        var loader: ItemInfoLoader? = ItemInfoLoader(mediaReader: { await releaseReads.read($0) })
+        var loader: ItemInfoLoader? = ItemInfoLoader(copies: .live, mediaReader: { await releaseReads.read($0) })
         weak let released = loader
         _ = loader?.request(entry, showHidden: false) { _ in Issue.record("Released loader must not publish") }
         let task = try #require(loader?.tasks.values.first)

@@ -32,7 +32,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let field = NSTextField()
     private(set) var isEditing = false
     private let suggestions: PathSuggestions
-    private let suggestionList = PathSuggestionList()
+    private let suggestionList: PathSuggestionList
     private var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
     private let names: FolderNames
@@ -53,6 +53,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         self.copies = copies
         self.names = names
         self.embedded = embedded
+        suggestionList = PathSuggestionList(copies: copies, names: names)
         suggestions = PathSuggestions(preferences: preferences, places: places)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false

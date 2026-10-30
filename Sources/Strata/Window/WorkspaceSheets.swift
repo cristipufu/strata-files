@@ -29,7 +29,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         hint.textColor = .secondaryLabelColor
 
         name.placeholderString = String(localized: "Name", comment: "Placeholder: the new workspace's name")
-        name.stringValue = controllers.first?.groupWorkspaceName ?? controllers.first.map { Places.displayName($0.location) } ?? ""
+        name.stringValue = controllers.first?.groupWorkspaceName ?? controllers.first.map { Places.displayName($0.location, copies: $0.services.copies) } ?? ""
         name.delegate = self
         name.setAccessibilityLabel(String(localized: "Workspace name"))
 
@@ -120,7 +120,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
             icon.imageScaling = .scaleProportionallyUpOrDown
             icon.widthAnchor.constraint(equalToConstant: 16).isActive = true
             icon.heightAnchor.constraint(equalToConstant: 16).isActive = true
-            let label = NSTextField(labelWithString: Places.displayName(url))
+            let label = NSTextField(labelWithString: Places.displayName(url, copies: controller.services.copies))
             label.lineBreakMode = .byTruncatingMiddle
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let viewMode = BrowserViewMode(rawValue: mode) ?? .list

@@ -476,7 +476,7 @@ struct RemoteFilesTests {
         let picked = [folder.appending(path: "docs"), folder.appending(path: "note.txt"), folder.appending(path: "shortcut")]
         try await files.prepareForCopying(picked)
         let elsewhere = server.appending(path: "note.txt")
-        let staged = LazyCopies.stageForClipboard(picked + [elsewhere])
+        let staged = LazyCopies.stageForClipboard(picked + [elsewhere], copies: .live)
         defer { if let first = staged.first { try? FileManager.default.removeItem(at: first.deletingLastPathComponent()) } }
         // The link chosen on its own is left out; what isn't in a copy is itself.
         #expect(staged.map(\.lastPathComponent) == ["docs", "note.txt", "note.txt"])
@@ -489,7 +489,7 @@ struct RemoteFilesTests {
         // Ordinary files: writable, unlike in the copy.
         #expect(FileManager.default.isWritableFile(atPath: docs.appending(path: "inside.txt").path))
         // Nothing to stage: the same items back.
-        #expect(LazyCopies.stageForClipboard([elsewhere]) == [elsewhere])
+        #expect(LazyCopies.stageForClipboard([elsewhere], copies: .live) == [elsewhere])
     }
 
     @Test func mergingOutLeavesWhatWasThereAlone() throws {

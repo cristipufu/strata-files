@@ -233,11 +233,11 @@ struct DiskNow: DropDisk {
 enum FileDrop {
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
-    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders = .live) -> NSDragOperation {
+    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders) -> NSDragOperation {
         sourceMask(mask, session.draggingPasteboard, copies: copies)
     }
 
-    static func sourceMask(_ mask: NSDragOperation, _ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> NSDragOperation {
+    static func sourceMask(_ mask: NSDragOperation, _ pasteboard: NSPasteboard, copies: CopyProviders) -> NSDragOperation {
         let urls = urls(pasteboard, copies: copies)
         // A server's items can also move within that server (a rename there); out of it, they're copied.
         if !urls.isEmpty, urls.allSatisfy({ copies.remoteCopies.server(containing: $0) != nil }) {
@@ -246,12 +246,12 @@ enum FileDrop {
         return urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) ? mask.intersection(.copy) : mask
     }
 
-    static func urls(_ info: NSDraggingInfo, copies: CopyProviders = .live) -> [URL] {
+    static func urls(_ info: NSDraggingInfo, copies: CopyProviders) -> [URL] {
         urls(info.draggingPasteboard, copies: copies)
     }
 
     /// Dragged files, and items of containers' files dragged within Strata.
-    static func urls(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
+    static func urls(_ pasteboard: NSPasteboard, copies: CopyProviders) -> [URL] {
         ((pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
             + containerItems(pasteboard, copies: copies)
     }
@@ -284,7 +284,7 @@ enum FileDrop {
 
     /// What dropping `urls` on `target` would do, while the drag moves: views ask on every move of the pointer, so
     /// what the disk says comes from `DragFacts`.
-    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders = .live) -> NSDragOperation {
+    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders) -> NSDragOperation {
         let option = NSEvent.modifierFlags.contains(.option)
         return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies,
                          disk: DragFacts.of(info))
@@ -292,7 +292,7 @@ enum FileDrop {
 
     /// What dropping `urls` on `target` does, decided from the disk as they're dropped.
     static func dropOperation(_ urls: [URL], into target: URL, info: NSDraggingInfo,
-                              copies: CopyProviders = .live) -> NSDragOperation {
+                              copies: CopyProviders) -> NSDragOperation {
         let option = NSEvent.modifierFlags.contains(.option)
         return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies)
     }
@@ -300,7 +300,7 @@ enum FileDrop {
     /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
     /// or nothing (into itself, back where it is, into a copy that can't change).
     static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool,
-                          copies: CopyProviders = .live, disk: DropDisk = DiskNow()) -> NSDragOperation {
+                          copies: CopyProviders, disk: DropDisk = DiskNow()) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
         if disk.isInside(urls, target) { return [] }

@@ -199,7 +199,7 @@ nonisolated enum DirectoryLoader {
 
     @concurrent
     static func load(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
-                     copies: CopyProviders = .live) async throws -> [FileEntry] {
+                     copies: CopyProviders) async throws -> [FileEntry] {
         // A container's files: list the folder from the container first (every view loads folders here).
         if copies.contains(directory) { await copies.refresh(directory) }
         // Follow a symlink or Finder alias. FileManager will not list the link itself.

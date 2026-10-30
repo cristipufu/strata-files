@@ -48,6 +48,7 @@ final class BrowserViewController: NSViewController {
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
         loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)
         mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
+        outlineView = FileOutlineView(copies: services.copies)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -106,7 +107,7 @@ final class BrowserViewController: NSViewController {
     var columnsMissedIcons = false
     var availableCapacity: Int64? { loading.availableCapacity }
 
-    let outlineView = FileOutlineView()
+    let outlineView: FileOutlineView
     private let scrollView = NSScrollView()
     private let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
@@ -264,7 +265,6 @@ final class BrowserViewController: NSViewController {
         ov.delegate = self
         ov.target = self
         ov.doubleAction = #selector(openSelection(_:))
-        ov.copies = services.copies
         ov.registerForDraggedTypes(FileDrop.types)
         ov.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)

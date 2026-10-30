@@ -39,7 +39,7 @@ struct MediaColumnsTests {
         #expect(await MediaInfo.read(tree.url("broken.jpg"), contentType: .jpeg) == MediaInfo())
         #expect(await MediaInfo.read(tree.url("broken.mov"), contentType: .quickTimeMovie) == MediaInfo())
         #expect(await MediaInfo.read(tree.url("text.txt"), contentType: .plainText) == MediaInfo())
-        #expect(!MediaInfoLoader.canRead(try #require(FileEntry(url: tree.url("link.jpg")))))
+        #expect(!MediaInfoLoader.canRead(try #require(FileEntry(url: tree.url("link.jpg"))), copies: .live))
         #expect(MediaInfo(duration: .infinity).durationText == nil)
         #expect(MediaInfo(duration: -1).durationText == nil)
         #expect(MediaInfo(duration: 3661).durationText == "1:01:01")

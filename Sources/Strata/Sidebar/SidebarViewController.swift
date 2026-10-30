@@ -791,7 +791,7 @@ extension SidebarViewController: NSMenuDelegate {
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
     /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
-    static func canTrash(_ urls: [URL], copies: CopyProviders = .live) -> Bool {
+    static func canTrash(_ urls: [URL], copies: CopyProviders) -> Bool {
         !urls.isEmpty && !urls.contains { url in
             !FileOps.canTrash(url, copies: copies) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
         }

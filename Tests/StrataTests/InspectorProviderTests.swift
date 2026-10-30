@@ -89,7 +89,7 @@ struct InspectorProviderTests {
                 ? CopyProviders(servers: remote.files, containers: .shared)
                 : CopyProviders(extraProviders, remoteCopies: remote.copies)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,

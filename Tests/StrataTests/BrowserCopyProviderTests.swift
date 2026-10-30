@@ -219,7 +219,7 @@ struct BrowserCopyProviderTests {
                 caches: tree.url(folder + "/state/Caches"),
                 key: nil
             )
-            history = OperationLog(storage: storage)
+            history = OperationLog(storage: storage, copies: .live)
             let serverStorage = tree.url(folder + "/remote-storage")
             try FileManager.default.createDirectory(at: serverStorage, withIntermediateDirectories: true)
             backend = DiskRemoteBackend(root: serverStorage)

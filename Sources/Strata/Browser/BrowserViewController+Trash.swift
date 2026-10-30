@@ -63,7 +63,7 @@ extension BrowserViewController {
     /// Asks, then deletes `urls` for good (see `deletionPlan`): everything it may delete is tried, and whatever couldn't
     /// be deleted is listed. `noTrash`: they were headed for the Trash, but their disk has none.
     static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false,
-                              copies: CopyProviders = .live, then done: @escaping () -> Void) {
+                              copies: CopyProviders, then done: @escaping () -> Void) {
         let plan = deletionPlan(urls, copies: copies)
         let (candidates, refused) = (plan.candidates, plan.refused)
         guard let first = candidates.first else {
@@ -117,7 +117,7 @@ extension BrowserViewController {
         let choices: [DeletionRequest]
     }
 
-    static func deletionPlan(_ urls: [URL], copies: CopyProviders = .live) -> DeletionPlan {
+    static func deletionPlan(_ urls: [URL], copies: CopyProviders) -> DeletionPlan {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
             // A Trash is emptied, never deleted itself.

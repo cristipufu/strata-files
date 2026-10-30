@@ -13,7 +13,7 @@ struct CreatedFolderOwnershipTests {
             let preferences = try Prefs.isolated()
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                             key: SymmetricKey(data: Data(repeating: 7, count: 32)))
-            history = OperationLog(storage: storage)
+            history = OperationLog(storage: storage, copies: .live)
             queue = TransferQueue(preferences: preferences, history: history)
         }
     }
@@ -52,7 +52,7 @@ struct CreatedFolderOwnershipTests {
             #expect(decisions == 1 && job.failures.isEmpty)
             if !duringJob { try replace() }
             if history {
-                let reopened = OperationLog(storage: env.storage)
+                let reopened = OperationLog(storage: env.storage, copies: .live)
                 let entry = try #require(reopened.entries.first)
                 try await reopened.undo(entry, undoManager: nil)
             } else {
@@ -111,10 +111,10 @@ struct CreatedFolderOwnershipTests {
             undo.redo()
             await FileOps.undoWork?.value
             #expect(tree.snapshot() == atDestination)
-            let saved = try #require(OperationLog(storage: env.storage).entries.first)
+            let saved = try #require(OperationLog(storage: env.storage, copies: .live).entries.first)
             #expect(saved.identities[tree.url("made/inner").path] == OperationLog.identity(tree.url("made/inner").path))
         }
-        let history = OperationLog(storage: env.storage)
+        let history = OperationLog(storage: env.storage, copies: .live)
         let saved = try #require(history.entries.first)
         let historyUndo = UndoManager()
         historyUndo.groupsByEvent = false
@@ -126,7 +126,7 @@ struct CreatedFolderOwnershipTests {
             historyUndo.undo()
             await FileOps.undoWork?.value
             #expect(tree.snapshot() == atDestination)
-            let fresh = try #require(OperationLog(storage: env.storage).entries.first)
+            let fresh = try #require(OperationLog(storage: env.storage, copies: .live).entries.first)
             #expect(fresh.identities[tree.url("made/inner").path] == OperationLog.identity(tree.url("made/inner").path))
             historyUndo.redo()
             await FileOps.undoWork?.value
@@ -145,7 +145,7 @@ struct CreatedFolderOwnershipTests {
                                      containers: [tree.url("made").path])
         #expect(old.identities[tree.url("made").path] == nil)
         try env.storage.write(JSONEncoder().encode([old]), to: env.storage.url("history.sealed"))
-        let history = OperationLog(storage: env.storage)
+        let history = OperationLog(storage: env.storage, copies: .live)
         try await history.undo(try #require(history.entries.first), undoManager: nil)
         #expect(tree.text("a.txt") == "made/a.txt" && tree.text("neighbor/keep") == "neighbor/keep")
         #expect(tree.snapshot() == ["a.txt", "made/", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])

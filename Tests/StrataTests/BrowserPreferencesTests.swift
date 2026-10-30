@@ -14,7 +14,7 @@ struct BrowserPreferencesTests {
             preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil), copies: .live)),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,
@@ -162,7 +162,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(preferences: env.preferences)
+        let columns = ColumnBrowserViewController(preferences: env.preferences, copies: .live)
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false

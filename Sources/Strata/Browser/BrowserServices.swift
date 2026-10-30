@@ -22,7 +22,8 @@ final class BrowserServices {
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
         let containers = containers ?? ContainerFiles(copies: ContainerCopyStore(root: storage.caches.appending(path: "Containers")))
         let copies = CopyProviders(servers: remote.files, containers: containers)
-        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
+        let history = OperationLog(storage: storage, copies: copies)
+        let transfers = TransferQueue(preferences: preferences, history: history, copies: copies)
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
                           directories: directories, mediaReader: mediaReader)

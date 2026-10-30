@@ -52,7 +52,7 @@ struct TrashUndoTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b")], undo: undo)
+        try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b")], undo: undo, copies: .live)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["ab.txt", "d.txt"])
         let trashed = try #require(entry(for: tree))
@@ -68,14 +68,14 @@ struct TrashUndoTests {
     @Test func aLinkGoesToTheTrashNotWhatItPointsTo() async throws {
         let tree = try TestTree("target/", "target/precious.txt", "link -> target")
         defer { tree.removeFromTrash() }
-        try await FileOps.trashInBackground([tree.url("link")], undo: nil)
+        try await FileOps.trashInBackground([tree.url("link")], undo: nil, copies: .live)
         #expect(tree.snapshot() == ["target/", "target/precious.txt"])
     }
 
     @Test func historyUndoBringsBackWhatWasTrashedAndOnlyThat() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt")
         defer { tree.removeFromTrash() }
-        try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil)
+        try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil, copies: .live)
         let trashed = try #require(entry(for: tree))
         let canUndo = OperationLog.shared.canUndo(trashed)
         let details = canUndo ? "" : trashed.pairs.map { pair in
@@ -91,7 +91,7 @@ struct TrashUndoTests {
 
     @Test func undoLeavesAloneWhatTookTheOldPlace() async throws {
         let tree = try TestTree("a.txt")
-        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil)
+        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil, copies: .live)
         let renamed = try #require(entry(for: tree))
         // Something new is saved where the item was: undoing must not move the item over it.
         try Data("new".utf8).write(to: tree.url("a.txt"))
@@ -103,7 +103,7 @@ struct TrashUndoTests {
 
     @Test func undoNeverMovesBackAnItemThatWasSwappedForAnother() async throws {
         let tree = try TestTree("a.txt")
-        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil)
+        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil, copies: .live)
         let renamed = try #require(entry(for: tree))
         // "b.txt" is now a different file: it isn't what the rename left there, so it stays where it is.
         try FileManager.default.removeItem(at: tree.url("b.txt"))
@@ -116,7 +116,7 @@ struct TrashUndoTests {
 
     @Test func historyUndoChecksIdentitiesSavedByOlderVersions() async throws {
         let tree = try TestTree("a.txt")
-        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil)
+        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil, copies: .live)
         var renamed = try #require(entry(for: tree))
         // History saved before volume UUIDs were used recorded each item as "device:inode".
         var info = stat()
@@ -134,7 +134,7 @@ struct TrashUndoTests {
     @Test func undoMovesBackOnlyTheMovedItems() async throws {
         let tree = try TestTree("from/", "from/a.txt", "from/b.txt", "from/stays.txt", "to/", "to/there.txt")
         try await FileOps.move([(from: tree.url("from/a.txt"), to: tree.url("to/a.txt")),
-                                (from: tree.url("from/b.txt"), to: tree.url("to/b.txt"))], actionName: "Move", undo: nil)
+                                (from: tree.url("from/b.txt"), to: tree.url("to/b.txt"))], actionName: "Move", undo: nil, copies: .live)
         #expect(tree.snapshot() == ["from/", "from/stays.txt", "to/", "to/a.txt", "to/b.txt", "to/there.txt"])
         let moved = try #require(entry(for: tree))
         try await OperationLog.shared.undo(moved, undoManager: nil)
@@ -209,7 +209,7 @@ struct TrashUndoTests {
 
     @Test func undoingANewFolderLeavesOneMadeInItsPlace() async throws {
         let tree = try TestTree("keep.txt")
-        let undo = try await undoable { undo in _ = try FileOps.newFolder(in: tree.root, undo: undo) }
+        let undo = try await undoable { undo in _ = try FileOps.newFolder(in: tree.root, undo: undo, copies: .live) }
         let made = try #require(tree.snapshot().first { $0.hasSuffix("/") })
         try FileManager.default.removeItem(at: tree.url(made))
         try FileManager.default.createDirectory(at: tree.url(made), withIntermediateDirectories: false)
@@ -223,7 +223,7 @@ struct TrashUndoTests {
         let tree = try TestTree("a.txt", "c.txt")
         let undo = try await undoable { undo in
             try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt")), (from: tree.url("c.txt"), to: tree.url("d.txt"))],
-                                   actionName: "Rename", undo: undo)
+                                   actionName: "Rename", undo: undo, copies: .live)
         }
         try swap(tree, "b.txt")
         undo.undo()
@@ -241,7 +241,7 @@ struct TrashUndoTests {
     @Test func undoAndRedoPressedAtOnceHappenInOrder() async throws {
         let tree = try TestTree("a.txt", "c.txt")
         let undo = try await undoable { undo in
-            try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: undo)
+            try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: undo, copies: .live)
         }
         // Each waits for the one before: undone, redone, undone again.
         undo.undo()
@@ -260,7 +260,7 @@ struct TrashUndoTests {
         undo.groupsByEvent = false
         for (from, to) in [("a.txt", "b.txt"), ("b.txt", "c.txt")] {
             undo.beginUndoGrouping()
-            try await FileOps.move([(from: tree.url(from), to: tree.url(to))], actionName: "Rename", undo: undo)
+            try await FileOps.move([(from: tree.url(from), to: tree.url(to))], actionName: "Rename", undo: undo, copies: .live)
             undo.endUndoGrouping()
         }
         // The second undo finds the item where the first one puts it back.

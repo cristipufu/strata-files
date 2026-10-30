@@ -15,7 +15,7 @@ struct TransferContextTests {
             preferences = try Prefs.isolated()
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                              key: SymmetricKey(data: Data(repeating: 9, count: 32)))
-            history = OperationLog(storage: storage)
+            history = OperationLog(storage: storage, copies: .live)
             queue = TransferQueue(preferences: preferences, history: history)
         }
     }
@@ -61,11 +61,11 @@ struct TransferContextTests {
         for _ in 0..<3 {
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+            #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
             #expect(tree.snapshot() == restored)
             undo.redo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: env.storage).entries.first?.undone == false)
+            #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == false)
             #expect(tree.snapshot() == moved)
         }
         #expect(!OperationLog.shared.entries.contains { $0.id == id })
@@ -141,7 +141,7 @@ struct TransferContextTests {
         #expect(extract.state == .finished, "\(extract.errorMessage ?? "No extraction error reported")")
         #expect(env.history.entries.count == 2)
         let ids = Set(env.history.entries.map(\.id))
-        #expect(Set(OperationLog(storage: env.storage).entries.map(\.id)) == ids)
+        #expect(Set(OperationLog(storage: env.storage, copies: .live).entries.map(\.id)) == ids)
         #expect(!OperationLog.shared.entries.contains { ids.contains($0.id) })
         #expect(tree.text("out/source/a.txt") == "source/a.txt")
         #expect(tree.snapshot() == ["ab.txt", "out/", "out/source/", "out/source/a.txt", "source.zip", "source/", "source/a.txt", "state/", "state/Caches/", "state/history.sealed"].sorted())
@@ -441,7 +441,7 @@ struct TransferContextTests {
     }
 
     private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> CopyFetchJob {
-        CopyFetchJob([]) {
+        CopyFetchJob([], copies: .live) {
             _ = browser.isLoaded
             then()
         }

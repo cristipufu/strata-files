@@ -9,7 +9,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     let clipboard: Clipboard
 
     init(preferences: Prefs, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared,
-         copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
+         copies: CopyProviders, clipboard: Clipboard = .shared) {
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo

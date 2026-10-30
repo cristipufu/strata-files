@@ -97,7 +97,7 @@ struct FolderSyncTests {
         })
         let plan = FolderCompare.syncPlan(result.differences, actions: actions, left: tree.url("left"), right: tree.url("right"))
         // What Sync does: extras to the Trash first, then the copies, replacing what they meet.
-        try await FileOps.trashInBackground(plan.trashLeft + plan.trashRight, undo: nil)
+        try await FileOps.trashInBackground(plan.trashLeft + plan.trashRight, undo: nil, copies: .live)
         let job = TransferQueue.shared.enqueue(moves: plan.toRight, destination: tree.url("right"), mode: .copy,
                                                options: .init(verify: true, clone: false), undo: nil, conflicts: .replace)
         await job.finished()
