@@ -135,7 +135,7 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
                 } else if let share = workspace.share(for: path), !exists(share.mountPoint) {
                     pane.waiting = WaitingFolder(path: path, mode: mode, mountPoint: share.mountPoint, address: share.address)
                     shares[share.mountPoint] = share.address
-                } else if let volume = Self.volume(of: path), !exists(volume) {
+                } else if let volume = DiskOfPath.volume(of: path), !exists(volume) {
                     pane.waiting = WaitingFolder(path: path, mode: mode)
                     offline.append(path)
                 } else {
@@ -149,13 +149,6 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
                 tabs.append(panes)
             }
         }
-    }
-
-    /// The disk `path` is on when it's one under /Volumes ("/Volumes/Backup" for "/Volumes/Backup/2026").
-    static func volume(of path: String) -> String? {
-        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
-        guard parts.count >= 2, parts[0] == "Volumes" else { return nil }
-        return "/Volumes/" + parts[1]
     }
 
     /// Where a folder on a share is now that the share is mounted at `mountedAt` (macOS may pick another mount point,

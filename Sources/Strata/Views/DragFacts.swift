@@ -57,7 +57,7 @@ final class DragFacts: DropDisk {
     func sameVolume(_ a: URL, _ b: URL) -> Bool {
         let first = fact(a.path), second = fact(b.path)
         guard let first, let second else {
-            return BatchedReads<Fact>.disk(of: a.standardized.path) == BatchedReads<Fact>.disk(of: b.standardized.path)
+            return DiskOfPath.of(a.standardized.path) == DiskOfPath.of(b.standardized.path)
         }
         return first.device != nil && first.device == second.device
     }

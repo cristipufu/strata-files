@@ -369,6 +369,8 @@ final class BrowserViewController: NSViewController {
             cancelPendingActions()
             deferredApply = nil
             cancelFiltering()
+            resortWork?.cancel()
+            resortWork = nil
             listing.setFilter("")
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()

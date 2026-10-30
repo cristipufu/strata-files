@@ -452,7 +452,7 @@ extension BrowserViewController {
     @objc func iconsLoaded(_ notification: Notification) {
         guard let paths = notification.userInfo?["paths"] as? Set<String>,
               paths.contains(where: { listing.node(for: URL(fileURLWithPath: $0, isDirectory: false)) != nil })
-                || effectiveMode == .columns && columnController?.showsAny(of: paths) == true else { return }
+                || columnController?.showsAny(of: paths) == true else { return }
         reloadVisibleCells()
     }
 

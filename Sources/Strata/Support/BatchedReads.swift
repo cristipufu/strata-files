@@ -1,9 +1,9 @@
 import Foundation
 
 /// Reads asked for while views draw, made together away from the main thread and handed to `arrived` on it. A path
-/// being read isn't read again meanwhile. Each disk has one batch at a time, on a thread of its own (`OwnThread`): one
-/// that hangs on a server that stopped answering holds up only that server's paths, and the threads stay as few as
-/// the disks.
+/// being read isn't read again meanwhile. Each disk (`DiskOfPath`) has one batch at a time, on a thread of its own
+/// (`OwnThread`): one that hangs on a server that stopped answering holds up only that server's paths, and the threads
+/// stay as few as the disks.
 package final class BatchedReads<Value: Sendable> {
     private let read: @Sendable ([String]) -> [String: Value]
     private let arrived: ([String: Value]) -> Void
@@ -21,7 +21,7 @@ package final class BatchedReads<Value: Sendable> {
     /// Asks for `path`'s value, once while it's being read: with the others asked for until this run of drawing ends.
     package func request(_ path: String) {
         guard reading.insert(path).inserted else { return }
-        waiting[Self.disk(of: path), default: []].append(path)
+        waiting[DiskOfPath.of(path), default: []].append(path)
         guard collecting == nil else { return }
         collecting = Task { [weak self] in
             await Task.yield()
@@ -54,11 +54,5 @@ package final class BatchedReads<Value: Sendable> {
             arrived(values)
             readWaiting(on: disk)
         }
-    }
-
-    /// The disk a path is on, by what it says: one under /Volumes is that disk's, anything else the startup disk's.
-    package static func disk(of path: String) -> String {
-        let parts = path.split(separator: "/", maxSplits: 2)
-        return parts.count > 1 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
     }
 }

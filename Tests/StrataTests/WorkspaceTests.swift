@@ -88,10 +88,21 @@ struct WorkspaceTests {
     }
 
     @Test func volumeOfAPath() {
-        #expect(WorkspacePlan.volume(of: "/Volumes/Backup/2026") == "/Volumes/Backup")
-        #expect(WorkspacePlan.volume(of: "/Volumes/Backup") == "/Volumes/Backup")
-        #expect(WorkspacePlan.volume(of: "/Volumes") == nil)
-        #expect(WorkspacePlan.volume(of: "/Users/me") == nil)
+        #expect(DiskOfPath.volume(of: "/Volumes/Backup/2026") == "/Volumes/Backup")
+        #expect(DiskOfPath.volume(of: "/Volumes/Backup") == "/Volumes/Backup")
+        #expect(DiskOfPath.volume(of: "/Volumes") == nil)
+        #expect(DiskOfPath.volume(of: "/Users/me") == nil)
+    }
+
+    /// Reads are kept apart by disk, and a cloud storage folder answers through its own provider, so it counts as one.
+    @Test func diskOfAPath() {
+        #expect(DiskOfPath.of("/Volumes/Share/a/b") == "/Volumes/Share")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/OneDrive-Work/Docs/a.docx")
+            == "/Users/me/Library/CloudStorage/OneDrive-Work")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Dropbox") == "/Users/me/Library/CloudStorage/Dropbox")
+        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/com~apple~CloudDocs/a")
+            == "/Users/me/Library/Mobile Documents/com~apple~CloudDocs")
+        #expect(DiskOfPath.of("/Users/me/Documents/a") == "/" && DiskOfPath.of("/Volumes") == "/")
     }
 
     @Test func theInnermostShareWins() {
