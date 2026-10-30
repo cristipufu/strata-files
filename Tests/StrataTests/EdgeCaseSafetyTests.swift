@@ -308,7 +308,7 @@ struct EdgeCaseSafetyTests {
         let tree = try TestTree("doc.txt", "replacement.txt")
         let doc = tree.url("doc.txt")
         let replacement = tree.url("replacement.txt")
-        let store = TagStore()
+        let store = TagStore(preferences: try Prefs.isolated())
         defer { store.forget("Strata Edge Test") }
         // Tags are read in the background: what's there once that read is done.
         func current(_ url: URL) async -> [String] {

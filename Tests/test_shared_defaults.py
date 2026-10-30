@@ -22,7 +22,8 @@ class SharedDefaultsAuditTests(unittest.TestCase):
     def test_defaults_falling_back_to_app_wide_instances_need_review(self):
         for code in ["init(preferences: Prefs = .shared) {}", "func copy(copies: CopyProviders = .live) {}",
                      "var thumbnails: FileThumbnails = .shared", "init(budget: FolderWatchers.Budget = .shared) {}",
-                     "init(history: OperationLog = OperationLog.shared) {}", "var store: ContainerStore? = .shared"]:
+                     "init(history: OperationLog = OperationLog.shared) {}", "var store: ContainerStore? = .shared",
+                     "init(preferences: UserDefaults = Prefs.shared.defaults) {}"]:
             issues = self.check(f"final class Pane {{\n    {code}\n}}\n")
             self.assertTrue(any("Falls back to" in issue for issue in issues), code)
 

@@ -2,7 +2,7 @@ import Foundation
 
 /// Remembers which folders you visit, ranked by frequency weighted toward recent visits (like `zoxide`).
 final class Frecency {
-    static let shared = Frecency()
+    static let shared = Frecency(preferences: Prefs.shared.defaults)
 
     private struct Visit: Codable {
         var count: Double
@@ -14,7 +14,7 @@ final class Frecency {
     private let now: () -> Date
     private var visits: [String: Visit] = [:]
 
-    init(preferences: UserDefaults = Prefs.shared.defaults, now: @escaping () -> Date = Date.init) {
+    init(preferences: UserDefaults, now: @escaping () -> Date = Date.init) {
         self.preferences = preferences
         self.now = now
         if let data = preferences.data(forKey: key),

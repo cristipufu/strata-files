@@ -4,10 +4,10 @@ import AppKit
 /// when several commands share one), its built-in shortcut is remembered, and your choices are applied over the menu
 /// at launch and whenever they change. The palette and the Shortcuts window show the live keys.
 final class ShortcutStore {
-    static let shared = ShortcutStore()
+    static let shared = ShortcutStore(preferences: Prefs.shared.defaults)
     private let preferences: UserDefaults
 
-    init(preferences: UserDefaults = Prefs.shared.defaults) {
+    init(preferences: UserDefaults) {
         self.preferences = preferences
     }
 

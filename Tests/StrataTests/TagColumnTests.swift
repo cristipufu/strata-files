@@ -15,7 +15,7 @@ struct TagColumnTests {
 
     @Test func invalidationKeepsLastKnownSortValuesUntilFreshTagsArrive() async throws {
         let tree = try TestTree("folder/a")
-        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore()
+        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore(preferences: try Prefs.isolated())
         try write(["Alpha"], to: entry.url)
         await store.load([entry], in: tree.url("folder")).value
         store.invalidate(tree.root)
@@ -38,7 +38,7 @@ struct TagColumnTests {
     /// A read that began before a tag change keeps nothing: what it read may be what the change replaced.
     @Test func aReadFromBeforeAChangeKeepsNothing() async throws {
         let tree = try TestTree("folder/a")
-        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore()
+        let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore(preferences: try Prefs.isolated())
         try write(["Red"], to: entry.url)
         let reading = store.load([entry], in: tree.url("folder"))
         try store.update([entry.url], adding: ["Blue"], removing: [], undo: nil)
@@ -68,7 +68,7 @@ struct TagColumnTests {
     @Test func readingTagsThatChangeNothingRedrawsNothing() async throws {
         let tree = try TestTree("plain", "tagged")
         try write(["Read Later"], to: tree.url("tagged"))
-        let store = TagStore()
+        let store = TagStore(preferences: try Prefs.isolated())
         let notices = OSAllocatedUnfairLock(initialState: 0)
         let observer = NotificationCenter.default.addObserver(forName: .tagsLoaded, object: store, queue: nil) { _ in
             notices.withLock { $0 += 1 }

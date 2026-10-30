@@ -19,7 +19,10 @@ from swift_source import code_only  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT = re.compile(r":\s*([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\??\s*=\s*(?:\1)?\.(shared|live)\b")
+DEFAULT = re.compile(r":\s*[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*\??\s*=\s*"
+                     r"((?:[A-Z][A-Za-z0-9]*)?(?:\.[A-Z][A-Za-z0-9]*)*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
+# The system's own (NSWorkspace, QLThumbnailGenerator…) aren't an environment's to pass.
+SYSTEM = re.compile(r"^(?:NS|QL|UN|CG|CF|AV|SC|Sec)[A-Z]")
 
 
 def findings(source):
@@ -28,7 +31,10 @@ def findings(source):
     found = []
     for match in DEFAULT.finditer(code):
         line = code.count("\n", 0, match.start()) + 1
-        found.append((line, f"{match.group(1)}.{match.group(2)}", original[line - 1].strip()))
+        owner = match.group(1) or re.search(r":\s*([A-Z][A-Za-z0-9.]*?)\??\s*=", match.group(0)).group(1)
+        if SYSTEM.match(owner):
+            continue
+        found.append((line, f"{owner}.{match.group(2)}{match.group(3)}", original[line - 1].strip()))
     return found
 
 
