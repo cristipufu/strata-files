@@ -19,6 +19,18 @@ nonisolated package enum DisplayText {
         return String(shown)
     }
 
+    /// The start of a title a file gives that a native menu or label shows quickly however long the title is: at most
+    /// 1200 bytes, ending between scalars, so a run of combining marks is cut too.
+    package static func label(_ text: String) -> String {
+        var bytes = 0, kept = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            bytes += UTF8.width(scalar)
+            guard bytes <= 1200 else { break }
+            kept.append(scalar)
+        }
+        return String(kept)
+    }
+
     /// The zero-width non-joiner and joiner, and the tags flag emoji spell regions with.
     private static func kept(_ scalar: Unicode.Scalar) -> Bool {
         [0x200C, 0x200D].contains(scalar.value) || (0xE0020...0xE007F).contains(scalar.value)

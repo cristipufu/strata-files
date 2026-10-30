@@ -13,4 +13,14 @@ struct DisplayTextTests {
             + "\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}"
         #expect(DisplayText.oneLine(kept) == kept)
     }
+
+    @Test func aLabelStopsAtItsBytesBetweenScalars() {
+        // A run of combining marks is cut too, never through a scalar.
+        let marks = DisplayText.label("A" + String(repeating: "\u{301}", count: 2000))
+        #expect(marks.utf8.count == 1199 && marks.unicodeScalars.first == "A")
+        let faces = String(repeating: "\u{1F600}", count: 400)
+        #expect(DisplayText.label(faces) == String(faces.prefix(300)))
+        #expect(DisplayText.label(String(repeating: "x", count: 1200)).count == 1200)
+        #expect(DisplayText.label("Short") == "Short")
+    }
 }

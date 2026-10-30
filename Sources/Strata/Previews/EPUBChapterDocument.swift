@@ -1,5 +1,4 @@
 import Foundation
-import ImageIO
 
 /// An EPUB chapter uses the same offline WebKit boundary as an HTML file, without unpacking onto disk.
 package actor EPUBChapterDocument {
@@ -83,24 +82,13 @@ package actor EPUBChapterDocument {
         let resource: HTMLPreviewResource
         if chapter || css {
             guard let text = TextFile.decode(data) else { throw PreviewError.unsupported }
-            let prefix = chapter ? "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"\(HTMLPreviewDocument.policy)\"><meta http-equiv=\"x-dns-prefetch-control\" content=\"off\">" : ""
+            let prefix = chapter ? HTMLPreviewDocument.head : ""
             let output = Data((prefix + (chapter ? HTMLPreviewMarkup.prepare(text) + Self.readingStyle : text)).utf8)
             guard output.count - data.count <= remaining else { throw PreviewError.unsupported }
             remaining -= max(0, output.count - data.count)
             resource = HTMLPreviewResource(data: output, mime: chapter ? "text/html; charset=utf-8" : "text/css; charset=utf-8")
         } else {
-            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-                  let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                  let width = info[kCGImagePropertyPixelWidth] as? Int, let height = info[kCGImagePropertyPixelHeight] as? Int,
-                  width > 0, height > 0, width <= pixels / height else { throw PreviewError.unsupported }
-            pixels -= width * height
-            let image = try BookFormat.thumbnail(data, pixels: 2048)
-            let output = NSMutableData()
-            guard let writer = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else { throw PreviewError.unsupported }
-            CGImageDestinationAddImage(writer, image, nil)
-            guard CGImageDestinationFinalize(writer), output.length <= remaining else { throw PreviewError.unsupported }
-            remaining -= output.length
-            resource = HTMLPreviewResource(data: output as Data, mime: "image/png")
+            resource = try HTMLPreviewResource.picture(data, pixels: &pixels, bytes: &remaining)
         }
         try Task.checkCancellation()
         try book.source.verify(file)

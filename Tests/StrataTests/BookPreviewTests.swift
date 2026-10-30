@@ -131,7 +131,7 @@ struct BookPreviewTests {
             #expect(throws: (any Error).self) { try BookXML.parse(Data(xml.utf8)) }
         }
         #expect(try BookXML.parse(Data("<package><title>Café 漫画</title></package>".utf8)).children.first?.text == "Café 漫画")
-        #expect(throws: (any Error).self) { try BookFormat.thumbnail(Data("not an image".utf8), pixels: 64) }
+        #expect(throws: PreviewError.self) { try PreviewPicture(Data("not an image".utf8)) }
     }
 
     @Test func ordinaryNavigationDoctypesPreserveTheBooksChapterTitles() async throws {
@@ -157,7 +157,9 @@ struct BookPreviewTests {
         let title = "A" + String(repeating: "\u{301}", count: 2000)
         let url = try epub(tree, chapterTitle: title)
         let book = try await EPUBBook.open(PreviewArchiveSource(url))
-        let displayed = try #require(book.chapters.first?.title)
+        let header = PreviewContentsHeader(name: "book")
+        header.show(book)
+        let displayed = try #require(header.contents.itemTitles.first)
         #expect(!displayed.isEmpty && displayed.utf8.count <= 1200)
         #expect(!displayed.contains("\u{fffd}"))
         #expect(tree.snapshot() == ["book.epub", "sibling"] && tree.text("sibling") == "sibling")
@@ -166,24 +168,24 @@ struct BookPreviewTests {
     @Test func nativeContentsKeepsDuplicateTitlesAndTheirSpinePositions() async throws {
         let tree = try TestTree("book.epub", "sibling")
         let book = try await EPUBBook.open(PreviewArchiveSource(epub(tree, chapterTitle: "Notes", secondChapterTitle: "Notes")))
-        let header = EPUBPreviewHeader(name: "book")
+        let header = PreviewContentsHeader(name: "book")
         header.frame = NSRect(x: 0, y: 0, width: 280, height: 88)
         header.show(book); header.layoutSubtreeIfNeeded()
-        #expect(header.chapters.itemTitles == ["Notes", "Notes"])
-        #expect(header.chapters.itemArray.map(\.tag) == [0, 1])
+        #expect(header.contents.itemTitles == ["Notes", "Notes"])
+        #expect(header.contents.itemArray.map(\.tag) == [0, 1])
         var choices: [Int] = []
         header.onSelect = { choices.append($0) }
-        header.chapters.menu?.performActionForItem(at: 1)
+        header.contents.menu?.performActionForItem(at: 1)
         #expect(choices == [1])
-        #expect(header.selectedChapter == 1 && header.chapters.selectedItem?.tag == 1)
+        #expect(header.selected == 1 && header.contents.selectedItem?.tag == 1)
         #expect(header.position.stringValue == "2 / 2")
         #expect(header.navigation.isEnabled(forSegment: 0) && !header.navigation.isEnabled(forSegment: 1))
         #expect(header.frame.contains(header.convert(header.navigation.bounds, from: header.navigation)))
-        #expect(header.title.stringValue == "A & B" && header.author.stringValue == "Ana, Ion")
+        #expect(header.title.stringValue == "A & B" && header.subtitle.stringValue == "Ana, Ion")
         for width in [280.0, 1000.0] {
             header.setFrameSize(NSSize(width: width, height: 88)); header.layoutSubtreeIfNeeded()
             let title = header.convert(header.title.bounds, from: header.title)
-            let author = header.convert(header.author.bounds, from: header.author)
+            let author = header.convert(header.subtitle.bounds, from: header.subtitle)
             #expect((10...16).contains(title.minX) && abs(author.minX - title.minX) < 1)
             #expect(title.maxX <= width - 12 && author.maxX <= width - 12)
         }
@@ -252,7 +254,8 @@ struct BookPreviewTests {
         let url = try epub(tree), book = try await EPUBBook.open(PreviewArchiveSource(url))
         let (events, signal) = AsyncStream<Int>.makeStream()
         let gate = EPUBBookLoadGate(started: signal)
-        let view = EPUBPreviewView(url: url, loader: { _ in try await gate.read() })
+        let view = EPUBPreviewView(url: url, loader: { _ in try await gate.read() },
+                                   timeLimit: HTMLPreviewView.noTimeLimit)
         _ = NSApplication.shared
         func window() -> NSWindow {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
@@ -271,11 +274,11 @@ struct BookPreviewTests {
         }
         #expect(await started.next() == 1)
         await gate.finish(1, book)
-        await view.loadingTask?.value; await view.chapterTask?.value
-        view.forward(); await view.chapterTask?.value
-        #expect(view.chapterIndex == 1)
+        await view.loadingTask?.value; await view.page.task?.value
+        view.forward(); await view.page.task?.value
+        #expect(view.header.selected == 1)
         await gate.finish(0, book); await old.value
-        #expect(view.chapterIndex == 1 && view.webView != nil)
+        #expect(view.header.selected == 1 && view.webView != nil)
         first.close()
         #expect(view.webView != nil)
         second.close(); signal.finish()
@@ -359,22 +362,24 @@ struct BookPreviewTests {
     @Test func epubUsesTheSameNativePreviewInQuickLookAndInspectorAndClosesItsWebSession() async throws {
         let tree = try TestTree("book.epub", "outside/keep")
         let url = try epub(tree)
-        let view = try #require(RichPreview.makeView(for: url, contentType: .epub) as? EPUBPreviewView)
+        #expect(RichPreview.makeView(for: url, contentType: .epub) is EPUBPreviewView)
+        let view = EPUBPreviewView(url: url, timeLimit: HTMLPreviewView.noTimeLimit)
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = view
         await view.loadingTask?.value
-        await view.chapterTask?.value
-        #expect(view.book?.title == "A & B" && view.chapters.numberOfItems == 2)
+        await view.page.task?.value
+        #expect(view.book?.title == "A & B" && view.header.contents.numberOfItems == 2)
         #expect(!view.header.navigation.isEnabled(forSegment: 0) && view.header.navigation.isEnabled(forSegment: 1))
         let web = try #require(view.webView)
         #expect(!web.configuration.defaultWebpagePreferences.allowsContentJavaScript)
         #expect(!web.configuration.websiteDataStore.isPersistent)
-        view.forward(); await view.chapterTask?.value
-        #expect(view.chapters.indexOfSelectedItem == 1 && view.header.navigation.isEnabled(forSegment: 0) && !view.header.navigation.isEnabled(forSegment: 1))
+        view.forward(); await view.page.task?.value
+        #expect(view.header.contents.indexOfSelectedItem == 1 && view.header.navigation.isEnabled(forSegment: 0))
+        #expect(!view.header.navigation.isEnabled(forSegment: 1))
         window.close()
-        #expect(view.webView == nil && view.chapterTask == nil)
+        #expect(view.webView == nil && view.page.task == nil)
         #expect(tree.text("outside/keep") == "outside/keep")
     }
 
@@ -449,7 +454,7 @@ struct BookPreviewTests {
         let (started, signal) = AsyncStream<String>.makeStream()
         let gate = BookCoverReadGate(started: signal)
         let loader = BookCoverThumbnails(reader: { source, _ in try await gate.read(source.chosen.url.lastPathComponent) })
-        let image = try BookFormat.thumbnail(self.image(), pixels: 64)
+        let image = try PreviewPicture(self.image()).thumbnail(pixels: 64)
         let (completed, completionSignal) = AsyncStream<Void>.makeStream()
         var results: [Int] = []
         for (index, name) in ["a.cbz", "b.cbz", "c.cbz"].enumerated() {

@@ -19,6 +19,7 @@ package enum RichPreview {
         case .markdown: MarkdownPreviewView(url: url)
         case .html: HTMLPreviewView(url: url)
         case .epub: EPUBPreviewView(url: url)
+        case .onenote: OneNotePreviewView(url: url)
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator)
         case .sqlite: SQLitePreviewView(url: url)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
@@ -35,6 +36,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case markdown
     case html
     case epub
+    case onenote
     /// CSV/TSV; a nil separator is detected from the content.
     case delimited(separator: UInt8?)
     case sqlite
@@ -46,6 +48,8 @@ nonisolated package enum PreviewFormat: Sendable {
         let ext = url.pathExtension.lowercased()
         if ext == "epub" {
             self = .epub
+        } else if ext == "one" {
+            self = .onenote
         } else if ["html", "htm", "xhtml"].contains(ext) {
             self = .html
         } else if Self.markdownExtensions.contains(ext) {

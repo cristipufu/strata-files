@@ -5234,8 +5234,8 @@
   },
   {
     "file": "Strata/Previews/HTMLWebSession.swift",
-    "find": "if link, [\"https\", \"http\"].contains",
-    "replace": "if [\"https\", \"http\"].contains",
+    "find": "if link, isWebLink(url) { return .external }",
+    "replace": "if isWebLink(url) { return .external }",
     "rule": "HTML preview: automatic navigations never open an external browser",
     "tests": "HTMLPreviewTests/navigationAllowsOnlyInitialDocumentClickedAnchorsAndExplicitWebLinks"
   },
@@ -5494,16 +5494,9 @@
     "tests": "BookPreviewTests/draggingAPreviewedPageKeepsItsReadOnlyCopyAndRejectsOtherRowsAndReplacements"
   },
   {
-    "file": "Strata/Previews/BookArchive.swift",
-    "find": "titles[key] = Self.label(title)",
-    "replace": "titles[key] = title",
-    "rule": "Book previews: chapter labels bound combining sequences before native menu creation",
-    "tests": "BookPreviewTests/chapterTitlesBoundCombiningSequencesBeforeBuildingNativeMenus"
-  },
-  {
-    "file": "Strata/Previews/EPUBPreviewHeader.swift",
-    "find": "chapters.menu?.addItem(item)",
-    "replace": "chapters.addItem(withTitle: chapter.title); chapters.lastItem?.tag = index",
+    "file": "Strata/Previews/PreviewContentsHeader.swift",
+    "find": "contents.menu?.addItem(item)",
+    "replace": "contents.addItem(withTitle: entry.title); contents.lastItem?.tag = index",
     "rule": "Book previews: repeated chapter titles keep all native menu items and spine positions",
     "tests": "BookPreviewTests/nativeContentsKeepsDuplicateTitlesAndTheirSpinePositions"
   },
@@ -5515,9 +5508,9 @@
     "tests": "BookPreviewTests/archiveGridReconfigurationKeepsInFlightAndCachedPageThumbnails"
   },
   {
-    "file": "Strata/Previews/EPUBPreviewView.swift",
-    "find": "if book == nil { openBook() } else { chapterChanged() }",
-    "replace": "if book != nil { chapterChanged() }",
+    "file": "Strata/Previews/PagedPreviewView.swift",
+    "find": "if isOpen { entryChanged() } else { reopen() }",
+    "replace": "if isOpen { entryChanged() }",
     "rule": "Book previews: a detached initial load restarts in its new window",
     "tests": "BookPreviewTests/reattachingDuringTheInitialBookReadRestartsItAndRejectsItsOldCompletion"
   },
@@ -5664,15 +5657,15 @@
   {
     "file": "Strata/Previews/OneNoteSection.swift",
     "rule": "OneNote: one damaged page hides the whole section",
-    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            return nil",
+    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            damaged += 1\n            return nil",
     "replace": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            throw OneStoreError.malformed",
     "tests": "OneNoteReaderTests/aDamagedPageIsLeftOut|OneNoteReaderTests/aDamagedSeriesIsLeftOut"
   },
   {
     "file": "Strata/Previews/OneNoteSection.swift",
     "rule": "OneNote: reaching a limit while listing leaves out the pages after it without a word",
-    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            return nil",
-    "replace": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed, OneStoreError.tooLarge {\n            return nil",
+    "find": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed {\n            damaged += 1\n            return nil",
+    "replace": "    private func damageLeftOut<Value>(_ read: () throws -> Value) throws -> Value? {\n        do {\n            return try read()\n        } catch OneStoreError.malformed, OneStoreError.tooLarge {\n            damaged += 1\n            return nil",
     "tests": "OneNoteReaderTests/eachListingAndEachPageReadHasTheWholeBudgetToItself"
   },
   {
@@ -6074,5 +6067,380 @@
     "find": "        case .arrayOfPropertyValues: try skipArray(depth: depth)",
     "replace": "        case .arrayOfPropertyValues: _ = try data.read(UInt32.self)",
     "tests": "OneNoteReaderTests/referencesInsideNestedSetsAndContextsAreReadPastInOrder"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "OneNote: a page's text is escaped",
+    "find": "            case \"<\": escaped += \"&lt;\"\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/markupEscapesEveryTextAndLinksOnlyToTheWeb"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "OneNote: a quote can't end an attribute",
+    "find": "            case \"\\\"\": escaped += \"&quot;\"\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/markupEscapesEveryTextAndLinksOnlyToTheWeb"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: links go only to the web",
+    "find": ".flatMap { HTMLWebSession.isWebLink($0) ? $0 : nil }",
+    "replace": "",
+    "tests": "OneNotePreviewTests/markupEscapesEveryTextAndLinksOnlyToTheWeb"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a page names no more pictures than its limit",
+    "find": "?? (pictures.count < pictureLimit && accepts(data, isRaster)",
+    "replace": "?? (accepts(data, isRaster)",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: only pictures WebKit can show are handed to it",
+    "find": " && accepts(data, isRaster) ? pictures.count",
+    "replace": " ? pictures.count",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a picture a page shows twice is one request",
+    "find": "let index = pictures.firstIndex(of: data)",
+    "replace": "let index = pictures.lastIndex { _ in false }",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a page's markup stops at its limit",
+    "find": "    private var room: Int { limit - html.utf8.count }",
+    "replace": "    private var room: Int { limit * 4 - html.utf8.count }",
+    "tests": "OneNotePreviewTests/aPageStopsAtItsLimitClosingWhatItOpenedAndSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a paragraph the limit kept out is never closed",
+    "find": "            guard append(\"<p>\") else { return }",
+    "replace": "            append(\"<p>\")",
+    "tests": "OneNotePreviewTests/aPageStopsAtItsLimitClosingWhatItOpenedAndSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a run's formatting the limit kept out is never closed",
+    "find": "        guard append(opening + tags.map { \"<\\($0)>\" }.joined()) else { return }",
+    "replace": "        append(opening + tags.map { \"<\\($0)>\" }.joined())",
+    "tests": "OneNotePreviewTests/aPageStopsAtItsLimitClosingWhatItOpenedAndSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a table the limit kept out is never closed",
+    "find": "            guard append(\"<table>\") else { return }",
+    "replace": "            append(\"<table>\")",
+    "tests": "OneNotePreviewTests/aPageStopsAtItsLimitClosingWhatItOpenedAndSaysSo"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a page is read only from the file as it was chosen",
+    "edits": [
+      {
+        "find": "    package func markup(of page: OneNotePage, pictureLimit: Int, pictureBytes: Int) throws -> OneNotePageMarkup {\n        try source.verify(file)\n",
+        "replace": "    package func markup(of page: OneNotePage, pictureLimit: Int, pictureBytes: Int) throws -> OneNotePageMarkup {\n"
+      },
+      {
+        "find": "        }\n        try source.verify(file)\n        return markup\n",
+        "replace": "        }\n        return markup\n"
+      }
+    ],
+    "tests": "OneNotePreviewTests/aSectionReadsOnlyFromTheFileAsItWasChosen"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a picture is read only from the file as it was chosen",
+    "edits": [
+      {
+        "find": "        guard limit >= 0, data.count <= UInt64(limit) else { throw PreviewError.unsupported }\n        try source.verify(file)\n",
+        "replace": "        guard limit >= 0, data.count <= UInt64(limit) else { throw PreviewError.unsupported }\n"
+      },
+      {
+        "find": "        let bytes = try reader.bytes(of: data)\n        try source.verify(file)\n",
+        "replace": "        let bytes = try reader.bytes(of: data)\n"
+      }
+    ],
+    "tests": "OneNotePreviewTests/aSectionReadsOnlyFromTheFileAsItWasChosen"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a picture past its bytes isn't read",
+    "find": "        guard limit >= 0, data.count <= UInt64(limit) else { throw PreviewError.unsupported }\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a printout's metafile is no picture for WebKit",
+    "find": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) != nil",
+    "replace": "CGImageSourceCreateWithData(bytes as CFData, nil), !bytes.isEmpty",
+    "tests": "OneNotePreviewTests/aPageDocumentServesItsMarkupAndOnlyItsOwnPicturesAsPNGs"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a file that isn't a section goes to Quick Look",
+    "find": "        case .notOneNote: .unsupported",
+    "replace": "        case .notOneNote: .empty",
+    "tests": "OneNotePreviewTests/aSectionOpensAsOneNoteAndAnythingElseNamedSoGoesToQuickLook"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a page that can't be read says so",
+    "find": "        default: Self.unshown",
+    "replace": "        default: super.failure(error)",
+    "tests": "OneNotePreviewTests/aPageThatCantBeShownSaysSoAndTheOthersStillShow|OneNotePreviewTests/aPageThatFailsSaysWhyWhenItKnows"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageDocument.swift",
+    "rule": "OneNote: a picture request names one of the page's pictures exactly",
+    "find": " String(index) == parts[1],",
+    "replace": "",
+    "tests": "OneNotePreviewTests/aPageDocumentServesItsMarkupAndOnlyItsOwnPicturesAsPNGs"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "OneNote: pictures stop at their page's pixels",
+    "find": "        guard picture.width <= pixels / picture.height else { throw PreviewError.unsupported }\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "OneNote: pictures stop at their page's bytes",
+    "find": "guard CGImageDestinationFinalize(writer), output.length <= bytes else",
+    "replace": "guard CGImageDestinationFinalize(writer) else",
+    "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a OneNote page loads more pictures than an HTML page may",
+    "find": "let session = HTMLWebSession(url: document.url, read: document.read, limits: document.limits,",
+    "replace": "let session = HTMLWebSession(url: document.url, read: document.read,",
+    "tests": "OneNotePreviewTests/theViewPagesThroughASectionInOfflineWebKit"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a document shown later replaces one still being made",
+    "find": "                try Task.checkCancellation()\n                guard let self, self.revision == revision else { return }\n                task = nil\n                load(",
+    "replace": "                guard let self else { return }\n                task = nil\n                load(",
+    "tests": "OneNotePreviewTests/aDocumentShownLaterReplacesOneStillBeingMade"
+  },
+  {
+    "file": "Strata/Previews/PreviewContentsHeader.swift",
+    "rule": "Previews: subpages are indented in the contents",
+    "find": "            item.indentationLevel = min(max(entry.level, 0), 15)\n",
+    "replace": "",
+    "tests": "OneNotePreviewTests/theViewPagesThroughASectionInOfflineWebKit"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a section with no pages says so",
+    "find": "            guard !section.pages.isEmpty else {",
+    "replace": "            guard true else {",
+    "tests": "OneNotePreviewTests/whatCantBeShownSaysWhyCalmly"
+  },
+  {
+    "file": "Strata/Support/DisplayText.swift",
+    "rule": "Previews: titles are bounded for native menus",
+    "find": "            guard bytes <= 1200 else { break }\n",
+    "replace": "",
+    "tests": "DisplayTextTests/aLabelStopsAtItsBytesBetweenScalars"
+  },
+  {
+    "file": "Strata/Previews/PreviewContentsHeader.swift",
+    "rule": "Previews: a menu shows the start of a title however long",
+    "find": "            self.title = DisplayText.oneLine(DisplayText.label(title))",
+    "replace": "            self.title = DisplayText.oneLine(title)",
+    "tests": "OneNotePreviewTests/aMenuShowsTheStartOfATitleHoweverLong|BookPreviewTests/chapterTitlesBoundCombiningSequencesBeforeBuildingNativeMenus"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a page that shows outlasts its time limit",
+    "find": "            self?.spinner.stopAnimation(nil)\n            self?.timeout?.cancel(); self?.timeout = nil\n",
+    "replace": "            self?.spinner.stopAnimation(nil)\n",
+    "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a page that doesn't show in time fails",
+    "find": "            if !Task.isCancelled { self?.fail(nil) }",
+    "replace": "            _ = self",
+    "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
+  },
+  {
+    "file": "Strata/Previews/PreviewPicture.swift",
+    "rule": "Previews: a picture refused from its header costs nothing and isn't decoded",
+    "tests": "OneNotePreviewTests/aPictureCostsItsPixelsOnlyOnceDecoded",
+    "find": "              width > 0, height > 0, width <= Self.pixelLimit / height else { throw PreviewError.unsupported }",
+    "replace": "              width > 0, height > 0 else { throw PreviewError.unsupported }"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a picture is looked at once however often a page shows it",
+    "find": "guard !refused.contains(data), refused.count < 4 * pictureLimit else",
+    "replace": "guard refused.count < 4 * pictureLimit else",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageDocument.swift",
+    "rule": "OneNote: WebKit may ask a page for only the pictures it names",
+    "find": "limits = HTMLWebSession.Limits(requests: 2 * (markup.pictures.count + 1),",
+    "replace": "limits = HTMLWebSession.Limits(requests: 2 * (budget.pictures + 1),",
+    "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a page's session takes the page's own limits",
+    "find": "limits: document.limits)",
+    "replace": "limits: .init())",
+    "tests": "OneNotePreviewTests/theViewPagesThroughASectionInOfflineWebKit"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "Previews: a decoded picture costs its pixels even when its PNG doesn't fit",
+    "edits": [
+      {
+        "find": "        pixels -= picture.width * picture.height\n",
+        "replace": ""
+      },
+      {
+        "find": "        bytes -= output.length\n",
+        "replace": "        pixels -= picture.width * picture.height\n        bytes -= output.length\n"
+      }
+    ],
+    "tests": "OneNotePreviewTests/aPictureCostsItsPixelsOnlyOnceDecoded"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a section whose every page is damaged says it couldn't be read",
+    "find": "                if section.damaged > 0 {",
+    "replace": "                if section.damaged > 99 {",
+    "tests": "OneNotePreviewTests/whatCantBeShownSaysWhyCalmly"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSection.swift",
+    "rule": "OneNote: the pages left out as damaged are counted",
+    "find": "            damaged += 1\n",
+    "replace": "",
+    "tests": "OneNoteReaderTests/aDamagedPageIsLeftOutAndTheOthersAreListed"
+  },
+  {
+    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "rule": "Previews: a photo stays a JPEG",
+    "find": "        let type = picture.isJPEG ? UTType.jpeg : .png",
+    "replace": "        let type = UTType.png",
+    "tests": "OneNotePreviewTests/aPictureCostsItsPixelsOnlyOnceDecoded"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a picture's name, however long, leaves the page to the rest",
+    "find": "compactMap { $0.map { DisplayText.oneLine(DisplayText.label($0)) } }",
+    "replace": "compactMap { $0.map { DisplayText.oneLine($0) } }",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a file's name, however long, leaves the page to the rest",
+    "find": "HTMLPreviewMarkup.escaped(DisplayText.label(file.name))",
+    "replace": "HTMLPreviewMarkup.escaped(file.name)",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "rule": "Previews: a closed session lets go of what it reads from",
+    "find": "        onFinish = nil; onFailure = nil; onCommit = nil\n        read = nil\n",
+    "replace": "        onFinish = nil; onFailure = nil; onCommit = nil\n",
+    "tests": "OneNotePreviewTests/aClosedSessionLetsGoOfWhatItReadsFrom"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: every picture ImageIO decodes is shown",
+    "find": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) != nil",
+    "replace": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) as String? == \"public.png\"",
+    "tests": "OneNotePreviewTests/picturesImageIODecodesShowAndAnythingElseIsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageMarkup.swift",
+    "rule": "OneNote: a page stops looking at pictures it can't show past four times what it can",
+    "find": "        guard !refused.contains(data), refused.count < 4 * pictureLimit else { return false }",
+    "replace": "        guard !refused.contains(data) else { return false }",
+    "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
+  },
+  {
+    "file": "Strata/Previews/PreviewWebPage.swift",
+    "rule": "Previews: a page WebKit couldn't show says what its preview says",
+    "find": "            if !Task.isCancelled { self?.fail(nil) }",
+    "replace": "            if !Task.isCancelled { self?.fail(PreviewError.unsupported) }",
+    "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a page with a blank title is untitled",
+    "find": "                    $0.properties.isWhitespace || $0.properties.isDefaultIgnorableCodePoint",
+    "replace": "                    $0.properties.isWhitespace",
+    "tests": "OneNotePreviewTests/theViewPagesThroughASectionInOfflineWebKit"
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a picture past the bytes a page reads is a chip",
+    "find": "            data.count <= UInt64(max(pictureBytes, 0)) && isRaster(data)",
+    "replace": "            isRaster(data)",
+    "tests": "OneNotePreviewTests/picturesImageIODecodesShowAndAnythingElseIsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a page whose section changed says so",
+    "find": "        case let error as POSIXError where error.code == .ESTALE:",
+    "replace": "        case let error as POSIXError where error.code == .EBADF:",
+    "tests": "OneNotePreviewTests/aPageThatFailsSaysWhyWhenItKnows"
+  },
+  {
+    "file": "Strata/Previews/OneNotePageDocument.swift",
+    "rule": "OneNote: a picture that couldn't be made isn't paid for again",
+    "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets",
+    "edits": [
+      {
+        "find": "        guard !refused.contains(index) else { throw PreviewError.unsupported }\n        let data",
+        "replace": "        let data"
+      },
+      {
+        "find": "        if let cached = cache[index] { return cached }\n        guard !refused.contains(index) else { throw PreviewError.unsupported }\n        do {",
+        "replace": "        if let cached = cache[index] { return cached }\n        do {"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Previews/OneNoteSectionFile.swift",
+    "rule": "OneNote: a picture whose header says it's too large is a chip",
+    "find": "        return width <= PreviewPicture.pixelLimit / height",
+    "replace": "        return true",
+    "tests": "OneNotePreviewTests/picturesImageIODecodesShowAndAnythingElseIsAChip"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: pages left out as damaged are mentioned",
+    "find": "            let missing = section.damaged > 0 ?",
+    "replace": "            let missing = section.damaged > 99 ?",
+    "tests": "OneNotePreviewTests/aPageThatCantBeShownSaysSoAndTheOthersStillShow"
+  },
+  {
+    "file": "Strata/Previews/PreviewContentsHeader.swift",
+    "rule": "Previews: a menu shows a title on one line",
+    "find": "            self.title = DisplayText.oneLine(DisplayText.label(title))",
+    "replace": "            self.title = DisplayText.label(title)",
+    "tests": "OneNotePreviewTests/aMenuShowsTheStartOfATitleHoweverLong"
+  },
+  {
+    "file": "Strata/Previews/OneNotePreviewView.swift",
+    "rule": "OneNote: a page that fails says why when it knows",
+    "find": "        case let error as OneStoreError where error == .encrypted || error == .unsupportedVersion:",
+    "replace": "        case let error as OneStoreError where error == .encrypted:",
+    "tests": "OneNotePreviewTests/aPageThatFailsSaysWhyWhenItKnows"
   }
 ]

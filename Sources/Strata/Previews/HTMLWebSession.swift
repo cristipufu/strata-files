@@ -6,21 +6,41 @@ import StrataModel
 @MainActor package final class HTMLWebSession: NSObject, WKURLSchemeHandler, WKNavigationDelegate, WKUIDelegate {
     package enum Navigation: Equatable { case document, anchor, external, refuse }
     package typealias Reader = @Sendable (URL) async throws -> HTMLPreviewResource
+    /// What one document's WebKit lifetime may ask for and be given in all.
+    nonisolated package struct Limits: Sendable {
+        package var requests: Int
+        package var bytes: Int
+        package init(requests: Int = HTMLPreviewDocument.requestLimit,
+                     bytes: Int = 3 * TextFile.limit + HTMLPreviewDocument.assetLimit) {
+            self.requests = requests
+            self.bytes = bytes
+        }
+    }
     private let documentURL: URL
-    private let read: Reader
+    /// Let go of once the session closes, and what it holds with it, such as a file.
+    private var read: Reader?
     private let openLink: (URL) -> Void
     private var requests: [ObjectIdentifier: Task<Void, Never>] = [:]
     package var pendingTasks: [Task<Void, Never>] { Array(requests.values) }
-    private var remainingRequests = HTMLPreviewDocument.requestLimit
-    private var remainingBytes = 3 * TextFile.limit + HTMLPreviewDocument.assetLimit
+    private var remainingRequests: Int
+    private var remainingBytes: Int
     private var initial = true
     private var closed = false
     package var onFinish: (() -> Void)?
     package var onFailure: (() -> Void)?
+    /// When WebKit starts showing the document, before what it asks for besides has come.
+    package var onCommit: (() -> Void)?
     private static var rules: Task<WKContentRuleList, Error>?
 
-    package init(url: URL, read: @escaping Reader, openLink: @escaping (URL) -> Void) {
+    package init(url: URL, read: @escaping Reader, limits: Limits = Limits(), openLink: @escaping (URL) -> Void) {
         documentURL = url; self.read = read; self.openLink = openLink
+        remainingRequests = limits.requests; remainingBytes = limits.bytes
+    }
+
+    /// A link a click may open in the browser: to a web server, naming no account.
+    nonisolated package static func isWebLink(_ url: URL) -> Bool {
+        ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.host?.isEmpty == false && url.user == nil
+            && url.password == nil
     }
 
     isolated deinit { close() }
@@ -59,17 +79,18 @@ import StrataModel
         let pending = requests.values
         requests = [:]
         pending.forEach { $0.cancel() }
-        onFinish = nil; onFailure = nil
+        onFinish = nil; onFailure = nil; onCommit = nil
+        read = nil
     }
 
     package func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
         let key = ObjectIdentifier(urlSchemeTask)
-        guard !closed, let url = urlSchemeTask.request.url, urlSchemeTask.request.httpMethod == "GET" else {
+        guard !closed, let reader = read, let url = urlSchemeTask.request.url, urlSchemeTask.request.httpMethod == "GET"
+        else {
             urlSchemeTask.didFailWithError(URLError(.cancelled)); return
         }
         guard remainingRequests > 0 else { urlSchemeTask.didFailWithError(URLError(.resourceUnavailable)); return }
         remainingRequests -= 1
-        let reader = read
         requests[key] = Task { [weak self] in
             let result: Result<HTMLPreviewResource, Error>
             do { try Task.checkCancellation(); result = .success(try await reader(url)) }
@@ -105,8 +126,7 @@ import StrataModel
     /// Only the first document load and clicked same-document anchors navigate inside this preview.
     package static func navigation(_ url: URL?, document: URL, method: String?, mainFrame: Bool, link: Bool, initial: Bool) -> Navigation {
         guard let url, method == "GET" else { return .refuse }
-        if link, ["https", "http"].contains(url.scheme?.lowercased() ?? ""), url.host?.isEmpty == false,
-           url.user == nil, url.password == nil { return .external }
+        if link, isWebLink(url) { return .external }
         guard mainFrame, var target = URLComponents(url: url, resolvingAgainstBaseURL: false),
               var source = URLComponents(url: document, resolvingAgainstBaseURL: false) else { return .refuse }
         let fragment = target.fragment
@@ -138,6 +158,7 @@ import StrataModel
                         && navigationResponse.response.url == documentURL ? .allow : .cancel)
     }
 
+    package func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { if !closed { onCommit?() } }
     package func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if !closed { onFinish?() } }
     package func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }
     package func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }

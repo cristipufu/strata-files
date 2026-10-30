@@ -381,8 +381,9 @@ extension OneNoteReaderTests {
         let index = try #require(fixture.store.spaces.firstIndex { $0.id == damaged })
         // Its live label names a revision no manifest declares.
         fixture.store.spaces[index].declarations = [(OneStoreFixture.ID(number: 4242), 1, .zero)]
-        let listed = try reader(fixture.section([[first, damaged, last]]), in: tree).pages.map(\.title)
-        #expect(listed == ["First", "Last"])
+        let reader = try reader(fixture.section([[first, damaged, last]]), in: tree)
+        #expect(reader.pages.map(\.title) == ["First", "Last"] && reader.damaged == 1)
+        #expect(tree.snapshot() == ["Notes.one"])
     }
 
     @Test func aLinksAddressEndsWithItsLinkAndRunEndsCountTheTerminatingNul() throws {
@@ -935,4 +936,3 @@ extension OneNoteReaderTests {
         #expect(try emptyReader.content(of: try #require(emptyReader.pages.first)) == OneNotePageContent())
     }
 }
-

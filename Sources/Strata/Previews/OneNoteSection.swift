@@ -66,7 +66,7 @@ nonisolated package struct OneNoteFile: Sendable, Equatable {
 
 /// Where the bytes of a picture or attached file are inside the section file: as many as the file says, within the
 /// file, so whoever reads them caps how much.
-nonisolated package struct OneNoteData: Sendable, Equatable {
+nonisolated package struct OneNoteData: Sendable, Hashable {
     package let offset: UInt64
     package let count: UInt64
 }
@@ -84,6 +84,8 @@ nonisolated package final class OneNoteSectionReader {
     }
 
     package private(set) var pages: [OneNotePage] = []
+    /// How many page series and pages were left out as damaged.
+    package private(set) var damaged = 0
     private let store: OneStore
     private let layout: StoreLayout
     private let limits: Limits
@@ -94,6 +96,12 @@ nonisolated package final class OneNoteSectionReader {
         self.limits = limits
         layout = try store.budgeted { try store.layout() }
         pages = try store.budgeted { try readPages() }
+    }
+
+    /// The bytes of a picture or attached file, as many as the section says: whoever asks caps how many first.
+    package func bytes(of data: OneNoteData) throws -> Data {
+        let chunk = FileChunk(offset: data.offset, count: data.count)
+        return try OneStore.reading { try store.budgeted { try store.read(chunk) } }
     }
 
     package func content(of page: OneNotePage) throws -> OneNotePageContent {
@@ -130,6 +138,7 @@ nonisolated package final class OneNoteSectionReader {
         do {
             return try read()
         } catch OneStoreError.malformed {
+            damaged += 1
             return nil
         }
     }

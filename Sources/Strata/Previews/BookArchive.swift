@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+import StrataSupport
 
 /// Comic aliases stay archives. EPUB packages supply a reading order and a declared cover instead.
 nonisolated package enum BookFormat {
@@ -9,21 +10,6 @@ nonisolated package enum BookFormat {
         comics.contains(url.pathExtension.lowercased()) || url.pathExtension.lowercased() == "epub"
     }
     package static let images: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif", "tif", "tiff", "bmp"]
-
-    /// Image headers are checked before asking ImageIO to allocate decoded pixels.
-    package static func thumbnail(_ data: Data, pixels: Int) throws -> CGImage {
-        guard data.count <= 8 << 20,
-              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-              (1...256).contains(CGImageSourceGetCount(source)),
-              let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = info[kCGImagePropertyPixelWidth] as? Int, let height = info[kCGImagePropertyPixelHeight] as? Int,
-              width > 0, height > 0, width <= 40_000_000 / height,
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: min(2048, max(32, pixels)),
-              ] as CFDictionary) else { throw PreviewError.unsupported }
-        return image
-    }
 
     @concurrent package static func cover(_ url: URL, pixels: Int) async throws -> CGImage {
         return try await cover(PreviewArchiveSource(url), pixels: pixels)
@@ -49,7 +35,7 @@ nonisolated package enum BookFormat {
             path = first.path
         }
         let data = try await EPUBBook.bytes(source, records: records, path: path, limit: 8 << 20)
-        let image = try thumbnail(data, pixels: pixels)
+        let image = try PreviewPicture(data).thumbnail(pixels: pixels)
         try Task.checkCancellation()
         let file = try source.open(); defer { try? file.close() }
         try source.verify(file)
@@ -129,7 +115,7 @@ nonisolated package struct EPUBBook: Sendable {
             for (href, label) in references {
                 if let target = try? path(href, relativeTo: Array(navigation.path.dropLast())) {
                     let key = target.joined(separator: "/"), title = label.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if titles[key] == nil, !title.isEmpty { titles[key] = Self.label(title) }
+                    if titles[key] == nil, !title.isEmpty { titles[key] = title }
                 }
             }
         }
@@ -149,8 +135,9 @@ nonisolated package struct EPUBBook: Sendable {
         }
         let metadata = opf.children.first(where: { $0.name == "metadata" })
         func text(_ key: String) -> String {
-            Self.label(metadata?.children.filter { $0.name == key }.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }.joined(separator: ", ") ?? "")
+            let values = metadata?.children.filter { $0.name == key }
+                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            return DisplayText.label(values?.joined(separator: ", ") ?? "")
         }
         return EPUBBook(source: source, records: records, title: text("title"), authors: text("creator"),
                         publisher: text("publisher"), language: text("language"), cover: cover,
@@ -166,16 +153,6 @@ nonisolated package struct EPUBBook: Sendable {
               let href = image.attributes["src"] ?? image.attributes["href"] ?? image.attributes["xlink:href"],
               let target = try? path(href, relativeTo: Array(page.dropLast())) else { return false }
         return target == cover
-    }
-
-    /// One grapheme can contain thousands of combining marks. Bound native labels by bytes, preserving UTF-8.
-    private static func label(_ text: String) -> String {
-        var bytes = Array(text.utf8.prefix(1200))
-        while !bytes.isEmpty {
-            if let label = String(bytes: bytes, encoding: .utf8) { return label }
-            bytes.removeLast()
-        }
-        return ""
     }
 
     /// Resolve package-relative URI references once, before looking up an exact archive member.

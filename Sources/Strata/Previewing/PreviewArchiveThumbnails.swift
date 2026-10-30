@@ -76,6 +76,6 @@ import AppKit
     }
     @concurrent private static func decode(_ data: Data, pixels: Int) async throws -> CGImage {
         try Task.checkCancellation()
-        return try BookFormat.thumbnail(data, pixels: pixels)
+        return try PreviewPicture(data).thumbnail(pixels: pixels)
     }
 }
