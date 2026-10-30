@@ -590,6 +590,14 @@ final class DockReader {
     private var gapItems: Range<Int>?
     private var tileItem: Int?
     private var refreshed = Date.distantPast
+    /// How long a question to the Dock may take: the system's default is six seconds, and these are asked on the main
+    /// thread, several times a second while the box shows. Set on the Dock and on this app's Accessibility as a whole,
+    /// since what each covers isn't documented.
+    private static let timeout: Float = 0.25
+
+    init() {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.timeout)
+    }
 
     /// Nil when the gap isn't on screen: no Accessibility access, no gap in the Dock, the Dock hidden, or on the left or
     /// right (a text box doesn't fit a column of icons).
@@ -619,6 +627,7 @@ final class DockReader {
         if dockPID != pid {
             pid = dockPID
             let app = AXUIElementCreateApplication(dockPID)
+            AXUIElementSetMessagingTimeout(app, Self.timeout)
             list = (Self.attribute(app, kAXChildrenAttribute) as? [AXUIElement])?
                 .first { Self.attribute($0, kAXRoleAttribute) as? String == "AXList" }
         }

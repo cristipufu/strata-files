@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updates.shared
         FileIndex.shared.start()
         ContainerStore.shared.start()
+        ProjectEditors.warm()
         StrataAI.startIndexing()
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared

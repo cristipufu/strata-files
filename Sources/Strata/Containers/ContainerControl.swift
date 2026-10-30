@@ -147,9 +147,34 @@ enum ProjectEditors {
         NSWorkspace.shared.open([folder], withApplicationAt: app, configuration: configuration)
     }
 
-    /// Editors to offer, by display name.
+    /// Editors to offer, by display name: as last read, read again away from the main thread once that's over 30
+    /// seconds old (asking LaunchServices about every editor takes a moment). Only the very first ask, before `warm`
+    /// has read them, waits for them.
     static func installed() -> [URL] {
-        if let cached, Date() < cached.until { return cached.apps }
+        if let cached {
+            if Date() >= cached.until { warm() }
+            return cached.apps
+        }
+        let apps = find()
+        cached = (apps, Date().addingTimeInterval(30))
+        return apps
+    }
+
+    private static var reading: Task<Void, Never>?
+
+    /// Reads them away from the main thread, so the next ask finds them.
+    static func warm() {
+        guard reading == nil else { return }
+        reading = Task {
+            let apps = await findOffMain()
+            cached = (apps, Date().addingTimeInterval(30))
+            reading = nil
+        }
+    }
+
+    @concurrent private static func findOffMain() async -> [URL] { find() }
+
+    nonisolated private static func find() -> [URL] {
         var ids = Set(knownIDs)
         if let handlers = LSCopyAllRoleHandlersForContentType("public.swift-source" as CFString, .editor)?.takeRetainedValue() as? [String] {
             ids.formUnion(handlers)
@@ -167,12 +192,11 @@ enum ProjectEditors {
             }
         }
         apps.sort { FileManager.default.displayName(atPath: $0.path).localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending }
-        cached = (apps, Date().addingTimeInterval(30))
         return apps
     }
 
     /// Whether an app that claims to edit source is one to offer. Office apps and chat apps also claim source files.
-    static func includes(bundleID: String, category: String?) -> Bool {
+    nonisolated static func includes(bundleID: String, category: String?) -> Bool {
         if skipped.contains(bundleID) { return false }
         if knownIDs.contains(bundleID) || prefixes.contains(where: { bundleID.hasPrefix($0) }) { return true }
         return category == "public.app-category.developer-tools"
@@ -180,19 +204,19 @@ enum ProjectEditors {
 
     private static var cached: (apps: [URL], until: Date)?
 
-    private static let skipped: Set<String> = [
+    nonisolated private static let skipped: Set<String> = [
         "com.anthropic.claudefordesktop", "com.apple.dt.Instruments", "com.apple.ScriptEditor2",
     ]
 
     /// Prefixes, so a new version (`com.sublimetext.4`, `com.jetbrains.pycharm.ce`) is picked up without being listed.
-    private static let prefixes = [
+    nonisolated private static let prefixes = [
         "com.microsoft.VSCode", "com.visualstudio.code", "com.vscodium", "com.todesktop.", "com.exafunction.",
         "com.codeium.", "dev.zed.", "com.sublimetext.", "com.jetbrains.", "com.google.android.studio",
         "com.google.antigravity", "com.apple.dt.Xcode", "com.panic.Nova", "com.barebones.bbedit", "com.macromates.",
         "com.coteditor.", "com.trae.", "dev.kiro.", "com.kiro.", "com.neovide.", "com.github.atom",
     ]
 
-    private static let knownIDs = [
+    nonisolated private static let knownIDs = [
         "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.visualstudio.code.oss",
         "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed", "com.apple.dt.Xcode",
         "com.sublimetext.4", "com.sublimetext.3", "com.panic.Nova", "com.barebones.bbedit", "com.macromates.TextMate",
