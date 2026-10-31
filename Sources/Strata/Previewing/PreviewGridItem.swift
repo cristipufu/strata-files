@@ -31,7 +31,7 @@ import AppKit
                    requests: PreviewThumbnails, scale: CGFloat, archiveRequests: PreviewArchiveThumbnails? = nil) {
         let entry = item.entry
         let canRequestFile = preferences.showIconPreviews && entry.map {
-            PreviewFileView.isRegularFile($0.url) && thumbnails.canThumbnail($0)
+            $0.isRegular && thumbnails.canThumbnail($0)
         } == true
         let canRequestArchive = preferences.showIconPreviews && archiveRequests?.canRequest(item) == true
         let sourceID = canRequestArchive ? archiveRequests?.sourceID : nil

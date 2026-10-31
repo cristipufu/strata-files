@@ -70,5 +70,11 @@
   "call": "FileIdentity.read(_:)",
   "count": 1,
   "reason": "`record`, only for New Folder and New File: the one item made, read as it lands (a change asked for on one item), and where the undo of either put it in the Trash."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewFileView.swift",
+  "call": "PreviewFileView.isStillRegular(_:)",
+  "count": 2,
+  "reason": "The one item about to be previewed, checked just before a renderer opens it by path (it can't be handed a descriptor): a pipe swapped in for it would hang the renderer, a link would show what it points to."
  }
 ]

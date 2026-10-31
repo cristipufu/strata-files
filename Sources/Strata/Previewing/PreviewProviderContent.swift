@@ -30,17 +30,16 @@ import Foundation
               copies.contains(entry.url), copies.isPlaceholder(entry.url), !entry.isDirectory, !entry.isSymlink else { return }
         guard Self.permitsAutomaticFetch(entry, copies: copies) else { error = String(localized: "Open this file to download it. It’s too large for an automatic preview."); onChange?(); return }
         let id = request, generation = session.generation, item = session.selected, copies = copies
-        let parent = try? ChosenFile(entry.url.deletingLastPathComponent())
         isLoading = true
         task = Task { [weak self, weak session] in
             let result: Result<FileEntry, Error>
             do {
+                let parent = await Self.folder(of: entry.url)
                 try Task.checkCancellation()
                 try await copies.fetch([entry.url])
                 try Task.checkCancellation()
-                try parent?.withParent { _, _, _ in }
-                guard parent != nil, !copies.isPlaceholder(entry.url), PreviewFileView.isRegularFile(entry.url),
-                      let fetched = FileEntry(url: entry.url) else { throw ContainerAPIError.notFound }
+                let fetched = try await Self.reread(entry.url, in: parent, copies: copies)
+                guard fetched.isRegular else { throw ContainerAPIError.notFound }
                 result = .success(fetched)
             } catch { result = .failure(error) }
             guard let self, let session, !Task.isCancelled, request == id, !session.isClosed,
@@ -66,10 +65,11 @@ import Foundation
         cancel()
         precedingRead = previousTask
         let id = request, copies = copies
-        let parent = try? ChosenFile(entry.url.deletingLastPathComponent())
         isLoading = true
         error = nil
         commandTask = Task { [weak self, weak session] in
+            // Its folder as it is when the command is asked for, before waiting for what came first.
+            let parent = await Self.folder(of: entry.url)
             await previousTask?.value
             await previousCommand?.value
             let result: Result<(FileEntry, PreviewArchiveLease?), Error>
@@ -78,11 +78,8 @@ import Foundation
                 if action == .copy || entry.isDirectory { try await copies.prepareForCopying([entry.url]) }
                 else if !entry.isDirectory { try await copies.fetch([entry.url]) }
                 try Task.checkCancellation()
-                try parent?.withParent { _, _, _ in }
-                let placeholder = await copies.containsPlaceholderOffMain(in: [entry.url])
-                guard parent != nil, !placeholder, let fresh = FileEntry(url: entry.url) else {
-                    throw ContainerAPIError.notFound
-                }
+                guard await !copies.containsPlaceholderOffMain(in: [entry.url]) else { throw ContainerAPIError.notFound }
+                let fresh = try await Self.reread(entry.url, in: parent, copies: copies)
                 let lease = action == .copy ? try await PreviewArchiveLease.exporting(entry.url, in: copies.clipboardRoot) : nil
                 result = .success((fresh, lease))
             } catch { result = .failure(error) }
@@ -114,5 +111,17 @@ import Foundation
         error = nil
         onReady = nil
         onChange = nil
+    }
+
+    /// The folder `url` is in, taken before its item is fetched (nil when it can't be), away from the main thread.
+    @concurrent private static func folder(of url: URL) async -> ChosenFile? { try? ChosenFile(url.deletingLastPathComponent()) }
+
+    /// `url` as fetched into its copy, read again away from the main thread: still in the folder taken before
+    /// (`parent`), and filled in.
+    @concurrent private static func reread(_ url: URL, in parent: ChosenFile?, copies: CopyProviders) async throws -> FileEntry {
+        guard let parent else { throw ContainerAPIError.notFound }
+        try parent.withParent { _, _, _ in }
+        guard !copies.isPlaceholder(url), let entry = FileEntry(url: url) else { throw ContainerAPIError.notFound }
+        return entry
     }
 }

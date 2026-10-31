@@ -34,7 +34,7 @@ import AppKit
     func request(for owner: AnyObject, entry: FileEntry, size: CGFloat, scale: CGFloat, image: @escaping (NSImage) -> Void) {
         guard !isClosed else { return }
         cancel(for: owner)
-        guard PreviewFileView.isRegularFile(entry.url) else { return }
+        guard entry.isRegular else { return }
         let size = size.isFinite ? min(max(size, 32), 256) : 80
         let scale = scale.isFinite && scale > 0 ? min(scale, 4) : 1
         pending.append((ObjectIdentifier(owner), Request(entry: entry, size: size, scale: scale, image: image)))
@@ -66,14 +66,14 @@ import AppKit
         defer { draining = false }
         while active.count < limit, !pending.isEmpty {
             let (key, request) = pending.removeFirst()
-            guard PreviewFileView.isRegularFile(request.entry.url) else { continue }
+            guard request.entry.isRegular else { continue }
             active[key] = request
             request.ticket = thumbnails.request(request.entry, size: request.size, scale: request.scale, finished: { [weak self, weak request] in
                 guard let self, let request, active[key] === request else { return }
                 active[key] = nil
                 drain()
             }) { [weak self, weak request] image in
-                guard let self, let request, active[key] === request, PreviewFileView.isRegularFile(request.entry.url) else { return }
+                guard let self, let request, active[key] === request else { return }
                 request.image(image)
             }
         }

@@ -4948,8 +4948,8 @@
   },
   {
     "file": "Strata/Previewing/PreviewFileView.swift",
-    "find": "Self.isRegularFile(entry.url)",
-    "replace": "true",
+    "find": "!copies.isPlaceholder(entry.url), Self.isStillRegular(entry.url) else { return }",
+    "replace": "!copies.isPlaceholder(entry.url) else { return }",
     "rule": "Space preview files: refuse special files and replacement links before starting a renderer",
     "tests": "PreviewCommandTests/specialFilesAndPathsReplacedByLinksNeverReachFileRenderers"
   },

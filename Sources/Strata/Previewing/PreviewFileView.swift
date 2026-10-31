@@ -73,7 +73,7 @@ import StrataPreviews
         title.stringValue = item?.name ?? root.displayName
         detail.stringValue = item?.kind ?? root.kind
         icon.image = entry.map(thumbnails.icon) ?? item?.icon(thumbnails)
-        guard let entry, !entry.isDirectory, !entry.isSymlink, !copies.isPlaceholder(entry.url), Self.isRegularFile(entry.url) else { return }
+        guard let entry, entry.isRegular, !copies.isPlaceholder(entry.url), Self.isStillRegular(entry.url) else { return }
         // The session already lists a root archive. Its side pane stays a summary until a member is selected.
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }
         let url = entry.url
@@ -113,7 +113,7 @@ import StrataPreviews
     }
 
     private func showNative(_ url: URL) {
-        guard Self.isRegularFile(url), native.show(url) else {
+        guard Self.isStillRegular(url), native.show(url) else {
             shownURL = nil
             summary.isHidden = false
             return
@@ -122,7 +122,10 @@ import StrataPreviews
         summary.isHidden = true
     }
 
-    nonisolated static func isRegularFile(_ url: URL) -> Bool {
+
+    /// Whether `url` is still a plain file, just before a renderer opens it by path: one listed as one may have been
+    /// replaced by a pipe (opening it would hang) or a link since.
+    nonisolated static func isStillRegular(_ url: URL) -> Bool {
         var info = stat()
         return url.isFileURL && lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
     }
