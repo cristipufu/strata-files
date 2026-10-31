@@ -147,18 +147,39 @@ nonisolated enum ProjectDetector {
     }
 
     static func detectSync(_ folder: URL) -> ProjectInfo {
-        let fm = FileManager.default
-        let names = Set((try? fm.contentsOfDirectory(atPath: folder.path)) ?? [])
+        var detection = Detection(folder: folder)
+        detection.node()
+        detection.rust()
+        detection.swift()
+        detection.dotnet()
+        detection.python()
+        detection.others()
+        detection.taskRunners()
+        return ProjectInfo(folder: folder, kinds: detection.kinds, artifacts: detection.artifacts,
+                           scripts: detection.scripts, git: nil)
+    }
+
+    /// One folder's detection: its listing, read once, and what each kind of project found in it.
+    private struct Detection {
+        let folder: URL
+        let names: Set<String>
         var kinds: [ProjectKindInfo] = []
         var artifacts: [ProjectArtifact] = []
         var scripts: [ProjectScript] = []
-        var seen: Set<String> = []
+        private var seen: Set<String> = []
 
-        func has(_ name: String) -> Bool { names.contains(name) }
-        func withExtension(_ exts: Set<String>) -> [String] {
+        init(folder: URL) {
+            self.folder = folder
+            names = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        }
+
+        private func has(_ name: String) -> Bool { names.contains(name) }
+
+        private func withExtension(_ exts: Set<String>) -> [String] {
             names.filter { exts.contains(($0 as NSString).pathExtension.lowercased()) }.sorted()
         }
-        func addArtifact(_ relative: String, _ kind: ProjectKind, _ role: ProjectArtifact.Role) {
+
+        private mutating func addArtifact(_ relative: String, _ kind: ProjectKind, _ role: ProjectArtifact.Role) {
             let url = folder.appending(path: relative, directoryHint: .isDirectory)
             // Every folder on the way must be real: a symlinked parent ("vendor" → elsewhere) would put the
             // artifact outside the project.
@@ -171,8 +192,8 @@ nonisolated enum ProjectDetector {
             artifacts.append(ProjectArtifact(name: relative, urls: [url], kind: kind, role: role))
         }
 
-        // Node
-        if has("package.json") {
+        mutating func node() {
+            guard has("package.json") else { return }
             let package = readJSON(folder.appending(path: "package.json"))
             let manager = nodeManager(folder, names: names, package: package.object)
             kinds.append(ProjectKindInfo(kind: .node, detail: manager.rawValue))
@@ -182,16 +203,16 @@ nonisolated enum ProjectDetector {
             scripts += packageScripts(package, runner: manager, directory: folder)
         }
 
-        // Rust
-        if has("Cargo.toml") {
+        mutating func rust() {
+            guard has("Cargo.toml") else { return }
             kinds.append(ProjectKindInfo(kind: .rust, detail: "Cargo"))
             addArtifact("target", .rust, .build)
             scripts += cargoAliases(folder)
         }
 
-        // Swift
-        let xcodeProjects = withExtension(["xcodeproj", "xcworkspace"])
-        if has("Package.swift") || !xcodeProjects.isEmpty {
+        mutating func swift() {
+            let xcodeProjects = withExtension(["xcodeproj", "xcworkspace"])
+            guard has("Package.swift") || !xcodeProjects.isEmpty else { return }
             kinds.append(ProjectKindInfo(kind: .swift, detail: has("Package.swift") ? "SwiftPM" : "Xcode"))
             if has("Package.swift") {
                 addArtifact(".build", .swift, .build)
@@ -200,10 +221,11 @@ nonisolated enum ProjectDetector {
             addArtifact("DerivedData", .swift, .build)
         }
 
-        // .NET: bin/obj next to each project file; from a solution, also the projects up to two levels down.
-        let projectFiles = withExtension(["csproj", "fsproj", "vbproj"])
-        let solutions = withExtension(["sln", "slnx"])
-        if !projectFiles.isEmpty || !solutions.isEmpty {
+        /// bin/obj next to each project file; from a solution, also the projects up to two levels down.
+        mutating func dotnet() {
+            let projectFiles = withExtension(["csproj", "fsproj", "vbproj"])
+            let solutions = withExtension(["sln", "slnx"])
+            guard !projectFiles.isEmpty || !solutions.isEmpty else { return }
             kinds.append(ProjectKindInfo(kind: .dotnet, detail: solutions.isEmpty ? nil
                 : String(localized: "Solution", comment: "A .NET project that has a Visual Studio solution file (.sln)")))
             if !projectFiles.isEmpty {
@@ -218,8 +240,8 @@ nonisolated enum ProjectDetector {
             }
         }
 
-        // Python
-        if ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"].contains(where: has) {
+        mutating func python() {
+            guard ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"].contains(where: has) else { return }
             let detail = has("uv.lock") ? "uv" : has("poetry.lock") ? "Poetry" : has("Pipfile") ? "Pipenv" : nil
             kinds.append(ProjectKindInfo(kind: .python, detail: detail))
             let caches = findFolders(named: "__pycache__", under: folder, depth: 4)
@@ -229,56 +251,59 @@ nonisolated enum ProjectDetector {
             }
             for name in [".pytest_cache", ".mypy_cache", ".ruff_cache", ".hypothesis"] { addArtifact(name, .python, .cache) }
             for name in names.sorted() where name.hasSuffix(".egg-info") { addArtifact(name, .python, .build) }
-            for name in names.sorted() where fm.fileExists(atPath: folder.appending(path: name).appending(path: "pyvenv.cfg").path) {
+            for name in names.sorted()
+            where FileManager.default.fileExists(atPath: folder.appending(path: name).appending(path: "pyvenv.cfg").path) {
                 addArtifact(name, .python, .environment)
             }
             for name in [".tox", ".nox"] { addArtifact(name, .python, .environment) }
         }
 
-        if has("go.mod") { kinds.append(ProjectKindInfo(kind: .go, detail: nil)) }
+        /// Go, Ruby, the JVM, Godot, containers and Terraform, each known by its marker files.
+        mutating func others() {
+            if has("go.mod") { kinds.append(ProjectKindInfo(kind: .go, detail: nil)) }
 
-        if has("Gemfile") {
-            kinds.append(ProjectKindInfo(kind: .ruby, detail: "Bundler"))
-            addArtifact("vendor/bundle", .ruby, .dependencies)
-        }
+            if has("Gemfile") {
+                kinds.append(ProjectKindInfo(kind: .ruby, detail: "Bundler"))
+                addArtifact("vendor/bundle", .ruby, .dependencies)
+            }
 
-        // JVM
-        let gradle = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"].contains(where: has)
-        if has("pom.xml") || gradle {
-            kinds.append(ProjectKindInfo(kind: .jvm, detail: gradle ? "Gradle" : "Maven"))
-            if has("pom.xml") { addArtifact("target", .jvm, .build) }
-            if gradle {
-                addArtifact("build", .jvm, .build)
-                addArtifact(".gradle", .jvm, .cache)
-                addArtifact(".kotlin", .jvm, .cache)
+            let gradle = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"].contains(where: has)
+            if has("pom.xml") || gradle {
+                kinds.append(ProjectKindInfo(kind: .jvm, detail: gradle ? "Gradle" : "Maven"))
+                if has("pom.xml") { addArtifact("target", .jvm, .build) }
+                if gradle {
+                    addArtifact("build", .jvm, .build)
+                    addArtifact(".gradle", .jvm, .cache)
+                    addArtifact(".kotlin", .jvm, .cache)
+                }
+            }
+
+            if has("project.godot") {
+                kinds.append(ProjectKindInfo(kind: .godot, detail: nil))
+                addArtifact(".godot", .godot, .cache)
+                addArtifact(".import", .godot, .cache)
+            }
+
+            let compose = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"].contains(where: has)
+            if has("Dockerfile") || has("Containerfile") || compose {
+                kinds.append(ProjectKindInfo(kind: .docker, detail: compose ? "Compose" : nil))
+            }
+
+            if !withExtension(["tf"]).isEmpty {
+                kinds.append(ProjectKindInfo(kind: .terraform, detail: nil))
+                addArtifact(".terraform", .terraform, .dependencies)
             }
         }
 
-        if has("project.godot") {
-            kinds.append(ProjectKindInfo(kind: .godot, detail: nil))
-            addArtifact(".godot", .godot, .cache)
-            addArtifact(".import", .godot, .cache)
+        /// Make and just, whatever the language.
+        mutating func taskRunners() {
+            if let makefile = ["Makefile", "makefile", "GNUmakefile"].first(where: has) {
+                scripts += makeTargets(folder.appending(path: makefile), directory: folder, source: makefile)
+            }
+            if let justfile = ["justfile", "Justfile", ".justfile"].first(where: has) {
+                scripts += justRecipes(folder.appending(path: justfile), directory: folder, source: justfile)
+            }
         }
-
-        let compose = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"].contains(where: has)
-        if has("Dockerfile") || has("Containerfile") || compose {
-            kinds.append(ProjectKindInfo(kind: .docker, detail: compose ? "Compose" : nil))
-        }
-
-        if !withExtension(["tf"]).isEmpty {
-            kinds.append(ProjectKindInfo(kind: .terraform, detail: nil))
-            addArtifact(".terraform", .terraform, .dependencies)
-        }
-
-        // Task runners, whatever the language.
-        if let makefile = ["Makefile", "makefile", "GNUmakefile"].first(where: has) {
-            scripts += makeTargets(folder.appending(path: makefile), directory: folder, source: makefile)
-        }
-        if let justfile = ["justfile", "Justfile", ".justfile"].first(where: has) {
-            scripts += justRecipes(folder.appending(path: justfile), directory: folder, source: justfile)
-        }
-
-        return ProjectInfo(folder: folder, kinds: kinds, artifacts: artifacts, scripts: scripts, git: nil)
     }
 
     /// A directory, not a symlink to one (deleting a symlinked node_modules wouldn't free anything).

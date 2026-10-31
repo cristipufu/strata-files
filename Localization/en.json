@@ -2975,7 +2975,7 @@
     "Smaller Text": "View menu: make file names smaller (⌘−) · BrowserViewController+Menus.swift:428",
     "smb://server/share, afp://, nfs:// or a WebDAV https:// address. A server name alone connects with SMB.": "ConnectToServerController.swift:201",
     "Software Update": "Button: open Software Update in System Settings · AppUpdatesController.swift:332",
-    "Solution": "A .NET project that has a Visual Studio solution file (.sln) · ProjectDetector.swift:208",
+    "Solution": "A .NET project that has a Visual Studio solution file (.sln) · ProjectDetector.swift:230",
     "Some folders in “%@” are on a disk that isn’t connected": "Workspaces.swift:404",
     "Some folders in “%@” aren’t there anymore": "Workspaces.swift:401",
     "Some items couldn’t be moved to the Trash, so the sync stopped there.": "CompareController.swift:432",
