@@ -18,7 +18,12 @@ final class SummaryView: NSView {
             task?.cancel()
             task = nil
             if let url, Summarizer.canSummarize(url) {
-                state = Self.cache[CacheKey(url)].map(State.done) ?? .idle
+                state = .idle
+                task = Task { [weak self] in
+                    let key = await CacheKey.read(url)
+                    guard let self, !Task.isCancelled, self.url == url, state == .idle, let known = Self.cache[key] else { return }
+                    state = .done(known)
+                }
             } else {
                 state = .unsupported
             }
@@ -29,13 +34,13 @@ final class SummaryView: NSView {
         didSet { render() }
     }
 
+    /// A version of a file, by its modification date.
     private struct CacheKey: Hashable {
         let path: String
         let modified: Date?
 
-        init(_ url: URL) {
-            path = url.path
-            modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        @concurrent static func read(_ url: URL) async -> CacheKey {
+            CacheKey(path: url.path, modified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
         }
     }
 
@@ -65,6 +70,8 @@ final class SummaryView: NSView {
         task?.cancel()
         state = .working(nil)
         task = Task { [weak self] in
+            // The version summarized: the one there when Summarize was chosen.
+            let key = await CacheKey.read(url)
             do {
                 var last: DocumentSummary?
                 for try await summary in Summarizer.summarize(url: url) {
@@ -76,7 +83,7 @@ final class SummaryView: NSView {
                 if let last {
                     var final = last
                     final.isComplete = true
-                    Self.cache[CacheKey(url)] = final
+                    Self.cache[key] = final
                     self.state = .done(final)
                 }
             } catch is CancellationError {

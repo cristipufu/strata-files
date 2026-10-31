@@ -272,11 +272,16 @@ final class InspectorLocationView: NSView {
     fileprivate(set) var action: () -> Void
     private let folder: URL
     private let path: URL
-    let nameText: String
+    private let shownName: String?
+    /// The folder's name: until Finder's has been read, as it's stored.
+    private(set) var nameText: String
     let locationText: String
     /// False when the location describes the folder (a server's address) instead of leading to it.
     let locationLeadsHere: Bool
     let pathLabel = NSTextField(wrappingLabelWithString: "")
+    private let icon = NSImageView(image: NSWorkspace.shared.icon(for: .folder))
+    /// Reading the folder's name as Finder shows it, and its icon.
+    private(set) var reading: Task<Void, Never>?
 
     /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
     init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil,
@@ -284,18 +289,15 @@ final class InspectorLocationView: NSView {
         self.action = action
         self.folder = folder
         self.path = path
-        self.nameText = shownName ?? FileManager.default.displayName(atPath: path.path)
+        self.shownName = shownName
+        self.nameText = shownName ?? path.lastPathComponent
         // The top of the disk has nothing above it; its name ("Macintosh HD") is the whole location.
         self.locationText = shownLocation ?? (path.path == "/" ? "" : Format.tildePath(path.deletingLastPathComponent()))
         self.locationLeadsHere = locationLeadsHere
         super.init(frame: .zero)
-        let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        // A path names the folder as it's stored ("Xcode.app", not "Xcode"; "a:b", not "a/b"), so it can't read as
-        // another place. VoiceOver keeps Finder's display name.
-        let stored = shownName ?? (path.path == "/" ? nameText : path.lastPathComponent)
-        pathLabel.attributedStringValue = Self.text(name: stored, location: locationText, leadsHere: locationLeadsHere)
+        showPath()
         pathLabel.baseWritingDirection = .leftToRight
         pathLabel.isSelectable = false
         pathLabel.maximumNumberOfLines = 0
@@ -317,10 +319,27 @@ final class InspectorLocationView: NSView {
             pathLabel.topAnchor.constraint(equalTo: topAnchor),
             pathLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        // The same path as plain text: a server's or a container's own, never Strata's copy of it.
-        toolTip = Self.plain(pathLabel.stringValue)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
+        reading = Task { [weak self, folder, path] in
+            async let named = FinderLook.read(path), drawn = FinderLook.read(folder)
+            let (name, image) = await (named.name, drawn.image)
+            guard let self, !Task.isCancelled else { return }
+            if shownName == nil { nameText = name }
+            if let image { icon.image = image }
+            showPath()
+        }
+    }
+
+    isolated deinit { reading?.cancel() }
+
+    /// A path names the folder as it's stored ("Xcode.app", not "Xcode"; "a:b", not "a/b"), so it can't read as
+    /// another place, except the top of the disk, which goes by its name. VoiceOver keeps Finder's display name.
+    private func showPath() {
+        let stored = shownName ?? (path.path == "/" ? nameText : path.lastPathComponent)
+        pathLabel.attributedStringValue = Self.text(name: stored, location: locationText, leadsHere: locationLeadsHere)
+        // The same path as plain text: a server's or a container's own, never Strata's copy of it.
+        toolTip = Self.plain(pathLabel.stringValue)
         setAccessibilityLabel(String(localized: "Show “\(nameText)”", comment: "Inspector: the item’s folder, as a button that shows it"))
     }
 

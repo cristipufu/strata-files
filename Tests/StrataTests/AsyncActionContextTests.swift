@@ -468,9 +468,9 @@ struct AsyncActionContextTests {
         #expect(!ReadOnlyCopies.contains(webFolderA, copies: second.copies))
         #expect(ReadOnlyCopies.contains(dbFolderB, copies: second.copies))
         #expect(!ReadOnlyCopies.contains(dbFolderB, copies: first.copies))
-        #expect(StackProjects.existingFolder(of: stackFolderA, copies: first.containerCopies, store: first.containerStore)?.standardizedFileURL.path
+        #expect(StackProjects.workingDirectory(of: stackFolderA, copies: first.containerCopies, store: first.containerStore)?.standardizedFileURL.path
             == tree.url("shared").standardizedFileURL.path)
-        #expect(StackProjects.existingFolder(of: stackFolderA, copies: second.containerCopies, store: second.containerStore) == nil)
+        #expect(StackProjects.workingDirectory(of: stackFolderA, copies: second.containerCopies, store: second.containerStore) == nil)
         #expect(Places.displayName(engineFolderA, copies: first.copies) == "Containers")
         #expect(Places.displayName(engineFolderA, copies: second.copies) != "Containers")
 

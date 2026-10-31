@@ -31,7 +31,7 @@ struct InspectorWidthTests {
         }
     }
 
-    @Test func aContainerWithLongNamesNeverHoldsTheInspectorAtOneWidth() throws {
+    @Test func aContainerWithLongNamesNeverHoldsTheInspectorAtOneWidth() async throws {
         _ = NSApplication.shared
         let tree = try TestTree("env/", "Sources/")
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
@@ -58,6 +58,7 @@ struct InspectorWidthTests {
         _ = inspector.view
         let entry = try #require(FileEntry(url: top))
         inspector.show(entries: [entry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
+        await inspector.containerView.reading?.value
         try #require(!inspector.containerView.isHidden)
         let inspectorWidths = widths(of: inspector.view, height: 1_000)
         #expect(inspectorWidths == targets, "\(inspectorWidths)")
@@ -74,7 +75,7 @@ struct InspectorWidthTests {
         withExtendedLifetime(tree) {}
     }
 
-    @Test func aComposeProjectWithLongNamesNeverHoldsTheInspectorAtOneWidth() throws {
+    @Test func aComposeProjectWithLongNamesNeverHoldsTheInspectorAtOneWidth() async throws {
         let tree = try TestTree("shop/")
         let service = "yugabyte-provider-" + String(repeating: "replica", count: 10)
         try Data("services:\n  \(service):\n    image: yugabytedb/yugabyte\n  web:\n    image: nginx\n".utf8)
@@ -88,6 +89,7 @@ struct InspectorWidthTests {
         let preferences = try Prefs.isolated()
         let compose = ComposeInspectorView(preferences: preferences, store: ContainerStore(containers: [container, web]))
         compose.configure(tree.url("shop"))
+        await compose.reading?.value
         try #require(!compose.isHidden)
         let composeWidths = widths(of: compose)
         #expect(composeWidths == targets, "\(composeWidths)")

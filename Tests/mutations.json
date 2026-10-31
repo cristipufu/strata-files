@@ -7320,5 +7320,33 @@
     "replace": "        entries.filter { !$0.isDirectory }.map(\\.url)",
     "rule": "Quick Look leaves out a link to a folder",
     "tests": "SelectionChoiceTests/quickLookTakesFilesAndLinksButNotFolders"
+  },
+  {
+    "file": "Strata/Browser/ContainerControl.swift",
+    "find": "            let folders = await existing(directories)",
+    "replace": "            let folders = directories",
+    "rule": "Opening a Compose project hands Terminal a path that isn't a plain folder",
+    "tests": "InspectorReadsTests/aStackOpensOnlyThoseOfItsFoldersStillOnThisMac"
+  },
+  {
+    "file": "Strata/Inspector/ContainerInspector.swift",
+    "find": "            guard let self, !Task.isCancelled else { return }\n            reading = nil\n            Self.remember(read)",
+    "replace": "            guard let self else { return }\n            reading = nil\n            Self.remember(read)",
+    "rule": "The Compose card shows a folder's project after another folder replaced it",
+    "tests": "InspectorReadsTests/aComposeCardShowsOnceItsFolderIsReadAndALateReadNeverShows"
+  },
+  {
+    "file": "Strata/Inspector/ContainerInspector.swift",
+    "find": "            let onThisMac = shown.onThisMac?.sources.contains(mount.source) == true",
+    "replace": "            let onThisMac = shown.onThisMac != nil",
+    "rule": "A container's mount links to a Mac folder that isn't there",
+    "tests": "InspectorReadsTests/aMountLinksToThisMacOnlyOnceItsFolderIsFoundThere"
+  },
+  {
+    "file": "Strata/Inspector/ContainerInspector.swift",
+    "find": "        if next == nil { stopReading() }\n",
+    "replace": "\n",
+    "rule": "The container card keeps reading after nothing is selected",
+    "tests": "InspectorReadsTests/aMountLinksToThisMacOnlyOnceItsFolderIsFoundThere"
   }
 ]

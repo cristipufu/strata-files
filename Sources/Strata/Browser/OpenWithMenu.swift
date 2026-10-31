@@ -1,18 +1,39 @@
 import AppKit
 
-/// An app that can open something, with its name and a small icon, read where it's found.
-nonisolated struct OpenWithApp: Sendable {
-    let url: URL
+/// An item as Finder shows it, its name and a small icon, read where it's made: away from the main thread, since
+/// both ask the disk and LaunchServices.
+nonisolated struct FinderLook: Sendable {
     let name: String
     let icon: CGImage?
+
+    init(_ url: URL) {
+        name = FileManager.default.displayName(atPath: url.path)
+        var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
+        icon = NSWorkspace.shared.icon(forFile: url.path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+
+    @concurrent static func read(_ url: URL) async -> FinderLook { FinderLook(url) }
+
+    var image: NSImage? { icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) } }
+}
+
+/// An app that can open something, with its name and a small icon, read where it's found.
+nonisolated struct OpenWithApp: Sendable, Equatable {
+    let url: URL
+    let look: FinderLook
     /// The app the item opens with now.
     var isDefault = false
 
     init(_ url: URL) {
         self.url = url
-        name = FileManager.default.displayName(atPath: url.path)
-        var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
-        icon = NSWorkspace.shared.icon(forFile: url.path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        look = FinderLook(url)
+    }
+
+    var name: String { look.name }
+
+    /// The same app, shown the same way: its icon comes with its location.
+    static func == (a: OpenWithApp, b: OpenWithApp) -> Bool {
+        a.url == b.url && a.name == b.name && a.isDefault == b.isDefault
     }
 
     /// The apps that open `file`, at most `limit`, read away from the main thread.
@@ -25,7 +46,7 @@ nonisolated struct OpenWithApp: Sendable {
         }
     }
 
-    var image: NSImage? { icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) } }
+    var image: NSImage? { look.image }
 }
 
 /// An Open With submenu, filled the first time it opens: asking LaunchServices for every app that opens an item, with

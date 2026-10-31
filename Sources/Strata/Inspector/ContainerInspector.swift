@@ -10,6 +10,25 @@ final class ContainerInspectorView: NSView {
     let store: ContainerStore
     private let stack = NSStackView()
     private var display: Display?
+    private var url: URL?
+    private var found: OnThisMac?
+    private var asking: Asked?
+    /// Reading what the cards link to on this Mac.
+    private(set) var reading: Task<Void, Never>?
+
+    /// The places on this Mac the cards link to: a Compose project's folder, and the Mac paths a container mounts.
+    private struct Asked: Equatable {
+        var directory: URL?
+        var sources: [String] = []
+    }
+
+    /// Which of them are there, read away from the main thread, and the editors a project folder can open in.
+    private struct OnThisMac: Equatable {
+        let asked: Asked
+        let folder: URL?
+        let sources: Set<String>
+        let editors: [OpenWithApp]
+    }
 
     private enum Display: Equatable {
         case container(Shown)
@@ -23,6 +42,8 @@ final class ContainerInspectorView: NSView {
         let directory: URL?
         let containers: [ContainerInfo]
         let busy: ContainerAction?
+        /// Nil until read.
+        let onThisMac: OnThisMac?
     }
 
     private struct Shown: Equatable {
@@ -30,6 +51,7 @@ final class ContainerInspectorView: NSView {
         let top: URL
         let container: ContainerInfo?
         let busy: ContainerAction?
+        let onThisMac: OnThisMac?
     }
 
     init(frame: NSRect = .zero, preferences: Prefs,
@@ -57,15 +79,19 @@ final class ContainerInspectorView: NSView {
     /// The selection (a container's files, or a Compose project's folder). Nil hides the cards. Rebuilt only when
     /// something shown changed.
     func configure(url: URL?) {
+        self.url = url
         let next: Display?
         if let url, copies.isStack(url) {
             next = stackDisplay(url)
         } else {
             next = url.flatMap(copies.copy(containing:)).map { copy in
-                .container(Shown(source: copy.source, top: copy.top, container: store.container(id: copy.source.id),
-                                 busy: store.busy[copy.source.id]))
+                let container = store.container(id: copy.source.id)
+                let sources = (container?.mounts ?? []).filter { $0.kind == .bind && $0.source.hasPrefix("/") }.map(\.source)
+                return .container(Shown(source: copy.source, top: copy.top, container: container,
+                                        busy: store.busy[copy.source.id], onThisMac: onThisMac(Asked(sources: sources))))
             }
         }
+        if next == nil { stopReading() }
         isHidden = next == nil
         guard next != display else { return }
         display = next
@@ -79,6 +105,41 @@ final class ContainerInspectorView: NSView {
         case nil:
             break
         }
+    }
+
+    /// What was read for `asked`; nil while it's read, the cards showing their links as plain text meanwhile.
+    private func onThisMac(_ asked: Asked) -> OnThisMac? {
+        if let found, found.asked == asked { return found }
+        if asked == Asked() { return OnThisMac(asked: asked, folder: nil, sources: [], editors: []) }
+        if asking != asked { read(asked) }
+        return nil
+    }
+
+    private func read(_ asked: Asked) {
+        reading?.cancel()
+        asking = asked
+        reading = Task { [weak self] in
+            let folder = await StackProjects.existing(asked.directory.map { [$0] } ?? []).first
+            let sources = await Self.present(asked.sources)
+            let editors = folder == nil ? [] : await ProjectEditors.installed()
+            guard let self, !Task.isCancelled, asking == asked else { return }
+            found = OnThisMac(asked: asked, folder: folder, sources: sources, editors: editors)
+            asking = nil
+            reading = nil
+            configure(url: url)
+        }
+    }
+
+    private func stopReading() {
+        reading?.cancel()
+        reading = nil
+        asking = nil
+    }
+
+    isolated deinit { reading?.cancel() }
+
+    @concurrent private static func present(_ paths: [String]) async -> Set<String> {
+        Set(paths.filter { FileManager.default.fileExists(atPath: $0) })
     }
 
     private func addCard(_ card: InspectorCard) {
@@ -129,7 +190,8 @@ final class ContainerInspectorView: NSView {
         content.alignment = .leading
         content.spacing = 8
         for mount in mounts.sorted(by: { $0.destination < $1.destination }) {
-            let row = MountRow(mount, top: shown.top) { [weak self] url in self?.onOpen?(url) }
+            let onThisMac = shown.onThisMac?.sources.contains(mount.source) == true
+            let row = MountRow(mount, top: shown.top, onThisMac: onThisMac) { [weak self] url in self?.onOpen?(url) }
             content.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
@@ -148,9 +210,10 @@ final class ContainerInspectorView: NSView {
         guard !containers.isEmpty else { return nil }
         let engine = copies.engineFolder(url.deletingLastPathComponent())?.name ?? store.engine?.name ?? ""
         let busy = containers.compactMap { store.busy[$0.id] }.first
+        let directory = StackProjects.workingDirectory(of: url, copies: copies, store: store)
         return .stack(StackShown(project: containers.first?.compose?.project ?? name, engine: engine,
-                                 directory: StackProjects.workingDirectory(of: url, copies: copies, store: store),
-                                 containers: containers, busy: busy))
+                                 directory: directory, containers: containers, busy: busy,
+                                 onThisMac: onThisMac(Asked(directory: directory))))
     }
 
     /// The same actions as a container (Start, Stop, Restart, Pause, Resume), done to every container they apply to,
@@ -164,7 +227,7 @@ final class ContainerInspectorView: NSView {
         if let directory = shown.directory {
             let path = Format.tildePath(directory)
             let value: NSView
-            if StackProjects.existing(directory) != nil {
+            if shown.onThisMac?.folder != nil {
                 let link = LinkButton(path, font: .systemFont(ofSize: 12)) { [weak self] in self?.onOpen?(directory) }
                 link.toolTip = String(localized: "Show this folder on your Mac", comment: "Inspector, Mounts: tooltip")
                 value = link
@@ -216,16 +279,16 @@ final class ContainerInspectorView: NSView {
             column.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         }
-        if let folder = shown.directory.flatMap(StackProjects.existing) {
+        if let onThisMac = shown.onThisMac, let folder = onThisMac.folder {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             let preferences = self.preferences
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
                 guard let app = preferences.terminalURL else { return Sounds.beep() }
-                ProjectEditors.open(folder, with: app)
+                StackProjects.open([folder]) { ProjectEditors.open($0[0], with: app) }
             }
             terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")
             row.add(terminal)
-            let editors = ProjectEditors.installed()
+            let editors = onThisMac.editors
             if !editors.isEmpty {
                 let popup = NSPopUpButton()
                 popup.pullsDown = true
@@ -233,11 +296,9 @@ final class ContainerInspectorView: NSView {
                 popup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
                 popup.addItem(withTitle: String(localized: "Open With"))
                 for app in editors {
-                    let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: nil, keyEquivalent: "")
-                    item.representedObject = app
-                    let icon = NSWorkspace.shared.icon(forFile: app.path)
-                    icon.size = NSSize(width: 16, height: 16)
-                    item.image = icon
+                    let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
+                    item.representedObject = app.url
+                    item.image = app.image
                     popup.menu?.addItem(item)
                 }
                 popup.target = self
@@ -253,8 +314,8 @@ final class ContainerInspectorView: NSView {
     @objc private func openStackWith(_ sender: NSPopUpButton) {
         defer { sender.selectItem(at: 0) }
         guard let app = sender.selectedItem?.representedObject as? URL, case .stack(let shown) = display,
-              let folder = shown.directory.flatMap(StackProjects.existing) else { return }
-        ProjectEditors.open(folder, with: app)
+              let folder = shown.onThisMac?.folder else { return }
+        StackProjects.open([folder]) { ProjectEditors.open($0[0], with: app) }
     }
 
     /// Start, Stop, Restart, Pause or Resume (what applies) and Terminal; a spinner while an action runs.
@@ -318,7 +379,8 @@ final class ContainerInspectorView: NSView {
 
 /// A mount: where it is in the container (opens it), and where it comes from.
 private final class MountRow: NSView {
-    init(_ mount: ContainerMount, top: URL, open: @escaping (URL) -> Void) {
+    /// `onThisMac`: a bind mount's source was found on this Mac, so it links there.
+    init(_ mount: ContainerMount, top: URL, onThisMac: Bool, open: @escaping (URL) -> Void) {
         super.init(frame: .zero)
         let inside = LinkButton(mount.destination, font: .monospacedSystemFont(ofSize: 12, weight: .regular)) {
             open(ContainerCopies.url(forContainerPath: mount.destination, top: top))
@@ -329,7 +391,7 @@ private final class MountRow: NSView {
         case .bind where !mount.source.isEmpty:
             let source = URL(fileURLWithPath: mount.source)
             let text = String(localized: "from \(Format.tildePath(source))", comment: "Inspector, Mounts: the Mac folder a container mounts")
-            if mount.source.hasPrefix("/"), FileManager.default.fileExists(atPath: mount.source) {
+            if onThisMac {
                 let link = LinkButton(text, font: .systemFont(ofSize: 11)) { open(source) }
                 link.toolTip = String(localized: "Show this folder on your Mac", comment: "Inspector, Mounts: tooltip")
                 details.append(link)
@@ -432,11 +494,24 @@ final class ComposeInspectorView: NSView {
     let store: ContainerStore
     private let stack = NSStackView()
     private var shown: Shown?
+    private var folder: URL?
+    /// Reading the folder's compose file and its containers' working folders.
+    private(set) var reading: Task<Void, Never>?
 
     private struct Shown: Equatable {
         let project: String
         let services: [Service]
         let busy: [String]
+    }
+
+    /// What the disk says about a folder: its real path, the real paths of the working folders asked about, and its
+    /// compose file with that file's services.
+    private struct Read: Sendable {
+        let real: String
+        let resolved: [String: String]
+        let file: URL?
+        let modified: Date?
+        let names: [String]
     }
 
     struct Service: Equatable {
@@ -445,7 +520,7 @@ final class ComposeInspectorView: NSView {
         let containers: [ContainerInfo]
     }
 
-    static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
+    nonisolated static let fileNames = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
 
     init(frame: NSRect = .zero, preferences: Prefs, store: ContainerStore) {
         self.preferences = preferences
@@ -466,9 +541,30 @@ final class ComposeInspectorView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The folder shown (nil, or a folder without Compose, hides the card).
+    /// The folder shown (nil, or a folder without Compose, hides the card). The card keeps what it shows while the
+    /// same folder is read again; another folder's card waits for its read.
     func configure(_ folder: URL?) {
-        let next = folder.flatMap { Self.compose(in: $0, store: store) }
+        reading?.cancel()
+        reading = nil
+        if folder != self.folder { isHidden = true }
+        self.folder = folder
+        guard let folder else { return show(nil) }
+        let directories = Set(store.containers.compactMap(\.compose?.workingDirectory))
+        let resolved = Self.resolvedCache.filter { directories.contains($0.key) }
+        let files = Set(Self.fileNames.map { folder.appending(path: $0).path })
+        let cached = Self.servicesCache.filter { files.contains($0.key) }
+        reading = Task { [weak self] in
+            let read = await Self.read(folder, directories: directories, resolved: resolved, cached: cached)
+            guard let self, !Task.isCancelled else { return }
+            reading = nil
+            Self.remember(read)
+            show(Self.compose(in: folder, read, store: store))
+        }
+    }
+
+    isolated deinit { reading?.cancel() }
+
+    private func show(_ next: Shown?) {
         isHidden = next == nil
         guard next != shown else { return }
         shown = next
@@ -510,7 +606,7 @@ final class ComposeInspectorView: NSView {
             buttons.forEach(row.add)
             if let last = content.arrangedSubviews.last { content.setCustomSpacing(10, after: last) }
             content.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: columnOrContent(content).widthAnchor).isActive = true
+            row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
         let running = next.services.filter { $0.containers.contains(where: \.isRunning) }.count
         let total = next.services.count
@@ -522,37 +618,45 @@ final class ComposeInspectorView: NSView {
         card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 
-    private func columnOrContent(_ view: NSView) -> NSView { view }
-
-    /// The services of the Compose project in `folder`: from its compose file, and the containers `docker compose`
-    /// made there. Nil when there's neither.
     /// Compose files' services, by path and modification date (the Inspector refreshes often).
     private static var servicesCache: [String: (modified: Date?, names: [String])] = [:]
     /// Working folders with links resolved, by the path a container gives.
     private static var resolvedCache: [String: String] = [:]
 
-    private static func compose(in folder: URL, store: ContainerStore) -> Shown? {
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL.path
-        let containers = store.containers.filter { container in
-            guard let directory = container.compose?.workingDirectory else { return false }
-            let resolved = resolvedCache[directory] ?? URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
-            if resolvedCache.count > 500 { resolvedCache.removeAll() }
-            resolvedCache[directory] = resolved
-            return resolved == real
+    /// `resolved` and `cached`: what's known already, so only the rest is read.
+    @concurrent private static func read(_ folder: URL, directories: Set<String>, resolved known: [String: String],
+                                         cached: [String: (modified: Date?, names: [String])]) async -> Read {
+        var resolved = known
+        for directory in directories where resolved[directory] == nil {
+            resolved[directory] = URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
         }
         let file = fileNames.lazy.map { folder.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
-        guard file != nil || !containers.isEmpty else { return nil }
-        var names: [String] = []
-        if let file {
-            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            if let cached = servicesCache[file.path], cached.modified == modified {
-                names = cached.names
-            } else {
-                names = serviceNames(in: file)
-                if servicesCache.count > 200 { servicesCache.removeAll() }
-                servicesCache[file.path] = (modified, names)
-            }
+        let modified = file.flatMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
+        let names = file.map { file in
+            cached[file.path].flatMap { $0.modified == modified ? $0.names : nil } ?? serviceNames(in: file)
+        } ?? []
+        return Read(real: folder.resolvingSymlinksInPath().standardizedFileURL.path, resolved: resolved,
+                    file: file, modified: modified, names: names)
+    }
+
+    private static func remember(_ read: Read) {
+        if resolvedCache.count > 500 { resolvedCache.removeAll() }
+        resolvedCache.merge(read.resolved) { $1 }
+        guard let file = read.file else { return }
+        if servicesCache.count > 200 { servicesCache.removeAll() }
+        servicesCache[file.path] = (read.modified, read.names)
+    }
+
+    /// The services of the Compose project in `folder`: from its compose file, and the containers `docker compose`
+    /// made there. Nil when there's neither. A working folder not read yet (a container made while the folder was
+    /// read) isn't this project's until the next read.
+    private static func compose(in folder: URL, _ read: Read, store: ContainerStore) -> Shown? {
+        let containers = store.containers.filter { container in
+            guard let directory = container.compose?.workingDirectory else { return false }
+            return read.resolved[directory] == read.real
         }
+        guard read.file != nil || !containers.isEmpty else { return nil }
+        var names = read.names
         for name in containers.compactMap(\.compose?.service) where !names.contains(name) { names.append(name) }
         let services = names.map { name in
             Service(name: name, containers: containers.filter { $0.compose?.service == name }.sorted { $0.name < $1.name })
@@ -563,12 +667,12 @@ final class ComposeInspectorView: NSView {
     }
 
     /// The keys under `services:` in a compose file: enough YAML for the usual layouts (block style, any indent).
-    static func serviceNames(in file: URL) -> [String] {
+    nonisolated static func serviceNames(in file: URL) -> [String] {
         guard let (data, _) = try? TextFile.readPrefix(file, limit: 1 << 20) else { return [] }
         return serviceNames(String(decoding: data, as: UTF8.self))
     }
 
-    static func serviceNames(_ text: String) -> [String] {
+    nonisolated static func serviceNames(_ text: String) -> [String] {
         var names: [String] = []
         var inServices = false
         var indent: Int?

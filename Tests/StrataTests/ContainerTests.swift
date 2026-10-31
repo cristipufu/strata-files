@@ -468,17 +468,15 @@ struct ContainerTests {
         #expect(!FileManager.default.fileExists(atPath: engineFolder.appending(path: "db/db-web-1").path))
     }
 
-    @Test func aProjectFolderMustBeAFolder() throws {
+    @Test func aProjectFolderMustBeAFolder() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "strata-project-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let script = root.appending(path: "run.command")
         try Data("#!/bin/sh\n".utf8).write(to: script)
         // Labels on a container (an image can set them) name the folder; Terminal would run a script it's handed.
-        #expect(StackProjects.existing(root) == root)
-        #expect(StackProjects.existing(script) == nil)
-        #expect(StackProjects.existing(root.appending(path: "Tool.app")) == nil)
-        #expect(StackProjects.existing(root.appending(path: "missing")) == nil)
+        let asked = [root, script, root.appending(path: "Tool.app"), root.appending(path: "missing")]
+        #expect(await StackProjects.existing(asked) == [root])
     }
 
     @Test func containerIconsFollowRunning() {

@@ -86,10 +86,10 @@ extension BrowserViewController {
     }
 
     private func addStackOpenItems(to menu: NSMenu) {
-        guard !stackProjectFolders().isEmpty else { return }
+        guard !stackProjectDirectories().isEmpty else { return }
         addMenuCommand(.openInTerminal, to: menu)
         menu.addItem(OpenWithMenu(target: self, action: #selector(openStackWithApplication(_:))) {
-            ProjectEditors.installed().map(OpenWithApp.init)
+            await ProjectEditors.installed()
         }.item)
     }
 
@@ -186,7 +186,7 @@ extension BrowserViewController {
         if !isInContainerCopy { addMenuCommand(.addToShelf, to: menu) }
         if selectedContainers.isEmpty {
             if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ services.copies.containerCopies.isStack($0.url) }) {
-                if !stackProjectFolders().isEmpty { menu.addItem(.separator()) }
+                if !stackProjectDirectories().isEmpty { menu.addItem(.separator()) }
                 addStackOpenItems(to: menu)
             } else {
                 menu.addItem(.separator())
@@ -225,29 +225,32 @@ extension BrowserViewController {
         return selectedEntries.allSatisfy { copies.isStack($0.url) }
     }
 
-    /// Project folders on this Mac for the stacks in the context menu.
-    func stackProjectFolders() -> [URL] {
+    /// The folders the stacks in the context menu were launched from, as their containers' labels say. Menus offer
+    /// them without asking the disk; opening them checks that each is still a folder on this Mac.
+    func stackProjectDirectories() -> [URL] {
         let stacks = selectedEntries.isEmpty ? [directory].compactMap { $0 } : selectedEntries.map(\.url)
         let copies = services.copies.containerCopies, store = services.containerStore
-        return stacks.compactMap { StackProjects.existingFolder(of: $0, copies: copies, store: store) }
+        return stacks.compactMap { StackProjects.workingDirectory(of: $0, copies: copies, store: store) }
     }
 
     /// Opens those project folders in the terminal. True when this was a stack, even if the folder is gone.
     func openStackInTerminal() -> Bool {
         guard isStackContext else { return false }
-        let folders = stackProjectFolders()
-        guard let terminal = preferences.terminalURL, !folders.isEmpty else { Sounds.beep(); return true }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
+        let directories = stackProjectDirectories()
+        guard let terminal = preferences.terminalURL, !directories.isEmpty else { Sounds.beep(); return true }
+        StackProjects.open(directories) { folders in
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
+        }
         return true
     }
 
     @objc func openStackWithApplication(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? URL else { return }
-        let folders = stackProjectFolders()
-        guard !folders.isEmpty else { return Sounds.beep() }
-        for folder in folders { ProjectEditors.open(folder, with: app) }
+        StackProjects.open(stackProjectDirectories()) { folders in
+            for folder in folders { ProjectEditors.open(folder, with: app) }
+        }
     }
 
     // MARK: - Drag and drop
@@ -428,7 +431,7 @@ extension BrowserViewController: NSMenuItemValidation {
             // On a server it's a shell there over ssh; a bucket has none.
             return serverKind == .sftp
         case #selector(openInTerminal(_:)) where isStackContext:
-            return !stackProjectFolders().isEmpty
+            return !stackProjectDirectories().isEmpty
         case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
             // In a container's files it's a shell in the container, which has to be running.
             return canOpenTerminalInContainer == true

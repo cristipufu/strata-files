@@ -49,7 +49,7 @@ extension BrowserViewController {
 
     /// Whether Open in Terminal can open a shell in the container shown (or selected): it has to be running.
     var canOpenTerminalInContainer: Bool? {
-        if isStackContext { return !stackProjectFolders().isEmpty }
+        if isStackContext { return !stackProjectDirectories().isEmpty }
         if let container = selectedContainers.first { return container.isRunning }
         let copies = services.copies.containerCopies, store = services.containerStore
         guard let directory, copies.contains(directory) else { return nil }

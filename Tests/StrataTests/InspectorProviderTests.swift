@@ -182,6 +182,7 @@ struct InspectorProviderTests {
         #expect(inspectorA.openWithCard.isHidden)
         #expect(inspectorA.permissionsCard.isHidden)
         #expect(inspectorA.projectView.isHidden)
+        await inspectorA.composeView.reading?.value
         #expect(inspectorA.composeView.isHidden)
 
         // BrowserWindowController with unselected server folder passes browser.canMeasure(entry), so Size is "—" rather than "Calculating…".
@@ -198,6 +199,7 @@ struct InspectorProviderTests {
         // At the server's top the address describes the server: it goes under the name, not before it as a path.
         #expect(shownLocation(controller.split.inspector) == "First Cloud\n" + serverA.address)
         #expect(controller.split.inspector.projectView.isHidden)
+        await controller.split.inspector.composeView.reading?.value
         #expect(controller.split.inspector.composeView.isHidden)
         controller.navigate(to: URL(fileURLWithPath: "/"))
         await controller.browser.directoryReads.task?.value

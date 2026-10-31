@@ -12,12 +12,6 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Inspector/SummaryView.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/App/AppDelegate.swift",
   "call": "FileManager.default.fileExists",
   "count": 2,
@@ -62,36 +56,6 @@
  {
   "file": "Sources/Strata/Containers/ContainerFiles.swift",
   "call": ".resolvingSymlinksInPath()",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/ContainerInspector.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/ContainerInspector.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/ContainerInspector.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/ContainerInspector.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/ContainerInspector.swift",
-  "call": "NSWorkspace.shared.icon(forFile",
   "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
@@ -153,18 +117,6 @@
   "file": "Sources/Strata/Dock/DockSearch.swift",
   "call": "FileManager.default.displayName",
   "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/InspectorCard.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Inspector/InspectorCard.swift",
-  "call": "NSWorkspace.shared.icon(forFile",
-  "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {

@@ -15,10 +15,16 @@ struct InspectorLocationTests {
         InspectorLocationView.plain(view.pathLabel.stringValue)
     }
 
-    @Test func whereReadsAsOnePathEndingInTheFolderName() throws {
+    /// The view once it has read the folder's name and icon.
+    private func read(_ view: InspectorLocationView) async -> InspectorLocationView {
+        await view.reading?.value
+        return view
+    }
+
+    @Test func whereReadsAsOnePathEndingInTheFolderName() async throws {
         let tree = try TestTree("Projects/Site/index.html")
         let folder = tree.url("Projects/Site")
-        let view = InspectorLocationView(folder: folder, shownAs: folder) {}
+        let view = await read(InspectorLocationView(folder: folder, shownAs: folder) {})
         #expect(shown(view) == Format.tildePath(tree.url("Projects")) + "/Site")
         #expect(view.toolTip == shown(view))
         // The path leading there is secondary ink; the folder's name is primary ink and comes last.
@@ -30,7 +36,7 @@ struct InspectorLocationTests {
 
         // The top of the disk shows its name alone, never a stray "/" with it.
         let top = URL(fileURLWithPath: "/")
-        #expect(shown(InspectorLocationView(folder: top, shownAs: top) {}) == FileManager.default.displayName(atPath: "/"))
+        #expect(shown(await read(InspectorLocationView(folder: top, shownAs: top) {})) == FileManager.default.displayName(atPath: "/"))
 
         // Server and container folders join their location the same way; a server's top keeps its address under
         // its name, because the address describes the server instead of leading to it.
@@ -44,17 +50,17 @@ struct InspectorLocationTests {
         #expect(tree.snapshot() == ["Projects/", "Projects/Site/", "Projects/Site/index.html"])
     }
 
-    @Test func thePathNamesEachFolderAsItIsStoredNotByItsDisplayName() throws {
+    @Test func thePathNamesEachFolderAsItIsStoredNotByItsDisplayName() async throws {
         let tree = try TestTree("Tool.app/", "a:b/", "a/b/")
         // Finder hides an app's extension and shows a stored ":" as "/": joined to a real path, either would name
         // another place ("/Applications/Xcode", or the folder b inside a).
         let app = tree.url("Tool.app"), colon = tree.url("a:b")
         try #require(FileManager.default.displayName(atPath: app.path) == "Tool")
         try #require(FileManager.default.displayName(atPath: colon.path) == "a/b")
-        let appView = InspectorLocationView(folder: app, shownAs: app) {}
+        let appView = await read(InspectorLocationView(folder: app, shownAs: app) {})
         #expect(shown(appView) == Format.tildePath(tree.root) + "/Tool.app")
         #expect(appView.accessibilityLabel() == String(localized: "Show “\("Tool")”", comment: "Inspector: the item’s folder, as a button that shows it"))
-        #expect(shown(InspectorLocationView(folder: colon, shownAs: colon) {}) == Format.tildePath(tree.root) + "/a:b")
+        #expect(shown(await read(InspectorLocationView(folder: colon, shownAs: colon) {})) == Format.tildePath(tree.root) + "/a:b")
         #expect(tree.snapshot() == ["Tool.app/", "a/", "a/b/", "a:b/"])
     }
 

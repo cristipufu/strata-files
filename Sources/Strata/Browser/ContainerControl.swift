@@ -124,17 +124,21 @@ enum StackProjects {
         return URL(filePath: path, directoryHint: .isDirectory)
     }
 
-    /// `workingDirectory` when that folder is still on this Mac.
-    static func existingFolder(of url: URL, copies: ContainerCopyStore,
-                               store: ContainerStore) -> URL? {
-        workingDirectory(of: url, copies: copies, store: store).flatMap(existing)
+    /// Those of `folders` that are folders on this Mac. The paths come from the containers' labels, which an image can
+    /// set, so each is checked to be a plain folder before Terminal or an editor is asked to open it: Terminal *runs*
+    /// a script it's given, and an app would launch.
+    @concurrent static func existing(_ folders: [URL]) async -> [URL] {
+        folders.filter(FileEntry.isNavigableFolder)
     }
 
-    /// `folder` when it's a folder on this Mac. The path comes from the containers' labels, which an image can set, so
-    /// it's checked to be a plain folder before Terminal or an editor is asked to open it: Terminal *runs* a script
-    /// it's given, and an app would launch.
-    static func existing(_ folder: URL) -> URL? {
-        FileEntry.isNavigableFolder(folder) ? folder : nil
+    /// Hands `open` those of `directories` that are folders on this Mac when asked, or beeps when none is.
+    @discardableResult
+    static func open(_ directories: [URL], with open: @escaping ([URL]) -> Void) -> Task<Void, Never> {
+        Task {
+            let folders = await existing(directories)
+            guard !folders.isEmpty else { return Sounds.beep() }
+            open(folders)
+        }
     }
 }
 
@@ -147,17 +151,17 @@ enum ProjectEditors {
         NSWorkspace.shared.open([folder], withApplicationAt: app, configuration: configuration)
     }
 
-    /// Editors to offer, by display name: as last read, read again away from the main thread once that's over 30
-    /// seconds old (asking LaunchServices about every editor takes a moment). Only the very first ask, before `warm`
-    /// has read them, waits for them.
-    static func installed() -> [URL] {
+    /// Editors to offer, by name, with their icons: as last read, read again away from the main thread once that's
+    /// over 30 seconds old (asking LaunchServices about every editor takes a moment). Only an ask before the first
+    /// read has finished waits for it.
+    static func installed() async -> [OpenWithApp] {
         if let cached {
             if Date() >= cached.until { warm() }
             return cached.apps
         }
-        let apps = find()
-        cached = (apps, Date().addingTimeInterval(30))
-        return apps
+        warm()
+        await reading?.value
+        return cached?.apps ?? []
     }
 
     private static var reading: Task<Void, Never>?
@@ -172,7 +176,9 @@ enum ProjectEditors {
         }
     }
 
-    @concurrent private static func findOffMain() async -> [URL] { find() }
+    @concurrent private static func findOffMain() async -> [OpenWithApp] {
+        find().map(OpenWithApp.init).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
 
     nonisolated private static func find() -> [URL] {
         var ids = Set(knownIDs)
@@ -191,7 +197,6 @@ enum ProjectEditors {
                 apps.append(url)
             }
         }
-        apps.sort { FileManager.default.displayName(atPath: $0.path).localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending }
         return apps
     }
 
@@ -202,7 +207,7 @@ enum ProjectEditors {
         return category == "public.app-category.developer-tools"
     }
 
-    private static var cached: (apps: [URL], until: Date)?
+    private static var cached: (apps: [OpenWithApp], until: Date)?
 
     nonisolated private static let skipped: Set<String> = [
         "com.anthropic.claudefordesktop", "com.apple.dt.Instruments", "com.apple.ScriptEditor2",
