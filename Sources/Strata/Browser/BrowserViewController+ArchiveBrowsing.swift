@@ -56,13 +56,18 @@ extension BrowserViewController {
     /// Shows what's in `archive` like a folder: right away when it was opened before (and hasn't changed), otherwise once
     /// it's extracted. Big ones ask first.
     func browseArchive(_ archive: URL) {
+        // Where its copy is, and whether it's finished, is read away from the main thread: the archive may be on a
+        // disk that doesn't answer.
+        afterReading({ ArchiveCache.lookup(archive) }) { [weak self] found in self?.browseArchive(archive, copy: found) }
+    }
+
+    private func browseArchive(_ archive: URL, copy found: (folder: URL, finished: Bool)?) {
         let window = view.window
-        if let folder = ArchiveCache.existing(for: archive) {
-            ArchiveCache.touch(folder)
-            delegate?.browser(self, showArchiveCopy: folder)
+        if let found, found.finished {
+            delegate?.browser(self, showArchiveCopy: found.folder)
             return
         }
-        guard let folder = ArchiveCache.folder(for: archive), ArchiveKind(fileName: archive.lastPathComponent) != nil else {
+        guard let folder = found?.folder, ArchiveKind(fileName: archive.lastPathComponent) != nil else {
             let alert = NSAlert()
             alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
             alert.informativeText = String(localized: "It can’t be read.")
@@ -160,7 +165,8 @@ extension BrowserViewController {
                 if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
             }
             if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
-            guard job.state == .finished, (try? ArchiveCache.finish(folder, from: archive)) != nil else {
+            // The job records the finished copy itself, away from the main thread.
+            guard job.state == .finished else {
                 // Only this job's own copy goes: nothing else was making it.
                 ArchiveCache.setAside(entry)
                 if job.state == .failed, let message = job.errorMessage {
@@ -183,13 +189,8 @@ extension BrowserViewController {
     /// Context menu, when archives don't open as folders by default (or for kinds that open in their own apps).
     @objc func openArchiveAsFolder(_ sender: Any?) {
         guard let url = selectedURLs.first else { return }
-        let revision = navigationRevision
-        actionFetch?.cancel()
         // An archive in a container's files is read from the container first.
-        actionFetch = afterFetching([url]) { [weak self] in
-            guard let self, navigationRevision == revision else { return }
-            browseArchive(url)
-        }
+        afterFetching([url]) { [weak self] in self?.browseArchive(url) }
     }
 
     /// Shows the archive (not Strata's copy of it) in Finder.
@@ -201,9 +202,21 @@ extension BrowserViewController {
     /// Unpacks `archive` next to it (the notice bar's Extract All), or into Downloads when its folder can't take it (a
     /// read-only disk, the Trash, another archive's copy), then shows the result.
     func extractArchive(_ archive: URL) {
+        let copies = services.copies
+        afterReading({ Self.extractDestination(for: archive, copies: copies) }) { [weak self] destination in
+            self?.extract(archive, into: destination)
+        }
+    }
+
+    /// Next to `archive`, or Downloads when its folder can't take it (a read-only disk, the Trash, another archive's
+    /// copy). Asks the disk: away from the main thread.
+    nonisolated static func extractDestination(for archive: URL, copies: CopyProviders) -> URL {
         let folder = archive.deletingLastPathComponent()
-        let usable = access(folder.path, W_OK) == 0 && !isReadOnlyCopy(folder) && !Trash.isInTrash(archive)
-        let destination = usable ? folder : FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads", directoryHint: .isDirectory)
+        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder, copies: copies) && !Trash.isInTrash(archive)
+        return usable ? folder : FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads", directoryHint: .isDirectory)
+    }
+
+    private func extract(_ archive: URL, into destination: URL) {
         let job = ArchiveJob(.extract(archive, into: destination), undo: undoManager)
         job.onFinish = { [weak self] job in
             guard let self, job.state == .finished, let result = job.result else { return }

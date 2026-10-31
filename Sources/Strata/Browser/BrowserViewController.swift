@@ -118,7 +118,8 @@ final class BrowserViewController: NSViewController {
     var generation: Int { directoryReads.generation }
     /// Optional provider reads for the current selection (see `prefetchSelection`).
     var selectionFetch: Task<Void, Never>?
-    /// Explicit file fetch before opening or Quick Look; cancelled when the navigation context changes.
+    /// The pane's pending action, waiting for a fetch or a read (`afterFetching`, `afterReading`); cancelled when the
+    /// navigation context changes.
     var actionFetch: Task<Void, Never>?
     /// The last Move to Trash asked here: its items going, then the next row chosen.
     var trashing: Task<Void, Never>?
@@ -908,13 +909,10 @@ final class BrowserViewController: NSViewController {
         let urls = Self.quickLookItems(selectedEntries)
         let selectedKeys = Set(selectedURLs.map(Self.key))
         guard !selectedKeys.isEmpty else { return }
-        let revision = navigationRevision
         let hadWindow = viewIfLoaded?.window != nil
-        actionFetch?.cancel()
         // A container's file being fetched: show it once it's here.
-        actionFetch = afterFetching(urls) { [weak self] in
-            guard let self, navigationRevision == revision,
-                  (!hadWindow || viewIfLoaded?.window?.isVisible == true),
+        afterFetching(urls) { [weak self] in
+            guard let self, (!hadWindow || viewIfLoaded?.window?.isVisible == true),
                   !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }
             showPanel()
         }

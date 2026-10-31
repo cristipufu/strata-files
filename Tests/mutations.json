@@ -3245,8 +3245,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "find": "CopyFetchJob(pending, copies: copies, then: action)",
-    "replace": "CopyFetchJob(pending, copies: .live, then: action)",
+    "find": "CopyFetchJob(pending, copies: copies, then: act)",
+    "replace": "CopyFetchJob(pending, copies: .live, then: act)",
     "rule": "Provider fetch ownership large reads ignore their provider",
     "tests": "ProviderFetchTests/largeBrowserReadsUseTheirOwnQueueAndTheExistingSizeBoundary"
   },
@@ -3353,8 +3353,8 @@
     "file": "Strata/Browser/BrowserViewController+Fetching.swift",
     "edits": [
       {
-        "find": "return Task { [weak self] in",
-        "replace": "return Task { [self] in"
+        "find": "let fetch = Task { [weak self] in",
+        "replace": "let fetch = Task { [self] in"
       },
       {
         "find": "guard !Task.isCancelled, let self, let window",
@@ -3814,16 +3814,16 @@
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "            let revision = navigationRevision\n            actionFetch = afterFetching(files) { [weak self] in\n                guard let self, navigationRevision == revision else { return }\n                openFetched(entries, fileOpener: fileOpener)\n            }",
-    "replace": "            _ = afterFetching(files) { [weak self] in\n                self?.openFetched(entries, fileOpener: fileOpener)\n            }",
-    "rule": "Async action context ownership deferred open action fires after navigation changes",
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "        actionFetch = fetch\n        return fetch\n",
+    "replace": "        return fetch\n",
+    "rule": "Async action context ownership deferred open action fires after navigation changes: the pane doesn't hold its fetch",
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "            guard let self, navigationRevision == revision,\n                  (!hadWindow || viewIfLoaded?.window?.isVisible == true),\n                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }",
-    "replace": "            guard let self else { return }\n            _ = (revision, hadWindow, selectedKeys)",
+    "find": "            guard let self, (!hadWindow || viewIfLoaded?.window?.isVisible == true),\n                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }",
+    "replace": "            guard let self else { return }\n            _ = (hadWindow, selectedKeys)",
     "rule": "Async action context ownership deferred Quick Look opens after its item is deselected",
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
   },
@@ -7782,5 +7782,40 @@
     "replace": "        let spelled = path\n",
     "rule": "The home Trash spelled in another case isn't known where its disk ignores case",
     "tests": "TrashPlacesTests/theHomeTrashIsKnownInEachSpellingItsDiskTreatsAsTheSame"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
+    "find": "        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder, copies: copies) && !Trash.isInTrash(archive)\n",
+    "replace": "        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder, copies: copies)\n",
+    "rule": "Extract All unpacks into a disk's Trash",
+    "tests": "ExtractDestinationTests/anArchiveInADisksTrashGoesToDownloads"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
+    "find": "        let usable = access(folder.path, W_OK) == 0 && !ReadOnlyCopies.contains(folder, copies: copies) && !Trash.isInTrash(archive)\n",
+    "replace": "        let usable = access(folder.path, W_OK) == 0 && !Trash.isInTrash(archive)\n",
+    "rule": "Extract All unpacks into another archive's read-only copy",
+    "tests": "ExtractDestinationTests/anArchiveInsideAnotherArchivesCopyGoesToDownloads"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "        replacePendingAction()\n        actionFetch = Task { [weak self] in\n",
+    "replace": "        replacePendingAction()\n        _ = Task { [weak self] in\n",
+    "rule": "An archive looked up before going elsewhere is still unpacked: the pane doesn't hold its read",
+    "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "find": "        let act = { [weak self] in if self?.navigationRevision == revision { action() } }\n",
+    "replace": "        let act = action\n",
+    "rule": "A big fetch finished after the pane went elsewhere still opens what it fetched",
+    "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
+  },
+  {
+    "file": "Strata/Queue/ArchiveJob.swift",
+    "find": "                    try ArchiveCache.finish(folder, from: archive)\n",
+    "replace": "",
+    "rule": "An archive's copy, once made, isn't recorded, so opening it again unpacks it again",
+    "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   }
 ]

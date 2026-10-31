@@ -23,23 +23,26 @@ extension BrowserViewController {
         }
     }
 
-    /// Runs `action` once `urls` (the placeholders among them) are fetched; says what went wrong if they can't be. A big
-    /// fetch shows in Transfers, with a Stop button. Small reads return their task for completion and cancellation.
     /// A placeholder has its file's size.
     @concurrent static func size(of placeholders: [URL]) async -> Int64 {
         placeholders.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
     }
 
+    /// The pane's action once `urls` (the placeholders among them) are fetched; says what went wrong if they can't be.
+    /// It replaces the action waiting before it, and going elsewhere meanwhile drops it: a small read stops, a big one
+    /// (in Transfers, with a Stop button) goes on, but its action doesn't run. Small reads return their task.
     @discardableResult
     func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {
         let copies = services.copies
+        let revision = replacePendingAction()
         let pending = urls.filter(copies.isPlaceholder)
         guard !pending.isEmpty else { action(); return nil }
+        let act = { [weak self] in if self?.navigationRevision == revision { action() } }
         let transfers = services.transfers
-        return Task { [weak self] in
+        let fetch = Task { [weak self] in
             if await Self.size(of: pending) > 8 << 20 {
                 guard !Task.isCancelled else { return }
-                return transfers.add(CopyFetchJob(pending, copies: copies, then: action))
+                return transfers.add(CopyFetchJob(pending, copies: copies, then: act))
             }
             do {
                 try Task.checkCancellation()
@@ -47,7 +50,7 @@ extension BrowserViewController {
                 try Task.checkCancellation()
                 // A file can disappear at its source while being read. Never open an unfilled placeholder.
                 guard !pending.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }
-                action()
+                act()
             } catch is CancellationError {
                 // Cancelled reads do not open files or present an error.
             } catch {
@@ -65,6 +68,28 @@ extension BrowserViewController {
                 Self.present(alert, in: window) { _ in }
             }
         }
+        actionFetch = fetch
+        return fetch
+    }
+
+    /// The pane's action once `read` has answered away from the main thread, where it may ask a disk that doesn't
+    /// answer. It replaces the action waiting before it, and going elsewhere meanwhile drops it.
+    func afterReading<Answer: Sendable>(_ read: @escaping @Sendable () -> Answer, _ action: @escaping (Answer) -> Void) {
+        replacePendingAction()
+        actionFetch = Task { [weak self] in
+            let answer = await OwnThread.runUnlessCancelled(read)
+            guard let answer, let self, !Task.isCancelled else { return }
+            actionFetch = nil
+            action(answer)
+        }
+    }
+
+    /// Stops the action waiting for a fetch or a read, if any: the pane has one at a time.
+    @discardableResult
+    private func replacePendingAction() -> Int {
+        actionFetch?.cancel()
+        actionFetch = nil
+        return navigationRevision
     }
 
     /// Files arrived from a container: rows show their thumbnails, Quick Look shows what it couldn't before.

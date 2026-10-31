@@ -37,6 +37,16 @@ package nonisolated enum ArchiveCache {
         return root.appending(path: hash, directoryHint: .isDirectory).appending(path: copyName, directoryHint: .isDirectory)
     }
 
+    /// Where `archive`'s copy lives and whether it's finished (marked just used then), in one go: for asking away from
+    /// the main thread, since the archive may be on a disk that doesn't answer. Nil when the archive can't be read.
+    package static func lookup(_ archive: URL) -> (folder: URL, finished: Bool)? {
+        if let folder = existing(for: archive) {
+            touch(folder)
+            return (folder, true)
+        }
+        return folder(for: archive).map { ($0, false) }
+    }
+
     /// The finished copy of `archive`, if there is one.
     package static func existing(for archive: URL) -> URL? {
         guard let folder = folder(for: archive), learnSource(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,

@@ -14,34 +14,21 @@ extension BrowserViewController {
 
     func open(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         guard !entries.isEmpty else { return }
-        actionFetch?.cancel()
-        actionFetch = nil
         // A container's files are fetched first.
-        let files = entries.filter { !$0.isFolder }.map(\.url)
-        if files.contains(where: services.copies.isPlaceholder) {
-            let revision = navigationRevision
-            actionFetch = afterFetching(files) { [weak self] in
-                guard let self, navigationRevision == revision else { return }
-                openFetched(entries, fileOpener: fileOpener)
-            }
-            return
+        afterFetching(entries.filter { !$0.isFolder }.map(\.url)) { [weak self] in
+            self?.openFetched(entries, fileOpener: fileOpener)
         }
-        openFetched(entries, fileOpener: fileOpener)
     }
 
     private func openFetched(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
         if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
         // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder). Where an
-        // alias leads is read away from the main thread; going elsewhere meanwhile drops the open.
+        // alias leads is read away from the main thread.
         let aliases = entries.filter { $0.isAlias && !$0.isFolder }
         guard !aliases.isEmpty else { return open(entries, aliasedFolders: [], fileOpener: fileOpener) }
-        let revision = navigationRevision
-        actionFetch = Task { [weak self] in
-            let folders = await OwnThread.runUnlessCancelled { aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }
-            guard let folders, let self, !Task.isCancelled, navigationRevision == revision else { return }
-            actionFetch = nil
-            open(entries, aliasedFolders: folders, fileOpener: fileOpener)
+        afterReading({ aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }) { [weak self] folders in
+            self?.open(entries, aliasedFolders: folders, fileOpener: fileOpener)
         }
     }
 
@@ -64,12 +51,7 @@ extension BrowserViewController {
                   NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
               }) {
         guard !urls.isEmpty else { return }
-        let revision = navigationRevision
-        actionFetch?.cancel()
-        actionFetch = afterFetching(urls) { [weak self] in
-            guard let self, navigationRevision == revision else { return }
-            opener(urls, app)
-        }
+        afterFetching(urls) { opener(urls, app) }
     }
 
     /// Whether `selection` is still the one Move to Trash was asked with (`removed`, by listed path): only those items,

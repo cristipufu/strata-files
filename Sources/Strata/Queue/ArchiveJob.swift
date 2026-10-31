@@ -121,6 +121,7 @@ package final class ArchiveJob {
                 let control = control
                 try await Self.onWorkerThread {
                     try Archiver.extractContents(archive, inspection: inspection, to: folder, control: control)
+                    try ArchiveCache.finish(folder, from: archive)
                 }
                 url = folder
             }
