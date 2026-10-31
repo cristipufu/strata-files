@@ -367,6 +367,37 @@ struct WorkspaceOwnershipTests {
         #expect(found?.values.contains { $0.contains("secret") } == false)
         #expect(Workspaces.shares(for: ["/Volumes/team/a"], on: []) == nil)
         #expect(Workspaces.shares(for: ["/Volumes/teamwork/c"], on: volumes) == nil)
+        // An address saved before is kept where the disks haven't been read, for folders still on that share: never
+        // over a disk read at its mount point, a local one named like it included, nor for a look-alike name.
+        let saved = ["/Volumes/Media": "smb://nas/media", "/Volumes/Old": "smb://nas/old"]
+        let paths = ["/Volumes/Media/a", "/Volumes/Oldies/b"]
+        #expect(Workspaces.unread(saved, holding: paths, on: []) == ["/Volumes/Media": "smb://nas/media"])
+        let local = [Place(title: "Media", url: URL(fileURLWithPath: "/Volumes/Media"), symbol: "externaldrive")]
+        #expect(Workspaces.unread(saved, holding: paths, on: local).isEmpty)
+    }
+
+    @Test func aWorkspaceWhoseWindowClosedWhileBroughtForwardOpensAgain() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let later = tree.url("later").path
+        let saved = Workspace(name: "Work", tabs: [[later]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: later)
+        let window = try #require(env.services.workspaces.openWindows(plan, name: saved.name).first)
+        env.windows.visible = [window]
+        let forward = try #require(env.services.workspaces.open(saved))
+        // Closed while its waiting pane's folder is looked at: choosing it again opens it again (its folder is there
+        // by now, so it opens a window rather than saying none of its folders are).
+        window.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window.window))
+        env.windows.visible = []
+        try FileManager.default.createDirectory(atPath: later, withIntermediateDirectories: false)
+        let before = tree.snapshot(), opened = env.windows.opened.count
+        let reopening = try #require(env.services.workspaces.open(saved))
+        await forward.value
+        await reopening.value
+        #expect(env.windows.opened.count == opened + 1)
+        #expect(tree.snapshot() == before)
     }
 
     @Test func workspaceStoreDoesNotKeepItsEnvironmentAlive() throws {

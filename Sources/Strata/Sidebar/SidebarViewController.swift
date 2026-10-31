@@ -798,12 +798,6 @@ extension SidebarViewController: NSMenuDelegate {
         }
     }
 
-    /// Whether any of `urls` is a whole disk, asked of each item on a thread of its own: what the mount table can't
-    /// name (one reached through a link in its path) is refused here, before anything moves.
-    static func holdsADisk(_ urls: [URL]) async -> Bool {
-        await OwnThread.run { urls.contains { (try? $0.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true } }
-    }
-
     /// As spelled and standardized: standardizing drops a leading /private that a mount point keeps.
     private static func isMountPoint(_ url: URL, in mounts: Set<String>) -> Bool {
         [url.path, url.standardizedFileURL.path].contains { path in
@@ -817,7 +811,6 @@ extension SidebarViewController: NSMenuDelegate {
         let copies = services.copies
         let files = services.files
         Task { @MainActor in
-            guard await !Self.holdsADisk(urls) else { return Sounds.beep() }
             do {
                 try await files.trash(urls, undo: window?.undoManager)
             } catch let noTrash as FileOps.NoTrash {

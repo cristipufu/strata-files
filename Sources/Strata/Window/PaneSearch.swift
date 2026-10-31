@@ -104,6 +104,8 @@ import AppKit
             await searchDirectly(text, in: scope, pane: p, generation: generation, target: target)
             return
         }
+        // Replaced while the index was asked: the folder scan is a newer search's now.
+        guard generation == latest, p.destination == target else { return }
         folderScan?.cancel()
         folderScan = nil
         let givenUpBefore = NameRegex.namesGivenUp
@@ -112,6 +114,7 @@ import AppKit
         guard let result = understood else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Search works as soon as the first index is built."))
+            show(summary: "")
             return
         }
         // Documents whose text matches (on-device, Documents/Desktop/Downloads) follow the name matches. Explicit

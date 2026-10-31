@@ -370,6 +370,12 @@ package enum FileOps {
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
     /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
     /// (a temporary copy). A link to a Trash is only a link.
+    /// A whole disk is never trashed, however it's reached (a link in its path included): asked of the item itself, so
+    /// read where trashing happens, away from the main thread.
+    package nonisolated static func isWholeDisk(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+    }
+
     package nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
         !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
             && !ReadOnlyCopies.contains(url, copies: copies)
@@ -393,7 +399,7 @@ package enum FileOps {
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
         let urls = Self.outermost(urls)
-        for url in urls where canTrash(url, copies: copies) {
+        for url in urls where canTrash(url, copies: copies) && !isWholeDisk(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)

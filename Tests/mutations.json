@@ -847,8 +847,8 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        for url in urls where canTrash(url, copies: copies) {",
-    "replace": "        for url in urls {",
+    "find": "        for url in urls where canTrash(url, copies: copies) && !isWholeDisk(url) {",
+    "replace": "        for url in urls where !isWholeDisk(url) {",
     "rule": "Move to Trash takes items inside a read-only copy",
     "tests": "DeleteScopeTests/nothingInAReadOnlyCopy"
   },
@@ -7142,8 +7142,8 @@
   {
     "file": "Strata/Window/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet shows an item's icon as it is now",
-    "find": "                  let read = await icons.currentIcons(forPaths: paths),",
-    "replace": "                  let read = Optional(paths.reduce(into: [String: NSImage]()) { $0[$1] = icons.icon(forPath: $1, folder: true) }),",
+    "find": "            let read = await icons.currentIcons(forPaths: paths)\n",
+    "replace": "            let read = Optional(paths.reduce(into: [String: NSImage]()) { $0[$1] = icons.icon(forPath: $1, folder: true) })\n",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
@@ -7295,8 +7295,8 @@
   },
   {
     "file": "Strata/Toolbar/PathBar.swift",
-    "find": "            let opening = await FileEntry.opening(URL(fileURLWithPath: path))\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
-    "replace": "            let opening = await FileEntry.opening(URL(fileURLWithPath: path))\n            guard let self, !Task.isCancelled, isEditing else { return }",
+    "find": "            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
+    "replace": "            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing else { return }",
     "rule": "Path bar: Return acts on an answer for text that was typed over",
     "tests": "PathBarDiskTests/returnOpensAFolderOrShowsAFileAndANewerTextWins"
   },
@@ -7490,17 +7490,45 @@
     "tests": "WorkspaceTests/diskOfAPath"
   },
   {
-    "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "        await OwnThread.run { urls.contains { (try? $0.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true } }",
-    "replace": "        await OwnThread.run { urls.contains { $0.path == \"/\" } }",
-    "rule": "The sidebar's Trash takes a disk reached through a link",
-    "tests": "DropTests/theSidebarsTrashRefusesADiskHoweverItsReached"
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n    }\n\n    package nonisolated static func canTrash",
+    "replace": "        url.path == \"/\"\n    }\n\n    package nonisolated static func canTrash",
+    "rule": "Move to Trash takes a disk reached through a link",
+    "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
   },
   {
     "file": "Strata/Model/Places.swift",
-    "find": "        preferences.favoritePaths.map { $0.map { URL(fileURLWithPath: $0).standardizedFileURL } } ?? shown",
+    "find": "        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL } } ?? shown",
     "replace": "        shown",
     "rule": "Changing favorites drops one last found missing",
     "tests": "FavoritesTests/aFavoriteLastFoundMissingIsKeptWhenOthersChange"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            return !read.contains(mountPoint) && paths.contains { $0 == mountPoint || $0.hasPrefix(top) }",
+    "replace": "            return paths.contains { $0 == mountPoint || $0.hasPrefix(top) }",
+    "rule": "A workspace keeps an old share address over a disk read at its mount point",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceRemembersTheSharesItsFoldersAreOnAsTheDisksWereLastRead"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "        bringingForward.insert(workspace.name)\n",
+    "replace": "        planning.insert(workspace.name)\n",
+    "rule": "A workspace whose window closed while it was brought forward can't be opened again",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceWhoseWindowClosedWhileBroughtForwardOpensAgain"
+  },
+  {
+    "file": "Strata/Browser/OpenWithMenu.swift",
+    "find": "        known = known.filter { kept.contains($0.key) }",
+    "replace": "        known = known.filter { _ in !kept.isEmpty }",
+    "rule": "The Where row keeps showing a folder's old look after other items were shown",
+    "tests": "InspectorLocationTests/aFoldersLookIsKeptWhileShownAndReadAgainAfter"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "        if let controller = window.windowController as? BrowserWindowController { return !controller.isClosed }",
+    "replace": "        if window.windowController is BrowserWindowController { return window.isVisible }",
+    "rule": "Delete Immediately silently drops its question when its window is in another tab or hidden",
+    "tests": "DeleteTests/deleteImmediatelyAsksOnlyInAWindowStillOpen"
   }
 ]

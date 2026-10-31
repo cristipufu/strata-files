@@ -86,10 +86,18 @@ extension BrowserViewController {
         let asked = window != nil
         Task { [weak window] in
             let plan = await deletionPlan(urls, copies: copies)
-            // The window to ask in closed while the plan was read: nothing changes. One minimized meanwhile still asks.
-            guard !asked || window.map({ $0.isVisible || $0.isMiniaturized }) == true else { return }
+            // The window to ask in closed while the plan was read: nothing changes.
+            guard !asked || Self.canStillAsk(in: window) else { return }
             confirm(plan, in: window, noTrash: noTrash, then: done)
         }
+    }
+
+    /// Whether a window a confirmation was to be asked in is still there to ask in: one that closed isn't; one hidden
+    /// with the app, minimized or in a background tab still is.
+    static func canStillAsk(in window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        if let controller = window.windowController as? BrowserWindowController { return !controller.isClosed }
+        return window.isVisible || window.isMiniaturized
     }
 
     private static func confirm(_ plan: DeletionPlan, in window: NSWindow?, noTrash: Bool, then done: @escaping () -> Void) {

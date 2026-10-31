@@ -51,7 +51,7 @@ package enum Places {
         guard let paths = preferences.favoritePaths else { return defaults }
         return paths.compactMap { path in
             guard isFolder(path) != false else { return nil }
-            let url = URL(fileURLWithPath: path)
+            let url = URL(filePath: path, directoryHint: .isDirectory)
             return defaults.first { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
                 ?? Place(title: name(url), url: url, symbol: "folder")
         }
@@ -68,7 +68,9 @@ package enum Places {
         var saved = savedFavorites(preferences: preferences, shown: shown).filter { !paths.contains($0.path) }
         // Before the first favorite shown at `index` or after it that stays where it is.
         let anchor = index.flatMap { index in shown.dropFirst(max(0, index)).first { !paths.contains($0.path) } }
-        saved.insert(contentsOf: folders, at: anchor.flatMap(saved.firstIndex(of:)) ?? saved.count)
+        // By path: a default place and the same folder saved by you can differ in a trailing slash.
+        let at = anchor.flatMap { anchor in saved.firstIndex { $0.path == anchor.path } } ?? saved.count
+        saved.insert(contentsOf: folders, at: at)
         preferences.favoritePaths = saved.map(\.path)
     }
 
@@ -80,7 +82,7 @@ package enum Places {
 
     /// Your own list, or the defaults as `shown` until you've changed it.
     private static func savedFavorites(preferences: Prefs, shown: [URL]) -> [URL] {
-        preferences.favoritePaths.map { $0.map { URL(fileURLWithPath: $0).standardizedFileURL } } ?? shown
+        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL } } ?? shown
     }
 
     nonisolated private static func folders(among urls: [URL]) async -> [URL] {

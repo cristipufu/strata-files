@@ -15,6 +15,8 @@ final class Workspaces {
     private let key = "workspaces"
     /// Workspaces whose folders are being looked at before they open.
     private var planning: Set<String> = []
+    /// Workspaces whose open window was brought forward while its waiting panes' folders are looked at.
+    private var bringingForward: Set<String> = []
 
     init(services: BrowserServices) {
         self.services = services
@@ -62,10 +64,11 @@ final class Workspaces {
         let tabs = controllers.map(\.snapshot)
         let services = controllers.first?.services
         let paths = tabs.flatMap { $0 }
-        var found = shares(for: paths, on: services?.places.snapshot.volumes ?? []) ?? [:]
+        let volumes = services?.places.snapshot.volumes ?? []
+        var found = shares(for: paths, on: volumes) ?? [:]
         for controller in controllers { found.merge(controller.waitingShares) { current, _ in current } }
-        let saved = name.isEmpty ? nil : services?.workspaces.named(name)?.shares
-        found.merge(still(saved ?? [:], holding: paths)) { current, _ in current }
+        let saved = (name.isEmpty ? nil : services?.workspaces.named(name)?.shares) ?? [:]
+        found.merge(unread(saved, holding: paths, on: volumes)) { current, _ in current }
         var workspace = Workspace(name: name, tabs: tabs, modes: controllers.map(\.snapshotModes), saved: Date(),
                                   shares: found.isEmpty ? nil : found)
         if includingNavigation {
@@ -84,11 +87,13 @@ final class Workspaces {
         return workspace
     }
 
-    /// Of `shares` (mount point → address), those some of `paths` are on.
-    static func still(_ shares: [String: String], holding paths: [String]) -> [String: String] {
-        shares.filter { mountPoint, _ in
+    /// Of `saved` (mount point → address), those some of `paths` are on where `volumes` (the disks last read) has no
+    /// disk at that mount point: a disk read there says what it is, a local disk named like the share included.
+    static func unread(_ saved: [String: String], holding paths: [String], on volumes: [Place]) -> [String: String] {
+        let read = Set(volumes.map(\.url.path))
+        return saved.filter { mountPoint, _ in
             let top = mountPoint.hasSuffix("/") ? mountPoint : mountPoint + "/"
-            return paths.contains { $0 == mountPoint || $0.hasPrefix(top) }
+            return !read.contains(mountPoint) && paths.contains { $0 == mountPoint || $0.hasPrefix(top) }
         }
     }
 
@@ -231,7 +236,7 @@ final class Workspaces {
            let window = open.window {
             let front = window.tabGroup?.selectedWindow ?? window
             // Connecting, or brought forward with its panes still being looked at: once is enough.
-            if connecting.contains(workspace.name) || planning.contains(workspace.name) {
+            if connecting.contains(workspace.name) || bringingForward.contains(workspace.name) {
                 windows.show(front)
                 return nil
             }
@@ -283,7 +288,7 @@ final class Workspaces {
         let waiting = ownedControllers(of: window).map { controller in
             WaitingTab(controller: controller, panes: controller.waitingPanes.filter { $0.folder.mountPoint == nil })
         }
-        planning.insert(workspace.name)
+        bringingForward.insert(workspace.name)
         return Task {
             for tab in waiting {
                 for (index, folder) in tab.panes {
@@ -292,7 +297,7 @@ final class Workspaces {
                     controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
                 }
             }
-            planning.remove(workspace.name)
+            bringingForward.remove(workspace.name)
             let open = waiting.compactMap(\.controller).filter { !$0.isClosed }
             if open.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
                 connect(open, of: workspace, missing: [], offline: [])

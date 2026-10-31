@@ -44,8 +44,9 @@ package final class ConflictSheetController: NSWindowController {
         /// Nil when the task asking is cancelled first.
         package static func read(_ conflict: TransferConflict, icons: IconCache) async -> Facts? {
             let paths = [conflict.existing.path, conflict.source.path]
-            guard let (folderName, existingIsFolder, canMerge) = await Self.disk(conflict),
-                  let read = await icons.currentIcons(forPaths: paths),
+            async let disk = Self.disk(conflict)
+            let read = await icons.currentIcons(forPaths: paths)
+            guard let (folderName, existingIsFolder, canMerge) = await disk, let read,
                   let existingIcon = read[paths[0]], let incomingIcon = read[paths[1]] else { return nil }
             return Facts(folderName: folderName, existingIsFolder: existingIsFolder, canMerge: canMerge,
                          existingIcon: existingIcon, incomingIcon: incomingIcon)

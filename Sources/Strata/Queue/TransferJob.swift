@@ -453,6 +453,7 @@ package final class TransferJob {
         let control = control
         let steps = await worker.run { TransferEngine.mergePlan(item.source, into: item.destination) }
         let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }
+        guard !control.isCancelled else { return }
         // The folder is already there: the item itself is done; its contents follow as their own items.
         items[index].outcome = .done
         totalBytes = max(0, totalBytes.saturatingAdd(-item.bytes))

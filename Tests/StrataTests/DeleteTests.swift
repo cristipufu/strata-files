@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -175,5 +175,21 @@ struct DeleteTests {
         #expect(SecureStorage.Context.shared.temporary)
         #expect(SecureStorage.Context.shared.directory.path.hasPrefix(FileManager.default.temporaryDirectory.path))
         #expect(!SecureStorage.Context.shared.directory.path.contains("/Library/Application Support/"))
+    }
+
+    /// Delete Immediately asks once its plan is read: in its window while that's open, shown or not (another tab, the app
+    /// hidden), never in one that closed meanwhile.
+    @Test func deleteImmediatelyAsksOnlyInAWindowStillOpen() throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("a.txt")
+        let environment = try IndependentEnvironment()
+        let controller = BrowserWindowController(location: tree.root, services: environment.services)
+        let window = try #require(controller.window)
+        #expect(!window.isVisible && BrowserViewController.canStillAsk(in: window))
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+        #expect(!BrowserViewController.canStillAsk(in: window))
+        #expect(!BrowserViewController.canStillAsk(in: nil))
+        withExtendedLifetime(controller) {}
+        #expect(tree.snapshot() == ["a.txt"])
     }
 }

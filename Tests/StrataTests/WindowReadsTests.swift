@@ -74,7 +74,8 @@ import Testing
     @Test func theShelfDropsWhatsGoneOnceItsBeenRead() async throws {
         let tree = try TestTree("a.txt", "b.txt")
         let shelf = ShelfWell(frame: .zero)
-        shelf.add([tree.url("a.txt"), tree.url("b.txt"), tree.url("gone.txt")])
+        // One batch naming an item twice holds it once.
+        shelf.add([tree.url("a.txt"), tree.url("b.txt"), tree.url("gone.txt"), tree.url("a.txt")])
         #expect(shelf.items.count == 3)
         await shelf.checking?.value
         #expect(shelf.items == [tree.url("a.txt"), tree.url("b.txt")] && shelf.checking == nil)

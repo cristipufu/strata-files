@@ -322,7 +322,8 @@ final class InspectorLocationView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         reading = Task { [weak self, folder, path] in
-            let name = await looks.look(path).name, image = await looks.look(folder).image
+            async let named = looks.look(path), drawn = looks.look(folder)
+            let (name, image) = await (named.name, drawn.image)
             guard let self, !Task.isCancelled else { return }
             if shownName == nil { nameText = name }
             if let image { icon.image = image }

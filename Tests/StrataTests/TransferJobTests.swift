@@ -113,6 +113,31 @@ import Testing
         #expect(tree.text("from/newer.txt") == "from/newer.txt" && tree.text("from/older.txt") == "from/older.txt")
     }
 
+    @Test func stoppingAMergeChangesNothing() async throws {
+        let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/same.txt", "from/newer.txt",
+                                "to/", "to/box/", "to/box/same.txt", "to/newer.txt")
+        defer { tree.removeFromTrash() }
+        let past = Date(timeIntervalSinceNow: -3600)
+        for path in ["to/box/same.txt", "to/newer.txt"] {
+            try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url(path).path)
+        }
+        let before = tree.snapshot()
+        // Stop pressed as Merge is chosen: what the merge reads after that decides nothing.
+        final class Box { var job: TransferJob? }
+        let box = Box()
+        let stopping = ConflictResolver { _ in
+            box.job?.cancel()
+            return ConflictResolution(decision: .merge, applyToAll: true)
+        }
+        let job = TransferQueue.shared.enqueue([tree.url("from/box"), tree.url("from/newer.txt")], to: tree.url("to"), mode: .copy,
+                                               options: .init(verify: false, clone: false), undo: nil, conflicts: stopping)
+        box.job = job
+        await job.finished()
+        #expect(job.state == .cancelled)
+        #expect(tree.snapshot() == before)
+        #expect(tree.text("to/box/same.txt") == "to/box/same.txt" && tree.text("to/newer.txt") == "to/newer.txt")
+    }
+
     @Test func twoItemsWithTheSameNameAreBothKept() async throws {
         for (mode, resolver, label) in [(TransferMode.copy, ConflictResolver.keepBoth, "keep both"), (.move, .keepBoth, "keep both"),
                                         (.move, .replace, "replace"), (.copy, .replace, "replace")] {

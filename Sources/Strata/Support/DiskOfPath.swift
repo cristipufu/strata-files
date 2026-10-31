@@ -9,7 +9,7 @@ nonisolated package enum DiskOfPath {
     /// kernel's table, which waits on no disk; a cloud storage account in your home's Library/CloudStorage, or iCloud
     /// Drive, answers through its own provider, so it counts as one; anything else is the startup disk's ("/").
     package static func of(_ path: String) -> String {
-        of(path, prefixes, mounts: MountPoints.current())
+        of(path, prefixes, mounts: MountPoints.recent())
     }
 
     package static func of(_ path: String, home: String, mounts: Set<String> = []) -> String {

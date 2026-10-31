@@ -194,4 +194,18 @@ struct InspectorLocationTests {
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
     }
+
+    /// The Where row's look of a folder is read once while that item is shown, and read again once another was.
+    @Test func aFoldersLookIsKeptWhileShownAndReadAgainAfter() async throws {
+        let tree = try TestTree("other/")
+        let looks = FinderLooks(), url = tree.url("Tool.app")
+        #expect(await looks.look(url).name == "Tool.app")
+        // It becomes an app, which Finder names without its extension.
+        try FileManager.default.createDirectory(at: url.appending(path: "Contents"), withIntermediateDirectories: true)
+        looks.keep(only: [url])
+        #expect(await looks.look(url).name == "Tool.app")
+        looks.keep(only: [tree.url("other")])
+        #expect(await looks.look(url).name == "Tool")
+        #expect(tree.snapshot() == ["Tool.app/", "Tool.app/Contents/", "other/"])
+    }
 }

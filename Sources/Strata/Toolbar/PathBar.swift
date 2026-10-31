@@ -247,17 +247,18 @@ final class PathBar: NSView, NSTextFieldDelegate {
         if path == home || path.hasPrefix(home + "/") {
             root = home
             // Icon only, unless home is the folder being shown.
-            let homeURL = URL(fileURLWithPath: home)
+            let homeURL = URL(filePath: home, directoryHint: .isDirectory)
             parts.append((path == home ? names.name(homeURL) : "", homeURL, "house.fill"))
         } else if path.hasPrefix("/Volumes/"), let name = path.split(separator: "/").dropFirst().first {
             root = "/Volumes/\(name)"
-            parts.append((String(name), URL(fileURLWithPath: root), "externaldrive.fill"))
+            parts.append((String(name), URL(filePath: root, directoryHint: .isDirectory), "externaldrive.fill"))
         } else {
             root = "/"
-            let startup = URL(fileURLWithPath: "/"), name = names.name(startup)
+            let startup = URL(filePath: "/", directoryHint: .isDirectory), name = names.name(startup)
             parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill"))
         }
-        var current = URL(fileURLWithPath: root)
+        // Each step is a folder: spelled as one, so making it never asks the disk.
+        var current = URL(filePath: root, directoryHint: .isDirectory)
         for component in path.dropFirst(root.count).split(separator: "/") {
             current = current.appending(path: String(component))
             // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
@@ -371,10 +372,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
             guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             // Nothing to add when the only suggestion is the folder already typed.
             let typed = resolvedPath()
-            if found.count == 1, found[0].url.standardizedFileURL.path == URL(fileURLWithPath: typed).standardizedFileURL.path {
+            if found.count == 1, found[0].url.standardizedFileURL.path == URL(filePath: typed, directoryHint: .inferFromPath).standardizedFileURL.path {
                 return closeSuggestions()
             }
-            let typedIsThere = await FileEntry.opening(URL(fileURLWithPath: typed)) != .missing
+            let typedIsThere = await FileEntry.opening(URL(filePath: typed, directoryHint: .inferFromPath)) != .missing
             guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             suggestionList.show(found, for: text, highlightFirst: !typedIsThere, below: self)
         }
@@ -417,7 +418,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         let path = resolvedPath(), text = field.stringValue, current = url
         suggesting?.cancel()
         suggesting = Task { [weak self] in
-            let opening = await FileEntry.opening(URL(fileURLWithPath: path))
+            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))
             guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
             guard opening != .missing else {
                 if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
@@ -426,7 +427,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 if let best = found.first { go(to: best) } else { shake() }
                 return
             }
-            let target = URL(fileURLWithPath: path).standardizedFileURL
+            let target = URL(filePath: path, directoryHint: opening == .folder ? .isDirectory : .notDirectory).standardizedFileURL
             endEditing(restoreFocus: true)
             if opening == .folder {
                 onNavigate?(target, nil)

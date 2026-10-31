@@ -436,6 +436,7 @@ final class InspectorViewController: NSViewController {
             return folder == "/" ? (copy.server.name, copy.server.address, false)
                 : (RemotePath.name(folder), "\(copy.server.name):" + RemotePath.parent(folder), true)
         }
+        looks.keep(only: [target.folder, shownFolder])
         if !isCopy || inContainer != nil {
             rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
                          InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inContainer?.name,

@@ -110,9 +110,10 @@ final class ShelfWell: NSView, NSDraggingSource {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Each item once, also when one batch names it twice.
     func add(_ urls: [URL]) {
-        let known = Set(items.map(\.path))
-        items += urls.filter { !known.contains($0.path) }
+        var known = Set(items.map(\.path))
+        items += urls.filter { known.insert($0.path).inserted }
         refresh()
     }
 
@@ -127,7 +128,7 @@ final class ShelfWell: NSView, NSDraggingSource {
             // A newer refresh cancels this one: what it was waiting for is dropped, not waited behind.
             guard let there = await Self.there(urls),
                   let read = await IconCache.shared.currentIcons(forPaths: there.map(\.path)) else { return }
-            let icons = Dictionary(uniqueKeysWithValues: there.compactMap { url in read[url.path].map { (url, $0) } })
+            let icons = Dictionary(there.compactMap { url in read[url.path].map { (url, $0) } }) { first, _ in first }
             let together = there.count > 1 ? await IconCache.shared.togetherIcon(forPaths: there.map(\.path)) : nil
             guard let self, !Task.isCancelled else { return }
             checking = nil

@@ -79,14 +79,15 @@ struct DropTests {
         #expect(tree.snapshot() == ["a.txt", "disk two/", "disk/", "trash link -> \(Trash.home.path)"])
     }
 
-    /// A disk reached through a link in its path isn't in the mount table by that spelling: the drop asks the item.
-    @Test func theSidebarsTrashRefusesADiskHoweverItsReached() async throws {
+    /// A disk reached through a link in its path isn't in the mount table by that spelling: Move to Trash, from
+    /// anywhere, asks the item itself and leaves it alone. (Only the decision is tested: a disk is never handed to the
+    /// Trash in a test.)
+    @Test func trashingRefusesADiskHoweverItsReached() throws {
         let tree = try TestTree("a.txt", "volumes -> /System/Volumes")
         let data = tree.url("volumes/Data")
         #expect(SidebarViewController.canTrash([data], copies: .live, mounts: MountPoints.current()))
-        #expect(await SidebarViewController.holdsADisk([tree.url("a.txt"), data]))
-        #expect(await SidebarViewController.holdsADisk([URL(fileURLWithPath: "/")]))
-        #expect(!(await SidebarViewController.holdsADisk([tree.url("a.txt"), tree.url("volumes")])))
+        #expect(FileOps.isWholeDisk(data) && FileOps.isWholeDisk(URL(fileURLWithPath: "/")))
+        #expect(!FileOps.isWholeDisk(tree.url("a.txt")) && !FileOps.isWholeDisk(tree.url("volumes")))
         #expect(tree.snapshot() == ["a.txt", "volumes -> /System/Volumes"])
     }
 

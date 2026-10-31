@@ -55,4 +55,17 @@ import Testing
         #expect(saved() == ["a", "b", "d"])
         #expect(tree.snapshot() == ["a/", "c/", "d/"])
     }
+
+    /// A default place shown in the list (your home) and the same folder in your saved list are told apart by path, not
+    /// spelling, so a drop just before it lands there.
+    @Test func aDropBeforeADefaultPlaceLandsThere() async throws {
+        let tree = try TestTree("a/", "d/")
+        let preferences = try Prefs.isolated()
+        preferences.favoritePaths = [tree.url("a").path, Places.home.path]
+        let places = await checks(preferences, missing: [])
+        await Places.addFavorites([tree.url("d")], at: 1, preferences: preferences, checks: places)
+        #expect(preferences.favoritePaths?.map { URL(filePath: $0).lastPathComponent }
+            == ["a", "d", Places.home.lastPathComponent])
+        #expect(tree.snapshot() == ["a/", "d/"])
+    }
 }

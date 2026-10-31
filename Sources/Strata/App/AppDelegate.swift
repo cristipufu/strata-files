@@ -56,9 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var welcome: WelcomeSheetController?
-    /// Files and folders opened while Strata launches (AppKit hands them over before launch is done), until the first
-    /// windows have opened.
-    private var launchOpenings: [Task<Void, Never>]? = []
+    /// Until the first windows are decided: files and folders opened meanwhile (AppKit hands them over before launch is
+    /// done) are what's shown, so the last session isn't reopened over them.
+    private var launching = true
+    private var openedAtLaunch = false
 
     /// Strata ▸ Check for Updates….
     @objc func checkForUpdates(_ sender: Any?) {
@@ -85,34 +86,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RemoteCopyStore.shared.removeSetAside()
             CopyProviders.live.removeClipboardStaging()
         }
-        Task { [weak self] in
-            guard let self else { return }
-            await openFirstWindows()
-            DockSearch.shared.apply(atLaunch: true)
-            if !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
-               let window = windowControllers.first?.window {
-                let sheet = WelcomeSheetController()
-                sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
-                welcome = sheet
-                sheet.present(on: window)
-            }
-        }
+        DockSearch.shared.apply(atLaunch: true)
+        Task { [weak self] in await self?.openFirstWindows() }
     }
 
-    /// What was opened at launch, else the last session's windows, else one at the start location. A read that's slow
-    /// to answer (a share that stopped) doesn't leave Strata without a window: after a few seconds the start window
-    /// opens, and a session read after that isn't opened over it.
+    /// What was opened at launch, else the last session's windows, else one at the start location. Reads slow to answer
+    /// (a disk spinning up, a share that stopped) don't leave Strata without a window: after a few seconds the start
+    /// window opens, and the session's windows take its place when they're read, if it hasn't been used meanwhile.
     private func openFirstWindows() async {
+        launching = false
+        guard !openedAtLaunch, windowControllers.isEmpty else { return presentWelcome() }
+        var standIn: BrowserWindowController?
         let fallback = Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled, let self, windowControllers.isEmpty else { return }
-            openWindow(at: startLocation)
+            standIn = openWindow(at: startLocation)
+            presentWelcome()
         }
-        defer { fallback.cancel() }
-        for opening in launchOpenings ?? [] { await opening.value }
-        launchOpenings = nil
-        guard windowControllers.isEmpty, !(await restoreSession()), windowControllers.isEmpty else { return }
-        openWindow(at: startLocation)
+        let plans = await sessionPlans()
+        fallback.cancel()
+        if let standIn, !standIn.isClosed, Self.isUnused(standIn, at: startLocation), windowControllers.count == 1, !plans.isEmpty {
+            standIn.window?.close()
+        }
+        if windowControllers.isEmpty {
+            if !openSession(plans) { openWindow(at: startLocation) }
+        }
+        presentWelcome()
+    }
+
+    /// A window that's still where it opened, with nothing to go back to: one the user hasn't used yet.
+    private static func isUnused(_ controller: BrowserWindowController, at location: URL) -> Bool {
+        controller.panes.count == 1 && controller.pane.history == PaneHistory()
+            && controller.location.standardizedFileURL == location.standardizedFileURL
+    }
+
+    /// The Full Disk Access welcome, once, on the first window.
+    private func presentWelcome() {
+        guard welcome == nil, !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
+              let window = windowControllers.first?.window else { return }
+        let sheet = WelcomeSheetController()
+        sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
+        welcome = sheet
+        sheet.present(on: window)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -236,7 +251,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
         // In the order given, each once what it is has been read.
-        let opening = Task {
+        if launching { openedAtLaunch = true }
+        Task {
             for url in files {
                 if await FileEntry.opening(url) == .folder {
                     openWindow(at: url)
@@ -245,7 +261,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        launchOpenings?.append(opening)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -308,12 +323,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows), once their folders have been looked at.
-    /// False when there's nothing to open; true, opening none, when a window opened meanwhile (a file or a link opened
-    /// at launch): that's what's shown.
-    private func restoreSession() async -> Bool {
+    /// The last session's windows to reopen (Settings ▸ General ▸ Reopen windows), their folders looked at; none when
+    /// it's off or there's no session.
+    private func sessionPlans() async -> [(plan: WorkspacePlan, name: String)] {
         guard browserServices.preferences.reopenWindows, let data = browserServices.preferences.defaults.data(forKey: Self.sessionKey),
-              let windows = SessionStorage.decode(data) else { return false }
+              let windows = SessionStorage.decode(data) else { return [] }
         let workspaces = browserServices.workspaces
         var plans: [(plan: WorkspacePlan, name: String)] = []
         // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
@@ -324,10 +338,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !plan.tabs.isEmpty else { continue }
             plans.append((plan, window.name.isEmpty ? "" : workspaces.named(window.name)?.name ?? ""))
         }
-        guard windowControllers.isEmpty else { return true }
+        return plans
+    }
+
+    /// Opens them; false when none opened.
+    private func openSession(_ plans: [(plan: WorkspacePlan, name: String)]) -> Bool {
         var opened = false
         for (plan, name) in plans {
-            opened = !workspaces.openWindows(plan, name: name).isEmpty || opened
+            opened = !browserServices.workspaces.openWindows(plan, name: name).isEmpty || opened
         }
         return opened
     }
