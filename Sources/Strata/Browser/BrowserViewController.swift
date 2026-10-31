@@ -127,11 +127,7 @@ final class BrowserViewController: NSViewController {
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
 
-    var watchers: [DirectoryWatcher] = []
-    /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
-    var gitObservation: GitObservation?
-    /// Finding the repository the folder is in, away from the main thread.
-    var gitObserving: Task<Void, Never>?
+    let watching = BrowserWatching()
     lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
@@ -377,17 +373,10 @@ final class BrowserViewController: NSViewController {
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
             mediaInfo.cancelPending()
-            watchers = applicationFolders.directories(for: FileEntry.openedFolder(url)).compactMap { folder in
-                DirectoryWatcher(url: folder) { [weak self] in self?.refresh() }
-            }
-            gitObservation = nil
-            gitObserving?.cancel()
             let revision = navigationRevision
-            gitObserving = Task { [weak self, git = services.git] in
-                let observation = await git.observe(url)
-                guard let self, !Task.isCancelled, navigationRevision == revision, directory == url else { return }
-                gitObservation = observation
-            }
+            watching.watch(applicationFolders.directories(for: FileEntry.openedFolder(url)), repositoryOf: url,
+                           in: services.git, changed: { [weak self] in self?.refresh() },
+                           isCurrent: { [weak self] in self?.navigationRevision == revision && self?.directory == url })
             pendingSelection = select.map { [$0] } ?? []
         }
         // Revealing an item in the folder already showing selects it too.
@@ -419,7 +408,7 @@ final class BrowserViewController: NSViewController {
         guard directory != nil, !isShowingResults else { return }
         services.tags.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
-        if let observation = gitObservation, !observation.isWatching {
+        if let observation = watching.git, !observation.isWatching {
             services.git.invalidate(root: observation.repository.root)
         }
         reload(scrollToTop: false, invalidateCopy: invalidateCopy)

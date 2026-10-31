@@ -177,9 +177,7 @@ extension BrowserViewController {
         cancelFiltering()
         resortWork?.cancel()
         resortWork = nil
-        watchers = []
-        gitObserving?.cancel()
-        gitObservation = nil
+        watching.stop()
         loading.invalidate()
         sizer.cancelPending()
         mediaInfo.cancelPending()
@@ -381,7 +379,7 @@ extension BrowserViewController {
 
     @objc func reloadFolder(_ sender: Any?) {
         for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
-        if let repository = gitObservation?.repository { services.git.refresh(repository, force: true) }
+        if let repository = watching.git?.repository { services.git.refresh(repository, force: true) }
         // Invalidation and the following read belong to the same request, cancelled together on navigation.
         refresh(invalidateCopy: true)
     }
