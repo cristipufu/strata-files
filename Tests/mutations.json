@@ -3569,7 +3569,7 @@
     "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "file": "Strata/Browser/BrowserViewController+QuickLook.swift",
     "find": "let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale)",
     "replace": "let thumbnail = FileThumbnails.shared.cached(entry, size: NameCellView.iconSide, scale: scale)",
     "rule": "Provider thumbnail and info ownership Quick Look transition image ignores the browser's thumbnail store",
@@ -3821,7 +3821,7 @@
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+QuickLook.swift",
     "find": "            guard let self, (!hadWindow || viewIfLoaded?.window?.isVisible == true),\n                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }",
     "replace": "            guard let self else { return }\n            _ = (hadWindow, selectedKeys)",
     "rule": "Async action context ownership deferred Quick Look opens after its item is deselected",

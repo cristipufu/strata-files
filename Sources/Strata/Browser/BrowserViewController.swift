@@ -1,5 +1,4 @@
 import AppKit
-import Quartz
 
 protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, navigateTo url: URL)
@@ -883,57 +882,5 @@ final class BrowserViewController: NSViewController {
             parts.append(String(localized: "\(Format.bytes(availableCapacity)) available", comment: "Status bar: free space on the folder’s disk"))
         }
         return parts.joined(separator: "  ·  ")
-    }
-
-    // MARK: - Quick Look
-
-    @objc func toggleQuickLook(_ sender: Any?) {
-        guard !inlineRename.isEditing else { return }
-        if services.previews.isOpen {
-            services.previews.close()
-            return
-        }
-        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
-            panel.orderOut(nil)
-            return
-        }
-        if selectedEntries.count == 1, let entry = selectedEntries.first {
-            services.previews.show(entry, from: self)
-        } else if let panel = QLPreviewPanel.shared() {
-            openQuickLook { [weak self] in
-                guard let self else { return }
-                _ = services.windows.preview(panel, focusView)
-            }
-        }
-    }
-
-    func openQuickLook(showPanel: @escaping () -> Void = { QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil) }) {
-        let urls = Self.quickLookItems(selectedEntries)
-        let selectedKeys = Set(selectedURLs.map(Self.key))
-        guard !selectedKeys.isEmpty else { return }
-        let hadWindow = viewIfLoaded?.window != nil
-        // A container's file being fetched: show it once it's here.
-        afterFetching(urls) { [weak self] in
-            guard let self, (!hadWindow || viewIfLoaded?.window?.isVisible == true),
-                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }
-            showPanel()
-        }
-    }
-
-    // Quick Look calls these on the main thread; the SDK just doesn't annotate them.
-    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
-
-    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated {
-            panel.dataSource = self
-            panel.delegate = self
-        }
-    }
-
-    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated {
-            panel.dataSource = nil
-            panel.delegate = nil
-        }
     }
 }

@@ -184,39 +184,3 @@ extension BrowserViewController: NSTextFieldDelegate {
         return false
     }
 }
-
-// MARK: - Quick Look panel
-
-extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        selectedURLs.count
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        let urls = selectedURLs
-        return urls.indices.contains(index) ? (urls[index] as NSURL) : nil
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        guard let event, event.type == .keyDown, !inlineRename.isEditing, view.window?.attachedSheet == nil,
-              !(view.window?.firstResponder is NSText) else { return false }
-        focusView.keyDown(with: event)
-        return true
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
-        guard let url = (item as? NSURL) as URL? else { return .zero }
-        return iconScreenRect(for: url) ?? .zero
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
-                      contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
-        guard let url = (item as? NSURL) as URL? else { return nil }
-        guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
-        // The thumbnail the row shows, so the zoom starts from what's on screen.
-        let scale = view.window?.backingScaleFactor ?? 2
-        if preferences.showIconPreviews, services.thumbnails.canThumbnail(entry),
-           let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
-        return services.thumbnails.icon(for: entry)
-    }
-}
