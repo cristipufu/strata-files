@@ -195,7 +195,8 @@ These apply everywhere below; the sections that follow add only what is specific
   custom composition explicitly with `configured`, whose queue supplies preferences, History and copy routing. Never
   mutate a supplied queue when constructing a window; copy routing is immutable.
 - `BrowserServices` owns its `Clipboard`, `CopyProviders` (`remoteCopies`, `containerCopies` and `clipboardRoot`),
-  `ContainerFiles` and `ContainerStore`, and passes them to `TransferQueue`, `TransferJob`, `RemoteUploadJob`,
+  `ContainerFiles`, `ContainerStore`, `FileIndex` and the stores file views read (`TagStore`, `CloudStore` and
+  `GitStatusStore`, handed to Icons, Columns and Gallery together as `statuses`), and passes them to `TransferQueue`, `TransferJob`, `RemoteUploadJob`,
   `BrowserViewController` (server and container commands, deletion plans, clipboard staging, `Copy Path`, archive
   checks, drag and drop), `InspectorViewController`, `PathBar` and every presentation (`FileOutlineView`, Icons,
   Columns, Gallery, Disk Usage, Sidebar).

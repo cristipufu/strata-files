@@ -250,7 +250,7 @@ final class SidebarViewController: NSViewController {
                                            items: servers))
         }
         // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
-        let tags = TagStore.shared.suggestions.prefix(12).map { tag in
+        let tags = services.tags.suggestions.prefix(12).map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
             item.tint = tag.displayColor ?? .secondaryLabelColor
@@ -815,7 +815,7 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func forgetTag(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
-        TagStore.shared.forget(name)
+        services.tags.forget(name)
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {

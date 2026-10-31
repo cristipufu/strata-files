@@ -19,7 +19,7 @@ extension BrowserWindowController {
             return
         }
         // Spotlight answers tag searches, so they don't wait for the first index.
-        guard FileIndex.shared.isReady || SpotlightQuery.parse(query) != nil else {
+        guard services.index.isReady || SpotlightQuery.parse(query) != nil else {
             // The index is still being built for the first time: filter this folder meanwhile.
             browser.setFilter(query)
             return
@@ -97,8 +97,8 @@ extension BrowserWindowController {
             await searchSpotlight(query, in: scope, pane: p, generation: generation, target: target)
             return
         }
-        if let scope, !FileIndex.shared.covers(scope) {
-            if !FileIndex.shared.isReady, FileIndex.shared.overlapsIndexedFolders(scope) {
+        if let scope, !services.index.covers(scope) {
+            if !services.index.isReady, services.index.overlapsIndexedFolders(scope) {
                 // Reading your home folder now would duplicate the first index (and ask for the folders macOS
                 // guards in it).
                 p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
@@ -120,7 +120,7 @@ extension BrowserWindowController {
         p.folderSearch?.cancel()
         p.folderSearch = nil
         let givenUpBefore = NameRegex.namesGivenUp
-        guard let result = await FileIndex.shared.understand(text, in: scope) else {
+        guard let result = await services.index.understand(text, in: scope) else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Search works as soon as the first index is built."))
             return
@@ -166,7 +166,7 @@ extension BrowserWindowController {
     }
 
     private func runRecents(in p: Pane, generation: Int, target: Destination) async {
-        guard let hits = await FileIndex.shared.recentFiles() else {
+        guard let hits = await services.index.recentFiles() else {
             p.browser.showResults([], total: 0)
             return
         }
@@ -225,7 +225,7 @@ extension BrowserWindowController {
             search = current
         } else {
             p.folderSearch?.cancel()
-            search = FolderSearch(folder: scope, indexed: FileIndex.shared.indexedParts(inside: scope))
+            search = FolderSearch(folder: scope, indexed: services.index.indexedParts(inside: scope))
             p.folderSearch = search
             search.start()
         }
@@ -273,7 +273,7 @@ extension BrowserWindowController {
     func findDuplicates(in p: Pane) {
         p.searchGeneration += 1
         let generation = p.searchGeneration
-        guard FileIndex.shared.isReady else {
+        guard services.index.isReady else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Duplicates appear once the first index is built."))
             return
@@ -283,7 +283,7 @@ extension BrowserWindowController {
         p.duplicateSearch?.set()
         p.duplicateSearch = cancelled
         Task {
-            let groups = await FileIndex.shared.duplicates(progress: { done, total in
+            let groups = await services.index.duplicates(progress: { done, total in
                 Task { @MainActor in
                     guard generation == p.searchGeneration, total > 0 else { return }
                     p.browser.showMessage(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
@@ -338,7 +338,7 @@ extension BrowserWindowController {
     private static let indexRefreshInterval: TimeInterval = 2
 
     @objc func indexPhaseChanged() {
-        for p in panes where p.destination == .recents && FileIndex.shared.isReady { runSearch(in: p) }
+        for p in panes where p.destination == .recents && services.index.isReady { runSearch(in: p) }
         refreshPanels()
     }
 }

@@ -136,10 +136,10 @@ final class BrowserViewController: NSViewController {
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
         metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
-                        childFolderSizes: { FileIndex.shared.childFolderSizes($0).mapValues(\.bytes) },
+                        childFolderSizes: { [index = services.index] in index.childFolderSizes($0).mapValues(\.bytes) },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
-                        tags: { TagStore.shared.cachedTags(for: $0).map(\.name) }))
+                        tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
     var updatingSortDescriptor = false
     /// Selected once the folder shows them (after the reload a change brings).
     var pendingSelection: [URL]?
@@ -363,7 +363,7 @@ final class BrowserViewController: NSViewController {
 
     func load(_ url: URL, select: URL? = nil) {
         // Tags may have changed elsewhere (Finder) since they were last read here.
-        TagStore.shared.invalidate(url)
+        services.tags.invalidate(url)
         let isNewDirectory = url != directory || isShowingResults
         if isShowingResults { leaveResults() }
         loading.navigate(to: url, newFolder: isNewDirectory)
@@ -383,8 +383,8 @@ final class BrowserViewController: NSViewController {
             gitObservation = nil
             gitObserving?.cancel()
             let revision = navigationRevision
-            gitObserving = Task { [weak self] in
-                let observation = await GitStatusStore.shared.observe(url)
+            gitObserving = Task { [weak self, git = services.git] in
+                let observation = await git.observe(url)
                 guard let self, !Task.isCancelled, navigationRevision == revision, directory == url else { return }
                 gitObservation = observation
             }
@@ -417,10 +417,10 @@ final class BrowserViewController: NSViewController {
 
     func refresh(invalidateCopy: Bool) {
         guard directory != nil, !isShowingResults else { return }
-        TagStore.shared.invalidate(directory)
+        services.tags.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
         if let observation = gitObservation, !observation.isWatching {
-            GitStatusStore.shared.invalidate(root: observation.repository.root)
+            services.git.invalidate(root: observation.repository.root)
         }
         reload(scrollToTop: false, invalidateCopy: invalidateCopy)
     }
@@ -432,8 +432,8 @@ final class BrowserViewController: NSViewController {
             guard let self else { return }
             switch result {
             case .success(let delivery):
-                TagStore.shared.load(delivery.entries, in: url)
-                CloudStore.shared.load(delivery.entries.map(\.url), in: url)
+                services.tags.load(delivery.entries, in: url)
+                services.cloud.load(delivery.entries.map(\.url), in: url)
                 Privacy.markAccessible(url)
                 apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
                       sortedBy: delivery.sortedBy)
@@ -487,8 +487,8 @@ final class BrowserViewController: NSViewController {
     func loadChildren(of node: FileNode, selecting: [URL] = []) {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
-            TagStore.shared.load(entries, in: node.url)
-            CloudStore.shared.load(entries.map(\.url), in: node.url)
+            services.tags.load(entries, in: node.url)
+            services.cloud.load(entries.map(\.url), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
             if !selecting.isEmpty, activeView == nil {
@@ -872,7 +872,7 @@ final class BrowserViewController: NSViewController {
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
         if services.copies.contains(url) { return nil }
-        if let size = FileIndex.shared.folderSize(url) { return size }
+        if let size = services.index.folderSize(url) { return size }
         if let size = sizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
         return nil

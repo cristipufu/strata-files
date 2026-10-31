@@ -7,10 +7,12 @@ final class GridViewController: NSViewController, FileCollectionController {
     let itemInfo: ItemInfoLoader
     let copies: CopyProviders
     let clipboard: Clipboard
+    let statuses: FileStatuses
 
     init(preferences: Prefs, thumbnails: FileThumbnails, itemInfo: ItemInfoLoader,
-         copies: CopyProviders, clipboard: Clipboard) {
+         copies: CopyProviders, clipboard: Clipboard, statuses: FileStatuses) {
         self.preferences = preferences
+        self.statuses = statuses
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
         self.copies = copies
@@ -254,11 +256,11 @@ final class GridViewController: NSViewController, FileCollectionController {
         guard entries.indices.contains(index) else { return }
         let entry = entries[index]
         item.emphasis = { [weak self] in self?.collectionView.isEmphasized ?? false }
-        let git = GitStatusStore.shared
+        let git = statuses.git
         let dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
-        let tags = TagStore.shared.tags(for: entry.url)
-        let cloud = CloudStore.shared.status(for: entry.url)
+        let tags = statuses.tags.tags(for: entry.url)
+        let cloud = statuses.cloud.status(for: entry.url)
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
                            dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
@@ -283,7 +285,7 @@ final class GridViewController: NSViewController, FileCollectionController {
                 configure(item, at: path.item)
             } else {
                 if let entry = item.entry {
-                    let git = GitStatusStore.shared
+                    let git = statuses.git
                     item.dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
                     item.itemView.gitBadge.badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
                 }

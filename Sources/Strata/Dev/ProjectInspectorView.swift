@@ -16,6 +16,7 @@ final class ProjectInspectorView: NSView {
     private(set) var info: ProjectInfo?
     let preferences: Prefs
     let files: BrowserFileCommands
+    private let git: GitStatusStore
     private let stack = NSStackView()
     private var deselected: Set<String> = []
     private var showsAllScripts = false
@@ -27,9 +28,10 @@ final class ProjectInspectorView: NSView {
     private var gitUpstream: String?
     private static let collapsedScriptCount = 6
 
-    init(frame: NSRect = .zero, files: BrowserFileCommands) {
+    init(frame: NSRect = .zero, files: BrowserFileCommands, git: GitStatusStore) {
         self.preferences = files.transfers.preferences
         self.files = files
+        self.git = git
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -263,11 +265,11 @@ final class ProjectInspectorView: NSView {
         if let onClean { return onClean(chosen) }
         guard let window else { return }
         let folder = info.folder
-        ProjectActions.confirmClean(chosen, window: window, files: files) { [weak self] urls in
+        ProjectActions.confirmClean(chosen, window: window, files: files) { [weak self, git] urls in
             guard !urls.isEmpty else { return }
             ProjectInfo.invalidateSizes(under: folder)
             FolderSizer.invalidate(folder)
-            GitStatusStore.shared.invalidate(containing: folder)
+            git.invalidate(containing: folder)
             self?.onDidClean?(urls)
         }
     }

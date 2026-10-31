@@ -33,7 +33,7 @@ extension BrowserWindowController {
     /// and items in this folder.
     private func indexItems(_ query: String) async -> [PaletteItem] {
         guard query.count >= 2, !query.hasPrefix("/"), !query.hasPrefix("~"),
-              let result = await FileIndex.shared.understand(query, limit: 30) else { return [] }
+              let result = await services.index.understand(query, limit: 30) else { return [] }
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         let entries = await FileEntry.localizedNames(result.hits.map(FileEntry.init(hit:)))
         return zip(result.hits, entries).map { hit, entry in

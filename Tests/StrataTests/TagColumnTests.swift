@@ -55,10 +55,11 @@ struct TagColumnTests {
     @Test func theTagFieldShowsTagsOnceTheyreRead() async throws {
         let tree = try TestTree("unread")
         try write(["Read Later"], to: tree.url("unread"))
-        let field = TagField(frame: .zero)
+        let tags = TagStore(preferences: try Prefs.isolated())
+        let field = TagField(tags: tags)
         field.urls = [tree.url("unread")]
         #expect((field.objectValue as? [String]) != ["Read Later"])
-        while let reading = TagStore.shared.requests { await reading.value }
+        while let reading = tags.requests { await reading.value }
         #expect(field.objectValue as? [String] == ["Read Later"])
         #expect(tree.snapshot() == ["unread"])
     }
@@ -100,7 +101,7 @@ struct TagColumnTests {
         try write(["Client work", "Urgent"], to: tree.url("a"))
         let entries = try ["a", "b"].map { try #require(FileEntry(url: tree.url($0))) }
         browser.showResults(entries, total: entries.count)
-        await TagStore.shared.load(entries).value
+        await environment.services.tags.load(entries).value
         let node = try #require(browser.node(for: tree.url("a")))
         let cell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
         #expect(cell.textField?.stringValue == "Client work, Urgent")
@@ -122,13 +123,13 @@ struct TagColumnTests {
         try write(["Zulu"], to: tree.url("group/a"))
         try write(["Alpha"], to: tree.url("group/z"))
         let entries = try ["group/a", "group/z"].map { try #require(FileEntry(url: tree.url($0))) }
-        await TagStore.shared.load(entries).value
+        await environment.services.tags.load(entries).value
         let browser = BrowserViewController(services: environment.services)
         browser.loadViewIfNeeded()
         browser.showGroups([(title: "Group", detail: "", entries: entries)], summary: "Group")
         browser.select([entries[0].url], scroll: false)
         // The shared cache can be invalidated by another browser between await and this actor turn.
-        for entry in entries { _ = TagStore.shared.tags(for: entry.url) }
+        for entry in entries { _ = environment.services.tags.tags(for: entry.url) }
         browser.applySort(.tags, ascending: true)
         let group = try #require(browser.allRows.first)
         #expect(group.children?.map(\.entry.name) == ["z", "a"])
@@ -145,7 +146,7 @@ struct TagColumnTests {
         let environment = try PreviewEnvironment(state)
         let columns = ColumnBrowserViewController(directoryReader: .live, preferences: environment.preferences, thumbnails: environment.services.thumbnails,
                                                   itemInfo: environment.services.itemInfo, copies: environment.services.copies,
-                                                   clipboard: environment.services.clipboard)
+                                                   clipboard: environment.services.clipboard, statuses: environment.services.statuses)
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
         columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
         columns.select([tree.url("folder")])
@@ -155,10 +156,10 @@ struct TagColumnTests {
         columns.select([tree.url("folder/a")])
         try write(["Zulu"], to: tree.url("folder/a"))
         try write(["Alpha"], to: tree.url("folder/z"))
-        await TagStore.shared.load(pane.entries).value
+        await environment.services.tags.load(pane.entries).value
         let order = BrowserOrdering(choice: .init(key: .tags, ascending: true), foldersFirst: { true },
             metadata: .init(folderSize: { _ in nil }, childFolderSizes: { _ in [:] }, media: { _ in nil },
-                            requestMedia: { _ in }, tags: { TagStore.shared.cachedTags(for: $0).map(\.name) }))
+                            requestMedia: { _ in }, tags: { environment.services.tags.cachedTags(for: $0).map(\.name) }))
         columns.sortComparator = order.ordered
         columns.resortLoadedColumns()
         #expect(pane.entries.map(\.name) == ["z", "a"])
@@ -187,8 +188,8 @@ struct TagColumnTests {
         let editor = try #require(field.currentEditor())
         try write(["Zulu"], to: tree.url("a"))
         try write(["Alpha"], to: tree.url("z"))
-        TagStore.shared.invalidate(tree.root)
-        await TagStore.shared.load(entries).value
+        environment.services.tags.invalidate(tree.root)
+        await environment.services.tags.load(entries).value
         browser.tagsChanged()
         #expect(browser.resortWork != nil)
         browser.resortWork?.cancel()

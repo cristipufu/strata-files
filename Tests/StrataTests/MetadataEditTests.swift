@@ -147,10 +147,11 @@ struct MetadataEditTests {
     @Test func tagsGoOnTheChosenFilesOnly() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt", "link -> b.txt")
         setKeep(tree.url("a.txt").path)
+        let store = TagStore(preferences: try Prefs.isolated())
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        try TagStore.shared.update([tree.url("a.txt"), tree.url("link")], adding: ["Strata Test"], removing: [], undo: undo)
+        try store.update([tree.url("a.txt"), tree.url("link")], adding: ["Strata Test"], removing: [], undo: undo)
         undo.endUndoGrouping()
         func tags(_ path: String) -> [String] {
             (try? tree.url(path).resourceValues(forKeys: [.tagNamesKey]).tagNames) ?? []
@@ -163,6 +164,5 @@ struct MetadataEditTests {
         undo.undo()
         for _ in 0..<40 where !tags("a.txt").isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
         #expect(tags("a.txt").isEmpty && hasKeep(tree.url("a.txt").path))
-        TagStore.shared.forget("Strata Test")
     }
 }

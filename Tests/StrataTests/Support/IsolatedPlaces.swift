@@ -10,9 +10,17 @@ extension PlaceChecks {
 }
 
 extension PathSuggestions {
-    /// Suggestions for `preferences`, with visits and checks of their own.
+    /// Suggestions for `preferences`, with visits, checks and an (unstarted) index of their own.
     convenience init(_ preferences: Prefs) {
         let visits = Frecency(preferences: preferences.defaults)
-        self.init(preferences: preferences, places: PlaceChecks(preferences: preferences, visits: visits, read: PlaceChecks.read))
+        self.init(preferences: preferences, places: PlaceChecks(preferences: preferences, visits: visits, read: PlaceChecks.read),
+                  index: FileIndex())
+    }
+}
+
+extension FileStatuses {
+    /// Tag, iCloud and git stores of their own, the tags' settings included.
+    static func isolated() throws -> FileStatuses {
+        FileStatuses(tags: TagStore(preferences: try Prefs.isolated()), cloud: CloudStore(), git: GitStatusStore())
     }
 }

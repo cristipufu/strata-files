@@ -19,7 +19,7 @@ struct ColumnRevealTests {
         try FileManager.default.createDirectory(at: made.appending(path: "Parent/Old/inner"), withIntermediateDirectories: true)
         try "hi".write(to: made.appending(path: "Parent/notes.txt"), atomically: true, encoding: .utf8)
 
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 500)
         let entries = try await DirectoryLoader.load(made, showHidden: false, copies: .live)
         // Spelled as listed (the temporary folder is reached through a link), like the browser has them.

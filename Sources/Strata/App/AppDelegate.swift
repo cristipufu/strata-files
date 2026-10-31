@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         // Starts Sparkle (in a release build): background checks if allowed, and Check for Updates….
         _ = Updates.shared
-        FileIndex.shared.start()
+        browserServices.index.start()
         ContainerStore.shared.start()
         ProjectEditors.warm()
         StrataAI.startIndexing()
@@ -242,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         saveSession()
-        FileIndex.shared.saveNow()
+        browserServices.index.saveNow()
         OperationLog.waitForWrites()
         // Containers' and servers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at
         // next launch). An SFTP connection's ssh ends by itself when Strata does (its input closes).

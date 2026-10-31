@@ -14,7 +14,7 @@ final class InspectorViewController: NSViewController {
     /// The details: size, dates, where it is…
     let infoRows = InspectorRows()
     /// The shown items' Finder tags, editable.
-    private let tagPicker = TagPicker(listWhileEditing: true, maxRows: 6)
+    private let tagPicker: TagPicker
     private var tagField: TagField { tagPicker.field }
     /// Comments, Open With, Locked and permissions, for one item.
     let infoEditor: InfoEditor
@@ -59,12 +59,13 @@ final class InspectorViewController: NSViewController {
              DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
          }) {
         self.services = services
+        tagPicker = TagPicker(listWhileEditing: true, maxRows: 6, tags: services.tags)
         self.containerView = ContainerInspectorView(preferences: services.preferences,
                                                     copies: services.copies.containerCopies,
                                                     store: services.containerStore)
         self.composeView = ComposeInspectorView(preferences: services.preferences,
                                                 store: services.containerStore)
-        self.projectView = ProjectInspectorView(files: services.files)
+        self.projectView = ProjectInspectorView(files: services.files, git: services.git)
         self.previewScheduler = previewScheduler
         infoEditor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         super.init(nibName: nil, bundle: nil)
@@ -419,7 +420,7 @@ final class InspectorViewController: NSViewController {
                              self?.onShowFolder?(target.folder, target.item)
                          }))
         }
-        if let cloud = CloudStore.shared.status(for: entry.url) {
+        if let cloud = services.cloud.status(for: entry.url) {
             rows.append((String(localized: "Cloud", comment: "Inspector row: iCloud or File Provider download status"), InspectorRows.text(cloud.label)))
         }
         setRows(rows)

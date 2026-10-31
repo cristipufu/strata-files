@@ -48,13 +48,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
         }
     }
 
-    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, copies: CopyProviders, names: FolderNames,
-         embedded: Bool = false) {
+    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, index: FileIndex, copies: CopyProviders,
+         names: FolderNames, embedded: Bool = false) {
         self.copies = copies
         self.names = names
         self.embedded = embedded
         suggestionList = PathSuggestionList(copies: copies, names: names)
-        suggestions = PathSuggestions(preferences: preferences, places: places)
+        suggestions = PathSuggestions(preferences: preferences, places: places, index: index)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true

@@ -319,7 +319,7 @@ extension BrowserViewController {
         let urls = selectedURLs
         guard !urls.isEmpty, urls.allSatisfy(TagStore.canTag) else { return }
         let (rect, _) = selectionAnchor()
-        TagEditorController(urls: urls, undo: undoManager).show(relativeTo: rect, of: view)
+        TagEditorController(urls: urls, undo: undoManager, tags: services.tags).show(relativeTo: rect, of: view)
     }
 
     /// Where to point a popover about the selection: the first selected item on screen (not under the toolbar), or
@@ -381,7 +381,7 @@ extension BrowserViewController {
 
     @objc func reloadFolder(_ sender: Any?) {
         for node in nodes where node.entry.isDirectory { FolderSizer.invalidate(node.url) }
-        if let repository = gitObservation?.repository { GitStatusStore.shared.refresh(repository, force: true) }
+        if let repository = gitObservation?.repository { services.git.refresh(repository, force: true) }
         // Invalidation and the following read belong to the same request, cancelled together on navigation.
         refresh(invalidateCopy: true)
     }
@@ -437,9 +437,9 @@ extension BrowserViewController {
     /// Reads the shown folder's tags again (Finder may have changed them while Strata was in the background).
     func rereadTags() {
         guard let directory, !isShowingResults else { return }
-        TagStore.shared.invalidate(directory)
-        TagStore.shared.load(nodes.map(\.entry), in: directory)
-        CloudStore.shared.load(nodes.map(\.url), in: directory)
+        services.tags.invalidate(directory)
+        services.tags.load(nodes.map(\.entry), in: directory)
+        services.cloud.load(nodes.map(\.url), in: directory)
     }
 
     /// Tags changed (here or in another window) or were read: redraw what's shown.

@@ -14,10 +14,12 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 final class PathSuggestions {
     private let preferences: Prefs
     private let places: PlaceChecks
+    private let index: FileIndex
 
-    init(preferences: Prefs, places: PlaceChecks) {
+    init(preferences: Prefs, places: PlaceChecks, index: FileIndex) {
         self.preferences = preferences
         self.places = places
+        self.index = index
     }
 
     static let limit = 12
@@ -75,7 +77,7 @@ final class PathSuggestions {
                 guard let match = Fuzzy.match(typed, url.lastPathComponent) else { continue }
                 keep(PathSuggestion(url: url, score: match.score + max(0, 24 - rank / 2) + 10, matches: match.indices))
             }
-            if typed.count >= 2, let result = await FileIndex.shared.search("kind:folder " + typed, limit: 30) {
+            if typed.count >= 2, let result = await index.search("kind:folder " + typed, limit: 30) {
                 for hit in result.hits where !hit.isPackage {
                     let url = URL(fileURLWithPath: hit.path, isDirectory: true)
                     let matches = Fuzzy.match(typed, url.lastPathComponent)?.indices ?? []

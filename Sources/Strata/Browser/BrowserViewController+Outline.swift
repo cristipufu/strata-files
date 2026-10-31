@@ -55,7 +55,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         guard let column = tableColumn else { return nil }
         let entry = node.entry
-        let git = GitStatusStore.shared
+        let git = services.git
         let dimmed = entry.isHidden || services.clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         if column.identifier == .name {
             let cell = outlineView.makeView(withIdentifier: .nameCell, owner: nil) as? NameCellView ?? {
@@ -64,8 +64,8 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 return cell
             }()
             cell.configure(name: entry.displayName, icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
-                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
+                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: services.tags.tags(for: entry.url),
+                           cloud: services.cloud.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
                            typography: listTypography)
             return cell
@@ -92,7 +92,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }
             cell.configure(text ?? (info == nil && mediaInfo.canRead(entry) ? "…" : "—"),
                            alignment: column.headerCell.alignment, dimmed: dimmed)
-        case .tags: cell.configure(TagStore.shared.tags(for: entry.url).map(\.name).joined(separator: ", "),
+        case .tags: cell.configure(services.tags.tags(for: entry.url).map(\.name).joined(separator: ", "),
                                    alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
@@ -105,7 +105,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
         if services.copies.contains(node.url) { return "—" }
-        if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
+        if let size = services.index.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
         return "…"
@@ -114,7 +114,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
         guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
-        if FileIndex.shared.folderSize(entry.url) != nil { return true }
+        if services.index.folderSize(entry.url) != nil { return true }
         return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
     }
 
@@ -141,7 +141,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
-        if key == .tags, isShowingResults { TagStore.shared.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
+        if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
         syncSortDescriptor()
         if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }

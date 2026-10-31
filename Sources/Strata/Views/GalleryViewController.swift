@@ -8,12 +8,14 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     let thumbnails: FileThumbnails
     let copies: CopyProviders
     let clipboard: Clipboard
+    let statuses: FileStatuses
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops go into it.
     var directory: URL?
 
-    init(thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard) {
+    init(thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard, statuses: FileStatuses) {
         self.thumbnails = thumbnails
+        self.statuses = statuses
         self.copies = copies
         self.clipboard = clipboard
         strip = GalleryStripView(copies: copies)
@@ -347,7 +349,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     }
 
     private func isDimmed(_ entry: FileEntry) -> Bool {
-        entry.isHidden || clipboard.isCut(entry.url) || GitStatusStore.shared.isIgnored(entry.url)
+        entry.isHidden || clipboard.isCut(entry.url) || statuses.git.isIgnored(entry.url)
     }
 
     // MARK: - Preview
@@ -400,7 +402,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             }
         }
         // Folders and apps show their icon; an item only in the cloud isn't downloaded just to be looked at.
-        guard !entry.isFolder, canThumbnail, CloudStore.shared.status(for: entry.url)?.isPlaceholder != true else { return }
+        guard !entry.isFolder, canThumbnail, statuses.cloud.status(for: entry.url)?.isPlaceholder != true else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.previewed == entry, self.thumbnails.canThumbnail(entry) else { return }

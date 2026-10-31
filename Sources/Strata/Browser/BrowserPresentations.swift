@@ -53,7 +53,7 @@ final class BrowserPresentations {
         if let gridController { return gridController }
         let controller = GridViewController(preferences: browser.preferences, thumbnails: browser.services.thumbnails,
                                             itemInfo: browser.services.itemInfo, copies: browser.services.copies,
-                                            clipboard: browser.services.clipboard)
+                                            clipboard: browser.services.clipboard, statuses: browser.services.statuses)
         controller.fileDelegate = browser
         controller.setIconSize(CGFloat(browser.preferences.gridIconSize), animated: false)
         controller.showsItemInfo = browser.preferences.iconViewOptions.showsInfo
@@ -69,7 +69,8 @@ final class BrowserPresentations {
         if let columnController { return columnController }
         let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences,
                                                      thumbnails: browser.services.thumbnails, itemInfo: browser.services.itemInfo,
-                                                     copies: browser.services.copies, clipboard: browser.services.clipboard)
+                                                     copies: browser.services.copies, clipboard: browser.services.clipboard,
+                                                     statuses: browser.services.statuses)
         controller.applicationFolders = browser.applicationFolders
         controller.fileDelegate = browser
         controller.onLocationChange = { [weak browser] url in
@@ -83,7 +84,7 @@ final class BrowserPresentations {
     func gallery(in browser: BrowserViewController) -> GalleryViewController {
         if let galleryController { return galleryController }
         let controller = GalleryViewController(thumbnails: browser.services.thumbnails, copies: browser.services.copies,
-                                               clipboard: browser.services.clipboard)
+                                               clipboard: browser.services.clipboard, statuses: browser.services.statuses)
         controller.fileDelegate = browser
         galleryController = controller
         return controller

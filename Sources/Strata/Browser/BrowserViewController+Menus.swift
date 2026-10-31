@@ -205,14 +205,14 @@ extension BrowserViewController {
         if urls.count <= 300 {
             for tag in FinderTag.standard {
                 applied[tag.name.lowercased()] = urls.allSatisfy { url in
-                    TagStore.shared.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
+                    services.tags.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
                 }
             }
         }
         let row = NSMenuItem()
         row.view = TagMenuView(applied: applied) { [weak self] tag in
             guard let self else { return }
-            do { try TagStore.shared.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
+            do { try services.tags.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
         }
         menu.addItem(row)
         addMenuCommand(.editTags, to: menu)

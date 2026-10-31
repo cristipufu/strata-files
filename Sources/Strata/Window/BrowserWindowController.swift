@@ -56,7 +56,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices) {
         self.services = services
-        pathBar = PathBar(preferences: services.preferences, places: services.places, copies: services.copies,
+        pathBar = PathBar(preferences: services.preferences, places: services.places, index: services.index, copies: services.copies,
                           names: services.folderNames)
         let first = Pane(location: location, services: services)
         panes = [first]
@@ -713,7 +713,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         services.places.refresh()
         split.sidebar.reload()
         // Catch commits, checkouts and edits made in other apps while we were in the background (tags in Finder too).
-        for p in panes { GitStatusStore.shared.invalidate(containing: p.location) }
+        for p in panes { services.git.invalidate(containing: p.location) }
         panes.forEach { $0.browser.rereadTags() }
     }
 
@@ -735,7 +735,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateGitChrome(on bar: PathBar, destination: Destination, location: URL) {
-        let store = GitStatusStore.shared
+        let store = services.git
         guard case .folder = destination, let repository = store.repository(containing: location) else {
             bar.gitRoot = nil
             bar.branchPill.model = nil
@@ -748,7 +748,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     func privacyChanged() {
         panes.forEach { $0.browser.privacyChanged() }
-        FileIndex.shared.refreshConfig()
+        services.index.refreshConfig()
         StrataAI.startIndexing()
     }
 
@@ -836,7 +836,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func refreshPanels() {
         syncViewModeItem()
         var status = browser.statusText
-        if case .scanning(let items) = FileIndex.shared.phase {
+        if case .scanning(let items) = services.index.phase {
             status += (status.isEmpty ? "" : "  ·  ") + String(localized: "Indexing \(items) items…", comment: "plural")
         }
         split.status.text = status

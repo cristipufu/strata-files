@@ -162,7 +162,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared)
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false
@@ -323,8 +323,8 @@ struct BrowserPreferencesTests {
         #expect(second.preferences.favoritePaths == [tree.url("another").standardizedFileURL.path])
         #expect(first.preferences.favoritePaths?.count == 2)
 
-        let a = PathSuggestions(preferences: first.preferences, places: first.services.places)
-        let b = PathSuggestions(preferences: second.preferences, places: second.services.places)
+        let a = PathSuggestions(preferences: first.preferences, places: first.services.places, index: first.services.index)
+        let b = PathSuggestions(preferences: second.preferences, places: second.services.places, index: second.services.index)
         a.begin(at: tree.url("elsewhere")); b.begin(at: tree.url("elsewhere"))
         let aMatches = await a.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))
         let bMatches = await b.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))

@@ -312,9 +312,9 @@ struct TransferContextTests {
         #expect(servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(first.url("visited").standardizedFileURL.fileViewKey))
         #expect(!servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
         #expect(servicesB.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
-        let suggestions = PathSuggestions(preferences: servicesA.preferences, places: servicesA.places)
+        let suggestions = PathSuggestions(preferences: servicesA.preferences, places: servicesA.places, index: servicesA.index)
         suggestions.begin(at: first.url("start"))
-        // One character intentionally excludes the global index lookup.
+        // One character excludes the index lookup.
         let matches = await suggestions.suggestions(for: "v", in: first.url("start"))
         #expect(matches.contains { $0.url.standardizedFileURL.fileViewKey == first.url("visited").standardizedFileURL.fileViewKey })
         #expect(!matches.contains { $0.url.standardizedFileURL.fileViewKey == second.url("visited").standardizedFileURL.fileViewKey })

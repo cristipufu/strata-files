@@ -11,6 +11,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     let itemInfo: ItemInfoLoader
     let copies: CopyProviders
     let clipboard: Clipboard
+    let statuses: FileStatuses
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -41,8 +42,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader, preferences: Prefs,
          thumbnails: FileThumbnails, itemInfo: ItemInfoLoader, copies: CopyProviders,
-         clipboard: Clipboard) {
+         clipboard: Clipboard, statuses: FileStatuses) {
         self.directoryReader = directoryReader
+        self.statuses = statuses
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
@@ -553,6 +555,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let copies: CopyProviders
     private let clipboard: Clipboard
     private let thumbnails: FileThumbnails
+    private let statuses: FileStatuses
     fileprivate var renamingRow: Int?
     /// Opens the folder a drag rests on in the next column, by selecting it.
     lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
@@ -594,6 +597,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         copies = controller.copies
         clipboard = controller.clipboard
         thumbnails = controller.thumbnails
+        statuses = controller.statuses
         tableView = ColumnTableView(copies: controller.copies)
         preferences = controller.preferences
         typography = FileViewTypography(preferences: controller.preferences)
@@ -713,9 +717,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             self.spinner.stopAnimation(nil)
             switch result {
             case .success(let entries):
-                TagStore.shared.invalidate(self.folder)
-                TagStore.shared.load(entries, in: self.folder)
-                CloudStore.shared.load(entries.map(\.url), in: self.folder)
+                statuses.tags.invalidate(self.folder)
+                statuses.tags.load(entries, in: self.folder)
+                statuses.cloud.load(entries.map(\.url), in: self.folder)
                 self.message.isHidden = true
                 let presorted = sortedBy != nil && sortedBy == self.controller?.sortedBy
                 self.setEntries(presorted ? entries : self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
@@ -821,11 +825,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
         let entry = entries[row]
-        let git = GitStatusStore.shared
+        let git = statuses.git
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url),
-                       git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                       cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
+                       git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: statuses.tags.tags(for: entry.url),
+                       cloud: statuses.cloud.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
                        preferences: preferences, typography: typography, thumbnails: thumbnails)
         return cell
     }

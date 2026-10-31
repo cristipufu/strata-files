@@ -13,7 +13,7 @@ final class FileIndex {
 
     private(set) var phase: IndexWorker.Phase = .loading
     private var store: IndexStore?
-    private let worker = IndexWorker()
+    private lazy var worker = IndexWorker()
     private var started = false
     private var changePosted = false
 
@@ -22,9 +22,9 @@ final class FileIndex {
     func start() {
         guard !started else { return }
         started = true
-        worker.onStore = { store in Task { @MainActor in FileIndex.shared.store = store } }
-        worker.onPhase = { phase in Task { @MainActor in FileIndex.shared.setPhase(phase) } }
-        worker.onChange = { Task { @MainActor in FileIndex.shared.changed() } }
+        worker.onStore = { [weak self] store in Task { @MainActor in self?.store = store } }
+        worker.onPhase = { [weak self] phase in Task { @MainActor in self?.setPhase(phase) } }
+        worker.onChange = { [weak self] in Task { @MainActor in self?.changed() } }
         let config = Self.currentConfig()
         excludedPaths = config.excluded
         worker.start(config)
