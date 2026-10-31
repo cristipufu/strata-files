@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// A Finder tag: a name and one of Finder's colors.
 nonisolated struct FinderTag: Hashable, Sendable {
@@ -47,9 +48,14 @@ final class TagStore {
     /// Its window's server and container copies, whose items carry no tags from Strata.
     private let copies: CopyProviders
 
-    init(preferences: Prefs, copies: CopyProviders) {
+    /// How rows' tags are read off the main thread (`read(paths, labels)`); tests hold it to time a change.
+    typealias Reader = @Sendable ([String], [String]) -> [String: [FinderTag]]
+    private let reader: Reader
+
+    init(preferences: Prefs, copies: CopyProviders, reader: @escaping Reader = TagStore.readAll) {
         self.preferences = preferences
         self.copies = copies
+        self.reader = reader
     }
 
     nonisolated private static let attribute = "com.apple.metadata:_kMDItemUserTags"
@@ -89,12 +95,41 @@ final class TagStore {
         return cache[path] ?? []
     }
 
-    private var requested: Set<String> = []
     /// How many times each item's tags were changed here: a read that began before a change mustn't put back what the
     /// change replaced.
     private var tagChanges: [String: Int] = [:]
-    /// Reads under way: with none, no read can be from before a change, so the counts go.
-    private var readsUnderWay = 0
+    /// Each item asked about and not read yet, with how many changes it had when asked.
+    private var requestedSince: [String: Int] = [:]
+    /// Folder loads under way: with none, and nothing asked about, no read can be from before a change, so the
+    /// counts go.
+    private var loadsUnderWay = 0
+    /// The labels of Finder's colored tags, for the reads (taken on the main thread when a run of asking starts).
+    private let labels = OSAllocatedUnfairLock(initialState: [String]())
+    /// Rows' reads, one batch per disk on a thread of its own: a server that stopped answering holds up only its own.
+    private lazy var reads = BatchedReads<[FinderTag]>(
+        read: { [labels, reader] paths in reader(paths, labels.withLock { $0 }) },
+        arrived: { [weak self] tags in self?.arrived(tags) })
+
+    private func request(_ path: String) {
+        guard requestedSince[path] == nil else { return }
+        if requestedSince.isEmpty {
+            let current = NSWorkspace.shared.fileLabels
+            labels.withLock { $0 = current }
+        }
+        requestedSince[path] = tagChanges[path, default: 0]
+        reads.request(path)
+    }
+
+    /// Waits until every item asked about so far has been read.
+    func settled() async { await reads.settled() }
+
+    private func arrived(_ read: [String: [FinderTag]]) {
+        if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
+        var before: [String: Int] = [:]
+        for path in read.keys { before[path] = requestedSince.removeValue(forKey: path) }
+        // Only a change redraws: every list redraws its rows, and rows drawn ask again.
+        if keep(read, unchangedSince: before) { NotificationCenter.default.post(name: .tagsLoaded, object: self) }
+    }
 
     /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile. Returns whether any
     /// differ from what was shown until now (an item not read yet showed none).
@@ -106,34 +141,8 @@ final class TagStore {
             cache[path] = list
             stale.remove(path)
         }
-        readsUnderWay -= 1
-        if readsUnderWay == 0 { tagChanges.removeAll() }
+        if loadsUnderWay == 0, requestedSince.isEmpty { tagChanges.removeAll() }
         return changed
-    }
-    private(set) var requests: Task<Void, Never>?
-
-    private func request(_ path: String) {
-        requested.insert(path)
-        if requests == nil { readRequested() }
-    }
-
-    private func readRequested() {
-        requests = Task {
-            // The other rows being drawn ask too, and are read with this one.
-            await Task.yield()
-            if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
-            let paths = Array(requested)
-            requested.removeAll()
-            let before = tagChanges
-            readsUnderWay += 1
-            let tags = await Self.readAll(paths, labels: NSWorkspace.shared.fileLabels)
-            // Only a change redraws: every list redraws its rows, and rows drawn ask again.
-            let changed = keep(tags, unchangedSince: before)
-            requests = nil
-            if changed { NotificationCenter.default.post(name: .tagsLoaded, object: self) }
-            // Asked about while these were read.
-            if !requested.isEmpty { readRequested() }
-        }
     }
 
     /// Reads the tags of a folder's items off the main thread, then shows them (cells redraw on `.tagsChanged`).
@@ -145,17 +154,18 @@ final class TagStore {
         let paths = entries.map { $0.url.standardizedFileURL.path }
         let labels = NSWorkspace.shared.fileLabels
         let before = tagChanges
-        readsUnderWay += 1
+        loadsUnderWay += 1
         return Task {
-            let tags = await Self.readAll(paths, labels: labels)
+            // Its own thread: a folder on a server that stopped answering mustn't hold a shared one.
+            let tags = await OwnThread.run { Self.readAll(paths, labels: labels) }
+            loadsUnderWay -= 1
             keep(tags, unchangedSince: before)
             loading.subtract(folders)
             NotificationCenter.default.post(name: .tagsLoaded, object: self)
         }
     }
 
-    @concurrent
-    private static func readAll(_ paths: [String], labels: [String]) async -> [String: [FinderTag]] {
+    nonisolated static func readAll(_ paths: [String], labels: [String]) -> [String: [FinderTag]] {
         var result: [String: [FinderTag]] = [:]
         result.reserveCapacity(paths.count)
         for path in paths { result[path] = read(path, labels: labels) }

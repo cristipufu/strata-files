@@ -23,7 +23,7 @@ struct TagColumnTests {
         try write(["Beta"], to: entry.url)
         // Read again in the background: the last known tags until then.
         #expect(store.tags(for: entry.url).map(\.name) == ["Alpha"])
-        await store.requests?.value
+        await store.settled()
         #expect(store.tags(for: entry.url).map(\.name) == ["Beta"])
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Beta"])
         store.invalidate(tree.root)
@@ -45,10 +45,37 @@ struct TagColumnTests {
         await reading.value
         #expect(store.cachedTags(for: entry.url).isEmpty)
         _ = store.tags(for: entry.url)
-        while let read = store.requests { await read.value }
+        await store.settled()
         #expect(store.tags(for: entry.url).map(\.name) == ["Red", "Blue"])
         store.forget("Blue")
         #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
+    /// A row's read that began before a tag change keeps nothing when it arrives after it: what it read may be what
+    /// the change replaced.
+    @Test func aRowsReadFromBeforeAChangeKeepsNothing() async throws {
+        let tree = try TestTree("a.txt")
+        let item = tree.url("a.txt")
+        let started = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let first = OSAllocatedUnfairLock(initialState: true)
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live) { paths, labels in
+            let read = TagStore.readAll(paths, labels: labels)
+            // Only the first read is held, and stands for one made before the change.
+            guard first.withLock({ held in defer { held = false }; return held }) else { return read }
+            started.signal()
+            release.wait()
+            return read.mapValues { _ in [FinderTag(name: "From Before", color: 0)] }
+        }
+        #expect(store.tags(for: item).isEmpty)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { started.wait(); continuation.resume() }
+        }
+        try store.update([item], adding: ["Blue"], removing: [], undo: nil)
+        release.signal()
+        await store.settled()
+        #expect(!store.cachedTags(for: item).contains { $0.name == "From Before" })
+        store.forget("Blue")
+        #expect(tree.snapshot() == ["a.txt"])
     }
 
     /// A file's tags not read yet show in the tag field once the background read brings them.
@@ -59,7 +86,7 @@ struct TagColumnTests {
         let field = TagField(tags: tags)
         field.urls = [tree.url("unread")]
         #expect((field.objectValue as? [String]) != ["Read Later"])
-        while let reading = tags.requests { await reading.value }
+        await tags.settled()
         #expect(field.objectValue as? [String] == ["Read Later"])
         #expect(tree.snapshot() == ["unread"])
     }
@@ -76,10 +103,10 @@ struct TagColumnTests {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         #expect(store.tags(for: tree.url("plain")).isEmpty)
-        while let reading = store.requests { await reading.value }
+        await store.settled()
         #expect(notices.withLock { $0 } == 0)
         #expect(store.tags(for: tree.url("tagged")).isEmpty)
-        while let reading = store.requests { await reading.value }
+        await store.settled()
         #expect(notices.withLock { $0 } == 1)
         #expect(store.tags(for: tree.url("tagged")).map(\.name) == ["Read Later"])
         #expect(tree.snapshot() == ["plain", "tagged"])

@@ -313,7 +313,7 @@ struct EdgeCaseSafetyTests {
         // Tags are read in the background: what's there once that read is done.
         func current(_ url: URL) async -> [String] {
             _ = store.tags(for: url)
-            while let reading = store.requests { await reading.value }
+            await store.settled()
             return store.tags(for: url).map(\.name)
         }
         let undo = UndoManager()
