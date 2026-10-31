@@ -87,6 +87,9 @@ package final class CreatedFolders {
         return (made, failures)
     }
 
+    /// Removes those still empty at once: only where what waits next (a redo) must find them gone.
+    package func removeEmptyNow() { FileOps.removeEmptyFolders(urls, identities: identities) }
+
     /// Removes those still empty, away from the main thread.
     package func removeEmpty() async {
         let urls = urls, identities = identities
@@ -115,6 +118,8 @@ package final class CreatedFolders {
             if case .make(let folders) = self { try await folders.makeMissing(continueAfterFailure: continueAfterFailure) }
         }
         package func finish() async { if case .remove(let folders) = self { await folders.removeEmpty() } }
+        /// `finish`, at once: as a job ends, before anything waiting on it resumes.
+        package func finishNow() { if case .remove(let folders) = self { folders.removeEmptyNow() } }
 
         package var historyIdentities: [String: String] {
             if case .make(let folders) = self { folders.historyIdentities } else { [:] }

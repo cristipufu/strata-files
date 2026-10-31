@@ -383,6 +383,8 @@ final class BrowserViewController: NSViewController {
 
     private func reload(scrollToTop: Bool, invalidateCopy: Bool = false, after watched: Task<Void, Never>? = nil) {
         guard let url = directory else { return }
+        // A read of the watched folder waits for its watchers, however it was asked for.
+        let watched = watched ?? (watching.folder == url ? watching.ready : nil)
         loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
                        invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [weak self] result in
             guard let self else { return }
@@ -415,10 +417,11 @@ final class BrowserViewController: NSViewController {
         }
         if landed { delegate?.browser(self, landedAt: folder, asked: asked) }
         guard watching.folder != folder else { return }
-        let watched = watch(folder), revision = navigationRevision
+        // Owned by the folder shown, not the navigation: a deeper column chosen meanwhile keeps the first column's.
+        let watched = watch(folder)
         Task { [weak self] in
             await watched.value
-            guard let self, navigationRevision == revision, directory == folder else { return }
+            guard let self, directory == folder else { return }
             refresh()
         }
     }
@@ -426,10 +429,9 @@ final class BrowserViewController: NSViewController {
     /// Watches `folder` (both Applications folders for Applications), and finds its repository, away from the main
     /// thread: the watchers are open when the task it returns ends.
     private func watch(_ folder: URL) -> Task<Void, Never> {
-        let revision = navigationRevision
-        return watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
-                              changed: { [weak self] in self?.refresh() },
-                              isCurrent: { [weak self] in self?.navigationRevision == revision && self?.directory == folder })
+        watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
+                       changed: { [weak self] in self?.refresh() },
+                       isCurrent: { [weak self] in self?.directory == folder })
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.

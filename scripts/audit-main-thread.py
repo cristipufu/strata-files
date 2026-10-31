@@ -12,6 +12,7 @@ CI. This is a source guard: it can't tell which type a value's
 method belongs to (`url.method()`), so review what a new helper does as well.
 """
 import argparse
+import itertools
 from collections import Counter
 import json
 from pathlib import Path
@@ -63,14 +64,35 @@ OFF_MAIN = re.compile("|".join([
 MAIN_QUEUE = re.compile(r"\bDispatchQueue\.main\.async")
 
 
+# A line that only qualifies the declaration below it, or carries on the statement it's in.
+QUALIFIERS = re.compile(r"(?:@\w+(?:\([^)]*\))?\s*|(?:nonisolated|private|fileprivate|package|public|internal|static|"
+                        r"class|final|override|mutating|isolated|convenience|required)\s+)+")
+CARRIES_ON = re.compile(r"[,(\[=]\s*$|->\s*$|&&\s*$|\|\|\s*$")
+
+
+def statement_start(code, position, floor):
+    """Where the statement holding `position` begins: its own line, with the attribute and modifier lines just above
+    it and the lines it carries on from, never before `floor` (the previous `{`, `}` or `;`)."""
+    start = max(code.rfind("\n", floor, position) + 1, floor)
+    while start > floor:
+        above = max(code.rfind("\n", floor, start - 1) + 1, floor)
+        line, current = code[above:start - 1].strip(), code[start:position].lstrip()
+        if line and (QUALIFIERS.fullmatch(line + " ") or CARRIES_ON.search(line)
+                     or current.startswith((".", ")", ",", "->", "where", "throws", "async", "&&", "||"))):
+            start = above
+        else:
+            break
+    return start
+
+
 def headers(code):
-    """For every `{`, the text before it that says what the block is: back to the previous `{`, `}` or `;`."""
+    """For every `{`, the text before it that says what the block is: the statement it opens, from where that begins."""
     result = {}
     last = 0
     for index, char in enumerate(code):
         if char in "{};":
             if char == "{":
-                result[index] = code[last:index]
+                result[index] = code[statement_start(code, index, last):index]
             last = index + 1
     return result
 
@@ -81,6 +103,9 @@ FUNCTION = re.compile(r"\b(?:func\s+(\w+)|(init)[?!]?)\s*(?:<[^>{(]*>)?\s*\(")
 # type's initializer (`FileEntry(url:`).
 QUALIFIED = re.compile(r"\b([A-Z]\w*)\.(\w+)\s*\(")
 CONSTRUCTED = re.compile(r"(?<![.\w])([A-Z]\w*)\s*\(")
+# A static property computed as it's read (or a `static let` set by a closure, the first time), and its uses.
+PROPERTY = re.compile(r"\bstatic\s+(?:let|var)\s+(\w+)\s*(?::[^={\n]*?)?\s*(?:=\s*)?\{")
+READ = re.compile(r"\b([A-Z]\w*)\.(\w+)\b(?!\s*[(:])")
 UNQUALIFIED = re.compile(r"(?<![.\w])(\w+)\s*\(")
 
 
@@ -97,9 +122,9 @@ class Source:
             end = closing(self.code, match.end() - 1)
             body = self.code.find("{", end) if end is not None else -1
             if body > 0 and not re.search(r"[;}]|\b(?:func|var|let|case)\b", self.code[end:body]):
-                # From where the declaration begins (its attributes too), after whatever came before it.
-                start = max(self.code.rfind(mark, 0, match.start()) for mark in "{};") + 1
-                self.opened[body] = self.code[start:body]
+                # From where the declaration begins (its attributes too), never what came before it.
+                floor = max(self.code.rfind(mark, 0, match.start()) for mark in "{};") + 1
+                self.opened[body] = self.code[statement_start(self.code, match.start(), floor):body]
         stack, self.blocks = [], []
         for index, char in enumerate(self.code):
             if char == "{":
@@ -156,9 +181,20 @@ def closing(code, open_paren):
 
 
 def functions(source):
-    """Synchronous functions and initializers that run on their caller's thread (`nonisolated`, or in a `nonisolated`
-    type) and their bodies, keyed by type, name and first argument label: overloads that share those are one."""
+    """Functions, initializers and static properties that run on their caller's thread (`nonisolated`, or in a
+    `nonisolated` type; asynchronous ones too, unless `@concurrent`), and their bodies, keyed by type, name and first
+    argument label. Each overload is known by its shape: how many parameters it takes, and whether it's awaited."""
     found = {}
+
+    def add(position, body, key, shape):
+        header = source.opened.get(body, "")
+        own = re.search(r"\bnonisolated\b(?!\s*\(unsafe\))", header)
+        if not (own or source.off_main(position)) or re.search(r"@concurrent\b|\bactor\b", header):
+            return
+        block = next(((start, stop) for start, stop in source.blocks if start == body), None)
+        if block and key[0]:
+            found.setdefault(key, []).append((source, block, shape))
+
     for match in FUNCTION.finditer(source.code):
         open_paren = match.end() - 1
         end = closing(source.code, open_paren)
@@ -166,42 +202,38 @@ def functions(source):
             continue
         body = source.code.find("{", end)
         between = source.code[end:body]
-        if body < 0 or re.search(r"\b(?:async|func|var|let|init|case)\b|[;}]", between):
+        if body < 0 or re.search(r"\b(?:func|var|let|init|case)\b|[;}]", between):
             continue
-        declaration = source.code[source.code.rfind("\n", 0, match.start()) + 1:match.start()]
-        own = bool(re.search(r"\bnonisolated\b(?!\s*\(unsafe\))", declaration))
-        if not (own or source.off_main(match.start())) or re.search(r"@concurrent\b|\bactor\b", declaration):
-            continue
-        block = next(((start, stop) for start, stop in source.blocks if start == body), None)
-        owner = source.owner(match.start())
-        if block and owner:
-            key = (owner, match.group(1) or "init", label(source.text, open_paren))
-            found.setdefault(key, []).append((source, block, arity(source, open_paren)))
+        key = (source.owner(match.start()), match.group(1) or "init", label(source.text, open_paren))
+        add(match.start(), body, key, (arity(source, open_paren), bool(re.search(r"\basync\b", between))))
+    for match in PROPERTY.finditer(source.code):
+        add(match.start(), match.end() - 1, (source.owner(match.start()), match.group(1), "var"), (0, False))
     return found
 
 
 def awaited(code, position):
-    """Whether the call at `position` is awaited: an asynchronous function, which isn't one of these."""
-    return re.search(r"\bawait\s*$", code[max(0, position - 12):position]) is not None
+    """Whether the call at `position` is awaited: it can only be an asynchronous overload."""
+    return re.search(r"\bawait\s*(?:try\s*)?$", code[max(0, position - 16):position]) is not None
 
 
 def calls(source, start, end):
-    """The synchronous calls between `start` and `end` that name a function by type, through `Self.`, or by name alone
-    from within its type."""
+    """The calls between `start` and `end` that name a function by type, through `Self.`, or by name alone from within
+    its type, and static properties read by type: each with its shape (arguments passed, whether awaited)."""
+    def shape(match):
+        return arity(source, match.end() - 1), awaited(source.code, match.start())
     for match in QUALIFIED.finditer(source.code, start, end):
-        if awaited(source.code, match.start()):
-            continue
         target = source.owner(match.start()) if match.group(1) == "Self" else match.group(1)
-        yield match.start(), (target, match.group(2), label(source.text, match.end() - 1)), arity(source, match.end() - 1)
+        yield match.start(), (target, match.group(2), label(source.text, match.end() - 1)), shape(match)
+    for match in READ.finditer(source.code, start, end):
+        target = source.owner(match.start()) if match.group(1) == "Self" else match.group(1)
+        yield match.start(), (target, match.group(2), "var"), (0, False)
     for match in CONSTRUCTED.finditer(source.code, start, end):
-        if not awaited(source.code, match.start()):
-            yield match.start(), (match.group(1), "init", label(source.text, match.end() - 1)), arity(source, match.end() - 1)
+        yield match.start(), (match.group(1), "init", label(source.text, match.end() - 1)), shape(match)
     for match in UNQUALIFIED.finditer(source.code, start, end):
         # An initializer is only called through its type or `self.`/`super.`; `init(` alone declares one.
-        if (match.group(1) == "init" or re.search(r"\bfunc\s*$", source.code[max(0, match.start() - 8):match.start()])
-                or awaited(source.code, match.start())):
+        if match.group(1) == "init" or re.search(r"\bfunc\s*$", source.code[max(0, match.start() - 8):match.start()]):
             continue
-        yield match.start(), (source.owner(match.start()), match.group(1), label(source.text, match.end() - 1)), arity(source, match.end() - 1)
+        yield match.start(), (source.owner(match.start()), match.group(1), label(source.text, match.end() - 1)), shape(match)
 
 
 def blocking_functions(sources, reviewed=frozenset()):
@@ -226,7 +258,12 @@ def blocking_functions(sources, reviewed=frozenset()):
             for source, (start, end), count in bodies:
                 if count in blocking.get(key, {}):
                     continue
-                called = next((called for position, called, passed in calls(source, start, end)
+                # Its own type's blocking properties read by name, as well as calls.
+                own = ((match.start(), (key[0], match.group(1), "var"), (0, False))
+                       for match in re.finditer(r"(?<![.\w])(\w+)\b(?!\s*[(:])", source.code[start:end])
+                       if (key[0], match.group(1), "var") in blocking)
+                own = ((position + start, called, shape) for position, called, shape in own)
+                called = next((called for position, called, passed in itertools.chain(calls(source, start, end), own)
                                if blocks(called, passed, blocking) and called != key
                                and not source.off_main(position, within=(start, end))), None)
                 if called:
@@ -238,12 +275,16 @@ def blocking_functions(sources, reviewed=frozenset()):
 
 
 def blocks(called, passed, blocking):
-    """Whether a call passing `passed` arguments to `called` may reach one of its overloads that blocks."""
-    return any(count >= passed for count in blocking.get(called, {}))
+    """Whether a call of `passed` shape (arguments, awaited) may reach one of `called`'s overloads that blocks: one
+    taking at least that many, asynchronous when the call is awaited."""
+    count, waits = passed
+    return any(taken >= count and is_async == waits for taken, is_async in blocking.get(called, {}))
 
 
 def display(key):
     owner, name, first = key
+    if first == "var":
+        return f"{owner}.{name}"
     arguments = "" if first == "()" else first + ":"
     return f"{owner}({arguments})" if name == "init" else f"{owner}.{name}({arguments})"
 
@@ -277,7 +318,7 @@ def inventory(root, reviewed=frozenset(), sources=None):
 
 def through_helper(call):
     """Whether an exception's `call` is a helper's (`Trash.isTrash(_:)`, `FileEntry(url:)`), not a blocking call."""
-    return re.fullmatch(r"[A-Z]\w*(?:\.\w+)?\((?:\w+:)?\)", call) is not None
+    return re.fullmatch(r"[A-Z]\w*(?:\.\w+)?\((?:\w+:)?\)|[A-Z]\w*\.\w+", call) is not None
 
 
 def check(root, entries):

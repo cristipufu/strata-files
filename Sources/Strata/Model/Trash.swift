@@ -65,8 +65,11 @@ package enum Trash {
             return false
         }
         // A disk's own Trash: the folder above is where the kernel says a disk is mounted (in its spelling), asked at
-        // once, never of the disk (on a share that stopped answering, the disk can't say).
-        return MountPoints.current().contains(PathSpelling.system((trashes as NSString).deletingLastPathComponent))
+        // once, never of the disk (on a share that stopped answering, the disk can't say). Mount points are named on
+        // the startup disk, compared as it compares names.
+        let top = PathSpelling.system((trashes as NSString).deletingLastPathComponent)
+        let mounts = MountPoints.current()
+        return mounts.contains(top) || homeIgnoresCase && mounts.contains { $0.lowercased() == top.lowercased() }
     }
 
     /// Whether `url` is a Trash however its path is spelled: through a link to a folder on the way, say. A link to a
@@ -93,6 +96,10 @@ package enum Trash {
         }
         return false
     }
+
+    /// The home Trash's symbol, full or empty like the Dock's (empty when Strata can't look: that needs Full Disk
+    /// Access), read away from the main thread.
+    @concurrent package static func homeSymbol() async -> String { isHomeEmpty ? "trash" : "trash.fill" }
 
     /// Whether the home Trash has anything in it (for its icon). Reads at most a few entries.
     package nonisolated static var isHomeEmpty: Bool {

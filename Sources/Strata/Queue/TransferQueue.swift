@@ -469,8 +469,8 @@ package enum TransferUndo {
             // Part of an undo or redo: History already has the operation. Each item is checked as the job reaches it.
             let job = queue.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                     logHistory: false, expected: expected)
-            // Undo work, in its order: what waits for ⌘Z to finish waits for this too.
-            job.onFinish = { _ in _ = FileOps.afterUndoWork { await containers.finish() } }
+            // As the job ends, before what waits on it (a redo's step) resumes: it must find these gone.
+            job.onFinish = { _ in containers.finishNow() }
             return .moving(job)
         }
         let landed = LandedFiles()

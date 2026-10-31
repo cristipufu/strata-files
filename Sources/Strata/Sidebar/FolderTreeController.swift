@@ -79,6 +79,9 @@ final class FolderTreeController: NSViewController {
 
     private let outline = SidebarOutlineView()
     private var roots: [FolderNode] = []
+    /// The home Trash's symbol as last read (`Trash.homeSymbol`), and which read that was.
+    private var trashSymbol = "trash"
+    private var trashReads = 0
     private var generation = 0
     private var suppressSelection = false
     /// The folder shown in the window: revealed once the tree is on screen.
@@ -154,11 +157,12 @@ final class FolderTreeController: NSViewController {
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
+        trashMayHaveChanged()
     }
 
     // MARK: - Contents
 
-    private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
+
 
     /// Home, then each disk (the startup disk as "/"), servers, Containers while an engine runs, and the Trash. Nodes already in
     /// the tree are kept, so what's expanded stays expanded.
@@ -193,7 +197,7 @@ final class FolderTreeController: NSViewController {
             })
         }
         fresh.append(reuse(Trash.home, .trash) {
-            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: Self.trashSymbol, kind: .trash)
+            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: trashSymbol, kind: .trash)
         })
         return fresh
     }
@@ -247,9 +251,16 @@ final class FolderTreeController: NSViewController {
 
     /// Full or empty, like the Dock's.
     @objc private func trashMayHaveChanged() {
-        guard let trash = roots.first(where: { $0.kind == .trash }), trash.symbol != Self.trashSymbol else { return }
-        trash.symbol = Self.trashSymbol
-        outline.reloadItem(trash)
+        trashReads += 1
+        let read = trashReads
+        Task { [weak self] in
+            let symbol = await Trash.homeSymbol()
+            guard let self, read == trashReads else { return }
+            trashSymbol = symbol
+            guard let trash = roots.first(where: { $0.kind == .trash }), trash.symbol != symbol else { return }
+            trash.symbol = symbol
+            outline.reloadItem(trash)
+        }
     }
 
     /// Reads `node`'s subfolders (once) off the main thread, then shows them and runs what was waiting for them.

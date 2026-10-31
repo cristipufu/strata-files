@@ -15,6 +15,9 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package let isAlias: Bool
     /// A plain file, as listed: not a folder, link, pipe or device. Previews read only these.
     package let isRegular: Bool
+    /// Its facts were read from the disk (a listing, or the item itself); an index hit's weren't, so whether it's an
+    /// alias isn't known.
+    package let isListed: Bool
     package let isVolume: Bool
     package let size: Int64?
     package let modified: Date?
@@ -110,7 +113,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
 
     package init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
          size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
-         isAlias: Bool = false, isRegular: Bool? = nil) {
+         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true) {
         self.url = url
         self.name = name
         self.displayName = displayName ?? name
@@ -121,6 +124,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.isAlias = isAlias
         // Made without a listing (an index hit, say): a file that isn't a folder or a link.
         self.isRegular = isRegular ?? (!isDirectory && !isSymlink)
+        self.isListed = isListed
         self.isVolume = isVolume
         self.size = size
         self.modified = modified
@@ -138,6 +142,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         // The key says yes for symbolic links too.
         isAlias = values.isAliasFile == true && !isSymlink
         isRegular = values.isRegularFile == true
+        isListed = true
         isVolume = values.isVolume ?? false
         var isDirectory = values.isDirectory ?? false
         var isPackage = values.isPackage ?? false
@@ -163,7 +168,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
                   isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind ?? self.kind,
                   contentType: contentType, displayName: displayName ?? self.displayName, isAlias: isAlias,
-                  isRegular: isRegular)
+                  isRegular: isRegular, isListed: isListed)
     }
 
     /// Filtering accepts both the name on disk and the visible label, without highlighting offsets from another name.

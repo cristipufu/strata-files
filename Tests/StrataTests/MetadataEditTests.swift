@@ -176,4 +176,18 @@ struct MetadataEditTests {
         await FileOps.undoWork?.value
         #expect(tags("a.txt") == ["Strata Test"])
     }
+
+    /// Two tag changes started together on the same item both land: each reads its tags only once the other has
+    /// written.
+    @Test func tagChangesMadeTogetherNeverWriteOverEachOther() async throws {
+        let tree = try TestTree("a.txt")
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live)
+        let item = tree.url("a.txt")
+        async let first: Void = store.update([item], adding: ["Strata One"], removing: [], undo: nil)
+        async let second: Void = store.update([item], adding: ["Strata Two"], removing: [], undo: nil)
+        _ = try await (first, second)
+        let tags = (try? item.resourceValues(forKeys: [.tagNamesKey]).tagNames) ?? []
+        #expect(Set(tags) == ["Strata One", "Strata Two"])
+        #expect(tree.snapshot() == ["a.txt"])
+    }
 }

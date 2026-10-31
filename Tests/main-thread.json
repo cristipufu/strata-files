@@ -196,5 +196,19 @@
   "call": "PreviewArchiveSource(_:)",
   "count": 1,
   "reason": "A book's thumbnail: its file is pinned the moment the thumbnail is asked for, so a file swapped in before Quick Look answers is never read for its cover. Off the main thread this needs the listing to carry each item's identity to check the pin against (a stat per entry)."
+ },
+ {
+  "file": "Sources/Strata/Model/CreatedFolders.swift",
+  "call": "FileOps.removeEmptyFolders(_:)",
+  "count": 1,
+  "reason": "`removeEmptyNow`, only as an undo's job across disks ends: the few folders that undo made for its items, removed while still empty and still its own (nonrecursive), before a redo waiting on the job resumes and must find them gone."
+ },
+ {
+  "helper": "Trash.homeIgnoresCase",
+  "reason": "Whether the home folder's disk ignores case, read once a launch (the first time a Trash is asked about): one volume flag of the startup disk."
+ },
+ {
+  "helper": "GitRunner.executable",
+  "reason": "Where git is installed, found once a launch (the first time a git store is made) among the system's own folders on the startup disk."
  }
 ]

@@ -6,6 +6,9 @@ import Foundation
 @MainActor final class BrowserWatching {
     private var watchers: [DirectoryWatcher] = []
     /// The folder being watched, once its read has said which folder it is.
+    /// Ends once the watched folder's watchers are open: every read of it waits for that, so none misses a change
+    /// made while it reads.
+    private(set) var ready: Task<Void, Never>?
     private(set) var folder: URL?
     /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
     private(set) var git: GitObservation?
@@ -29,12 +32,13 @@ import Foundation
             guard let self, !Task.isCancelled, isCurrent() else { return }
             self.watchers = watchers
         }
+        ready = Self.ready(opened)
         finding = Task { [weak self] in
             let observation = await store.observe(folder)
             guard let self, !Task.isCancelled, isCurrent() else { return }
             git = observation
         }
-        return Self.ready(opened)
+        return ready ?? Self.ready(opened)
     }
 
     /// Opened away from the main actor, so what waits for them never waits for it.
@@ -49,6 +53,7 @@ import Foundation
 
     func stop() {
         folder = nil
+        ready = nil
         opening?.cancel()
         watchers = []
         finding?.cancel()

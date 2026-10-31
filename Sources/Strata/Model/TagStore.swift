@@ -64,6 +64,8 @@ package final class TagStore {
     /// Tag lists past these limits are someone else's doing: only the first tags are read.
     nonisolated private static let maxAttributeSize = 64 << 10
     nonisolated private static let maxTags = 100
+    /// The last tag change, which the next waits for.
+    private var lastChange: Task<Void, Never>?
     private var cache: [String: [FinderTag]] = [:]
     private var stale: Set<String> = []
     private static let recentKey = "recentTags"
@@ -196,15 +198,29 @@ package final class TagStore {
     /// The items are read and written away from the main thread.
     package func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) async throws {
         let copies = copies, labels = NSWorkspace.shared.fileLabels
-        let applied = await Self.toggling(tag, on: urls, copies: copies, labels: labels)
+        let applied = await afterPrevious { await Self.toggling(tag, on: urls, copies: copies, labels: labels) }
         try finish(applied, undo: undo)
     }
 
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
     package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) async throws {
         let copies = copies, labels = NSWorkspace.shared.fileLabels
-        let applied = await Self.updating(urls, adding: adding, removing: removing, copies: copies, labels: labels)
+        let applied = await afterPrevious {
+            await Self.updating(urls, adding: adding, removing: removing, copies: copies, labels: labels)
+        }
         try finish(applied, undo: undo)
+    }
+
+    /// Runs `change` once the change before it has written: each reads the items' tags only after that, so none
+    /// writes over another with tags read before it.
+    private func afterPrevious(_ change: @escaping () async -> Applied) async -> Applied {
+        let previous = lastChange
+        let this = Task { () -> Applied in
+            await previous?.value
+            return await change()
+        }
+        lastChange = Task { _ = await this.value }
+        return await this.value
     }
 
     /// Tags to suggest: the seven colored ones, then others you've added here, most recent first.
@@ -343,8 +359,11 @@ package final class TagStore {
                 self.registerUndo(changes.map(\.reversed), undo: undo)
                 let copies = self.copies, labels = NSWorkspace.shared.fileLabels
                 _ = FileOps.afterUndoWork { [weak self] in
-                    let applied = await Self.restoring(changes.map(\.reversed), copies: copies, labels: labels)
-                    self?.took(applied)
+                    guard let self else { return }
+                    let applied = await self.afterPrevious {
+                        await Self.restoring(changes.map(\.reversed), copies: copies, labels: labels)
+                    }
+                    self.took(applied)
                 }
             }
         }

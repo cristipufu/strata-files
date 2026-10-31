@@ -198,8 +198,6 @@ struct CreatedFolderOwnershipTests {
                 undo.undo()
                 await FileOps.undoWork?.value
                 for case let transfer as TransferJob in env.queue.jobs { await transfer.finished() }
-                // The folders' cleanup is undo work too, queued once the move across disks has finished.
-                await FileOps.undoWork?.value
                 #expect(!FileManager.default.fileExists(atPath: volume.url("made").path))
                 #expect(tree.snapshot() == ["a.txt", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
                 undo.redo()

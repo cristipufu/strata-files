@@ -280,6 +280,6 @@ extension FileEntry {
                   kind: hit.isDirectory && !hit.isPackage ? String(localized: "Folder", comment: "Kind of item: a folder")
                       : FileEntry.kind(extension: url.pathExtension, isDirectory: hit.isDirectory, isPackage: hit.isPackage,
                                        size: hit.size, system: type?.localizedDescription, type: type),
-                  contentType: type)
+                  contentType: type, isListed: false)
     }
 }

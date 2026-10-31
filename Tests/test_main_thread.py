@@ -71,6 +71,25 @@ class MainThreadAuditTests(unittest.TestCase):
                "    func show() {\n        _ = Self.isThere(\"a\")\n        _ = isThere(\"b\")\n    }\n}\n")
         self.assertEqual(sum("through Pane.isThere(_:)" in issue for issue in self.check(own)), 2)
 
+    def test_an_overload_taking_fewer_arguments_than_a_call_passes_isnt_it(self):
+        code = ("nonisolated struct Item {\n    init(url: String) { _ = stat(url, nil) }\n"
+                "    init(url: String, name: String, size: Int) {}\n}\n"
+                "func show() {\n    _ = Item(url: \"a\", name: \"b\", size: 1)\n}\n")
+        self.assertEqual(self.check(code), [])
+        issues = self.check(code.replace('Item(url: "a", name: "b", size: 1)', 'Item(url: "a")'))
+        self.assertTrue(any("through Item(url:)" in issue for issue in issues))
+
+    def test_a_static_property_or_an_async_function_on_its_callers_actor_counts_too(self):
+        disk = ("nonisolated enum Disk {\n    static var isEmpty: Bool { stat(\"/\", nil) == 0 }\n"
+                "    static func isThere() -> Bool { isEmpty }\n"
+                "    static func read() async -> Bool { FileManager.default.fileExists(atPath: \"/\") }\n"
+                "    @concurrent static func reads() async -> Bool { FileManager.default.fileExists(atPath: \"/\") }\n}\n")
+        for use, through in [("_ = Disk.isEmpty", "Disk.isEmpty"), ("_ = Disk.isThere()", "Disk.isThere()"),
+                             ("_ = await Disk.read()", "Disk.read()")]:
+            issues = self.check(disk + f"final class Pane {{\n    func show() async {{\n        {use}\n    }}\n}}\n")
+            self.assertTrue(any(f"through {through}" in issue for issue in issues), use)
+        self.assertEqual(self.check(disk + "final class Pane {\n    func show() async {\n        _ = await Disk.reads()\n    }\n}\n"), [])
+
     def test_a_reviewed_helper_counts_nowhere_and_must_still_block(self):
         helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
         code = helper + "func show() {\n    _ = Disk.isThere(\"a\")\n}\n"
@@ -79,6 +98,15 @@ class MainThreadAuditTests(unittest.TestCase):
         self.assertTrue(any("reason" in issue for issue in self.check(code, [{**entry, "reason": ""}])))
         stale = self.check(code.replace("stat(path, nil) == 0", "true"), [entry])
         self.assertTrue(any("Stale reviewed helper" in issue for issue in stale))
+
+    def test_what_comes_before_a_block_says_nothing_about_it(self):
+        call = "FileManager.default.fileExists(atPath: path)"
+        for before in ["    nonisolated let limit = 3\n", "    nonisolated(unsafe) var cache = 0\n",
+                       "    func read() async { _ = await OwnThread.run(read) }\n"]:
+            code = f"final class Pane {{\n{before}    init() {{\n        _ = {call}\n    }}\n}}\n"
+            self.assertTrue(any("Blocks the main thread" in issue for issue in self.check(code)), before)
+        # Attributes and modifiers on the lines just above still belong to the declaration.
+        self.assertEqual(self.check(f"final class Pane {{\n    @concurrent\n    static func read() async {{ _ = {call} }}\n}}\n"), [])
 
     def test_reviewed_exceptions_must_match_exactly(self):
         code = "func show() {\n    _ = FileManager.default.fileExists(atPath: path)\n}\n"

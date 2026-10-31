@@ -25,7 +25,8 @@ extension BrowserViewController {
         if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
         // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder). Where an
         // alias leads is read away from the main thread.
-        let aliases = entries.filter { $0.isAlias && !$0.isFolder }
+        // An index hit (search results, Recents) may be one too: its listing never said.
+        let aliases = entries.filter { !$0.isFolder && ($0.isAlias || !$0.isListed) }
         guard !aliases.isEmpty else { return open(entries, aliasedFolders: [], fileOpener: fileOpener) }
         afterReading({ aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }) { [weak self] folders in
             self?.open(entries, aliasedFolders: folders, fileOpener: fileOpener)

@@ -63,7 +63,9 @@ extension BrowserViewController {
 
     private func browseArchive(_ archive: URL, copy found: (folder: URL, finished: Bool)?) {
         let window = view.window
-        if let found, found.finished {
+        // Read away from the main thread, the answer can be older than a job that finished it meanwhile: a copy is
+        // recorded before its waiters are let go, so it's either still being made (waiters) or known finished here.
+        if let found, found.finished || ArchiveCache.isFinished(found.folder) {
             delegate?.browser(self, showArchiveCopy: found.folder)
             return
         }

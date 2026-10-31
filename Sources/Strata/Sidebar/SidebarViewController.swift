@@ -65,6 +65,9 @@ final class SidebarItem {
 }
 
 final class SidebarViewController: NSViewController {
+    /// The home Trash's symbol as last read (`Trash.homeSymbol`), and which read that was.
+    private var trashSymbol = "trash"
+    private var trashReads = 0
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
 
@@ -190,6 +193,7 @@ final class SidebarViewController: NSViewController {
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
+        trashMayHaveChanged()
     }
 
     func reload() {
@@ -236,7 +240,7 @@ final class SidebarViewController: NSViewController {
         }
         sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
                                        items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
-            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
+            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: trashSymbol)]))
         // Servers you've connected to: an SFTP server or a bucket each, green while connected.
         let servers = services.remote.servers.all.map { server -> SidebarItem in
             let item = SidebarItem(title: server.name, target: .server(server.id),
@@ -782,14 +786,18 @@ extension SidebarViewController: NSMenuDelegate {
         outline.menu?.addItem(entry)
     }
 
-    /// Full or empty, like the Dock's (empty when Strata can't look: that needs Full Disk Access).
-    private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
 
     @objc private func trashMayHaveChanged() {
-        guard let item = sections.lazy.flatMap(\.items).first(where: { $0.url == Trash.home }),
-              item.symbol != Self.trashSymbol else { return }
-        item.symbol = Self.trashSymbol
-        outline.reloadItem(item)
+        trashReads += 1
+        let read = trashReads
+        Task { [weak self] in
+            let symbol = await Trash.homeSymbol()
+            guard let self, read == trashReads else { return }
+            trashSymbol = symbol
+            guard let item = sections.lazy.flatMap(\.items).first(where: { $0.url == Trash.home }), item.symbol != symbol else { return }
+            item.symbol = symbol
+            outline.reloadItem(item)
+        }
     }
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.

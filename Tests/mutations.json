@@ -1816,8 +1816,8 @@
   },
   {
     "file": "Strata/Model/CreatedFolders.swift",
-    "find": "FileOps.removeEmptyFolders(urls, identities: identities)",
-    "replace": "FileOps.removeEmptyFolders(urls, identities: Dictionary(uniqueKeysWithValues: urls.compactMap { url in FileIdentity.read(url.path).map { (url.path, $0) } }))",
+    "find": "\n        FileOps.removeEmptyFolders(urls, identities: identities)\n",
+    "replace": "\n        FileOps.removeEmptyFolders(urls, identities: Dictionary(uniqueKeysWithValues: urls.compactMap { url in FileIdentity.read(url.path).map { (url.path, $0) } }))\n",
     "rule": "Created folder ownership cleanup does not adopt replacements",
     "tests": "CreatedFolderOwnershipTests/liveUndoLeavesReplacementContainers|CreatedFolderOwnershipTests/historyUndoLeavesReplacementContainers"
   },
@@ -1858,7 +1858,7 @@
   },
   {
     "file": "Strata/Queue/TransferQueue.swift",
-    "find": "            job.onFinish = { _ in _ = FileOps.afterUndoWork { await containers.finish() } }\n",
+    "find": "            job.onFinish = { _ in containers.finishNow() }\n",
     "replace": "",
     "rule": "Created folder ownership cleanup waits for cross-disk completion",
     "tests": "CreatedFolderOwnershipTests/crossDiskUndoFinishesBeforeRemovingItsCreatedFolders"
@@ -7708,7 +7708,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "        let aliases = entries.filter { $0.isAlias && !$0.isFolder }\n",
+    "find": "        let aliases = entries.filter { !$0.isFolder && ($0.isAlias || !$0.isListed) }\n",
     "replace": "        let aliases = entries.filter { _ in false }\n",
     "rule": "A Finder alias to a folder is handed to another app rather than opened here",
     "tests": "LinkNavigationTests/openingAFinderAliasToAFolderGoesThereAndAFileOpensAtOnce"
@@ -7771,7 +7771,7 @@
   },
   {
     "file": "Strata/Model/Trash.swift",
-    "find": "        return MountPoints.current().contains(PathSpelling.system((trashes as NSString).deletingLastPathComponent))\n",
+    "find": "        return mounts.contains(top) || homeIgnoresCase && mounts.contains { $0.lowercased() == top.lowercased() }\n",
     "replace": "        return true\n",
     "rule": "A .Trashes folder on a disk that isn't mounted is taken for a Trash",
     "tests": "TrashPlacesTests/aDisksTrashIsKnownByTheDisksTheKernelLists"

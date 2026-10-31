@@ -47,6 +47,12 @@ package nonisolated enum ArchiveCache {
         return folder(for: archive).map { ($0, false) }
     }
 
+    /// Whether the copy at `folder` is known finished in this run, without asking the disk: it's recorded when its job
+    /// finishes it (on the job's worker, before its waiters hear), and when it's looked up or pruned.
+    package static func isFinished(_ folder: URL) -> Bool {
+        sources.withLock { $0[folder.path] != nil }
+    }
+
     /// The finished copy of `archive`, if there is one.
     package static func existing(for archive: URL) -> URL? {
         guard let folder = folder(for: archive), learnSource(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,

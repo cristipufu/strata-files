@@ -17,8 +17,6 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
     var onCommand: ((Selector) -> Bool)?
     private var shown: [String] = []
     private let tags: TagStore
-    /// The last change being written: each waits for the one before, so none reads tags another hasn't written yet.
-    private var writing: Task<Void, Never>?
 
     init(tags: TagStore) {
         self.tags = tags
@@ -126,8 +124,8 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         invalidateIntrinsicContentSize()
     }
 
-    /// Writes what changed since the field was last in step with the items, away from the main thread, after any
-    /// change still being written.
+    /// Writes what changed since the field was last in step with the items, away from the main thread (the store
+    /// writes each change after the one before).
     @discardableResult
     func commit(includingTyped: Bool = true) -> Task<Void, Never>? {
         let tokens = tokens(includingTyped: includingTyped)
@@ -139,9 +137,8 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         // In step with the items from now on; a failure reads them again.
         var seen = Set<String>()
         shown = tokens.filter { seen.insert($0.lowercased()).inserted }
-        let tags = tags, urls = urls, undo = undo, previous = writing
-        let write = Task { [weak self] in
-            await previous?.value
+        let tags = tags, urls = urls, undo = undo
+        return Task { [weak self] in
             do {
                 try await tags.update(urls, adding: added, removing: removed, undo: undo)
             } catch {
@@ -153,8 +150,6 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
             guard let self, currentEditor() == nil else { return }
             reload()
         }
-        writing = write
-        return write
     }
 
     private func show(_ error: Error) {

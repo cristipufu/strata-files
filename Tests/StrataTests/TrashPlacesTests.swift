@@ -11,6 +11,12 @@ struct TrashPlacesTests {
     @Test func aDisksTrashIsKnownByTheDisksTheKernelLists() {
         let absent = "/Volumes/StrataNone-\(UUID().uuidString)"
         #expect(Trash.isTrash(URL(filePath: "/.Trashes/\(uid)", directoryHint: .isDirectory)))
+        // A mounted disk's Trash however its mount point's case is typed, where the startup disk ignores case.
+        if let volume = MountPoints.current().first(where: { $0.hasPrefix("/Volumes/") && $0.lowercased() != $0.uppercased() }) {
+            let ignoresCase = (try? URL(filePath: "/").resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?
+                .volumeSupportsCaseSensitiveNames != true
+            #expect(Trash.isTrash(URL(filePath: volume.uppercased() + "/.Trashes/\(uid)", directoryHint: .isDirectory)) == ignoresCase)
+        }
         #expect(Trash.isInTrash(URL(filePath: "/.Trashes/\(uid)/a/b")))
         #expect(!Trash.isTrash(URL(filePath: absent + "/.Trashes/\(uid)", directoryHint: .isDirectory)))
         #expect(!Trash.isInTrash(URL(filePath: absent + "/.Trashes/\(uid)/a")))
