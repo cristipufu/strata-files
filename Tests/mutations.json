@@ -3732,7 +3732,7 @@
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value",
-    "replace": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls) }.value",
+    "replace": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls, copies: .live) }.value",
     "rule": "Browser copy provider ownership Copy command stages clipboard items with the global provider",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
@@ -4036,14 +4036,14 @@
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "try services.files.newFolder(in: directory, undo: undoManager)",
-    "replace": "try FileOps.newFolder(in: directory, undo: undoManager)",
+    "replace": "try FileOps.newFolder(in: directory, undo: undoManager, copies: .live, history: .shared)",
     "rule": "Browser new folder bypasses its command owner",
     "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "try services.files.newFile(in: directory, undo: undoManager)",
-    "replace": "try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: undoManager)",
+    "replace": "try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: undoManager, copies: .live, history: .shared)",
     "rule": "Browser new file bypasses its command owner",
     "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
   },
