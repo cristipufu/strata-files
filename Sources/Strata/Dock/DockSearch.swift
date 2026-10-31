@@ -503,6 +503,14 @@ enum DockSearchItems {
         ]
     }
 
+    /// Of `hits`, those not already found (`known`) that pass `filter`, each hit's item read away from the main thread.
+    @concurrent private static func unseen(_ hits: [SemanticHit], known: Set<String>, passing filter: SearchFilter?) async
+        -> [SemanticHit] {
+        hits.filter { hit in
+            !known.contains(hit.url.path) && (filter.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
+        }
+    }
+
     /// Files and folders from the index (plain English understood), documents whose text matches, and a row that opens
     /// the whole search in a window: on top when the words were read as plain English.
     static func lateItems(_ query: String) async -> [PaletteItem] {
@@ -529,9 +537,8 @@ enum DockSearchItems {
             let known = Set(found.hits.map(\.path))
             // The costliest part (it reads meaning, not just names): not for words already typed over.
             guard !Task.isCancelled else { return [] }
-            let hits = await SemanticIndex.shared.search(contentQuery, limit: 8).filter { hit in
-                !known.contains(hit.url.path) && (structural.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
-            }
+            let hits = await Self.unseen(await SemanticIndex.shared.search(contentQuery, limit: 8), known: known,
+                                         passing: structural)
             items += PaletteItem.contentMatches(hits) { NSWorkspace.shared.open($0) }
         }
         let summary = found.interpretation?.summary

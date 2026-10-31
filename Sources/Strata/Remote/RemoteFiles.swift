@@ -626,6 +626,14 @@ package nonisolated enum RemoteWriter {
 
 extension RemoteFiles {
     /// Metadata only: no eager files, recursive reads or swallowed listing errors in a Space preview.
+    /// A listed folder's placeholders written into its copy (up to a preview's many entries), still in the folder
+    /// chosen for them: away from the main thread.
+    @concurrent private static func place(_ entries: [ListedEntry], in real: URL, chosen: ChosenFile, path: String,
+                                          top: URL) async throws {
+        try chosen.withParent { _, _, _ in }
+        _ = try CopyWriter.apply(entries, contents: [:], to: real, containerPath: path, top: top, expected: chosen.identity)
+    }
+
     package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
         let real = await RealPath.of(folder).standardizedFileURL
@@ -645,8 +653,7 @@ extension RemoteFiles {
                     try Task.checkCancellation()
                     try self.ensureCurrent(server, top: top)
                     guard entries.count <= CopyProviders.previewEntryLimit else { throw CocoaError(.fileReadTooLarge) }
-                    try chosen.withParent { _, _, _ in }
-                    _ = try CopyWriter.apply(entries, contents: [:], to: real, containerPath: path, top: top, expected: chosen.identity)
+                    try await Self.place(entries, in: real, chosen: chosen, path: path, top: top)
                     if self.modes.count > 200_000 { self.modes.removeAll() }
                     for entry in entries where entry.kind == .file && ContainerCopies.isSafeName(entry.name) {
                         self.modes[real.appendingPathComponent(entry.name).path] = entry.mode

@@ -128,6 +128,8 @@ package final class GitStatusStore {
     /// current. Returns nil outside a repository.
     package func observe(_ folder: URL) async -> GitObservation? {
         guard let repository = await find(folder.standardizedFileURL.path, fresh: true).value else { return nil }
+        // Read before anything's decided: no await comes between finding there's no watcher and making one.
+        let filter = await GitEventFilter.read(repository)
         let root = repository.rootPath
         let watched = watchers[root] != nil
         let isFresh = snapshots[root].map { watched || Date().timeIntervalSince($0.date) < maximumAge } ?? false
@@ -135,7 +137,7 @@ package final class GitStatusStore {
         if var entry = watchers[root] {
             entry.count += 1
             watchers[root] = entry
-        } else if let watcher = GitRepoWatcher(repository: repository, snapshot: snapshots[root], onChange: { [weak self] in
+        } else if let watcher = GitRepoWatcher(repository: repository, filter: filter, snapshot: snapshots[root], onChange: { [weak self] in
             self?.invalidate(rootPath: root)
         }) {
             watchers[root] = (watcher, 1)
@@ -318,6 +320,11 @@ package nonisolated struct GitEventFilter: Sendable {
     package var ignoredDirectories: Set<String> = []
     package var ignoredFiles: Set<String> = []
 
+    /// `repository`'s filter, its folders' real paths read away from the main thread.
+    @concurrent package static func read(_ repository: GitRepository) async -> GitEventFilter {
+        GitEventFilter(repository: repository)
+    }
+
     package init(repository: GitRepository) {
         func variants(_ url: URL) -> [String] {
             let path = url.standardizedFileURL.path
@@ -368,8 +375,10 @@ package nonisolated struct GitEventFilter: Sendable {
     private var stream: FSEventStreamRef?
     private let context: GitWatcherContext
 
-    package init?(repository: GitRepository, snapshot: GitStatusSnapshot?, onChange: @escaping @MainActor () -> Void) {
-        var filter = GitEventFilter(repository: repository)
+    /// `filter`: `repository`'s (`GitEventFilter.read`).
+    package init?(repository: GitRepository, filter: GitEventFilter, snapshot: GitStatusSnapshot?,
+                  onChange: @escaping @MainActor () -> Void) {
+        var filter = filter
         if let snapshot {
             filter.ignoredDirectories = snapshot.ignoredDirectories
             filter.ignoredFiles = snapshot.ignoredFiles

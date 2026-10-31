@@ -100,11 +100,9 @@ final class TreemapViewController: NSViewController, FileCollectionController {
 
     // MARK: - Selection
 
+    /// The selected tiles' entries: every item comes from one (`setEntries`).
     var selectedEntries: [FileEntry] {
-        treemapView.selectedKeys.sorted().compactMap { key in
-            guard let index = indexByKey[key] else { return nil }
-            return entries[key] ?? FileEntry(url: items[index].url)
-        }
+        treemapView.selectedKeys.sorted().compactMap { key in indexByKey[key] == nil ? nil : entries[key] }
     }
 
     func select(_ urls: [URL], scroll: Bool = true) {
@@ -130,7 +128,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         guard let item = tile.item else { return }
         if item.isFolder {
             onDrill?(item.url)
-        } else if let entry = entries[tile.key] ?? FileEntry(url: item.url) {
+        } else if let entry = entries[tile.key] {
             fileDelegate?.fileView(self, open: [entry])
         }
     }
