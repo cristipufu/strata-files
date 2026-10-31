@@ -873,7 +873,7 @@ final class BrowserViewController: NSViewController {
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
         if services.copies.contains(url) { return nil }
         if let size = services.index.folderSize(url) { return size }
-        if let size = sizer.cached(url) { return size }
+        if let size = FolderSizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
         return nil
     }

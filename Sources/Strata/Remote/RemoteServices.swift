@@ -26,7 +26,7 @@ package final class RemoteServices {
     }
 
     package convenience init(preferences: Prefs, credentials: RemoteKeychain, copyRoot: URL,
-                     connector: RemoteConnector = .native, notifications: NotificationCenter = NotificationCenter()) {
+                     connector: RemoteConnector, notifications: NotificationCenter = NotificationCenter()) {
         let registry = RemoteServerRegistry()
         let servers = RemoteServerStore(preferences: preferences, credentials: credentials, registry: registry,
                                         notifications: notifications)

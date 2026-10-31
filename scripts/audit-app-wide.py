@@ -5,7 +5,8 @@ A window's settings, stores, providers, History and server access all come from 
 "Injected code never falls back to application-wide stores"). Three ways of reaching the app's instance instead let
 a caller forget the owner's, and nothing notices: the code then reads or changes another environment's state.
 
-- A default: a parameter or property defaulting to `.shared` or `.live`.
+- A default: a parameter or property defaulting to `.shared` or `.live`. Every app-wide instance is spelled one of
+  those, on its own type, so this check sees it. The general pasteboard counts too: each window's Clipboard owns one.
 - A fallback: `owner?.copies ?? .live`, taken when an owner is gone or wasn't given.
 - A direct use: `TagStore.shared.tags(for:)` in a pane, or an argument passing one: `ProjectInfo.load(store: .shared)`.
   The application's own code (App, Settings, Dock, AppUpdates and main.swift) is where the app's instances are made
@@ -41,8 +42,11 @@ OWNED_POST = re.compile(r"\bpost\(name:\s*\.([A-Za-z0-9]+),\s*object:\s*self\b")
 ANY_POSTER = re.compile(r"\baddObserver\((?:self,\s*selector:\s*#selector\((?:[^()]|\([^()]*\))*\),\s*)?"
                         r"(?:forName|name):\s*\.([A-Za-z0-9]+),\s*object:\s*nil\b")
 APPLICATION = {"App", "Settings", "Dock", "AppUpdates"}
-# The system's own (NSWorkspace, QLThumbnailGenerator…) aren't an environment's to pass.
+# The system's own (NSWorkspace, QLThumbnailGenerator…) aren't an environment's to pass. The general pasteboard is:
+# each window's Clipboard owns the one it uses.
 SYSTEM = re.compile(r"^(?:NS|QL|UN|CG|CF|AV|SC|Sec)[A-Z]")
+PASTEBOARD_DEFAULT = re.compile(r":\s*NSPasteboard\??\s*=\s*(?:NSPasteboard)?\.general\b")
+PASTEBOARD = re.compile(r"\bNSPasteboard\.general\b|\bpasteboard:\s*\.general\b")
 
 
 def is_application(relative):
@@ -91,6 +95,10 @@ def findings(source, application=False):
 
     for match in DEFAULT.finditer(code):
         add(match, match.group(2) or match.group(1), "default", match.groups()[2:])
+    for match in PASTEBOARD_DEFAULT.finditer(code):
+        line = code.count("\n", 0, match.start()) + 1
+        found.append((line, "NSPasteboard.general", "default", original[line - 1].strip()))
+        taken.append(match.span())
     for match in FALLBACK.finditer(code):
         add(match, match.group(1), "fallback", match.groups()[1:])
     if not application:
@@ -103,6 +111,10 @@ def findings(source, application=False):
             if not inside(defined, match):
                 line = code.count("\n", 0, match.start()) + 1
                 found.append((line, f"{match.group(1)}: .{match.group(2)}", "direct", original[line - 1].strip()))
+        for match in PASTEBOARD.finditer(code):
+            if not inside(defined, match) and not inside(taken, match):
+                line = code.count("\n", 0, match.start()) + 1
+                found.append((line, "NSPasteboard.general", "direct", original[line - 1].strip()))
     return sorted(found)
 
 

@@ -174,7 +174,7 @@ struct ProviderThumbnailInfoTests {
         let node = try #require(browser.allRows.first { $0.url == sub })
         #expect(!browser.canMeasure(node.entry))
         #expect(browser.folderSize(sub, request: true) == nil)
-        #expect(FolderSizer().cached(sub) == nil)
+        #expect(FolderSizer.cached(sub) == nil)
         #expect(browser.iconFolderSizeText(node.entry) == "—")
         let column = try #require(browser.outlineView.tableColumn(withIdentifier: .init("size")))
         let cell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
@@ -185,7 +185,7 @@ struct ProviderThumbnailInfoTests {
             sizer.onUpdate = { _ in done.resume() }
             sizer.request(sub)
         }
-        #expect(sizer.cached(sub) != nil)
+        #expect(FolderSizer.cached(sub) != nil)
         #expect(browser.folderSize(sub, request: true) == nil)
         let cachedCell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
         #expect(cachedCell.textField?.stringValue == "—")

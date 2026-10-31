@@ -57,6 +57,7 @@ package final class GitBranchPill: NSView {
     /// Replaces the built-in menu (copy branch / commit) when set.
     package var onClick: ((GitBranchPill) -> Void)?
 
+    private let clipboard: Clipboard
     private var hovering = false
     private var tracking: NSTrackingArea?
 
@@ -68,7 +69,8 @@ package final class GitBranchPill: NSView {
     private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
     private static let tagFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
 
-    package override init(frame: NSRect) {
+    package init(frame: NSRect = .zero, clipboard: Clipboard) {
+        self.clipboard = clipboard
         super.init(frame: frame)
         isHidden = true
         setAccessibilityElement(true)
@@ -256,8 +258,7 @@ package final class GitBranchPill: NSView {
     }
 
     private func copy(_ string: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(string, forType: .string)
+        clipboard.copyText(string)
     }
 
     private func updateAccessibility() {

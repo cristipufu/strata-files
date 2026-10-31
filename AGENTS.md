@@ -169,7 +169,10 @@ These apply everywhere below; the sections that follow add only what is specific
   the application's own code (App, Settings, Dock, AppUpdates, `main.swift`), any use of an app-wide instance such as
   `TagStore.shared` fail `scripts/audit-app-wide.py` unless `Tests/app-wide.json` lists it with a reviewed reason. So
   does observing with `object: nil` a notification its owner posts (`object: self`): name the window's, as panes
-  observe `.tagsLoaded` from `services.tags`.
+  observe `.tagsLoaded` from `services.tags`. The audit sees an app-wide instance by its name, so name each one
+  `.shared` or `.live` on its own type (`RemoteCopyStore.shared`, `SecureStorage.Context.shared`) and reach it only
+  that way, never through a static forwarder; the general pasteboard counts too, since each window's `Clipboard`
+  owns the one it uses.
 - **One owner per asynchronous request**: a pane, sheet, session or provider actor. Replacing the request, navigating,
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over
@@ -441,8 +444,8 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
 - Strata's sounds stay silent until `main.swift` turns them on, so tests that refuse or trash things play none: play
   them through `Sounds`, never `NSSound`, `NSBeep` or `AudioServicesPlay…` (a Python check enforces this).
 - Never use `NSPasteboard.general` or Strata's own preferences. Inject
-  `Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())` into the services; only the
-  serialized `ClipboardTests` sets the global `Clipboard.pasteboard`.
+  `Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())` into the services, as
+  `IndependentEnvironment` does.
 - The test SFTP server (`RemoteFilesTests`, macOS's `sftp-server` over a pipe) isn't confined to its folder and can
   reach the whole Mac. Never exercise top-level or escaping deletes against it; use `RecordingBackend`.
 - Suites sharing global state (`RemoteRegistry`, `TransferEngine.hooks`) run as one `.serialized` suite, but a

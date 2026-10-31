@@ -65,7 +65,7 @@ final class InspectorViewController: NSViewController {
                                                     store: services.containerStore)
         self.composeView = ComposeInspectorView(preferences: services.preferences,
                                                 store: services.containerStore)
-        self.projectView = ProjectInspectorView(files: services.files, git: services.git)
+        self.projectView = ProjectInspectorView(files: services.files, git: services.git, clipboard: services.clipboard)
         self.previewScheduler = previewScheduler
         infoEditor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         super.init(nibName: nil, bundle: nil)

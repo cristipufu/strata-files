@@ -39,7 +39,7 @@ final class PreviewEnvironment {
         let containerStore = ContainerStore()
         services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                                               remote: remote, containers: containers, containerStore: containerStore,
-                                              clipboard: Clipboard(pasteboard: pasteboard), directories: reader,
+                                              clipboard: Clipboard(pasteboard: pasteboard, notifications: NotificationCenter()), directories: reader,
                                               thumbnails: makeThumbnails?(copies, containerStore), cloudFolders: cloudFolders)
     }
 

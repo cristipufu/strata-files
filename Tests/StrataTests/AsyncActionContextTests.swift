@@ -135,6 +135,7 @@ struct AsyncActionContextTests {
                 preferences: preferences,
                 credentials: keychain,
                 copyRoot: tree.url(folder + "/servers"),
+                connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
                 notifications: NotificationCenter()
             )
             if providers.isEmpty {
@@ -152,7 +153,7 @@ struct AsyncActionContextTests {
                 )
             }
             transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies)
-            let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName())
+            let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName(), notifications: NotificationCenter())
             services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: preferences.defaults),

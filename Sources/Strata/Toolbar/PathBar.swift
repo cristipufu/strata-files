@@ -26,7 +26,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     }
 
     /// Set its `model` from the git status; hidden while the model is nil.
-    let branchPill = GitBranchPill()
+    let branchPill: GitBranchPill
 
     private let crumbs = NSStackView()
     private let field = NSTextField()
@@ -49,7 +49,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
     }
 
     init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, index: FileIndex, copies: CopyProviders,
-         names: FolderNames, embedded: Bool = false) {
+         names: FolderNames, clipboard: Clipboard, embedded: Bool = false) {
+        branchPill = GitBranchPill(clipboard: clipboard)
         self.copies = copies
         self.names = names
         self.embedded = embedded

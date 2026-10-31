@@ -105,7 +105,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
         if services.copies.contains(node.url) { return "—" }
-        if let size = services.index.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
+        if let size = services.index.folderSize(node.url) ?? FolderSizer.cached(node.url) {
+            return Format.bytes(size.bytes)
+        }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
         return "…"

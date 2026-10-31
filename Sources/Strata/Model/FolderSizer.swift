@@ -25,7 +25,7 @@ package final class FolderSizer {
         queue.qualityOfService = .utility
     }
 
-    package func cached(_ url: URL) -> FolderSize? { Self.cache[url] }
+    package static func cached(_ url: URL) -> FolderSize? { cache[url] }
 
     package func request(_ url: URL) {
         guard Self.cache[url] == nil, pending.insert(url).inserted else { return }

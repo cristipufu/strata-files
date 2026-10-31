@@ -27,6 +27,7 @@ final class InspectorContainerEnvironment {
             delete: { _ in errSecSuccess }
         ))
         let remote = RemoteServices(preferences: preferences, credentials: keychain, copyRoot: tree.url(folder + "/servers"),
+                                    connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
                                     notifications: NotificationCenter())
         let copies = CopyProviders(servers: remote.files, containers: containerFiles, clipboardRoot: tree.url(folder + "/clipboard"))
         services = BrowserServices.configured(
@@ -36,7 +37,7 @@ final class InspectorContainerEnvironment {
             remote: remote,
             containers: containerFiles,
             containerStore: ContainerStore(engine: engine, containers: containers),
-            clipboard: Clipboard(pasteboard: NSPasteboard.withUniqueName()),
+            clipboard: Clipboard(pasteboard: NSPasteboard.withUniqueName(), notifications: NotificationCenter()),
             directories: DirectoryReader { _, _, _ in [] })
     }
 }

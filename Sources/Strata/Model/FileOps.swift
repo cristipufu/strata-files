@@ -550,19 +550,13 @@ package enum FileOps {
 
 /// Finder-compatible file clipboard, plus cut: ⌘X marks the items and the next paste moves them.
 package final class Clipboard {
-    package static let shared = Clipboard()
+    package static let shared = Clipboard(pasteboard: .general, notifications: .default)
 
-    /// The general pasteboard; tests use one of their own.
-    package static var pasteboard: NSPasteboard {
-        get { shared.pasteboard }
-        set { shared.pasteboard = newValue }
-    }
-
-    package var pasteboard: NSPasteboard
+    package let pasteboard: NSPasteboard
     package let notifications: NotificationCenter
     private var cut: (urls: Set<URL>, changeCount: Int)?
 
-    package init(pasteboard: NSPasteboard = .general, notifications: NotificationCenter = .default) {
+    package init(pasteboard: NSPasteboard, notifications: NotificationCenter) {
         self.pasteboard = pasteboard
         self.notifications = notifications
     }
@@ -593,9 +587,9 @@ package final class Clipboard {
         pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
     }
 
-    package static func write(_ urls: [URL], cut isCut: Bool) { shared.write(urls, cut: isCut) }
-    package static func read() -> (urls: [URL], isCut: Bool) { shared.read() }
-    package static func isCut(_ url: URL) -> Bool { shared.isCut(url) }
-    package static func clearCut() { shared.clearCut() }
-    package static var hasFiles: Bool { shared.hasFiles }
+    /// Puts `text` there instead (a branch name, a command).
+    package func copyText(_ text: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
 }

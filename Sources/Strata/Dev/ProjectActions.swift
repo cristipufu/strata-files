@@ -6,7 +6,6 @@ extension ProjectInfo {
     /// Sizes measured in the last minute, so flipping the selection back to a project doesn't re-walk node_modules.
     private static var sizeCache: [String: (bytes: Int64, files: Int, date: Date)] = [:]
     private static let sizeCacheLifetime: TimeInterval = 60
-    private static let sharedSizer = FolderSizer()
 
     /// Everything the project inspector needs for `folder`, or nil when it's neither a project nor a repository root.
     ///
@@ -35,7 +34,7 @@ extension ProjectInfo {
             if paths.allSatisfy({ sizeCache[$0].map { now.timeIntervalSince($0.date) < sizeCacheLifetime } ?? false }) {
                 info.artifacts[index].bytes = paths.compactMap { sizeCache[$0]?.bytes }.saturatingSum
                 info.artifacts[index].files = paths.reduce(0) { $0 + (sizeCache[$1]?.files ?? 0) }
-            } else if info.artifacts[index].urls.count == 1, let size = sharedSizer.cached(info.artifacts[index].urls[0]) {
+            } else if info.artifacts[index].urls.count == 1, let size = FolderSizer.cached(info.artifacts[index].urls[0]) {
                 info.artifacts[index].bytes = size.bytes
                 info.artifacts[index].files = size.files
             }

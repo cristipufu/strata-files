@@ -12,36 +12,8 @@ import Testing
 @testable import StrataSearch
 
 struct FileCommandOwnershipTests {
-    private final class Environment {
-        let state: TestTree
-        let storage: SecureStorage.Context
-        let services: BrowserServices
-
-        init() throws {
-            state = try TestTree()
-            let preferences = try Prefs.isolated()
-            preferences.showIconPreviews = false
-            storage = SecureStorage.Context(directory: state.url("state"), caches: state.url("cache"),
-                                            key: SymmetricKey(size: .bits256))
-            let credentials = RemoteKeychain(access: KeychainAccess(
-                copy: { _ in (errSecItemNotFound, nil) }, add: { _ in errSecNotAvailable },
-                update: { _, _ in errSecNotAvailable }, delete: { _ in errSecItemNotFound }))
-            let containers = ContainerFiles(copies: ContainerCopyStore(root: state.url("containers")),
-                readListing: { _, _ in throw ContainerAPIError.notFound },
-                readFile: { _, _, _, _ in throw ContainerAPIError.notFound },
-                readTree: { _, _, _, _ in throw ContainerAPIError.notFound })
-            services = BrowserServices.isolated(preferences: preferences, storage: storage, credentials: credentials,
-                connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
-                clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers)
-        }
-
-        isolated deinit {
-            services.clipboard.pasteboard.releaseGlobally()
-        }
-    }
-
     @Test func anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage() async throws {
-        let environment = try Environment()
+        let environment = try IndependentEnvironment()
         let services = environment.services, folder = environment.storage.directory.path + "/"
         #expect(services.index !== FileIndex.shared && services.contentIndex !== SemanticIndex.shared)
         let config = services.index.currentConfig()
@@ -72,7 +44,7 @@ struct FileCommandOwnershipTests {
 
     @Test func renameKeepsHistoryAndRepeatedUndoWithItsOwner() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "other/a.txt", "link -> a.txt")
-        let first = try Environment(), second = try Environment()
+        let first = try IndependentEnvironment(), second = try IndependentEnvironment()
         let undo = undoManager()
         undo.beginUndoGrouping()
         let renamed = try await first.services.files.rename(tree.url("a.txt"), to: "b.txt", undo: undo)
@@ -102,7 +74,7 @@ struct FileCommandOwnershipTests {
     @Test func newItemsKeepHistoryThroughNativeAndHistoryUndo() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt", "peer/keep.txt")
-            let env = try Environment(), peer = try Environment()
+            let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
             let undo = undoManager()
             undo.beginUndoGrouping()
             let url = try folder ? env.services.files.newFolder(in: tree.root, undo: undo)
@@ -142,7 +114,7 @@ struct FileCommandOwnershipTests {
 
     @Test func trashAndPlansUseTheSameCommandHistoryAsCreationAndRename() async throws {
         let tree = try TestTree("a/inner.txt", "ab.txt", "other/a.txt", "link -> a")
-        let env = try Environment(), peer = try Environment()
+        let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
         let history = env.services.transfers.history
         defer {
             // The ownership mutation records in the shared test journal instead; clean only this tree's entries.
@@ -180,7 +152,7 @@ struct FileCommandOwnershipTests {
 
     @Test func putBackFindsWhereAnItemCameFromInItsWindowsHistory() async throws {
         let tree = try TestTree("Gone/a.txt", "keep/ab.txt")
-        let env = try Environment(), peer = try Environment()
+        let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
         let history = env.services.transfers.history
         defer {
             for entry in history.entries {
@@ -205,7 +177,7 @@ struct FileCommandOwnershipTests {
     /// An item of a window's container or server copy carries no tags from Strata, though the app's copies don't
     /// know it.
     @Test func tagsNeverGoOnItemsOfTheirWindowsCopies() throws {
-        let env = try Environment()
+        let env = try IndependentEnvironment()
         try FileManager.default.createDirectory(at: env.state.url("containers"), withIntermediateDirectories: true)
         let item = env.state.url("containers/item.txt")
         try Data("item".utf8).write(to: item)
@@ -219,7 +191,7 @@ struct FileCommandOwnershipTests {
     @Test func creationUndoNeverAdoptsAReplacementFromHistoryNotification() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt")
-            let env = try Environment()
+            let env = try IndependentEnvironment()
             let history = env.services.transfers.history
             let undo = undoManager()
             var replaced = false
@@ -254,7 +226,7 @@ struct FileCommandOwnershipTests {
     @Test func everyBrowserViewUsesItsCommandOwner() async throws {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("a.txt", "ab.txt", "other/a.txt", "link -> a.txt")
-            let env = try Environment(), peer = try Environment()
+            let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
             let browser = BrowserViewController(services: env.services)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
@@ -281,7 +253,7 @@ struct FileCommandOwnershipTests {
 
     @Test func renameConfirmationCannotOutliveItsNavigationOrRenameAnotherSelection() async throws {
         let tree = try TestTree("first/a.txt", "first/ab.txt", "other/a.txt")
-        let env = try Environment()
+        let env = try IndependentEnvironment()
         let browser = BrowserViewController(services: env.services)
         _ = browser.view
         browser.load(tree.url("first"))
@@ -315,7 +287,7 @@ struct FileCommandOwnershipTests {
 
     @Test func renameConfirmationRefusesAnItemReplacedWhileTheSheetWaited() async throws {
         let tree = try TestTree("a.txt", "ab.txt")
-        let env = try Environment()
+        let env = try IndependentEnvironment()
         let browser = BrowserViewController(services: env.services)
         _ = browser.view
         browser.load(tree.root)
@@ -333,7 +305,7 @@ struct FileCommandOwnershipTests {
 
     @Test func serviceCompositionKeepsQueueDependenciesAndIndependentFactories() throws {
         let tree = try TestTree("keep.txt")
-        let a = try Environment(), b = try Environment()
+        let a = try IndependentEnvironment(), b = try IndependentEnvironment()
         let queue = a.services.transfers
         let configured = BrowserServices.configured(transfers: queue, visits: a.services.visits, windows: .headless,
             remote: a.services.remote, containers: a.services.containers, containerStore: a.services.containerStore,

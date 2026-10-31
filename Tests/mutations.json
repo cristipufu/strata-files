@@ -3985,6 +3985,13 @@
     "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
   },
   {
+    "file": "Strata/Dev/GitBranchPill.swift",
+    "find": "        clipboard.copyText(string)",
+    "replace": "        let other = NSPasteboard.withUniqueName(); other.clearContents(); other.setString(string, forType: .string); other.releaseGlobally()",
+    "rule": "Copying a branch name puts it on another pasteboard than its window's",
+    "tests": "ClipboardTests/copyingABranchOrACommandUsesTheWindowsOwnPasteboard"
+  },
+  {
     "file": "Strata/Browser/BrowserServices.swift",
     "rule": "An environment's own indexes save into the app's storage",
     "tests": "FileCommandOwnershipTests/anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage",

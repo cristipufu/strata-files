@@ -112,7 +112,7 @@ final class PaneHostViewController: NSViewController {
         self.browser = browser
         let services = browser.services
         pathBar = PathBar(preferences: services.preferences, places: services.places, index: services.index, copies: services.copies,
-                          names: services.folderNames,
+                          names: services.folderNames, clipboard: services.clipboard,
                           embedded: true)
         header = PaneHeaderView(pathBar: pathBar)
         super.init(nibName: nil, bundle: nil)

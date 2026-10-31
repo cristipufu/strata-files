@@ -47,6 +47,15 @@ class AppWideAuditTests(unittest.TestCase):
                      "reason": "Reviewed."}]
         self.assertEqual(self.check("let caches = SecureStorage.Context.shared.caches", reviewed), [])
 
+    def test_the_general_pasteboard_needs_review_outside_the_applications_own_code(self):
+        for code in ["func copy() { NSPasteboard.general.clearContents() }", "let clipboard = Clipboard(pasteboard: .general)",
+                     "init(pasteboard: NSPasteboard = .general) {}"]:
+            self.assertTrue(any("NSPasteboard.general" in issue for issue in self.check(code)), code)
+        self.assertTrue(any("Defaults to NSPasteboard.general" in issue
+                            for issue in self.check("init(pasteboard: NSPasteboard = .general) {}", file="App/Example.swift")))
+        self.assertEqual(self.check("func copy() { NSPasteboard.general.clearContents() }", file="App/Example.swift"), [])
+        self.assertEqual(self.check("static let shared = Clipboard(pasteboard: .general, notifications: .default)"), [])
+
     def test_implicit_arguments_need_review_outside_the_applications_own_code(self):
         code = "func f() { _ = ProjectInfo.load(for: url, store: .shared) }"
         self.assertTrue(any("Names the app's store: .shared" in issue for issue in self.check(code)))

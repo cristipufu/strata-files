@@ -17,6 +17,7 @@ final class ProjectInspectorView: NSView {
     let preferences: Prefs
     let files: FileCommands
     private let git: GitStatusStore
+    private let clipboard: Clipboard
     private let stack = NSStackView()
     private var deselected: Set<String> = []
     private var showsAllScripts = false
@@ -28,10 +29,11 @@ final class ProjectInspectorView: NSView {
     private var gitUpstream: String?
     private static let collapsedScriptCount = 6
 
-    init(frame: NSRect = .zero, files: FileCommands, git: GitStatusStore) {
+    init(frame: NSRect = .zero, files: FileCommands, git: GitStatusStore, clipboard: Clipboard) {
         self.preferences = files.transfers.preferences
         self.files = files
         self.git = git
+        self.clipboard = clipboard
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -189,7 +191,7 @@ final class ProjectInspectorView: NSView {
                 add(inset(label(title, size: 10.5, weight: .medium, color: InspectorColors.tertiary), by: ScriptRow.inset), to: content, spacingAfter: 2)
             }
             for script in group where shown < limit {
-                let row = ScriptRow(script)
+                let row = ScriptRow(script, clipboard: clipboard)
                 row.onRun = { [weak self] in self?.run(script) }
                 add(row, to: content, spacingAfter: 1)
                 shown += 1
@@ -661,12 +663,14 @@ private final class ScriptRow: NSView {
     static let inset: CGFloat = 6
     var onRun: (() -> Void)?
     private let script: ProjectScript
+    private let clipboard: Clipboard
     private let runButton = NSButton()
     private var hovering = false
     private var tracking: NSTrackingArea?
 
-    init(_ script: ProjectScript) {
+    init(_ script: ProjectScript, clipboard: Clipboard) {
         self.script = script
+        self.clipboard = clipboard
         super.init(frame: .zero)
         let name = label(script.name, size: 12, weight: .medium, color: InspectorColors.primary)
         // Prose (## help, doc comments) in the text font; commands monospaced.
@@ -761,7 +765,6 @@ private final class ScriptRow: NSView {
     }
 
     @objc private func copyCommand() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(script.invocation, forType: .string)
+        clipboard.copyText(script.invocation)
     }
 }

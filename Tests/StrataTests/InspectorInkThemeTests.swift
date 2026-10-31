@@ -57,7 +57,10 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let tree = try TestTree(".venv/")
-        let view = ProjectInspectorView(files: FileCommands(transfers: .shared), git: GitStatusStore())
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let view = ProjectInspectorView(files: FileCommands(transfers: .shared), git: GitStatusStore(),
+                                        clipboard: Clipboard(pasteboard: pasteboard, notifications: NotificationCenter()))
         var actions = 0
         view.onRunScript = { _ in actions += 1 }
         view.onClean = { _ in actions += 1 }
