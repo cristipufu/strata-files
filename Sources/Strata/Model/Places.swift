@@ -6,12 +6,15 @@ package nonisolated struct Place: Sendable, Equatable {
     package let symbol: String
     /// A removable, ejectable or network volume.
     package var isEjectable = false
+    /// A network share's address, which mounts it again.
+    package var remountAddress: URL?
 
-    package init(title: String, url: URL, symbol: String, isEjectable: Bool = false) {
+    package init(title: String, url: URL, symbol: String, isEjectable: Bool = false, remountAddress: URL? = nil) {
         self.title = title
         self.url = url
         self.symbol = symbol
         self.isEjectable = isEjectable
+        self.remountAddress = remountAddress
     }
 }
 
@@ -152,7 +155,7 @@ package enum Places {
     package nonisolated static func volumes() -> [Place] {
         let keys: [URLResourceKey] = [
             .volumeLocalizedNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey,
-            .volumeIsBrowsableKey, .volumeIsRootFileSystemKey,
+            .volumeIsBrowsableKey, .volumeIsRootFileSystemKey, .volumeURLForRemountingKey,
         ]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         return urls.compactMap { url in
@@ -167,7 +170,8 @@ package enum Places {
             }
             return Place(title: v.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol,
                          isEjectable: v.volumeIsRootFileSystem != true
-                             && (v.volumeIsLocal == false || v.volumeIsRemovable == true || v.volumeIsEjectable == true))
+                             && (v.volumeIsLocal == false || v.volumeIsRemovable == true || v.volumeIsEjectable == true),
+                         remountAddress: v.volumeURLForRemounting)
         }
     }
 }

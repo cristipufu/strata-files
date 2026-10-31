@@ -7358,8 +7358,8 @@
   },
   {
     "file": "Strata/Model/FileEntry.swift",
-    "find": "        isNavigableFolder(url.resolvingSymlinksInPath())",
-    "replace": "        isNavigableFolder(url)",
+    "find": "        guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {",
+    "replace": "        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {",
     "rule": "A link to a folder is treated as an item, not the folder it leads to",
     "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse|WindowReadsTests/aConflictSheetSaysWhatItsItemsAreBeforeItShows"
   },
@@ -7383,5 +7383,40 @@
     "replace": "                go(.folder(url.standardizedFileURL))",
     "rule": "A typed path goes to whichever pane has focus when it's read, not the one it was typed in",
     "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "        if !workspace.name.isEmpty { guard planning.insert(workspace.name).inserted else { return nil } }",
+    "replace": "        planning.insert(workspace.name)",
+    "rule": "A workspace chosen twice while its folders are read opens twice",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceChosenAgainWhileItsFoldersAreReadOpensOnce"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            if replaces, replacing.map(ownedControllers(of:))?.isEmpty != false { return }",
+    "replace": "",
+    "rule": "A workspace still opens after the window it was to replace closed",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceWhoseWindowClosedWhileItsFoldersWereReadChangesNothing"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "                    guard await Self.there(folder.path), Self.isWaiting(controller, index, for: folder) else { continue }",
+    "replace": "                    guard await Self.there(folder.path) else { continue }",
+    "rule": "Bringing a workspace forward pulls back a pane that went elsewhere while its folder was read",
+    "tests": "WorkspaceOwnershipTests/bringingAWorkspaceForwardShowsAFolderThatAppearedButNotInAPaneThatMovedOn"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "                return path == top || path.hasPrefix(top.hasSuffix(\"/\") ? top : top + \"/\")",
+    "replace": "                return path.hasPrefix(top)",
+    "rule": "A workspace folder counts as on a share whose name only starts the same",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceRemembersTheSharesItsFoldersAreOnAsTheDisksWereLastRead"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            guard let volume = inside.max(by: { $0.url.path.count < $1.url.path.count }),",
+    "replace": "            guard let volume = inside.min(by: { $0.url.path.count < $1.url.path.count }),",
+    "rule": "A workspace folder is remembered on the outer share, not the innermost one it's on",
+    "tests": "WorkspaceOwnershipTests/aWorkspaceRemembersTheSharesItsFoldersAreOnAsTheDisksWereLastRead"
   }
 ]

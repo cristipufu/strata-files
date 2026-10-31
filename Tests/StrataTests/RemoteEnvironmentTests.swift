@@ -208,7 +208,7 @@ struct RemoteEnvironmentTests {
         #expect(tree.snapshot() == before.filter { !$0.hasPrefix("left/cache/" + a.id + "/") })
     }
 
-    @Test func workspacePlansAndTooltipsUseTheirOwnServerPaths() throws {
+    @Test func workspacePlansAndTooltipsUseTheirOwnServerPaths() async throws {
         let tree = try TestTree("left/keep", "right/keep"), center = NotificationCenter()
         let a = server(name: "Left"), b = server(a.id, name: "Right")
         let left = try Environment(tree, folder: "left", notifications: center, saved: [a])
@@ -217,10 +217,10 @@ struct RemoteEnvironmentTests {
         let before = tree.snapshot()
         let path = left.remote.copies.top(of: a.id).path
         let workspace = Workspace(name: "Work", tabs: [[path]], modes: [[BrowserViewMode.gallery.rawValue]])
-        let plan = left.services.workspaces.plan(workspace)
+        let plan = await left.services.workspaces.plan(workspace)
         #expect(plan.tabs.first?.first?.waiting == WaitingFolder(path: path, mode: BrowserViewMode.gallery.rawValue, server: a.id))
         #expect(plan.missing.isEmpty)
-        #expect(right.services.workspaces.plan(workspace).missing == [path])
+        #expect(await right.services.workspaces.plan(workspace).missing == [path])
         #expect(left.services.workspaces.help(workspace) == "Left")
         #expect(right.services.workspaces.help(workspace) == a.id)
         #expect(left.network.logins.withLock { $0.isEmpty } && right.network.logins.withLock { $0.isEmpty })

@@ -37,9 +37,18 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         return url
     }
 
-    /// Whether `url` is a folder, or a link to one, that isn't a package: one you go into.
-    @concurrent package static func leadsToFolder(_ url: URL) async -> Bool {
-        isNavigableFolder(url.resolvingSymlinksInPath())
+    /// What opening a path does: goes into a folder, or a link to one, that isn't a package; shows anything else
+    /// selected in its folder.
+    package enum Opening: Sendable {
+        case folder, item, missing
+    }
+
+    /// Read away from the main thread: on a server, each step of the path is a round trip.
+    @concurrent package static func opening(_ url: URL) async -> Opening {
+        guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
+            return .missing
+        }
+        return values.isDirectory == true && values.isPackage != true ? .folder : .item
     }
 
     /// A directory the browser lists. Apps and other packages open instead.

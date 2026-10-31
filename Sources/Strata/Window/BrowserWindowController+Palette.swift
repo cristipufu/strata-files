@@ -27,7 +27,7 @@ extension BrowserWindowController {
     func go(toPath url: URL) -> Task<Void, Never> {
         let typedIn = pane, revision = pane.browser.navigationRevision
         return Task { [weak self, weak typedIn] in
-            let isFolder = await FileEntry.leadsToFolder(url)
+            let isFolder = await FileEntry.opening(url) == .folder
             guard let self, let typedIn, panes.contains(where: { $0 === typedIn }),
                   typedIn.browser.navigationRevision == revision else { return }
             if isFolder {

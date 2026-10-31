@@ -82,14 +82,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             RemoteCopyStore.shared.removeSetAside()
             CopyProviders.live.removeClipboardStaging()
         }
-        if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
-        DockSearch.shared.apply(atLaunch: true)
-        if !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
-           let window = windowControllers.first?.window {
-            let sheet = WelcomeSheetController()
-            sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
-            welcome = sheet
-            sheet.present(on: window)
+        Task { [weak self] in
+            guard let self else { return }
+            if windowControllers.isEmpty, !(await restoreSession()) { openWindow(at: startLocation) }
+            DockSearch.shared.apply(atLaunch: true)
+            if !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
+               let window = windowControllers.first?.window {
+                let sheet = WelcomeSheetController()
+                sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
+                welcome = sheet
+                sheet.present(on: window)
+            }
         }
     }
 
@@ -174,12 +177,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !expanded.isEmpty else { return }
             // A folder opens; a file (or package) is shown selected in its folder.
             let target = URL(fileURLWithPath: expanded)
-            var isDirectory: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
-            if exists, !isDirectory.boolValue || NSWorkspace.shared.isFilePackage(atPath: target.path) {
-                controller.navigate(to: target.deletingLastPathComponent(), select: target)
-            } else {
-                controller.navigate(to: target)
+            Task { [weak controller] in
+                let opening = await FileEntry.opening(target)
+                guard let controller, !controller.isClosed else { return }
+                if opening == .item {
+                    controller.navigate(to: target.deletingLastPathComponent(), select: target)
+                } else {
+                    controller.navigate(to: target)
+                }
             }
         case "recents":
             controller.goRecents(nil)
@@ -209,13 +214,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme == "strata" { handle(url) }
-        for url in urls where url.isFileURL {
-            var isDirectory: ObjCBool = false
-            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            if isDirectory.boolValue, !NSWorkspace.shared.isFilePackage(atPath: url.path) {
-                openWindow(at: url)
-            } else {
-                openWindow(at: url.deletingLastPathComponent(), select: url)
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        // In the order given, each once what it is has been read.
+        Task {
+            for url in files {
+                if await FileEntry.opening(url) == .folder {
+                    openWindow(at: url)
+                } else {
+                    openWindow(at: url.deletingLastPathComponent(), select: url)
+                }
             }
         }
     }
@@ -280,19 +288,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows). False when there's nothing to open.
-    private func restoreSession() -> Bool {
+    /// Reopens the last session's windows (Settings ▸ General ▸ Reopen windows), once their folders have been looked at.
+    /// False when there's nothing to open; true, opening none, when a window opened meanwhile (a file or a link opened
+    /// at launch): that's what's shown.
+    private func restoreSession() async -> Bool {
         guard browserServices.preferences.reopenWindows, let data = browserServices.preferences.defaults.data(forKey: Self.sessionKey),
               let windows = SessionStorage.decode(data) else { return false }
-        var opened = false
+        let workspaces = browserServices.workspaces
+        var plans: [(plan: WorkspacePlan, name: String)] = []
         // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
         for window in windows.reversed() {
             // Shares aren't connected at launch (no login windows out of nowhere): their panes wait, and opening the
             // workspace connects them.
-            let plan = browserServices.workspaces.plan(window)
+            let plan = await workspaces.plan(window)
             guard !plan.tabs.isEmpty else { continue }
-            let controllers = browserServices.workspaces.openWindows(plan, name: window.name.isEmpty ? "" : browserServices.workspaces.named(window.name)?.name ?? "")
-            opened = opened || !controllers.isEmpty
+            plans.append((plan, window.name.isEmpty ? "" : workspaces.named(window.name)?.name ?? ""))
+        }
+        guard windowControllers.isEmpty else { return true }
+        var opened = false
+        for (plan, name) in plans {
+            opened = !workspaces.openWindows(plan, name: name).isEmpty || opened
         }
         return opened
     }

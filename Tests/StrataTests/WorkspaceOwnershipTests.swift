@@ -259,7 +259,7 @@ struct WorkspaceOwnershipTests {
         #expect(tree.snapshot() == before)
     }
 
-    @Test func failedTabCreationKeepsTheExistingWorkspaceWindow() throws {
+    @Test func failedTabCreationKeepsTheExistingWorkspaceWindow() async throws {
         let tree = try TestTree("files/keep")
         let env = try Environment(tree)
         defer { env.windows.detach(); withExtendedLifetime(env) {} }
@@ -269,11 +269,99 @@ struct WorkspaceOwnershipTests {
         env.windows.visible = [original]
         env.windows.failAt = env.windows.opened.count + 1
         let before = tree.snapshot()
-        env.services.workspaces.open(saved, from: original.window)
+        await env.services.workspaces.open(saved, from: original.window)?.value
         #expect(!original.isClosed)
         #expect(original.workspaceName == saved.name)
         #expect(env.windows.opened.last?.isClosed == true)
         #expect(tree.snapshot() == before)
+    }
+
+    @Test func aWorkspaceChosenAgainWhileItsFoldersAreReadOpensOnce() async throws {
+        let tree = try TestTree("files/keep")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let saved = Workspace(name: "Work", tabs: [[tree.url("files").path]])
+        let before = tree.snapshot()
+        let first = try #require(env.services.workspaces.open(saved))
+        #expect(env.services.workspaces.open(saved) == nil)
+        await first.value
+        #expect(env.windows.opened.count == 1 && env.windows.opened[0].workspaceName == saved.name)
+        // Open now: chosen again, its window comes forward.
+        env.windows.visible = env.windows.opened
+        await env.services.workspaces.open(saved)?.value
+        #expect(env.windows.opened.count == 1)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func aWorkspaceWhoseWindowClosedWhileItsFoldersWereReadChangesNothing() async throws {
+        let tree = try TestTree("files/keep")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let saved = Workspace(name: "Work", tabs: [[tree.url("files").path]])
+        let original = try #require(env.services.workspaces.openWindows(WorkspacePlan(saved, exists: { _ in true }), name: saved.name).first)
+        env.windows.visible = [original]
+        let before = tree.snapshot(), opened = env.windows.opened.count
+        let restoring = try #require(env.services.workspaces.open(saved, from: original.window))
+        original.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: original.window))
+        await restoring.value
+        #expect(env.windows.opened.count == opened)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func bringingAWorkspaceForwardShowsAFolderThatAppearedButNotInAPaneThatMovedOn() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let later = tree.url("later").path
+        let saved = Workspace(name: "Work", tabs: [[later]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: later)
+        func waitingWindow() throws -> BrowserWindowController {
+            let window = try #require(env.services.workspaces.openWindows(plan, name: saved.name).first)
+            env.windows.visible = [window]
+            try #require(window.waitingPanes.count == 1)
+            return window
+        }
+        let untouched = tree.snapshot()
+        // Not there yet: the pane keeps waiting.
+        let first = try waitingWindow()
+        await env.services.workspaces.open(saved)?.value
+        #expect(first.waitingPanes.count == 1)
+
+        // There now, but its pane went elsewhere while that was read: it stays there.
+        try FileManager.default.createDirectory(atPath: later, withIntermediateDirectories: false)
+        let moving = try #require(env.services.workspaces.open(saved))
+        first.navigatePane(0, to: tree.url("files"))
+        await moving.value
+        await first.pane.browser.directoryReads.task?.value
+        #expect(first.waitingPanes.isEmpty)
+        #expect(first.location.resolvingSymlinksInPath().path == tree.url("files").resolvingSymlinksInPath().path)
+        first.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: first.window))
+
+        // There now: the pane shows it.
+        let second = try waitingWindow()
+        await env.services.workspaces.open(saved)?.value
+        #expect(second.waitingPanes.isEmpty, "\(second.location.path) \(later)")
+        #expect(second.location.resolvingSymlinksInPath().path == URL(fileURLWithPath: later).resolvingSymlinksInPath().path)
+        #expect(tree.snapshot() == (untouched + ["later/"]).sorted())
+    }
+
+    @Test func aWorkspaceRemembersTheSharesItsFoldersAreOnAsTheDisksWereLastRead() throws {
+        let team = try #require(URL(string: "smb://user:secret@nas.local/team")), inner = try #require(URL(string: "afp://nas.local/inner"))
+        let volumes = [
+            Place(title: "Macintosh HD", url: URL(fileURLWithPath: "/"), symbol: "internaldrive"),
+            Place(title: "team", url: URL(fileURLWithPath: "/Volumes/team"), symbol: "network", remountAddress: team),
+            Place(title: "inner", url: URL(fileURLWithPath: "/Volumes/team/inner"), symbol: "network", remountAddress: inner),
+            Place(title: "odd", url: URL(fileURLWithPath: "/Volumes/odd"), symbol: "network", remountAddress: URL(string: "ftp://nas.local/odd")),
+        ]
+        // Each folder is on the innermost volume it's in; a look-alike name isn't inside; unsupported kinds and this
+        // Mac's own disks aren't shares.
+        let found = Workspaces.shares(for: ["/Volumes/team/a", "/Volumes/team/inner/b", "/Volumes/teamwork/c", "/Volumes/odd/d",
+                                            "/Users/me", ""], on: volumes)
+        #expect(found == ["/Volumes/team": ServerConnection.displayString(team), "/Volumes/team/inner": ServerConnection.displayString(inner)])
+        #expect(found?.values.contains { $0.contains("secret") } == false)
+        #expect(Workspaces.shares(for: ["/Volumes/team/a"], on: []) == nil)
+        #expect(Workspaces.shares(for: ["/Volumes/teamwork/c"], on: volumes) == nil)
     }
 
     @Test func workspaceStoreDoesNotKeepItsEnvironmentAlive() throws {

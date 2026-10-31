@@ -53,7 +53,7 @@ struct SessionNavigationTests {
         let stored = try #require(environment.defaults.data(forKey: "lastSession"))
         let read = try #require(SessionStorage.decode(stored))
         try #require(read.count == 1)
-        let restored = try #require(environment.services.workspaces.openWindows(environment.services.workspaces.plan(read[0]), name: "").first)
+        let restored = try #require(environment.services.workspaces.openWindows(await environment.services.workspaces.plan(read[0]), name: "").first)
         for pane in restored.panes { await pane.browser.directoryReads.task?.value }
         #expect(restored.pane === restored.panes[1])
         for (index, side) in ["left", "right"].enumerated() {
@@ -139,7 +139,7 @@ struct SessionNavigationTests {
         #expect(SavedDestination(kind: "folder", path: "/../escape", server: server.id).destination(services: environment.services) == nil)
         let search = SavedDestination(kind: "search", path: "/srv/project", server: server.id, query: "invoice")
         let session = Workspace(name: "", tabs: [[tree.url("local").path]], navigation: [[SavedNavigation(current: search, back: [saved])]])
-        let owner = try #require(environment.services.workspaces.openWindows(environment.services.workspaces.plan(session), name: "").first)
+        let owner = try #require(environment.services.workspaces.openWindows(await environment.services.workspaces.plan(session), name: "").first)
         await owner.browser.directoryReads.task?.value
         if case .folder = owner.destination {} else { Issue.record("Restoring a remote search must wait for an explicit request") }
         #expect(owner.pane.history.back == [.folder(url)])
