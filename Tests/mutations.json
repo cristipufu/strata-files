@@ -585,24 +585,31 @@
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",
-    "find": "guard !parts.isEmpty, entry.kind != .other,\n                          parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })",
-    "replace": "guard !parts.isEmpty, entry.kind != .other,\n                          parts.allSatisfy({ !$0.hasPrefix(tempPrefix) })",
+    "find": "guard !parts.isEmpty, entry.kind != .other,\n                  parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })",
+    "replace": "guard !parts.isEmpty, entry.kind != .other,\n                  parts.allSatisfy({ !$0.hasPrefix(tempPrefix) })",
     "rule": "A container's tar entry with dot-dot parts is written",
     "tests": "ContainerTests/aContainersFolder"
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",
-    "find": "            guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }",
-    "replace": "            guard !targetParts.isEmpty else { continue }",
+    "find": "                guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { return }",
+    "replace": "                guard !targetParts.isEmpty else { return }",
     "rule": "A container's hard link leads out of the copy",
     "tests": "ContainerTests/aContainersFolder"
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",
-    "find": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        /// The folders open along",
-    "replace": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        /// The folders open along",
+    "find": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        let writer",
+    "replace": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        let writer",
     "rule": "A container copy that is a link is written through",
     "tests": "ContainerTests/aCopyThat"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "                if fstatat(parent, part, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT != S_IFDIR {\n                    removeAt(parent, part)\n                }\n                mkdirat(parent, part, 0o755)\n                let fd = openat(parent, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
+    "replace": "                mkdirat(parent, part, 0o755)\n                let fd = openat(parent, part, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
+    "rule": "A container's folder is entered through a link in its place",
+    "tests": "ContainerTests/aContainersFolderIsWrittenOnlyIntoItsCopy"
   },
   {
     "file": "Strata/Containers/ContainerFiles.swift",

@@ -674,28 +674,72 @@ nonisolated enum CopyWriter {
     static func writeTree(_ engine: ContainerEngine, id: String, containerPath: String, into folder: URL, stop: StopFlag) throws {
         let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }
-        /// The folders open along the current entry's path (a tar stream goes depth first).
-        var stack: [(name: String, fd: Int32)] = []
-        defer {
-            stack.forEach { close($0.fd) }
-            close(rootFD)
+        let writer = TreeWriter(rootFD: rootFD, containerPath: containerPath)
+        defer { writer.close() }
+        try ContainerAPI.archive(engine, id: id, path: containerPath, shouldStop: { stop.isSet }) { chunk in
+            try writer.feed(chunk)
         }
+        let rootName = try writer.finishedRoot()
+        try writer.linkHardlinks(under: rootName, engine, id: id, stop: stop)
+        writer.removeWhatsGoneAndDateFolders()
+    }
+
+    /// One container folder written into its copy from a tar stream, entry by entry (depth first), then its hard links,
+    /// then what the container no longer has removed.
+    nonisolated private final class TreeWriter {
+        let rootFD: Int32
+        let containerPath: String
+        let base: String
+        /// The folders open along the current entry's path (a tar stream goes depth first).
+        private var stack: [(name: String, fd: Int32)] = []
         /// Every item written, by its folded path (see `folded`), with its spelling.
-        var seen: [String: String] = [:]
-        var materialized = Set<String>()
-        var hardlinks: [(parts: [String], target: String)] = []
+        private var seen: [String: String] = [:]
+        private var materialized = Set<String>()
+        private var hardlinks: [(parts: [String], target: String)] = []
         /// Folders' dates in the container, set once everything is written into them.
-        var folderDates: [(parts: [String], date: Date?)] = []
-        var reader = TarReader()
-        var root: String?
-        var file: (fd: Int32, parent: Int32, temp: String, name: String, entry: TarEntry, key: String)?
-        let base = containerPath == "/" ? "" : containerPath
+        private var folderDates: [(parts: [String], date: Date?)] = []
+        private var reader = TarReader()
+        private var root: String?
+        private var file: (fd: Int32, parent: Int32, temp: String, name: String, entry: TarEntry, key: String)?
+
+        init(rootFD: Int32, containerPath: String) {
+            self.rootFD = rootFD
+            self.containerPath = containerPath
+            base = containerPath == "/" ? "" : containerPath
+        }
+
+        /// A file being written is dropped, then every folder open is closed, the copy's own last.
+        func close() {
+            if let open = file {
+                Darwin.close(open.fd)
+                unlinkat(open.parent, open.temp, 0)
+            }
+            closeFolders()
+            Darwin.close(rootFD)
+        }
+
+        private func closeFolders() {
+            stack.forEach { Darwin.close($0.fd) }
+            stack.removeAll()
+        }
+
+        /// Whether to go on reading.
+        func feed(_ chunk: Data) throws -> Bool {
+            try reader.feed(chunk) { event in
+                switch event {
+                case .begin(let entry): try begin(entry)
+                case .data(let data): if let open = file { try writeAll(data, to: open.fd) }
+                case .end: endFile()
+                }
+            }
+            return !reader.isFinished
+        }
 
         /// The folder for `parts` (made if needed, never through a link), with the stack kept to that path.
-        func folderFD(_ parts: ArraySlice<String>) throws -> Int32 {
+        private func folderFD(_ parts: ArraySlice<String>) throws -> Int32 {
             var common = 0
             while common < stack.count, common < parts.count, stack[common].name == parts[parts.startIndex + common] { common += 1 }
-            while stack.count > common { close(stack.removeLast().fd) }
+            while stack.count > common { Darwin.close(stack.removeLast().fd) }
             for part in parts.dropFirst(common) {
                 let parent = stack.last?.fd ?? rootFD
                 var info = stat()
@@ -711,100 +755,114 @@ nonisolated enum CopyWriter {
             return stack.last?.fd ?? rootFD
         }
 
-        defer {
-            if let open = file {
-                close(open.fd)
-                unlinkat(open.parent, open.temp, 0)
+        /// An entry's path below the folder copied, as safe names, while it's the first spelling of each name on it
+        /// the copy's disk can tell apart; nil for one to skip. The stream's first entry is that folder itself.
+        private func place(of entry: TarEntry) -> (parts: [String], path: String, key: String)? {
+            let name = streamName(entry.path)
+            guard let rootName = root else {
+                root = entry.kind == .directory ? name : "\u{0}"
+                return nil
+            }
+            guard let rest = relative(name, to: rootName) else { return nil }
+            let parts = rest.split(separator: "/").map(String.init)
+            guard !parts.isEmpty, entry.kind != .other,
+                  parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { return nil }
+            // Two names the copy's disk can't tell apart: the first one wins.
+            let path = parts.joined(separator: "/")
+            let key = parts.map(folded).joined(separator: "/")
+            if let spelling = seen[key], spelling != path { return nil }
+            guard parts.dropLast().indices.allSatisfy({ seen[parts[...$0].map(folded).joined(separator: "/")] == parts[...$0].joined(separator: "/")
+                || seen[parts[...$0].map(folded).joined(separator: "/")] == nil }) else { return nil }
+            for idx in parts.dropLast().indices {
+                seen[parts[...idx].map(folded).joined(separator: "/")] = parts[...idx].joined(separator: "/")
+            }
+            return (parts, path, key)
+        }
+
+        private func begin(_ entry: TarEntry) throws {
+            guard let (parts, path, key) = place(of: entry) else { return }
+            let parent = try folderFD(parts.dropLast()[...])
+            let last = parts[parts.count - 1]
+            switch entry.kind {
+            case .directory:
+                seen[key] = path
+                _ = try folderFD(parts[...])
+                folderDates.append((parts, entry.modified))
+            case .symlink:
+                guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + "/" + path) else { return }
+                seen[key] = path
+                if linkTarget(last, fd: parent) == target { return }
+                removeAt(parent, last)
+                symlinkat(target, parent, last)
+                setLinkTimes(parent, last, entry.modified)
+            case .hardlink:
+                // Linked to its first name once the stream is through (hardlinks carry no data).
+                seen[key] = path
+                hardlinks.append((parts, entry.linkTarget))
+            case .file:
+                seen[key] = path
+                try beginFile(entry, named: last, in: parent, key: key)
+            case .other:
+                return
             }
         }
-        try ContainerAPI.archive(engine, id: id, path: containerPath, shouldStop: { stop.isSet }) { chunk in
-            try reader.feed(chunk) { event in
-                switch event {
-                case .begin(let entry):
-                    let name = streamName(entry.path)
-                    guard let rootName = root else {
-                        root = entry.kind == .directory ? name : "\u{0}"
-                        return
-                    }
-                    guard let rest = relative(name, to: rootName) else { return }
-                    let parts = rest.split(separator: "/").map(String.init)
-                    guard !parts.isEmpty, entry.kind != .other,
-                          parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { return }
-                    // Two names the copy's disk can't tell apart: the first one wins.
-                    let path = parts.joined(separator: "/")
-                    let key = parts.map(folded).joined(separator: "/")
-                    if let spelling = seen[key], spelling != path { return }
-                    guard parts.dropLast().indices.allSatisfy({ seen[parts[...$0].map(folded).joined(separator: "/")] == parts[...$0].joined(separator: "/")
-                        || seen[parts[...$0].map(folded).joined(separator: "/")] == nil }) else { return }
-                    for idx in parts.dropLast().indices {
-                        seen[parts[...idx].map(folded).joined(separator: "/")] = parts[...idx].joined(separator: "/")
-                    }
-                    let parent = try folderFD(parts.dropLast()[...])
-                    let last = parts[parts.count - 1]
-                    switch entry.kind {
-                    case .directory:
-                        seen[key] = path
-                        _ = try folderFD(parts[...])
-                        folderDates.append((parts, entry.modified))
-                    case .symlink:
-                        guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + "/" + path) else { return }
-                        seen[key] = path
-                        if linkTarget(last, fd: parent) == target { return }
-                        removeAt(parent, last)
-                        symlinkat(target, parent, last)
-                        setLinkTimes(parent, last, entry.modified)
-                    case .hardlink:
-                        // Linked to its first name once the stream is through (hardlinks carry no data).
-                        seen[key] = path
-                        hardlinks.append((parts, entry.linkTarget))
-                    case .file:
-                        seen[key] = path
-                        var info = stat()
-                        if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(info.st_mode),
-                           Int64(info.st_size) == entry.size, Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified) {
-                            materialized.insert(key)
-                            return  // Already here.
-                        }
-                        let temp = tempPrefix + UUID().uuidString
-                        let out = openat(parent, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-                        guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
-                        file = (out, parent, temp, last, entry, key)
-                        try markDownloaded(out)
-                    case .other:
-                        return
-                    }
-                case .data(let data):
-                    if let open = file { try writeAll(data, to: open.fd) }
-                case .end:
-                    guard let open = file else { return }
-                    file = nil
-                    fchmod(open.fd, mode_t(readable(open.entry.mode)))
-                    setTimes(open.fd, open.entry.modified)
-                    close(open.fd)
-                    var info = stat()
-                    if fstatat(open.parent, open.name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR {
-                        removeAt(open.parent, open.name)
-                    }
-                    if renameat(open.parent, open.temp, open.parent, open.name) == 0 {
-                        materialized.insert(open.key)
-                    } else { unlinkat(open.parent, open.temp, 0) }
-                }
+
+        /// Opens a temporary file next to the entry's place, unless the same file is already there.
+        private func beginFile(_ entry: TarEntry, named last: String, in parent: Int32, key: String) throws {
+            var info = stat()
+            if fstatat(parent, last, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG, !ContainerCopies.isPlaceholderMode(info.st_mode),
+               Int64(info.st_size) == entry.size, Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified) {
+                materialized.insert(key)
+                return  // Already here.
             }
-            return !reader.isFinished
+            let temp = tempPrefix + UUID().uuidString
+            let out = openat(parent, temp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+            guard out >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+            file = (out, parent, temp, last, entry, key)
+            try markDownloaded(out)
         }
-        guard let rootName = root, rootName != "\u{0}" else { throw ContainerAPIError.notFound }
-        // A stream cut short says nothing about what's gone.
-        guard reader.isFinished else { throw ContainerAPIError.transport(.closed) }
-        stack.forEach { close($0.fd) }
-        stack.removeAll()
-        for link in hardlinks {
+
+        /// The file written whole takes its place (a folder there goes); one that can't keeps nothing behind.
+        private func endFile() {
+            guard let open = file else { return }
+            file = nil
+            fchmod(open.fd, mode_t(readable(open.entry.mode)))
+            setTimes(open.fd, open.entry.modified)
+            Darwin.close(open.fd)
+            var info = stat()
+            if fstatat(open.parent, open.name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR {
+                removeAt(open.parent, open.name)
+            }
+            if renameat(open.parent, open.temp, open.parent, open.name) == 0 {
+                materialized.insert(open.key)
+            } else { unlinkat(open.parent, open.temp, 0) }
+        }
+
+        /// The folder copied, once the stream has gone through: one cut short says nothing about what's gone.
+        func finishedRoot() throws -> String {
+            guard let rootName = root, rootName != "\u{0}" else { throw ContainerAPIError.notFound }
+            guard reader.isFinished else { throw ContainerAPIError.transport(.closed) }
+            closeFolders()
+            return rootName
+        }
+
+        func linkHardlinks(under rootName: String, _ engine: ContainerEngine, id: String, stop: StopFlag) throws {
+            for link in hardlinks {
+                try linkHardlink(link, under: rootName, engine, id: id, stop: stop)
+            }
+            closeFolders()
+        }
+
+        /// A hard link to its first name when that's a file this copy has whole; otherwise fetched on its own.
+        private func linkHardlink(_ link: (parts: [String], target: String), under rootName: String,
+                                  _ engine: ContainerEngine, id: String, stop: StopFlag) throws {
             // Absolute targets refer to the container root, not the basename of this copied subfolder.
             let target = containerPath == "/" ? streamName(link.target) : link.target
             let targetRest = target.hasPrefix("/") ? nil : relative(target, to: rootName)
-            guard target.hasPrefix("/") || targetRest != nil else { continue }
+            guard target.hasPrefix("/") || targetRest != nil else { return }
             let targetParts = targetRest?.split(separator: "/").map(String.init) ?? []
             if targetRest != nil {
-                guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { continue }
+                guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { return }
             }
             let currentTarget = !targetParts.isEmpty
                 && targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })
@@ -821,7 +879,7 @@ nonisolated enum CopyWriter {
                     removeAt(linkDir, name)
                     linked = linkat(targetDir, targetName, linkDir, name, 0) == 0
                 }
-                if targetDir != rootFD { close(targetDir) }
+                if targetDir != rootFD { Darwin.close(targetDir) }
             }
             if !linked {
                 // Its first name is outside this folder: fetch it on its own.
@@ -832,15 +890,16 @@ nonisolated enum CopyWriter {
             }
             materialized.insert(link.parts.map(folded).joined(separator: "/"))
         }
-        stack.forEach { close($0.fd) }
-        stack.removeAll()
-        sweep(rootFD, prefix: "", keeping: seen)
-        for folder in folderDates.reversed() {
-            guard let fd = openPath(rootFD, folder.parts[...]) else { continue }
-            remember(folder.date, onFolder: fd)
-            if fd != rootFD { close(fd) }
+
+        func removeWhatsGoneAndDateFolders() {
+            sweep(rootFD, prefix: "", keeping: seen)
+            for folder in folderDates.reversed() {
+                guard let fd = openPath(rootFD, folder.parts[...]) else { continue }
+                remember(folder.date, onFolder: fd)
+                if fd != rootFD { Darwin.close(fd) }
+            }
+            restoreTimes(rootFD)
         }
-        restoreTimes(rootFD)
     }
 
     /// Removes what's in the folder open at `fd` but not in `keeping` (folded paths), recursively and without following
