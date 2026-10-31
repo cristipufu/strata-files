@@ -73,7 +73,7 @@ extension BrowserViewController {
         let removed = Set(urls.map(Self.key))
         let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
         if let first = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }), !survivors.isEmpty {
-            pendingSelection = [survivors[min(first, survivors.count - 1)].url]
+            pending.selection = [survivors[min(first, survivors.count - 1)].url]
         }
         let undo = undoManager
         let files = services.files
@@ -99,14 +99,14 @@ extension BrowserViewController {
         let job = services.files.duplicate(urls, undo: undoManager)
         job.onFinish = { [weak self] job in
             guard let self else { return }
-            if navigationRevision == revision, !job.createdItems.isEmpty { pendingSelection = job.createdItems }
+            if navigationRevision == revision, !job.createdItems.isEmpty { pending.selection = job.createdItems }
             refresh()
         }
     }
 
     /// Selects `urls` once the folder shows them (after the reload a change brings).
     func selectWhenShown(_ urls: [URL]) {
-        pendingSelection = urls
+        pending.selection = urls
         refresh()
     }
 
@@ -137,8 +137,7 @@ extension BrowserViewController {
             return
         }
         guard Self.key(directory) == self.directory.map(Self.key) else { return }
-        pendingSelection = [url]
-        pendingRename = url
+        pending.renameWhenShown(url)
         refresh()
     }
 
@@ -156,8 +155,7 @@ extension BrowserViewController {
         presentations.cached.forEach { $0.cancelRename() }
         selectionFetch?.cancel()
         selectionFetch = nil
-        pendingSelection = nil
-        pendingRename = nil
+        pending.cancel()
         columnController?.cancelPendingRename()
     }
 
@@ -469,7 +467,7 @@ extension BrowserViewController {
         job.onFinish = { [weak self] job in
             guard let self else { return }
             if target.standardizedFileURL == targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
-                pendingSelection = job.createdItems
+                pending.selection = job.createdItems
             }
             refresh()
         }
@@ -505,7 +503,7 @@ extension BrowserViewController {
             performAsync { [weak self] in
                 let renamed = try await files.rename(url, to: name, undo: undo)
                 guard let self, navigationRevision == revision else { return }
-                pendingSelection = [renamed]
+                pending.selection = [renamed]
                 refresh()
             }
         }

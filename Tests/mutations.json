@@ -1269,8 +1269,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()\n        loading.showResults()",
-    "replace": "        let selection = pendingSelection ?? selectedURLs\n        enterResults()",
+    "find": "        let selection = pending.selection ?? selectedURLs\n        enterResults()\n        loading.showResults()",
+    "replace": "        let selection = pending.selection ?? selectedURLs\n        enterResults()",
     "rule": "Directory read ownership a folder response replaces search results",
     "tests": "DirectoryReadSessionTests/resultsAndMessagesInvalidateOutstandingFolderReads"
   },
@@ -1290,14 +1290,14 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "let selection = pendingSelection ?? (preservingState ? selectedURLs : [])",
-    "replace": "let selection = pendingSelection.flatMap { $0.isEmpty ? nil : $0 } ?? (preservingState ? selectedURLs : [])",
+    "find": "let selection = pending.selection ?? (preservingState ? selectedURLs : [])",
+    "replace": "let selection = pending.selection.flatMap { $0.isEmpty ? nil : $0 } ?? (preservingState ? selectedURLs : [])",
     "rule": "Applied browser actions explicit empty selection is replaced by the old selection",
     "tests": "DirectoryReadSessionTests/aReloadHonorsEmptySelectionAndEachViewsSelectionPolicy"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "isShowingResults, pendingSelection == nil, resultsSummary == nil",
+    "find": "isShowingResults, pending.selection == nil, resultsSummary == nil",
     "replace": "isShowingResults, resultsSummary == nil",
     "rule": "Applied browser actions unchanged search results ignore the requested selection",
     "tests": "DirectoryReadSessionTests/pendingSelectionsApplyToRefreshedResultsAndGroups"

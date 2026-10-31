@@ -132,8 +132,7 @@ final class BrowserViewController: NSViewController {
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
                         tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
     var updatingSortDescriptor = false
-    /// Selected once the folder shows them (after the reload a change brings).
-    var pendingSelection: [URL]?
+    let pending = BrowserPendingActions()
     /// Opens the folder row a drag rests on (only rows still on screen).
     lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
@@ -145,8 +144,6 @@ final class BrowserViewController: NSViewController {
     })
     /// A drag is over the list: folders don't expand on hover then (they spring open instead).
     var isDragOver = false
-    /// Renamed (inline) once the folder shows it: a new folder.
-    var pendingRename: URL?
     let inlineRename = BrowserRenaming()
     lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
@@ -342,10 +339,10 @@ final class BrowserViewController: NSViewController {
             watching.watch(applicationFolders.directories(for: FileEntry.openedFolder(url)), repositoryOf: url,
                            in: services.git, changed: { [weak self] in self?.refresh() },
                            isCurrent: { [weak self] in self?.navigationRevision == revision && self?.directory == url })
-            pendingSelection = select.map { [$0] } ?? []
+            pending.selection = select.map { [$0] } ?? []
         }
         // Revealing an item in the folder already showing selects it too.
-        if !isNewDirectory, let select { pendingSelection = [select] }
+        if !isNewDirectory, let select { pending.selection = [select] }
         reload(scrollToTop: isNewDirectory && select == nil)
         // Keep the old rows briefly for fast reads; slow folders show a native loading state.
         if isNewDirectory {
@@ -413,7 +410,7 @@ final class BrowserViewController: NSViewController {
         }
         inlineRename.dropHeldListing()
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
-        let selection = pendingSelection ?? (preservingState ? selectedURLs : [])
+        let selection = pending.selection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         let presorted = sortedBy != nil && sortedBy == ordering.snapshot
         listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
@@ -428,11 +425,8 @@ final class BrowserViewController: NSViewController {
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
         select(selection)
-        pendingSelection = nil
-        if let rename = pendingRename, node(for: rename) != nil {
-            pendingRename = nil
-            beginRename(rename)
-        }
+        pending.selection = nil
+        beginPendingRename()
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -456,11 +450,13 @@ final class BrowserViewController: NSViewController {
                     outlineView.selectRowIndexes(rows, byExtendingSelection: !outlineView.selectedRowIndexes.isEmpty)
                 }
             }
-            if let rename = pendingRename, self.node(for: rename) != nil {
-                pendingRename = nil
-                beginRename(rename)
-            }
+            beginPendingRename()
         }
+    }
+
+    /// The new item waiting to be renamed, once its row is shown.
+    private func beginPendingRename() {
+        if let rename = pending.takeRename(ifShown: { node(for: $0) != nil }) { beginRename(rename) }
     }
 
     static func key(_ url: URL) -> String { BrowserListing.key(url) }
@@ -533,7 +529,7 @@ final class BrowserViewController: NSViewController {
     func showResults(_ entries: [FileEntry], total: Int) {
         // A search refreshed because the index changed nearly always finds the same files: the list, its selection
         // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
-        if isShowingResults, pendingSelection == nil, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
+        if isShowingResults, pending.selection == nil, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
             localizeResultNames()
             if resultsTotal != total {
                 resultsTotal = total
@@ -543,7 +539,7 @@ final class BrowserViewController: NSViewController {
         }
         // Read before switching to the list: in other views the list's own selection is stale and could point at a file
         // nobody picked.
-        let selection = pendingSelection ?? selectedURLs
+        let selection = pending.selection ?? selectedURLs
         enterResults()
         loading.showResults()
         sizer.cancelPending()
@@ -554,7 +550,7 @@ final class BrowserViewController: NSViewController {
         localizeResultNames()
         outlineView.reloadData()
         select(selection, scroll: false)
-        pendingSelection = nil
+        pending.selection = nil
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -590,8 +586,7 @@ final class BrowserViewController: NSViewController {
         localizeResultNames()
         outlineView.reloadData()
         outlineView.expandItem(nil, expandChildren: true)
-        if let pendingSelection { select(pendingSelection, scroll: true) }
-        pendingSelection = nil
+        if let selection = pending.takeSelection() { select(selection, scroll: true) }
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)

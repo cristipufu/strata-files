@@ -80,7 +80,7 @@ extension BrowserViewController {
         runOnServer(in: folder) { [weak self] in
             let renamed = try await files.rename(url, to: name)
             guard let self else { return }
-            if Self.key(folder) == self.targetDirectory.map(Self.key) { self.pendingSelection = [renamed] }
+            if Self.key(folder) == self.targetDirectory.map(Self.key) { self.pending.selection = [renamed] }
             self.refresh()
         }
     }
@@ -134,7 +134,7 @@ extension BrowserViewController {
             return runOnServer(in: folder) { [weak self] in
                 let moved = try await files.move(urls, into: folder, expected: expected)
                 guard let self else { return }
-                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !moved.isEmpty { self.pendingSelection = moved }
+                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !moved.isEmpty { self.pending.selection = moved }
                 self.refresh()
             }
         }
@@ -166,7 +166,7 @@ extension BrowserViewController {
             job.onFinish = { job in
                 guard let self else { return }
                 if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
-                    self.pendingSelection = job.createdItems
+                    self.pending.selection = job.createdItems
                 }
                 self.refresh()
             }

@@ -269,7 +269,7 @@ struct DirectoryReadSessionTests {
             await work.value
             // Gallery always keeps an item in front for its preview; the other views allow no selection.
             #expect(browser.selectedURLs == (mode == .gallery ? [entries[0].url] : []), "\(mode)")
-            #expect(browser.pendingSelection == nil)
+            #expect(browser.pending.selection == nil)
             browser.select([entries[1].url])
             browser.refresh()
             work = try #require(browser.directoryReads.task)
@@ -288,16 +288,16 @@ struct DirectoryReadSessionTests {
         let entries = try ["a.txt", "b.txt"].map { try #require(FileEntry(url: tree.url($0))) }
         browser.showResults(entries, total: 2)
         browser.select([entries[0].url])
-        browser.pendingSelection = [entries[1].url]
+        browser.pending.selection = [entries[1].url]
         browser.showResults(entries, total: 2)
         #expect(browser.selectedURLs == [entries[1].url])
-        browser.pendingSelection = []
+        browser.pending.selection = []
         browser.showResults(entries, total: 2)
-        #expect(browser.selectedURLs.isEmpty && browser.pendingSelection == nil)
+        #expect(browser.selectedURLs.isEmpty && browser.pending.selection == nil)
         browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
-        browser.pendingSelection = [entries[0].url]
+        browser.pending.selection = [entries[0].url]
         browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
-        #expect(browser.selectedURLs == [entries[0].url] && browser.pendingSelection == nil)
+        #expect(browser.selectedURLs == [entries[0].url] && browser.pending.selection == nil)
         #expect(tree.snapshot() == ["a.txt", "b.txt"])
     }
 
@@ -361,14 +361,14 @@ struct DirectoryReadSessionTests {
         try await reads.request(3).finish(.success([a]))
         await work.value
         stale([a.url])
-        #expect(first.directoryReads.task == nil && first.pendingSelection == nil)
+        #expect(first.directoryReads.task == nil && first.pending.selection == nil)
         controller.window?.makeFirstResponder(second.focusView)
         let removedPane = controller.pane
         let removed = controller.selectionAfterOperation()
         controller.window?.makeFirstResponder(first.focusView)
         controller.toggleDualPane(at: nil)
         removed([b.url])
-        #expect(removedPane.browser.directoryReads.task == nil && removedPane.browser.pendingSelection == nil)
+        #expect(removedPane.browser.directoryReads.task == nil && removedPane.browser.pending.selection == nil)
         #expect(controller.browser === first && !controller.isDualPane)
         #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/b.txt"])
     }
@@ -391,13 +391,13 @@ struct DirectoryReadSessionTests {
             browser.showResults([entry], total: 1)
             let completion = controller.selectionAfterOperation()
             let revision = pane.navigationRevision
-            browser.pendingSelection = [entry.url]
+            browser.pending.selection = [entry.url]
             pane.destination = changed
-            #expect(pane.navigationRevision == revision + 1 && browser.pendingSelection == nil)
+            #expect(pane.navigationRevision == revision + 1 && browser.pending.selection == nil)
             pane.destination = original
             let searchGeneration = pane.searchGeneration
             completion([entry.url])
-            #expect(pane.searchGeneration == searchGeneration && browser.pendingSelection == nil)
+            #expect(pane.searchGeneration == searchGeneration && browser.pending.selection == nil)
             #expect(browser.directoryReads.task == nil)
             let unchanged = pane.navigationRevision
             pane.destination = original

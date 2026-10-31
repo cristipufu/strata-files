@@ -265,7 +265,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         return { [weak self, weak origin] results in
             guard let self, let origin, origin.navigationRevision == revision,
                   panes.contains(where: { $0 === origin }) else { return }
-            origin.browser.pendingSelection = results.filter { $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == folder }
+            origin.browser.pending.selection = results.filter { $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == folder }
             switch origin.destination {
             case .folder: origin.browser.reloadFolder(nil)
             case .search, .recents: runSearch(in: origin)
