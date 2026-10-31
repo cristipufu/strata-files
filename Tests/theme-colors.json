@@ -1,12 +1,12 @@
 [
   {
-    "file": "Sources/Strata/Window/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetViews.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.5).setFill()",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
   },
   {
-    "file": "Sources/Strata/Window/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetViews.swift",
     "code": "layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
@@ -222,7 +222,7 @@
     "reason": "Native browser colors are captured by ThemeStyle.bind; the remaining separator marks the boundary between columns."
   },
   {
-    "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Sources/Strata/Views/ColumnPane.swift",
     "code": "tableView.backgroundColor = .controlBackgroundColor",
     "count": 1,
     "reason": "Native browser colors are captured by ThemeStyle.bind; the remaining separator marks the boundary between columns."

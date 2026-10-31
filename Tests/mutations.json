@@ -1204,7 +1204,7 @@
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
   {
-    "file": "Strata/Window/BrowserWindowController.swift",
+    "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
     "find": "        if p.countsVisitOnLanding { services.visits.record(folder) }\n",
     "replace": "        if p.countsVisitOnLanding { Frecency.shared.record(folder) }\n",
     "rule": "Browser service ownership navigation records visits globally",
@@ -1261,7 +1261,7 @@
     "tests": "DirectoryReadSessionTests"
   },
   {
-    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Strata/Views/ColumnPane.swift",
     "find": "        directoryReads.invalidate()\n        watchersOpening?.cancel()",
     "replace": "        watchersOpening?.cancel()",
     "rule": "Directory read ownership removed columns apply outstanding reads",
@@ -1401,7 +1401,7 @@
     "tests": "CopyProvidersTests/theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors"
   },
   {
-    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Strata/Views/ColumnPane.swift",
     "find": "controller?.selectionChanged(in: self, afterReload: true)",
     "replace": "controller?.selectionChanged(in: self)",
     "rule": "Applied browser actions a refreshed selection cancels the newly created items rename",
@@ -1773,7 +1773,7 @@
     "tests": "BrowserPreferencesTests/fontsSpacingAndViewOptionsUpdateOnlyTheirNativeViews"
   },
   {
-    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Strata/Views/ColumnPane.swift",
     "find": "        typography = FileViewTypography(preferences: preferences)\n        tableView.rowHeight",
     "replace": "        tableView.rowHeight",
     "rule": "Browser preferences column rows keep the old text size after a change",
@@ -3146,7 +3146,7 @@
     "tests": "RemoteSessionOwnershipTests/closingAnOpeningPaneCancelsItsRequestWithoutMovingTheRemainingPane|RemoteSessionOwnershipTests/closingAWindowCancelsItsOpeningBeforeTheBackendFinishes"
   },
   {
-    "file": "Strata/Window/BrowserWindowController.swift",
+    "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
     "find": "            owner.opening.cancel()",
     "replace": "            // Keep opening despite deeper column navigation.",
     "rule": "Pane opening ownership entering a deeper column leaves its opening alive",
@@ -3195,7 +3195,7 @@
     "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
   },
   {
-    "file": "Strata/Window/BrowserWindowController.swift",
+    "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
     "find": "        guard !ReadOnlyCopies.contains(folder, copies: services.copies) else { return }",
     "replace": "        guard true else { return }",
     "rule": "Provider directory ownership provider paths become saved local destinations",
@@ -3800,7 +3800,7 @@
     "tests": "AsyncActionContextTests/connectToServerKeepsItsOriginatingPaneAcrossFocusChangesAndIgnoresClosedPanes"
   },
   {
-    "file": "Strata/Window/BrowserWindowController.swift",
+    "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
     "find": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.\n        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }\n        go(.folder(folder.standardizedFileURL), in: owner)\n    }",
     "replace": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        navigate(to: folder)\n    }",
     "rule": "Async action context ownership archive browsing opens in the currently focused pane instead of its originating pane",
@@ -4849,14 +4849,14 @@
     "tests": "DirectoryReadSessionTests"
   },
   {
-    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Strata/Views/ColumnPane.swift",
     "find": "if let renamingRow { rows.remove(renamingRow) }",
     "replace": "// Refresh the edited row too.",
     "rule": "Rename refresh follow-up: Columns metadata cannot reveal the old label during editing",
     "tests": "DirectoryReadSessionTests"
   },
   {
-    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Strata/Views/ColumnPane.swift",
     "find": "guard let deferred else { refreshVisibleRows(); return }",
     "replace": "guard let deferred else { return }",
     "rule": "Rename refresh follow-up: Columns cancellation refreshes postponed metadata",
@@ -7735,7 +7735,7 @@
     "tests": "LinkNavigationTests/aLinkToWhereThePaneIsAddsNoBackStep"
   },
   {
-    "file": "Strata/Window/BrowserWindowController.swift",
+    "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
     "find": "        if p.countsVisitOnLanding { services.visits.record(folder) }\n",
     "replace": "        if p.countsVisitOnLanding { services.visits.record(asked) }\n",
     "rule": "A visit through a link counts the link rather than the folder it led to",
