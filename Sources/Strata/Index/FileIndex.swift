@@ -24,6 +24,8 @@ package final class FileIndex {
     private var store: IndexStore?
     private lazy var worker = IndexWorker()
     private var started = false
+    /// The configuration being worked out away from the main thread, before the worker starts or takes it.
+    private var configuring: Task<Void, Never>?
     private var changePosted = false
 
     package var isReady: Bool { store != nil }
@@ -34,17 +36,26 @@ package final class FileIndex {
         worker.onStore = { [weak self] store in Task { @MainActor in self?.store = store } }
         worker.onPhase = { [weak self] phase in Task { @MainActor in self?.setPhase(phase) } }
         worker.onChange = { [weak self] in Task { @MainActor in self?.changed() } }
-        let config = currentConfig()
-        excludedPaths = config.excluded
-        worker.start(config)
+        configuring = Task { [weak self] in
+            guard let self else { return }
+            let config = await currentConfig()
+            excludedPaths = config.excluded
+            worker.start(config)
+        }
     }
 
-    /// Re-evaluates what may be indexed (after Full Disk Access changes or a protected folder was opened).
+    /// Re-evaluates what may be indexed (after Full Disk Access changes or a protected folder was opened). Each takes
+    /// its turn after the start and earlier ones, so the worker gets them in order.
     package func refreshConfig() {
         guard started else { return }
-        let config = currentConfig()
-        excludedPaths = config.excluded
-        worker.update(config)
+        let previous = configuring
+        configuring = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            let config = await currentConfig()
+            excludedPaths = config.excluded
+            worker.update(config)
+        }
     }
 
     /// Number of entries, including ones deleted since the last full scan.
@@ -52,7 +63,11 @@ package final class FileIndex {
 
     package func rebuild() {
         guard started else { return }
-        worker.rebuildNow()
+        let previous = configuring
+        Task { [weak self] in
+            await previous?.value
+            self?.worker.rebuildNow()
+        }
     }
 
     package func saveNow() {
@@ -124,9 +139,9 @@ package final class FileIndex {
 
     /// The index's roots inside `folder` (your home folder and Applications, when searching `/` or `/Users`): a folder
     /// search skips reading those and takes them from the index instead.
-    package func indexedParts(inside folder: URL) -> FolderSearch.IndexedParts? {
+    package func indexedParts(inside folder: URL) async -> FolderSearch.IndexedParts? {
         guard let store else { return nil }
-        let base = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let base = await Self.resolved(folder)
         let prefix = base == "/" ? "/" : base + "/"
         let roots = store.read { store in store.roots.map(\.path) }
             .filter { $0.hasPrefix(prefix) }
@@ -137,13 +152,13 @@ package final class FileIndex {
     /// Whether a search in `folder` can use the index: the folder is in it and wasn't left out (folders kept out for
     /// privacy are listed but not read). Anything else — outside your home folder and Applications, other disks,
     /// a folder too new to be indexed yet — is searched directly (`FolderSearch`).
-    package func covers(_ folder: URL) -> Bool {
+    package func covers(_ folder: URL) async -> Bool {
         guard let store else { return false }
-        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let path = await Self.resolved(folder)
         if excludedPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return false }
         // A disk mounted inside an indexed folder isn't in the index: the scanner stops at mount points.
         guard let root = store.read({ store in store.roots.first { path == $0.path || path.hasPrefix($0.path + "/") } }),
-              Self.sameVolume(path, root.path) else { return false }
+              await Self.sameVolume(path, root.path) else { return false }
         // A folder, not a symlink that happens to share its name (those aren't followed into).
         return store.read { store in
             guard let id = store.lookup(path) else { return false }
@@ -153,20 +168,28 @@ package final class FileIndex {
 
     /// Whether `folder` is inside the index's folders or contains one. Until the first index is built, searches there
     /// wait for it rather than reading your home folder (and the folders macOS guards in it) directly.
-    package func overlapsIndexedFolders(_ folder: URL) -> Bool {
-        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
-        return Self.rootPaths.contains { root in
+    package func overlapsIndexedFolders(_ folder: URL) async -> Bool {
+        let path = await Self.resolved(folder)
+        return Self.roots(home: await Self.realHome()).contains { root in
             path == root || path.hasPrefix(root + "/") || root.hasPrefix(path == "/" ? "/" : path + "/")
         }
     }
 
-    private static func sameVolume(_ a: String, _ b: String) -> Bool {
+    @concurrent private static func resolved(_ folder: URL) async -> String {
+        folder.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    @concurrent private static func sameVolume(_ a: String, _ b: String) async -> Bool {
         var first = stat(), second = stat()
         return stat(a, &first) == 0 && stat(b, &second) == 0 && first.st_dev == second.st_dev
     }
 
-    /// The folders the index covers.
-    package static var rootPaths: [String] { [realPath(Places.home.path), "/Applications"] }
+    /// The folders the index covers, given the home folder's real path.
+    package nonisolated static func roots(home: String) -> [String] { [home, "/Applications"] }
+
+    @concurrent package static func realHome() async -> String {
+        realPath(FileManager.default.homeDirectoryForCurrentUser.path)
+    }
 
     package func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
         guard let store else { return nil }
@@ -204,33 +227,41 @@ package final class FileIndex {
 
     private var excludedPaths: Set<String> = []
 
-    package func currentConfig() -> IndexConfig {
-        let home = Self.realPath(Places.home.path)
-        var excluded: Set<String> = []
+    /// What the worker indexes now: the paths are read away from the main thread, which folders you've let Strata
+    /// read is the app's own record.
+    package func currentConfig() async -> IndexConfig {
+        let home = await Self.realHome()
+        var guarded: Set<String> = []
         if !Privacy.hasFullDiskAccess {
             // Reading these without Full Disk Access pops a consent prompt (or reads other apps' data);
             // folders you've opened in Strata are already allowed.
             for relative in ["Desktop", "Documents", "Downloads", "Library/Containers", "Library/Group Containers",
                              "Library/Mobile Documents", "Pictures/Photos Library.photoslibrary", ".Trash"] {
                 let path = home + "/" + relative
-                if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
+                if !Privacy.isKnownAccessible(path) { guarded.insert(path) }
             }
         }
-        // Saving the index must not index that save and trigger another full rewrite of the index.
-        excluded.insert(Self.realPath(storage.directory.path))
-        // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
-        excluded.insert(Self.realPath(copies.containerCopies.root.path))
-        // Servers' copies neither: their files are another machine's, and gone when Strata quits.
-        excluded.insert(Self.realPath(copies.remoteCopies.root.path))
-        excluded.insert(Self.realPath(copies.clipboardRoot.path))
-        // The encrypted index replaces the plain index.bin of earlier builds.
-        SecureStorage.removeLegacy(storage.url("index.bin"))
-        let config = IndexConfig(roots: Self.rootPaths, excluded: excluded,
-                                 noise: [home + "/Library"], file: storage.url("index.sealed"), storage: storage)
-        return config
+        return await Self.config(home: home, excluding: guarded, storage: storage, copies: copies)
     }
 
-    private static func realPath(_ path: String) -> String {
+    @concurrent private static func config(home: String, excluding guarded: Set<String>, storage: SecureStorage.Context,
+                                           copies: CopyProviders) async -> IndexConfig {
+        var excluded = guarded
+        // Saving the index must not index that save and trigger another full rewrite of the index.
+        excluded.insert(realPath(storage.directory.path))
+        // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
+        excluded.insert(realPath(copies.containerCopies.root.path))
+        // Servers' copies neither: their files are another machine's, and gone when Strata quits.
+        excluded.insert(realPath(copies.remoteCopies.root.path))
+        excluded.insert(realPath(copies.clipboardRoot.path))
+        // The encrypted index replaces the plain index.bin of earlier builds.
+        SecureStorage.removeLegacy(storage.url("index.bin"))
+        return IndexConfig(roots: roots(home: home), excluded: excluded, noise: [home + "/Library"],
+                           file: storage.url("index.sealed"), storage: storage)
+    }
+
+
+    private nonisolated static func realPath(_ path: String) -> String {
         guard let resolved = realpath(path, nil) else { return path }
         defer { free(resolved) }
         return String(cString: resolved)

@@ -204,24 +204,6 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Index/FileIndex.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 3,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Index/FileIndex.swift",
-  "call": "realpath(",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Index/FileIndex.swift",
-  "call": "stat(",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Inspector/InspectorCard.swift",
   "call": "FileManager.default.displayName",
   "count": 1,

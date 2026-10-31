@@ -16,7 +16,7 @@ struct FileCommandOwnershipTests {
         let environment = try IndependentEnvironment()
         let services = environment.services, folder = environment.storage.directory.path + "/"
         #expect(services.index !== FileIndex.shared && services.contentIndex !== SemanticIndex.shared)
-        let config = services.index.currentConfig()
+        let config = await services.index.currentConfig()
         #expect(config.storage === environment.storage && config.file.path.hasPrefix(folder))
         let content = await services.contentIndex.configuration
         #expect(content.storage === environment.storage && content.storeDirectory.path.hasPrefix(folder))

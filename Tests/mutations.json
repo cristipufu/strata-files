@@ -946,7 +946,7 @@
   },
   {
     "file": "Strata/Index/FileIndex.swift",
-    "find": "        excluded.insert(Self.realPath(storage.directory.path))\n",
+    "find": "        excluded.insert(realPath(storage.directory.path))\n",
     "replace": "",
     "rule": "Index performance: private state stays out of its own index",
     "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState|IndexWorkerTests/anIndexLeavesOutItsOwnEnvironmentsStateAndCopies"
@@ -7299,5 +7299,12 @@
     "replace": "            let kind = await Self.kind(of: path)\n            guard let self, !Task.isCancelled, isEditing else { return }",
     "rule": "Path bar: Return acts on an answer for text that was typed over",
     "tests": "PathBarDiskTests/returnOpensAFolderOrShowsAFileAndANewerTextWins"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        folder.resolvingSymlinksInPath().standardizedFileURL.path\n",
+    "replace": "        folder.standardizedFileURL.path\n",
+    "rule": "Index: a folder reached through a link is judged by its link's path, not where it is",
+    "tests": "IndexWorkerTests/foldersOverlapTheIndexByTheirRealPaths"
   }
 ]

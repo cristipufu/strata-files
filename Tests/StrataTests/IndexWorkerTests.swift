@@ -46,8 +46,8 @@ struct IndexWorkerTests {
         }
     }
 
-    @Test func appConfigurationExcludesItsOwnPrivateState() throws {
-        let config = FileIndex(storage: .shared, copies: .live).currentConfig()
+    @Test func appConfigurationExcludesItsOwnPrivateState() async throws {
+        let config = await FileIndex(storage: .shared, copies: .live).currentConfig()
         let resolved = try #require(realpath(SecureStorage.Context.shared.directory.path, nil))
         defer { free(resolved) }
         let directory = String(cString: resolved)
@@ -55,13 +55,26 @@ struct IndexWorkerTests {
         #expect(config.file.deletingLastPathComponent().path == SecureStorage.Context.shared.directory.path)
     }
 
-    @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() throws {
+    @Test func foldersOverlapTheIndexByTheirRealPathsAndAnUnstartedIndexCoversNone() async throws {
+        let tree = try TestTree("plain/", "home -> " + FileManager.default.homeDirectoryForCurrentUser.path)
+        let index = FileIndex(storage: .shared, copies: .live)
+        for folder in [FileManager.default.homeDirectoryForCurrentUser, URL(fileURLWithPath: "/Applications"),
+                       URL(fileURLWithPath: "/"), tree.url("home")] {
+            #expect(await index.overlapsIndexedFolders(folder), "\(folder.path)")
+        }
+        #expect(await !index.overlapsIndexedFolders(tree.url("plain")))
+        #expect(await !index.covers(FileManager.default.homeDirectoryForCurrentUser))
+        #expect(await index.indexedParts(inside: URL(fileURLWithPath: "/")) == nil)
+        #expect(tree.snapshot() == ["home -> " + FileManager.default.homeDirectoryForCurrentUser.path, "plain/"])
+    }
+
+    @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() async throws {
         let tree = try TestTree("state/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
         let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
                                    containerCopies: ContainerCopyStore(root: tree.url("Containers")),
                                    clipboardRoot: tree.url("Clipboard"))
-        let config = FileIndex(storage: storage, copies: copies).currentConfig()
+        let config = await FileIndex(storage: storage, copies: copies).currentConfig()
         for name in ["state", "Servers", "Containers", "Clipboard"] {
             #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }

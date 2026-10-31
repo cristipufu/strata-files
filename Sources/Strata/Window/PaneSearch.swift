@@ -82,8 +82,10 @@ import AppKit
             await searchSpotlight(query, in: scope, pane: p, generation: generation, target: target)
             return
         }
-        if let scope, !services.index.covers(scope) {
-            if !services.index.isReady, services.index.overlapsIndexedFolders(scope) {
+        if let scope, await !services.index.covers(scope) {
+            let overlaps = await services.index.overlapsIndexedFolders(scope)
+            guard generation == latest, p.destination == target else { return }
+            if !services.index.isReady, overlaps {
                 // Reading your home folder now would duplicate the first index (and ask for the folders macOS
                 // guards in it).
                 p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
@@ -208,8 +210,10 @@ import AppKit
         if let current = folderScan, current.canServe(scope) {
             search = current
         } else {
+            let indexed = await services.index.indexedParts(inside: scope)
+            guard generation == latest, p.destination == target else { return }
             folderScan?.cancel()
-            search = FolderSearch(folder: scope, indexed: services.index.indexedParts(inside: scope))
+            search = FolderSearch(folder: scope, indexed: indexed)
             folderScan = search
             search.start()
         }
