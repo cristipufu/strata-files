@@ -295,34 +295,78 @@ nonisolated enum TransferEngine {
         }
     }
 
-    private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
-                                        control: TransferControl, progress: TransferProgress) -> TransferItemResult {
-        var result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
-        // Not the item it means, or not readable just now: nothing is touched, and what's left to repair stays as it
-        // was for the next retry.
-        guard item.means(FileIdentity.read(item.source.path)) else {
-            result.failures = failures
-            result.outcome = landed == nil ? .failed : .partial
+    private static func retryItems(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure],
+                                   options: Options, control: TransferControl, progress: TransferProgress) -> TransferItemResult {
+        var attempt = RetryAttempt(index: index, item: item, landed: landed, failures: failures, options: options,
+                                   control: control, progress: progress)
+        return attempt.run()
+    }
+
+    /// A retry, phase by phase like `ItemAttempt`: each failed part is copied again where it's still what the first
+    /// attempt left, then the original of a move goes.
+    private struct RetryAttempt {
+        let index: Int
+        let item: TransferItem
+        let landed: FileIdentity?
+        let failures: [TransferFailure]
+        let options: Options
+        let control: TransferControl
+        let progress: TransferProgress
+        var result: TransferItemResult
+        var latestSourceParent: TransferRetryTarget.PathIdentity?
+        var latestSourceIdentities: [String: FileIdentity]
+
+        init(index: Int, item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
+             control: TransferControl, progress: TransferProgress) {
+            self.index = index
+            self.item = item
+            self.landed = landed
+            self.failures = failures
+            self.options = options
+            self.control = control
+            self.progress = progress
+            result = TransferItemResult(outcome: .done, destination: item.destination, landed: landed)
+            latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
+            latestSourceIdentities = failures.lazy.compactMap { $0.retryTarget?.sourceIdentities }.first { !$0.isEmpty } ?? [:]
+        }
+
+        mutating func run() -> TransferItemResult {
+            // Not the item it means, or not readable just now: nothing is touched, and what's left to repair stays as
+            // it was for the next retry.
+            guard item.means(FileIdentity.read(item.source.path)) else {
+                result.failures = failures
+                return finish(landed == nil ? .failed : .partial)
+            }
+            for failure in retryFailures(failures) {
+                guard control.checkpoint() else { return finish(.cancelled) }
+                guard let destination = failure.destination else { continue }
+                if let ended = repair(failure, at: destination) { return ended }
+            }
+            guard result.failures.isEmpty else { return finish(.partial) }
+            if item.operation != .copy, let ended = removeOriginal() { return ended }
             return result
         }
-        var latestSourceParent = failures.lazy.compactMap { $0.retryTarget?.sourceParent }.first
-        var latestSourceIdentities = failures.lazy.compactMap { $0.retryTarget?.sourceIdentities }.first { !$0.isEmpty } ?? [:]
-        for failure in retryFailures(failures) {
-            guard control.checkpoint() else { result.outcome = .cancelled; return result }
-            guard let destination = failure.destination else { continue }
-            progress.update { $0.currentName = failure.source.lastPathComponent }
+
+        private mutating func finish(_ outcome: TransferItem.Outcome) -> TransferItemResult {
+            result.outcome = outcome
+            return result
+        }
+
+        /// The part's retry target while its place, and what it was copied from, are still the first attempt's.
+        private func target(of failure: TransferFailure, at destination: URL) -> TransferRetryTarget? {
             let sameRoot = destination == item.destination || (landed != nil && FileIdentity.read(item.destination.path) == landed)
-            guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else {
+            guard sameRoot, let retryTarget = failure.retryTarget, retryTarget.matches(destination) else { return nil }
+            return retryTarget.matchesSource(failure.source) ? retryTarget : nil
+        }
+
+        /// Copies one failed part again (a folder in place, keeping what it holds); nil unless it was stopped.
+        private mutating func repair(_ failure: TransferFailure, at destination: URL) -> TransferItemResult? {
+            progress.update { $0.currentName = failure.source.lastPathComponent }
+            guard let retryTarget = target(of: failure, at: destination) else {
                 result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
-                    destination: destination, message: changedSince,
-                    retryTarget: failure.retryTarget))
-                continue
-            }
-            guard retryTarget.matchesSource(failure.source) else {
-                result.failures.append(TransferFailure(item: index, stage: failure.stage, source: failure.source,
-                    destination: destination, message: changedSince,
-                    retryTarget: failure.retryTarget))
-                continue
+                                                       destination: destination, message: changedSince,
+                                                       retryTarget: failure.retryTarget))
+                return nil
             }
             let owned = retryTarget.createdIdentities(for: destination, root: item.destination, rootIdentity: result.landed)
             var dstInfo = stat()
@@ -337,13 +381,12 @@ nonisolated enum TransferEngine {
             for (path, id) in copy.created { mergedCreated[path] = id }
             if copy.cancelled {
                 removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
-                result.outcome = .cancelled
-                return result
+                return finish(.cancelled)
             }
             if let fatal = copy.fatal {
                 result.failures.append(TransferFailure(item: index, stage: .copy, source: failure.source,
                                                        destination: destination, message: fatal, retryTarget: failure.retryTarget))
-                continue
+                return nil
             }
             for (path, id) in copy.sourceIdentities { latestSourceIdentities[path] = id }
             if latestSourceParent == nil {
@@ -361,31 +404,36 @@ nonisolated enum TransferEngine {
                                                                         root: item.destination, created: mergedCreated,
                                                                         source: item.source, sourceIdentities: latestSourceIdentities))
             }
-            if options.verify {
-                hooks.beforeVerify?(destination)
-                let check = verify(failure.source, against: destination, created: copy.created,
-                                   skipping: Set(copy.errors.map(\.source)), control: control, progress: progress)
-                if check.cancelled {
-                    removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
-                    result.outcome = .cancelled
-                    return result
-                }
-                for mismatch in check.mismatches {
-                    let mismatchURL = URL(fileURLWithPath: mismatch.destination)
-                    removeIfPresent(mismatchURL, in: item.destination, created: mergedCreated)
-                    let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
-                    result.failures.append(TransferFailure(item: index, stage: .verify,
-                                                           source: URL(fileURLWithPath: mismatch.source),
-                                                           destination: mismatchURL,
-                                                           message: mismatch.message,
-                                                           retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
-                                                                                            root: item.destination, created: mergedCreated,
-                                                                                            source: item.source, sourceIdentities: latestSourceIdentities)))
-                }
-            }
+            guard options.verify else { return nil }
+            return verify(failure, copy, at: destination, created: mergedCreated, keepingDirectory: keepingDirectory)
         }
-        guard result.failures.isEmpty else { result.outcome = .partial; return result }
-        if item.operation != .copy {
+
+        private mutating func verify(_ failure: TransferFailure, _ copy: CopyOutcome, at destination: URL,
+                                     created mergedCreated: [String: FileIdentity], keepingDirectory: Bool) -> TransferItemResult? {
+            hooks.beforeVerify?(destination)
+            let check = TransferEngine.verify(failure.source, against: destination, created: copy.created,
+                                              skipping: Set(copy.errors.map(\.source)), control: control, progress: progress)
+            if check.cancelled {
+                removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
+                return finish(.cancelled)
+            }
+            for mismatch in check.mismatches {
+                let mismatchURL = URL(fileURLWithPath: mismatch.destination)
+                removeIfPresent(mismatchURL, in: item.destination, created: mergedCreated)
+                let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
+                result.failures.append(TransferFailure(item: index, stage: .verify,
+                                                       source: URL(fileURLWithPath: mismatch.source),
+                                                       destination: mismatchURL,
+                                                       message: mismatch.message,
+                                                       retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
+                                                                                        root: item.destination, created: mergedCreated,
+                                                                                        source: item.source, sourceIdentities: latestSourceIdentities)))
+            }
+            return nil
+        }
+
+        /// The original of a move goes once every part is repaired, unless its copy or the original changed since.
+        private mutating func removeOriginal() -> TransferItemResult? {
             let removeRetry = failures.lazy.compactMap(\.retryTarget).first
             if (result.landed != nil && FileIdentity.read(item.destination.path) != result.landed)
                 || (removeRetry != nil && removeRetry?.matchesSource(item.source) == false) {
@@ -393,8 +441,7 @@ nonisolated enum TransferEngine {
                                                        destination: item.destination,
                                                        message: changedSince,
                                                        retryTarget: removeRetry))
-                result.outcome = .partial
-                return result
+                return finish(.partial)
             }
             // The original may hold edits the copy lacks (that's why it was kept): never delete it then.
             if let change = changedSinceCopy(item.source, copy: item.destination) {
@@ -402,20 +449,18 @@ nonisolated enum TransferEngine {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message,
                                                        retryTarget: removeRetry))
-                result.outcome = .partial
-                return result
+                return finish(.partial)
             }
             if let message = removeSource(item.source, destination: item.destination, landed: result.landed,
                                           sourceParent: latestSourceParent, sourceIdentities: latestSourceIdentities) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message,
                                                        retryTarget: removeRetry))
-                result.outcome = .partial
-                return result
+                return finish(.partial)
             }
             result.sourceRemoved = true
+            return nil
         }
-        return result
     }
 
     /// A failed folder's retry includes its descendants. Retrying them separately could remove files the parent
