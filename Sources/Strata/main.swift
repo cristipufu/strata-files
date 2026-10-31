@@ -2,6 +2,7 @@ import AppKit
 @_exported import StrataAI
 @_exported import StrataDev
 @_exported import StrataFiles
+@_exported import StrataQueue
 @_exported import StrataSearch
 @_exported import StrataIndex
 @_exported import StrataModel

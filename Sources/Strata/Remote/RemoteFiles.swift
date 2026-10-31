@@ -564,6 +564,9 @@ package actor RemoteFiles {
 package nonisolated final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var total: Int64 = 0
+
+    package init() {}
+
     package var value: Int64 { lock.withLock { total } }
     package func add(_ bytes: Int64) { lock.withLock { total = total.saturatingAdd(bytes) } }
     package func set(_ bytes: Int64) { lock.withLock { total = bytes } }

@@ -182,28 +182,28 @@
     "tests": "TransferTests/aRenamedFile"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "                    let (gone, identities, _) = await FileOps.trashForUndo(created, owns: owns, copies: queue.copies)",
     "replace": "                    let (gone, identities, _) = await FileOps.trashForUndo(created, owns: { TransferEngine.exists($0) }, copies: queue.copies)",
     "rule": "Undo of a copy trashes a file swapped in since",
     "tests": "TrashUndoTests/undoingACopyTrashesOnlyItsOwnCopies"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "        let returning = moved.filter { owns($0.to) }",
     "replace": "        let returning = moved",
     "rule": "Undo of a move job moves back a file swapped in since",
     "tests": "TrashUndoTests|TransferTests/aMoveJobAcross"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "                await job.finished()\n                let still = Set(await job.landed.holding(job.completedMoves.map(\\.to)))",
     "replace": "                let still = Set(await job.landed.holding(job.completedMoves.map(\\.to)))",
     "rule": "A redo doesn't wait for the undo's job",
     "tests": "TransferTests/undoAndRedoPressedAtOnceAcrossDisks"
   },
   {
-    "file": "Strata/Transfers/TransferJournal.swift",
+    "file": "Strata/Queue/TransferJournal.swift",
     "find": "landed.set(originalKept ? nil : result.landed, at: result.destination)",
     "replace": "landed.set(originalKept ? nil : FileIdentity.read(result.destination.path), at: result.destination)",
     "rule": "A job records its items only when done, not as they land",
@@ -259,21 +259,21 @@
     "tests": "TransferTests/aCopyThatFailsToVerify"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "        let moves = moves.filter { !ReadOnlyCopies.contains($0.to, copies: copies) }\n",
     "replace": "",
     "rule": "A transfer goes into a read-only copy",
     "tests": "TransferJobTests/aReadOnly"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "let mode = mode == .move && moves.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) }) ? .copy : mode",
     "replace": "let mode = mode",
     "rule": "A move out of a read-only copy removes from it",
     "tests": "TransferJobTests/aReadOnly"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "        } else if item.decision == .keepBoth || placedByThisJob {",
     "replace": "        } else if item.decision == .keepBoth {",
     "rule": "Two items of one job with the same name replace each other",
@@ -809,7 +809,7 @@
     "tests": "RenameTests/swapRunsOnDisk"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "rule": "Undo of a job can't put an item back beside a newcomer",
     "tests": "TrashUndoTests/undoingAMoveJobPutsAnItemBackBeside",
     "edits": [
@@ -1099,56 +1099,56 @@
     "tests": "PreferencesTests/creatingPreferences"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "options.verify = verify ?? preferences.verifyCopies",
     "replace": "options.verify = verify ?? !preferences.verifyCopies",
     "rule": "Transfer ownership ignores its verification preference",
     "tests": "TransferContextTests/queueUsesItsOwnCurrentPreferencesAndExplicitOverrides"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "options: options ?? defaultOptions, undo: undo",
     "replace": "options: options ?? .init(verify: !preferences.verifyCopies), undo: undo",
     "rule": "Transfer ownership item destinations ignore the queue verification preference",
     "tests": "TransferContextTests/queueUsesItsOwnCurrentPreferencesAndExplicitOverrides"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "queue.history.recordTransfer(actionName",
     "replace": "OperationLog.shared.recordTransfer(actionName",
     "rule": "Transfer ownership records in the global History",
     "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "history: queue.history)",
     "replace": "history: .shared)",
     "rule": "Transfer ownership marks the global History on Undo",
     "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "let job = queue.enqueue(moves: moves",
     "replace": "let job = TransferQueue.shared.enqueue(moves: moves",
     "rule": "Transfer ownership cross-disk Undo uses the global queue",
     "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "            registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: queue,\n                            historyEntry: historyEntry)",
     "replace": "            registerInverse(of: step, actionName: actionName, undo: undo, containers: containers.inverse, queue: .shared,\n                            historyEntry: historyEntry)",
     "rule": "Transfer ownership repeated Redo loses its queue",
     "tests": "TransferContextTests/crossDiskUndoAndRedoUseTheOriginalQueue"
   },
   {
-    "file": "Strata/Transfers/ArchiveJob.swift",
+    "file": "Strata/Queue/ArchiveJob.swift",
     "find": "undo: undoManager, queue: queue)",
     "replace": "undo: undoManager, queue: .shared)",
     "rule": "Transfer ownership archive records in the global History",
     "tests": "TransferContextTests/queuedArchivesRecordInTheirOwnersHistory"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "private weak var queue: TransferQueue?",
     "replace": "private var queue: TransferQueue?",
     "rule": "Transfer ownership completed jobs retain their queue forever",
@@ -1176,7 +1176,7 @@
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
   {
-    "file": "Strata/Transfers/FileCommands.swift",
+    "file": "Strata/Queue/FileCommands.swift",
     "find": "transfers.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
     "replace": "TransferQueue.shared.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
     "rule": "Browser service ownership browser transfers use the global queue",
@@ -1226,7 +1226,7 @@
     "tests": "TransferContextTests/completedTransfersDoNotKeepClosedPanesAlive"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "        then = nil\n",
     "replace": "",
     "rule": "Browser service ownership terminal fetch jobs retain their continuation",
@@ -1689,7 +1689,7 @@
     "tests": "BrowserPreferencesTests/readsSortAndSavedModesStayWithTheirEnvironment"
   },
   {
-    "file": "Strata/Transfers/FileCommands.swift",
+    "file": "Strata/Queue/FileCommands.swift",
     "find": "extension: transfers.preferences.newFileExtension",
     "replace": "extension: Prefs.shared.newFileExtension",
     "rule": "Browser preferences New File uses another panes extension",
@@ -1794,7 +1794,7 @@
     "tests": "CreatedFolderOwnershipTests/liveUndoLeavesReplacementContainers|CreatedFolderOwnershipTests/historyUndoLeavesReplacementContainers"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "logHistory: logsHistory, containers: containers, queue: queue)",
     "replace": "logHistory: logsHistory, containers: CreatedFolders(containers.urls), queue: queue)",
     "rule": "Created folder ownership is captured before a job can suspend",
@@ -1829,7 +1829,7 @@
     "tests": "CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "            job.onFinish = { _ in containers.finish() }\n",
     "replace": "",
     "rule": "Created folder ownership cleanup waits for cross-disk completion",
@@ -1851,14 +1851,14 @@
     "tests": "CreatedFolderOwnershipTests/emptyFolderCleanupNeverFollowsALinkForFinderRecords"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "job.containers = containerOwnership ?? CreatedFolders(containers)",
     "replace": "job.containers = CreatedFolders(containers)",
     "rule": "Created folder ownership supplied before queueing is retained through cancellation",
     "tests": "CreatedFolderOwnershipTests/cancelledJobsKeepTheOwnershipCapturedBeforeTheyWereQueued"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "containerIdentities: containers.historyIdentities, landed: receipt.landed, updating: receipt.historyEntry)",
     "replace": "containerIdentities: containers.historyIdentities, updating: receipt.historyEntry)",
     "rule": "Transfer History ownership survives callbacks before registration",
@@ -2047,7 +2047,7 @@
     "tests": "WorkspaceOwnershipTests/menuPaletteAndSaveSheetUseTheirWindowOwner"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "return .renamed(done, landed)",
     "replace": "return .renamed(done, LandedFiles(done.map(\\.to)))",
     "rule": "Same-disk Undo keeps the identity captured before moving instead of adopting a replacement afterward",
@@ -2068,7 +2068,7 @@
     "tests": "CopyListingsTests/containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "landed.set(result.replacedIdentity, at: replaced.to)",
     "replace": "landed.record([replaced.to])",
     "rule": "Transfer result ownership never recaptures a replaced item at the worker handoff",
@@ -2089,7 +2089,7 @@
     "tests": "TransferTests/replacedItemsKeepTheirOwnershipAcrossTheWorkerHandoff"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "landed.set(result.landed, at: result.destination)",
     "replace": "landed.set(FileIdentity.read(result.destination.path), at: result.destination)",
     "rule": "Retry result ownership never adopts a replacement at the worker handoff",
@@ -2103,42 +2103,42 @@
     "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "let ownership = self.landed.identity(at: item.destination)",
     "replace": "let ownership: FileIdentity? = nil",
     "rule": "Retry result ownership preserves the parent folder when repairing a child",
     "tests": "TransferTests/retriedCopiesKeepTheirOwnershipAcrossTheWorkerHandoff"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "updating: receipt.historyEntry)",
     "replace": "updating: nil)",
     "rule": "Retry journal updates the existing History entry after a repair",
     "tests": "TransferTests/repairedCopiesKeepTheOriginalHistoryEntryAndItsOtherItems"
   },
   {
-    "file": "Strata/Transfers/TransferJournal.swift",
+    "file": "Strata/Queue/TransferJournal.swift",
     "find": "if !receipt.canExtend(in: queue.history) { receipt = Receipt() }",
     "replace": "if false { receipt = Receipt() }",
     "rule": "Retry journal starts a new record after Undo or Clear History",
     "tests": "TransferTests/retriesAfterUndoOrClearingHistoryStartANewRecord"
   },
   {
-    "file": "Strata/Transfers/TransferJournal.swift",
+    "file": "Strata/Queue/TransferJournal.swift",
     "find": "guard !wasUndone else { return false }",
     "replace": "if false { return false }",
     "rule": "Retry journal never reuses an Undo action after it has been replayed",
     "tests": "TransferTests/unloggedRetriesKeepNativeUndoAfterTheirFirstActionWasUsed"
   },
   {
-    "file": "Strata/Transfers/TransferJournal.swift",
+    "file": "Strata/Queue/TransferJournal.swift",
     "find": "place(.moved(TransferMove(from: source, to: result.destination)), at: result.destination)",
     "replace": "place(.created(result.destination), at: result.destination)",
     "rule": "Retry journal converts repaired copies into completed moves",
     "tests": "TransferTests/repairedCrossVolumeMovesUpdateBothNativeUndoAndHistory"
   },
   {
-    "file": "Strata/Transfers/TransferJournal.swift",
+    "file": "Strata/Queue/TransferJournal.swift",
     "find": "landed.set(originalKept ? nil : result.landed, at: result.destination)",
     "replace": "landed.set(result.landed, at: result.destination)",
     "rule": "Retry journal withholds copy Undo when a move kept its original",
@@ -3223,35 +3223,35 @@
     "tests": "ProviderFetchTests/largeBrowserReadsUseTheirOwnQueueAndTheExistingSizeBoundary"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "self.copies = copies",
     "replace": "self.copies = .live",
     "rule": "Provider fetch ownership queued preparation ignores its provider",
     "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "guard !urls.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }",
     "replace": "guard true else { throw ContainerAPIError.notFound }",
     "rule": "Provider fetch ownership queued reads open remaining placeholders",
     "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "try await copies.prepareForCopying(urls)\n                try Task.checkCancellation()",
     "replace": "try await copies.prepareForCopying(urls)",
     "rule": "Provider fetch ownership stopped jobs deliver late success",
     "tests": "ProviderFetchTests/stoppingQueuedOrRunningReadsNeverDeliversALateAction"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "if state == .failed, let first = urls.first",
     "replace": "if let first = urls.first",
     "rule": "Provider fetch ownership stopped jobs show a late failure",
     "tests": "ProviderFetchTests/stoppingQueuedOrRunningReadsNeverDeliversALateAction"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "find": "copies.message(for: error, about: first)",
     "replace": "error.localizedDescription",
     "rule": "Provider fetch ownership queued failures lose the provider error",
@@ -3307,7 +3307,7 @@
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
   },
   {
-    "file": "Strata/Transfers/CopyFetchJob.swift",
+    "file": "Strata/Queue/CopyFetchJob.swift",
     "edits": [
       {
         "find": "        onChange?(self)\n    }\n\n    package func cancel()",
@@ -3660,21 +3660,21 @@
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "        let fromContainers = sources.filter(copies.contains)",
     "replace": "        let copies = CopyProviders.live\n        let fromContainers = sources.filter(copies.contains)",
     "rule": "Browser copy provider ownership transfer job prepares copies with the global provider",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "find": "guard !(await copies.containsPlaceholderOffMain(in: fromContainers)) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership transfer job copies an item that remained a placeholder",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
-    "file": "Strata/Remote/RemoteJobs.swift",
+    "file": "Strata/Queue/RemoteJobs.swift",
     "find": "guard !(await copies.containsPlaceholderOffMain(in: elsewhere)) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership upload job uploads an item that remained a placeholder",
@@ -3978,7 +3978,7 @@
     "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
   },
   {
-    "file": "Strata/Transfers/FileCommands.swift",
+    "file": "Strata/Queue/FileCommands.swift",
     "find": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: history)",
     "replace": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: .shared)",
     "rule": "File command ownership rename records in the application History",
@@ -4069,7 +4069,7 @@
     "tests": "FileCommandOwnershipTests/renameConfirmationCannotOutliveItsNavigationOrRenameAnotherSelection"
   },
   {
-    "file": "Strata/Transfers/FileCommands.swift",
+    "file": "Strata/Queue/FileCommands.swift",
     "find": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: history)",
     "replace": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: .shared)",
     "rule": "File command Trash records in another History",
@@ -4167,7 +4167,7 @@
     "replace": "if false {"
   },
   {
-    "file": "Strata/Transfers/TransferJob.swift",
+    "file": "Strata/Queue/TransferJob.swift",
     "rule": "Security review: queued copies sanitize before finished",
     "tests": "SecurityReviewTests",
     "find": "options.sanitizeCopy = copies.contains(item.source)",
@@ -4680,7 +4680,7 @@
     "tests": "ArchiveSecurityReviewTests/filesNamedLikeMetadataAreExtractedAndMarkedAsDownloaded"
   },
   {
-    "file": "Strata/Transfers/ArchiveJob.swift",
+    "file": "Strata/Queue/ArchiveJob.swift",
     "find": "TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
     "replace": "TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
     "rule": "Extract: Undo leaves what Extract made in place",
@@ -5530,14 +5530,14 @@
     "tests": "SearchFiltersTests/sourceCombinesWithNameKindExtensionSizeAndDate"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "priority($0) < priority($1)",
     "replace": "priority($0) > priority($1)",
     "rule": "Queue order uses the current priority when a disk becomes free",
     "tests": "QueueOrderingTests/reorderedCrossDiskMovesKeepConflictsHistoryAndUndoWithTheirChosenItems"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "guard job.state == .queued else { return nil }",
     "replace": "guard job.state.isActive else { return nil }",
     "rule": "Queue order never reorders active jobs through a native control",
@@ -5551,7 +5551,7 @@
     "tests": "QueueOrderingTests/reorderedCrossDiskMovesKeepConflictsHistoryAndUndoWithTheirChosenItems|QueueOrderingTests/nativeQueueControlsReorderArchivesAndRefuseStaleOrForeignJobs"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "find": "let next = archiveJobs.first(where: { !$0.isBrowse && $0.state == .queued })",
     "replace": "let next = archiveJobs.last(where: { !$0.isBrowse && $0.state == .queued })",
     "rule": "Queue order gives a prioritized archive the next archive slot",
@@ -7181,14 +7181,14 @@
     "tests": "MetadataEditTests/lockingChangesOnlyTheItemShown"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "rule": "Redo of an undone copy finds none of its copies in the Trash",
     "find": "                    for (move, identity) in zip(gone, identities) { inTrash.set(identity, at: move.to) }\n",
     "replace": "",
     "tests": "TransferTests/undoAndRedoOfACopyAndAMoveKeepTheirOrder"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "rule": "Undo moves back an item no longer the one the operation left",
     "find": "            guard identity != nil, identity == expected[move.from.path] else { continue }\n",
     "replace": "",
@@ -7209,7 +7209,7 @@
     "tests": "TransferTests/retryingAnUndoRemovalLeavesAnItemPutInItsPlace"
   },
   {
-    "file": "Strata/Transfers/TransferQueue.swift",
+    "file": "Strata/Queue/TransferQueue.swift",
     "rule": "Undo across disks doesn't tell its job which items it means",
     "find": "                                    logHistory: false, expected: expected)",
     "replace": "                                    logHistory: false)",

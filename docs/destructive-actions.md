@@ -231,7 +231,7 @@ belong to.
 | `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
 | `Model/Prefs :: registerTestCleanup` (a test run's own settings suite, at exit) | `PreferencesTests/processPreferencesAreIsolatedFromTheAppInEveryConfiguration` checks the suite's place; the exit itself is untested |
 | `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
-| `Transfers/FileCommands :: rename` | `FileCommandOwnershipTests/*` |
+| `Queue/FileCommands :: rename` | `FileCommandOwnershipTests/*` |
 | `Browser/BrowserViewController+ArchiveBrowsing :: prepareCopy` (makes the copy's folder) | `ArchiveSafetyTests/*` |
 | `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
 | `Browser/BrowserViewController+Trash :: makeFolders` (remakes missing folders for Put Back), `deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`, `FileCommandOwnershipTests/putBackFindsWhereAnItemCameFromInItsWindowsHistory`; `DeleteTests/*` |
@@ -264,7 +264,7 @@ belong to.
 | `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `checkItem`, `clearFlagsAndAccessList`, `checkedPermissions`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |
 | `Transfers/ArchiveWriter :: run`, `writeFolder`, `writeLink`, `writeHardLink`, `folder`, `openFolder`, `subfolder`, `finish`, `apply`, `setTimes` (write what Extract's worker sends into the private folder being extracted into) | `ArchiveWriterTests/*`; `ArchiveExtractTests/*`; `ArchiveSafetyTests/*` |
 | `Transfers/TransferEngine :: fail`, `renameInPlace`, `replaceExisting`, `copy`, `copyfile`, `rename`, `trash`, `removeIfPresent`, `removeOwned`, `removeOwnedTree`, `removeSource`; `Transfers/TransferSession :: repairOwnedDirectory` | `TransferTests/*` |
-| `Transfers/TransferQueue :: start`, `renameOnOneDisk` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*`, `TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration` (captured identity, conflicts, replacements, failed moves and repeated Undo/Redo) |
+| `Queue/TransferQueue :: start`, `renameOnOneDisk` (undo's moves) | `TrashUndoTests/undoingAMoveJobMovesBackOnlyItsOwnItems`, `AcrossDisksTests/*`, `TransferTests/sameDiskUndoStepsNeverAdoptItemsReplacedBeforeRegistration` (captured identity, conflicts, replacements, failed moves and repeated Undo/Redo) |
 | `Views/ClickToRename :: clicked` | `InlineRenameTests/*` |
 | `Toolbar/BrowserToolbar :: toolbarDidRemoveItem` | `ToolbarCustomizationTests/*`; removes UI references only, not files; see the exemption above. |
 | `Window/Workspaces :: rename`, `askToRename` (a workspace's name, saved settings) | `WorkspaceTests/*` |

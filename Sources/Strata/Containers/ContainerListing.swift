@@ -42,6 +42,9 @@ package nonisolated func blocking<T: Sendable>(_ work: @escaping @Sendable () th
 /// Set once, read from anywhere: stops a blocking transfer.
 package nonisolated final class StopFlag: Sendable {
     private let flag = Atomic<Bool>(false)
+
+    package init() {}
+
     package func set() { flag.store(true, ordering: .relaxed) }
     package var isSet: Bool { flag.load(ordering: .relaxed) }
 }

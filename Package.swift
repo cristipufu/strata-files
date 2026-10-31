@@ -158,17 +158,25 @@ let package = Package(
             sources: indexSources,
             swiftSettings: strataSwiftSettings
         ),
+        // The transfer queue and its jobs (copies, moves, uploads, archives, fetches), one disk at a time and journaled
+        // for History, and the window's file command owner: above the file layer they run.
+        .target(
+            name: "StrataQueue",
+            dependencies: ["StrataFiles"],
+            path: "Sources/Strata/Queue",
+            swiftSettings: strataSwiftSettings
+        ),
         // Ask Strata (plans, the content index, summaries), project detection and cleanup, and the app's file index and
         // searches: above the file layer, below the interface.
         .target(
             name: "StrataAI",
-            dependencies: ["StrataFiles"],
+            dependencies: ["StrataQueue"],
             path: "Sources/Strata/AI",
             swiftSettings: strataSwiftSettings
         ),
         .target(
             name: "StrataDev",
-            dependencies: ["StrataFiles"],
+            dependencies: ["StrataQueue"],
             path: "Sources/Strata/Dev",
             swiftSettings: strataSwiftSettings
         ),
@@ -194,7 +202,7 @@ let package = Package(
                            "StrataArchiveClient", "StrataConnections"],
             path: "Sources/Strata",
             exclude: ["AI", "App", "AppUpdates", "Browser", "Connections", "Dev", "Dock", "Index", "Inspector", "main.swift",
-                      "Palette",
+                      "Palette", "Queue",
                       "Previewing", "Previews", "Settings", "Sidebar", "Support", "Toolbar", "Views", "Window"]
                 + modelSources.map { "Model/\($0)" },
             sources: ["Transfers", "Remote", "Containers"] + appModelSources.map { "Model/\($0)" },
@@ -210,13 +218,14 @@ let package = Package(
                 "StrataPreviews",
                 "StrataIndex",
                 "StrataFiles",
+                "StrataQueue",
                 "StrataAI",
                 "StrataDev",
                 "StrataSearch",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "Connections", "AI", "Dev",
-                      "Index"]
+            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "Connections", "Queue", "AI",
+                      "Dev", "Index"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
                 + appModelSources.map { "Model/\($0)" }
@@ -246,6 +255,7 @@ let package = Package(
                 "StrataIndex",
                 "StrataConnections",
                 "StrataFiles",
+                "StrataQueue",
                 "StrataAI",
                 "StrataDev",
                 "StrataSearch",

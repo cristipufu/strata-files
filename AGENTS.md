@@ -6,14 +6,16 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
 
 ## Repository map
 
-- `Sources/Strata/` — the app, one folder per area: `Browser` (the file list and its commands), `Views` (Icons,
-  Columns, Gallery, Disk Usage), `Window` (windows, panes, sidebar wiring, Compare & Sync), `Transfers` (copy/move
-  jobs, conflicts, archives), `Model` (FileOps, Trash, History in `OperationLog`, SecureStorage), `AI` (Ask Strata
-  plans), `Remote` (SFTP and S3), `Containers`, `Dev` (git, project cleanup), `Inspector`, `Toolbar` (path bar,
-  suggestions), `Palette` (command palette), `Previews` (file previews), `Previewing` (Space previews of folders and
-  archives), `Index`, `Sidebar`, `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower
-  layers as library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`,
-  `StrataFiles` for the rest of `Model`, `Transfers`, `Remote` and `Containers`, then `StrataAI`, `StrataDev` and
+- `Sources/Strata/` — the app, one folder per area: `Browser` (the file list and its commands), `Views` (Icons, Columns,
+  Gallery, Disk Usage), `Window` (windows, panes, sidebar wiring, Compare & Sync, the transfers panel and conflict
+  sheet), `Transfers` (the copy engine, archives), `Queue` (the transfer queue, its jobs and journal, the file command
+  owner), `Model` (FileOps, Trash, History in `OperationLog`, SecureStorage), `AI` (Ask Strata plans), `Remote` (server
+  copies and sessions), `Connections` (SFTP, the Docker engine API, tar, server definitions and credentials),
+  `Containers`, `Dev` (git, project cleanup), `Inspector`, `Toolbar` (path bar, suggestions), `Palette` (command
+  palette), `Previews` (file previews), `Previewing` (Space previews of folders and archives), `Index`, `Sidebar`,
+  `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower layers as library targets
+  (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`, `StrataConnections`, `StrataFiles`
+  for the rest of `Model`, `Transfers`, `Remote` and `Containers`, `StrataQueue`, then `StrataAI`, `StrataDev` and
   `StrataSearch` for the rest of `Index`) imported by `Strata`, the interface, so the compiler enforces module
   boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,

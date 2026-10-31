@@ -6,6 +6,7 @@ import Testing
 @testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataQueue
 @testable import StrataSearch
 @testable import StrataIndex
 @testable import StrataModel

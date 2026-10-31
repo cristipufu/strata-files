@@ -4,6 +4,7 @@ import Foundation
 @testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataQueue
 @testable import StrataModel
 @testable import StrataSearch
 

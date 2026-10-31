@@ -50,6 +50,8 @@ package nonisolated final class TransferProgress: @unchecked Sendable {
     private let lock = NSLock()
     private var value = Snapshot()
 
+    package init() {}
+
     package var snapshot: Snapshot { lock.withLock { value } }
 
     package func update(_ body: (inout Snapshot) -> Void) {
@@ -104,6 +106,20 @@ package nonisolated struct TransferItem: Sendable {
     /// What the item must be (for an undo or redo, the item it means): one put in its place since is left where it
     /// is. Nil for any item there.
     package var expected: FileIdentity?
+
+    package init(source: URL, destination: URL, operation: Operation, decision: ConflictDecision? = nil,
+                 copyStyleName: Bool = false, bytes: Int64 = 0, files: Int = 1, expected: FileIdentity? = nil,
+                 outcome: Outcome = .pending) {
+        self.source = source
+        self.destination = destination
+        self.operation = operation
+        self.decision = decision
+        self.copyStyleName = copyStyleName
+        self.bytes = bytes
+        self.files = files
+        self.expected = expected
+        self.outcome = outcome
+    }
 
     /// Whether `identity`, read at its source, is the item it means.
     package func means(_ identity: FileIdentity?) -> Bool {

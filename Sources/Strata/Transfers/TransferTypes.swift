@@ -51,6 +51,13 @@ package nonisolated struct TransferConflict: Sendable {
     /// Conflicts still to be decided in this job, this one included.
     package let remaining: Int
 
+    package init(mode: TransferMode, source: URL, existing: URL, remaining: Int) {
+        self.mode = mode
+        self.source = source
+        self.existing = existing
+        self.remaining = remaining
+    }
+
     /// Merge is offered when copying a folder onto a folder (like Finder's Option-drag).
     package var canMerge: Bool {
         mode == .copy && TransferEngine.isPlainFolder(source) && TransferEngine.isPlainFolder(existing)
@@ -90,6 +97,16 @@ package nonisolated struct TransferFailure: Sendable {
     package let destination: URL?
     package let message: String
     package var retryTarget: TransferRetryTarget?
+
+    package init(item: Int, stage: Stage, source: URL, destination: URL?, message: String,
+                 retryTarget: TransferRetryTarget? = nil) {
+        self.item = item
+        self.stage = stage
+        self.source = source
+        self.destination = destination
+        self.message = message
+        self.retryTarget = retryTarget
+    }
 
     package var displayName: String { source.lastPathComponent }
 }

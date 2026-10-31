@@ -14,6 +14,10 @@ package nonisolated enum Archiver {
     package struct Failure: LocalizedError, Equatable {
         package let message: String
         package var errorDescription: String? { message }
+
+        package init(message: String) {
+            self.message = message
+        }
     }
 
     /// What a survey of an archive says before it's extracted; its counts are lower bounds when it didn't finish.
@@ -26,6 +30,8 @@ package nonisolated enum Archiver {
         private var reader: PipeReader?
         private var cancelled = false
         private var done = 0
+
+        package init() {}
 
         package var isCancelled: Bool { lock.withLock { cancelled } }
         /// Entries written so far.
