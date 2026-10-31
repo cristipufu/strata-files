@@ -20,6 +20,9 @@ nonisolated package enum PreviewArchiveError: Error, LocalizedError {
 
 /// Pins the chosen archive before any password sheet or worker starts. Contents must stay unchanged too.
 nonisolated package final class PreviewArchiveSource: Sendable {
+    /// `url`'s file opened for reading, away from the main thread (nil when it can't be).
+    @concurrent package static func opening(_ url: URL) async -> PreviewArchiveSource? { try? PreviewArchiveSource(url) }
+
     package let chosen: ChosenFile
     private let stamp: Stamp
     private struct Stamp: Equatable, Sendable {

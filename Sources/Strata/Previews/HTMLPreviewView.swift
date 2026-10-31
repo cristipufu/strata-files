@@ -8,7 +8,10 @@ package final class HTMLPreviewView: WebPreviewView {
     private let browserButton = NSButton(title: String(localized: "Open in Browser"), target: nil, action: nil)
     private let host = NSView()
     private let url: URL
-    private let selected: ChosenFile?
+    /// Its file, chosen away from the main thread as the view is made.
+    private let selected: Task<ChosenFile?, Never>
+    /// Open in Browser, checking the chosen file first.
+    package private(set) var openingBrowser: Task<Void, Never>?
     private let openFile: (URL) -> Void
     private var source: CodePreviewView?
     private var document: HTMLPreviewDocument?
@@ -18,7 +21,7 @@ package final class HTMLPreviewView: WebPreviewView {
                  openLink: @escaping (URL) -> Void = PreviewWebPage.usualOpenLink,
                  timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
         self.url = url
-        selected = try? ChosenFile(url)
+        selected = Task { await ChosenFile.choosing(url) }
         self.openFile = openFile ?? Self.openInBrowser
         super.init(page: PreviewWebPage(timeLimit: timeLimit, openLink: openLink))
         ThemeStyle.bind(host, to: .preview)
@@ -65,7 +68,7 @@ package final class HTMLPreviewView: WebPreviewView {
         guard modeControl.selectedSegment == 0 else { return }
         let url = url, selected = selected
         load({ () -> HTMLPreviewDocument? in
-            guard let selected else { return nil }
+            guard let selected = await selected.value else { return nil }
             return try? await HTMLPreviewDocument.open(url, chosen: selected)
         }, apply: { [weak self] document in
             guard let self else { return }
@@ -118,7 +121,7 @@ package final class HTMLPreviewView: WebPreviewView {
         if source == nil {
             let selected = selected
             let view = CodePreviewView(source: {
-                guard let selected else { throw POSIXError(.ESTALE) }
+                guard let selected = await selected.value else { throw POSIXError(.ESTALE) }
                 return try await HTMLPreviewDocument.source(selected)
             }, language: Languages.html)
             source = view; attach(view)
@@ -129,9 +132,17 @@ package final class HTMLPreviewView: WebPreviewView {
     }
 
     @objc package func openBrowser(_ sender: Any?) {
-        guard !stopped, let selected,
-              (try? selected.withParent { _, _, info in info.st_mode & S_IFMT == S_IFREG }) == true else { return }
-        openFile(url)
+        guard !stopped else { return }
+        let selected = selected
+        openingBrowser = Task { [weak self] in
+            guard let chosen = await selected.value, await Self.isPlainFile(chosen), let self, !stopped else { return }
+            openFile(url)
+        }
+    }
+
+    /// Whether the chosen item is still a plain file where it was chosen: away from the main thread.
+    @concurrent private static func isPlainFile(_ chosen: ChosenFile) async -> Bool {
+        (try? chosen.withParent { _, _, info in info.st_mode & S_IFMT == S_IFREG }) == true
     }
 
     private static func openInBrowser(_ url: URL) {

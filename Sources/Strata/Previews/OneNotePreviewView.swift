@@ -4,12 +4,13 @@ import AppKit
 package final class OneNotePreviewView: PagedPreviewView {
     package typealias Loader = @Sendable (PreviewArchiveSource) async throws -> OneNoteSectionFile
     package private(set) var section: OneNoteSectionFile?
-    private let source: PreviewArchiveSource?
+    /// Its file, opened away from the main thread as the view is made.
+    private let source: Task<PreviewArchiveSource?, Never>
     private let loader: Loader
 
     package init(url: URL, loader: @escaping Loader = { try await OneNoteSectionFile.open($0) },
                  timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
-        source = try? PreviewArchiveSource(url)
+        source = Task { await PreviewArchiveSource.opening(url) }
         self.loader = loader
         super.init(name: url.deletingPathExtension().lastPathComponent, timeLimit: timeLimit)
         open()
@@ -20,7 +21,7 @@ package final class OneNotePreviewView: PagedPreviewView {
     package override func open() {
         let source = source, loader = loader
         load({
-            guard let source else { throw PreviewError.unsupported }
+            guard let source = await source.value else { throw PreviewError.unsupported }
             return try await loader(source)
         }, apply: { [weak self] section in
             guard let self, !stopped else { return }

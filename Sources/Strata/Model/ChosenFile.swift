@@ -4,6 +4,9 @@ import StrataSupport
 /// A chosen name and its parent held open across a confirmation or metadata change. Opening each component
 /// without following links prevents a replaced ancestor from redirecting the operation.
 nonisolated package final class ChosenFile: Sendable {
+    /// `url` chosen away from the main thread (nil when it can't be).
+    @concurrent package static func choosing(_ url: URL) async -> ChosenFile? { try? ChosenFile(url) }
+
     package let url: URL
     package let identity: FileIdentity
     private let parentPath: String

@@ -292,13 +292,16 @@ import Testing
         view.modeControl.selectedSegment = 0; view.modeChanged(view.modeControl)
         #expect(view.loadingTask == nil && view.page.task == nil)
         view.openBrowser(nil)
+        await view.openingBrowser?.value
         #expect(opened.isEmpty)
         let another = HTMLPreviewView(url: url, openFile: { opened.append($0) })
         another.openBrowser(nil)
+        await another.openingBrowser?.value
         #expect(opened == [url])
         try FileManager.default.moveItem(at: url, to: tree.url("parked"))
         try Data("replacement".utf8).write(to: url)
         another.openBrowser(nil)
+        await another.openingBrowser?.value
         #expect(opened == [url] && tree.text("parked") == "<h1>Chosen</h1>" && tree.text("outside") == "outside")
         another.stop()
     }
