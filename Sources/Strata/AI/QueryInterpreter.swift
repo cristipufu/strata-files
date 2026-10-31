@@ -251,7 +251,8 @@ private nonisolated final class Parser {
     func run() {
         operators()
         sizes()
-        datesPass()
+        relativeDates()
+        calendarDates()
         kindsPass()
         names()
         content()
@@ -321,38 +322,31 @@ private nonisolated final class Parser {
             self.filter.maxSize = saturatingInt64(high * Self.multiplier(unit))
             return true
         }
-        consume("\\b(?:bigger|larger|greater|heavier|more|over|above|exceeding|at least)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
-        consume("\\b(?:smaller|less|lighter|under|below|at most|up to|no more)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
+        consumeSize("\\b(?:bigger|larger|greater|heavier|more|over|above|exceeding|at least)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b", setting: \.minSize)
+        consumeSize("\\b(?:smaller|less|lighter|under|below|at most|up to|no more)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b", setting: \.maxSize)
         consume("(?:^|\\s)(>=?|<=?)\\s*(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\b") { m in
             guard let value = Self.number(m[2]) else { return false }
             let bytes = saturatingInt64(value * Self.multiplier(m[3] ?? "mb")) ?? 0
             if m[1]?.hasPrefix(">") == true { self.filter.minSize = bytes } else { self.filter.maxSize = bytes }
             return true
         }
-        consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*(\\+|or (?:more|bigger|larger|above)|and (?:up|above))") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
-        consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*or (?:less|smaller|below)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
+        consumeSize("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*(\\+|or (?:more|bigger|larger|above)|and (?:up|above))", setting: \.minSize)
+        consumeSize("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*or (?:less|smaller|below)\\b", setting: \.maxSize)
         // Adjectives, as rough sizes (only if nothing more precise was said).
         consume("\\b(huge|enormous|gigantic|massive)\\b") { _ in self.setMin(1_000_000_000) }
         consume("\\b(large|big|biggest|largest|heavy)\\b") { _ in self.setMin(100_000_000) }
         consume("\\b(tiny)\\b") { _ in self.setMax(100_000) }
         consume("\\b(small|smallest)\\b") { _ in self.setMax(1_000_000) }
         consume("\\b(empty)\\b") { _ in self.setMax(0) }
+    }
+
+    /// A size in `pattern`'s first two groups (a number, then its unit; megabytes when there's none) sets `bound`.
+    private func consumeSize(_ pattern: String, setting bound: WritableKeyPath<SearchFilter, Int64?>) {
+        consume(pattern) { m in
+            guard let value = Self.number(m[1]) else { return false }
+            self.filter[keyPath: bound] = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
+            return true
+        }
     }
 
     private func setMin(_ bytes: Int64) -> Bool {
@@ -367,28 +361,14 @@ private nonisolated final class Parser {
 
     // MARK: Dates
 
-    private func datesPass() {
+    /// Spans counted in units ("older than 3 weeks", "in the last 2 days", "3 days ago"), then periods by name ("past
+    /// week", "last month", "today", "on monday").
+    private func relativeDates() {
         let num = Self.num, unit = Self.timeUnit
-        consume("\\b(?:older than|more than|over|at least|not (?:modified|touched|changed|opened|edited|used) (?:in|for)(?: the)?(?: last| past)?)\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b(?:newer|younger|less|fewer) than\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b(?:(?:in|within|during|from|over|for)\\s+)?(?:the\\s+)?(?:last|past|previous)\\s+\(num)\\s+\(unit)\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b\(num)\\s+\(unit)\\s+old\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
-            return true
-        }
+        consumeSpan("\\b(?:older than|more than|over|at least|not (?:modified|touched|changed|opened|edited|used) (?:in|for)(?: the)?(?: last| past)?)\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b", setting: \.modifiedBefore)
+        consumeSpan("\\b(?:newer|younger|less|fewer) than\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b", setting: \.modifiedAfter)
+        consumeSpan("\\b(?:(?:in|within|during|from|over|for)\\s+)?(?:the\\s+)?(?:last|past|previous)\\s+\(num)\\s+\(unit)\\b", setting: \.modifiedAfter)
+        consumeSpan("\\b\(num)\\s+\(unit)\\s+old\\b", setting: \.modifiedBefore)
         consume("\\b\(num)\\s+\(unit)\\s+ago\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
             self.setDates(self.dates.unit(containing: boundedCount(count), component))
@@ -416,6 +396,10 @@ private nonisolated final class Parser {
             if m[1] == "since" { self.filter.modifiedAfter = range.0 } else { self.setDates(range) }
             return true
         }
+    }
+
+    /// Dates on the calendar: ISO dates and ranges, months by name, years, and "recently".
+    private func calendarDates() {
         // Two ISO dates make one range ("between 2025-03-03 and 2025-04-09", "from … to …"); before single dates.
         consume("\\b(?:between|from)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(?:and|to|-)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b") { m in
             let v = (1...6).compactMap { m[$0].flatMap(Int.init) }
@@ -458,6 +442,15 @@ private nonisolated final class Parser {
         }
         consume("\\b(recent|recently|lately|latest|newest)\\b") { _ in
             if self.filter.modifiedAfter == nil, self.filter.modifiedBefore == nil { self.filter.modifiedAfter = self.dates.ago(7, .day) }
+            return true
+        }
+    }
+
+    /// A span in `pattern`'s first two groups ("3 weeks") sets `bound` to that long ago.
+    private func consumeSpan(_ pattern: String, setting bound: WritableKeyPath<SearchFilter, Date?>) {
+        consume(pattern) { m in
+            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
+            self.filter[keyPath: bound] = self.dates.ago(boundedCount(count), component)
             return true
         }
     }
