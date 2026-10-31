@@ -37,9 +37,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var toolbarCustomization: BrowserToolbar?
     private var responderObservation: NSKeyValueObservation?
     private var inspectorObservation: NSKeyValueObservation?
-    /// Index changes re-run searches no more often than `indexRefreshInterval`.
-    var indexRefreshScheduled = false
-    var lastIndexRefresh = Date.distantPast
+    /// Searches and Recents follow the index as it changes, at most every couple of seconds: something in your home
+    /// folder is always changing (caches, logs), and searching the whole index on each change kept the CPU busy.
+    let indexRefresh = RefreshThrottle(interval: 2)
     let palette = CommandPalette()
     var browser: BrowserViewController { pane.browser }
     /// In dual pane, the pane that isn't focused (Copy and Move to Other Pane send there).

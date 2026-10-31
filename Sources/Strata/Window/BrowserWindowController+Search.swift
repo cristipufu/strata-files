@@ -73,17 +73,9 @@ extension BrowserWindowController {
         split.sidebar.highlight(.search(saved))
     }
 
-    /// Searches and Recents follow the index as it changes, at most every couple of seconds: something in your home
-    /// folder is always changing (caches, logs), and searching the whole index on each change kept the CPU busy.
     @objc func indexChanged() {
-        guard !indexRefreshScheduled else { return }
-        indexRefreshScheduled = true
-        let wait = max(0, Self.indexRefreshInterval - Date().timeIntervalSince(lastIndexRefresh))
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
-            guard let self else { return }
-            indexRefreshScheduled = false
-            lastIndexRefresh = Date()
-            for p in panes {
+        indexRefresh.request { [weak self] in
+            for p in self?.panes ?? [] {
                 switch p.destination {
                 case .search, .recents: p.search.run()
                 case .folder, .duplicates: break
@@ -91,8 +83,6 @@ extension BrowserWindowController {
             }
         }
     }
-
-    private static let indexRefreshInterval: TimeInterval = 2
 
     @objc func indexPhaseChanged() {
         for p in panes where p.destination == .recents && services.index.isReady { p.search.run() }
