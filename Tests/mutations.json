@@ -967,10 +967,24 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "                    if !excluded, store.mtime[o] != item.mtime {",
-    "replace": "                    if store.mtime[o] != item.mtime {",
+    "find": "        if !excluded, store.mtime[Int(old)] != item.mtime {",
+    "replace": "        if store.mtime[Int(old)] != item.mtime {",
     "rule": "Index performance: parent events ignore activity inside excluded state",
     "tests": "IndexWorkerTests/aCoalescedParentEventDoesNotResaveChangesOnlyInsideExcludedState"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        let noiseChanged = item.isDirectory && expectedNoise != (flags & IndexStore.Flag.noise != 0)\n",
+    "replace": "        let noiseChanged = false\n",
+    "rule": "Index: a folder keeps its old noise status when its project file appears or goes",
+    "tests": "IndexWorkerTests/buildOutputBecomesNoiseWithItsWholeSubtree"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            store.removeChildren(Array(existing.values), of: id)\n",
+    "replace": "",
+    "rule": "Index: items gone from a refreshed folder stay in the index",
+    "tests": "IndexWorkerTests/aChildGoneFromItsFolderLeavesTheIndex"
   },
   {
     "file": "Strata/AI/SemanticIndex.swift",

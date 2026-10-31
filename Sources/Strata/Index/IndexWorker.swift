@@ -310,96 +310,159 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             return false
         }
         if error == ENOENT || error == ENOTDIR {
-            return store.write { store in
-                let existed = store.flags[Int(id)] & IndexStore.Flag.deleted == 0
-                store.remove(id)
-                return existed
-            }
+            return store.write { store in Self.removeGone(id, from: &store) }
         }
         guard error == 0 else { return false }
 
-        let prefix = path.hasSuffix("/") ? path : path + "/"
-        let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
-        var newFolders: [(id: Int32, path: String)] = []
-        var existingFolders: [(id: Int32, path: String)] = []
-        var changed = false
+        let listing = FolderListing(items: items, names: names, path: path)
+        var changes = FolderChanges()
         let firstNew: Int32 = store.write { store in
             let firstNew = Int32(store.count)
-            var existing: [String: Int32] = [:]
-            for child in store.children(of: id) { existing[store.name(child)] = child }
-            let inheritedNoise = store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id)
-            let inheritedHidden = store.flags[Int(id)] & IndexStore.Flag.hidden != 0
-            var additions: [ScannedItem] = []
-            var additionNoise: [Bool] = []
-            for (index, item) in items.enumerated() {
-                let name = String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
-                guard let old = existing.removeValue(forKey: name) else {
-                    additions.append(item)
-                    additionNoise.append(ownNoise[index])
-                    continue
-                }
-                let o = Int(old)
-                // A folder whose noise status changed (a Cargo.toml or package.json appeared or went away next to
-                // it) is re-added so its whole subtree picks up the new flag.
-                let expectedNoise = item.isDirectory && (inheritedNoise || ownNoise[index] || config.noise.contains(prefix + name))
-                let noiseChanged = item.isDirectory && expectedNoise != (store.flags[o] & IndexStore.Flag.noise != 0)
-                // Another item under the same name (a folder swapped in by renames), or one that became hidden,
-                // visible, a symlink or a regular item: re-add it so its flags and (for folders) contents are fresh.
-                let swapped = store.fileKey[o] != 0 && item.fileKey != 0 && store.fileKey[o] != item.fileKey
-                let expectedHidden = inheritedHidden || item.isHidden
-                let flagsChanged = expectedHidden != (store.flags[o] & IndexStore.Flag.hidden != 0)
-                    || item.isSymlink != (store.flags[o] & IndexStore.Flag.symlink != 0)
-                if store.isDirectory(old) != item.isDirectory || noiseChanged || swapped || flagsChanged {
-                    changed = true
-                    store.remove(old)
-                    additions.append(item)
-                    additionNoise.append(ownNoise[index])
-                } else if item.isDirectory {
-                    // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
-                    let excluded = isExcluded(prefix + name, config)
-                    if !excluded, store.mtime[o] != item.mtime {
-                        changed = true
-                        store.mtime[o] = item.mtime
-                    }
-                    if deep, !item.isMountPoint, !excluded { existingFolders.append((old, prefix + name)) }
-                } else if store.size[o] != item.size || store.mtime[o] != item.mtime {
-                    changed = true
-                    store.propagate(from: old, bytes: item.size - store.size[o], files: 0)
-                    store.size[o] = item.size
-                    store.mtime[o] = item.mtime
-                }
-            }
-            if !existing.isEmpty {
-                changed = true
-                store.removeChildren(Array(existing.values), of: id)
-            }
-            guard !additions.isEmpty else { return firstNew }
-            changed = true
-            let ids = names.withUnsafeBytes { store.appendChildren(additions, nameBuffer: $0, of: id, ownNoise: additionNoise) }
-            guard ids.count == additions.count else { interrupted = true; return firstNew }
-            for (offset, item) in additions.enumerated() where item.isDirectory && !item.isMountPoint {
-                let childPath = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
-                let childID = ids.lowerBound + Int32(offset)
-                if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
-                if !isExcluded(childPath, config) { newFolders.append((childID, childPath)) }
-            }
+            reconcile(listing, with: id, in: &store, config: config, deep: deep, changes: &changes)
+            addNew(listing, to: id, in: &store, config: config, changes: &changes)
             return firstNew
         }
-        if !newFolders.isEmpty {
-            let scanner = IndexScanner(store: store, excluded: config.excluded, noiseFolders: config.noise)
-            // A big new folder can take a while: quitting stops it too.
-            let watchdog = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-            watchdog.schedule(deadline: .now() + 0.25, repeating: 0.25)
-            watchdog.setEventHandler { [weak self] in if self?.pastQuitDeadline == true { scanner.cancel() } }
-            watchdog.resume()
-            scanner.scan(newFolders, threads: 4)
-            watchdog.cancel()
-            if scanner.isCancelled { interrupted = true }
-        }
+        if !changes.newFolders.isEmpty { scan(changes.newFolders, into: store, config: config) }
         store.write { store in store.integrateNew(from: firstNew) }
-        for folder in existingFolders {
+        var changed = changes.changed
+        for folder in changes.existingFolders {
             if refreshFolder(folder.id, folder.path, deep: true) { changed = true }
         }
         return changed
+    }
+
+    /// One folder as read: its items, their names in one buffer, and each one's own noise (see `IndexStore.ownNoise`).
+    private struct FolderListing {
+        let items: [ScannedItem]
+        let names: [UInt8]
+        let ownNoise: [Bool]
+        /// The folder's path, ending in "/".
+        let prefix: String
+
+        init(items: [ScannedItem], names: [UInt8], path: String) {
+            self.items = items
+            self.names = names
+            ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
+            prefix = path.hasSuffix("/") ? path : path + "/"
+        }
+
+        func name(of item: ScannedItem) -> String {
+            String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
+        }
+    }
+
+    /// What a folder's listing changed in the index, and what's left to read below it.
+    private struct FolderChanges {
+        var changed = false
+        /// Listed items the index doesn't have (or no longer has as they are), with their own noise.
+        var additions: [ScannedItem] = []
+        var additionNoise: [Bool] = []
+        /// Folders new to the index, to scan in full.
+        var newFolders: [(id: Int32, path: String)] = []
+        /// Folders already in the index, refreshed after this one when the refresh is deep.
+        var existingFolders: [(id: Int32, path: String)] = []
+
+        mutating func add(_ item: ScannedItem, noise: Bool) {
+            additions.append(item)
+            additionNoise.append(noise)
+        }
+    }
+
+    /// The folder is gone: it leaves the index. Whether it was there to leave.
+    private static func removeGone(_ id: Int32, from store: inout IndexStore.Storage) -> Bool {
+        let existed = store.flags[Int(id)] & IndexStore.Flag.deleted == 0
+        store.remove(id)
+        return existed
+    }
+
+    /// Compares the listing with the folder's indexed children: changed ones are updated, or removed to be added again
+    /// when what they are changed, and ones no longer listed are removed.
+    private func reconcile(_ listing: FolderListing, with id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
+                           deep: Bool, changes: inout FolderChanges) {
+        var existing: [String: Int32] = [:]
+        for child in store.children(of: id) { existing[store.name(child)] = child }
+        let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
+                         hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
+        for (index, item) in listing.items.enumerated() {
+            let name = listing.name(of: item)
+            guard let old = existing.removeValue(forKey: name) else {
+                changes.add(item, noise: listing.ownNoise[index])
+                continue
+            }
+            let expectedNoise = item.isDirectory
+                && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
+            if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
+                changes.changed = true
+                store.remove(old)
+                changes.add(item, noise: listing.ownNoise[index])
+            } else if item.isDirectory {
+                update(folder: old, at: listing.prefix + name, to: item, in: &store, config: config, deep: deep,
+                       changes: &changes)
+            } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime {
+                changes.changed = true
+                store.propagate(from: old, bytes: item.size - store.size[Int(old)], files: 0)
+                store.size[Int(old)] = item.size
+                store.mtime[Int(old)] = item.mtime
+            }
+        }
+        if !existing.isEmpty {
+            changes.changed = true
+            store.removeChildren(Array(existing.values), of: id)
+        }
+    }
+
+    /// Whether the indexed item `old` must be removed and the listed one added in its place: it became a folder or a
+    /// file, another item took its name (a folder swapped in by renames), or it became hidden, visible, a symlink or
+    /// a regular item. A folder whose noise status changed (a Cargo.toml or package.json appeared or went away next to
+    /// it) is added again too, so its whole subtree picks up the new flag.
+    private func needsAddingAgain(_ old: Int32, as item: ScannedItem, expectedNoise: Bool, inheritedHidden: Bool,
+                                  in store: borrowing IndexStore.Storage) -> Bool {
+        let flags = store.flags[Int(old)]
+        let noiseChanged = item.isDirectory && expectedNoise != (flags & IndexStore.Flag.noise != 0)
+        let swapped = store.fileKey[Int(old)] != 0 && item.fileKey != 0 && store.fileKey[Int(old)] != item.fileKey
+        let flagsChanged = (inheritedHidden || item.isHidden) != (flags & IndexStore.Flag.hidden != 0)
+            || item.isSymlink != (flags & IndexStore.Flag.symlink != 0)
+        return store.isDirectory(old) != item.isDirectory || noiseChanged || swapped || flagsChanged
+    }
+
+    /// A folder still there as it was: its date, and (for a deep refresh) its contents next.
+    private func update(folder old: Int32, at path: String, to item: ScannedItem, in store: inout IndexStore.Storage,
+                        config: IndexConfig, deep: Bool, changes: inout FolderChanges) {
+        // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
+        let excluded = isExcluded(path, config)
+        if !excluded, store.mtime[Int(old)] != item.mtime {
+            changes.changed = true
+            store.mtime[Int(old)] = item.mtime
+        }
+        if deep, !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }
+    }
+
+    /// Adds what the listing has that the index doesn't, noting the new folders to scan.
+    private func addNew(_ listing: FolderListing, to id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
+                        changes: inout FolderChanges) {
+        guard !changes.additions.isEmpty else { return }
+        changes.changed = true
+        let ids = listing.names.withUnsafeBytes {
+            store.appendChildren(changes.additions, nameBuffer: $0, of: id, ownNoise: changes.additionNoise)
+        }
+        guard ids.count == changes.additions.count else { interrupted = true; return }
+        for (offset, item) in changes.additions.enumerated() where item.isDirectory && !item.isMountPoint {
+            let childPath = listing.prefix + listing.name(of: item)
+            let childID = ids.lowerBound + Int32(offset)
+            if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
+            if !isExcluded(childPath, config) { changes.newFolders.append((childID, childPath)) }
+        }
+    }
+
+    /// Scans folders new to the index in full. A big one can take a while: quitting stops it too.
+    private func scan(_ folders: [(id: Int32, path: String)], into store: IndexStore, config: IndexConfig) {
+        let scanner = IndexScanner(store: store, excluded: config.excluded, noiseFolders: config.noise)
+        let watchdog = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        watchdog.schedule(deadline: .now() + 0.25, repeating: 0.25)
+        watchdog.setEventHandler { [weak self] in if self?.pastQuitDeadline == true { scanner.cancel() } }
+        watchdog.resume()
+        scanner.scan(folders, threads: 4)
+        watchdog.cancel()
+        if scanner.isCancelled { interrupted = true }
     }
 }

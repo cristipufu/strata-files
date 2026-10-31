@@ -182,6 +182,43 @@ struct IndexWorkerTests {
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/kept.txt"])
     }
 
+    @Test func aChildGoneFromItsFolderLeavesTheIndexWithItsSizeAndNoOther() async throws {
+        let tree = try TestTree(".state/", "files/gone.txt", "files/kept.txt", "files/gone-too/")
+        let fixture = try await start(tree)
+        try FileManager.default.removeItem(at: tree.url("files/gone.txt"))
+        try FileManager.default.removeItem(at: tree.url("files/gone-too"))
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        let files = try #require(loaded.read { $0.lookup(tree.url("files").path) })
+        #expect(loaded.read { $0.lookup(tree.url("files/gone.txt").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/gone-too").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/kept.txt").path) } != nil)
+        #expect(loaded.read { ($0.size[Int(files)], $0.fileCount[Int(files)]) } == (Int64("files/kept.txt".utf8.count), 1))
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/kept.txt"])
+    }
+
+    @Test func buildOutputBecomesNoiseWithItsWholeSubtreeWhenItsProjectFileAppearsAndStopsWhenItGoes() async throws {
+        let tree = try TestTree(".state/", "project/target/debug/app.o", "project/src/main.rs")
+        let fixture = try await start(tree)
+        func isNoise(_ path: String) throws -> Bool {
+            let id = try #require(fixture.store.read { $0.lookup(tree.url(path).path) })
+            return fixture.store.read { $0.flags[Int(id)] } & IndexStore.Flag.noise != 0
+        }
+        #expect(try !isNoise("project/target") && !isNoise("project/target/debug/app.o"))
+        try tree.add(["project/Cargo.toml"])
+        fixture.worker.receive([.init(path: tree.url("project").path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        #expect(try isNoise("project/target") && isNoise("project/target/debug") && isNoise("project/target/debug/app.o"))
+        #expect(try !isNoise("project/src") && !isNoise("project/src/main.rs"))
+        try FileManager.default.removeItem(at: tree.url("project/Cargo.toml"))
+        fixture.worker.receive([.init(path: tree.url("project").path, flags: 0, id: 2)])
+        await save(fixture.worker)
+        #expect(try !isNoise("project/target") && !isNoise("project/target/debug/app.o"))
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "project/", "project/src/", "project/src/main.rs",
+                                    "project/target/", "project/target/debug/", "project/target/debug/app.o"])
+    }
+
     @Test(arguments: ["hidden", "mtime", "replacement"])
     func changesWithoutDifferentFileSizesStillPersist(_ change: String) async throws {
         let tree = try TestTree(".state/", "files/file.txt", "files/folder/", "kept/")
