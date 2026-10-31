@@ -163,8 +163,7 @@ final class BrowserViewController: NSViewController {
     }
     /// The folder read again while a name was being edited in place: shown once the edit ends.
     var deferredApply: DeferredListing?
-    var resortWork: DispatchWorkItem?
-    var deferredMetadataOrder = false
+    lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
     private var resultsTotal = 0
@@ -190,7 +189,6 @@ final class BrowserViewController: NSViewController {
         services.previews.invalidate(owner: self)
         selectionFetch?.cancel()
         actionFetch?.cancel()
-        resortWork?.cancel()
     }
 
     // MARK: - View
@@ -367,8 +365,7 @@ final class BrowserViewController: NSViewController {
             cancelPendingActions()
             deferredApply = nil
             cancelFiltering()
-            resortWork?.cancel()
-            resortWork = nil
+            resorting.cancel()
             listing.setFilter("")
             filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
@@ -783,15 +780,12 @@ final class BrowserViewController: NSViewController {
     /// Re-sorts after folder sizes arrive while sorting by size, animating rows into place.
     func scheduleResort() {
         guard ordering.choice != nil else { return }
-        resortWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.resortAfterMetadata() } }
-        resortWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        resorting.schedule()
     }
 
     func resortAfterMetadata() {
         guard ordering.choice != nil, typedFilter.isEmpty else { return }
-        if isRenamingInPlace { deferredMetadataOrder = true; return }
+        if isRenamingInPlace { return resorting.holdForEditing() }
         if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs
         var sorted = nodes

@@ -254,18 +254,16 @@ struct TagColumnTests {
         let entries = try ["a", "z"].map { try #require(FileEntry(url: tree.url($0))) }
         browser.showResults(entries, total: entries.count)
         browser.ordering.choose(.init(key: .tags, ascending: true))
-        browser.resortWork?.cancel()
-        browser.resortWork = nil
+        browser.resorting.cancel()
         let changes: [(Notification.Name, AnyObject)] = [(.tagsLoaded, other.services.tags), (.tagsChanged, other.services.tags),
                                                          (.cloudStatusChanged, other.services.cloud)]
         for (name, store) in changes { NotificationCenter.default.post(name: name, object: store, userInfo: ["urls": [tree.url("a")]]) }
-        #expect(browser.resortWork == nil)
+        #expect(!browser.resorting.isScheduled)
         for (name, store) in [(Notification.Name.tagsLoaded, environment.services.tags as AnyObject),
                               (.tagsChanged, environment.services.tags), (.cloudStatusChanged, environment.services.cloud)] {
             NotificationCenter.default.post(name: name, object: store, userInfo: ["urls": [tree.url("a")]])
-            #expect(browser.resortWork != nil, "\(name.rawValue)")
-            browser.resortWork?.cancel()
-            browser.resortWork = nil
+            #expect(browser.resorting.isScheduled, "\(name.rawValue)")
+            browser.resorting.cancel()
         }
         #expect(tree.snapshot() == ["a", "z"])
         withExtendedLifetime((environment, other, state, otherState)) {}
@@ -293,8 +291,8 @@ struct TagColumnTests {
         environment.services.tags.invalidate(tree.root)
         await environment.services.tags.load(entries).value
         browser.tagsChanged()
-        #expect(browser.resortWork != nil)
-        browser.resortWork?.cancel()
+        #expect(browser.resorting.isScheduled)
+        browser.resorting.cancel()
         browser.resortAfterMetadata()
         #expect(field.currentEditor() === editor)
         #expect(browser.topLevelEntries.map(\.name) == ["a", "z"])

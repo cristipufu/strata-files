@@ -175,8 +175,7 @@ extension BrowserViewController {
     func stopBackgroundWork() {
         cancelPendingActions()
         cancelFiltering()
-        resortWork?.cancel()
-        resortWork = nil
+        resorting.cancel()
         watching.stop()
         loading.invalidate()
         sizer.cancelPending()

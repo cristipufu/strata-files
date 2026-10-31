@@ -177,10 +177,7 @@ extension BrowserViewController: NSTextFieldDelegate {
             }
         }
         view.window?.makeFirstResponder(outlineView)
-        if deferredMetadataOrder {
-            deferredMetadataOrder = false
-            resortAfterMetadata()
-        }
+        resorting.editingEnded()
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
     }

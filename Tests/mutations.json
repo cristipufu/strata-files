@@ -2650,15 +2650,15 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "if isRenamingInPlace { deferredMetadataOrder = true; return }",
+    "find": "if isRenamingInPlace { return resorting.holdForEditing() }",
     "replace": "// Reorder during native editing.",
     "rule": "Browser ordering metadata waits for the native inline edit to end",
     "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
   },
   {
     "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "deferredMetadataOrder = false\n            resortAfterMetadata()",
-    "replace": "deferredMetadataOrder = false",
+    "find": "        resorting.editingEnded()\n",
+    "replace": "",
     "rule": "Browser ordering deferred metadata order resumes when editing ends",
     "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
   },
