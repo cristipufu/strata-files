@@ -24,7 +24,26 @@ struct PlanSafetyTests {
                                    .move(tree.url("b.txt"), into: "sub"), .trash(tree.url("a.txt"))],
                                   selecting: ["a.txt"], in: tree)
         #expect(described(plan.steps) == ["trash a.txt -"])
-        #expect(plan.excluded.count == 3)
+        // Each left out for what it is: about an item that isn't selected, never taken for one that is.
+        #expect(plan.excluded.map(\.problem) == Array(repeating: "Not part of the selection", count: 3))
+        #expect(plan.excluded.allSatisfy { $0.source?.lastPathComponent == "b.txt" })
+    }
+
+    @Test func aSelectedItemIsChangedByOneStepOnly() async throws {
+        let tree = try TestTree("a.txt", "ab.txt")
+        let plan = await validate([.rename(tree.url("a.txt"), to: "b.txt"), .trash(tree.url("a.txt")),
+                                   .move(tree.url("a.txt"), into: "elsewhere")], selecting: ["a.txt", "ab.txt"], in: tree)
+        #expect(described(plan.steps) == ["rename a.txt b.txt"])
+        #expect(plan.excluded.map(\.problem) == Array(repeating: "Already changed by another step", count: 2))
+        #expect(tree.snapshot() == ["a.txt", "ab.txt"])
+    }
+
+    @Test func aRenameKeepsTheItemsExtension() async throws {
+        let tree = try TestTree("photo.jpg", "notes")
+        let plan = await validate([.rename(tree.url("photo.jpg"), to: "Holiday"), .rename(tree.url("notes"), to: "Ideas")],
+                                  selecting: ["photo.jpg", "notes"], in: tree)
+        #expect(described(plan.steps) == ["rename notes Ideas", "rename photo.jpg Holiday.jpg"])
+        #expect(plan.steps.compactMap(\.note) == ["Kept the .jpg extension"])
     }
 
     @Test func movesStayInTheFolderUnlessYouNamedAnother() async throws {

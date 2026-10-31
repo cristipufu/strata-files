@@ -444,6 +444,62 @@
     "tests": "PlanSafetyTests"
   },
   {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            } else if TransferEngine.exists(destination), !sameItem(destination, item.url), !vacated.contains(target) {",
+    "replace": "            } else if false {",
+    "rule": "A plan replaces an item already there",
+    "tests": "PlanSafetyTests|RenameTests|EdgeCaseSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            if claimed.contains(target) {",
+    "replace": "            if false {",
+    "rule": "Two items of a plan take one name",
+    "tests": "PlanSafetyTests|RenameTests|EdgeCaseSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            guard touched.insert(key(item.url)).inserted else {",
+    "replace": "            guard true else {",
+    "rule": "A plan changes one item twice",
+    "tests": "PlanSafetyTests/aSelectedItemIsChangedByOneStepOnly"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            guard let item = selection[key(url)] else {",
+    "replace": "            guard let item = selection[key(url)] ?? selection.values.first else {",
+    "rule": "A plan changes an item that isn't selected",
+    "tests": "PlanSafetyTests/stepsOnItemsOutsideTheSelectionAreLeftOut"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            if item.isFolder, key(folder) == key(item.url) || isInside(folder, item.url) {",
+    "replace": "            if false {",
+    "rule": "A plan moves a folder inside itself",
+    "tests": "PlanSafetyTests|RenameTests|EdgeCaseSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "                if let changed {\n                    excluded.append",
+    "replace": "                if let changed, changed.path.isEmpty {\n                    excluded.append",
+    "rule": "A plan changes an item inside one it also changes",
+    "tests": "PlanSafetyTests|RenameTests|EdgeCaseSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "            guard !stranded.isEmpty else { return }",
+    "replace": "            return",
+    "rule": "A rename chain lands on a name that stays",
+    "tests": "PlanSafetyTests|RenameTests|EdgeCaseSafetyTests"
+  },
+  {
+    "file": "Strata/AI/PlanValidator.swift",
+    "find": "                newName += \".\" + item.ext\n",
+    "replace": "\n",
+    "rule": "A plan's rename drops the item's extension",
+    "tests": "PlanSafetyTests/aRenameKeepsTheItemsExtension"
+  },
+  {
     "file": "Strata/AI/PlanExecutor.swift",
     "find": "        await moveBack(done.filter { applied.holds($0.to) }.reversed()",
     "replace": "        await moveBack(done.reversed()",
