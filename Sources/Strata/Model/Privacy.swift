@@ -72,6 +72,7 @@ package final class WelcomeSheetController: NSWindowController {
     private let status = NSTextField(labelWithString: "")
     private let primary = NSButton(title: String(localized: "Open Privacy Settings"), target: nil, action: nil)
     package var onGranted: (() -> Void)?
+    package private(set) weak var parent: NSWindow?
 
     package init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
@@ -137,6 +138,7 @@ package final class WelcomeSheetController: NSWindowController {
 
     package func present(on parent: NSWindow) {
         guard let window else { return }
+        self.parent = parent
         parent.beginSheet(window)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
@@ -156,6 +158,12 @@ package final class WelcomeSheetController: NSWindowController {
 
     @objc private func openSettings() {
         NSWorkspace.shared.open(Privacy.settingsURL)
+    }
+
+    /// Its window is closing: it goes with it, unanswered, and stops asking.
+    package func withdraw() {
+        timer?.invalidate()
+        if let window, let parent = window.sheetParent { parent.endSheet(window) }
     }
 
     @objc private func dismiss() {

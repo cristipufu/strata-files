@@ -133,15 +133,50 @@ package nonisolated struct WorkspacePlan: Equatable, Sendable {
 
     package var tabs: [[Pane]] = []
     package var selectedTab: Int? = nil
-    /// Folders that aren't there, in the order they were saved.
+    /// Folders known to be gone, in the order they were saved.
     package var missing: [String] = []
     /// Folders on disks that aren't connected (not gone: they're kept).
     package var offline: [String] = []
     /// Shares to connect to before their panes can be shown: mount point → address.
     package var shares: [String: String] = [:]
 
+    /// What would explain `path` being missing: the share it was on (one that's mounted proves the disk under it is
+    /// there), else the disk it's on.
+    package static func place(explaining path: String, in workspace: Workspace) -> String? {
+        explanation(of: path, in: workspace)?.place
+    }
+
+    private enum Fate {
+        case open, share(mountPoint: String, address: String), offline, missing
+    }
+
+    private static func explanation(of path: String, in workspace: Workspace) -> (place: String, away: Fate)? {
+        if let share = workspace.share(for: path) {
+            return (share.mountPoint, .share(mountPoint: share.mountPoint, address: share.address))
+        }
+        return DiskOfPath.volume(of: path).map { ($0, .offline) }
+    }
+
+    /// Gone only when that's known: it answered it's missing, and so did what would explain it. A share or disk that's
+    /// away keeps it waiting for it. Anything not known (a disk that didn't answer in time: a share that stopped, a disk
+    /// waking) opens it, and its pane shows what its read finds: nothing is removed or said to be away on no answer.
+    private static func fate(of path: String, in workspace: Workspace, answer: (String) -> Bool?) -> Fate {
+        guard answer(path) == false else { return .open }
+        guard let (place, away) = explanation(of: path, in: workspace) else { return .missing }
+        switch answer(place) {
+        case false?: return away
+        case nil: return .open
+        case true?: return .missing
+        }
+    }
+
     /// `server` says which saved server a path's files are of (a folder in Strata's copy of its files), if any.
     package init(_ workspace: Workspace, exists: (String) -> Bool, server: (String) -> String? = { _ in nil }) {
+        self.init(workspace, answer: { exists($0) }, server: server)
+    }
+
+    /// `answer` says whether a path is there, nil when that isn't known (its disk didn't answer in time).
+    package init(_ workspace: Workspace, answer: (String) -> Bool?, server: (String) -> String? = { _ in nil }) {
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
             for (p, path) in tab.enumerated().prefix(2) where !path.isEmpty {
@@ -151,17 +186,19 @@ package nonisolated struct WorkspacePlan: Equatable, Sendable {
                                 active: workspace.activePane(tab: t) == p)
                 if let id = server(path) {
                     pane.waiting = WaitingFolder(path: path, mode: mode, server: id)
-                } else if exists(path) {
-                    // An available folder opens immediately.
-                } else if let share = workspace.share(for: path), !exists(share.mountPoint) {
-                    pane.waiting = WaitingFolder(path: path, mode: mode, mountPoint: share.mountPoint, address: share.address)
-                    shares[share.mountPoint] = share.address
-                } else if let volume = DiskOfPath.volume(of: path), !exists(volume) {
-                    pane.waiting = WaitingFolder(path: path, mode: mode)
-                    offline.append(path)
                 } else {
-                    missing.append(path)
-                    continue
+                    switch Self.fate(of: path, in: workspace, answer: answer) {
+                    case .open: break
+                    case .share(let mountPoint, let address):
+                        pane.waiting = WaitingFolder(path: path, mode: mode, mountPoint: mountPoint, address: address)
+                        shares[mountPoint] = address
+                    case .offline:
+                        pane.waiting = WaitingFolder(path: path, mode: mode)
+                        offline.append(path)
+                    case .missing:
+                        missing.append(path)
+                        continue
+                    }
                 }
                 panes.append(pane)
             }

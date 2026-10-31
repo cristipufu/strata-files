@@ -97,6 +97,19 @@ struct DropTests {
         #expect(tree.snapshot() == ["a.txt", "volumes -> /System/Volumes"])
     }
 
+    /// A disk check asks again each time, never answering from what a URL was told before: the same URL, once a link on
+    /// its way leads to a disk, is refused.
+    @Test func aDiskCheckAsksAgainEachTime() throws {
+        let tree = try TestTree("plain/", "plain/Data/", "via -> plain")
+        let item = tree.url("via/Data")
+        #expect(!FileOps.isWholeDisk(item))
+        try FileManager.default.removeItem(at: tree.url("via"))
+        try FileManager.default.createSymbolicLink(atPath: tree.url("via").path, withDestinationPath: "/System/Volumes")
+        #expect(FileOps.isWholeDisk(item))
+        #expect(FileOps.trashable([item], copies: .live) == nil)
+        #expect(tree.snapshot() == ["plain/", "plain/Data/", "via -> /System/Volumes"])
+    }
+
     /// While a drag moves, its checks go by what the paths say until the disk's answers arrive, read away from the main
     /// thread once per drag for every path asked about, a batch per disk; then they go by those, and ask nothing more.
     @Test func aDragsChecksAreReadOnceAwayFromTheMainThread() async {

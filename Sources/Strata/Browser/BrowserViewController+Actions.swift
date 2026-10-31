@@ -59,6 +59,13 @@ extension BrowserViewController {
         }
     }
 
+    /// Whether `selection` is still the one Move to Trash was asked with (`removed`, by listed path): only those items,
+    /// or none once they've left the list.
+    static func stillTrashed(_ selection: [URL], _ removed: Set<String>, listed: [URL]) -> Bool {
+        guard selection.allSatisfy({ removed.contains($0.path) }) else { return false }
+        return !selection.isEmpty || !listed.contains { removed.contains($0.path) }
+    }
+
     @objc func moveToTrash(_ sender: Any?) {
         let urls = selectedURLs
         // A server has no Trash: deleting there asks first.
@@ -70,17 +77,22 @@ extension BrowserViewController {
         let copies = services.copies
         guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return Sounds.beep() }
         // Keep the cursor where it was: once they've gone, select the row that slides into the first removed one's place.
-        let removed = Set(urls.map(Self.key))
-        let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
-        let next = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }).flatMap { first in
+        // Paths as listed, never asked of the disk: a standardized one changes once its item has gone.
+        let removed = Set(urls.map(\.path))
+        let survivors = rows.filter { !removed.contains($0.url.path) }
+        let next = rows.firstIndex(where: { removed.contains($0.url.path) }).flatMap { first in
             survivors.isEmpty ? nil : survivors[min(first, survivors.count - 1)].url
         }
         let undo = undoManager, revision = navigationRevision
         let files = services.files
-        Task { [weak self] in
+        trashing = Task { [weak self] in
             do {
                 try await files.trash(urls, undo: undo)
-                if let self, let next, navigationRevision == revision { pending.selection = [next] }
+                // Unless another place or selection was chosen meanwhile, or the selection was emptied while the items
+                // were still shown (a reload that drops them empties it too).
+                if let self, let next, navigationRevision == revision, Self.stillTrashed(selectedURLs, removed, listed: rows.map(\.url)) {
+                    pending.selection = [next]
+                }
             } catch let noTrash as FileOps.NoTrash {
                 guard let self else { return }
                 Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }

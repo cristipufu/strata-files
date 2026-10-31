@@ -257,7 +257,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             let startup = URL(filePath: "/", directoryHint: .isDirectory), name = names.name(startup)
             parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill"))
         }
-        // Spelled with what's known, so making the steps never asks the disk.
+        // Each step's URL is spelled with what's known, never asking the disk.
         var current = URL(filePath: root, directoryHint: .isDirectory)
         for component in path.dropFirst(root.count).split(separator: "/") {
             current = current.appending(path: String(component))

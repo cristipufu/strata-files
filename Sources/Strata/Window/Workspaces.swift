@@ -1,8 +1,16 @@
 import AppKit
+import Synchronization
 
 extension Notification.Name {
     /// A workspace was saved, updated, renamed or deleted.
     static let workspacesChanged = Notification.Name("StrataWorkspacesChanged")
+}
+
+/// Whether a share or disk is mounted at a path, as the kernel says at once, never waiting on the disk.
+nonisolated struct MountLookup: Sendable {
+    let isMounted: @Sendable (String) -> Bool
+
+    static let kernel = MountLookup { MountPoints.current().contains($0) }
 }
 
 final class Workspaces {
@@ -16,11 +24,21 @@ final class Workspaces {
     /// Workspaces whose folders are being looked at before they open.
     private var planning: Set<String> = []
 
-    init(services: BrowserServices) {
+    /// Whether a saved folder is there, read on a thread of its own.
+    nonisolated private let folderIsThere: @Sendable (String) -> Bool
+    nonisolated private let mounts: MountLookup
+    /// How long opening a workspace waits for a folder's disk to answer.
+    nonisolated private let patience: Duration
+
+    init(services: BrowserServices, patience: Duration = .seconds(2), mounts: MountLookup = .kernel,
+         folderIsThere: @escaping @Sendable (String) -> Bool = Workspaces.isThere) {
         self.services = services
         preferences = services.preferences
         remote = services.remote
         windows = services.windows
+        self.patience = patience
+        self.mounts = mounts
+        self.folderIsThere = folderIsThere
     }
 
     /// Only this environment’s live tabs contribute to a saved workspace.
@@ -210,11 +228,12 @@ final class Workspaces {
         return services.windows.controllers().filter { $0.services === services && $0.workspaceName == name && !$0.isClosed }
     }
 
-    /// Opens `workspace` as one window with a tab per saved tab, or brings its window to the front when it's open.
-    /// Folders on a network share connect to it again; folders that are gone are left out, and said so.
     /// Windows brought forward, or connecting to their shares or servers, right now: choosing their workspace again
     /// meanwhile only shows them. Held weakly, so a closed window's read that never ends holds nothing up.
     private let busy = NSHashTable<BrowserWindowController>.weakObjects()
+    /// Reads of whether a folder is there, while they're under way. Kept away from the main actor, so asking never
+    /// waits its turn there.
+    nonisolated private let reading = Mutex<[String: (token: UUID, task: Task<Bool, Never>)]>([:])
 
     /// Whether a folder is there for opening a workspace. Only one that doesn't exist is gone: one Strata may not read
     /// (access not granted yet, a folder above it locked) is still opened, and says why.
@@ -279,45 +298,59 @@ final class Workspaces {
         connect(controllers, of: workspace, missing: plan.missing, offline: plan.offline)
     }
 
-    /// Its window, open elsewhere, to the front; panes still waiting get another go. The tabs are held weakly while
-    /// their folders are read: a read may never return.
+    /// Its window, open elsewhere, to the front; panes still waiting get another go.
     private func bringForward(_ window: NSWindow, of workspace: Workspace) -> Task<Void, Never> {
         windows.show(window)
+        let tabs = ownedControllers(of: window).map(HeldTab.init)
         // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
-        let waiting = ownedControllers(of: window).map { controller in
-            WaitingTab(controller: controller, panes: controller.waitingPanes.filter { $0.folder.mountPoint == nil })
-        }
-        for tab in waiting { tab.controller.map(busy.add) }
-        return Task {
-            for tab in waiting {
-                for (index, folder) in tab.panes {
-                    guard await Self.there(folder.path), let controller = tab.controller,
-                          Self.isWaiting(controller, index, for: folder) else { continue }
-                    controller.navigatePane(index, to: URL(filePath: folder.path, directoryHint: .isDirectory), mode: folder.mode)
-                }
+        let panes = tabs.compactMap(\.controller).flatMap { controller in
+            controller.waitingPanes.filter { $0.folder.mountPoint == nil }.map {
+                WaitingPane(controller: controller, index: $0.index, folder: $0.folder, path: $0.folder.path)
             }
-            for tab in waiting { tab.controller.map(busy.remove) }
-            let open = waiting.compactMap(\.controller).filter { !$0.isClosed }
+        }
+        for tab in tabs { tab.controller.map(busy.add) }
+        return Task {
+            // All at once, each pane shown as its folder answers; one not there yet, or that doesn't answer in time,
+            // keeps waiting.
+            await answers(Set(panes.map(\.path)), arrived: { path, there in _ = Self.settle(panes, path, there: there) })
+            for tab in tabs { tab.controller.map(busy.remove) }
+            let open = tabs.compactMap(\.controller).filter { !$0.isClosed }
             if open.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
                 connect(open, of: workspace, missing: [], offline: [])
             }
         }
     }
 
-    private struct WaitingTab {
+    /// Held weakly while its folders are read: a read may never return.
+    private struct HeldTab {
         weak var controller: BrowserWindowController?
-        let panes: [(index: Int, folder: WaitingFolder)]
+    }
+
+    /// A pane waiting for `folder`, read now at `path` (a share's, where it's mounted now).
+    private struct WaitingPane {
+        weak var controller: BrowserWindowController?
+        let index: Int
+        let folder: WaitingFolder
+        let path: String
+    }
+
+    /// Shows each of `panes` still waiting at `path` once it's there; gives those it isn't there for.
+    private static func settle(_ panes: [WaitingPane], _ path: String, there: Bool?) -> [WaitingPane] {
+        var gone: [WaitingPane] = []
+        for pane in panes where pane.path == path {
+            guard let there, let controller = pane.controller, isWaiting(controller, pane.index, for: pane.folder) else { continue }
+            if there {
+                controller.navigatePane(pane.index, to: URL(filePath: path, directoryHint: .isDirectory), mode: pane.folder.mode)
+            } else {
+                gone.append(pane)
+            }
+        }
+        return gone
     }
 
     /// Whether `controller`'s pane `index` still waits for `folder`: not once it was closed, or went elsewhere.
     private static func isWaiting(_ controller: BrowserWindowController, _ index: Int, for folder: WaitingFolder) -> Bool {
         !controller.isClosed && controller.waitingPanes.contains { $0.index == index && $0.folder == folder }
-    }
-
-    nonisolated private static func there(_ path: String) async -> Bool {
-        await OwnThread.run {
-            FileManager.default.fileExists(atPath: path)
-        }
     }
 
     /// One window with a tab per planned tab, in order. Panes whose folder can't be shown yet start at Home and wait
@@ -350,40 +383,72 @@ final class Workspaces {
 
     /// Resolve saved server paths against this workspace's owner, including copies not created yet; which folders are
     /// there is read away from the main thread, since a share that stopped answering holds each look for seconds.
-    /// Each folder, and the share or disk it's on, is looked at on a thread of its own and given `patience`: one whose
-    /// disk doesn't answer by then (a share that stopped) counts as there, so nothing waits on it, and its pane shows
-    /// what its read finds.
-    func plan(_ workspace: Workspace, patience: Duration = .seconds(2),
-              exists: @escaping @Sendable (String) -> Bool = Workspaces.isThere) async -> WorkspacePlan {
+    /// Each folder is looked at on a thread of its own, and for one found missing, what would explain it (its share,
+    /// else its disk), all within `patience` of asking.
+    func plan(_ workspace: Workspace) async -> WorkspacePlan {
         let copies = remote.copies
         var servers: [String: String] = [:]
         for path in workspace.tabs.joined() where !path.isEmpty {
             servers[path] = copies.server(containing: URL(filePath: path, directoryHint: .isDirectory))?.server.id
         }
-        let answers = await Self.answers(Self.asked(by: workspace), patience: patience, exists: exists)
-        return WorkspacePlan(workspace, exists: { answers[$0] ?? true }, server: { servers[$0] })
+        let folders = Set(workspace.tabs.joined().filter { !$0.isEmpty && servers[$0] == nil })
+        var found: [String: Bool] = [:]
+        await answers(folders, around: { WorkspacePlan.place(explaining: $0, in: workspace) }, arrived: { path, there in
+            if let there { found[path] = there }
+        })
+        return WorkspacePlan(workspace, answer: { found[$0] }, server: { servers[$0] })
     }
 
-    /// What planning `workspace` looks at: each folder, the share it was on and the disk it's on.
-    nonisolated static func asked(by workspace: Workspace) -> Set<String> {
-        var paths: Set<String> = []
-        for path in workspace.tabs.joined() where !path.isEmpty {
-            paths.insert(path)
-            if let share = workspace.share(for: path) { paths.insert(share.mountPoint) }
-            if let volume = DiskOfPath.volume(of: path) { paths.insert(volume) }
-        }
-        return paths
-    }
-
-    nonisolated private static func answers(_ paths: Set<String>, patience: Duration,
-                                            exists: @escaping @Sendable (String) -> Bool) async -> [String: Bool] {
-        await withTaskGroup(of: (String, Bool).self) { group in
+    /// Whether each of `paths` is there, handed to `arrived` as it comes: nil when its disk doesn't answer within
+    /// `patience` of asking. `fresh`: paths for which a read begun before doesn't count (on a share just mounted).
+    /// `around`: what else to ask about, in the time left, for a path found missing.
+    private func answers(_ paths: Set<String>, fresh: Set<String> = [],
+                         around: @escaping @Sendable (String) -> String? = { _ in nil },
+                         arrived: (String, Bool?) -> Void) async {
+        let end = ContinuousClock.now + patience
+        await withTaskGroup(of: [(String, Bool?)].self) { group in
             for path in paths {
-                group.addTask { (path, await OwnThread.run(within: patience, otherwise: true) { exists(path) }) }
+                group.addTask(operation: question(path, fresh: fresh.contains(path), around: around, until: end))
             }
-            var found: [String: Bool] = [:]
-            for await (path, there) in group { found[path] = there }
-            return found
+            for await answered in group {
+                for (path, there) in answered { arrived(path, there) }
+            }
+        }
+    }
+
+    /// The question for `path`, for a task group, asked away from the main actor so its being busy never uses up the
+    /// time: its read's answer, or nil once `end` has passed; and, if it's missing, what `around` names by then.
+    nonisolated private func question(_ path: String, fresh: Bool, around: @escaping @Sendable (String) -> String?,
+                                      until end: ContinuousClock.Instant) -> @concurrent @Sendable () async -> [(String, Bool?)] {
+        { [self] in
+            let there = await answer(path, fresh: fresh, until: end)
+            guard there == false, let place = around(path) else { return [(path, there)] }
+            // Mounted or not, the kernel says at once: an empty folder left where a share was mounted isn't the share.
+            // Only one that's mounted is read, and one that doesn't answer leaves the folder opened.
+            guard mounts.isMounted(place) else { return [(path, there), (place, false)] }
+            return [(path, there), (place, await answer(place, fresh: false, until: end))]
+        }
+    }
+
+    @concurrent nonisolated private func answer(_ path: String, fresh: Bool, until end: ContinuousClock.Instant) async -> Bool? {
+        let read = read(path, fresh: fresh)
+        return await OwnThread.value(within: max(end - .now, .zero), otherwise: nil) { await read.value }
+    }
+
+    /// The read of whether `path` is there, on a thread of its own, shared by everyone asking while it's under way: one
+    /// that never returns holds a single thread, however often its workspace is chosen.
+    nonisolated private func read(_ path: String, fresh: Bool) -> Task<Bool, Never> {
+        let isThere = folderIsThere, token = UUID()
+        return reading.withLock { reading in
+            if !fresh, let read = reading[path] { return read.task }
+            let task = Task { [weak self] in
+                let there = await OwnThread.run { isThere(path) }
+                // Out of the shared reads as it ends, so no later question gets what it found before.
+                self?.reading.withLock { if $0[path]?.token == token { $0[path] = nil } }
+                return there
+            }
+            reading[path] = (token, task)
+            return task
         }
     }
 
@@ -408,7 +473,7 @@ final class Workspaces {
         controllers.forEach(busy.add)
         Task { [self] in
             defer { controllers.forEach(busy.remove) }
-            var mounted: [String: String] = [:]
+            var mounted: [String: String] = [:], mountedNow: Set<String> = []
             var problems: [String] = []
             for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {
                 guard !sheet.isCancelled else { break }
@@ -425,7 +490,9 @@ final class Workspaces {
                 let request = ServerConnection.Request()
                 sheet.onCancel = { request.cancel() }
                 switch await ServerConnection.mount(url, request: request) {
-                case .success(let at): mounted[mountPoint] = at.path
+                case .success(let at):
+                    mounted[mountPoint] = at.path
+                    mountedNow.insert(mountPoint)
                 case .failure(let problem):
                     problems.append(String(localized: "\(ServerConnection.displayString(url)): \(problem.message)",
                                            comment: "A server address, then why it didn't connect"))
@@ -466,19 +533,20 @@ final class Workspaces {
             }
             var gone = missing
             // Tabs closed meanwhile are left alone.
-            for controller in controllers where !controller.isClosed {
-                for (index, folder) in controller.waitingPanes {
-                    guard let mountPoint = folder.mountPoint, let at = mounted[mountPoint] else { continue }
-                    let path = WorkspacePlan.path(folder.path, from: mountPoint, to: at)
-                    let there = await Self.there(path)
-                    guard Self.isWaiting(controller, index, for: folder) else { continue }
-                    if there {
-                        controller.navigatePane(index, to: URL(filePath: path, directoryHint: .isDirectory), mode: folder.mode)
-                    } else {
-                        gone.append(folder.path)
-                    }
+            let panes = controllers.filter { !$0.isClosed }.flatMap { controller in
+                controller.waitingPanes.compactMap { index, folder -> WaitingPane? in
+                    guard let mountPoint = folder.mountPoint, let at = mounted[mountPoint] else { return nil }
+                    return WaitingPane(controller: controller, index: index, folder: folder,
+                                       path: WorkspacePlan.path(folder.path, from: mountPoint, to: at))
                 }
             }
+            // All at once, each pane shown as its folder answers. Reads begun before a share was mounted now don't
+            // count; one already mounted is read as it is, so a share that stopped holds one read. One that doesn't
+            // answer in time keeps waiting.
+            let fresh = Set(panes.filter { $0.folder.mountPoint.map(mountedNow.contains) == true }.map(\.path))
+            await answers(Set(panes.map(\.path)), fresh: fresh, arrived: { path, there in
+                gone += Self.settle(panes, path, there: there).map(\.folder.path)
+            })
             report(missing: gone, offline: offline, problems: cancelled ? [] : problems, of: workspace, controllers: controllers)
         }
     }

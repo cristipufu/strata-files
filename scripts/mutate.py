@@ -26,9 +26,12 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer"
+# Every process a run starts inherits this in its environment, wherever its parent, group or session goes.
+RUN_MARK = "STRATA_MUTATION_RUN"
 TEST_TIMEOUT = 300
 
 
@@ -36,19 +39,129 @@ def sh(args, timeout=None):
     env = dict(os.environ)
     if os.path.isdir(DEVELOPER_DIR) and "DEVELOPER_DIR" not in env:
         env["DEVELOPER_DIR"] = DEVELOPER_DIR
+    env[RUN_MARK] = uuid.uuid4().hex
     process = subprocess.Popen(args, cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                start_new_session=True)
+    process.mark = env[RUN_MARK]
     try:
         stdout, stderr = process.communicate(timeout=timeout)
     except BaseException:
         # SwiftPM's test helper (and any tools it started) must stop before the source is restored.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.communicate()
+        stop(process)
         raise
     return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
+def stop(process):
+    """Stops a run started in a session of its own and everything it started: what's in its session, whatever the
+    process group (SwiftPM's test helper has one of its own, and outlives `swift test` if that ends first), what's below
+    it in a session of its own, and what carries its mark wherever it went. Each is frozen as it's found, so it starts
+    nothing more and what it started stays below it, until a round finds nothing new; then all of them are stopped.
+    Never raises: a run being stopped must stop."""
+    mark = getattr(process, "mark", None)
+    frozen = []
+    for _ in range(20):
+        started = processes_of(process.pid, mark)
+        # Pids are handed out in turn, so one listed a moment ago isn't another process's yet.
+        found = [pid for pid in [process.pid] + (started or []) if pid not in frozen]
+        for pid in found:
+            try:
+                os.kill(pid, signal.SIGSTOP)
+                frozen.append(pid)
+            except OSError:
+                pass
+        # A round that couldn't list isn't one that found nothing new.
+        if not found and started is not None:
+            break
+    else:
+        print("The stopped run kept starting processes; some may be left running.", file=sys.stderr)
+    for pid in frozen:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        pass
+    try:
+        process.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        # Something that left both still holds its output: it's left, rather than waited for forever.
+        for stream in (process.stdout, process.stderr):
+            if stream:
+                stream.close()
+        process.wait()
+        print("A process of the stopped run still holds its output and was left running.", file=sys.stderr)
+
+
+def processes_of(leader, mark=None):
+    """What `leader` started that's still running: in its session, below it in another, or carrying `mark` (the
+    value of its run's RUN_MARK) in its environment wherever its parent went; None when they couldn't be listed."""
+    listing = listed(["ps", "-A", "-o", "pid=,ppid=,stat="])
+    marks = marked_with(mark) if mark else []
+    if listing is None or marks is None:
+        return None
+    children, running = {}, []
+    for line in listing.splitlines():
+        fields = line.split()
+        # An exited one waiting to be reaped has nothing left to stop.
+        if len(fields) < 3 or not (fields[0].isdigit() and fields[1].isdigit()) or fields[2].startswith("Z"):
+            continue
+        pid, parent = int(fields[0]), int(fields[1])
+        children.setdefault(parent, []).append(pid)
+        running.append(pid)
+    marked = {pid for pid in marks if pid != leader and pid in running}
+    found, waiting = set(), [leader]
+    while waiting:
+        for child in children.get(waiting.pop(), []):
+            if child not in found:
+                found.add(child)
+                waiting.append(child)
+    for pid in running:
+        try:
+            if pid != leader and os.getsid(pid) == leader:
+                found.add(pid)
+        except OSError:
+            pass
+    return sorted(found | marked)
+
+
+def listed(command):
+    """What `ps` lists, kept when it also says it couldn't see something; None, said so, when it lists nothing: a run
+    being stopped must stop, and the next round lists again."""
+    try:
+        run = subprocess.run(command, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        run = None
+        problem = str(error)
+    else:
+        problem = run.stderr.strip() or f"exit status {run.returncode}"
+    if run is not None and run.stdout.strip():
+        return run.stdout
+    print(f"Couldn't list processes ({problem}); some of the stopped run's may be missed.", file=sys.stderr)
+    return None
+
+
+def marked_with(mark):
+    """The processes whose environment holds RUN_MARK=`mark`: `ps -E` puts the environment after the command, so it's
+    what follows the command alone, and a command that only mentions the mark doesn't count."""
+    def commands(*options):
+        listing = listed(["ps", "-A", *options, "-o", "pid=,command="])
+        if listing is None:
+            return None
+        found = {}
+        for line in listing.splitlines():
+            pid, _, command = line.strip().partition(" ")
+            if pid.isdigit():
+                found[int(pid)] = command
+        return found
+    alone, with_environment = commands(), commands("-E")
+    if alone is None or with_environment is None:
+        return None
+    token = re.compile(rf"(?:^|\s){RUN_MARK}={re.escape(mark)}(?=\s|$)")
+    return [pid for pid, full in with_environment.items()
+            if pid in alone and full.startswith(alone[pid]) and token.search(full[len(alone[pid]):])]
 
 
 def tests_fail(pattern, report=False):

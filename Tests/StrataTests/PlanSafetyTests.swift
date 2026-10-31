@@ -166,6 +166,20 @@ struct PlanSafetyTests {
         #expect(tree.snapshot() == ["Done/", "Done/mine.txt", "c.txt", "e.txt"])
     }
 
+    /// A plan whose Trash steps hold a whole disk (here reached through a link) is refused before any step runs: no
+    /// folder made, nothing moved or trashed. The disk is never handed to the Trash: each Trash step checks again.
+    @Test func aPlanHoldingADiskChangesNothing() async throws {
+        let tree = try TestTree("a.txt", "b.txt", "volumes -> /System/Volumes")
+        defer { tree.removeFromTrash() }
+        var plan = await validate([.trash(tree.url("a.txt")), .move(tree.url("b.txt"), into: "Done")],
+                                  selecting: ["a.txt", "b.txt"], in: tree)
+        try #require(plan.enabledSteps.count == 3)
+        plan.steps.append(PlanStep(id: 99, kind: .trash, source: tree.url("volumes/Data"), destination: nil))
+        let result = await PlanTransaction(plan: plan, copies: .live).perform()
+        #expect(result.applied == 0 && result.failures.count == 1)
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "volumes -> /System/Volumes"])
+    }
+
     @Test func undoKeepsAReplacementAtACreatedFolderPath() async throws {
         for replacement in ["folder", "file", "link"] {
             let tree = try TestTree("c.txt", "keep.txt", "Done-other/", "outside/", "outside/.DS_Store")

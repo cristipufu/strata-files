@@ -36,11 +36,18 @@ package nonisolated enum OwnThread {
     /// that may never answer. The read keeps its own thread until it returns; what it finds then is dropped.
     package static func run<T: Sendable>(within deadline: Duration, otherwise fallback: T,
                                          _ work: @escaping @Sendable () -> T) async -> T {
+        await value(within: deadline, otherwise: fallback) { await run(work) }
+    }
+
+    /// What `work` (waiting for a read on its own thread, say) gives, or `otherwise` once `deadline` passes first:
+    /// `work` goes on, and what it gives then is dropped.
+    package static func value<T: Sendable>(within deadline: Duration, otherwise fallback: T,
+                                           _ work: @escaping @Sendable () async -> T) async -> T {
         let waiting = Mutex<CheckedContinuation<T, Never>?>(nil)
         return await withCheckedContinuation { continuation in
             waiting.withLock { $0 = continuation }
-            start {
-                let value = work()
+            Task {
+                let value = await work()
                 waiting.withLock { $0.take() }?.resume(returning: value)
             }
             let (seconds, attoseconds) = deadline.components

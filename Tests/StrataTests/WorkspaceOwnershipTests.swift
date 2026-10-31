@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -409,12 +410,210 @@ struct WorkspaceOwnershipTests {
         defer { release.signal() }
         let saved = Workspace(name: "Work", tabs: [[tree.url("here").path], [stuck], [gone]])
         // The stuck folder's disk never answers in time: it opens like the others, and its pane shows its read.
-        let plan = await env.services.workspaces.plan(saved, patience: .milliseconds(50)) { path in
+        // Answers known at once, but each on a thread of its own: patience enough for a busy machine to start them.
+        let workspaces = Workspaces(services: env.services, patience: .seconds(1)) { path in
             if path == stuck { release.wait() }
-            return FileManager.default.fileExists(atPath: path)
+            return path != gone
         }
-        #expect(plan.tabs.map { $0.map(\.path) } == [[tree.url("here").path], [stuck]] && plan.missing == [gone])
+        let plan = await workspaces.plan(saved)
+        let tabs = plan.tabs.map { $0.map(\.path) }
+        #expect(tabs == [[tree.url("here").path], [stuck]])
+        #expect(plan.missing == [gone])
         #expect(tree.snapshot() == before)
+    }
+
+    @Test func aFolderWhoseDiskDoesntAnswerIsReadOnceHoweverOftenItsAsked() async throws {
+        let tree = try TestTree("here/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let stuck = tree.url("stuck").path, release = DispatchSemaphore(value: 0)
+        let asked = Mutex(0)
+        // As many as could be held, so none is left waiting if the read isn't shared.
+        defer { for _ in 0..<3 { release.signal() } }
+        let saved = Workspace(name: "Work", tabs: [[stuck]])
+        // Only the stuck folder's reads count: its disk or share, answering at once, may be read each time.
+        let workspaces = Workspaces(services: env.services, patience: .milliseconds(20)) { path in
+            guard path == stuck else { return true }
+            asked.withLock { $0 += 1 }
+            release.wait()
+            return true
+        }
+        for _ in 0..<3 {
+            let plan = await workspaces.plan(saved)
+            #expect(plan.tabs.map { $0.map(\.path) } == [[stuck]])
+        }
+        #expect(asked.withLock { $0 } == 1)
+    }
+
+    /// A folder found missing has its disk asked about, of the mount table, so one on a disk that isn't connected waits
+    /// for it rather than being offered for removal; a disk that isn't mounted is never read, and a folder that's there
+    /// has nothing more asked.
+    @Test func aMissingFolderHasItsDiskAskedAboutAndOneThereDoesnt() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let disk = "/Volumes/StrataTest-\(UUID().uuidString)", gone = disk + "/gone", here = disk + "-other/here"
+        let asked = Mutex<[String]>([])
+        let workspaces = Workspaces(services: env.services, patience: .seconds(10), mounts: MountLookup { _ in false }) { path in
+            asked.withLock { $0.append(path) }
+            return path == here
+        }
+        let plan = await workspaces.plan(Workspace(name: "Work", tabs: [[gone], [here]]))
+        #expect(plan.offline == [gone] && plan.missing.isEmpty)
+        #expect(asked.withLock { $0 }.sorted() == [gone, here].sorted())
+    }
+
+    /// A folder is offered for removal only when that's known: it answered it's missing, and so did what would explain
+    /// it, its share if it was on one (mounted, it proves the disk under it is there), else its disk. A share or disk
+    /// is there only when it's mounted, as the kernel says: an empty folder left where a share was mounted isn't it. One
+    /// mounted that doesn't answer in time leaves the folder opened, its pane showing what its read finds, even when that
+    /// share is itself one of the workspace's folders; one not mounted keeps it waiting; a folder deleted from a share
+    /// that's mounted is gone; a disk's top folder found missing waits for its disk, however it's spelled.
+    @Test func aFolderWhoseShareOrDiskDoesntAnswerIsOpenedNeverRemoved() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let share = "/Volumes/StrataShare-\(UUID().uuidString)", project = share + "/Project"
+        let disk = "/Volumes/StrataDisk-\(UUID().uuidString)", old = disk + "/Old"
+        let away = "/Volumes/StrataAway-\(UUID().uuidString)"
+        let host = "/Volumes/StrataHost-\(UUID().uuidString)", inner = host + "/mnt/share", onInner = inner + "/x"
+        let mounted = host + "/mnt/mounted", deleted = mounted + "/deleted"
+        let release = DispatchSemaphore(value: 0)
+        defer { for _ in 0..<4 { release.signal() } }
+        let asked = Mutex<[String]>([])
+        // Mounted: the share and the disks, which never answer, and a share that answers it's there. The inner share
+        // isn't, though an empty folder is left where it was; the rest answer that they're missing.
+        let mounts = MountLookup { [share, disk, host, mounted].contains($0) }
+        let workspaces = Workspaces(services: env.services, patience: .seconds(3), mounts: mounts) { path in
+            asked.withLock { $0.append(path) }
+            if [share, disk, host].contains(path) { release.wait() }
+            return path == mounted || path == inner
+        }
+        let saved = Workspace(name: "Work", tabs: [[share, project], [old], [away + "/"], [onInner], [deleted]],
+                              shares: [share: "smb://nas/share", inner: "smb://nas/inner", mounted: "smb://nas/mounted"])
+        let plan = await workspaces.plan(saved)
+        #expect(plan.tabs.map { $0.map(\.path) } == [[share, project], [old], [away + "/"], [onInner]])
+        #expect(plan.missing == [deleted] && plan.offline == [away + "/"] && plan.shares == [inner: "smb://nas/inner"])
+        let reads = asked.withLock { $0 }
+        #expect(reads.filter { $0.hasPrefix(away) }.count == 1 && !reads.contains(host) && !reads.contains(inner))
+    }
+
+    /// A read that has ended is never shared with a later question: the folder made since is found.
+    @Test func aFolderIsReadAgainOnceItsLastReadHasEnded() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let later = tree.url("later").path
+        let made = Mutex(false), reads = Mutex(0)
+        let workspaces = Workspaces(services: env.services, patience: .seconds(10)) { _ in
+            reads.withLock { $0 += 1 }
+            return made.withLock { $0 }
+        }
+        let saved = Workspace(name: "Work", tabs: [[later]])
+        #expect(await workspaces.plan(saved).missing == [later])
+        made.withLock { $0 = true }
+        #expect(await workspaces.plan(saved).missing.isEmpty)
+        #expect(reads.withLock { $0 } == 2)
+    }
+
+    /// Panes waiting together are asked about together: each reader here answers only once the other pane's folder has
+    /// been asked about too, so asked one after another, the first would miss its time and keep waiting.
+    // These wait for a start signal: bounded as a whole, within mutate.py's limit, so a change that never starts
+    // asking fails instead of waiting for good.
+    @Test(.timeLimit(.minutes(3))) func panesWaitingTogetherAreAskedAboutTogether() async throws {
+        let tree = try TestTree("first/", "second/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let first = tree.url("first").path, second = tree.url("second").path
+        let called = Mutex<Set<String>>([])
+        let (asked, ask) = AsyncStream<Void>.makeStream()
+        let workspaces = Workspaces(services: env.services, patience: .seconds(10)) { path in
+            ask.yield()
+            called.withLock { _ = $0.insert(path) }
+            let other = path == first ? second : first
+            for _ in 0..<3000 where !called.withLock({ $0.contains(other) }) { usleep(10_000) }
+            return true
+        }
+        let saved = Workspace(name: "Work", tabs: [[first, second]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: first)
+        plan.tabs[0][1].waiting = WaitingFolder(path: second)
+        let window = try #require(workspaces.openWindows(plan, name: saved.name).first)
+        env.windows.visible = [window]
+        let forward = try #require(workspaces.open(saved))
+        let ended = Mutex(false)
+        Task { await forward.value; ended.withLock { $0 = true } }
+        for await _ in asked { break }
+        for _ in 0..<3000 where !ended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(ended.withLock { $0 } && window.waitingPanes.isEmpty)
+    }
+
+    /// A pane is shown as soon as its folder answers, while another pane's folder is still being read: the other read
+    /// returns only once the test lets it go, and its time outlasts the test's wait.
+    @Test(.timeLimit(.minutes(3))) func aPaneIsShownAsSoonAsItsFolderAnswers() async throws {
+        let tree = try TestTree("quick/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let quick = tree.url("quick").path, held = tree.url("held").path
+        let release = Mutex(false)
+        defer { release.withLock { $0 = true } }
+        let (asked, ask) = AsyncStream<Void>.makeStream()
+        let workspaces = Workspaces(services: env.services, patience: .seconds(120)) { path in
+            guard path == held else { return true }
+            ask.yield()
+            for _ in 0..<12_000 where !release.withLock({ $0 }) { usleep(10_000) }
+            return false
+        }
+        let saved = Workspace(name: "Work", tabs: [[quick, held]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: quick)
+        plan.tabs[0][1].waiting = WaitingFolder(path: held)
+        let window = try #require(workspaces.openWindows(plan, name: saved.name).first)
+        env.windows.visible = [window]
+        let forward = try #require(workspaces.open(saved))
+        let ended = Mutex(false)
+        Task { await forward.value; ended.withLock { $0 = true } }
+        func waits(_ path: String) -> Bool { window.waitingPanes.contains { $0.folder.path == path } }
+        for await _ in asked { break }
+        for _ in 0..<3000 where waits(quick) { try await Task.sleep(for: .milliseconds(10)) }
+        let shownWhileTheOtherIsRead = !waits(quick)
+        release.withLock { $0 = true }
+        for _ in 0..<3000 where !ended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(shownWhileTheOtherIsRead)
+        #expect(window.waitingPanes.map(\.folder.path) == [held])
+    }
+
+    /// Bringing a window forward checks its waiting panes with a deadline too: one whose disk doesn't answer keeps
+    /// waiting, and the window isn't held busy.
+    @Test(.timeLimit(.minutes(3))) func aWaitingPaneWhoseDiskDoesntAnswerDoesntHoldItsWindow() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let later = tree.url("later").path, release = DispatchSemaphore(value: 0)
+        // As many as could be held, so none is left waiting if a read isn't shared.
+        defer { for _ in 0..<3 { release.signal() } }
+        // Its folder's disk never answers, as a share that stopped.
+        let (asked, ask) = AsyncStream<Void>.makeStream()
+        let workspaces = Workspaces(services: env.services, patience: .milliseconds(50)) { _ in
+            ask.yield()
+            release.wait()
+            return true
+        }
+        let saved = Workspace(name: "Work", tabs: [[later, later]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: later)
+        plan.tabs[0][1].waiting = WaitingFolder(path: later)
+        let window = try #require(workspaces.openWindows(plan, name: saved.name).first)
+        env.windows.visible = [window]
+        let forward = try #require(workspaces.open(saved))
+        let ended = Mutex(false)
+        Task { await forward.value; ended.withLock { $0 = true } }
+        // Its start is awaited by its signal (a new task on the main actor can wait seconds for its turn behind other
+        // suites); only what follows is bounded, counted on the main actor as bringing forward runs.
+        for await _ in asked { break }
+        for _ in 0..<3000 where !ended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(ended.withLock { $0 } && window.waitingPanes.map(\.folder.path) == [later, later])
+        #expect(workspaces.open(saved) != nil)
     }
 
     @Test func aWindowBusyWithItsWorkspaceIsOnlyShownWhenChosenAgainAndANewOneIsnt() async throws {

@@ -11,6 +11,53 @@ import Testing
 
 /// Delete Immediately (⌥⌘⌫) and Empty Trash: only what was chosen goes, never anything beside, above or behind it.
 struct DeleteTests {
+    /// Once the items have gone, the row that slides into the first one's place is selected; a selection made while
+    /// they went stands.
+    @MainActor @Test func moveToTrashSelectsTheRowTakingItsPlaceUnlessAnotherWasChosen() async throws {
+        let env = try IndependentEnvironment()
+        let tree = try TestTree("a.txt", "b.txt", "c.txt", "d.txt", "e.txt")
+        let history = env.services.transfers.history
+        defer {
+            for entry in history.entries {
+                for pair in entry.pairs + entry.replaced {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                }
+            }
+        }
+        let browser = BrowserViewController(services: env.services)
+        _ = browser.view
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        func trash(_ name: String, thenSelect other: String? = nil) async throws -> [String] {
+            browser.select([tree.url(name)])
+            browser.moveToTrash(nil)
+            if let other { browser.select([tree.url(other)]) }
+            await browser.trashing?.value
+            for _ in 0..<500 where browser.rows.contains(where: { $0.url.lastPathComponent == name }) || browser.isLoadingFolder {
+                await browser.directoryReads.task?.value
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            return browser.selectedURLs.map(\.lastPathComponent)
+        }
+        let next = try await trash("b.txt")
+        #expect(next == ["c.txt"])
+        let chosen = try await trash("d.txt", thenSelect: "a.txt")
+        #expect(chosen == ["a.txt"])
+        #expect(tree.snapshot() == ["a.txt", "c.txt", "e.txt"])
+    }
+
+    @Test func aSelectionStillTrashedIsOnlyTheTrashedItemsOrNoneOnceTheyveLeft() {
+        let a = URL(filePath: "/f/a.txt"), b = URL(filePath: "/f/b.txt"), c = URL(filePath: "/f/c.txt")
+        let removed: Set = [b.path, c.path]
+        #expect(BrowserViewController.stillTrashed([b, c], removed, listed: [a, b, c]))
+        #expect(BrowserViewController.stillTrashed([b], removed, listed: [a]))
+        // Emptied by a reload that dropped them, or by you while they were still shown.
+        #expect(BrowserViewController.stillTrashed([], removed, listed: [a]))
+        #expect(!BrowserViewController.stillTrashed([], removed, listed: [a, b, c]))
+        #expect(!BrowserViewController.stillTrashed([a], removed, listed: [a]))
+        #expect(!BrowserViewController.stillTrashed([a, b], removed, listed: [a, b, c]))
+    }
+
     private func delete(_ urls: [URL]) async -> (refused: [URL], failures: [(url: URL, error: Error)]) {
         let plan = await BrowserViewController.deletionPlan(urls, copies: .live)
         return (plan.refused, await BrowserViewController.deleteAll(plan.choices))

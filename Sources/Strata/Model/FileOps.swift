@@ -370,7 +370,8 @@ package enum FileOps {
     /// Whether `url` is a whole disk, however it's reached (a link in its path included): asked of the item itself, so
     /// read where the decision is made, away from the main thread.
     package nonisolated static func isWholeDisk(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+        // Asked of a URL of its own: one keeps the values it was told, and a disk may be mounted at the path since.
+        (try? URL(filePath: url.path).resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
     }
 
     /// A selection holding a whole disk: refused as a whole, before anything moves. Said as the system says an

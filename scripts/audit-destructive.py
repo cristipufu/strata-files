@@ -147,6 +147,78 @@ def unguarded(found):
     return missing
 
 
+def declarations_only(text):
+    """`text` with comments and string literals blanked (their line breaks kept), so a commented-out test or a
+    `struct` in a fixture's text doesn't count, and each attribute's parenthesized part taken out, however deeply it
+    nests: `@Test(.timeLimit(.minutes(4))) func` reads as `@Test func`, `@Suite(.serialized, .tags(.x)) struct` as
+    `@Suite struct`. One whose parenthesis never closes is kept as written."""
+    kept, i = [], 0
+    while (found := SCANNED.search(text, i)):
+        kept.append(text[i:found.start()])
+        if found.group().startswith("@"):
+            after = closing(text, found.end() - 1)
+            if after is not None:
+                kept.append(found.group()[:-1])
+                i = after
+                continue
+            kept.append(found.group())
+            i = found.end()
+        else:
+            after = passed_over(text, found.start())
+            kept.append(re.sub(r"[^\n]", " ", text[found.start():after]))
+            i = after
+    kept.append(text[i:])
+    return "".join(kept)
+
+
+# An attribute with arguments, a comment, or a string literal (raw, multiline or plain).
+SCANNED = re.compile(r'@\w+\(|//|/\*|#*"')
+
+
+def passed_over(text, at):
+    """Just after the comment or string literal that starts at `at`."""
+    if text.startswith("//", at):
+        end = text.find("\n", at)
+        return len(text) if end < 0 else end
+    if text.startswith("/*", at):
+        end = text.find("*/", at + 2)
+        return len(text) if end < 0 else end + 2
+    hashes = hashes_at(text, at)
+    quote = '"""' if text.startswith('"""', at + hashes) else '"'
+    closer = quote + "#" * hashes
+    i = at + hashes + len(quote)
+    while i < len(text):
+        if text.startswith(closer, i):
+            return i + len(closer)
+        i += 2 if text[i] == "\\" and not hashes else 1
+    return len(text)
+
+
+def hashes_at(text, at):
+    """How many `#` open a raw string literal at `at`."""
+    count = 0
+    while text.startswith("#", at + count):
+        count += 1
+    return count
+
+
+def closing(text, at):
+    """Just after the parenthesis that closes the one at `at`, or None when none does."""
+    depth, i = 0, at
+    while i < len(text):
+        if text.startswith(("//", "/*", '"'), i) or (text[i] == "#" and text.startswith('"', i + hashes_at(text, i))):
+            i = passed_over(text, i)
+            continue
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return None
+
+
 def mutation_problems():
     """Entries of Tests/mutations.json that no longer fit the code or the tests."""
     import json
@@ -155,11 +227,10 @@ def mutation_problems():
     # filter of a file's name alone also matches its tests, through the source location in their IDs, but
     # `File/name` doesn't: the name follows the suite there, not the file.
     tests, files = set(), set()
-    # A test may carry traits or arguments: `@Test(.serialized) func`, `@Test(arguments: [UInt8(0)]) func`.
-    test = r"@Test(?:\((?:[^()]|\([^()]*\))*\))?\s+func (\w+)"
+    test = r"@Test(?:\s+@\w+)*\s+func (\w+)"
     for path in glob.glob("Tests/StrataTests/*.swift"):
-        text = Path(path).read_text()
-        declaration = r"^\s*(?:@\w+(?:\([^)]*\))?\s+)*(?:struct|extension|final class|class)\s+(\w+)"
+        text = declarations_only(Path(path).read_text())
+        declaration = r"^\s*(?:@\w+\s+)*(?:struct|extension|final class|class)\s+(\w+)"
         suites = set(re.findall(declaration, text, re.M))
         if re.search(test, text):
             files.add(path.split("/")[-1].removesuffix(".swift"))

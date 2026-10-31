@@ -1,4 +1,6 @@
 import AppKit
+import Synchronization
+import UniformTypeIdentifiers
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let browserServices: BrowserServices
@@ -90,9 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [weak self] in await self?.openFirstWindows() }
     }
 
-    /// What was opened at launch, else the last session's windows, else one at the start location. Reads slow to answer
-    /// (a disk spinning up, a share that stopped) don't leave Strata without a window: after a few seconds the start
-    /// window opens, and the session's windows take its place when they're read, if it hasn't been used meanwhile.
+    /// What was opened at launch, else the last session's windows, else one at the start location.
     private func openFirstWindows() async {
         guard !openedAtLaunch, windowControllers.isEmpty else {
             launching = false
@@ -107,10 +107,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         presentWelcome()
     }
 
-    /// The Full Disk Access welcome, once, on the first window.
+    /// What each of `urls` opens as, in order: read on a thread for each disk, each kept as it's read, all within
+    /// `patience` of asking, so a disk that doesn't answer holds up only its own paths; one not read by then goes by how
+    /// it's spelled. A link is read on its own disk's thread: one into a share that stopped holds up what follows it
+    /// there, which goes by its spelling.
+    @concurrent nonisolated static func openings(of urls: [URL], within patience: Duration,
+                                                reader: @escaping @Sendable (URL) -> FileEntry.Opening = FileEntry.readOpening,
+                                                disk: @escaping @Sendable (String) -> String = DiskOfPath.of) async -> [FileEntry.Opening] {
+        let end = ContinuousClock.now + patience
+        let read = Mutex<[Int: FileEntry.Opening]>([:])
+        let byDisk = Dictionary(grouping: urls.indices) { disk(urls[$0].path) }
+        await withTaskGroup(of: Void.self) { group in
+            for indices in byDisk.values {
+                group.addTask {
+                    _ = await OwnThread.run(within: max(end - .now, .zero), otherwise: false) {
+                        for index in indices {
+                            let opening = reader(urls[index])
+                            read.withLock { $0[index] = opening }
+                        }
+                        return true
+                    }
+                }
+            }
+        }
+        let answered = read.withLock { $0 }
+        var openings: [FileEntry.Opening] = []
+        for (index, url) in urls.enumerated() {
+            if let found = answered[index] {
+                openings.append(found)
+            } else {
+                openings.append(await opening(spelled: url))
+            }
+        }
+        return openings
+    }
+
+    /// What `url` opens as by how it's spelled, for one whose disk doesn't answer: the system ends a folder's URL with a
+    /// slash, and a package's too, which its extension's type tells apart (known to LaunchServices, not read from the
+    /// disk, and away from the main thread all the same).
+    @concurrent nonisolated static func opening(spelled url: URL) async -> FileEntry.Opening {
+        guard url.hasDirectoryPath else { return .item }
+        // Looked up as a folder's extension: as a file's, "app" is an application file, not a package.
+        let isPackage = !url.pathExtension.isEmpty
+            && UTType(filenameExtension: url.pathExtension, conformingTo: .directory)?.conforms(to: .package) == true
+        return isPackage ? .item : .folder
+    }
+
+    /// Where the welcome goes, of `windows` front to back: the first one shown and free, else the first free one. One
+    /// asking something in a sheet is never given it: a sheet waiting behind another can't be ended.
+    static func welcomeHost<Window>(_ windows: [Window], isShown: (Window) -> Bool, isFree: (Window) -> Bool) -> Window? {
+        let free = windows.filter(isFree)
+        return free.first(where: isShown) ?? free.first
+    }
+
+    /// The Full Disk Access welcome, once, on the browser window in front. With every window asking something, it's
+    /// shown at the next launch.
     private func presentWelcome() {
+        let ours = windowControllers.filter { !$0.isClosed }
+        let inFront = NSApp.orderedWindows.compactMap { window in ours.first { $0.window === window } }
         guard welcome == nil, !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
-              let window = windowControllers.first?.window else { return }
+              let window = Self.welcomeHost(inFront + ours, isShown: { $0.window?.isVisible == true },
+                                            isFree: { $0.window?.attachedSheet == nil })?.window else { return }
         let sheet = WelcomeSheetController()
         sheet.onGranted = { [weak self] in self?.windowControllers.forEach { $0.privacyChanged() } }
         welcome = sheet
@@ -187,10 +244,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate()
             guard let workspace = browserServices.workspaces.named(name) else { return noSuchWorkspace() }
             if launching { openedAtLaunch = true }
-            let opening = browserServices.workspaces.open(workspace)
+            // Nothing to wait for when it's already being opened: that opening ends launch.
+            guard let opening = browserServices.workspaces.open(workspace) else { return }
+            let atLaunch = launching
             Task { [weak self] in
-                await opening?.value
-                self?.presentWelcome()
+                await opening.value
+                // None of its folders there (it said so): launch still ends with a window.
+                guard let self else { return }
+                if atLaunch, windowControllers.isEmpty { openWindow(at: startLocation) }
+                presentWelcome()
             }
             return
         }
@@ -244,12 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls where url.scheme == "strata" { handle(url) }
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
-        // In the order given, each once what it is has been read: one whose disk doesn't answer soon opens as a folder,
-        // and its pane shows what its read finds.
         if launching { openedAtLaunch = true }
         Task {
-            for url in files {
-                let opening = await OwnThread.run(within: .seconds(2), otherwise: .folder) { FileEntry.readOpening(url) }
+            for (url, opening) in zip(files, await Self.openings(of: files, within: .seconds(2))) {
                 if opening == .folder {
                     openWindow(at: url)
                 } else {
@@ -326,16 +385,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard browserServices.preferences.reopenWindows, let data = browserServices.preferences.defaults.data(forKey: Self.sessionKey),
               let windows = SessionStorage.decode(data) else { return [] }
         let workspaces = browserServices.workspaces
-        var plans: [(plan: WorkspacePlan, name: String)] = []
-        // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
-        for window in windows.reversed() {
-            // Shares aren't connected at launch (no login windows out of nowhere): their panes wait, and opening the
-            // workspace connects them.
-            let plan = await workspaces.plan(window)
-            guard !plan.tabs.isEmpty else { continue }
-            plans.append((plan, window.name.isEmpty ? "" : workspaces.named(window.name)?.name ?? ""))
+        // All at once, so their reads' deadlines don't add up; shares aren't connected at launch (no login windows
+        // out of nowhere): their panes wait, and opening the workspace connects them.
+        let planned = await withTaskGroup(of: (Int, WorkspacePlan).self) { group in
+            for (index, window) in windows.enumerated() { group.addTask { (index, await workspaces.plan(window)) } }
+            var plans: [Int: WorkspacePlan] = [:]
+            for await (index, plan) in group { plans[index] = plan }
+            return plans
         }
-        return plans
+        // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
+        return windows.indices.reversed().compactMap { index in
+            guard let plan = planned[index], !plan.tabs.isEmpty else { return nil }
+            let name = windows[index].name
+            return (plan, name.isEmpty ? "" : workspaces.named(name)?.name ?? "")
+        }
     }
 
     /// Opens them; false when none opened.
@@ -364,7 +427,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: services ?? browserServices)
         windowControllers.append(controller)
         controller.onClose = { [weak self, weak controller] in
-            self?.windowControllers.removeAll { $0 === controller }
+            guard let self else { return }
+            windowControllers.removeAll { $0 === controller }
+            // The welcome goes with its window. It's shown again once the windows closing together have closed, on one
+            // still open; with none left, at the next launch.
+            if let welcome, welcome.parent == nil || welcome.parent === controller?.window {
+                welcome.withdraw()
+                self.welcome = nil
+                DispatchQueue.main.async { [weak self] in self?.presentWelcome() }
+            }
         }
         if let parent, let window = controller.window {
             parent.addTabbedWindow(window, ordered: .above)

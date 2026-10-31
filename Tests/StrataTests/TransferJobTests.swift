@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -131,19 +132,18 @@ import Testing
         let merge = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
         let job = TransferQueue.shared.enqueue([tree.url("from/box")], to: tree.url("to"), mode: .copy,
                                                options: .init(verify: false, clone: false), undo: nil, conflicts: merge)
-        // Bounded: if another suite reset the hooks meanwhile, the merge runs without stopping here and this fails.
-        let arrived = await withTaskGroup(of: Bool.self) { group in
-            group.addTask { for await _ in reached { return true }; return false }
-            group.addTask { try? await Task.sleep(for: .seconds(30)); return false }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
-        }
-        try #require(arrived, "the merge never reached its folder's read")
+        // Bounded, counted on the main actor the queue starts jobs from: if another suite reset the hooks meanwhile,
+        // the merge runs without stopping here and this fails.
+        let reachedRead = Mutex(false)
+        Task { for await _ in reached { reachedRead.withLock { $0 = true }; break } }
+        for _ in 0..<3000 where !reachedRead.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
+        let arrived = reachedRead.withLock { $0 }
         let files = job.totalFiles
+        // Stopped and waited for either way, so it never outlives its folder.
         job.cancel()
         release.signal()
         await job.finished()
+        try #require(arrived, "the merge never reached its folder's read")
         #expect(job.state == .cancelled && job.totalFiles == files)
         #expect(tree.snapshot() == before)
     }

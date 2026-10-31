@@ -117,6 +117,8 @@ final class BrowserViewController: NSViewController {
     var selectionFetch: Task<Void, Never>?
     /// Explicit file fetch before opening or Quick Look; cancelled when the navigation context changes.
     var actionFetch: Task<Void, Never>?
+    /// The last Move to Trash asked here: its items going, then the next row chosen.
+    var trashing: Task<Void, Never>?
     /// Bumped whenever this pane changes folder, column location or results context.
     var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.

@@ -7400,8 +7400,8 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "                    guard await Self.there(folder.path), let controller = tab.controller,\n                          Self.isWaiting(controller, index, for: folder) else { continue }",
-    "replace": "                    guard await Self.there(folder.path), let controller = tab.controller else { continue }",
+    "find": "            guard let there, let controller = pane.controller, isWaiting(controller, pane.index, for: pane.folder) else { continue }\n",
+    "replace": "            guard let there, let controller = pane.controller else { continue }\n",
     "rule": "Bringing a workspace forward pulls back a pane that went elsewhere while its folder was read",
     "tests": "WorkspaceOwnershipTests/bringingAWorkspaceForwardShowsAFolderThatAppearedButNotInAPaneThatMovedOn"
   },
@@ -7491,8 +7491,8 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n    }\n\n    /// A selection holding a whole disk",
-    "replace": "        url.path == \"/\"\n    }\n\n    /// A selection holding a whole disk",
+    "find": "        (try? URL(filePath: url.path).resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n",
+    "replace": "        url.path == \"/\"\n",
     "rule": "Move to Trash takes a disk reached through a link",
     "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
   },
@@ -7512,8 +7512,8 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "        for tab in waiting { tab.controller.map(busy.add) }\n",
-    "replace": "        for tab in waiting { tab.controller.map(busy.add) }\n        planning.insert(workspace.name)\n",
+    "find": "        for tab in tabs { tab.controller.map(busy.add) }\n",
+    "replace": "        for tab in tabs { tab.controller.map(busy.add) }\n        planning.insert(workspace.name)\n",
     "rule": "A workspace whose window closed while it was brought forward can't be opened again",
     "tests": "WorkspaceOwnershipTests/aWorkspaceWhoseWindowClosedWhileBroughtForwardOpensAgain"
   },
@@ -7553,15 +7553,15 @@
     "tests": "OwnThreadTests/aReadPastItsDeadlineGivesWayAndOneOnTimeAnswers"
   },
   {
-    "file": "Strata/Window/Workspaces.swift",
-    "find": "                group.addTask { (path, await OwnThread.run(within: patience, otherwise: true) { exists(path) }) }",
-    "replace": "                group.addTask { (path, await OwnThread.run(within: patience, otherwise: false) { exists(path) }) }",
+    "file": "Strata/Model/Workspace.swift",
+    "find": "        guard answer(path) == false else { return .open }\n",
+    "replace": "        guard answer(path) != true else { return .open }\n",
     "rule": "A workspace leaves out a folder whose disk is only slow to answer",
     "tests": "WorkspaceOwnershipTests/aFolderWhoseDiskDoesntAnswerCountsAsThere"
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "        for tab in waiting { tab.controller.map(busy.add) }\n",
+    "find": "        for tab in tabs { tab.controller.map(busy.add) }\n",
     "replace": "",
     "rule": "A workspace chosen again while its window is brought forward is brought forward twice",
     "tests": "WorkspaceOwnershipTests/aWindowBusyWithItsWorkspaceIsOnlyShownWhenChosenAgainAndANewOneIsnt"
@@ -7571,6 +7571,139 @@
     "find": "        await OwnThread.run { urls.first(where: FileOps.isWholeDisk) }",
     "replace": "        await OwnThread.run { urls.first { $0.path == \"/\" } }",
     "rule": "Ask Strata runs a plan holding a disk reached through a link",
-    "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
+    "tests": "DropTests/trashingRefusesADiskHoweverItsReached|PlanSafetyTests/aPlanHoldingADiskChangesNothing"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "        if let disk = await Self.firstDisk(in: trashItems) {",
+    "replace": "        if let disk = Optional<URL>.none {",
+    "rule": "Ask Strata runs a plan's other steps before refusing the disk among them",
+    "tests": "PlanSafetyTests/aPlanHoldingADiskChangesNothing"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            if !fresh, let read = reading[path] { return read.task }\n",
+    "replace": "",
+    "rule": "A folder whose disk doesn't answer is read again each time its workspace is asked about",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseDiskDoesntAnswerIsReadOnceHoweverOftenItsAsked"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "        return await OwnThread.value(within: max(end - .now, .zero), otherwise: nil) { await read.value }\n",
+    "replace": "        return await read.value\n",
+    "rule": "Bringing a window forward waits on a disk that doesn't answer",
+    "tests": "WorkspaceOwnershipTests/aWaitingPaneWhoseDiskDoesntAnswerDoesntHoldItsWindow"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        guard selection.allSatisfy({ removed.contains($0.path) }) else { return false }\n",
+    "replace": "",
+    "rule": "Move to Trash replaces a selection made while its items went",
+    "tests": "DeleteTests/moveToTrashSelectsTheRowTakingItsPlaceUnlessAnotherWasChosen|DeleteTests/aSelectionStillTrashedIsOnlyTheTrashedItemsOrNoneOnceTheyveLeft"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        return !selection.isEmpty || !listed.contains { removed.contains($0.path) }",
+    "replace": "        return true",
+    "rule": "Move to Trash selects the next row after you emptied the selection while its items were shown",
+    "tests": "DeleteTests/aSelectionStillTrashedIsOnlyTheTrashedItemsOrNoneOnceTheyveLeft"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        (try? URL(filePath: url.path).resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n",
+    "replace": "        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n",
+    "rule": "A disk check answers from what a URL was told before a disk was reached at its path",
+    "tests": "DropTests/aDiskCheckAsksAgainEachTime"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "                group.addTask(operation: question(path, fresh: fresh.contains(path), around: around, until: end))\n",
+    "replace": "                for (asked, there) in await question(path, fresh: fresh.contains(path), around: around, until: ContinuousClock.now + patience)() { arrived(asked, there) }\n",
+    "rule": "Folders asked about together are asked one after another, so their waits add up",
+    "tests": "WorkspaceOwnershipTests/panesWaitingTogetherAreAskedAboutTogether"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            guard there == false, let place = around(path) else { return [(path, there)] }\n",
+    "replace": "            guard there == false, let place = around(path), false else { return [(path, there)] }\n",
+    "rule": "A folder found missing is offered for removal without its disk being asked about",
+    "tests": "WorkspaceOwnershipTests/aMissingFolderHasItsDiskAskedAboutAndOneThereDoesnt"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            for await answered in group {\n",
+    "replace": "            var all: [[(String, Bool?)]] = []; while let one = await group.next() { all.append(one) }; for answered in all {\n",
+    "rule": "A pane waits for every other pane's folder before it's shown",
+    "tests": "WorkspaceOwnershipTests/aPaneIsShownAsSoonAsItsFolderAnswers"
+  },
+  {
+    "file": "Strata/App/AppDelegate.swift",
+    "find": "        return isPackage ? .item : .folder\n",
+    "replace": "        return .folder\n",
+    "rule": "A package opened with Strata on a disk that doesn't answer is browsed into",
+    "tests": "OpeningAtLaunchTests/anUnansweredPathOpensAsItsSpellingSays"
+  },
+  {
+    "file": "Strata/Model/Workspace.swift",
+    "find": "        case nil: return .open\n",
+    "replace": "        case nil: return .missing\n",
+    "rule": "A folder whose share or disk doesn't answer in time is offered for removal or said to be away",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseShareOrDiskDoesntAnswerIsOpenedNeverRemoved"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "                self?.reading.withLock { if $0[path]?.token == token { $0[path] = nil } }\n",
+    "replace": "",
+    "rule": "A read that has ended is shared with later questions, which get what it found before",
+    "tests": "WorkspaceOwnershipTests/aFolderIsReadAgainOnceItsLastReadHasEnded"
+  },
+  {
+    "file": "Strata/App/AppDelegate.swift",
+    "find": "        let byDisk = Dictionary(grouping: urls.indices) { disk(urls[$0].path) }\n",
+    "replace": "        let byDisk = Dictionary(grouping: urls.indices) { _ in \"\" }\n",
+    "rule": "A path opened with Strata waits behind another disk that doesn't answer",
+    "tests": "OpeningAtLaunchTests/openedPathsAreReadEachDiskOnItsOwn"
+  },
+  {
+    "file": "Strata/App/AppDelegate.swift",
+    "find": "            if let found = answered[index] {\n",
+    "replace": "            if false, let found = answered[index] {\n",
+    "rule": "A path opened with Strata that was read goes by its spelling all the same",
+    "tests": "OpeningAtLaunchTests/openedPathsAreReadEachDiskOnItsOwn"
+  },
+  {
+    "file": "Strata/App/AppDelegate.swift",
+    "find": "        return free.first(where: isShown) ?? free.first\n",
+    "replace": "        return free.first\n",
+    "rule": "The welcome goes on a window that isn't shown while one is",
+    "tests": "OpeningAtLaunchTests/theWelcomeGoesOnTheFirstWindowShownAndFree"
+  },
+  {
+    "file": "Strata/Model/Workspace.swift",
+    "find": "        if let share = workspace.share(for: path) {\n",
+    "replace": "        if false, let share = workspace.share(for: path) {\n",
+    "rule": "A folder on a share goes by its disk rather than its share",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseShareOrDiskDoesntAnswerIsOpenedNeverRemoved"
+  },
+  {
+    "file": "Strata/Model/Workspace.swift",
+    "find": "        case true?: return .missing\n",
+    "replace": "        case true?: return .open\n",
+    "rule": "A folder deleted from a share that's mounted, or a disk that's there, isn't known to be gone",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseShareOrDiskDoesntAnswerIsOpenedNeverRemoved"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "            guard mounts.isMounted(place) else { return [(path, there), (place, false)] }\n",
+    "replace": "",
+    "rule": "An empty folder left where a share was mounted counts as the share, and its folders as gone",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseShareOrDiskDoesntAnswerIsOpenedNeverRemoved"
+  },
+  {
+    "file": "Strata/App/AppDelegate.swift",
+    "find": "        let free = windows.filter(isFree)\n",
+    "replace": "        let free = windows\n",
+    "rule": "The welcome goes on a window asking something in a sheet, where it can't be ended",
+    "tests": "OpeningAtLaunchTests/theWelcomeGoesOnTheFirstWindowShownAndFree"
   }
 ]
