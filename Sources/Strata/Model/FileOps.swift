@@ -397,6 +397,12 @@ package enum FileOps {
             && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
+    /// `canTrash` judged by how `url` is spelled, without the disk: for menus, drags and the Inspector as they're shown.
+    /// Move to Trash checks `canTrash(_:copies:)`, which follows links, as it goes.
+    package nonisolated static func canTrash(spelled url: URL, copies: CopyProviders) -> Bool {
+        !Trash.isTrash(url) && !Trash.isInTrash(url) && !ReadOnlyCopies.contains(url, copies: copies)
+    }
+
     /// `urls` in order without duplicates or items inside another of them, keeping each item's original URL spelling.
     package nonisolated static func outermost(_ urls: [URL]) -> [URL] {
         let pairs = urls.map { (url: $0, path: $0.standardizedFileURL.path) }

@@ -10,6 +10,8 @@ final class DragFacts {
         let device: dev_t?
         let opens: Bool
         let isPackage: Bool
+        /// A folder itself, not a link to one.
+        let isFolder: Bool
     }
 
     private static var current: DragFacts?
@@ -83,13 +85,18 @@ final class DragFacts {
     /// Whether `folder` is a package (an app); taken to be one until that's known.
     func isPackage(_ folder: URL) -> Bool { fact(folder.path)?.isPackage != false }
 
+    /// Whether `url` is a folder that isn't a package or a link; not until that's known.
+    func isPlainFolder(_ url: URL) -> Bool { fact(url.path).map { $0.isFolder && !$0.isPackage } ?? false }
+
     nonisolated static func read(_ paths: [String]) -> [String: Fact] {
         var facts: [String: Fact] = [:]
         for path in paths {
             let url = URL(fileURLWithPath: path)
-            facts[path] = Fact(realPath: TransferJob.realPath(path), device: TransferEngine.device(url),
+            var info = stat()
+            facts[path] = Fact(realPath: RealPath.of(path), device: TransferEngine.device(url),
                                opens: access(path, R_OK | X_OK) == 0,
-                               isPackage: (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true)
+                               isPackage: (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true,
+                               isFolder: lstat(path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR)
         }
         return facts
     }

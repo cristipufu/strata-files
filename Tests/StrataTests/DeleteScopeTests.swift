@@ -35,6 +35,17 @@ struct DeleteScopeTests {
         }
     }
 
+    /// What menus, drags and the Inspector offer to trash is judged by spelling alone: never a Trash or what's in one,
+    /// nor an archive's copy; a folder only named like a Trash is an ordinary item. Move to Trash also follows links.
+    @Test func whatIsOfferedForTheTrashIsJudgedBySpellingAlone() throws {
+        let tree = try TestTree("a.txt", ".Trash/")
+        for url in [Trash.home, Trash.home.appending(path: "a.txt"), ArchiveCache.root.appending(path: "x/contents/a.txt")] {
+            #expect(!FileOps.canTrash(spelled: url, copies: .live), "\(url.path)")
+        }
+        for path in ["a.txt", ".Trash"] { #expect(FileOps.canTrash(spelled: tree.url(path), copies: .live), "\(path)") }
+        #expect(tree.snapshot() == [".Trash/", "a.txt"])
+    }
+
     @Test func aTrashIsNeverTrashedOrDeletedItself() async throws {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let tree = try TestTree("a.txt", ".Trash/", "trash link -> \(Trash.home.path)", "home link -> \(home.path)")

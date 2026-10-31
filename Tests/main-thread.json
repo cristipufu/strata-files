@@ -40,5 +40,13 @@
   "call": "unlink(",
   "count": 1,
   "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
+ },
+ {
+  "helper": "ArchiveCache.archive(containing:)",
+  "reason": "Which archive a copy came from is kept in memory as copies are made, looked up or pruned at launch (off the main thread); only a copy none of those has seen yet reads its bookkeeping file, once a launch: Strata's own small file in its caches on the startup disk, never on a share."
+ },
+ {
+  "helper": "ContainerDragItem(source:)",
+  "reason": "As a drag of a server's or container's item begins: the content type of Strata's own copy of it, in its caches on the startup disk (never on the server or a share), once per item dragged."
  }
 ]

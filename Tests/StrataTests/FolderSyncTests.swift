@@ -22,6 +22,19 @@ struct FolderSyncTests {
         result.differences.map { ($0, FolderCompare.defaultAction(for: $0.kind, direction: direction, mirror: mirror)) }
     }
 
+    /// A folder and one inside it are never compared for a sync, however a link spells them apart: it would copy a
+    /// folder into itself, or trash one side's own folder.
+    @Test func aFolderAndOneInsideItAreNeverComparedForASync() async throws {
+        let tree = try TestTree("left/", "left/inner/", "left/inner/a.txt", "link -> left")
+        for (a, b) in [("link", "left/inner"), ("left/inner", "link"), ("left", "link")] {
+            let result = await FolderCompare.compare(tree.url(a), tree.url(b), contents: false, includeHidden: false,
+                                                     control: FolderCompare.Control()) { _ in }
+            #expect(result.failure == String(localized: "A folder can’t be copied into itself"), "\(a), \(b)")
+            #expect(result.differences.isEmpty, "\(a), \(b)")
+        }
+        #expect(tree.snapshot() == ["left/", "left/inner/", "left/inner/a.txt", "link -> left"])
+    }
+
     @Test func onlyAMirrorTrashesAndOnlyOnTheSideSyncedTo() {
         let kinds: [FolderCompare.Kind] = [.onlyLeft, .onlyRight, .leftNewer, .rightNewer, .changed, .kindsDiffer, .unknown]
         for direction in FolderCompare.Direction.allCases {

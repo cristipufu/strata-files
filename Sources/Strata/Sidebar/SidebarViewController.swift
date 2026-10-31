@@ -501,7 +501,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         if favoriteIndex(item, index) != nil {
             // Not a read-only copy's folders: they're gone when Strata quits.
-            let folders = urls.filter { !ReadOnlyCopies.contains($0, copies: copies) && (TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath) }
+            let facts = DragFacts.of(info)
+            let folders = urls.filter { !ReadOnlyCopies.contains($0, copies: copies) && (facts.isPlainFolder($0) || $0.hasDirectoryPath) }
             return folders.isEmpty ? [] : .link
         }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
@@ -796,7 +797,7 @@ extension SidebarViewController: NSMenuDelegate {
     /// mounted, which the kernel says without asking any of them).
     static func canTrash(_ urls: [URL], copies: CopyProviders, mounts: Set<String>) -> Bool {
         !urls.isEmpty && !urls.contains { url in
-            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)
+            !FileOps.canTrash(spelled: url, copies: copies) || isMountPoint(url, in: mounts)
         }
     }
 

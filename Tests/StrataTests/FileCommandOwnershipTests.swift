@@ -182,7 +182,7 @@ struct FileCommandOwnershipTests {
         let item = env.state.url("containers/item.txt")
         try Data("item".utf8).write(to: item)
         #expect(env.services.copies.contains(item) && !CopyProviders.live.contains(item))
-        #expect(!TagStore.canTag(item, copies: env.services.copies))
+        #expect(!TagStore.canTag(onDisk: item, copies: env.services.copies))
         try env.services.tags.update([item], adding: ["Strata Test"], removing: [], undo: nil)
         #expect(getxattr(item.path, "com.apple.metadata:_kMDItemUserTags", nil, 0, 0, XATTR_NOFOLLOW) < 0)
         #expect(env.state.text("containers/item.txt") == "item")

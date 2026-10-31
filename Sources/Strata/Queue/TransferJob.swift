@@ -579,22 +579,15 @@ package final class TransferJob {
     /// elsewhere, and copying a folder into itself recurses until names get too long. The item itself isn't
     /// resolved (moving or copying a symlink moves or copies the link, not what it points to).
     package nonisolated static func isInside(_ folder: String, _ item: String) -> Bool {
-        isInside(resolvedFolder: realPath(folder), item)
+        isInside(resolvedFolder: RealPath.of(folder), item)
     }
 
     /// `isInside` with `folder` already resolved by `realPath` (resolve it once when testing many items).
     package nonisolated static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
         let parent = (item as NSString).deletingLastPathComponent
         let name = (item as NSString).lastPathComponent
-        let resolved = parent == item ? item : (realPath(parent) as NSString).appendingPathComponent(name)
+        let resolved = parent == item ? item : (RealPath.of(parent) as NSString).appendingPathComponent(name)
         return folder == resolved || folder.hasPrefix(resolved == "/" ? "/" : resolved + "/")
-    }
-
-    /// The path with symlinks resolved (or standardized, if it doesn't exist).
-    package nonisolated static func realPath(_ path: String) -> String {
-        guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
-        defer { free(resolved) }
-        return String(cString: resolved)
     }
 
     // MARK: - Results

@@ -141,7 +141,7 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)",
+    "find": "            !FileOps.canTrash(spelled: url, copies: copies) || isMountPoint(url, in: mounts)",
     "replace": "            isMountPoint(url, in: mounts)",
     "rule": "The sidebar's Trash takes anything dropped",
     "tests": "DropTests"
@@ -385,12 +385,12 @@
     "tests": "FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies",
     "edits": [
       {
-        "find": "try apply(urls.filter { Self.canTag($0, copies: copies) }.map { url in",
-        "replace": "try apply(urls.filter { Self.canTag($0, copies: .live) }.map { url in"
+        "find": "try apply(urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { url in",
+        "replace": "try apply(urls.filter { Self.canTag(onDisk: $0, copies: .live) }.map { url in"
       },
       {
-        "find": "            guard Self.canTag(url, copies: copies) else { continue }",
-        "replace": "            guard Self.canTag(url, copies: .live) else { continue }"
+        "find": "            guard Self.canTag(onDisk: url, copies: copies) else { continue }",
+        "replace": "            guard Self.canTag(onDisk: url, copies: .live) else { continue }"
       }
     ]
   },
@@ -946,7 +946,7 @@
   },
   {
     "file": "Strata/Index/FileIndex.swift",
-    "find": "        excluded.insert(realPath(storage.directory.path))\n",
+    "find": "        excluded.insert(RealPath.of(storage.directory.path))\n",
     "replace": "",
     "rule": "Index performance: private state stays out of its own index",
     "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState|IndexWorkerTests/anIndexLeavesOutItsOwnEnvironmentsStateAndCopies"
@@ -7428,8 +7428,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)",
-    "replace": "            !FileOps.canTrash(url, copies: copies)",
+    "find": "            !FileOps.canTrash(spelled: url, copies: copies) || isMountPoint(url, in: mounts)",
+    "replace": "            !FileOps.canTrash(spelled: url, copies: copies)",
     "rule": "The sidebar's Trash takes a whole disk",
     "tests": "DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed"
   },
@@ -7813,7 +7813,7 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "                    try ArchiveCache.finish(folder, from: archive)\n",
+    "find": "                try ArchiveCache.finish(folder, from: archive)\n",
     "replace": "",
     "rule": "An archive's copy, once made, isn't recorded, so opening it again unpacks it again",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
@@ -7838,5 +7838,26 @@
     "replace": "        guard !urls.isEmpty, let target = targetDirectory else { return false }\n",
     "rule": "A drop on a folder in Icons, Columns or Gallery goes into the folder shown instead",
     "tests": "TransferContextTests/everyViewDropsIntoExactlyTheFolderItLandedOn"
+  },
+  {
+    "file": "Strata/Queue/ArchiveJob.swift",
+    "find": "            _ = try? await Self.onWorkerThread { ArchiveCache.setAside(folder.deletingLastPathComponent()) }\n",
+    "replace": "",
+    "rule": "An archive copy its job didn't finish is left in the cache",
+    "tests": "AsyncActionContextTests/anArchiveCopyItsJobDidntFinishIsSetAsideByTheJob"
+  },
+  {
+    "file": "Strata/Model/FolderCompare.swift",
+    "find": "        guard !nested(RealPath.of(left.path), RealPath.of(right.path)) else {\n",
+    "replace": "        guard !nested(left.path, right.path) else {\n",
+    "rule": "A folder and one inside it reached through a link are compared for a sync",
+    "tests": "FolderSyncTests/aFolderAndOneInsideItAreNeverComparedForASync"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        !Trash.isTrash(url) && !Trash.isInTrash(url) && !ReadOnlyCopies.contains(url, copies: copies)\n",
+    "replace": "        !Trash.isTrash(url) && !ReadOnlyCopies.contains(url, copies: copies)\n",
+    "rule": "Menus and drags offer to trash what's already in the Trash",
+    "tests": "DeleteScopeTests/whatIsOfferedForTheTrashIsJudgedBySpellingAlone"
   }
 ]

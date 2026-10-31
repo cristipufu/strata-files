@@ -193,7 +193,7 @@ package final class FileIndex {
     package nonisolated static func roots(home: String) -> [String] { [home, "/Applications"] }
 
     @concurrent package static func realHome() async -> String {
-        realPath(FileManager.default.homeDirectoryForCurrentUser.path)
+        RealPath.of(FileManager.default.homeDirectoryForCurrentUser.path)
     }
 
     package func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
@@ -253,12 +253,12 @@ package final class FileIndex {
                                            copies: CopyProviders) async -> IndexConfig {
         var excluded = guarded
         // Saving the index must not index that save and trigger another full rewrite of the index.
-        excluded.insert(realPath(storage.directory.path))
+        excluded.insert(RealPath.of(storage.directory.path))
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
-        excluded.insert(realPath(copies.containerCopies.root.path))
+        excluded.insert(RealPath.of(copies.containerCopies.root.path))
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.
-        excluded.insert(realPath(copies.remoteCopies.root.path))
-        excluded.insert(realPath(copies.clipboardRoot.path))
+        excluded.insert(RealPath.of(copies.remoteCopies.root.path))
+        excluded.insert(RealPath.of(copies.clipboardRoot.path))
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(storage.url("index.bin"))
         return IndexConfig(roots: roots(home: home), excluded: excluded, noise: [home + "/Library"],
@@ -266,11 +266,6 @@ package final class FileIndex {
     }
 
 
-    private nonisolated static func realPath(_ path: String) -> String {
-        guard let resolved = realpath(path, nil) else { return path }
-        defer { free(resolved) }
-        return String(cString: resolved)
-    }
 }
 
 extension FileEntry {

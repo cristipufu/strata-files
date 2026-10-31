@@ -119,7 +119,7 @@ struct DropTests {
             // The link leads into the dragged folder, and the share is on the same disk as the home folder.
             return Dictionary(uniqueKeysWithValues: paths.map { path in
                 (path, DragFacts.Fact(realPath: path == "/Volumes/Share/link" ? "/Volumes/Share/a" : path, device: 1,
-                                      opens: true, isPackage: false))
+                                      opens: true, isPackage: false, isFolder: true))
             })
         }
         let dragged = [URL(fileURLWithPath: "/Volumes/Share/a")]
@@ -142,7 +142,7 @@ struct DropTests {
     @Test func aDropGoesByWhatTheDiskSaysNeverByThePaths() async {
         let facts = DragFacts(sequence: 8) { paths in
             Dictionary(uniqueKeysWithValues: paths.map { path in
-                (path, DragFacts.Fact(realPath: path, device: path.hasPrefix("/Volumes/Share/b") ? 2 : 1, opens: true, isPackage: false))
+                (path, DragFacts.Fact(realPath: path, device: path.hasPrefix("/Volumes/Share/b") ? 2 : 1, opens: true, isPackage: false, isFolder: true))
             })
         }
         let dragged = [URL(fileURLWithPath: "/Volumes/Share/a/x.txt")], target = URL(fileURLWithPath: "/Volumes/Share/b")
@@ -156,7 +156,7 @@ struct DropTests {
         let answer = DispatchSemaphore(value: 0), answeredFirst = OSAllocatedUnfairLock(initialState: false)
         let facts = DragFacts(sequence: 9) { paths in
             if paths.contains(where: { $0.hasPrefix("/Volumes/Stuck") }) { answer.wait() }
-            return Dictionary(uniqueKeysWithValues: paths.map { ($0, DragFacts.Fact(realPath: $0, device: 1, opens: true, isPackage: false)) })
+            return Dictionary(uniqueKeysWithValues: paths.map { ($0, DragFacts.Fact(realPath: $0, device: 1, opens: true, isPackage: false, isFolder: true)) })
         }
         let stuck = Task {
             await FileDrop.decided([URL(fileURLWithPath: "/Volumes/Stuck/a/x.txt")], into: URL(fileURLWithPath: "/Volumes/Stuck/b"),
@@ -176,5 +176,20 @@ struct DropTests {
         fallback.cancel()
         answer.signal()
         #expect(await stuck.value == .move)
+    }
+
+    /// Folders dragged into Favorites are known for folders by what the drag's facts read (never a package or a file),
+    /// and nothing is taken for one before that.
+    @Test func aDraggedFolderIsKnownForOneOnceRead() async {
+        let facts = DragFacts(sequence: 10) { paths in
+            Dictionary(uniqueKeysWithValues: paths.map { path in
+                (path, DragFacts.Fact(realPath: path, device: 1, opens: true, isPackage: path.hasSuffix(".app"),
+                                      isFolder: !path.hasSuffix(".txt")))
+            })
+        }
+        let urls = ["/Users/someone/Folder", "/Applications/Some.app", "/Users/someone/a.txt"].map { URL(fileURLWithPath: $0) }
+        #expect(urls.map(facts.isPlainFolder) == [false, false, false])
+        await facts.settled()
+        #expect(urls.map(facts.isPlainFolder) == [true, false, false])
     }
 }

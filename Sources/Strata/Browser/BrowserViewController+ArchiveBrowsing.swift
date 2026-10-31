@@ -165,10 +165,8 @@ extension BrowserViewController {
                 if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
             }
             if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
-            // The job records the finished copy itself, away from the main thread.
+            // The job records its finished copy, or sets aside one it didn't finish, away from the main thread.
             guard job.state == .finished else {
-                // Only this job's own copy goes: nothing else was making it.
-                ArchiveCache.setAside(entry)
                 if job.state == .failed, let message = job.errorMessage {
                     let alert = NSAlert()
                     alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")

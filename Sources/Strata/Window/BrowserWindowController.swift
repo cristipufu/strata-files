@@ -223,16 +223,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window?.makeFirstResponder(other.browser.focusView)
     }
 
-    /// Both panes' folders, left then right, when two panes each show a folder and neither is inside the other (a
-    /// sync between them would copy a folder into itself, or trash one side's own folder).
+    /// Both panes' folders, left then right, when two panes each show a folder and neither is inside the other as
+    /// spelled (a sync between them would copy a folder into itself, or trash one side's own folder; the compare checks
+    /// where they really are as it reads them).
     var paneFolders: (left: URL, right: URL)? {
         guard panes.count == 2, case .folder(let left) = panes[0].destination, case .folder(let right) = panes[1].destination
         else { return nil }
         // Not a copy Strata fills in (a server's, a container's, an archive's): a sync can't write into one.
         guard !ReadOnlyCopies.contains(left, copies: services.copies), !ReadOnlyCopies.contains(right, copies: services.copies) else { return nil }
-        let l = TransferJob.realPath(left.standardizedFileURL.path), r = TransferJob.realPath(right.standardizedFileURL.path)
-        func inside(_ a: String, _ b: String) -> Bool { a == b || a.hasPrefix(b == "/" ? "/" : b + "/") }
-        guard !inside(l, r), !inside(r, l) else { return nil }
+        guard !FolderCompare.nested(PathSpelling.short(left), PathSpelling.short(right)) else { return nil }
         return (left, right)
     }
 

@@ -70,7 +70,7 @@ extension BrowserViewController {
         // where it came from.
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
         let copies = services.copies
-        guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return Sounds.beep() }
+        guard urls.allSatisfy({ FileOps.canTrash(spelled: $0, copies: copies) }) else { return Sounds.beep() }
         // Keep the cursor where it was: once they've gone, select the row that slides into the first removed one's place.
         // Paths as listed, never asked of the disk: a standardized one changes once its item has gone.
         let removed = Set(urls.map(\.path))
@@ -310,7 +310,7 @@ extension BrowserViewController {
     /// The selection's tags in a popover with suggestions (Finder's Tags…).
     @objc func editTags(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty, urls.allSatisfy({ TagStore.canTag($0, copies: services.copies) }) else { return }
+        guard !urls.isEmpty, selectedEntries.allSatisfy({ TagStore.canTag($0, copies: services.copies) }) else { return }
         let (rect, _) = selectionAnchor()
         TagEditorController(urls: urls, undo: undoManager, tags: services.tags).show(relativeTo: rect, of: view)
     }

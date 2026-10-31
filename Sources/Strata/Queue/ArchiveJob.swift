@@ -116,14 +116,7 @@ package final class ArchiveJob {
                 }
                 register(url, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
-                try Self.requireArchive(archive)
-                let inspection = try await inspect(archive)
-                let control = control
-                try await Self.onWorkerThread {
-                    try Archiver.extractContents(archive, inspection: inspection, to: folder, control: control)
-                    try ArchiveCache.finish(folder, from: archive)
-                }
-                url = folder
+                url = try await browse(archive, into: folder)
             }
             result = url
             entriesDone = max(entriesDone, totalEntries)
@@ -135,6 +128,24 @@ package final class ArchiveJob {
             state = .failed
         }
         finish()
+    }
+
+    /// Unpacks `archive` into its copy in Strata's caches and records it there; a copy that isn't finished (the job
+    /// failed or was stopped) is set aside, on the worker: only this job was making it.
+    private func browse(_ archive: URL, into folder: URL) async throws -> URL {
+        let control = control
+        do {
+            try Self.requireArchive(archive)
+            let inspection = try await inspect(archive)
+            try await Self.onWorkerThread {
+                try Archiver.extractContents(archive, inspection: inspection, to: folder, control: control)
+                try ArchiveCache.finish(folder, from: archive)
+            }
+            return folder
+        } catch {
+            _ = try? await Self.onWorkerThread { ArchiveCache.setAside(folder.deletingLastPathComponent()) }
+            throw error
+        }
     }
 
     /// Reads the archive's listing ("Preparing…" meanwhile) for its size and how many entries extraction will report.

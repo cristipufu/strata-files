@@ -92,12 +92,24 @@ package nonisolated enum FolderCompare {
         package func cancel() { lock.withLock { stopped = true } }
     }
 
+    /// Whether one path is the other or inside it.
+    package static func nested(_ a: String, _ b: String) -> Bool {
+        func inside(_ a: String, _ b: String) -> Bool { a == b || a.hasPrefix(b == "/" ? "/" : b + "/") }
+        return inside(a, b) || inside(b, a)
+    }
+
     @concurrent
     package static func compare(_ left: URL, _ right: URL, contents: Bool, includeHidden: Bool, control: Control,
                         progress: @escaping @Sendable (Int) -> Void) async -> Result {
         var result = Result()
         for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
             result.failure = String(localized: "“\(root.lastPathComponent)” can’t be read.")
+            return result
+        }
+        // Where they really are, whatever links lead there: a sync between a folder and one inside it would copy a
+        // folder into itself, or trash one side's own folder.
+        guard !nested(RealPath.of(left.path), RealPath.of(right.path)) else {
+            result.failure = String(localized: "A folder can’t be copied into itself")
             return result
         }
         var seen = 0

@@ -274,7 +274,7 @@ final class InspectorViewController: NSViewController {
         let items = entries.isEmpty ? [folder].compactMap { $0 } : entries
         // The project section follows a single selected folder, or the current folder when nothing is selected; never in
         // a read-only copy (a container's scripts are not this Mac's to run).
-        let projectFolder = items.count == 1 && items[0].isFolder && !isReadOnlyCopy(items[0].url) && FileOps.canTrash(items[0].url, copies: services.copies) ? items[0].url : nil
+        let projectFolder = items.count == 1 && items[0].isFolder && !isReadOnlyCopy(items[0].url) && FileOps.canTrash(spelled: items[0].url, copies: services.copies) ? items[0].url : nil
         loadProject(projectFolder)
         composeFolder = projectFolder
         composeView.configure(projectFolder)

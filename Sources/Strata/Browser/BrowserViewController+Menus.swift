@@ -419,7 +419,7 @@ extension BrowserViewController: NSMenuItemValidation {
             // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
             let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
             item.title = inTrash ? String(localized: "Put Back") : String(localized: "Move to Trash")
-            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) || Trash.isTrash(anySpelling: $0.url) })
+            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) || Trash.isTrash($0.url) })
         case #selector(putBack(_:)):
             return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
         case #selector(checkAppsForUpdates(_:)):

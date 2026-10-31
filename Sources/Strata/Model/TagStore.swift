@@ -178,21 +178,21 @@ package final class TagStore {
     }
 
     /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without
-    /// reading the disk again. Tagging itself checks `canTag(_: URL)` as it writes.
+    /// reading the disk again. Tagging itself checks `canTag(onDisk:)` as it writes.
     package nonisolated static func canTag(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         !entry.isSymlink && !ReadOnlyCopies.contains(entry.url, copies: copies)
     }
 
     /// Whether `url` can carry tags from Strata: not a link (its target's tags would change instead), and not inside an
     /// archive opened as a folder (a temporary copy).
-    package nonisolated static func canTag(_ url: URL, copies: CopyProviders) -> Bool {
+    package nonisolated static func canTag(onDisk url: URL, copies: CopyProviders) -> Bool {
         var info = stat()
         return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
     /// Adds `tag` to every item, or removes it from all of them when they all have it already (Finder's colored circles).
     package func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) throws {
-        let current = urls.filter { Self.canTag($0, copies: copies) }.map { (url: $0, tags: onDisk($0)) }
+        let current = urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { (url: $0, tags: onDisk($0)) }
         let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
         try apply(current.map { item in
             var tags = item.tags.filter { $0.name.caseInsensitiveCompare(tag.name) != .orderedSame }
@@ -204,7 +204,7 @@ package final class TagStore {
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
     package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) throws {
         let added = adding.map(Self.clean).filter { !$0.isEmpty }
-        try apply(urls.filter { Self.canTag($0, copies: copies) }.map { url in
+        try apply(urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { url in
             var tags = onDisk(url).filter { !removing.contains($0.name.lowercased()) }
             for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
                 tags.append(FinderTag(name: name, color: Self.color(forNew: name)))
@@ -246,7 +246,7 @@ package final class TagStore {
         let labels = NSWorkspace.shared.fileLabels
         for (url, tags) in changes {
             let path = url.standardizedFileURL.path
-            guard Self.canTag(url, copies: copies) else { continue }
+            guard Self.canTag(onDisk: url, copies: copies) else { continue }
             guard let chosen = try? ChosenFile(url) else {
                 failures.append((url, POSIXError(.ESTALE)))
                 continue

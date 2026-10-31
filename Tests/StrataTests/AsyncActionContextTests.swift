@@ -450,6 +450,28 @@ struct AsyncActionContextTests {
         withExtendedLifetime((env1, env2, env3, browser1, browser2, browser3)) {}
     }
 
+    /// A copy its job didn't finish (it was stopped) is set aside by the job before it says it has finished: only that
+    /// job was making it, and the next open starts afresh.
+    @Test func anArchiveCopyItsJobDidntFinishIsSetAsideByTheJob() async throws {
+        let tree = try TestTree("pack.tar", "pack 2.tar")
+        try Self.writeTarArchive(to: tree.url("pack.tar"))
+        try Self.writeTarArchive(to: tree.url("pack 2.tar"))
+        let env = try Environment(tree)
+        let folder = try #require(ArchiveCache.folder(for: tree.url("pack.tar")))
+        let other = try #require(ArchiveCache.folder(for: tree.url("pack 2.tar")))
+        defer { [folder, other].forEach { ArchiveCache.remove($0.deletingLastPathComponent()) } }
+        for made in [folder, other] { try FileManager.default.createDirectory(at: made, withIntermediateDirectories: true) }
+        let job = ArchiveJob(.browse(tree.url("pack.tar"), at: folder), undo: nil)
+        job.onChange = { job in if job.state == .scanning { job.cancel() } }
+        job.start(on: env.transfers)
+        await job.finished()
+        #expect(job.state == .cancelled)
+        #expect(!FileManager.default.fileExists(atPath: folder.deletingLastPathComponent().path))
+        // Another archive's copy stays.
+        #expect(FileManager.default.fileExists(atPath: other.path))
+        #expect(tree.snapshot().filter { !$0.hasPrefix("env/") } == ["pack 2.tar", "pack.tar"])
+    }
+
     @Test func closingAPaneStopsColumnAndGalleryBackgroundWork() async throws {
         _ = NSApplication.shared
         let tree = try TestTree("root/sub/child.txt", "root/a.txt", "root/b.txt")
