@@ -2,7 +2,7 @@ import Foundation
 
 /// The read capabilities of a browsable copy. Providers keep their own listing format, permissions, fetching policy
 /// and error messages. Server writes and container archives remain separate from this interface.
-nonisolated protocol CopyProvider: Sendable {
+package nonisolated protocol CopyProvider: Sendable {
     func contains(_ url: URL) -> Bool
     func isPlaceholder(_ url: URL) -> Bool
     func previewFolder(_ folder: URL) async throws
@@ -18,20 +18,20 @@ nonisolated protocol CopyProvider: Sendable {
 }
 
 extension CopyProvider {
-    func previewFolder(_ folder: URL) async throws { await refresh(folder) }
+    package func previewFolder(_ folder: URL) async throws { await refresh(folder) }
 }
 
 /// Routes each URL to its owner. The order is stable: explicit reads finish one provider before starting the next,
 /// and the first owner of a path handles it exactly once. Independent environments can supply their own providers.
-nonisolated struct CopyProviders: Sendable {
-    static let previewEntryLimit = 50_000
-    static let live = CopyProviders(servers: .shared, containers: .shared)
+package nonisolated struct CopyProviders: Sendable {
+    package static let previewEntryLimit = 50_000
+    package static let live = CopyProviders(servers: .shared, containers: .shared)
     private let providers: [any CopyProvider]
-    let remoteCopies: RemoteCopyStore
-    let containerCopies: ContainerCopyStore
-    let clipboardRoot: URL
+    package let remoteCopies: RemoteCopyStore
+    package let containerCopies: ContainerCopyStore
+    package let clipboardRoot: URL
 
-    init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore = RemoteCopies.store,
+    package init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore = RemoteCopies.store,
          containerCopies: ContainerCopyStore = ContainerCopies.store,
          clipboardRoot: URL = LazyCopies.clipboardRoot) {
         self.providers = providers
@@ -40,7 +40,7 @@ nonisolated struct CopyProviders: Sendable {
         self.clipboardRoot = clipboardRoot
     }
 
-    init(servers: RemoteFiles, containers: ContainerFiles, clipboardRoot: URL? = nil) {
+    package init(servers: RemoteFiles, containers: ContainerFiles, clipboardRoot: URL? = nil) {
         let defaultRoot = servers.copies.root == RemoteCopies.root
             ? LazyCopies.clipboardRoot
             : servers.copies.root.deletingLastPathComponent().appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
@@ -51,18 +51,18 @@ nonisolated struct CopyProviders: Sendable {
 
     private func provider(for url: URL) -> (any CopyProvider)? { providers.first { $0.contains(url) } }
 
-    func contains(_ url: URL) -> Bool { provider(for: url) != nil }
-    func isClipboardStaging(_ url: URL) -> Bool {
+    package func contains(_ url: URL) -> Bool { provider(for: url) != nil }
+    package func isClipboardStaging(_ url: URL) -> Bool {
         let root = clipboardRoot.standardizedFileURL.path, path = url.standardizedFileURL.path
         return path == root || path.hasPrefix(root + "/")
     }
-    var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
-    func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
-    func containsPlaceholder(in urls: [URL]) -> Bool { Self.containsPlaceholder(in: urls, providers: providers) }
+    package var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
+    package func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
+    package func containsPlaceholder(in urls: [URL]) -> Bool { Self.containsPlaceholder(in: urls, providers: providers) }
 
     /// `containsPlaceholder` away from the main thread: it reads every item of a folder copied out of a server or a
     /// container, which can hold thousands.
-    func containsPlaceholderOffMain(in urls: [URL]) async -> Bool {
+    package func containsPlaceholderOffMain(in urls: [URL]) async -> Bool {
         await Self.containsPlaceholder(in: urls, of: providers)
     }
 
@@ -83,15 +83,15 @@ nonisolated struct CopyProviders: Sendable {
         }
         return urls.contains(where: check)
     }
-    func stageForClipboard(_ urls: [URL]) -> [URL] {
+    package func stageForClipboard(_ urls: [URL]) -> [URL] {
         LazyCopies.stageForClipboard(urls, copies: self, root: clipboardRoot)
     }
-    func previewFolder(_ folder: URL) async throws { try await provider(for: folder)?.previewFolder(folder) }
-    func refresh(_ folder: URL) async { await provider(for: folder)?.refresh(folder) }
-    func invalidate(_ folder: URL) async { await provider(for: folder)?.invalidate(folder) }
-    func reveal(_ url: URL) async -> Bool { await provider(for: url)?.reveal(url) ?? false }
-    func displayPath(_ url: URL) -> String? { provider(for: url)?.displayPath(url) }
-    func clipboardPath(_ url: URL) -> String? {
+    package func previewFolder(_ folder: URL) async throws { try await provider(for: folder)?.previewFolder(folder) }
+    package func refresh(_ folder: URL) async { await provider(for: folder)?.refresh(folder) }
+    package func invalidate(_ folder: URL) async { await provider(for: folder)?.invalidate(folder) }
+    package func reveal(_ url: URL) async -> Bool { await provider(for: url)?.reveal(url) ?? false }
+    package func displayPath(_ url: URL) -> String? { provider(for: url)?.displayPath(url) }
+    package func clipboardPath(_ url: URL) -> String? {
         if remoteCopies.contains(url) { return remoteCopies.displayPath(url) }
         if containerCopies.contains(url) {
             guard let (source, top) = containerCopies.copy(containing: url),
@@ -101,22 +101,22 @@ nonisolated struct CopyProviders: Sendable {
         if contains(url) { return displayPath(url) }
         return url.path
     }
-    func sourceName(_ url: URL) -> String? { provider(for: url)?.sourceName(url) }
-    func message(for error: Error, about url: URL) -> String {
+    package func sourceName(_ url: URL) -> String? { provider(for: url)?.sourceName(url) }
+    package func message(for error: Error, about url: URL) -> String {
         provider(for: url)?.message(for: error, about: url) ?? error.localizedDescription
     }
 
-    func fetch(_ urls: [URL]) async throws {
+    package func fetch(_ urls: [URL]) async throws {
         for (provider, items) in groups(urls) { try await provider.fetch(items) }
     }
 
-    func prepareForCopying(_ urls: [URL]) async throws {
+    package func prepareForCopying(_ urls: [URL]) async throws {
         for (provider, items) in groups(urls) { try await provider.prepareForCopying(items) }
     }
 
     /// Selection prefetch is optional and bounded. Preserve the existing policy: only the first selected provider
     /// spends this budget; explicit opening or copying fetches every provider's items.
-    func fetchSelection(_ urls: [URL], limit: Int64) async {
+    package func fetchSelection(_ urls: [URL], limit: Int64) async {
         if let (provider, items) = groups(urls).first { await provider.fetchSelection(items, limit: limit) }
     }
 
@@ -129,20 +129,20 @@ nonisolated struct CopyProviders: Sendable {
     }
 }
 
-nonisolated struct ServerCopyProvider: CopyProvider {
-    let files: RemoteFiles
-    func contains(_ url: URL) -> Bool { files.copies.contains(url) }
-    func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
-    func previewFolder(_ folder: URL) async throws { try await files.previewFolder(folder) }
-    func refresh(_ folder: URL) async { await files.refresh(folder) }
-    func invalidate(_ folder: URL) async { await files.invalidate(folder) }
-    func reveal(_ url: URL) async -> Bool { await files.reveal(url) }
-    func fetch(_ urls: [URL]) async throws { try await files.fetch(urls) }
-    func fetchSelection(_ urls: [URL], limit: Int64) async { await files.fetchSelection(urls, limit: limit) }
-    func prepareForCopying(_ urls: [URL]) async throws { try await files.prepareForCopying(urls) }
-    func message(for error: Error, about url: URL) -> String { RemoteFiles.message(for: error) }
-    func displayPath(_ url: URL) -> String? { files.copies.displayPath(url) }
-    func sourceName(_ url: URL) -> String? { files.copies.server(containing: url)?.server.name }
+package nonisolated struct ServerCopyProvider: CopyProvider {
+    package let files: RemoteFiles
+    package func contains(_ url: URL) -> Bool { files.copies.contains(url) }
+    package func isPlaceholder(_ url: URL) -> Bool { files.copies.isPlaceholder(url) }
+    package func previewFolder(_ folder: URL) async throws { try await files.previewFolder(folder) }
+    package func refresh(_ folder: URL) async { await files.refresh(folder) }
+    package func invalidate(_ folder: URL) async { await files.invalidate(folder) }
+    package func reveal(_ url: URL) async -> Bool { await files.reveal(url) }
+    package func fetch(_ urls: [URL]) async throws { try await files.fetch(urls) }
+    package func fetchSelection(_ urls: [URL], limit: Int64) async { await files.fetchSelection(urls, limit: limit) }
+    package func prepareForCopying(_ urls: [URL]) async throws { try await files.prepareForCopying(urls) }
+    package func message(for error: Error, about url: URL) -> String { RemoteFiles.message(for: error) }
+    package func displayPath(_ url: URL) -> String? { files.copies.displayPath(url) }
+    package func sourceName(_ url: URL) -> String? { files.copies.server(containing: url)?.server.name }
 }
 
 private nonisolated struct ContainerCopyProvider: CopyProvider {

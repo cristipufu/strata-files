@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Move to Trash and undo (⌘Z, and later from History): only the chosen items go to the Trash, and undo only ever
 /// moves those very items back, never something that took their place since. The Trash tests use your real Trash and

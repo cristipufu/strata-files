@@ -3,6 +3,7 @@ import QuickLookThumbnailing
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ProviderThumbnailInfoTests {
     @Test func placeholderInvalidationFinishesBoundedThumbnailObserversWithoutDeliveringLateImages() async throws {

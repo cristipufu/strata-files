@@ -2,6 +2,7 @@ import AppKit
 import WebKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataPreviews
 
 extension ColorThemeTests {

@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct InspectorFolderOpeningTests {
     private actor Calls {

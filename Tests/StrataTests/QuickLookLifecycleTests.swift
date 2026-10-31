@@ -2,6 +2,7 @@ import AppKit
 import Quartz
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct QuickLookLifecycleTests {
     private func previewHost(in view: NSView) -> QuickLookPreviewView? {

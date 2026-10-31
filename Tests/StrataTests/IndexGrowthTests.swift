@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct IndexGrowthTests {
     private func append(_ range: Range<Int>, to store: IndexStore) {

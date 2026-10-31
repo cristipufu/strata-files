@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 extension ConflictResolver {
     /// Asks with a `ConflictSheetController` on `window` (or a standalone panel when the window is gone).
     /// Cancelling the job while the sheet is up closes it.
-    static func sheet(for window: NSWindow?) -> ConflictResolver {
+    package static func sheet(for window: NSWindow?) -> ConflictResolver {
         ConflictResolver { [weak window] conflict in
             let controller = ConflictSheetController(conflict: conflict)
             return await controller.run(on: window)
@@ -16,8 +16,8 @@ extension ConflictResolver {
 
 /// "An item named … already exists": the existing and incoming items side by side, with a line diff for small text
 /// files, and Skip / Keep Both / Replace. Esc stops the whole job.
-final class ConflictSheetController: NSWindowController {
-    let conflict: TransferConflict
+package final class ConflictSheetController: NSWindowController {
+    package let conflict: TransferConflict
     private let applyToAll = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private var continuation: CheckedContinuation<ConflictResolution, Never>?
     private var loadTasks: [Task<Void, Never>] = []
@@ -25,9 +25,9 @@ final class ConflictSheetController: NSWindowController {
     private let incomingCard: ItemCard
     private let diffSection = NSStackView()
 
-    static let width: CGFloat = 620
+    package static let width: CGFloat = 620
 
-    init(conflict: TransferConflict) {
+    package init(conflict: TransferConflict) {
         self.conflict = conflict
         existingCard = ItemCard(caption: String(localized: "Existing", comment: "Conflict sheet: over the item already there"),
                                 url: conflict.existing)
@@ -42,12 +42,12 @@ final class ConflictSheetController: NSWindowController {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Presenting
 
     /// Shows the sheet and waits for an answer.
-    func run(on parent: NSWindow?) async -> ConflictResolution {
+    package func run(on parent: NSWindow?) async -> ConflictResolution {
         // One sheet at a time per window; a job cancelled while waiting its turn never shows one.
         while let parent, parent.attachedSheet != nil {
             try? await Task.sleep(for: .milliseconds(150))
@@ -254,21 +254,21 @@ final class ConflictSheetController: NSWindowController {
 // MARK: - Facts about each side
 
 /// Size, date and (for small text files) contents of one side of a conflict.
-nonisolated struct ItemFacts: Sendable {
-    let url: URL
-    let isFolder: Bool
-    let kind: String?
-    let bytes: Int64?
-    let files: Int?
-    let modified: Date?
-    let text: String?
+package nonisolated struct ItemFacts: Sendable {
+    package let url: URL
+    package let isFolder: Bool
+    package let kind: String?
+    package let bytes: Int64?
+    package let files: Int?
+    package let modified: Date?
+    package let text: String?
     /// For files up to 8 MB: a digest to say "identical" when the bytes match.
-    let digest: Data?
+    package let digest: Data?
 
-    static let textLimit = 1_000_000
+    package static let textLimit = 1_000_000
 
     @concurrent
-    static func load(_ url: URL) async -> ItemFacts {
+    package static func load(_ url: URL) async -> ItemFacts {
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isPackageKey, .fileSizeKey,
                                                         .contentModificationDateKey, .localizedTypeDescriptionKey,
                                                         .contentTypeKey])
@@ -296,7 +296,7 @@ nonisolated struct ItemFacts: Sendable {
     }
 
     @concurrent
-    static func diff(_ old: ItemFacts, _ new: ItemFacts) async -> LineDiff.Result? {
+    package static func diff(_ old: ItemFacts, _ new: ItemFacts) async -> LineDiff.Result? {
         guard let a = old.text, let b = new.text else { return nil }
         if a == b { return LineDiff.Result(rows: [], added: 0, removed: 0) }
         return LineDiff.compute(old: a, new: b)
@@ -313,9 +313,9 @@ nonisolated struct ItemFacts: Sendable {
     }
 }
 
-enum Thumbnails {
+package enum Thumbnails {
     /// Quick Look thumbnail, or the Finder icon when there isn't one.
-    static func image(for url: URL, side: CGFloat) async -> NSImage? {
+    package static func image(for url: URL, side: CGFloat) async -> NSImage? {
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: side, height: side), scale: scale,
                                                    representationTypes: .thumbnail)
@@ -329,22 +329,22 @@ enum Thumbnails {
 // MARK: - Card
 
 /// One side of the conflict: thumbnail, name, size, date and comparison pills.
-final class ItemCard: NSView {
-    let url: URL
+package final class ItemCard: NSView {
+    package let url: URL
     private let captionLabel = NSTextField(labelWithString: "")
-    let imageView = ThumbnailView()
+    package let imageView = ThumbnailView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let sizeLabel = NSTextField(labelWithString: "")
     private let dateLabel = NSTextField(labelWithString: "")
     private let pills = NSStackView()
 
-    static func isFolder(_ url: URL) -> Bool {
+    package static func isFolder(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
         return isDirectory.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
     }
 
-    init(caption: String, url: URL) {
+    package init(caption: String, url: URL) {
         self.url = url
         super.init(frame: .zero)
         captionLabel.stringValue = caption.uppercased()
@@ -404,9 +404,9 @@ final class ItemCard: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    func show(_ facts: ItemFacts, comparedTo other: ItemFacts) {
+    package func show(_ facts: ItemFacts, comparedTo other: ItemFacts) {
         var size: [String] = []
         if facts.isFolder {
             size.append(facts.files.map { String(localized: "\($0) items", comment: "plural") }
@@ -440,12 +440,12 @@ final class ItemCard: NSView {
         }
     }
 
-    func setThumbnail(_ image: NSImage) {
+    package func setThumbnail(_ image: NSImage) {
         imageView.image = image
         imageView.isPicture = true
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
         NSColor.quaternarySystemFill.setFill()
         path.fill()
@@ -456,11 +456,11 @@ final class ItemCard: NSView {
 }
 
 /// The card's picture: Finder icons as they are, real thumbnails with rounded corners and a hairline edge.
-final class ThumbnailView: NSView {
-    var image: NSImage? { didSet { needsDisplay = true } }
-    var isPicture = false { didSet { needsDisplay = true } }
+package final class ThumbnailView: NSView {
+    package var image: NSImage? { didSet { needsDisplay = true } }
+    package var isPicture = false { didSet { needsDisplay = true } }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         guard let image, image.size.width > 0, image.size.height > 0 else { return }
         let scale = min(bounds.width / image.size.width, bounds.height / image.size.height)
         let size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
@@ -483,11 +483,11 @@ final class ThumbnailView: NSView {
 }
 
 /// Small capsule label: "Newer", "Larger", "Identical".
-final class PillView: NSView {
+package final class PillView: NSView {
     private let label: NSTextField
     private let tint: NSColor
 
-    init(_ text: String, tint: NSColor) {
+    package init(_ text: String, tint: NSColor) {
         self.tint = tint
         label = NSTextField(labelWithString: text)
         super.init(frame: .zero)
@@ -504,9 +504,9 @@ final class PillView: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         tint.withAlphaComponent(0.16).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
     }
@@ -515,8 +515,8 @@ final class PillView: NSView {
 // MARK: - Diff
 
 /// Rounded, bordered frame around the scrolling diff.
-final class DiffBox: NSView {
-    init(diffView: DiffView) {
+package final class DiffBox: NSView {
+    package init(diffView: DiffView) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         let scroll = NSScrollView()
@@ -537,9 +537,9 @@ final class DiffBox: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
         NSColor.textBackgroundColor.setFill()
         path.fill()
@@ -550,18 +550,18 @@ final class DiffBox: NSView {
 }
 
 /// Unified diff rows: old and new line numbers, a +/− marker, and the line, tinted green or red.
-final class DiffView: NSView {
+package final class DiffView: NSView {
     private let rows: [LineDiff.Row]
     private let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     private let numberFont = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .regular)
-    static let rowHeight: CGFloat = 16
+    package static let rowHeight: CGFloat = 16
     private static let padding: CGFloat = 4
     private let numberWidth: CGFloat
     private let textWidth: CGFloat
 
-    override var isFlipped: Bool { true }
+    package override var isFlipped: Bool { true }
 
-    init(rows: [LineDiff.Row]) {
+    package init(rows: [LineDiff.Row]) {
         self.rows = rows
         let biggest = rows.reduce(0) { result, row in
             guard case .line(let line) = row else { return result }
@@ -582,19 +582,19 @@ final class DiffView: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    var contentHeight: CGFloat { CGFloat(rows.count) * Self.rowHeight + Self.padding * 2 }
+    package var contentHeight: CGFloat { CGFloat(rows.count) * Self.rowHeight + Self.padding * 2 }
     private var gutterWidth: CGFloat { numberWidth * 2 + 18 }
 
-    static func summary(added: Int, removed: Int) -> NSAttributedString {
+    package static func summary(added: Int, removed: Int) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         let text = NSMutableAttributedString(string: "+\(added.formatted())", attributes: [.font: font, .foregroundColor: NSColor.systemGreen])
         text.append(NSAttributedString(string: "  −\(removed.formatted())", attributes: [.font: font, .foregroundColor: NSColor.systemRed]))
         return text
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         let first = max(0, Int((dirtyRect.minY - Self.padding) / Self.rowHeight))
         let last = min(rows.count - 1, Int((dirtyRect.maxY - Self.padding) / Self.rowHeight))
         guard first <= last else { return }

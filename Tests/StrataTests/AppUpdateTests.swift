@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct AppUpdateTests {
     // MARK: Versions (Sparkle's comparator)

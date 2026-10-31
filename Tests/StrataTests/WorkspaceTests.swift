@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct WorkspaceTests {
     private func plan(_ workspace: Workspace, existing: Set<String>) -> WorkspacePlan {

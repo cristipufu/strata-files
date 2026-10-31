@@ -2,27 +2,27 @@ import Foundation
 
 /// Copying files from this Mac onto a server, in the Transfers list with progress and a Stop button. Items read from a
 /// container or another server are fetched in full first, so nothing half-read is sent.
-final class RemoteUploadJob {
-    let sources: [URL]
-    let folder: URL
-    let skipping: Set<String>
-    let files: RemoteFiles
-    let copies: CopyProviders
-    let expectedServer: RemoteServer?
-    let serverName: String
-    private(set) var state: TransferState = .queued
-    private(set) var errorMessage: String?
-    private(set) var placed: [URL] = []
+package final class RemoteUploadJob {
+    package let sources: [URL]
+    package let folder: URL
+    package let skipping: Set<String>
+    package let files: RemoteFiles
+    package let copies: CopyProviders
+    package let expectedServer: RemoteServer?
+    package let serverName: String
+    package private(set) var state: TransferState = .queued
+    package private(set) var errorMessage: String?
+    package private(set) var placed: [URL] = []
     private var task: Task<Void, Never>?
     private let stop = StopFlag()
     private let sent = Counter()
     private var shownBytes: Int64 = 0
     private var totalBytes: Int64 = 0
-    var onChange: ((RemoteUploadJob) -> Void)?
-    var onFinish: ((RemoteUploadJob) -> Void)?
+    package var onChange: ((RemoteUploadJob) -> Void)?
+    package var onFinish: ((RemoteUploadJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil,
+    package init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil,
          files: RemoteFiles, copies: CopyProviders) {
         self.sources = sources
         self.folder = folder
@@ -33,7 +33,7 @@ final class RemoteUploadJob {
         serverName = expectedServer?.name ?? ""
     }
 
-    func start() {
+    package func start() {
         guard state == .queued else { return }
         state = .running
         let sources = sources.filter { !skipping.contains($0.lastPathComponent) }
@@ -92,7 +92,7 @@ final class RemoteUploadJob {
         }.value
     }
 
-    func cancel() {
+    package func cancel() {
         stop.set()
         task?.cancel()
         if state == .queued {
@@ -101,7 +101,7 @@ final class RemoteUploadJob {
         }
     }
 
-    func finished() async {
+    package func finished() async {
         guard state.isActive else { return }
         await withCheckedContinuation { finishWaiters.append($0) }
     }
@@ -117,12 +117,12 @@ final class RemoteUploadJob {
 }
 
 extension RemoteUploadJob: QueueJob {
-    var title: String {
+    package var title: String {
         state.isActive ? String(localized: "Copying to “\(serverName)”", comment: "Transfers list: files being uploaded to a server")
             : String(localized: "Copied to “\(serverName)”", comment: "Transfers list: files uploaded to a server")
     }
 
-    var statusText: String {
+    package var statusText: String {
         switch state {
         case .queued, .scanning, .running, .paused:
             totalBytes > 0 ? String(localized: "\(Format.bytes(shownBytes)) of \(Format.bytes(totalBytes))", comment: "Transfers list: bytes sent of the total")
@@ -133,26 +133,26 @@ extension RemoteUploadJob: QueueJob {
         }
     }
 
-    var failureSummary: String? { errorMessage }
-    var symbolName: String { "arrow.up.circle" }
-    var fractionCompleted: Double? {
+    package var failureSummary: String? { errorMessage }
+    package var symbolName: String { "arrow.up.circle" }
+    package var fractionCompleted: Double? {
         if state == .finished { return 1 }
         return totalBytes > 0 ? min(1, Double(shownBytes) / Double(totalBytes)) : nil
     }
-    var failureCount: Int { 0 }
-    var canPause: Bool { false }
-    var canResume: Bool { false }
-    var canCancel: Bool { state.isActive }
-    var canRetry: Bool { false }
-    var createdItems: [URL] { placed }
-    var destination: URL { folder }
-    var totalWork: Double { Double(max(totalBytes, 1)) }
-    var completedWork: Double { state.isActive ? Double(shownBytes) : totalWork }
-    func pause() {}
-    func resume() {}
-    func retryFailed() {}
+    package var failureCount: Int { 0 }
+    package var canPause: Bool { false }
+    package var canResume: Bool { false }
+    package var canCancel: Bool { state.isActive }
+    package var canRetry: Bool { false }
+    package var createdItems: [URL] { placed }
+    package var destination: URL { folder }
+    package var totalWork: Double { Double(max(totalBytes, 1)) }
+    package var completedWork: Double { state.isActive ? Double(shownBytes) : totalWork }
+    package func pause() {}
+    package func resume() {}
+    package func retryFailed() {}
 
-    func sample(_ now: TimeInterval) {
+    package func sample(_ now: TimeInterval) {
         let bytes = sent.value
         guard bytes != shownBytes else { return }
         shownBytes = bytes

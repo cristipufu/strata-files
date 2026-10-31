@@ -8,20 +8,20 @@ import Foundation
 /// visits each block at most once and stops at a fixed depth, the bytes it reads are capped at twice the file's size
 /// (block ids can alias the same data), and anything unexpected ends the walk: a damaged or crafted file yields fewer
 /// records (or none), never a crash or a long stall. Only the two Put Back values are decoded.
-nonisolated enum DSStore {
-    struct PutBack: Equatable, Sendable {
+package nonisolated enum DSStore {
+    package struct PutBack: Equatable, Sendable {
         /// The original folder relative to the disk's root, like "Users/me/Desktop/".
-        let folder: String
+        package let folder: String
         /// The item's original name (the Trash renames items whose name is taken there).
-        let name: String
+        package let name: String
     }
 
     /// Larger files aren't read: a Trash's `.DS_Store` stays well under this.
-    static let maxFileSize = 16 << 20
+    package static let maxFileSize = 16 << 20
 
     /// Put Back records by the item's name in the Trash. Only a regular file is read (never through a symlink, which
     /// could point at something huge), and never more than `maxFileSize`.
-    static func putBackRecords(at url: URL) -> [String: PutBack] {
+    package static func putBackRecords(at url: URL) -> [String: PutBack] {
         let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard fd >= 0 else { return [:] }
         defer { close(fd) }
@@ -43,7 +43,7 @@ nonisolated enum DSStore {
         return putBackRecords(data.prefix(total))
     }
 
-    static func putBackRecords(_ data: Data) -> [String: PutBack] {
+    package static func putBackRecords(_ data: Data) -> [String: PutBack] {
         guard data.count <= maxFileSize else { return [:] }
         var folders: [String: String] = [:]
         var names: [String: String] = [:]

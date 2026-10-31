@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Compare Folders and Sync: only a one-way sync with "Move extras to the Trash" ever trashes anything, only on the side
 /// being synced to, and only items the other side doesn't have; what couldn't be read is never touched.

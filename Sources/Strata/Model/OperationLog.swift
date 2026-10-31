@@ -3,41 +3,41 @@ import os
 import Synchronization
 
 extension Notification.Name {
-    static let operationLogChanged = Notification.Name("StrataOperationLogChanged")
+    package static let operationLogChanged = Notification.Name("StrataOperationLogChanged")
 }
 
 /// A journal of file operations that survives restarts, so any of them can be undone later from the History window
 /// (the Edit menu's Undo only covers the current session).
-final class OperationLog {
+package final class OperationLog {
     nonisolated private static let log = Logger(subsystem: "dev.strata.app", category: "history")
-    nonisolated struct Entry: Codable, Identifiable, Sendable {
-        enum Kind: String, Codable, Sendable {
+    package nonisolated struct Entry: Codable, Identifiable, Sendable {
+        package enum Kind: String, Codable, Sendable {
             /// `pairs` moved from → to (moves, renames, trash).
             case move
             /// `created` were made (copies, duplicates, new folders).
             case create
         }
 
-        var id = UUID()
-        var date = Date()
-        var name: String
-        var kind: Kind
+        package var id = UUID()
+        package var date = Date()
+        package var name: String
+        package var kind: Kind
         /// Items moved, from → to.
-        var pairs: [[String]] = []
+        package var pairs: [[String]] = []
         /// Items the operation made (copies, duplicates, new folders): undo moves them to the Trash.
-        var created: [String] = []
+        package var created: [String] = []
         /// Items the operation replaced, from their place → the Trash: undo brings them back.
-        var replaced: [[String]] = []
+        package var replaced: [[String]] = []
         /// Folders made to hold moved items: undo removes them once they're empty again.
-        var containers: [String] = []
+        package var containers: [String] = []
         /// Which file each recorded path held right after the operation (volume UUID/inode, or device:inode in older
         /// entries): undo only touches those same files, never something else that took their place since.
-        var identities: [String: String] = [:]
-        var undone = false
+        package var identities: [String: String] = [:]
+        package var undone = false
         /// When it was last undone or redone (nil: never since it was done, at `date`).
-        var changed: Date?
+        package var changed: Date?
 
-        init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
+        package init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
              containers: [String] = [], containerIdentities: [String: String] = [:], fileIdentities: [String: String]? = nil) {
             self.name = name
             self.kind = kind
@@ -53,7 +53,7 @@ final class OperationLog {
         }
 
         // History saved by earlier versions lacks the newer fields.
-        init(from decoder: Decoder) throws {
+        package init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             id = try c.decode(UUID.self, forKey: .id)
             date = try c.decode(Date.self, forKey: .date)
@@ -81,13 +81,13 @@ final class OperationLog {
         }
 
         /// `name` as History shows it, in the app's language.
-        var displayName: String { OperationLog.displayName(name) }
+        package var displayName: String { OperationLog.displayName(name) }
     }
 
     /// An operation's name as History and the Edit menu show it. Entries keep the English name they were recorded
     /// with (it's saved, and History picks its icon by it); the known ones are translated here, anything else is shown
     /// as recorded.
-    nonisolated static func displayName(_ name: String) -> String {
+    package nonisolated static func displayName(_ name: String) -> String {
         switch name {
         case "Copy": String(localized: "Copy", comment: "Undo and History action name: a copy")
         case "Move": String(localized: "Move", comment: "Undo and History action name: a move")
@@ -109,15 +109,15 @@ final class OperationLog {
         }
     }
 
-    static let shared = OperationLog(copies: .live)
+    package static let shared = OperationLog(copies: .live)
 
-    private(set) var entries: [Entry] = []
+    package private(set) var entries: [Entry] = []
     private let file: URL
     private let storage: SecureStorage.Context
     private let limit = 500
     private var undoing: Set<UUID> = []
     private var retiredTransfers: Set<UUID> = []
-    typealias Mover = ([FileOps.Move], String) async throws -> Void
+    package typealias Mover = ([FileOps.Move], String) async throws -> Void
     private let moveItems: Mover
     private let unsaved = Unsaved()
 
@@ -146,12 +146,12 @@ final class OperationLog {
         }
     }
 
-    nonisolated static func waitForWrites() { writes.sync {} }
+    package nonisolated static func waitForWrites() { writes.sync {} }
 
     /// The environment's server and container copies: undo and redo refuse to change what's inside them.
     private let copies: CopyProviders
 
-    init(storage: SecureStorage.Context = SecureStorage.current, copies: CopyProviders, moveItems: Mover? = nil) {
+    package init(storage: SecureStorage.Context = SecureStorage.current, copies: CopyProviders, moveItems: Mover? = nil) {
         self.storage = storage
         self.copies = copies
         self.moveItems = moveItems ?? { pairs, name in
@@ -167,7 +167,7 @@ final class OperationLog {
 
     // A bad record must not hide valid neighbors. Authentication and the JSON array itself still have to be
     // intact; loading never repairs or overwrites the saved file.
-    nonisolated static func readEntries(from file: URL, storage: SecureStorage.Context = SecureStorage.current) -> [Entry] {
+    package nonisolated static func readEntries(from file: URL, storage: SecureStorage.Context = SecureStorage.current) -> [Entry] {
         guard let data = storage.read(file),
               let decoded = try? JSONDecoder().decode([SavedEntry].self, from: data) else { return [] }
         return decoded.compactMap(\.entry)
@@ -182,14 +182,14 @@ final class OperationLog {
     }
 
     @discardableResult
-    func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], landed: LandedFiles? = nil) -> UUID? {
+    package func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], landed: LandedFiles? = nil) -> UUID? {
         guard !pairs.isEmpty else { return nil }
         return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs),
                             fileIdentities: landed?.historyIdentities(for: pairs.map(\.to))))
     }
 
     @discardableResult
-    func recordCreate(_ name: String, _ created: [URL], landed: LandedFiles? = nil) -> UUID? {
+    package func recordCreate(_ name: String, _ created: [URL], landed: LandedFiles? = nil) -> UUID? {
         guard !created.isEmpty else { return nil }
         return append(Entry(name: name, kind: .create, created: created.map(\.path),
                             fileIdentities: landed?.historyIdentities(for: created)))
@@ -197,7 +197,7 @@ final class OperationLog {
 
     /// One entry for a whole copy or move job, including what it replaced.
     @discardableResult
-    func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
+    package func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
                         replaced: [(from: URL, to: URL)], containers: [URL] = [],
                         containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil,
                         updating id: UUID? = nil) -> UUID? {
@@ -218,13 +218,13 @@ final class OperationLog {
     }
 
     /// A transfer being undone is already retired, even while its cross-volume moves are still running.
-    func canUpdateTransfer(_ id: UUID) -> Bool {
+    package func canUpdateTransfer(_ id: UUID) -> Bool {
         !retiredTransfers.contains(id) && entries.contains { $0.id == id && !$0.undone }
     }
 
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
     @discardableResult
-    func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
+    package func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
                     containerIdentities: [String: String]? = nil, landed: LandedFiles? = nil) -> UUID? {
         guard !moved.isEmpty else { return nil }
         return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path),
@@ -233,7 +233,7 @@ final class OperationLog {
     }
 
     /// Keeps an entry in step with ⌘Z and ⇧⌘Z (undoing marks it undone; redoing marks it done again).
-    func setUndone(_ id: UUID, _ undone: Bool) {
+    package func setUndone(_ id: UUID, _ undone: Bool) {
         guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].undone != undone else { return }
         if undone { retiredTransfers.insert(id) }
         entries[index].undone = undone
@@ -243,7 +243,7 @@ final class OperationLog {
 
     /// Redo can recreate containers with new identities. Update only the folders already belonging to this entry,
     /// using the identities captured by the recreation, never whatever happens to occupy their paths later.
-    func updateContainerIdentities(_ id: UUID, _ identities: [String: String]) {
+    package func updateContainerIdentities(_ id: UUID, _ identities: [String: String]) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         let containers = Set(entries[index].containers)
         let updates = identities.filter { containers.contains($0.key) && entries[index].identities[$0.key] != $0.value }
@@ -257,14 +257,14 @@ final class OperationLog {
     }
 
     /// History's volume UUID/inode key, with compatibility for volumes without UUIDs.
-    nonisolated static func identity(_ path: String) -> String? { FileIdentity.historyKey(at: path) }
+    package nonisolated static func identity(_ path: String) -> String? { FileIdentity.historyKey(at: path) }
 
     /// For each of `urls`: where it was before Strata last put it where it is, according to `entries` (a History's),
     /// and when that happened. Two kinds of event put an item somewhere: an operation that moved it there (or its
     /// redo), and the undo of one that had moved it away (undoing a Put Back returns the item to the Trash). The latest
     /// wins, and only while the file there is still the one that was moved. Keyed by standardized path; one pass over
     /// the entries, reading the disk, so off the main thread.
-    nonisolated static func movedFrom(_ urls: [URL], in entries: [Entry]) -> [String: (from: URL, date: Date)] {
+    package nonisolated static func movedFrom(_ urls: [URL], in entries: [Entry]) -> [String: (from: URL, date: Date)] {
         let wanted = Set(urls.map { $0.standardizedFileURL.path })
         var found: [String: (from: URL, date: Date)] = [:]
         for entry in entries {
@@ -290,18 +290,18 @@ final class OperationLog {
 
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
     /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
-    func canUndo(_ entry: Entry) -> Bool {
+    package func canUndo(_ entry: Entry) -> Bool {
         mayUndo(entry) && Self.itemsAllowUndo(entry)
     }
 
     /// Whether `entry` is neither undone nor being undone: what `canUndo` knows without looking at its items.
-    func mayUndo(_ entry: Entry) -> Bool {
+    package func mayUndo(_ entry: Entry) -> Bool {
         !entry.undone && !undoing.contains(entry.id)
     }
 
     /// `canUndo`'s look at the items, for each of `entries`, away from the main thread; a check that's been replaced
     /// stops between entries.
-    @concurrent static func itemsAllowUndo(_ entries: [Entry]) async -> [UUID: Bool] {
+    @concurrent package static func itemsAllowUndo(_ entries: [Entry]) async -> [UUID: Bool] {
         var found: [UUID: Bool] = [:]
         for entry in entries {
             if Task.isCancelled { break }
@@ -328,7 +328,7 @@ final class OperationLog {
 
     /// Reverses `entry`: created items go to the Trash, moves go back, replaced items come back out of the Trash, and
     /// folders made for moved items are removed if empty. The reversal is itself undoable with ⌘Z.
-    func undo(_ entry: Entry, undoManager: UndoManager?) async throws {
+    package func undo(_ entry: Entry, undoManager: UndoManager?) async throws {
         // A retry may have repaired a copy or finished a move since this button was built. Undo the current saved
         // operation, and never revive an entry removed by Clear History.
         guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {
@@ -385,7 +385,7 @@ final class OperationLog {
                                  containers: .make(containers), history: self)
     }
 
-    func clear() {
+    package func clear() {
         entries.removeAll()
         retiredTransfers.removeAll()
         save()

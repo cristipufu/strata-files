@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import os
 @testable import Strata
+@testable import StrataFiles
 
 /// Drag and drop, as every view decides it: a move on the same disk, a copy with Option or out of a read-only copy, and
 /// nothing at all into the item itself, back where it is, or into a copy that can't change. Dropping on the sidebar's

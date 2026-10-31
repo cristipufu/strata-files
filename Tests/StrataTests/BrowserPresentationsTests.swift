@@ -2,6 +2,7 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct BrowserPresentationsTests {
     private final class ReadLog {

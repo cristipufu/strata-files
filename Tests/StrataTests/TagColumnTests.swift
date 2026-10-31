@@ -2,6 +2,7 @@ import AppKit
 import Testing
 import os
 @testable import Strata
+@testable import StrataFiles
 
 struct TagColumnTests {
     private func write(_ names: [String], to url: URL) throws {

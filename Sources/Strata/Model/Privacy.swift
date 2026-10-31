@@ -1,11 +1,11 @@
 import AppKit
 
 /// Full Disk Access detection and the folders macOS guards with consent prompts.
-enum Privacy {
+package enum Privacy {
     private static var cachedAccess: Bool?
 
     /// Reading the TCC database fails silently (no prompt) without Full Disk Access, which makes it a safe probe.
-    static var hasFullDiskAccess: Bool {
+    package static var hasFullDiskAccess: Bool {
         if let cachedAccess { return cachedAccess }
         let probe = Places.home.appending(path: "Library/Application Support/com.apple.TCC/TCC.db").path
         let fd = open(probe, O_RDONLY)
@@ -14,7 +14,7 @@ enum Privacy {
         return fd >= 0
     }
 
-    static func refresh() {
+    package static func refresh() {
         cachedAccess = nil
     }
 
@@ -24,7 +24,7 @@ enum Privacy {
     /// without another prompt.
     /// Whether this made one of them known: what the index may read has changed then.
     @discardableResult
-    static func markAccessible(_ url: URL) -> Bool {
+    package static func markAccessible(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let home = Places.home.path
         for relative in ["Desktop", "Documents", "Downloads"] {
@@ -39,11 +39,11 @@ enum Privacy {
         return false
     }
 
-    static func isKnownAccessible(_ path: String) -> Bool {
+    package static func isKnownAccessible(_ path: String) -> Bool {
         (Prefs.shared.defaults.stringArray(forKey: accessibleKey) ?? []).contains(path)
     }
 
-    static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!
+    package static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!
 
     /// Folders that pop a consent prompt (or hold other apps' data) when read without Full Disk Access.
     private static var guardedRoots: [String] {
@@ -55,7 +55,7 @@ enum Privacy {
 
     /// Whether walking `url` to measure it could trigger a prompt. Inside a guarded folder you've already opened,
     /// access is granted, so only folders guarded more narrowly than where you're browsing count.
-    static func measuringWouldPrompt(_ url: URL, browsing directory: URL) -> Bool {
+    package static func measuringWouldPrompt(_ url: URL, browsing directory: URL) -> Bool {
         guard !hasFullDiskAccess else { return false }
         let path = url.standardizedFileURL.path
         let current = directory.standardizedFileURL.path
@@ -67,13 +67,13 @@ enum Privacy {
 }
 
 /// Shown once at first launch without Full Disk Access: one explained request instead of a prompt per folder.
-final class WelcomeSheetController: NSWindowController {
+package final class WelcomeSheetController: NSWindowController {
     private var timer: Timer?
     private let status = NSTextField(labelWithString: "")
     private let primary = NSButton(title: String(localized: "Open Privacy Settings"), target: nil, action: nil)
-    var onGranted: (() -> Void)?
+    package var onGranted: (() -> Void)?
 
-    init() {
+    package init() {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
         super.init(window: panel)
 
@@ -133,9 +133,9 @@ final class WelcomeSheetController: NSWindowController {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    func present(on parent: NSWindow) {
+    package func present(on parent: NSWindow) {
         guard let window else { return }
         parent.beginSheet(window)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -166,18 +166,18 @@ final class WelcomeSheetController: NSWindowController {
 }
 
 /// The app icon as a drag source: System Settings accepts it dropped onto the Full Disk Access list.
-final class DraggableAppIcon: NSImageView, NSDraggingSource {
-    override func mouseDown(with event: NSEvent) {
+package final class DraggableAppIcon: NSImageView, NSDraggingSource {
+    package override func mouseDown(with event: NSEvent) {
         let item = NSDraggingItem(pasteboardWriter: Bundle.main.bundleURL as NSURL)
         item.setDraggingFrame(bounds, contents: image)
         beginDraggingSession(with: [item], event: event, source: self)
     }
 
-    override func resetCursorRects() {
+    package override func resetCursorRects() {
         addCursorRect(bounds, cursor: .openHand)
     }
 
-    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+    package func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         [.copy, .link, .generic]
     }
 }

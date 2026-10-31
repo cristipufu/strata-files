@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct FolderWatcherTests {
     private final class Rows: NSObject, NSOutlineViewDataSource {

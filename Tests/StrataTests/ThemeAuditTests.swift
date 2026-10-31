@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension ColorThemeTests {
     @Test func headerObserversDoNotRetainDiscardedMaterialsOrSections() throws {

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct BrowserPreferencesTests {
     private final class Environment {

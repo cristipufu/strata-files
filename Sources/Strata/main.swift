@@ -1,4 +1,5 @@
 import AppKit
+@_exported import StrataFiles
 @_exported import StrataIndex
 @_exported import StrataModel
 @_exported import StrataPreviews

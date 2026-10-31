@@ -3,17 +3,17 @@ import Foundation
 /// Compare with Other Pane: what differs between two folder trees, by relative path. Only the topmost item missing on
 /// one side is listed (a missing folder, not everything in it); files compare by modification date (2 s apart counts
 /// as the same, like FAT disks) and size, and optionally by content.
-nonisolated enum FolderCompare {
-    struct Item: Sendable, Equatable {
-        let isDirectory: Bool
-        let isLink: Bool
-        let size: Int64
-        let modified: Date
+package nonisolated enum FolderCompare {
+    package struct Item: Sendable, Equatable {
+        package let isDirectory: Bool
+        package let isLink: Bool
+        package let size: Int64
+        package let modified: Date
         /// Its spelling on its own side (it can differ in case from the other side's on a case-insensitive disk).
-        var path: String = ""
+        package var path: String = ""
     }
 
-    enum Kind: Sendable, Equatable {
+    package enum Kind: Sendable, Equatable {
         case onlyLeft, onlyRight
         case leftNewer, rightNewer
         /// Same date, different size or content: which one is right can't be told.
@@ -23,7 +23,7 @@ nonisolated enum FolderCompare {
         /// Couldn't be read (permissions), or names only case tells apart on one side while the other can't: left alone.
         case unknown
 
-        var title: String {
+        package var title: String {
             switch self {
             case .onlyLeft: String(localized: "Only on the left", comment: "Compare Folders: how an item differs")
             case .onlyRight: String(localized: "Only on the right", comment: "Compare Folders: how an item differs")
@@ -35,7 +35,7 @@ nonisolated enum FolderCompare {
             }
         }
 
-        var symbol: String {
+        package var symbol: String {
             switch self {
             case .onlyLeft: "arrow.left.square"
             case .onlyRight: "arrow.right.square"
@@ -48,49 +48,52 @@ nonisolated enum FolderCompare {
         }
     }
 
-    struct Difference: Sendable, Identifiable, Equatable {
+    package struct Difference: Sendable, Identifiable, Equatable {
         /// The relative path ("Photos/2024/a.jpg"), as spelled on the left when it's there.
-        let id: String
-        let kind: Kind
-        let left: Item?
-        let right: Item?
+        package let id: String
+        package let kind: Kind
+        package let left: Item?
+        package let right: Item?
         /// Why it can't be compared (`.unknown`).
-        var note: String?
+        package var note: String?
 
         /// Where it is (or goes) on each side: an item that exists keeps its own spelling.
-        var leftPath: String { left?.path ?? right?.path ?? id }
-        var rightPath: String { right?.path ?? left?.path ?? id }
+        package var leftPath: String { left?.path ?? right?.path ?? id }
+        package var rightPath: String { right?.path ?? left?.path ?? id }
     }
 
-    struct Result: Sendable {
-        var differences: [Difference] = []
-        var identical = 0
-        var scanned = 0
+    package struct Result: Sendable {
+        package var differences: [Difference] = []
+        package var identical = 0
+        package var scanned = 0
         /// Stopped at `itemLimit` on a side: the list is incomplete.
-        var truncated = false
-        var cancelled = false
+        package var truncated = false
+        package var cancelled = false
         /// A side couldn't be read at all.
-        var failure: String?
+        package var failure: String?
 
         /// Whether a sync can trust what's listed: everything was read (folders that couldn't be are left alone).
-        var isComplete: Bool { !truncated && !cancelled && failure == nil }
+        package var isComplete: Bool { !truncated && !cancelled && failure == nil }
     }
 
     /// More than this on one side, and the comparison stops (and says so).
-    static let itemLimit = 300_000
+    package static let itemLimit = 300_000
     /// Modification dates this close count as the same.
-    static let dateTolerance: TimeInterval = 2
+    package static let dateTolerance: TimeInterval = 2
 
     /// Stops a comparison in progress.
-    final class Control: @unchecked Sendable {
+    package final class Control: @unchecked Sendable {
         private let lock = NSLock()
         private var stopped = false
-        var isCancelled: Bool { lock.withLock { stopped } }
-        func cancel() { lock.withLock { stopped = true } }
+
+        package init() {}
+
+        package var isCancelled: Bool { lock.withLock { stopped } }
+        package func cancel() { lock.withLock { stopped = true } }
     }
 
     @concurrent
-    static func compare(_ left: URL, _ right: URL, contents: Bool, includeHidden: Bool, control: Control,
+    package static func compare(_ left: URL, _ right: URL, contents: Bool, includeHidden: Bool, control: Control,
                         progress: @escaping @Sendable (Int) -> Void) async -> Result {
         var result = Result()
         for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
@@ -243,7 +246,7 @@ nonisolated enum FolderCompare {
     }
 
     /// Whether two files hold the same bytes, read side by side (stops at the first difference).
-    static func sameBytes(_ a: URL, _ b: URL, control: Control) -> Bool {
+    package static func sameBytes(_ a: URL, _ b: URL, control: Control) -> Bool {
         func openRegular(_ url: URL) -> (FileHandle, Int64)? {
             let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { return nil }
@@ -285,10 +288,10 @@ nonisolated enum FolderCompare {
 
     // MARK: - Syncing
 
-    enum Direction: Int, Sendable, CaseIterable {
+    package enum Direction: Int, Sendable, CaseIterable {
         case bothWays, leftToRight, rightToLeft
 
-        var title: String {
+        package var title: String {
             switch self {
             case .bothWays: String(localized: "Both Ways", comment: "Compare Folders: sync direction")
             case .leftToRight: String(localized: "Left to Right", comment: "Compare Folders: sync direction")
@@ -297,10 +300,10 @@ nonisolated enum FolderCompare {
         }
     }
 
-    enum Action: Int, Sendable, CaseIterable {
+    package enum Action: Int, Sendable, CaseIterable {
         case copyRight, copyLeft, trashLeft, trashRight, skip
 
-        var title: String {
+        package var title: String {
             switch self {
             case .copyRight: String(localized: "Copy →", comment: "Compare Folders: copy the item to the right side")
             case .copyLeft: String(localized: "← Copy", comment: "Compare Folders: copy the item to the left side")
@@ -312,7 +315,7 @@ nonisolated enum FolderCompare {
     }
 
     /// What can be done with a difference.
-    static func actions(for kind: Kind) -> [Action] {
+    package static func actions(for kind: Kind) -> [Action] {
         switch kind {
         case .onlyLeft: [.copyRight, .trashLeft, .skip]
         case .onlyRight: [.copyLeft, .trashRight, .skip]
@@ -324,7 +327,7 @@ nonisolated enum FolderCompare {
     /// What a sync does by default. Both ways: newer wins, what's only on one side is copied, and items that differ
     /// with the same date (or a file against a folder) are left for you. One way: the source wins, and with `mirror`
     /// what's only on the other side goes to the Trash.
-    static func defaultAction(for kind: Kind, direction: Direction, mirror: Bool) -> Action {
+    package static func defaultAction(for kind: Kind, direction: Direction, mirror: Bool) -> Action {
         switch (direction, kind) {
         case (_, .unknown): .skip
         case (.bothWays, .onlyLeft): .copyRight
@@ -340,20 +343,20 @@ nonisolated enum FolderCompare {
     }
 
     /// What a sync does, as paths: the copies each way, and what it moves to the Trash on each side.
-    struct SyncPlan: Sendable, Equatable {
-        var toRight: [TransferMove] = []
-        var toLeft: [TransferMove] = []
-        var trashLeft: [URL] = []
-        var trashRight: [URL] = []
+    package struct SyncPlan: Sendable, Equatable {
+        package var toRight: [TransferMove] = []
+        package var toLeft: [TransferMove] = []
+        package var trashLeft: [URL] = []
+        package var trashRight: [URL] = []
         /// Copies that put a file where a folder is, or a folder where a file is.
-        var replacesOtherKind = 0
+        package var replacesOtherKind = 0
 
-        var isEmpty: Bool { toRight.isEmpty && toLeft.isEmpty && trashLeft.isEmpty && trashRight.isEmpty }
+        package var isEmpty: Bool { toRight.isEmpty && toLeft.isEmpty && trashLeft.isEmpty && trashRight.isEmpty }
     }
 
     /// The sync of `left` and `right` that `actions` ask for (by difference ID; none is skip). Each side's items are
     /// spelled as on that side, and an action a difference doesn't allow (`actions(for:)`) is skipped.
-    static func syncPlan(_ differences: [Difference], actions: [String: Action], left: URL, right: URL) -> SyncPlan {
+    package static func syncPlan(_ differences: [Difference], actions: [String: Action], left: URL, right: URL) -> SyncPlan {
         var plan = SyncPlan()
         for difference in differences {
             let action = actions[difference.id] ?? .skip

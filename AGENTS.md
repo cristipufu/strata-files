@@ -12,8 +12,9 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   plans), `Remote` (SFTP and S3), `Containers`, `Dev` (git, project cleanup), `Inspector`, `Toolbar` (path bar,
   suggestions), `Palette` (command palette), `Previews` (file previews), `Previewing` (Space previews of folders and
   archives), `Index`, `Sidebar`, `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower
-  layers as internal library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`)
-  imported by `Strata`, so the compiler enforces module boundaries and `IndexStore`'s private storage.
+  layers as library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`, and
+  `StrataFiles`: the rest of `Model`, `Transfers`, `Remote` and `Containers`) imported by `Strata`, so the compiler
+  enforces module boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
@@ -208,16 +209,16 @@ These apply everywhere below; the sections that follow add only what is specific
   queue until completion, but finished jobs must not form a queue/job retain cycle. Queue-held completion callbacks
   keep panes weak, and one-shot fetch actions release their captures on every terminal path. Test teardown while
   finished jobs remain in the queue.
-- Keep `StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews` and `StrataIndex` free of dependencies on
-  `Browser`, `Window`, `Transfers`, `Remote` or `Containers`. The other lower folders (the rest of `Model`, `Transfers`,
-  `Remote`, `Containers`, `Index`, `AI`, `Dev`) compile into the app, where `scripts/audit-layers.py` keeps them from
-  naming any interface type (Browser, Window, Views, Sidebar, Toolbar, Inspector, Palette, Dock, Settings, Previewing,
-  AppUpdates, and App apart from the StrataTheme files): pass what they need in, as `CloudStore.foldersShown` is set by
-  `main.swift`, move the type down, as `Fuzzy` lives in `Support` and settings' values in `Model/ViewSettings.swift`, or
-  move interface code up, as the Inspector's cards live in `Inspector`. `FileThumbnails` and `ItemInfoLoader` resolve
-  container and Compose stack icon marks and status text from their injected `CopyProviders` and `ContainerStore`;
-  `FileDrop` and `ShelfWell` use their injected or active window's `CopyProviders`; `PathSuggestions` reads `showHidden`
-  from its injected `Prefs`.
+- The library targets name nothing of the interface, and the compiler sees to it: `StrataFiles` (files, History,
+  transfers, servers and containers) can't reach `Browser`, `Window` or any other interface code, and the targets below
+  it can't reach it. `AI`, `Dev` and the rest of `Index` compile into the app, where `scripts/audit-layers.py` keeps
+  every lower folder from naming an interface type (Browser, Window, Views, Sidebar, Toolbar, Inspector, Palette, Dock,
+  Settings, Previewing, AppUpdates, and App apart from the StrataTheme files): pass what they need in, as
+  `CloudStore.foldersShown` is set by `main.swift`, move the type down, as `Fuzzy` and `ShellQuote` live in `Support`
+  and settings' values in `Model/ViewSettings.swift`, or move interface code up, as the Inspector's cards live in
+  `Inspector`. `FileThumbnails` and `ItemInfoLoader` resolve container and Compose stack icon marks and status text
+  from their injected `CopyProviders` and `ContainerStore`; `FileDrop` and `ShelfWell` use their injected or active
+  window's `CopyProviders`; `PathSuggestions` reads `showHidden` from its injected `Prefs`.
 - **Settings.** Windows, panes, sidebars and View Options use the preferences and notification center in
   `BrowserServices`, and pass them into native file views, typography, rename fields and favorite operations. An
   injected pane never reads or changes another environment's settings: file views have no app-wide font or sort

@@ -2,12 +2,12 @@ import AppKit
 
 /// The Transfers popover: running jobs, waiting jobs in priority order, then recent finished jobs, with controls.
 /// Finished jobs stay until "Clear" is clicked.
-final class TransfersViewController: NSViewController {
-    static let width: CGFloat = 360
+package final class TransfersViewController: NSViewController {
+    package static let width: CGFloat = 360
     private static let maxListHeight: CGFloat = 440
 
     /// Called by a row's reveal button. Defaults to revealing in Finder; the browser window should navigate itself.
-    var onReveal: ((any QueueJob) -> Void)?
+    package var onReveal: ((any QueueJob) -> Void)?
 
     private let queue: TransferQueue
     private let listStack = NSStackView()
@@ -18,15 +18,15 @@ final class TransfersViewController: NSViewController {
     private var rows: [ObjectIdentifier: TransferRowView] = [:]
     private var listHeight: NSLayoutConstraint!
 
-    init(queue: TransferQueue) {
+    package init(queue: TransferQueue) {
         self.queue = queue
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override func loadView() {
+    package override func loadView() {
         let title = NSTextField(labelWithString: TransfersToolbarItem.localizedLabel)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         clearButton.target = self
@@ -112,7 +112,7 @@ final class TransfersViewController: NSViewController {
     }
 
     /// Brings the rows in line with the queue and resizes to fit (up to a scrolling maximum).
-    func reload() {
+    package func reload() {
         guard isViewLoaded else { return }
         let jobs = queue.displayJobs
         let ids = Set(jobs.map(ObjectIdentifier.init))
@@ -164,12 +164,12 @@ final class TransfersViewController: NSViewController {
 }
 
 /// One job: icon, title, progress bar, status line, and its buttons.
-final class TransferRowView: NSView, NSMenuItemValidation {
-    let job: any QueueJob
-    var onReveal: ((any QueueJob) -> Void)?
-    var canOrder: ((any QueueJob, TransferOrder) -> Bool)?
-    var onOrder: ((any QueueJob, TransferOrder) -> Void)?
-    var showsSeparator = true {
+package final class TransferRowView: NSView, NSMenuItemValidation {
+    package let job: any QueueJob
+    package var onReveal: ((any QueueJob) -> Void)?
+    package var canOrder: ((any QueueJob, TransferOrder) -> Bool)?
+    package var onOrder: ((any QueueJob, TransferOrder) -> Void)?
+    package var showsSeparator = true {
         didSet { if showsSeparator != oldValue { needsDisplay = true } }
     }
 
@@ -183,7 +183,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
     private lazy var revealButton = makeButton("magnifyingglass.circle.fill", "Show in Folder", #selector(reveal(_:)))
     private lazy var nextButton = makeButton("arrow.up.circle", "Run Next", #selector(runNext(_:)))
 
-    init(job: any QueueJob) {
+    package init(job: any QueueJob) {
         self.job = job
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -245,7 +245,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
     private func makeButton(_ symbol: String, _ label: String.LocalizationValue, _ action: Selector) -> NSButton {
         let text = String(localized: label)
@@ -274,7 +274,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
             .withSymbolConfiguration(configuration)
     }
 
-    func update() {
+    package func update() {
         titleLabel.stringValue = job.title
         titleLabel.toolTip = job.title
         statusLabel.attributedStringValue = statusText()
@@ -355,7 +355,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
     @objc private func reveal(_ sender: Any?) { onReveal?(job) }
     @objc private func runNext(_ sender: Any?) { onOrder?(job, .next) }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
+    package override func menu(for event: NSEvent) -> NSMenu? {
         guard TransferOrder.allCases.contains(where: { canOrder?(job, $0) == true }) else { return nil }
         let menu = NSMenu()
         for order in TransferOrder.allCases {
@@ -366,7 +366,7 @@ final class TransferRowView: NSView, NSMenuItemValidation {
         return menu
     }
 
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    package func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let order = TransferOrder(rawValue: menuItem.tag) else { return false }
         return canOrder?(job, order) == true
     }
@@ -376,21 +376,21 @@ final class TransferRowView: NSView, NSMenuItemValidation {
         onOrder?(job, order)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         guard showsSeparator else { return }
         NSColor.separatorColor.setFill()
         NSRect(x: 54, y: 0, width: bounds.width - 54, height: 1).fill()
     }
 
-    override var isFlipped: Bool { false }
+    package override var isFlipped: Bool { false }
 }
 
 /// The job's symbol on a softly tinted circle.
-final class TransferIconView: NSView {
-    var symbolName = "doc.on.doc" { didSet { if symbolName != oldValue { needsDisplay = true } } }
-    var tint: NSColor = .controlAccentColor { didSet { if tint != oldValue { needsDisplay = true } } }
+package final class TransferIconView: NSView {
+    package var symbolName = "doc.on.doc" { didSet { if symbolName != oldValue { needsDisplay = true } } }
+    package var tint: NSColor = .controlAccentColor { didSet { if tint != oldValue { needsDisplay = true } } }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         tint.withAlphaComponent(0.15).setFill()
         NSBezierPath(ovalIn: bounds).fill()
         let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)

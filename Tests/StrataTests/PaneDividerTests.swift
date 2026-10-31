@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct PaneDividerTests {
     @Test(arguments: [BrowserViewMode.columns, .treemap, .list, .grid, .gallery])

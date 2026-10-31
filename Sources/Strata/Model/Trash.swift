@@ -3,13 +3,13 @@ import Synchronization
 
 extension Notification.Name {
     /// Posted after Strata empties the Trash or deletes something for good.
-    static let trashChanged = Notification.Name("StrataTrashChanged")
+    package static let trashChanged = Notification.Name("StrataTrashChanged")
 }
 
 /// Your Trash: each disk's Trash folder, where an item in it came from (for Put Back), and emptying it.
-enum Trash {
+package enum Trash {
     /// The startup disk's Trash, in your home folder.
-    nonisolated static let home = FileManager.default.homeDirectoryForCurrentUser
+    package nonisolated static let home = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".Trash", directoryHint: .isDirectory).standardizedFileURL
     nonisolated private static let homePath = home.path
     /// Lowercased, for comparing paths the way the (case-insensitive) startup disk does.
@@ -22,17 +22,17 @@ enum Trash {
     }()
 
     /// One disk's Trash and what's in it.
-    struct Contents: Sendable {
-        let folder: URL
+    package struct Contents: Sendable {
+        package let folder: URL
         /// The disk's name ("Macintosh HD", "Backup").
-        let disk: String
-        let count: Int
+        package let disk: String
+        package let count: Int
     }
 
     /// Every Trash of yours: the home one and each other local disk's `.Trashes/<your user id>`. Only real folders
     /// count: a disk could carry a symlink there, and emptying must never reach anything outside the Trash. Network
     /// disks are left out (their server could swap a folder for a link between a check and a delete).
-    nonisolated static func folders() -> [URL] {
+    package nonisolated static func folders() -> [URL] {
         var result: [URL] = []
         if isRealFolder(home) { result.append(home) }
         let keys: [URLResourceKey] = [.volumeIsLocalKey]
@@ -49,7 +49,7 @@ enum Trash {
     /// Whether `folder` is one of your Trash folders (judged by where it is, without listing the disks). Spellings
     /// differ only in case on most Mac disks, so names compare without it; a folder named like the home Trash is
     /// checked by identity.
-    nonisolated static func isTrash(_ folder: URL) -> Bool {
+    package nonisolated static func isTrash(_ folder: URL) -> Bool {
         let folder = folder.standardizedFileURL
         let lower = folder.path.lowercased()
         if lower == homePathLower {
@@ -64,17 +64,17 @@ enum Trash {
 
     /// Whether `url` is a Trash however its path is spelled: through a link to a folder on the way, say. A link to a
     /// Trash is only a link.
-    nonisolated static func isTrash(anySpelling url: URL) -> Bool {
+    package nonisolated static func isTrash(anySpelling url: URL) -> Bool {
         isTrash(url) || isTrash(url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent))
     }
 
     /// Whether `item` sits directly in a Trash (things inside a trashed folder can't be put back on their own).
-    nonisolated static func contains(_ item: URL) -> Bool {
+    package nonisolated static func contains(_ item: URL) -> Bool {
         isTrash(item.deletingLastPathComponent())
     }
 
     /// Whether `url` is in a Trash at any depth (any spelling of its path's case).
-    nonisolated static func isInTrash(_ url: URL) -> Bool {
+    package nonisolated static func isInTrash(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path.lowercased()
         if path.hasPrefix(homePathLower + "/") { return true }
         // Other disks' Trashes: `/Volumes/<disk>/.Trashes/<uid>/…`.
@@ -88,7 +88,7 @@ enum Trash {
     }
 
     /// Whether the home Trash has anything in it (for its icon). Reads at most a few entries.
-    nonisolated static var isHomeEmpty: Bool {
+    package nonisolated static var isHomeEmpty: Bool {
         guard let dir = opendir(homePath) else { return true }
         defer { closedir(dir) }
         while let entry = readdir(dir) {
@@ -100,7 +100,7 @@ enum Trash {
 
     /// What every Trash holds, per disk.
     @concurrent
-    static func contents() async -> [Contents] {
+    package static func contents() async -> [Contents] {
         folders().map { folder in
             let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
             let volume = folder.path == homePath ? URL(fileURLWithPath: "/") : folder.deletingLastPathComponent().deletingLastPathComponent()
@@ -115,7 +115,7 @@ enum Trash {
     /// what Strata trashed; the Trash's records know what Finder and other apps trashed (Finder writes its records a
     /// little later). Items whose origin isn't known, or would be unsafe to restore to, are left out.
     @concurrent
-    static func originalLocations(of items: [URL], history: [OperationLog.Entry]) async -> [URL: URL] {
+    package static func originalLocations(of items: [URL], history: [OperationLog.Entry]) async -> [URL: URL] {
         let items = items.filter(contains)
         guard !items.isEmpty else { return [:] }
         let moved = OperationLog.movedFrom(items, in: history)
@@ -147,7 +147,7 @@ enum Trash {
     /// Where a record says `item` came from: its folder is relative to the root of the disk the Trash is on. Records are
     /// untrusted, so the result must stay on that disk without passing through a symlink, use plain names (never ".."),
     /// keep the item's extension, and not be in a Trash.
-    nonisolated static func location(_ record: DSStore.PutBack, of item: URL, onDiskOf trash: URL) -> URL? {
+    package nonisolated static func location(_ record: DSStore.PutBack, of item: URL, onDiskOf trash: URL) -> URL? {
         let parts = record.folder.split(separator: "/").map(String.init)
         let names = parts + [record.name]
         guard !record.name.isEmpty, !record.name.contains("/"),
@@ -192,22 +192,22 @@ enum Trash {
 
     /// What emptying did: how many items went, and the items, or Trash folders, that couldn't (a locked file, say),
     /// with why.
-    struct Emptied {
-        var removed = 0
-        var failures: [(url: URL, error: Error)] = []
+    package struct Emptied {
+        package var removed = 0
+        package var failures: [(url: URL, error: Error)] = []
     }
 
     /// Deletes everything in every Trash for good, off the main thread. Each Trash's records file goes too: its Put
     /// Back records would be stale.
     @concurrent
-    static func empty() async -> Emptied {
+    package static func empty() async -> Emptied {
         empty(folders())
     }
 
     /// Deletes everything in `trashes`, which must be Trash folders (see `folders()`). Each Trash is opened once, never
     /// through a link, and everything is deleted relative to that open folder: swapping a folder for a link while it
     /// runs can't redirect the deletion anywhere else. `listing` lists an open folder whole or fails.
-    nonisolated static func empty(_ trashes: [URL],
+    package nonisolated static func empty(_ trashes: [URL],
                                   listing: (Int32) throws -> [String] = ChosenFile.names(in:)) -> Emptied {
         var emptied = Emptied()
         for folder in trashes {

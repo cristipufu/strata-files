@@ -2,6 +2,7 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct DockMenuTests {
     @Test func commandsWorkWithoutAWindowOrMenuItemSender() throws {

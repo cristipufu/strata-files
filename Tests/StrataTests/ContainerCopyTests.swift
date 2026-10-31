@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Writing a container's folder into its copy on this Mac, from the tar stream the engine sends, which the container
 /// decides. Nothing it holds may reach outside the copy: no `..`, nothing written through a link, no hard link to a file

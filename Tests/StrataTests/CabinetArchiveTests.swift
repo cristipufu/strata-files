@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataPreviews
 
 /// Windows cabinets, and the OneNote packages that are cabinets, read by the archive service's worker. The cabinets are

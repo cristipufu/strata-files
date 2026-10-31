@@ -1,8 +1,8 @@
 import Foundation
 
 /// Remembers which folders you visit, ranked by frequency weighted toward recent visits (like `zoxide`).
-final class Frecency {
-    static let shared = Frecency(preferences: Prefs.shared.defaults)
+package final class Frecency {
+    package static let shared = Frecency(preferences: Prefs.shared.defaults)
 
     private struct Visit: Codable {
         var count: Double
@@ -14,7 +14,7 @@ final class Frecency {
     private let now: () -> Date
     private var visits: [String: Visit] = [:]
 
-    init(preferences: UserDefaults, now: @escaping () -> Date = Date.init) {
+    package init(preferences: UserDefaults, now: @escaping () -> Date = Date.init) {
         self.preferences = preferences
         self.now = now
         if let data = preferences.data(forKey: key),
@@ -23,7 +23,7 @@ final class Frecency {
         }
     }
 
-    func record(_ url: URL) {
+    package func record(_ url: URL) {
         let path = url.standardizedFileURL.path
         var visit = visits[path] ?? Visit(count: 0, last: now())
         visit.count += 1
@@ -37,7 +37,7 @@ final class Frecency {
     }
 
     /// Visited folders, best first. Whether each is still there is `PlaceChecks`' to say: this reads no disk.
-    func ranked() -> [URL] {
+    package func ranked() -> [URL] {
         let now = now()
         return visits
             .filter { !$0.key.isEmpty }

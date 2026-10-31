@@ -2,29 +2,29 @@ import AppKit
 
 extension Notification.Name {
     /// A `PlaceChecks` read found something changed; the object is the `PlaceChecks`.
-    static let placesChecked = Notification.Name("StrataPlacesChecked")
+    package static let placesChecked = Notification.Name("StrataPlacesChecked")
 }
 
 /// Which of the folders Strata offers (favorites, its default places, folders you visit) are there, what Finder calls
 /// them, and the disks mounted, read away from the main thread. The sidebar lists them each time a window comes
 /// forward, ⌘K and path suggestions each time they open: a folder on a server that stopped answering would hold the
 /// app until the server timed out. Lists show what was last read, and update when a read finds a change.
-final class PlaceChecks {
-    nonisolated struct Snapshot: Sendable, Equatable {
-        var volumes: [Place] = []
-        var folders: Set<String> = []
-        var missing: Set<String> = []
-        var names: [String: String] = [:]
+package final class PlaceChecks {
+    package nonisolated struct Snapshot: Sendable, Equatable {
+        package var volumes: [Place] = []
+        package var folders: Set<String> = []
+        package var missing: Set<String> = []
+        package var names: [String: String] = [:]
     }
 
-    private(set) var snapshot = Snapshot()
+    package private(set) var snapshot = Snapshot()
     private let preferences: Prefs
     private let visits: Frecency
     private let read: ([String]) async -> Snapshot
-    private(set) var task: Task<Void, Never>?
+    package private(set) var task: Task<Void, Never>?
     private var readAgain = false
 
-    init(preferences: Prefs, visits: Frecency, read: @escaping ([String]) async -> Snapshot) {
+    package init(preferences: Prefs, visits: Frecency, read: @escaping ([String]) async -> Snapshot) {
         self.preferences = preferences
         self.visits = visits
         self.read = read
@@ -43,25 +43,25 @@ final class PlaceChecks {
     @objc private func volumesChanged() { refresh() }
 
     /// Whether `path` was a folder when last read; nil until it's been read.
-    func isFolder(_ path: String) -> Bool? {
+    package func isFolder(_ path: String) -> Bool? {
         snapshot.folders.contains(path) ? true : snapshot.missing.contains(path) ? false : nil
     }
 
     /// Finder's name for a folder, as last read; its own name until then.
-    func name(_ url: URL) -> String { snapshot.names[url.path] ?? url.lastPathComponent }
+    package func name(_ url: URL) -> String { snapshot.names[url.path] ?? url.lastPathComponent }
 
     /// Visited folders, best first, at most `limit`, leaving out those a read found gone.
-    func visited(limit: Int) -> [URL] { Array(visits.ranked().filter { isFolder($0.path) != false }.prefix(limit)) }
+    package func visited(limit: Int) -> [URL] { Array(visits.ranked().filter { isFolder($0.path) != false }.prefix(limit)) }
 
     /// Where `github/acme`-style lookups start: the favorites, the disks (servers too when `servers`), home and the
     /// folders in `visited` used most.
-    func lookupRoots(visited: [URL], servers: Bool) -> [URL] {
+    package func lookupRoots(visited: [URL], servers: Bool) -> [URL] {
         Places.favorites(preferences: preferences, checks: self).map(\.url)
             + snapshot.volumes.filter { servers || $0.symbol != "network" }.map(\.url) + [Places.home] + visited.prefix(100)
     }
 
     /// Reads them all again, once the read under way (if any) is done.
-    func refresh() {
+    package func refresh() {
         guard task == nil else {
             readAgain = true
             return
@@ -84,7 +84,7 @@ final class PlaceChecks {
         }
     }
 
-    @concurrent static func read(_ paths: [String]) async -> Snapshot {
+    @concurrent package static func read(_ paths: [String]) async -> Snapshot {
         var snapshot = Snapshot(volumes: Places.volumes())
         for path in Set(paths) {
             var isDirectory: ObjCBool = false

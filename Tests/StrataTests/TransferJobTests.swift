@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Whole copy and move jobs, as drag and drop, paste and Copy/Move to Other Pane run them: only the items sent go, a
 /// folder never goes into itself, and a name clash is settled for that item alone. A replaced item goes to your real

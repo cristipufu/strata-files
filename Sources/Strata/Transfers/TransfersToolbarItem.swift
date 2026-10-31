@@ -1,19 +1,19 @@
 import AppKit
 
 extension NSToolbarItem.Identifier {
-    static let transfers = Self("transfers")
+    package static let transfers = Self("transfers")
 }
 
 /// Toolbar button showing overall transfer progress as a ring; click for the Transfers popover. Hidden while the
 /// list is empty, so it only appears once something has been copied or moved.
-final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
+package final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     /// Forwarded to the popover's reveal buttons (navigate the window to the destination and select the items).
-    var onReveal: ((any QueueJob) -> Void)? {
+    package var onReveal: ((any QueueJob) -> Void)? {
         didSet { controller.onReveal = onReveal }
     }
 
     /// "Transfers": the item's label and the popover's title.
-    static var localizedLabel: String {
+    package static var localizedLabel: String {
         String(localized: "Transfers", comment: "Toolbar item and popover title: copies, moves and archives in progress")
     }
 
@@ -22,7 +22,7 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     private let popover = NSPopover()
     private var shownIcon: TransferRing.Key?
 
-    init(itemIdentifier: NSToolbarItem.Identifier = .transfers, queue: TransferQueue) {
+    package init(itemIdentifier: NSToolbarItem.Identifier = .transfers, queue: TransferQueue) {
         self.queue = queue
         controller = TransfersViewController(queue: queue)
         super.init(itemIdentifier: itemIdentifier)
@@ -74,7 +74,7 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     }
 
     /// Opens the popover (e.g. when a job needs attention).
-    func showPopover() {
+    package func showPopover() {
         guard !popover.isShown, !isHidden else { return }
         controller.reload()
         popover.show(relativeTo: self)
@@ -82,19 +82,19 @@ final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
 }
 
 /// The toolbar glyph: a progress ring while busy, a check or warning when everything has finished.
-enum TransferRing {
-    struct Key: Equatable {
+package enum TransferRing {
+    package struct Key: Equatable {
         /// Quantised to 1/48 so the image is only redrawn when the ring visibly moves.
-        let step: Int?
-        let hasFailures: Bool
+        package let step: Int?
+        package let hasFailures: Bool
 
-        init(progress: Double?, hasFailures: Bool) {
+        package init(progress: Double?, hasFailures: Bool) {
             step = progress.map { $0.isFinite ? Int((min(max($0, 0), 1) * 48).rounded()) : 0 }
             self.hasFailures = hasFailures
         }
     }
 
-    static func image(_ key: Key) -> NSImage {
+    package static func image(_ key: Key) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
             let ring = rect.insetBy(dx: 1.5, dy: 1.5)

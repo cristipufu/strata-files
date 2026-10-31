@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 @Suite(.serialized)
 struct ColorThemeTests {

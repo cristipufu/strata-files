@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct RemoteCopyOwnershipTests {
     private nonisolated final class Backend: RemoteBackend, @unchecked Sendable {

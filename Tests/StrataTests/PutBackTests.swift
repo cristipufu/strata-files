@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Put Back: where an item goes back to comes from Finder's records in the Trash, which anything could have written.
 /// It must stay on the Trash's disk, under plain names, through real folders only, keep the item's extension, and

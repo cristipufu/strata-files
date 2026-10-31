@@ -2,18 +2,18 @@ import Foundation
 
 /// A window's saved servers, sessions and cached files share one owner. Native windows use the application's
 /// existing services; independent environments keep the same server IDs in separate registries and copy roots.
-final class RemoteServices {
-    static let shared = RemoteServices(servers: RemoteServers.store, status: .shared, sessions: .shared,
+package final class RemoteServices {
+    package static let shared = RemoteServices(servers: RemoteServers.store, status: .shared, sessions: .shared,
                                        files: .shared, connections: .shared, notifications: .default)
 
-    let servers: RemoteServerStore
-    let status: RemoteStatus
-    let sessions: RemoteSessions
-    let files: RemoteFiles
-    let connections: RemoteConnections
-    let notifications: NotificationCenter
-    var copies: RemoteCopyStore { files.copies }
-    var browsing: RemoteBrowsing { RemoteBrowsing(sessions: sessions, files: files) }
+    package let servers: RemoteServerStore
+    package let status: RemoteStatus
+    package let sessions: RemoteSessions
+    package let files: RemoteFiles
+    package let connections: RemoteConnections
+    package let notifications: NotificationCenter
+    package var copies: RemoteCopyStore { files.copies }
+    package var browsing: RemoteBrowsing { RemoteBrowsing(sessions: sessions, files: files) }
 
     private init(servers: RemoteServerStore, status: RemoteStatus, sessions: RemoteSessions, files: RemoteFiles,
                  connections: RemoteConnections, notifications: NotificationCenter) {
@@ -25,7 +25,7 @@ final class RemoteServices {
         self.notifications = notifications
     }
 
-    convenience init(preferences: Prefs, credentials: RemoteKeychain, copyRoot: URL,
+    package convenience init(preferences: Prefs, credentials: RemoteKeychain, copyRoot: URL,
                      connector: RemoteConnector = .native, notifications: NotificationCenter = NotificationCenter()) {
         let registry = RemoteServerRegistry()
         let servers = RemoteServerStore(preferences: preferences, credentials: credentials, registry: registry,
@@ -47,7 +47,7 @@ final class RemoteServices {
 
     /// Keep the confirmed definition and its owner through cleanup and saved-setting callbacks.
     @discardableResult
-    func remove(_ server: RemoteServer) -> Task<Bool, Never>? {
+    package func remove(_ server: RemoteServer) -> Task<Bool, Never>? {
         connections.remove(server) { servers.forget(server) }
     }
 }

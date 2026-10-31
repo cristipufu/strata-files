@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ColumnRevealTests {
     /// Columns read their folders off the main thread: waits until they show what's expected (or gives up).

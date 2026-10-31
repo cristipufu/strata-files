@@ -7,19 +7,19 @@ import Foundation
 /// the copy, files as placeholders). Small files are fetched right after; anything else when it's opened, previewed or
 /// copied. Changes (a new folder, a rename, a deletion, files dropped in) happen on the server first, then the folder
 /// is listed again, so the copy only ever shows what the server has.
-actor RemoteFiles {
-    static let shared = RemoteFiles(sessions: .shared)
+package actor RemoteFiles {
+    package static let shared = RemoteFiles(sessions: .shared)
 
     /// A folder listed this recently isn't listed again (several views load the same folder).
-    static let freshFor: TimeInterval = 10
+    package static let freshFor: TimeInterval = 10
     /// Fetched with their folder's listing: files up to this size…
-    static let eagerFileSize: Int64 = 256 << 10
+    package static let eagerFileSize: Int64 = 256 << 10
     /// …up to this much per folder…
-    static let eagerFolderBytes: Int64 = 8 << 20
+    package static let eagerFolderBytes: Int64 = 8 << 20
     /// …and this many.
-    static let eagerFolderCount = 100
+    package static let eagerFolderCount = 100
 
-    nonisolated let copies: RemoteCopyStore
+    package nonisolated let copies: RemoteCopyStore
     private let now: @Sendable () -> Date
     private let treeDepthLimit: Int
     private let removeCopy: @Sendable (String) -> Void
@@ -30,14 +30,14 @@ actor RemoteFiles {
     private let retire: @Sendable (String, any RemoteBackend) async -> Void
     private var previews = CopyFetches()
     private var listings = CopyListings()
-    private(set) var fetches = CopyFetches()
+    package private(set) var fetches = CopyFetches()
     private var eager: [String: [UUID: Task<Void, Never>]] = [:]
     /// Listed permissions of files still to fetch, by local path.
     private var modes: [String: UInt32] = [:]
     /// Servers whose copies are being removed: nothing new starts in them.
-    private(set) var closing: Set<String> = []
+    package private(set) var closing: Set<String> = []
 
-    init(sessions: RemoteSessions, copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(sessions: RemoteSessions, copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
          removeCopy: (@Sendable (String) -> Void)? = nil) {
         self.init(copies: copies, now: now, backends: { try await sessions.backend(for: $0) },
                   serverBackends: { try await sessions.backend(for: $0) },
@@ -45,7 +45,7 @@ actor RemoteFiles {
     }
 
     /// Standalone backends can omit pool retirement. A managed source must supply its matching retirement callback.
-    init(copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
          backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
          serverBackends: (@Sendable (RemoteServer) async throws -> any RemoteBackend)? = nil,
          retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },
@@ -67,7 +67,7 @@ actor RemoteFiles {
 
     /// Brings the copy's `folder` up to date with the server. Problems are reported with `.containerCopyProblem` (the
     /// window shows them over the folder); what's in the copy stays as it was.
-    func refresh(_ folder: URL) async {
+    package func refresh(_ folder: URL) async {
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
         guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { return }
@@ -81,14 +81,14 @@ actor RemoteFiles {
     }
 
     /// The next `refresh` of `folder` (and of folders in it) lists it again, even one under way.
-    func invalidate(_ folder: URL) {
+    package func invalidate(_ folder: URL) {
         let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
         listings.invalidate(under: key)
     }
 
     /// Makes `url`, a path in a server's copy, exist by listing the folders on the way to it from the top. False when
     /// it isn't on the server.
-    func reveal(_ url: URL) async -> Bool {
+    package func reveal(_ url: URL) async -> Bool {
         guard let (_, top) = copies.server(containing: url), let path = RemoteCopies.remotePath(of: url, top: top) else { return false }
         var current = top
         for part in ContainerCopies.normalized(path) {
@@ -170,7 +170,7 @@ actor RemoteFiles {
     // MARK: - Fetching
 
     /// Fetches `urls` that are still placeholders (opening, previewing or copying them). Throws the first problem.
-    func fetch(_ urls: [URL]) async throws {
+    package func fetch(_ urls: [URL]) async throws {
         var fetched: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
             try Task.checkCancellation()
@@ -180,7 +180,7 @@ actor RemoteFiles {
     }
 
     /// The selected files worth fetching right away, up to `limit` bytes in all.
-    func fetchSelection(_ urls: [URL], limit: Int64) async {
+    package func fetchSelection(_ urls: [URL], limit: Int64) async {
         var total: Int64 = 0
         var chosen: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
@@ -241,7 +241,7 @@ actor RemoteFiles {
 
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they
     /// hold (listed afresh, not just what's been browsed). Throws the first problem.
-    func prepareForCopying(_ urls: [URL]) async throws {
+    package func prepareForCopying(_ urls: [URL]) async throws {
         for url in urls where copies.contains(url) {
             try Task.checkCancellation()
             var info = stat()
@@ -270,7 +270,7 @@ actor RemoteFiles {
     }
 
     /// Stops reading into a server's copy and removes it (disconnecting, removing the server).
-    func discard(_ id: String) async {
+    package func discard(_ id: String) async {
         if let running = removals[id] { await running.value; return }
         closing.insert(id)
         let task = Task {
@@ -345,7 +345,7 @@ actor RemoteFiles {
     }
 
     /// The names in `folder` on the server now (not as last listed); the copy is brought up to date too.
-    func names(in folder: URL, expected: RemoteServer? = nil) async throws -> Set<String> {
+    package func names(in folder: URL, expected: RemoteServer? = nil) async throws -> Set<String> {
         let (server, top, path) = try target(folder)
         if let expected, server != expected { throw CancellationError() }
         let backend = try await serverBackends(server)
@@ -357,7 +357,7 @@ actor RemoteFiles {
     }
 
     /// A new folder named `name` in `folder`; where it is in the copy.
-    func makeFolder(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
+    package func makeFolder(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
         guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
         let (server, top, path) = try target(folder)
         if let expected, server != expected { throw CancellationError() }
@@ -373,7 +373,7 @@ actor RemoteFiles {
 
     /// An empty file named `name` in `folder`, made on the server; where it is in the copy. Written under a temporary
     /// name, then renamed into place: like any rename here, never over something that's there.
-    func makeFile(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
+    package func makeFile(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
         guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
         let (server, top, path) = try target(folder)
         if let expected, server != expected { throw CancellationError() }
@@ -400,7 +400,7 @@ actor RemoteFiles {
     }
 
     /// Renames the item at `url` on the server; where it is in the copy now.
-    func rename(_ url: URL, to name: String) async throws -> URL {
+    package func rename(_ url: URL, to name: String) async throws -> URL {
         guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
         let (server, top, path) = try target(url)
         guard path != "/" else { throw RemoteError.refused(String(localized: "The server’s top folder can’t be renamed.")) }
@@ -413,7 +413,7 @@ actor RemoteFiles {
     }
 
     /// Deletes `urls` from the server (folders with everything in them). There's no Trash on a server.
-    func delete(_ urls: [URL], expected: [String: RemoteServer]? = nil) async throws {
+    package func delete(_ urls: [URL], expected: [String: RemoteServer]? = nil) async throws {
         let removals = try urls.map { ($0, try target($0)) }
         if let expected {
             guard removals.allSatisfy({ expected[$0.1.server.id] == $0.1.server }) else { throw CancellationError() }
@@ -444,7 +444,7 @@ actor RemoteFiles {
 
     /// Moves items within one server into `folder`: a rename there, nothing downloaded. Items on another server are
     /// refused (they'd have to come through this Mac). Returns where they are in the copy now.
-    func move(_ urls: [URL], into folder: URL, expected: RemoteServer? = nil) async throws -> [URL] {
+    package func move(_ urls: [URL], into folder: URL, expected: RemoteServer? = nil) async throws -> [URL] {
         let (server, top, destination) = try target(folder)
         if let expected, server != expected { throw CancellationError() }
         let sources = try urls.map { ($0, try target($0)) }
@@ -483,7 +483,7 @@ actor RemoteFiles {
     /// Copies `sources` (files and folders on this Mac) into `folder` on the server. Items named in `skipping` are left
     /// out; others replace what has their name (a folder is merged into one that's there). `progress` gets the bytes
     /// sent so far. Returns where the items are in the copy.
-    func upload(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil, stop: StopFlag,
+    package func upload(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil, stop: StopFlag,
                 progress: @escaping @Sendable (Int64) -> Void) async throws -> [URL] {
         let (server, top, path) = try target(folder)
         if let expected, server != expected { throw CancellationError() }
@@ -554,27 +554,27 @@ actor RemoteFiles {
     }
 
     /// What went wrong, in a sentence.
-    nonisolated static func message(for error: Error) -> String {
+    package nonisolated static func message(for error: Error) -> String {
         if let error = error as? LocalizedError, let description = error.errorDescription { return description }
         return error.localizedDescription
     }
 }
 
 /// Bytes sent, across nested calls.
-nonisolated final class Counter: @unchecked Sendable {
+package nonisolated final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var total: Int64 = 0
-    var value: Int64 { lock.withLock { total } }
-    func add(_ bytes: Int64) { lock.withLock { total = total.saturatingAdd(bytes) } }
-    func set(_ bytes: Int64) { lock.withLock { total = bytes } }
+    package var value: Int64 { lock.withLock { total } }
+    package func add(_ bytes: Int64) { lock.withLock { total = total.saturatingAdd(bytes) } }
+    package func set(_ bytes: Int64) { lock.withLock { total = bytes } }
 }
 
 /// Writes fetched files into a copy the safe way: into a private temporary file first, then over the placeholder
 /// (never through a link), readable but read-only, marked as downloaded, with the server's date.
-nonisolated enum RemoteWriter {
+package nonisolated enum RemoteWriter {
     /// Downloads with `download` (given a temporary file to fill) and puts the result at `url` if the placeholder is
     /// still there.
-    static func fetch(_ path: String, into url: URL, mode: UInt32,
+    package static func fetch(_ path: String, into url: URL, mode: UInt32,
                       temporary: URL,
                       shouldPlace: () -> Bool = { true },
                       download: (URL, Int64) async throws -> Void) async throws {
@@ -623,7 +623,7 @@ nonisolated enum RemoteWriter {
 
 extension RemoteFiles {
     /// Metadata only: no eager files, recursive reads or swallowed listing errors in a Space preview.
-    func previewFolder(_ folder: URL) async throws {
+    package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
         if real == copies.root.standardizedFileURL { return }

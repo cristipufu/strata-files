@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ThumbnailCacheTests {
     @Test func theDefaultCacheKeepsAtMost128MiBAndKeepsTheMostRecentImages() {

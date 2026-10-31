@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct SemanticMemoryTests {
     private func configuration(_ directory: URL, sentences: Bool = false) -> SemanticIndex.Configuration {

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// A server's copy, end to end, against macOS's own `sftp-server` over a pipe (no network, no login): listing into the
 /// copy, fetching, and changes made on the "server" (a temporary folder) and shown in the copy.

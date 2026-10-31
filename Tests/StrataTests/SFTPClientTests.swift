@@ -2,6 +2,7 @@ import Foundation
 import os
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Against macOS's own `sftp-server` (what `ssh -s host sftp` runs on a server), over a pipe: no network, no login.
 struct SFTPClientTests {

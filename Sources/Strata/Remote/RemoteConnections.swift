@@ -2,30 +2,30 @@ import Foundation
 
 /// Persistence is separate from connecting. A proposed secret is written only at the successful attempt's commit
 /// point; a failed or cancelled attempt has no registry entry or keychain change to roll back.
-struct RemoteConnectionCatalog {
-    let servers: () -> [RemoteServer]
-    let secret: (RemoteServer) -> String?
-    let save: (RemoteServer, String?) throws -> Void
+package struct RemoteConnectionCatalog {
+    package let servers: () -> [RemoteServer]
+    package let secret: (RemoteServer) -> String?
+    package let save: (RemoteServer, String?) throws -> Void
 
-    static let live = RemoteConnectionCatalog(store: RemoteServers.store)
+    package static let live = RemoteConnectionCatalog(store: RemoteServers.store)
 }
 
 extension RemoteConnectionCatalog {
-    init(store: RemoteServerStore) {
+    package init(store: RemoteServerStore) {
         self.init(servers: { store.all }, secret: { store.credentials.secret(for: $0) },
                   save: { try store.save($0, secret: $1) })
     }
 }
 
-nonisolated struct RemoteConnectionRequest: Sendable {
-    let id: UUID
+package nonisolated struct RemoteConnectionRequest: Sendable {
+    package let id: UUID
     fileprivate let stopped: StopFlag
     fileprivate let task: Task<RemoteServer, Error>
-    var isCancelled: Bool { stopped.isSet }
+    package var isCancelled: Bool { stopped.isSet }
 
-    func cancel() { stopped.set(); task.cancel() }
+    package func cancel() { stopped.set(); task.cancel() }
 
-    var value: RemoteServer {
+    package var value: RemoteServer {
         get async throws {
             try await withTaskCancellationHandler { try await task.value } onCancel: { cancel() }
         }
@@ -35,8 +35,8 @@ nonisolated struct RemoteConnectionRequest: Sendable {
 /// Shared by the application's sheets. Connections authenticate independently; only the short handoff that retires
 /// old copies and publishes a verified connection is serialized per server. A cancelled slow login cannot hold up
 /// a retry, and old cleanup cannot erase a newer connection's files or credentials.
-final class RemoteConnections {
-    static let shared: RemoteConnections = makeShared()
+package final class RemoteConnections {
+    package static let shared: RemoteConnections = makeShared()
 
     private static func makeShared() -> RemoteConnections {
         RemoteConnections(catalog: .live, sessions: RemoteSessions.shared, connector: .native,
@@ -54,18 +54,18 @@ final class RemoteConnections {
     private let discard: @MainActor (String) async -> Void
     private let disconnected: (String) -> Void
     private var current: [String: RemoteConnectionRequest] = [:]
-    enum HandoffPhase { case queued, waiting, running }
+    package enum HandoffPhase { case queued, waiting, running }
     private final class HandoffProgress { var phase = HandoffPhase.queued }
     private struct Handoff { let id: UUID; let task: Task<Bool, Error>; let progress: HandoffProgress }
     private var handoffs: [String: Handoff] = [:]
 
     // Read-only lifecycle state lets headless checks await the real queue boundary, without timing a network task.
-    var activeHandoffCount: Int { handoffs.count }
-    func handoffState(for serverID: String) -> (id: UUID, phase: HandoffPhase)? {
+    package var activeHandoffCount: Int { handoffs.count }
+    package func handoffState(for serverID: String) -> (id: UUID, phase: HandoffPhase)? {
         handoffs[serverID].map { ($0.id, $0.progress.phase) }
     }
 
-    init(catalog: RemoteConnectionCatalog, sessions: RemoteSessions, connector: RemoteConnector,
+    package init(catalog: RemoteConnectionCatalog, sessions: RemoteSessions, connector: RemoteConnector,
          discard: @escaping @MainActor (String) async -> Void, disconnected: @escaping (String) -> Void) {
         self.catalog = catalog
         self.sessions = sessions
@@ -74,11 +74,11 @@ final class RemoteConnections {
         self.disconnected = disconnected
     }
 
-    var savedServers: [RemoteServer] { catalog.servers() }
-    func hasSecret(for server: RemoteServer) -> Bool { catalog.secret(server) != nil }
+    package var savedServers: [RemoteServer] { catalog.servers() }
+    package func hasSecret(for server: RemoteServer) -> Bool { catalog.secret(server) != nil }
 
     @discardableResult
-    func connect(_ server: RemoteServer, secret: String? = nil) -> RemoteConnectionRequest {
+    package func connect(_ server: RemoteServer, secret: String? = nil) -> RemoteConnectionRequest {
         let id = UUID(), stopped = StopFlag()
         let previous = savedServers.first { $0.id == server.id }
         let proposedSecret = server.kind == .s3 ? secret : nil
@@ -112,19 +112,19 @@ final class RemoteConnections {
     }
 
     /// Removing or explicitly disconnecting a saved server also stops private attempts that have not published yet.
-    func cancel(_ serverID: String) { current.removeValue(forKey: serverID)?.cancel() }
+    package func cancel(_ serverID: String) { current.removeValue(forKey: serverID)?.cancel() }
 
     /// Confirmations retain a definition, not permission to affect whatever later reuses its ID. Register cleanup
     /// before changing saved settings: their observers can immediately start a new connection.
     @discardableResult
-    func remove(_ server: RemoteServer, forget: () -> Void) -> Task<Bool, Never>? {
+    package func remove(_ server: RemoteServer, forget: () -> Void) -> Task<Bool, Never>? {
         guard let retirement = disconnect(server) else { return nil }
         forget()
         return retirement
     }
 
     @discardableResult
-    func disconnect(_ server: RemoteServer) -> Task<Bool, Never>? {
+    package func disconnect(_ server: RemoteServer) -> Task<Bool, Never>? {
         guard savedServers.first(where: { $0.id == server.id }) == server else { return nil }
         cancel(server.id)
         return startRetirement(for: server)

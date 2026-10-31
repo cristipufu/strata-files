@@ -589,15 +589,3 @@ nonisolated final class CancelFlag: @unchecked Sendable {
     func set() { lock.withLock { value = true } }
     var isSet: Bool { lock.withLock { value } }
 }
-
-nonisolated enum ShellQuote {
-    /// Single-quotes `text` for sh/zsh.
-    static func quote(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
-
-    static func quoteIfNeeded(_ text: String) -> String {
-        let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.:/@%+=,"))
-        return !text.isEmpty && text.unicodeScalars.allSatisfy(safe.contains) ? text : quote(text)
-    }
-}

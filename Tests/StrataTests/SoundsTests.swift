@@ -1,6 +1,7 @@
 import AudioToolbox
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct SoundsTests {
     @Test func aTestProcessPlaysNoSound() {

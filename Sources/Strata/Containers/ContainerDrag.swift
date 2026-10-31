@@ -3,17 +3,17 @@ import UniformTypeIdentifiers
 
 extension NSPasteboard.PasteboardType {
     /// A container's item dragged within Strata: its path in the copy (other apps get a file promise).
-    nonisolated static let strataContainerItem = NSPasteboard.PasteboardType("dev.strata.container-item")
+    package nonisolated static let strataContainerItem = NSPasteboard.PasteboardType("dev.strata.container-item")
 }
 
 /// What dragging an item of a container's files puts on the pasteboard: a file promise, so the app it's dropped on
 /// waits while Strata fetches all of it (a folder with everything in it), never a half-read copy. Strata's own views
 /// read the item's path instead and copy it like any other file.
-nonisolated final class ContainerDragItem: NSFilePromiseProvider {
-    let source: URL
-    let copies: CopyProviders
+package nonisolated final class ContainerDragItem: NSFilePromiseProvider {
+    package let source: URL
+    package let copies: CopyProviders
 
-    init(source: URL, copies: CopyProviders) {
+    package init(source: URL, copies: CopyProviders) {
         self.source = source
         self.copies = copies
         super.init()
@@ -25,22 +25,22 @@ nonisolated final class ContainerDragItem: NSFilePromiseProvider {
 
     /// An item of a container's files gets a promise; anything else drags as itself.
     @MainActor
-    static func writer(for url: URL, copies: CopyProviders) -> NSPasteboardWriting {
+    package static func writer(for url: URL, copies: CopyProviders) -> NSPasteboardWriting {
         copies.contains(url) ? ContainerDragItem(source: url, copies: copies) : url as NSURL
     }
 
-    override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+    package override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
         super.writableTypes(for: pasteboard) + [.strataContainerItem]
     }
 
-    override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+    package override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
         type == .strataContainerItem ? source.path : super.pasteboardPropertyList(forType: type)
     }
 }
 
 /// Keeps file promises: fetches the item from its container, then copies it where it was dropped.
-nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelegate, Sendable {
-    static let shared = ContainerPromises()
+package nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelegate, Sendable {
+    package static let shared = ContainerPromises()
     private let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.qualityOfService = .userInitiated
@@ -48,13 +48,13 @@ nonisolated final class ContainerPromises: NSObject, NSFilePromiseProviderDelega
         return queue
     }()
 
-    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+    package func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
         (provider as? ContainerDragItem)?.source.lastPathComponent ?? "Item"
     }
 
-    func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { queue }
+    package func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { queue }
 
-    func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void) {
+    package func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void) {
         guard let item = provider as? ContainerDragItem else { return completionHandler(CocoaError(.fileNoSuchFile)) }
         let source = item.source
         let copies = item.copies

@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct StorageContextTests {
     private let key = SymmetricKey(data: Data(repeating: 7, count: 32))

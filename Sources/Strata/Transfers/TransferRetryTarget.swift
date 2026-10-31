@@ -2,21 +2,21 @@ import Foundation
 
 /// The destination left by a failed copy and the folder that contained it. A later Retry must not adopt a file
 /// placed there meanwhile, or follow a parent folder that has been replaced or redirected.
-nonisolated struct TransferRetryTarget: Sendable {
-    struct PathIdentity: Sendable {
-        let path: String
-        let identity: FileIdentity
+package nonisolated struct TransferRetryTarget: Sendable {
+    package struct PathIdentity: Sendable {
+        package let path: String
+        package let identity: FileIdentity
     }
 
     private let parent: URL
     private let parentIdentity: FileIdentity
-    let identity: FileIdentity?
-    let ancestors: [PathIdentity]
-    let children: [String: FileIdentity]
-    let sourceParent: PathIdentity?
-    let sourceIdentities: [String: FileIdentity]
+    package let identity: FileIdentity?
+    package let ancestors: [PathIdentity]
+    package let children: [String: FileIdentity]
+    package let sourceParent: PathIdentity?
+    package let sourceIdentities: [String: FileIdentity]
 
-    init?(_ destination: URL, identity: FileIdentity?, root: URL? = nil, created: [String: FileIdentity] = [:],
+    package init?(_ destination: URL, identity: FileIdentity?, root: URL? = nil, created: [String: FileIdentity] = [:],
           source: URL? = nil, sourceIdentities: [String: FileIdentity] = [:]) {
         let parent = destination.deletingLastPathComponent().resolvingSymlinksInPath()
         var info = stat()
@@ -31,7 +31,7 @@ nonisolated struct TransferRetryTarget: Sendable {
         self.sourceIdentities = sourceIdentities
     }
 
-    func matches(_ destination: URL) -> Bool {
+    package func matches(_ destination: URL) -> Bool {
         guard destination.deletingLastPathComponent().resolvingSymlinksInPath().path == parent.path,
               FileIdentity.read(parent.path) == parentIdentity else { return false }
         for ancestor in ancestors where FileIdentity.read(ancestor.path) != ancestor.identity { return false }
@@ -39,7 +39,7 @@ nonisolated struct TransferRetryTarget: Sendable {
         return current == identity
     }
 
-    func matchesSource(_ source: URL) -> Bool {
+    package func matchesSource(_ source: URL) -> Bool {
         if let sourceParent, FileIdentity.read(sourceParent.path) != sourceParent.identity { return false }
         guard !sourceIdentities.isEmpty else { return true }
         if let expected = sourceIdentities[source.path], FileIdentity.read(source.path) != expected { return false }
@@ -49,7 +49,7 @@ nonisolated struct TransferRetryTarget: Sendable {
         return true
     }
 
-    func createdIdentities(for destination: URL, root: URL, rootIdentity: FileIdentity?) -> [String: FileIdentity] {
+    package func createdIdentities(for destination: URL, root: URL, rootIdentity: FileIdentity?) -> [String: FileIdentity] {
         var map = children
         if let rootIdentity { map[root.path] = rootIdentity }
         for ancestor in ancestors { map[ancestor.path] = ancestor.identity }
@@ -87,7 +87,7 @@ nonisolated struct TransferRetryTarget: Sendable {
         return result
     }
 
-    static func directoryIdentity(_ directory: URL?) -> PathIdentity? {
+    package static func directoryIdentity(_ directory: URL?) -> PathIdentity? {
         guard let resolved = directory?.resolvingSymlinksInPath() else { return nil }
         var info = stat()
         guard lstat(resolved.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return nil }

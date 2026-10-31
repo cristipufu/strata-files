@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct LocalizedNamesTests {
     private func localized(_ url: URL, as label: String) throws -> FileEntry {

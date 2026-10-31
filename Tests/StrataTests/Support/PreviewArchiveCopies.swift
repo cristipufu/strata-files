@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension PreviewArchiveAccess {
     /// An access whose preview copies are what `reader` reads, asking for a password when it does.

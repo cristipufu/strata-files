@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// The Inspector keeps the main thread free: hidden, it reads nothing about the selection, and shown, it reads an
 /// item's settings and an image's size away from the main thread, keeping only the newest item's.

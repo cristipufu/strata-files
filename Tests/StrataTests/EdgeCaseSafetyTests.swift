@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataIndex
 @testable import StrataModel
 @testable import StrataPreviews

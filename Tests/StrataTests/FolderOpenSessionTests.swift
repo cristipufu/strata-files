@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct FolderOpenSessionTests {
     private enum Failure: Error { case refused }

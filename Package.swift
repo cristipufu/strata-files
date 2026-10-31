@@ -49,6 +49,7 @@ let appModelSources = [
     "CreatedFolders.swift",
     "DSStore.swift",
     "FileEntry.swift",
+    "FileLayerImports.swift",
     "FileOps.swift",
     "FolderCompare.swift",
     "FolderNames.swift",
@@ -157,6 +158,15 @@ let package = Package(
             sources: indexSources,
             swiftSettings: strataSwiftSettings
         ),
+        // The file layer: files, History, transfers, servers and containers. It names nothing of the interface.
+        .target(
+            name: "StrataFiles",
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataPreviews", "StrataIndex",
+                           "StrataArchiveClient"],
+            path: "Sources/Strata",
+            sources: ["Transfers", "Remote", "Containers"] + appModelSources.map { "Model/\($0)" },
+            swiftSettings: strataSwiftSettings
+        ),
         .executableTarget(
             name: "Strata",
             dependencies: [
@@ -166,11 +176,13 @@ let package = Package(
                 "StrataModel",
                 "StrataPreviews",
                 "StrataIndex",
+                "StrataFiles",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews", "App/Themes"]
+            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
+                + appModelSources.map { "Model/\($0)" }
                 + indexSources.map { "Index/\($0)" },
             swiftSettings: strataSwiftSettings,
             linkerSettings: [
@@ -195,6 +207,7 @@ let package = Package(
                 "StrataModel",
                 "StrataPreviews",
                 "StrataIndex",
+                "StrataFiles",
                 "StrataArchiveClient",
             ],
             path: "Tests/StrataTests",

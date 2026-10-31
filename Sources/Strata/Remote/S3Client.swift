@@ -1,22 +1,22 @@
 import CryptoKit
 import Foundation
 
-nonisolated struct S3Credentials: Sendable, Equatable {
-    var accessKeyID: String
-    var secretAccessKey: String
+package nonisolated struct S3Credentials: Sendable, Equatable {
+    package var accessKeyID: String
+    package var secretAccessKey: String
     /// For temporary credentials.
-    var sessionToken: String?
+    package var sessionToken: String?
 }
 
 /// A key in a bucket listing: an object, or a "folder" (a common prefix ending in "/").
-nonisolated struct S3Item: Sendable, Equatable {
-    let key: String
-    let size: Int64
-    let modified: Date?
-    let isFolder: Bool
+package nonisolated struct S3Item: Sendable, Equatable {
+    package let key: String
+    package let size: Int64
+    package let modified: Date?
+    package let isFolder: Bool
 }
 
-nonisolated enum S3Error: Error, Equatable, LocalizedError {
+package nonisolated enum S3Error: Error, Equatable, LocalizedError {
     /// The service said no: its error code (AccessDenied, NoSuchKey, SignatureDoesNotMatch…) and message.
     case service(status: Int, code: String, message: String)
     case badResponse
@@ -25,7 +25,7 @@ nonisolated enum S3Error: Error, Equatable, LocalizedError {
     /// More came than was listed (the object changed, or the service won't stop).
     case changed
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .service(let status, let code, let message):
             switch code {
@@ -45,12 +45,12 @@ nonisolated enum S3Error: Error, Equatable, LocalizedError {
 }
 
 /// AWS Signature Version 4 for S3: what every request carries. Pure, so it's checked against AWS's own examples.
-nonisolated enum S3Signer {
-    static let emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    static let unsignedPayload = "UNSIGNED-PAYLOAD"
+package nonisolated enum S3Signer {
+    package static let emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    package static let unsignedPayload = "UNSIGNED-PAYLOAD"
 
     /// Every character but the unreserved ones percent-encoded (and "/" too, unless `keepSlash`), as SigV4 wants.
-    static func encode(_ text: String, keepSlash: Bool) -> String {
+    package static func encode(_ text: String, keepSlash: Bool) -> String {
         var allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         if keepSlash { allowed.insert("/") }
         return text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
@@ -58,7 +58,7 @@ nonisolated enum S3Signer {
 
     /// The headers to add: x-amz-date, x-amz-content-sha256, the session token if any, and Authorization. `path` is
     /// already encoded; `query` pairs aren't.
-    static func sign(method: String, host: String, path: String, query: [(String, String)], headers: [String: String],
+    package static func sign(method: String, host: String, path: String, query: [(String, String)], headers: [String: String],
                      payloadHash: String, credentials: S3Credentials, region: String, date: Date) -> [String: String] {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -96,30 +96,30 @@ nonisolated enum S3Signer {
         return result
     }
 
-    static func hex<D: Digest>(_ digest: D) -> String {
+    package static func hex<D: Digest>(_ digest: D) -> String {
         digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 
 /// One bucket on AWS S3 or an S3-compatible service, spoken to directly (HTTPS, SigV4). Keys are paths without a
 /// leading "/"; a folder is a key prefix ending in "/".
-nonisolated final class S3Client: Sendable {
-    let host: String
-    let port: Int?
-    let bucket: String
-    let region: String
-    let pathStyle: Bool
+package nonisolated final class S3Client: Sendable {
+    package let host: String
+    package let port: Int?
+    package let bucket: String
+    package let region: String
+    package let pathStyle: Bool
     private let credentials: S3Credentials
     private let session: URLSession
 
     /// Pages of a listing at most (a thousand keys each).
-    static let maxPages = 20_000
+    package static let maxPages = 20_000
     /// An answer other than a download is read up to this much.
-    static let maxBody = 32 << 20
+    package static let maxBody = 32 << 20
 
     /// Plain http only reaches a server on this Mac (a local MinIO); anywhere else, credentials go over https.
     /// `configuration`: tests answer requests themselves.
-    init(host: String, port: Int? = nil, bucket: String, region: String, pathStyle: Bool, credentials: S3Credentials,
+    package init(host: String, port: Int? = nil, bucket: String, region: String, pathStyle: Bool, credentials: S3Credentials,
          configuration: URLSessionConfiguration = .ephemeral) {
         self.host = host
         self.port = port
@@ -183,13 +183,13 @@ nonisolated final class S3Client: Sendable {
     // MARK: - Operations
 
     /// What's directly inside `prefix` ("" for the top, else ending in "/"): its folders and objects.
-    @concurrent func list(_ prefix: String) async throws -> [S3Item] {
+    @concurrent package func list(_ prefix: String) async throws -> [S3Item] {
         // The folder's own marker object ("photos/" inside "photos/") isn't an item of it.
         try await pages(prefix, delimiter: true).filter { $0.key != prefix }
     }
 
     /// Every object under `prefix`, at any depth (to copy, rename or delete a folder).
-    @concurrent func listAll(_ prefix: String) async throws -> [S3Item] {
+    @concurrent package func listAll(_ prefix: String) async throws -> [S3Item] {
         try await pages(prefix, delimiter: false)
     }
 
@@ -218,7 +218,7 @@ nonisolated final class S3Client: Sendable {
         return items
     }
 
-    @concurrent func head(_ key: String) async throws -> S3Item? {
+    @concurrent package func head(_ key: String) async throws -> S3Item? {
         let (body, response) = try await send(request("HEAD", key: key))
         if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
         try Self.check(response, body)
@@ -230,7 +230,7 @@ nonisolated final class S3Client: Sendable {
 
     /// The object at `key` into `destination` (replaced): at most `limit` bytes (the size it was listed with); `stop`
     /// ends it between chunks, as does cancelling the task.
-    @concurrent func download(_ key: String, to destination: URL, limit: Int64 = .max, progress: @escaping @Sendable (Int64) -> Void = { _ in },
+    @concurrent package func download(_ key: String, to destination: URL, limit: Int64 = .max, progress: @escaping @Sendable (Int64) -> Void = { _ in },
                   stop: StopFlag = StopFlag()) async throws {
         let (bytes, response) = try await session.bytes(for: request("GET", key: key))
         guard let http = response as? HTTPURLResponse else { throw S3Error.badResponse }
@@ -265,7 +265,7 @@ nonisolated final class S3Client: Sendable {
     }
 
     /// The local file at `source` to `key` (replacing what's there). Up to 5 GB. `progress` gets the bytes sent.
-    @concurrent func upload(_ source: URL, to key: String, progress: @escaping @Sendable (Int64) -> Void = { _ in }) async throws {
+    @concurrent package func upload(_ source: URL, to key: String, progress: @escaping @Sendable (Int64) -> Void = { _ in }) async throws {
         let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size <= 5 << 30 else { throw S3Error.tooLarge }
         var request = try request("PUT", key: key, headers: ["Content-Length": String(size)], payloadHash: S3Signer.unsignedPayload)
@@ -275,13 +275,13 @@ nonisolated final class S3Client: Sendable {
     }
 
     /// An empty "folder/" marker, so a new folder shows before anything is in it.
-    @concurrent func makeFolder(_ prefix: String) async throws {
+    @concurrent package func makeFolder(_ prefix: String) async throws {
         let (body, response) = try await session.upload(for: request("PUT", key: prefix, headers: ["Content-Length": "0"]), from: Data())
         try Self.check(response, body.prefix(Self.maxBody))
     }
 
     /// A server-side copy (no download), up to 5 GB.
-    @concurrent func copy(_ key: String, to newKey: String) async throws {
+    @concurrent package func copy(_ key: String, to newKey: String) async throws {
         let source = "/" + bucket + "/" + S3Signer.encode(key, keepSlash: true)
         let (body, response) = try await send(request("PUT", key: newKey, headers: ["x-amz-copy-source": source]))
         try Self.check(response, body)
@@ -289,7 +289,7 @@ nonisolated final class S3Client: Sendable {
         guard body.range(of: Data("<CopyObjectResult".utf8)) != nil, S3ErrorParser.parse(body).code.isEmpty else { throw S3Error.badResponse }
     }
 
-    @concurrent func delete(_ key: String) async throws {
+    @concurrent package func delete(_ key: String) async throws {
         guard !key.isEmpty else { throw S3Error.badResponse }
         let (body, response) = try await send(request("DELETE", key: key))
         try Self.check(response, body)
@@ -341,16 +341,16 @@ nonisolated private func declaresDocumentType(_ data: Data) -> Bool {
 }
 
 /// ListObjectsV2's answer. Foundation's parser doesn't fetch external entities, and the answer is size-checked first.
-nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
-    var items: [S3Item] = []
-    var truncated = false
-    var nextToken: String?
-    var valid = false
+package nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
+    package var items: [S3Item] = []
+    package var truncated = false
+    package var nextToken: String?
+    package var valid = false
     private var path: [String] = []
     private var text = ""
     private var key = "", size: Int64 = 0, modified: Date?
 
-    static func parse(_ data: Data) -> S3ListParser {
+    package static func parse(_ data: Data) -> S3ListParser {
         let delegate = S3ListParser()
         guard data.count <= 64 << 20, !declaresDocumentType(data) else { return delegate }
         let parser = XMLParser(data: data)
@@ -368,18 +368,18 @@ nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
     }()
     private let isoWhole = ISO8601DateFormatter()
 
-    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
+    package func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
         path.append(name)
         text = ""
         if name == "ListBucketResult" { sawRoot = true }
         if name == "Contents" || name == "CommonPrefixes" { key = ""; size = 0; modified = nil }
     }
 
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
+    package func parser(_ parser: XMLParser, foundCharacters string: String) {
         if text.count < 4096 { text += string }
     }
 
-    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+    package func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
         let parent = path.count >= 2 ? path[path.count - 2] : ""
         switch (parent, name) {
         case ("Contents", "Key"), ("CommonPrefixes", "Prefix"): key = text
@@ -398,13 +398,13 @@ nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
 }
 
 /// `<Error><Code>…</Code><Message>…</Message></Error>`.
-nonisolated final class S3ErrorParser: NSObject, XMLParserDelegate {
-    var code = ""
-    var message = ""
+package nonisolated final class S3ErrorParser: NSObject, XMLParserDelegate {
+    package var code = ""
+    package var message = ""
     private var current = ""
     private var text = ""
 
-    static func parse(_ data: Data) -> S3ErrorParser {
+    package static func parse(_ data: Data) -> S3ErrorParser {
         let delegate = S3ErrorParser()
         guard !data.isEmpty, data.count <= 1 << 20, !declaresDocumentType(data) else { return delegate }
         let parser = XMLParser(data: data)
@@ -414,16 +414,16 @@ nonisolated final class S3ErrorParser: NSObject, XMLParserDelegate {
         return delegate
     }
 
-    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
+    package func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
         current = name
         text = ""
     }
 
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
+    package func parser(_ parser: XMLParser, foundCharacters string: String) {
         if text.count < 1000 { text += string }
     }
 
-    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+    package func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
         if name == "Code" { code = text }
         if name == "Message" { message = text }
     }

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ProcessPipeSafetyTests {
     @Test func aClosedSFTPInputThrowsWithoutTerminatingTheApp() async throws {

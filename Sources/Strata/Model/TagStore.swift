@@ -2,20 +2,20 @@ import AppKit
 import os
 
 /// A Finder tag: a name and one of Finder's colors.
-nonisolated struct FinderTag: Hashable, Sendable {
-    let name: String
+package nonisolated struct FinderTag: Hashable, Sendable {
+    package let name: String
     /// Finder's color number: 0 none, 1 gray, 2 green, 3 purple, 4 blue, 5 yellow, 6 red, 7 orange.
-    let color: Int
+    package let color: Int
 
     /// The seven colored tags, in Finder's menu order (red to gray), named as the system names them.
-    @MainActor static var standard: [FinderTag] {
+    @MainActor package static var standard: [FinderTag] {
         let names = NSWorkspace.shared.fileLabels
         return [6, 7, 5, 2, 4, 3, 1].compactMap { color in
             color < names.count ? FinderTag(name: names[color], color: color) : nil
         }
     }
 
-    var displayColor: NSColor? {
+    package var displayColor: NSColor? {
         switch color {
         case 1: .systemGray
         case 2: .systemGreen
@@ -31,17 +31,17 @@ nonisolated struct FinderTag: Hashable, Sendable {
 
 extension Notification.Name {
     /// Posted (object: the store; userInfo "urls": those whose tags changed) after Strata changes tags.
-    static let tagsChanged = Notification.Name("StrataTagsChanged")
+    package static let tagsChanged = Notification.Name("StrataTagsChanged")
     /// Posted (object: the store) when a folder's tags have been read, for cells to show them.
-    static let tagsLoaded = Notification.Name("StrataTagsLoaded")
+    package static let tagsLoaded = Notification.Name("StrataTagsLoaded")
 }
 
 /// Finder tags: read and written through the extended attribute Finder keeps them in (so Finder,
 /// Spotlight and the old color labels agree) with each tag's own color kept. Reads are cached per item, since every
 /// visible cell asks; a folder's tags are read off the main thread when it loads, and changes are always worked out from
 /// what's on disk now, never from the cache.
-final class TagStore {
-    static let shared = TagStore(preferences: .shared, copies: .live)
+package final class TagStore {
+    package static let shared = TagStore(preferences: .shared, copies: .live)
 
     /// Where the tags you've added are remembered, for suggestions and the sidebar.
     private let preferences: Prefs
@@ -49,10 +49,10 @@ final class TagStore {
     private let copies: CopyProviders
 
     /// How rows' tags are read off the main thread (`read(paths, labels)`); tests hold it to time a change.
-    typealias Reader = @Sendable ([String], [String]) -> [String: [FinderTag]]
+    package typealias Reader = @Sendable ([String], [String]) -> [String: [FinderTag]]
     private let reader: Reader
 
-    init(preferences: Prefs, copies: CopyProviders, reader: @escaping Reader = TagStore.readAll) {
+    package init(preferences: Prefs, copies: CopyProviders, reader: @escaping Reader = TagStore.readAll) {
         self.preferences = preferences
         self.copies = copies
         self.reader = reader
@@ -66,25 +66,25 @@ final class TagStore {
     private var stale: Set<String> = []
     private static let recentKey = "recentTags"
 
-    struct Failure: LocalizedError {
-        let failures: [(url: URL, error: Error)]
-        var errorDescription: String? {
+    package struct Failure: LocalizedError {
+        package let failures: [(url: URL, error: Error)]
+        package var errorDescription: String? {
             failures.count == 1
                 ? String(localized: "The tags of “\(failures[0].url.lastPathComponent)” couldn’t be changed.")
                 : String(localized: "The tags of \(failures.count) items couldn’t be changed.", comment: "plural")
         }
-        var failureReason: String? {
+        package var failureReason: String? {
             String(localized: "They’re locked, or you don’t have permission to change them.", comment: "Why tags couldn’t be changed")
         }
     }
 
     /// Last known tags only: sorting must never read extended attributes inside its comparator.
-    func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
+    package func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
 
     /// `url`'s tags, in the order they were added, as last read. One not read yet, or changed since, is read away from
     /// the main thread with the others asked about meanwhile, and `.tagsLoaded` says when: a list of search results
     /// read each row's tags as it drew it. Changing tags reads them from disk first, never from here.
-    func tags(for url: URL) -> [FinderTag] {
+    package func tags(for url: URL) -> [FinderTag] {
         let path = url.standardizedFileURL.path
         if let cached = cache[path], !stale.contains(path) { return cached }
         request(path)
@@ -117,7 +117,7 @@ final class TagStore {
     }
 
     /// Waits until every item asked about so far has been read.
-    func settled() async { await reads.settled() }
+    package func settled() async { await reads.settled() }
 
     private func arrived(_ read: [String: [FinderTag]]) {
         if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
@@ -148,14 +148,14 @@ final class TagStore {
     /// Reads the tags of a folder's items off the main thread, with the rows asked about meanwhile; cells redraw on
     /// `.tagsLoaded` when what's read differs from what they show.
     @discardableResult
-    func load(_ entries: [FileEntry]) -> Task<Void, Never> {
+    package func load(_ entries: [FileEntry]) -> Task<Void, Never> {
         let current = NSWorkspace.shared.fileLabels
         labels.withLock { $0 = current }
         for entry in entries { request(entry.url.standardizedFileURL.path) }
         return Task { await reads.settled() }
     }
 
-    nonisolated static func readAll(_ paths: [String], labels: [String]) -> [String: [FinderTag]] {
+    package nonisolated static func readAll(_ paths: [String], labels: [String]) -> [String: [FinderTag]] {
         var result: [String: [FinderTag]] = [:]
         result.reserveCapacity(paths.count)
         for path in paths { result[path] = read(path, labels: labels) }
@@ -164,7 +164,7 @@ final class TagStore {
 
     /// Marks a folder's tags for rereading. Keep their last known values for sorting and background reads: browsing
     /// an ancestor in another window must not temporarily turn every descendant into an untagged item.
-    func invalidate(_ folder: URL?) {
+    package func invalidate(_ folder: URL?) {
         guard let folder else {
             cache.removeAll(); stale.removeAll()
             readAgain.formUnion(requestedSince.keys.filter(reads.isUnderWay))
@@ -179,19 +179,19 @@ final class TagStore {
 
     /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without
     /// reading the disk again. Tagging itself checks `canTag(_: URL)` as it writes.
-    nonisolated static func canTag(_ entry: FileEntry, copies: CopyProviders) -> Bool {
+    package nonisolated static func canTag(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         !entry.isSymlink && !ReadOnlyCopies.contains(entry.url, copies: copies)
     }
 
     /// Whether `url` can carry tags from Strata: not a link (its target's tags would change instead), and not inside an
     /// archive opened as a folder (a temporary copy).
-    nonisolated static func canTag(_ url: URL, copies: CopyProviders) -> Bool {
+    package nonisolated static func canTag(_ url: URL, copies: CopyProviders) -> Bool {
         var info = stat()
         return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
     /// Adds `tag` to every item, or removes it from all of them when they all have it already (Finder's colored circles).
-    func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) throws {
+    package func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) throws {
         let current = urls.filter { Self.canTag($0, copies: copies) }.map { (url: $0, tags: onDisk($0)) }
         let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
         try apply(current.map { item in
@@ -202,7 +202,7 @@ final class TagStore {
     }
 
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
-    func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) throws {
+    package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) throws {
         let added = adding.map(Self.clean).filter { !$0.isEmpty }
         try apply(urls.filter { Self.canTag($0, copies: copies) }.map { url in
             var tags = onDisk(url).filter { !removing.contains($0.name.lowercased()) }
@@ -214,7 +214,7 @@ final class TagStore {
     }
 
     /// Tags to suggest: the seven colored ones, then others you've added here, most recent first.
-    var suggestions: [FinderTag] {
+    package var suggestions: [FinderTag] {
         let standard = FinderTag.standard
         let standardNames = Set(standard.map { $0.name.lowercased() })
         let recent = (preferences.defaults.stringArray(forKey: Self.recentKey) ?? [])
@@ -224,7 +224,7 @@ final class TagStore {
     }
 
     /// Takes a tag out of the suggestions (and the sidebar). The colored ones always stay.
-    func forget(_ name: String) {
+    package func forget(_ name: String) {
         var recent = preferences.defaults.stringArray(forKey: Self.recentKey) ?? []
         recent.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
         preferences.defaults.set(recent, forKey: Self.recentKey)
@@ -316,13 +316,13 @@ final class TagStore {
     }
 
     /// One line, trimmed: a tag name can't hold line breaks (they'd be read back as a color).
-    nonisolated static func clean(_ name: String) -> String {
+    package nonisolated static func clean(_ name: String) -> String {
         name.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
     }
 
     /// Reads the tag attribute without following a symlink: a binary property list of "Name\nColor" strings.
     /// `labels` is the system's list of colored tag names (passed in, so this can run off the main thread).
-    nonisolated static func read(_ path: String, labels: [String]) -> [FinderTag] {
+    package nonisolated static func read(_ path: String, labels: [String]) -> [FinderTag] {
         let size = getxattr(path, attribute, nil, 0, 0, XATTR_NOFOLLOW)
         guard size > 0, size <= maxAttributeSize else { return [] }
         var data = Data(count: size)
@@ -340,7 +340,7 @@ final class TagStore {
         return parse(data.prefix(read), labels: labels)
     }
 
-    nonisolated static func parse(_ data: Data, labels: [String]) -> [FinderTag] {
+    package nonisolated static func parse(_ data: Data, labels: [String]) -> [FinderTag] {
         guard BinaryPropertyListBudget.permitsDecoding(data) else { return [] }
         guard let strings = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String] else { return [] }
         var seen = Set<String>()

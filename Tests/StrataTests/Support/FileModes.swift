@@ -1,5 +1,6 @@
 import Foundation
 @testable import Strata
+@testable import StrataFiles
 
 extension FileInfoEditing {
     /// The item's own mode (not a link's target's), for tests to compare before and after a change.

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import os
 @testable import Strata
+@testable import StrataFiles
 
 struct IndexWorkerTests {
     private struct Fixture {

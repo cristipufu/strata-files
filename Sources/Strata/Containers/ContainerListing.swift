@@ -3,35 +3,35 @@ import Foundation
 import Synchronization
 
 /// One item of a folder in a container, as listed.
-nonisolated struct ListedEntry: Sendable, Equatable {
-    enum Kind: Sendable, Equatable {
+package nonisolated struct ListedEntry: Sendable, Equatable {
+    package enum Kind: Sendable, Equatable {
         case file, directory, symlink, other
     }
 
-    let name: String
-    let kind: Kind
-    let size: Int64
+    package let name: String
+    package let kind: Kind
+    package let size: Int64
     /// Permission bits.
-    let mode: UInt32
-    let modified: Date?
-    let linkTarget: String
+    package let mode: UInt32
+    package let modified: Date?
+    package let linkTarget: String
     /// A link that leads to a folder (so the copy can show it as one).
-    var targetIsDirectory = false
+    package var targetIsDirectory = false
 
     /// A size as another machine reported it, kept within what a file can be (0 to 16 TB): a negative or absurd number
     /// from a container's `stat` or a server would otherwise overflow sums of sizes.
-    static func saneSize(_ size: Int64) -> Int64 { min(max(size, 0), 1 << 44) }
+    package static func saneSize(_ size: Int64) -> Int64 { min(max(size, 0), 1 << 44) }
 }
 
 /// A listing from the shell or archive reader, before it is applied to the local copy.
-nonisolated struct ContainerListingResult: Sendable {
-    let entries: [ListedEntry]
-    let contents: [String: Data]
-    let freshFor: TimeInterval
+package nonisolated struct ContainerListingResult: Sendable {
+    package let entries: [ListedEntry]
+    package let contents: [String: Data]
+    package let freshFor: TimeInterval
 }
 
 /// Runs blocking work (sockets, files) off Swift's cooperative threads.
-nonisolated func blocking<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+package nonisolated func blocking<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in
         DispatchQueue.global(qos: .userInitiated).async {
             continuation.resume(with: Result { try work() })
@@ -40,18 +40,18 @@ nonisolated func blocking<T: Sendable>(_ work: @escaping @Sendable () throws -> 
 }
 
 /// Set once, read from anywhere: stops a blocking transfer.
-nonisolated final class StopFlag: Sendable {
+package nonisolated final class StopFlag: Sendable {
     private let flag = Atomic<Bool>(false)
-    func set() { flag.store(true, ordering: .relaxed) }
-    var isSet: Bool { flag.load(ordering: .relaxed) }
+    package func set() { flag.store(true, ordering: .relaxed) }
+    package var isSet: Bool { flag.load(ordering: .relaxed) }
 }
 
 /// Listing a folder inside a container.
-nonisolated enum ContainerListing {
+package nonisolated enum ContainerListing {
     /// Lists the folder given as `$1`: for each item, its mode (hex), size, modification time and whether a link leads
     /// to a folder on one line, then its name and link target, each ending in NUL (names may hold anything but `/` and
     /// NUL). Exit 3: not a readable folder. Works with BusyBox and GNU tools.
-    static let script = """
+    package static let script = """
     cd -- "$1" || exit 3
     for f in * .[!.]* ..?*; do
       [ -e "$f" ] || [ -L "$f" ] || continue
@@ -64,9 +64,9 @@ nonisolated enum ContainerListing {
     """
 
     /// The most items a folder listing keeps.
-    static let entryLimit = 100_000
+    package static let entryLimit = 100_000
 
-    static func viaShell(_ engine: ContainerEngine, id: String, path: String) throws -> [ListedEntry] {
+    package static func viaShell(_ engine: ContainerEngine, id: String, path: String) throws -> [ListedEntry] {
         let result = try ContainerAPI.exec(engine, id: id, command: ["/bin/sh", "-c", script, "sh", path])
         switch result.exitCode {
         case 0?: return parseShell(result.output)
@@ -76,7 +76,7 @@ nonisolated enum ContainerListing {
     }
 
     /// Parses the script's output; anything malformed ends the list there.
-    static func parseShell(_ data: Data) -> [ListedEntry] {
+    package static func parseShell(_ data: Data) -> [ListedEntry] {
         var entries: [ListedEntry] = []
         var index = data.startIndex
         while index < data.endIndex, entries.count < entryLimit {
@@ -107,7 +107,7 @@ nonisolated enum ContainerListing {
 
     /// Lists the folder from its archive stream (the whole folder streams past; only its own items are kept), with the
     /// contents of its small world-readable files. Gives up after `ContainerFiles.archiveBudget`.
-    static func viaArchive(_ engine: ContainerEngine, id: String, path: String) throws -> (entries: [ListedEntry], contents: [String: Data]) {
+    package static func viaArchive(_ engine: ContainerEngine, id: String, path: String) throws -> (entries: [ListedEntry], contents: [String: Data]) {
         var reader = TarReader()
         var root: String?
         var entries: [ListedEntry] = []
@@ -171,7 +171,7 @@ nonisolated enum ContainerListing {
 }
 
 extension ContainerFiles {
-    nonisolated static func loadListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
+    package nonisolated static func loadListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
         let engine = source.engine, id = source.id
         do {
             let entries = try await blocking { try ContainerListing.viaShell(engine, id: id, path: path) }
@@ -189,18 +189,18 @@ extension ContainerFiles {
     }
 
     @MainActor
-    static func announce(_ urls: [URL]) {
+    package static func announce(_ urls: [URL]) {
         NotificationCenter.default.post(name: .containerFilesFetched, object: urls)
     }
 
     @MainActor
-    static func report(_ error: Error, folder: URL, source: ContainerSource, copyRoot: String) {
+    package static func report(_ error: Error, folder: URL, source: ContainerSource, copyRoot: String) {
         NotificationCenter.default.post(name: .containerCopyProblem, object: nil,
                                         userInfo: ["folder": folder, "message": message(for: error, source: source), "copyRoot": copyRoot])
     }
 
     @MainActor
-    static func reportEngine(_ error: Error, folder: URL, engine: ContainerEngine, copyRoot: String) {
+    package static func reportEngine(_ error: Error, folder: URL, engine: ContainerEngine, copyRoot: String) {
         let message: String = switch error as? ContainerAPIError {
         case .transport(.connect)?: String(localized: "\(engine.name) isn’t running.", comment: "Container files: the engine (Docker Desktop, OrbStack…) can’t be reached")
         case .transport(.timeout)?: String(localized: "\(engine.name) didn’t answer in time.", comment: "Container files: the engine took too long")
@@ -211,7 +211,7 @@ extension ContainerFiles {
     }
 
     /// What went wrong, in words.
-    nonisolated static func message(for error: Error, source: ContainerSource) -> String {
+    package nonisolated static func message(for error: Error, source: ContainerSource) -> String {
         switch error as? ContainerAPIError {
         case .transport(.connect)?:
             return String(localized: "\(source.engineName) isn’t running.", comment: "Container files: the engine (Docker Desktop, OrbStack…) can’t be reached")
@@ -227,7 +227,7 @@ extension ContainerFiles {
 
 extension ContainerFiles {
     /// A stopped container needs a recursive archive stream to list a folder. Space never requests that stream.
-    nonisolated static func loadPreviewListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
+    package nonisolated static func loadPreviewListing(_ source: ContainerSource, path: String) async throws -> ContainerListingResult {
         let entries = try await blocking { try ContainerListing.viaShell(source.engine, id: source.id, path: path) }
         guard entries.count <= CopyProviders.previewEntryLimit else { throw CocoaError(.fileReadTooLarge) }
         return ContainerListingResult(entries: entries, contents: [:], freshFor: freshFor)

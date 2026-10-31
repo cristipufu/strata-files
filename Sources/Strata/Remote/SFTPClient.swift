@@ -1,27 +1,27 @@
 import Foundation
 
 /// What an SFTP server says about a file: whatever of these it sent.
-nonisolated struct SFTPAttributes: Sendable, Equatable {
-    var size: UInt64?
-    var uid: UInt32?
-    var gid: UInt32?
-    var permissions: UInt32?
-    var accessTime: UInt32?
-    var modificationTime: UInt32?
+package nonisolated struct SFTPAttributes: Sendable, Equatable {
+    package var size: UInt64?
+    package var uid: UInt32?
+    package var gid: UInt32?
+    package var permissions: UInt32?
+    package var accessTime: UInt32?
+    package var modificationTime: UInt32?
 
-    var fileType: UInt32? { permissions.map { $0 & UInt32(S_IFMT) } }
-    var isDirectory: Bool { fileType == UInt32(S_IFDIR) }
-    var isSymlink: Bool { fileType == UInt32(S_IFLNK) }
-    var isRegularFile: Bool { fileType == UInt32(S_IFREG) }
+    package var fileType: UInt32? { permissions.map { $0 & UInt32(S_IFMT) } }
+    package var isDirectory: Bool { fileType == UInt32(S_IFDIR) }
+    package var isSymlink: Bool { fileType == UInt32(S_IFLNK) }
+    package var isRegularFile: Bool { fileType == UInt32(S_IFREG) }
 }
 
 /// One item of a remote folder.
-nonisolated struct SFTPEntry: Sendable, Equatable {
-    let name: String
-    let attributes: SFTPAttributes
+package nonisolated struct SFTPEntry: Sendable, Equatable {
+    package let name: String
+    package let attributes: SFTPAttributes
 }
 
-nonisolated enum SFTPError: Error, Equatable, LocalizedError {
+package nonisolated enum SFTPError: Error, Equatable, LocalizedError {
     /// The server refused: one of SFTP's status codes, and its message.
     case status(UInt32, String)
     /// The connection ended (the login failed, the network dropped, ssh quit): what ssh said, if anything.
@@ -34,13 +34,13 @@ nonisolated enum SFTPError: Error, Equatable, LocalizedError {
     /// Connected, but nothing came back for a minute while something was asked (see `silenceLimit`).
     case stoppedAnswering
 
-    static let eof: UInt32 = 1
-    static let noSuchFile: UInt32 = 2
-    static let permissionDenied: UInt32 = 3
-    static let failure: UInt32 = 4
-    static let unsupported: UInt32 = 8
+    package static let eof: UInt32 = 1
+    package static let noSuchFile: UInt32 = 2
+    package static let permissionDenied: UInt32 = 3
+    package static let failure: UInt32 = 4
+    package static let unsupported: UInt32 = 8
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .status(let code, let message):
             switch code {
@@ -66,7 +66,7 @@ nonisolated enum SFTPError: Error, Equatable, LocalizedError {
 ///
 /// Everything from the server is untrusted: messages are size-checked, and names are handed out as sent, for callers
 /// to vet before they become local paths. Call `close()` when done: the reader threads keep the client alive until then.
-nonisolated final class SFTPClient: @unchecked Sendable {
+package nonisolated final class SFTPClient: @unchecked Sendable {
     private enum Packet: UInt8 {
         case `init` = 1, version = 2, open = 3, close = 4, read = 5, write = 6, lstat = 7, fstat = 8, setstat = 9
         case opendir = 11, readdir = 12, remove = 13, mkdir = 14, rmdir = 15, realpath = 16, stat = 17, rename = 18
@@ -75,7 +75,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// OpenSSH's own limit is 256 KiB; anything much bigger isn't SFTP.
     private static let maxPacket = 1 << 20
-    static let chunk = 32 * 1024
+    package static let chunk = 32 * 1024
     /// Reads and writes in flight per transfer.
     private static let window = 16
 
@@ -97,10 +97,10 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     private var stoppedAnswering = false
     /// How long a connected server may send nothing at all while something is asked before it's taken as stuck and the
     /// connection is closed. A slow server still sends something; a dropped network ends ssh by itself (keepalives).
-    let silenceLimit: TimeInterval
+    package let silenceLimit: TimeInterval
     private var stderrText = ""
     /// Extensions the server announced ("posix-rename@openssh.com", "statvfs@openssh.com"…).
-    private(set) var extensions: [String: String] = [:]
+    package private(set) var extensions: [String: String] = [:]
 
     private final class Waiter: @unchecked Sendable {
         let done = DispatchSemaphore(value: 0)
@@ -109,7 +109,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// Starts `executable` with `arguments` (and `environment` added); `connect()` then says hello. Throws when the
     /// program can't start.
-    init(executable: URL, arguments: [String], environment: [String: String] = [:], connect: Bool = true,
+    package init(executable: URL, arguments: [String], environment: [String: String] = [:], connect: Bool = true,
          silenceLimit: TimeInterval = 60) throws {
         self.silenceLimit = silenceLimit
         process = Process()
@@ -140,7 +140,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     }
 
     /// Says hello: waits (as long as logging in takes) for the server's answer. A failure ends the session.
-    func connect() throws {
+    package func connect() throws {
         do {
             try hello()
             lock.withLock { isAnswering = true }
@@ -155,7 +155,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     }
 
     /// Ends the session (and the ssh process). Calls waiting for an answer fail.
-    func close() {
+    package func close() {
         lock.lock()
         let pending = waiting
         waiting.removeAll()
@@ -166,14 +166,14 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         if process.isRunning { process.terminate() }
     }
 
-    var isConnected: Bool {
+    package var isConnected: Bool {
         lock.withLock { closedReason == nil } && process.isRunning
     }
 
     // MARK: - Files and folders
 
     /// The absolute form of `path` ("." is the folder a login starts in).
-    func realPath(_ path: String) throws -> String {
+    package func realPath(_ path: String) throws -> String {
         let reply = try request(.realpath) { $0.string(path) }
         guard reply.type == Packet.name.rawValue else { throw try failure(reply) }
         var reader = Reader(reply.body)
@@ -182,7 +182,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     }
 
     /// Everything in the folder at `path`, as the server lists it (not "." or "..").
-    func list(_ path: String) throws -> [SFTPEntry] {
+    package func list(_ path: String) throws -> [SFTPEntry] {
         let handle = try openHandle(.opendir) { $0.string(path) }
         defer { closeHandle(handle) }
         var entries: [SFTPEntry] = []
@@ -219,15 +219,15 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         return entries
     }
 
-    func stat(_ path: String) throws -> SFTPAttributes {
+    package func stat(_ path: String) throws -> SFTPAttributes {
         try attributes(.stat, path)
     }
 
-    func lstat(_ path: String) throws -> SFTPAttributes {
+    package func lstat(_ path: String) throws -> SFTPAttributes {
         try attributes(.lstat, path)
     }
 
-    func readLink(_ path: String) throws -> String {
+    package func readLink(_ path: String) throws -> String {
         let reply = try request(.readlink) { $0.string(path) }
         guard reply.type == Packet.name.rawValue else { throw try failure(reply) }
         var reader = Reader(reply.body)
@@ -235,37 +235,37 @@ nonisolated final class SFTPClient: @unchecked Sendable {
         return try reader.text()
     }
 
-    func makeFolder(_ path: String, permissions: UInt32 = 0o755) throws {
+    package func makeFolder(_ path: String, permissions: UInt32 = 0o755) throws {
         try expectOK(request(.mkdir) { $0.string(path); $0.attributes(SFTPAttributes(permissions: permissions)) })
     }
 
-    func removeFolder(_ path: String) throws {
+    package func removeFolder(_ path: String) throws {
         try expectOK(request(.rmdir) { $0.string(path) })
     }
 
-    func removeFile(_ path: String) throws {
+    package func removeFile(_ path: String) throws {
         try expectOK(request(.remove) { $0.string(path) })
     }
 
     /// Fails when something is already at `newPath` (SFTP's rename never replaces).
-    func rename(_ path: String, to newPath: String) throws {
+    package func rename(_ path: String, to newPath: String) throws {
         try expectOK(request(.rename) { $0.string(path); $0.string(newPath) })
     }
 
     /// Whether the server can replace an item in one step (`replace`).
-    var canReplace: Bool { extensions["posix-rename@openssh.com"] != nil }
+    package var canReplace: Bool { extensions["posix-rename@openssh.com"] != nil }
 
     /// Renames `path` over whatever is at `newPath`, in one step (OpenSSH's posix-rename): a link there is replaced, never
     /// followed. Only when `canReplace`.
-    func replace(_ newPath: String, with path: String) throws {
+    package func replace(_ newPath: String, with path: String) throws {
         try expectOK(request(.extended) { $0.string("posix-rename@openssh.com"); $0.string(path); $0.string(newPath) })
     }
 
-    func setTimes(_ path: String, access: UInt32, modification: UInt32) throws {
+    package func setTimes(_ path: String, access: UInt32, modification: UInt32) throws {
         try expectOK(request(.setstat) { $0.string(path); $0.attributes(SFTPAttributes(accessTime: access, modificationTime: modification)) })
     }
 
-    func setPermissions(_ path: String, _ permissions: UInt32) throws {
+    package func setPermissions(_ path: String, _ permissions: UInt32) throws {
         try expectOK(request(.setstat) { $0.string(path); $0.attributes(SFTPAttributes(permissions: permissions)) })
     }
 
@@ -274,7 +274,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     /// Copies the remote file at `path` into `destination` (made or emptied), several reads in flight. `progress` gets
     /// the bytes so far; `stop` is asked between chunks. More than `limit` bytes (the size it was listed with) is refused:
     /// a server can't fill the disk by sending without end.
-    func download(_ path: String, to destination: URL, limit: Int64 = .max, progress: (Int64) -> Void = { _ in },
+    package func download(_ path: String, to destination: URL, limit: Int64 = .max, progress: (Int64) -> Void = { _ in },
                   stop: () -> Bool = { false }) throws {
         let handle = try openHandle(.open) { $0.string(path); $0.uint32(0x01); $0.attributes(SFTPAttributes()) } // READ
         defer { closeHandle(handle) }
@@ -323,7 +323,7 @@ nonisolated final class SFTPClient: @unchecked Sendable {
 
     /// Copies the local file at `source` to `path` on the server (made, or replaced), several writes in flight, then
     /// gives it `modificationDate`.
-    func upload(_ source: URL, to path: String, permissions: UInt32 = 0o644, modificationDate: Date? = nil,
+    package func upload(_ source: URL, to path: String, permissions: UInt32 = 0o644, modificationDate: Date? = nil,
                 progress: (Int64) -> Void = { _ in }, stop: () -> Bool = { false }) throws {
         // WRITE | CREAT | TRUNC
         let handle = try openHandle(.open) { $0.string(path); $0.uint32(0x02 | 0x08 | 0x10); $0.attributes(SFTPAttributes(permissions: permissions)) }
@@ -479,10 +479,10 @@ nonisolated final class SFTPClient: @unchecked Sendable {
     }
 
     /// The ssh (or server) process, for tests.
-    var processIdentifier: Int32 { process.processIdentifier }
+    package var processIdentifier: Int32 { process.processIdentifier }
 
     /// The writer must turn a closed ssh input into an error, never a process-wide SIGPIPE.
-    var suppressesBrokenPipeSignal: Bool { fcntl(toServer.fileDescriptor, F_GETNOSIGPIPE) == 1 }
+    package var suppressesBrokenPipeSignal: Bool { fcntl(toServer.fileDescriptor, F_GETNOSIGPIPE) == 1 }
 
     private func write(type: UInt8, body: [UInt8]) throws {
         var packet = Writer()

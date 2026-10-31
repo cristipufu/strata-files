@@ -1,17 +1,23 @@
 import Foundation
 
 /// Session history contains places, never file selections or permission to perform a command.
-nonisolated struct SavedNavigation: Codable, Equatable, Sendable {
-    var current: SavedDestination? = nil
-    var back: [SavedDestination] = []
-    var forward: [SavedDestination] = []
-    static let limit = 100
+package nonisolated struct SavedNavigation: Codable, Equatable, Sendable {
+    package var current: SavedDestination? = nil
+    package var back: [SavedDestination] = []
+    package var forward: [SavedDestination] = []
+
+    package init(current: SavedDestination? = nil, back: [SavedDestination] = [], forward: [SavedDestination] = []) {
+        self.current = current
+        self.back = back
+        self.forward = forward
+    }
+    package static let limit = 100
 
     private enum CodingKeys: String, CodingKey { case current, back, forward }
 }
 
 extension SavedNavigation {
-    nonisolated init(from decoder: Decoder) throws {
+    package nonisolated init(from decoder: Decoder) throws {
         self.init()
         guard let values = try? decoder.container(keyedBy: CodingKeys.self) else { return }
         current = try? values.decode(SavedDestination.self, forKey: .current)
@@ -21,13 +27,20 @@ extension SavedNavigation {
 }
 
 /// A server path is relative to its saved server's identity, independent of the location of its local cache.
-nonisolated struct SavedDestination: Codable, Equatable, Sendable {
-    var kind: String
-    var path: String? = nil
-    var server: String? = nil
-    var query: String? = nil
+package nonisolated struct SavedDestination: Codable, Equatable, Sendable {
+    package var kind: String
+    package var path: String? = nil
+    package var server: String? = nil
+    package var query: String? = nil
 
-    static func validPath(_ path: String) -> Bool {
+    package init(kind: String, path: String? = nil, server: String? = nil, query: String? = nil) {
+        self.kind = kind
+        self.path = path
+        self.server = server
+        self.query = query
+    }
+
+    package static func validPath(_ path: String) -> Bool {
         path.hasPrefix("/") && path.utf8.count <= 4096 && !path.utf8.contains(0)
     }
 
@@ -35,7 +48,7 @@ nonisolated struct SavedDestination: Codable, Equatable, Sendable {
 }
 
 extension SavedDestination {
-    nonisolated init(from decoder: Decoder) throws {
+    package nonisolated init(from decoder: Decoder) throws {
         self.init(kind: "")
         guard let values = try? decoder.container(keyedBy: CodingKeys.self) else { return }
         var invalid = false
@@ -53,19 +66,19 @@ extension SavedDestination {
 }
 
 /// Bounded session decoding preserves independent valid windows and does not rewrite the stored bytes.
-nonisolated enum SessionStorage {
-    static let byteLimit = 4 << 20
+package nonisolated enum SessionStorage {
+    package static let byteLimit = 4 << 20
     private struct Record: Decodable {
         let window: Workspace?
         nonisolated init(from decoder: Decoder) throws { window = try? Workspace(from: decoder) }
     }
 
-    static func decode(_ data: Data) -> [Workspace]? {
+    package static func decode(_ data: Data) -> [Workspace]? {
         guard data.count <= byteLimit, let records = try? JSONDecoder().decode([Record].self, from: data) else { return nil }
         return bounded(records.compactMap(\.window))
     }
 
-    static func encode(_ windows: [Workspace]) -> Data? {
+    package static func encode(_ windows: [Workspace]) -> Data? {
         let windows = bounded(windows)
         guard let data = try? JSONEncoder().encode(windows) else { return nil }
         if data.count <= byteLimit { return data }

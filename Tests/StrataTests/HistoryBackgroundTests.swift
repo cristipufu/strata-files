@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// History is written away from the main thread and its window checks its rows there too: each write is of the
 /// latest entries, a History opened again holds them all, and a row's Undo waits for its check.

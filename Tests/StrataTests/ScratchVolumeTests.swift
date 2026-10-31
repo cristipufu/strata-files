@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ScratchVolumeTests {
     @Test func onlyDisksThatEndedProcessesLeftAreSwept() async throws {

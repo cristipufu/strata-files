@@ -5,9 +5,9 @@ import Synchronization
 
 extension Notification.Name {
     /// A container copy's folder couldn't be brought up to date. `userInfo["folder"]`: URL, `["message"]`: String.
-    static let containerCopyProblem = Notification.Name("StrataContainerCopyProblem")
+    package static let containerCopyProblem = Notification.Name("StrataContainerCopyProblem")
     /// Files in a container copy were fetched (`object`: [URL]): their rows can show them now.
-    static let containerFilesFetched = Notification.Name("StrataContainerFilesFetched")
+    package static let containerFilesFetched = Notification.Name("StrataContainerFilesFetched")
 }
 
 /// Reads containers' files into their copies (see `ContainerCopies`).
@@ -17,23 +17,23 @@ extension Notification.Name {
 /// folder, slower for big folders). World-readable small files are fetched right after the listing; anything else stays
 /// a placeholder until it's opened, previewed or copied. Everything here reads; the only thing run in a container is the
 /// listing script.
-actor ContainerFiles {
-    static let shared = ContainerFiles()
+package actor ContainerFiles {
+    package static let shared = ContainerFiles()
 
     /// Files up to this size are fetched with their folder's listing…
-    static let eagerFileSize: Int64 = 1 << 20
+    package static let eagerFileSize: Int64 = 1 << 20
     /// …up to this much per folder…
-    static let eagerFolderBytes: Int64 = 64 << 20
+    package static let eagerFolderBytes: Int64 = 64 << 20
     /// …and this many.
-    static let eagerFolderCount = 2000
+    package static let eagerFolderCount = 2000
     /// A folder listed by the script this recently isn't listed again (several views load the same folder).
-    static let freshFor: TimeInterval = 15
+    package static let freshFor: TimeInterval = 15
     /// A folder read from its archive stream (a stopped container, or one without a shell) stays current longer.
-    static let archiveFreshFor: TimeInterval = 600
+    package static let archiveFreshFor: TimeInterval = 600
     /// Longest an archive-stream listing may take.
-    static let archiveBudget: TimeInterval = 120
+    package static let archiveBudget: TimeInterval = 120
 
-    nonisolated let copies: ContainerCopyStore
+    package nonisolated let copies: ContainerCopyStore
     private let now: @Sendable () -> Date
     private let removeCopy: @Sendable (URL) async -> Void
     private var removals: [String: Task<Void, Never>] = [:]
@@ -42,7 +42,7 @@ actor ContainerFiles {
     private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
     private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
-    init(copies: ContainerCopyStore = ContainerCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(copies: ContainerCopyStore = ContainerCopies.store, now: @escaping @Sendable () -> Date = { Date() },
          readListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
          readPreviewListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
          readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
@@ -63,7 +63,7 @@ actor ContainerFiles {
 
     private var previews = CopyFetches()
     private var listings = CopyListings()
-    private(set) var fetches = CopyFetches()
+    package private(set) var fetches = CopyFetches()
     /// Placeholders' permissions in the container, from their listing (a secret only its owner may read isn't fetched
     /// just because it's selected).
     private var modes: [String: UInt32] = [:]
@@ -71,11 +71,11 @@ actor ContainerFiles {
     /// Background fetches of small files, by copy (top folder path).
     private var eager: [String: [UUID: Task<Void, Never>]] = [:]
     /// Copies being removed: nothing new starts in them.
-    private(set) var closing: Set<String> = []
+    package private(set) var closing: Set<String> = []
 
     /// Brings the copy's `folder` up to date with the container. Problems are reported with `.containerCopyProblem`;
     /// what's in the copy stays as it was.
-    func refresh(_ folder: URL) async {
+    package func refresh(_ folder: URL) async {
         // Links in a copy all point inside it, so the real folder is still in the same copy.
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
         if let engine = copies.engineFolder(real) { return await syncContainers(real, engine: engine) }
@@ -119,7 +119,7 @@ actor ContainerFiles {
 
     /// The folder for `container` in its engine's Containers folder, ready to browse. One made again under the same
     /// name (`docker compose up`) starts over: the old one's files aren't its.
-    func open(_ container: ContainerInfo, on engine: ContainerEngine) async throws -> URL {
+    package func open(_ container: ContainerInfo, on engine: ContainerEngine) async throws -> URL {
         let parent = try copies.stackFolder(for: container, in: copies.prepare(engine))
         let fd = Darwin.open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         let recorded = fd >= 0 ? ContainerCopies.recordedSource(container.name, in: fd) : nil
@@ -132,14 +132,14 @@ actor ContainerFiles {
 
     /// The next `refresh` of `folder`, and of any folder in it, lists it again (Reload: columns and folders expanded in
     /// the list too), even one already under way.
-    func invalidate(_ folder: URL) {
+    package func invalidate(_ folder: URL) {
         let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
         listings.invalidate(under: key)
     }
 
     /// Makes `url`, a path in a container's files, exist in its copy by listing the folders on the way to it from `/`
     /// (a mount's path, say, before it's been browsed). False when it isn't in the container.
-    func reveal(_ url: URL) async -> Bool {
+    package func reveal(_ url: URL) async -> Bool {
         guard let (_, top) = copies.copy(containing: url), let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
         var current = top
         for part in ContainerCopies.normalized(path) {
@@ -204,7 +204,7 @@ actor ContainerFiles {
     }
 
     /// Stops everything reading into the copy at `top` (and keeps anything new from starting), then removes the copy.
-    func discard(_ top: URL) async {
+    package func discard(_ top: URL) async {
         let path = top.standardizedFileURL.path
         if let running = removals[path] { await running.value; return }
         closing.insert(path)
@@ -240,7 +240,7 @@ actor ContainerFiles {
 
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they hold
     /// (not just what's been browsed), matching the container. Throws the first problem.
-    func prepareForCopying(_ urls: [URL]) async throws {
+    package func prepareForCopying(_ urls: [URL]) async throws {
         for url in urls where copies.contains(url) {
             try Task.checkCancellation()
             var info = stat()
@@ -277,7 +277,7 @@ actor ContainerFiles {
 
     /// The selected files worth fetching right away: placeholders everyone may read in the container, up to `limit`
     /// bytes in all.
-    func fetchSelection(_ urls: [URL], limit: Int64) async {
+    package func fetchSelection(_ urls: [URL], limit: Int64) async {
         var total: Int64 = 0
         var chosen: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
@@ -293,7 +293,7 @@ actor ContainerFiles {
     }
 
     /// Fetches `urls` that are still placeholders (opening, previewing or copying them). Throws the first problem.
-    func fetch(_ urls: [URL]) async throws {
+    package func fetch(_ urls: [URL]) async throws {
         var fetched: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
             try Task.checkCancellation()
@@ -345,44 +345,44 @@ actor ContainerFiles {
 
 /// Writes listings and fetched files into a copy. Every step works relative to an open folder descriptor and never
 /// follows a link, so nothing lands outside the copy whatever a container's names and links say.
-nonisolated enum CopyWriter {
+package nonisolated enum CopyWriter {
     private static let tempPrefix = ".strata-fetch-"
 
     /// Whether a listed file is fetched with its listing: small, world-readable (a secret only its owner may read waits
     /// until it's opened), and within the folder's budget.
-    static func fetchesEagerly(size: Int64, mode: UInt32, bytes: Int64, count: Int) -> Bool {
+    package static func fetchesEagerly(size: Int64, mode: UInt32, bytes: Int64, count: Int) -> Bool {
         let (nextBytes, overflow) = bytes.addingReportingOverflow(size)
         return size >= 0 && size <= ContainerFiles.eagerFileSize && mode & 0o004 != 0
             && !overflow && nextBytes <= ContainerFiles.eagerFolderBytes && count < ContainerFiles.eagerFolderCount
     }
 
     /// A name in an archive stream without its leading `/`.
-    static func streamName(_ path: String) -> String {
+    package static func streamName(_ path: String) -> String {
         path.hasPrefix("/") ? String(path.drop { $0 == "/" }) : path
     }
 
     /// `name` below the stream's top folder `base` ("" for `/`); nil outside it.
-    static func relative(_ name: String, to base: String) -> Substring? {
+    package static func relative(_ name: String, to base: String) -> Substring? {
         if base.isEmpty { return Substring(name) }
         return name.hasPrefix(base + "/") ? name.dropFirst(base.count + 1) : nil
     }
 
     /// The copy's disk tells `Foo` from `foo`? (Linux does; a Mac's usually doesn't.)
-    static let isCaseSensitive: Bool = {
+    package static let isCaseSensitive: Bool = {
         let probe = FileManager.default.fileExists(atPath: ContainerCopies.root.path) ? ContainerCopies.root
             : ContainerCopies.root.deletingLastPathComponent()
         return pathconf(probe.path, _PC_CASE_SENSITIVE) == 1
     }()
 
     /// How the copy's disk compares names: two names that fold the same are one item there.
-    static func folded(_ name: String) -> String {
+    package static func folded(_ name: String) -> String {
         isCaseSensitive ? name : name.decomposedStringWithCanonicalMapping.lowercased()
     }
 
     /// Makes the Containers `folder` match `containers`. A Compose project's containers go in a folder named after the
     /// project; the rest stay beside those. Returns the folders to discard: containers gone, and ones made again under
     /// the same name (made afresh after). A container that moved into its project keeps the files already fetched.
-    static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL,
+    package static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL,
                                copies: ContainerCopyStore = ContainerCopies.store) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
@@ -477,7 +477,7 @@ nonisolated enum CopyWriter {
     /// items no longer there removed. Names the copy's disk can't tell apart from an earlier one are left out. A link
     /// leading to a folder gets that folder made (empty, inside `top`) so it shows and opens as one. Returns
     /// placeholders to fetch right away.
-    static func apply(_ entries: [ListedEntry], contents: [String: Data], to folder: URL, containerPath: String, top: URL? = nil,
+    package static func apply(_ entries: [ListedEntry], contents: [String: Data], to folder: URL, containerPath: String, top: URL? = nil,
                       expected: FileIdentity? = nil) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
@@ -556,7 +556,7 @@ nonisolated enum CopyWriter {
     }
 
     /// Streams the container's file at `containerPath` into the placeholder at `url`, replacing it when complete.
-    static func fetchFile(_ engine: ContainerEngine, id: String, containerPath: String, to url: URL, stop: StopFlag) throws {
+    package static func fetchFile(_ engine: ContainerEngine, id: String, containerPath: String, to url: URL, stop: StopFlag) throws {
         let folder = url.deletingLastPathComponent()
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
@@ -632,7 +632,7 @@ nonisolated enum CopyWriter {
     private static let dateAttribute = "dev.strata.modified"
 
     /// Gives the folder open at `fd` its date in the container, and remembers it for after Strata writes into it.
-    static func remember(_ date: Date?, onFolder fd: Int32) {
+    package static func remember(_ date: Date?, onFolder fd: Int32) {
         guard let date, ContainerTime.date(date.timeIntervalSince1970) != nil else { return }
         let text = String(date.timeIntervalSince1970)
         _ = text.withCString { fsetxattr(fd, dateAttribute, $0, strlen($0), 0, 0) }
@@ -640,7 +640,7 @@ nonisolated enum CopyWriter {
     }
 
     /// Sets the folder open at `fd` back to its date in the container (if it has one).
-    static func restoreTimes(_ fd: Int32) {
+    package static func restoreTimes(_ fd: Int32) {
         var buffer = [CChar](repeating: 0, count: 64)
         let count = fgetxattr(fd, dateAttribute, &buffer, 63, 0, 0)
         guard count > 0, let seconds = Double(String(decoding: buffer[0..<count].map { UInt8(bitPattern: $0) }, as: UTF8.self)),
@@ -671,7 +671,7 @@ nonisolated enum CopyWriter {
 
     /// Writes the container's folder at `containerPath`, with everything in it, into `folder` (its copy), then removes
     /// what the container no longer has.
-    static func writeTree(_ engine: ContainerEngine, id: String, containerPath: String, into folder: URL, stop: StopFlag) throws {
+    package static func writeTree(_ engine: ContainerEngine, id: String, containerPath: String, into folder: URL, stop: StopFlag) throws {
         let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }
         let writer = TreeWriter(rootFD: rootFD, containerPath: containerPath)
@@ -966,18 +966,18 @@ nonisolated enum CopyWriter {
 
     /// Fetched files are readable by you whatever the container said, and read-only (an edit saved into a copy would
     /// be lost at the next listing); no set-ID bits.
-    static func readable(_ mode: UInt32) -> UInt32 { (mode & 0o555) | 0o400 }
+    package static func readable(_ mode: UInt32) -> UInt32 { (mode & 0o555) | 0o400 }
 
     /// A container's or a server's files come from another machine, so they're marked as downloaded: Gatekeeper checks
     /// an app, script or `.command` from one before it runs, and copies keep the mark, as Finder's do. The mark is the one
     /// macOS itself gives a download made by Strata (asked once, through its quarantine API), so it's always what this
     /// macOS expects; "0281;…;Strata;…" on macOS 26, and that as a fallback.
-    static let quarantine: [UInt8] = systemQuarantine()
+    package static let quarantine: [UInt8] = systemQuarantine()
         ?? Array("0281;\(String(Int(Date().timeIntervalSince1970), radix: 16));Strata;\(UUID().uuidString)".utf8)
 
     /// The mark macOS writes for a download by this app, read back from a scratch file. Nil unless it's one that says
     /// "downloaded" and not "already approved".
-    static func systemQuarantine() -> [UInt8]? {
+    package static func systemQuarantine() -> [UInt8]? {
         let probe = FileManager.default.temporaryDirectory.appending(path: "strata-quarantine-\(UUID().uuidString)")
         guard FileManager.default.createFile(atPath: probe.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { return nil }
         defer { unlink(probe.path) }
@@ -1001,7 +1001,7 @@ nonisolated enum CopyWriter {
 
     /// Marks the file or folder open at `fd` as downloaded (see `quarantine`). Throws when it can't be, so nothing
     /// unmarked is placed; disks that can't keep the mark at all are the exception.
-    static func markDownloaded(_ fd: Int32) throws {
+    package static func markDownloaded(_ fd: Int32) throws {
         guard fsetxattr(fd, "com.apple.quarantine", quarantine, quarantine.count, 0, 0) != 0, errno != ENOTSUP else { return }
         throw CocoaError(.fileWriteNoPermission)
     }
@@ -1035,7 +1035,7 @@ nonisolated enum CopyWriter {
     }
 
     /// The names in the folder open at `fd` (without `.` and `..`).
-    static func names(in fd: Int32) -> [String] {
+    package static func names(in fd: Int32) -> [String] {
         let copy = dup(fd)
         guard copy >= 0, let dir = fdopendir(copy) else {
             if copy >= 0 { close(copy) }
@@ -1053,7 +1053,7 @@ nonisolated enum CopyWriter {
     }
 
     /// Removes an item of the folder open at `fd` (a folder with all it holds), never following a link.
-    static func removeAt(_ fd: Int32, _ name: String) {
+    package static func removeAt(_ fd: Int32, _ name: String) {
         var info = stat()
         guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }
         if info.st_mode & S_IFMT == S_IFDIR {
@@ -1071,7 +1071,7 @@ nonisolated enum CopyWriter {
 }
 
 extension ContainerFiles {
-    func previewFolder(_ folder: URL) async throws {
+    package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
         let real = folder.resolvingSymlinksInPath().standardizedFileURL
         // Engine and stack roots contain only container metadata; their normal refresh never fetches file contents.

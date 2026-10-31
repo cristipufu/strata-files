@@ -2,6 +2,7 @@ import AppKit
 import CryptoKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct HistoryWindowOwnershipTests {
     private final class Environment {

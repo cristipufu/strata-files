@@ -2,35 +2,35 @@ import AppKit
 
 /// Every copy and move in the app, and compressing and extracting. Transfer jobs start measuring and asking about
 /// conflicts right away, then copy one at a time per destination disk (same-volume moves are renames and never wait).
-final class TransferQueue {
-    static let shared = TransferQueue(preferences: .shared, history: .shared, copies: .live)
+package final class TransferQueue {
+    package static let shared = TransferQueue(preferences: .shared, history: .shared, copies: .live)
 
     /// Posted (object: the queue) when jobs are added, removed, change state, or a few times a second while running.
-    static let didChangeNotification = Notification.Name("StrataTransferQueueDidChange")
+    package static let didChangeNotification = Notification.Name("StrataTransferQueueDidChange")
     /// Posted (object: the job) each time a job finishes a pass: done, failed, cancelled, or after a retry.
-    static let jobDidFinishNotification = Notification.Name("StrataTransferJobDidFinish")
+    package static let jobDidFinishNotification = Notification.Name("StrataTransferJobDidFinish")
 
-    private(set) var jobs: [any QueueJob] = []
+    package private(set) var jobs: [any QueueJob] = []
     private var priority: [ObjectIdentifier] = []
     /// Called alongside `didChangeNotification`, for a single owner that prefers a closure.
-    var onChange: (() -> Void)?
+    package var onChange: (() -> Void)?
 
     private var busyDisks: [dev_t: ObjectIdentifier] = [:]
     private var waiters: [(job: ObjectIdentifier, disk: dev_t, continuation: CheckedContinuation<Bool, Never>)] = []
     private var ticker: Task<Void, Never>?
     private var notifyScheduled = false
 
-    let preferences: Prefs
-    let history: OperationLog
-    let copies: CopyProviders
+    package let preferences: Prefs
+    package let history: OperationLog
+    package let copies: CopyProviders
 
-    init(preferences: Prefs, history: OperationLog, copies: CopyProviders) {
+    package init(preferences: Prefs, history: OperationLog, copies: CopyProviders) {
         self.preferences = preferences
         self.history = history
         self.copies = copies
     }
 
-    var defaultOptions: TransferEngine.Options {
+    package var defaultOptions: TransferEngine.Options {
         var options = TransferEngine.Options()
         options.verify = preferences.verifyCopies
         return options
@@ -41,7 +41,7 @@ final class TransferQueue {
     /// Copies or moves `sources` into the folder `destination`. Name clashes go to `conflicts`; with `verify`, every
     /// copied file is read back and compared (SHA-256). When the job finishes, its undo is registered on `undo`.
     @discardableResult
-    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool? = nil,
+    package func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, verify: Bool? = nil,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
         var options = TransferEngine.Options()
         options.verify = verify ?? preferences.verifyCopies
@@ -49,7 +49,7 @@ final class TransferQueue {
     }
 
     @discardableResult
-    func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, options: TransferEngine.Options,
+    package func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, options: TransferEngine.Options,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
         let folder = destination.standardizedFileURL
         let moves = sources.map { TransferMove(from: $0.standardizedFileURL, to: folder.appending(path: $0.lastPathComponent)) }
@@ -58,7 +58,7 @@ final class TransferQueue {
 
     /// Item-by-item destinations, for undoing moves whose items came from different folders.
     @discardableResult
-    func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
+    package func enqueue(moves: [TransferMove], destination: URL? = nil, mode: TransferMode,
                  options: TransferEngine.Options? = nil, undo: UndoManager?, conflicts: ConflictResolver,
                  logHistory: Bool = true, actionName: String? = nil, containers: [URL] = [],
                  containerOwnership: CreatedFolders? = nil, expected: [String: FileIdentity]? = nil) -> TransferJob {
@@ -80,7 +80,7 @@ final class TransferQueue {
 
     /// Runs a Compress or Extract in the list, with the copies. Archive jobs run one at a time (several tools on one disk
     /// only slow each other down, and their free-space checks would race); the rest wait in the list.
-    func add(_ job: ArchiveJob) {
+    package func add(_ job: ArchiveJob) {
         jobs.append(job)
         job.onChange = { [weak self] _ in self?.notify() }
         job.onFinish = { [weak self, previous = job.onFinish] job in
@@ -94,7 +94,7 @@ final class TransferQueue {
     }
 
     /// Reading from a provider starts right away, alongside other transfers.
-    func add(_ job: CopyFetchJob) {
+    package func add(_ job: CopyFetchJob) {
         jobs.append(job)
         job.onChange = { [weak self] _ in self?.notify() }
         job.onFinish = { [weak self, previous = job.onFinish] job in
@@ -107,7 +107,7 @@ final class TransferQueue {
     }
 
     /// Copying onto a server: starts right away, alongside copies on this Mac.
-    func add(_ job: RemoteUploadJob) {
+    package func add(_ job: RemoteUploadJob) {
         jobs.append(job)
         job.onChange = { [weak self] _ in self?.notify() }
         job.onFinish = { [weak self, previous = job.onFinish] job in
@@ -130,7 +130,7 @@ final class TransferQueue {
     }
 
     /// Overall progress of every unfinished job, weighted by size, or nil when nothing is running.
-    var overallProgress: Double? {
+    package var overallProgress: Double? {
         let active = jobs.filter { $0.state.isActive }
         guard !active.isEmpty else { return nil }
         let total = active.reduce(0) { $0 + $1.totalWork }
@@ -138,14 +138,14 @@ final class TransferQueue {
         return min(1, active.reduce(0) { $0 + $1.completedWork } / total)
     }
 
-    var hasActiveJobs: Bool { jobs.contains { $0.state.isActive } }
+    package var hasActiveJobs: Bool { jobs.contains { $0.state.isActive } }
 
-    var hasFailures: Bool { jobs.contains { $0.canRetry || $0.state == .failed } }
+    package var hasFailures: Bool { jobs.contains { $0.canRetry || $0.state == .failed } }
 
-    var hasFinishedJobs: Bool { jobs.contains { !$0.state.isActive } }
+    package var hasFinishedJobs: Bool { jobs.contains { !$0.state.isActive } }
 
     /// Removes finished, failed and cancelled jobs from the list.
-    func clearFinished() {
+    package func clearFinished() {
         jobs.removeAll { !$0.state.isActive }
         let kept = Set(jobs.map(ObjectIdentifier.init))
         priority.removeAll { !kept.contains($0) }
@@ -160,7 +160,7 @@ final class TransferQueue {
     }
 
     /// Running work stays visible first; waiting rows show the order the scheduler will use.
-    var displayJobs: [any QueueJob] {
+    package var displayJobs: [any QueueJob] {
         jobs.filter { $0.state.isActive && $0.state != .queued }
             + prioritizedJobs.filter { $0.state == .queued }
             + jobs.reversed().filter { !$0.state.isActive }
@@ -183,11 +183,11 @@ final class TransferQueue {
         return TransferOrdering.destination(for: index, among: jobs.indices.filter { self.lane(of: jobs[$0], waitingDisks: disks) == lane }, order: order)
     }
 
-    func canReorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool { orderDestination(job, order) != nil }
+    package func canReorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool { orderDestination(job, order) != nil }
 
     /// Revalidate at dispatch: a menu may outlive the wait, cancellation or removal of its job.
     @discardableResult
-    func reorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool {
+    package func reorder(_ job: any QueueJob, _ order: TransferOrder) -> Bool {
         var jobs = prioritizedJobs
         guard let target = orderDestination(job, order), let source = jobs.firstIndex(where: { $0 === job }) else { return false }
         let chosen = jobs.remove(at: source)
@@ -197,7 +197,7 @@ final class TransferQueue {
         return true
     }
 
-    func remove(_ job: any QueueJob) {
+    package func remove(_ job: any QueueJob) {
         guard !job.state.isActive else { return }
         jobs.removeAll { $0 === job }
         priority.removeAll { $0 == ObjectIdentifier(job) }
@@ -206,7 +206,7 @@ final class TransferQueue {
 
     /// For `applicationShouldTerminate`: asks before quitting while transfers run. Stopping them first removes
     /// partially written items and keeps every finished one, so nothing half-copied is left behind.
-    func shouldTerminate(_ app: NSApplication) -> NSApplication.TerminateReply {
+    package func shouldTerminate(_ app: NSApplication) -> NSApplication.TerminateReply {
         let active = jobs.filter { $0.state.isActive }
         guard !active.isEmpty else { return .terminateNow }
         let alert = NSAlert()
@@ -231,11 +231,11 @@ final class TransferQueue {
 
     // MARK: - Jobs
 
-    func jobDidChange(_ job: TransferJob) {
+    package func jobDidChange(_ job: TransferJob) {
         notify()
     }
 
-    func jobDidFinish(_ job: TransferJob) {
+    package func jobDidFinish(_ job: TransferJob) {
         notifyNow()
         NotificationCenter.default.post(name: Self.jobDidFinishNotification, object: job)
         startTicking()
@@ -243,12 +243,12 @@ final class TransferQueue {
 
     // MARK: - One writer per disk
 
-    func isDiskFree(_ disk: dev_t, for job: TransferJob) -> Bool {
+    package func isDiskFree(_ disk: dev_t, for job: TransferJob) -> Bool {
         busyDisks[disk] == nil || busyDisks[disk] == ObjectIdentifier(job)
     }
 
     /// Waits until no other job writes to `disk`. Returns false if the job was cancelled while waiting.
-    func acquireDisk(_ disk: dev_t, for job: TransferJob) async -> Bool {
+    package func acquireDisk(_ disk: dev_t, for job: TransferJob) async -> Bool {
         if isDiskFree(disk, for: job) {
             busyDisks[disk] = ObjectIdentifier(job)
             return true
@@ -258,7 +258,7 @@ final class TransferQueue {
         }
     }
 
-    func releaseDisk(_ disk: dev_t, for job: TransferJob) {
+    package func releaseDisk(_ disk: dev_t, for job: TransferJob) {
         guard busyDisks[disk] == ObjectIdentifier(job) else { return }
         busyDisks[disk] = nil
         // Read the current priority, including choices made after these jobs began waiting.
@@ -273,7 +273,7 @@ final class TransferQueue {
         }
     }
 
-    func stopWaiting(_ job: TransferJob) {
+    package func stopWaiting(_ job: TransferJob) {
         let id = ObjectIdentifier(job)
         let stopped = waiters.filter { $0.job == id }
         waiters.removeAll { $0.job == id }
@@ -316,14 +316,14 @@ final class TransferQueue {
 /// undoing a move moves the items back. Items a job replaced come back out of the Trash. The work runs away from the
 /// main thread after the undo and redo steps before it (`FileOps.afterUndoWork`); each step's redo is registered at
 /// once, so it lands on the right stack, and waits for what the step did.
-enum TransferUndo {
+package enum TransferUndo {
     /// Folders an operation made for its items (Put Back recreating a removed folder): made again before the items go
     /// back in, removed (only while empty) after they come out.
-    typealias Containers = CreatedFolders.Change
+    package typealias Containers = CreatedFolders.Change
 
     /// `containers`: folders made for the moved items; undo removes them once they're empty again, redo makes them.
     /// `landed`: what the items are where they went, recorded as each landed (else read now).
-    static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
+    package static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
                          undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles? = nil,
                          queue: TransferQueue) {
         let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
@@ -331,7 +331,7 @@ enum TransferUndo {
                  actionName: actionName, undo: undo, logHistory: logHistory, containers: containers, queue: queue)
     }
 
-    static func register(receipt: TransferJournal.Receipt, actionName: String, undo: UndoManager?, logHistory: Bool,
+    package static func register(receipt: TransferJournal.Receipt, actionName: String, undo: UndoManager?, logHistory: Bool,
                          containers: CreatedFolders, queue: TransferQueue) {
         if logHistory {
             receipt.historyEntry = queue.history.recordTransfer(actionName, created: receipt.created,
@@ -374,7 +374,7 @@ enum TransferUndo {
     /// Moves `moves()` as an undo or redo step does: after the steps before, away from the main thread. The inverse is
     /// registered right away, so it lands on the right stack, and moves back what the step moved once that's known.
     /// `moves()` also says what each item must be, by its path, checked just before each one moves.
-    static func perform(actionName: String, undo: UndoManager?, containers: Containers = .none, queue: TransferQueue,
+    package static func perform(actionName: String, undo: UndoManager?, containers: Containers = .none, queue: TransferQueue,
                         historyEntry: UUID? = nil,
                         moves: @escaping () async -> ([TransferMove], [String: FileIdentity])) {
         let step = Step()
@@ -404,7 +404,7 @@ enum TransferUndo {
 
     /// One step of undo or redo and what it moved: known at once for renames on one disk, once its job is done across
     /// disks. The step undoing it waits for that, so an undo or redo pressed meanwhile still moves exactly what landed.
-    final class Step {
+    package final class Step {
         fileprivate enum Outcome {
             case renamed([TransferMove], LandedFiles)
             case moving(TransferJob)
@@ -422,7 +422,7 @@ enum TransferUndo {
 
         /// What it moved that's still where it went (clashes may have renamed items on the way), and what each is
         /// there, for checking again just before each moves back.
-        func landed() async -> (moves: [TransferMove], expected: [String: FileIdentity]) {
+        package func landed() async -> (moves: [TransferMove], expected: [String: FileIdentity]) {
             if outcome == nil { await withCheckedContinuation { waiters.append($0) } }
             switch outcome {
             case .renamed(let done, let landed):

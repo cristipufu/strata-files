@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct QueueOrderingTests {
     private func reserve(_ folder: URL, in queue: TransferQueue) async throws -> (dev_t, TransferJob) {

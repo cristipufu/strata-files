@@ -139,8 +139,3 @@ extension BrowserWindowController {
         services.remote.connections.disconnect(server)
     }
 }
-
-extension Notification.Name {
-    /// A server's files were let go (`object`: its saved-server store, `serverID`: its ID).
-    static let remoteServerDisconnected = Notification.Name("StrataRemoteServerDisconnected")
-}

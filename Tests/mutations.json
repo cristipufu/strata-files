@@ -883,8 +883,8 @@
   },
   {
     "file": "Strata/Remote/RemoteFiles.swift",
-    "find": "    func rename(_ url: URL, to name: String) async throws -> URL {\n        guard ContainerCopies.isSafeName(name) else {",
-    "replace": "    func rename(_ url: URL, to name: String) async throws -> URL {\n        guard true else {",
+    "find": "    package func rename(_ url: URL, to name: String) async throws -> URL {\n        guard ContainerCopies.isSafeName(name) else {",
+    "replace": "    package func rename(_ url: URL, to name: String) async throws -> URL {\n        guard true else {",
     "rule": "A rename on a server accepts a path and moves the item",
     "tests": "RemoteFilesTests/renamingOnAServer"
   },
@@ -2524,8 +2524,8 @@
   },
   {
     "file": "Strata/Remote/RemoteSession.swift",
-    "find": "backend.close()\n        await changed(id, false)\n    }\n\n    func disconnect",
-    "replace": "backend.close()\n    }\n\n    func disconnect",
+    "find": "backend.close()\n        await changed(id, false)\n    }\n\n    package func disconnect",
+    "replace": "backend.close()\n    }\n\n    package func disconnect",
     "rule": "Remote read ownership retirement reports the current disconnected state",
     "tests": "RemoteFilesTests/unresponsiveListingsRetireOnlyTheirOwningPoolAndLeaveOtherErrorsConnected"
   },
@@ -2776,8 +2776,8 @@
   },
   {
     "file": "Strata/Remote/CopyProviders.swift",
-    "find": "    let files: RemoteFiles\n    func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
-    "replace": "    let files: RemoteFiles\n    func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
+    "find": "    package let files: RemoteFiles\n    package func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
+    "replace": "    package let files: RemoteFiles\n    package func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
     "rule": "Remote copy ownership the server provider classifies paths using another environment",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
@@ -3310,8 +3310,8 @@
     "file": "Strata/Transfers/CopyFetchJob.swift",
     "edits": [
       {
-        "find": "        onChange?(self)\n    }\n\n    func cancel()",
-        "replace": "    }\n\n    func cancel()"
+        "find": "        onChange?(self)\n    }\n\n    package func cancel()",
+        "replace": "    }\n\n    package func cancel()"
       },
       {
         "find": "        state = .running\n        task = Task {",
@@ -3822,8 +3822,8 @@
   },
   {
     "file": "Strata/Transfers/Archiver.swift",
-    "find": "    static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        entries(parent).contains(name)\n    }",
-    "replace": "    static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        true\n    }",
+    "find": "    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        entries(parent).contains(name)\n    }",
+    "replace": "    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        true\n    }",
     "rule": "Shared operation safety directory entry check ignores case-sensitive spelling",
     "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks|RemoteCopyOwnershipTests/descriptorCleanupStaysWithTheOpenedFolderAndRejectsEscapingNames"
   },

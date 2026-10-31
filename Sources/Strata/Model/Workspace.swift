@@ -1,49 +1,61 @@
 import Foundation
 
 /// A named set of tabs, each with one or two pane folders, reopened as a window.
-nonisolated struct Workspace: Codable, Equatable, Sendable {
-    var name: String
+package nonisolated struct Workspace: Codable, Equatable, Sendable {
+    package var name: String
     /// Each tab's pane folders: one, or two in dual pane.
-    var tabs: [[String]]
+    package var tabs: [[String]]
     /// Each tab's panes' views (`BrowserViewMode` raw values). Missing in workspaces saved before views were kept.
-    var modes: [[Int]]? = nil
-    var saved: Date? = nil
+    package var modes: [[Int]]? = nil
+    package var saved: Date? = nil
     /// The network shares its folders are on: where each was mounted, and the address that mounts it again (never with
     /// a password). Opening the workspace connects to them again.
-    var shares: [String: String]? = nil
+    package var shares: [String: String]? = nil
     /// Automatic session state. Named workspaces continue to save folders and views without browsing history.
-    var navigation: [[SavedNavigation]]? = nil
-    var activePanes: [Int]? = nil
-    var selectedTab: Int? = nil
+    package var navigation: [[SavedNavigation]]? = nil
+    package var activePanes: [Int]? = nil
+    package var selectedTab: Int? = nil
+
+    package init(name: String, tabs: [[String]], modes: [[Int]]? = nil, saved: Date? = nil, shares: [String: String]? = nil,
+                 navigation: [[SavedNavigation]]? = nil, activePanes: [Int]? = nil, selectedTab: Int? = nil) {
+        self.name = name
+        self.tabs = tabs
+        self.modes = modes
+        self.saved = saved
+        self.shares = shares
+        self.navigation = navigation
+        self.activePanes = activePanes
+        self.selectedTab = selectedTab
+    }
 
     private enum CodingKeys: String, CodingKey { case name, tabs, modes, saved, shares, navigation, activePanes, selectedTab }
 
-    func history(tab: Int, pane: Int) -> SavedNavigation? {
+    package func history(tab: Int, pane: Int) -> SavedNavigation? {
         guard let navigation, navigation.indices.contains(tab), navigation[tab].indices.contains(pane) else { return nil }
         return navigation[tab][pane]
     }
 
-    func activePane(tab: Int) -> Int? {
+    package func activePane(tab: Int) -> Int? {
         guard let activePanes, activePanes.indices.contains(tab) else { return nil }
         return activePanes[tab]
     }
 
-    var isDualPane: Bool { tabs.contains { $0.count > 1 } }
+    package var isDualPane: Bool { tabs.contains { $0.count > 1 } }
 
-    func mode(tab: Int, pane: Int) -> Int? {
+    package func mode(tab: Int, pane: Int) -> Int? {
         guard let modes, modes.indices.contains(tab), modes[tab].indices.contains(pane) else { return nil }
         return modes[tab][pane]
     }
 
     /// The share `path` is on (the innermost, if shares were mounted inside one another).
-    func share(for path: String) -> (mountPoint: String, address: String)? {
+    package func share(for path: String) -> (mountPoint: String, address: String)? {
         shares?.filter { path == $0.key || path.hasPrefix($0.key + "/") }
             .max { $0.key.count < $1.key.count }
             .map { ($0.key, $0.value) }
     }
 
     /// Without the folders in `gone`: their panes go, and tabs left with none.
-    func removing(_ gone: Set<String>) -> Workspace {
+    package func removing(_ gone: Set<String>) -> Workspace {
         var copy = self
         var tabs: [[String]] = []
         var modes: [[Int]] = []
@@ -73,7 +85,7 @@ nonisolated struct Workspace: Codable, Equatable, Sendable {
 }
 
 extension Workspace {
-    nonisolated init(from decoder: Decoder) throws {
+    package nonisolated init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         name = try values.decode(String.self, forKey: .name)
         tabs = try values.decode([[String]].self, forKey: .tabs)
@@ -88,39 +100,47 @@ extension Workspace {
 
 /// A folder a pane is kept for while it can't be shown: its share isn't connected yet, or its disk isn't. The pane shows
 /// Home meanwhile, but saves (a workspace update, the session) keep this folder, its view and its share's address.
-nonisolated struct WaitingFolder: Equatable, Sendable {
-    var path: String
-    var mode: Int?
+package nonisolated struct WaitingFolder: Equatable, Sendable {
+    package var path: String
+    package var mode: Int?
     /// Where its share was mounted and the address that mounts it again; nil for a disk that isn't connected.
-    var mountPoint: String?
-    var address: String?
+    package var mountPoint: String?
+    package var address: String?
     /// A saved SFTP server's or bucket's ID, for a folder of its files (connected again, then listed down to it).
-    var server: String? = nil
+    package var server: String? = nil
+
+    package init(path: String, mode: Int? = nil, mountPoint: String? = nil, address: String? = nil, server: String? = nil) {
+        self.path = path
+        self.mode = mode
+        self.mountPoint = mountPoint
+        self.address = address
+        self.server = server
+    }
 }
 
 /// How a workspace opens, given what's on disk now: folders that are there, folders on a share to connect to first,
 /// folders on a disk that isn't connected, and folders that are gone (their panes are left out, and tabs left with none).
-nonisolated struct WorkspacePlan: Equatable, Sendable {
-    struct Pane: Equatable, Sendable {
-        var path: String
-        var mode: Int?
+package nonisolated struct WorkspacePlan: Equatable, Sendable {
+    package struct Pane: Equatable, Sendable {
+        package var path: String
+        package var mode: Int?
         /// Set when the folder can't be shown yet: on a share to connect first, or on a disk that isn't connected.
-        var waiting: WaitingFolder?
-        var navigation: SavedNavigation? = nil
-        var active = false
+        package var waiting: WaitingFolder?
+        package var navigation: SavedNavigation? = nil
+        package var active = false
     }
 
-    var tabs: [[Pane]] = []
-    var selectedTab: Int? = nil
+    package var tabs: [[Pane]] = []
+    package var selectedTab: Int? = nil
     /// Folders that aren't there, in the order they were saved.
-    var missing: [String] = []
+    package var missing: [String] = []
     /// Folders on disks that aren't connected (not gone: they're kept).
-    var offline: [String] = []
+    package var offline: [String] = []
     /// Shares to connect to before their panes can be shown: mount point → address.
-    var shares: [String: String] = [:]
+    package var shares: [String: String] = [:]
 
     /// `server` says which saved server a path's files are of (a folder in Strata's copy of its files), if any.
-    init(_ workspace: Workspace, exists: (String) -> Bool, server: (String) -> String? = { _ in nil }) {
+    package init(_ workspace: Workspace, exists: (String) -> Bool, server: (String) -> String? = { _ in nil }) {
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
             for (p, path) in tab.enumerated().prefix(2) where !path.isEmpty {
@@ -153,7 +173,7 @@ nonisolated struct WorkspacePlan: Equatable, Sendable {
 
     /// Where a folder on a share is now that the share is mounted at `mountedAt` (macOS may pick another mount point,
     /// "/Volumes/Share-1", when the old one is taken).
-    static func path(_ path: String, from mountPoint: String, to mountedAt: String) -> String {
+    package static func path(_ path: String, from mountPoint: String, to mountedAt: String) -> String {
         guard path == mountPoint || path.hasPrefix(mountPoint + "/") else { return path }
         let rest = path.dropFirst(mountPoint.count)
         let base = mountedAt.hasSuffix("/") ? String(mountedAt.dropLast()) : mountedAt

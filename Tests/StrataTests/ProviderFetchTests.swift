@@ -2,6 +2,7 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ProviderFetchTests {
     private nonisolated enum Failure: Error { case unavailable }

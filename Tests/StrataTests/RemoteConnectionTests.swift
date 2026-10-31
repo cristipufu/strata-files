@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct RemoteConnectionTests {
     private enum Failure: Error { case connect, list, save, unexpected }

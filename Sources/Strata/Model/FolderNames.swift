@@ -3,28 +3,28 @@ import Foundation
 extension Notification.Name {
     /// A `FolderNames` read found Finder names other than folders' own (object: the `FolderNames`, userInfo `paths`:
     /// a `Set<String>` of those folders' paths).
-    static let folderNamesRead = Notification.Name("StrataFolderNamesRead")
+    package static let folderNamesRead = Notification.Name("StrataFolderNamesRead")
 }
 
 /// What Finder calls the folders along the path on show (in the path bar, the window's title and a pane's header),
 /// read away from the main thread: each name asks the disk, a round trip per folder on a server, every time you move.
 /// Until it's read, a folder goes by its own name.
-final class FolderNames {
+package final class FolderNames {
     private var names: [String: String] = [:]
     private var reads: BatchedReads<String>!
 
-    init(read: @escaping @Sendable ([String]) -> [String: String]) {
+    package init(read: @escaping @Sendable ([String]) -> [String: String]) {
         reads = BatchedReads(read: read) { [weak self] found in self?.keep(found) }
     }
 
     /// Finder's name for the folder, as last read; its own name until then.
-    func name(_ url: URL) -> String {
+    package func name(_ url: URL) -> String {
         if let name = names[url.path] { return name }
         reads.request(url.path)
         return url.lastPathComponent
     }
 
-    func settled() async {
+    package func settled() async {
         await reads.settled()
     }
 
@@ -41,7 +41,7 @@ final class FolderNames {
         }
     }
 
-    nonisolated static func read(_ paths: [String]) -> [String: String] {
+    package nonisolated static func read(_ paths: [String]) -> [String: String] {
         var names: [String: String] = [:]
         for path in paths { names[path] = FileManager.default.displayName(atPath: path) }
         return names

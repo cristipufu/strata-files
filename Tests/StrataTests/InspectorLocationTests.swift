@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// The Inspector's Where row reads as one path, in order, ending in the folder's name.
 struct InspectorLocationTests {

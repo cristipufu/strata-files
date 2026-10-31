@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct MenuImagesTests {
     @Test func folderDestinationsHaveImages() throws {

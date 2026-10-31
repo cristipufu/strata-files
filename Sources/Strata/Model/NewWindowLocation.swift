@@ -1,10 +1,10 @@
 import Foundation
 
-nonisolated enum NewWindowLocation: String, CaseIterable, Sendable {
+package nonisolated enum NewWindowLocation: String, CaseIterable, Sendable {
     case lastVisited, home, custom
 
     /// New windows may inherit the front window; the first window uses the last saved local folder.
-    func folder(custom: URL?, last: URL?, current: URL? = nil, home: URL,
+    package func folder(custom: URL?, last: URL?, current: URL? = nil, home: URL,
                 available: (URL) -> Bool = Self.isAvailable) -> URL {
         let candidate: URL?
         switch self {
@@ -16,7 +16,7 @@ nonisolated enum NewWindowLocation: String, CaseIterable, Sendable {
         return candidate
     }
 
-    static func isAvailable(_ url: URL) -> Bool {
+    package static func isAvailable(_ url: URL) -> Bool {
         var directory: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory)
             && directory.boolValue && FileManager.default.isReadableFile(atPath: url.path)

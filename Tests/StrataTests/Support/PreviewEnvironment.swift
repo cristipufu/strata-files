@@ -2,6 +2,7 @@ import AppKit
 import Security
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// A preview never borrows the application's preferences, clipboard, credentials, copy roots or History.
 final class PreviewEnvironment {

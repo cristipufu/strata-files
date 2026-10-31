@@ -2,27 +2,27 @@ import Foundation
 
 /// Reading items from a provider before they're handed on (copied to the clipboard, opened, previewed): shown in the
 /// Transfers list with a Stop button, so a big file or folder isn't a silent wait.
-final class CopyFetchJob {
-    let urls: [URL]
-    let sourceName: String
+package final class CopyFetchJob {
+    package let urls: [URL]
+    package let sourceName: String
     private let copies: CopyProviders
-    private(set) var state: TransferState = .queued
-    private(set) var errorMessage: String?
+    package private(set) var state: TransferState = .queued
+    package private(set) var errorMessage: String?
     private var task: Task<Void, Never>?
     private var then: (() -> Void)?
-    var onChange: ((CopyFetchJob) -> Void)?
-    var onFinish: ((CopyFetchJob) -> Void)?
+    package var onChange: ((CopyFetchJob) -> Void)?
+    package var onFinish: ((CopyFetchJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// `then` runs once everything is read (not when it fails or is stopped).
-    init(_ urls: [URL], copies: CopyProviders, then: @escaping () -> Void) {
+    package init(_ urls: [URL], copies: CopyProviders, then: @escaping () -> Void) {
         self.urls = urls
         self.copies = copies
         self.then = then
         sourceName = urls.first.flatMap(copies.sourceName) ?? ""
     }
 
-    func start() {
+    package func start() {
         guard state == .queued else { return }
         state = .running
         task = Task {
@@ -45,7 +45,7 @@ final class CopyFetchJob {
         onChange?(self)
     }
 
-    func cancel() {
+    package func cancel() {
         task?.cancel()
         if state == .queued {
             state = .cancelled
@@ -53,7 +53,7 @@ final class CopyFetchJob {
         }
     }
 
-    func finished() async {
+    package func finished() async {
         guard state.isActive else { return }
         await withCheckedContinuation { finishWaiters.append($0) }
     }
@@ -71,12 +71,12 @@ final class CopyFetchJob {
 }
 
 extension CopyFetchJob: QueueJob {
-    var title: String {
+    package var title: String {
         state.isActive ? String(localized: "Reading from “\(sourceName)”", comment: "Transfers list: items being read from a container")
             : String(localized: "Read from “\(sourceName)”", comment: "Transfers list: items read from a container")
     }
 
-    var statusText: String {
+    package var statusText: String {
         switch state {
         case .queued, .scanning, .running, .paused: String(localized: "Working…", comment: "Transfers list: a job in progress")
         case .finished: String(localized: "Done", comment: "Transfers list: job status")
@@ -85,20 +85,20 @@ extension CopyFetchJob: QueueJob {
         }
     }
 
-    var failureSummary: String? { errorMessage }
-    var symbolName: String { "shippingbox" }
-    var fractionCompleted: Double? { state == .finished ? 1 : nil }
-    var failureCount: Int { 0 }
-    var canPause: Bool { false }
-    var canResume: Bool { false }
-    var canCancel: Bool { state.isActive }
-    var canRetry: Bool { false }
-    var createdItems: [URL] { [] }
-    var destination: URL { urls.first?.deletingLastPathComponent() ?? URL(fileURLWithPath: "/") }
-    var totalWork: Double { 1_000_000 }
-    var completedWork: Double { state.isActive ? 0 : totalWork }
-    func pause() {}
-    func resume() {}
-    func retryFailed() {}
-    func sample(_ now: TimeInterval) {}
+    package var failureSummary: String? { errorMessage }
+    package var symbolName: String { "shippingbox" }
+    package var fractionCompleted: Double? { state == .finished ? 1 : nil }
+    package var failureCount: Int { 0 }
+    package var canPause: Bool { false }
+    package var canResume: Bool { false }
+    package var canCancel: Bool { state.isActive }
+    package var canRetry: Bool { false }
+    package var createdItems: [URL] { [] }
+    package var destination: URL { urls.first?.deletingLastPathComponent() ?? URL(fileURLWithPath: "/") }
+    package var totalWork: Double { 1_000_000 }
+    package var completedWork: Double { state.isActive ? 0 : totalWork }
+    package func pause() {}
+    package func resume() {}
+    package func retryFailed() {}
+    package func sample(_ now: TimeInterval) {}
 }

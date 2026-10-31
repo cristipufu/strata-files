@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// nothing more is written inside them; Mac metadata goes back as copyfile puts it back. It stops when the disk runs low
 /// on space. On a disk that keeps an item's extended attributes in "._name" beside it (exFAT, FAT, some shares), no item
 /// meets its partner there ("._x" and "x"): one that would gets a number, as on a taken name.
-nonisolated final class ArchiveWriter {
+package nonisolated final class ArchiveWriter {
     private struct Times {
         var modified: timespec?, accessed: timespec?, created: timespec?
         var isEmpty: Bool { modified == nil && accessed == nil && created == nil }
@@ -96,7 +96,7 @@ nonisolated final class ArchiveWriter {
     /// Writes every entry `read` brings (0 once the stream ends), then the folders' times; whether the stream was
     /// complete. One that ended early leaves why to the read's status. `permissions`: what a new folder gets here, which
     /// bounds what any item gets.
-    static func write(into root: Int32, permissions: mode_t, control: Archiver.Control,
+    package static func write(into root: Int32, permissions: mode_t, control: Archiver.Control,
                       space: @escaping (Int32) -> (free: Int64, block: Int64)? = Archiver.space(of:),
                       attributesInFiles: (Int32) -> Bool = Archiver.attributesInFiles(of:),
                       memory: Int = 64 << 20,

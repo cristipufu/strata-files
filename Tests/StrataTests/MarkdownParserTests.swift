@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// The block structure each kind of Markdown makes, so a change to the parser shows in what it reads.
 struct MarkdownParserTests {

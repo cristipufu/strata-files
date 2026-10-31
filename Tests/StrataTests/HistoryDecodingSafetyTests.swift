@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct HistoryDecodingSafetyTests {
     @Test(arguments: ["pairs", "replaced"], [0, 1, 3])

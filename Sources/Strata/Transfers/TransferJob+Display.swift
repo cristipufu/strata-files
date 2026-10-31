@@ -3,7 +3,7 @@ import Foundation
 /// The words a job shows in the Transfers list and in tooltips.
 extension TransferJob {
     /// "Copying 1,204 items to Downloads", "Moved “Report.pdf” to Archive".
-    var title: String {
+    package var title: String {
         let done = state == .finished
         let to = destinationName
         guard sources.count == 1 else {
@@ -33,7 +33,7 @@ extension TransferJob {
     }
 
     /// "2.1 GB of 5.4 GB · 84 MB/s · about 40 s left", "Paused", "Done · 3 failed"…
-    var statusText: String {
+    package var statusText: String {
         if isAwaitingDecision { return String(localized: "Waiting for your decision") }
         switch state {
         case .queued:
@@ -82,7 +82,7 @@ extension TransferJob {
     }
 
     /// Up to eight failures, one per line, for a tooltip.
-    var failureSummary: String? {
+    package var failureSummary: String? {
         if let errorMessage { return errorMessage }
         guard !failures.isEmpty else { return nil }
         var lines = failures.prefix(8).map { "\($0.displayName) — \($0.message)" }
@@ -90,19 +90,19 @@ extension TransferJob {
         return lines.joined(separator: "\n")
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         mode == .copy ? "doc.on.doc" : "arrow.right.doc.on.clipboard"
     }
 }
 
-enum TransferFormat {
-    static func rate(_ bytesPerSecond: Double) -> String {
+package enum TransferFormat {
+    package static func rate(_ bytesPerSecond: Double) -> String {
         let clamped = bytesPerSecond.isFinite && bytesPerSecond > 0 ? min(bytesPerSecond, Double(Int64.max / 2)) : 0
         return String(localized: "\(Format.bytes(Int64(clamped)))/s", comment: "Transfer speed, like 84 MB/s")
     }
 
     /// "a few seconds left", "about 40 s left", "about 3 min left", "about 1 h 20 min left".
-    static func remaining(_ seconds: TimeInterval) -> String {
+    package static func remaining(_ seconds: TimeInterval) -> String {
         guard seconds.isFinite, seconds >= 5 else { return String(localized: "a few seconds left") }
         if seconds < 55 { return String(localized: "about \(Int((seconds / 5).rounded()) * 5) s left", comment: "Time left, in seconds") }
         let minutes = max(1, Int(min(seconds / 60, Double(Int.max / 2)).rounded()))
@@ -113,7 +113,7 @@ enum TransferFormat {
     }
 
     /// "3 failed", in a finished job's status (the Transfers list shows it in red).
-    static func failed(_ count: Int) -> String {
+    package static func failed(_ count: Int) -> String {
         String(localized: "\(count) failed", comment: "plural")
     }
 }

@@ -2,26 +2,33 @@ import CryptoKit
 import Foundation
 
 /// The blocking work behind transfers. Everything here runs on a job's worker queue.
-nonisolated enum TransferEngine {
-    struct Options: Sendable {
-        var verify = false
+package nonisolated enum TransferEngine {
+    package struct Options: Sendable {
+        package var verify = false
         /// APFS clones when source and destination share a volume. Tests turn it off to get real byte copies.
-        var clone = true
-        var sanitizeCopy = false
-        var sanitizationBoundary: URL?
+        package var clone = true
+        package var sanitizeCopy = false
+        package var sanitizationBoundary: URL?
+
+        package init(verify: Bool = false, clone: Bool = true, sanitizeCopy: Bool = false, sanitizationBoundary: URL? = nil) {
+            self.verify = verify
+            self.clone = clone
+            self.sanitizeCopy = sanitizeCopy
+            self.sanitizationBoundary = sanitizationBoundary
+        }
     }
 
     /// Test-only knobs: throttle data copies and tamper with a copy before it's verified.
-    struct Hooks: Sendable {
-        var throttleBytesPerSecond: Int64?
-        var beforeVerify: (@Sendable (URL) -> Void)?
+    package struct Hooks: Sendable {
+        package var throttleBytesPerSecond: Int64?
+        package var beforeVerify: (@Sendable (URL) -> Void)?
         /// Report a controlled failure after copyfile finishes an entry, while its descriptor is still available.
-        var copyFailure: (@Sendable (URL) -> Int32?)?
+        package var copyFailure: (@Sendable (URL) -> Int32?)?
         /// Called with an item's place the moment it has landed there and been recorded (for undo), before anything
         /// else happens to it: a test swaps the file right then.
-        var afterLanding: (@Sendable (URL) -> Void)?
+        package var afterLanding: (@Sendable (URL) -> Void)?
         /// The worker has finished, before its result is applied on the main actor.
-        var afterResult: (@Sendable (TransferItemResult) -> Void)?
+        package var afterResult: (@Sendable (TransferItemResult) -> Void)?
     }
 
     private static let hooksLock = NSLock()
@@ -29,7 +36,7 @@ nonisolated enum TransferEngine {
 
     // Workers read snapshots while tests configure hooks. Keep field updates atomic too; callbacks run after
     // the getter has released the lock, so they may safely update the configuration themselves.
-    static var hooks: Hooks {
+    package static var hooks: Hooks {
         get { hooksLock.withLock { storedHooks } }
         set { hooksLock.withLock { storedHooks = newValue } }
         _modify {
@@ -43,7 +50,7 @@ nonisolated enum TransferEngine {
 
     /// Carries out one planned item: rename, or copy (+ verify) (+ remove the original), with "replace" done
     /// safely by copying under a temporary name and only then swapping the old item into the Trash.
-    static func perform(_ index: Int, _ item: TransferItem, options: Options, control: TransferControl,
+    package static func perform(_ index: Int, _ item: TransferItem, options: Options, control: TransferControl,
                         progress: TransferProgress) -> TransferItemResult {
         let result = performItem(index, item, options: options, control: control, progress: progress)
         hooks.afterResult?(result)
@@ -268,7 +275,7 @@ nonisolated enum TransferEngine {
     }
 
     /// Second attempt at the parts of an item that failed: individual files and folders, or removing the original.
-    static func retry(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
+    package static func retry(_ index: Int, _ item: TransferItem, landed: FileIdentity?, failures: [TransferFailure], options: Options,
                       control: TransferControl, progress: TransferProgress) -> TransferItemResult {
         var result = retryItems(index, item, landed: landed, failures: failures, options: options, control: control, progress: progress)
         sanitize(&result, options: options, index: index, source: item.source)
@@ -463,7 +470,7 @@ nonisolated enum TransferEngine {
 
     /// A failed folder's retry includes its descendants. Retrying them separately could remove files the parent
     /// has just repaired, and descendants may not have had a destination parent to record on the first attempt.
-    static func retryFailures(_ failures: [TransferFailure]) -> [TransferFailure] {
+    package static func retryFailures(_ failures: [TransferFailure]) -> [TransferFailure] {
         let candidates = failures.filter { ($0.stage == .copy || $0.stage == .verify) && $0.destination != nil }
         let destinations = Dictionary(candidates.compactMap { failure in
             failure.destination.map { (failure.source.path, $0.path) }
@@ -489,45 +496,45 @@ nonisolated enum TransferEngine {
     // MARK: - Scanning
 
     /// Files and bytes under `url` (one cheap walk, no xattrs), or nil when cancelled.
-    static func scan(_ url: URL, control: TransferControl) -> FolderSize? {
+    package static func scan(_ url: URL, control: TransferControl) -> FolderSize? {
         FolderSizer.measure(url.path) { control.isCancelled }
     }
 
-    static func exists(_ url: URL) -> Bool {
+    package static func exists(_ url: URL) -> Bool {
         var info = stat()
         return lstat(url.path, &info) == 0
     }
 
-    static func device(_ url: URL) -> dev_t? {
+    package static func device(_ url: URL) -> dev_t? {
         var info = stat()
         return lstat(url.path, &info) == 0 ? info.st_dev : nil
     }
 
     // MARK: - Copying
 
-    struct EntryError: Sendable {
-        let source: String
-        let destination: String
-        let message: String
-        var identity: FileIdentity?
+    package struct EntryError: Sendable {
+        package let source: String
+        package let destination: String
+        package let message: String
+        package var identity: FileIdentity?
     }
 
-    struct CopyOutcome: Sendable {
-        var errors: [EntryError] = []
-        var cancelled = false
+    package struct CopyOutcome: Sendable {
+        package var errors: [EntryError] = []
+        package var cancelled = false
         /// Nothing could be copied at all.
-        var fatal: String?
+        package var fatal: String?
         /// The copy was refused because something already sits at the destination: that item isn't ours to remove.
-        var destinationExisted = false
+        package var destinationExisted = false
         /// Made as one APFS clone of the whole item (no per-file progress was reported).
-        var cloned = false
-        var created: [String: FileIdentity] = [:]
-        var sourceIdentities: [String: FileIdentity] = [:]
+        package var cloned = false
+        package var created: [String: FileIdentity] = [:]
+        package var sourceIdentities: [String: FileIdentity] = [:]
     }
 
     /// Recursive `copyfile(3)` with every piece of metadata, APFS clones where possible, per-file progress, and
     /// pause/cancel at block granularity. Files that fail are recorded and skipped; copyfile removes their partial data.
-    static func copy(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
+    package static func copy(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
                      clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
         if let owned = replacingOwned {
             return copyfile(source, to: destination, replacingOwned: owned, clone: clone, control: control, progress: progress)
@@ -562,7 +569,7 @@ nonisolated enum TransferEngine {
 
     /// File promises and clipboard staging use the same creation receipts as queued transfers.
     @discardableResult
-    static func copyForExport(_ source: URL, to destination: URL, control: TransferControl = TransferControl()) throws -> [String: FileIdentity] {
+    package static func copyForExport(_ source: URL, to destination: URL, control: TransferControl = TransferControl()) throws -> [String: FileIdentity] {
         let copied = copy(source, to: destination, clone: true, control: control, progress: TransferProgress())
         do {
             guard copied.fatal == nil, copied.errors.isEmpty, !copied.cancelled else { throw CocoaError(.fileWriteUnknown) }
@@ -575,7 +582,7 @@ nonisolated enum TransferEngine {
     }
 
     /// One recursive `copyfile` pass (see `copy`).
-    static func copyfile(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
+    package static func copyfile(_ source: URL, to destination: URL, replacingOwned: [String: FileIdentity]? = nil,
                          clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
         if let owned = replacingOwned {
             return repairOwnedDirectory(source, to: destination, owned: owned, clone: clone, control: control, progress: progress)
@@ -630,14 +637,14 @@ nonisolated enum TransferEngine {
 
     // MARK: - Verifying
 
-    struct VerifyOutcome: Sendable {
-        var mismatches: [EntryError] = []
-        var cancelled = false
+    package struct VerifyOutcome: Sendable {
+        package var mismatches: [EntryError] = []
+        package var cancelled = false
     }
 
     /// SHA-256 of every regular file under `source` against its counterpart under `destination`, streamed in 1 MB
     /// chunks; symlinks must point at the same place. Paths in `skipping` (already failed) are left out.
-    static func verify(_ source: URL, against destination: URL, created: [String: FileIdentity] = [:],
+    package static func verify(_ source: URL, against destination: URL, created: [String: FileIdentity] = [:],
                        skipping: Set<String> = [], control: TransferControl,
                        progress: TransferProgress) -> VerifyOutcome {
         progress.update { $0.isVerifying = true }
@@ -702,7 +709,7 @@ nonisolated enum TransferEngine {
         return outcome
     }
 
-    static func sha256(_ path: String, expected: FileIdentity? = nil, buffer: UnsafeMutableRawBufferPointer,
+    package static func sha256(_ path: String, expected: FileIdentity? = nil, buffer: UnsafeMutableRawBufferPointer,
                        control: TransferControl, onRead: (Int) -> Void) -> SHA256.Digest? {
         let fd = open(path, O_RDONLY | O_NOFOLLOW)
         guard fd >= 0 else { return nil }
@@ -737,7 +744,7 @@ nonisolated enum TransferEngine {
     // MARK: - Small operations
 
     /// `rename(2)` that refuses to overwrite. Returns 0 or an errno.
-    static func rename(_ source: URL, to destination: URL, supportsExclusiveRename: Bool = true) -> Int32 {
+    package static func rename(_ source: URL, to destination: URL, supportsExclusiveRename: Bool = true) -> Int32 {
         if !supportsExclusiveRename { errno = ENOTSUP } else
         if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return 0 }
         let code = errno
@@ -765,7 +772,7 @@ nonisolated enum TransferEngine {
         return error
     }
 
-    static func trash(_ url: URL) throws -> URL {
+    package static func trash(_ url: URL) throws -> URL {
         var result: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &result)
         return (result as URL?) ?? url
@@ -773,7 +780,7 @@ nonisolated enum TransferEngine {
 
     /// Removes `url` while it's what the operation made (`created`, by path): in a folder, only what the operation made,
     /// opened from `root`'s folder down without following links. Anything else stays.
-    static func removeIfPresent(_ url: URL, in root: URL? = nil, created: [String: FileIdentity],
+    package static func removeIfPresent(_ url: URL, in root: URL? = nil, created: [String: FileIdentity],
                                 keepRootDirectory: Bool = false) {
         guard !created.isEmpty, let dirFD = openOwnedParent(of: url, in: root ?? url, created: created) else { return }
         defer { close(dirFD) }
@@ -892,7 +899,7 @@ nonisolated enum TransferEngine {
 
     /// The first difference between `source` and its copy (an item added, or a file whose size or modification date
     /// changed after it was copied), or nil when the copy has everything the original has.
-    static func changedSinceCopy(_ source: URL, copy: URL) -> String? {
+    package static func changedSinceCopy(_ source: URL, copy: URL) -> String? {
         let root = source.path
         let unchecked = String(localized: "it couldn’t be checked", comment: "Why a moved item’s original was kept, in parentheses")
         guard let cpath = strdup(root) else { return unchecked }
@@ -927,7 +934,7 @@ nonisolated enum TransferEngine {
         return nil
     }
 
-    static var changedSince: String { String(localized: "The items have moved or been changed since.") }
+    package static var changedSince: String { String(localized: "The items have moved or been changed since.") }
 
     /// Removes the original after a cross-volume move. Returns an error message, or nil on success.
     private static func removeSource(_ url: URL, destination: URL? = nil, landed: FileIdentity? = nil,
@@ -962,7 +969,7 @@ nonisolated enum TransferEngine {
     }
 
     /// A folder that isn't a package (apps and bundles are replaced, never merged into).
-    static func isPlainFolder(_ url: URL) -> Bool {
+    package static func isPlainFolder(_ url: URL) -> Bool {
         var info = stat()
         guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
         return (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage != true
@@ -970,15 +977,15 @@ nonisolated enum TransferEngine {
 
     /// One copy a merge needs: `decision` is nil (new item), `.replace` (incoming is newer) or `.keepBoth` (a file
     /// meets a folder).
-    struct MergeStep: Sendable {
-        let source: URL
-        let destination: URL
-        let decision: ConflictDecision?
+    package struct MergeStep: Sendable {
+        package let source: URL
+        package let destination: URL
+        package let decision: ConflictDecision?
     }
 
     /// What merging folder `source` into folder `destination` copies: everything missing, subfolders merged in turn,
     /// and same-named items only where the incoming one is newer.
-    static func mergePlan(_ source: URL, into destination: URL) -> [MergeStep] {
+    package static func mergePlan(_ source: URL, into destination: URL) -> [MergeStep] {
         var steps: [MergeStep] = []
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []).sorted()
         for name in names where name != ".DS_Store" {
@@ -1001,7 +1008,7 @@ nonisolated enum TransferEngine {
         return steps
     }
 
-    static func temporaryURL(for destination: URL) -> URL {
+    package static func temporaryURL(for destination: URL) -> URL {
         let token = UUID().uuidString.prefix(8)
         // ".<name>.strata-XXXXXXXX" must stay within the 255-byte name limit.
         let name = fitting(destination.lastPathComponent, maxBytes: 255 - 17)
@@ -1009,7 +1016,7 @@ nonisolated enum TransferEngine {
     }
 
     /// `name` cut (at a character boundary) to at most `maxBytes` of UTF-8.
-    static func fitting(_ name: String, maxBytes: Int) -> String {
+    package static func fitting(_ name: String, maxBytes: Int) -> String {
         guard name.utf8.count > maxBytes else { return name }
         var result = ""
         for character in name {
@@ -1019,7 +1026,7 @@ nonisolated enum TransferEngine {
         return result
     }
 
-    static func describe(_ code: Int32) -> String {
+    package static func describe(_ code: Int32) -> String {
         switch code {
         case EACCES, EPERM: String(localized: "You don’t have permission")
         case ENOENT: String(localized: "The item couldn’t be found")

@@ -6,6 +6,7 @@ import Synchronization
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataFiles
 
 struct InspectorProviderTests {
     private nonisolated final class PlaceholderState: Sendable {

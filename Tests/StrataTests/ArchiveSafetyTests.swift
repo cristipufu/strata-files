@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Extract: an archive only ever adds its own items inside the folder it's extracted into. Links leading out of it,
 /// entries named to climb out ("../"), special files and setuid bits never make it, and nothing there is replaced.

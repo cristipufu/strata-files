@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct DockSearchTests {
     private static let strata = "dev.strata.app"

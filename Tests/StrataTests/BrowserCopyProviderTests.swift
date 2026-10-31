@@ -4,6 +4,7 @@ import Synchronization
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataFiles
 
 struct BrowserCopyProviderTests {
     private nonisolated final class PlaceholderState: Sendable {

@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// ⌘K looks up a typed path, and `github/acme`-style paths, away from the main thread: they join the results when
 /// they arrive, and the search ends once they have.

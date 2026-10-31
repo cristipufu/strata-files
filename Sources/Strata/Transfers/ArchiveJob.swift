@@ -2,38 +2,38 @@ import AppKit
 
 /// Compressing or extracting, as a job in the Transfers list: progress, Stop, and a History entry (undo moves what it
 /// made to the Trash). The work runs on its own thread: the tools it waits on can take minutes.
-final class ArchiveJob {
-    enum Operation {
+package final class ArchiveJob {
+    package enum Operation {
         case compress([URL])
         case extract(URL, into: URL)
         /// Extract into `at`, a new folder, to browse the archive like a folder. Not recorded in History.
         case browse(URL, at: URL)
     }
 
-    let operation: Operation
-    private(set) var state: TransferState = .queued
+    package let operation: Operation
+    package private(set) var state: TransferState = .queued
     /// What the job made: the zip, the extracted item or the browsable folder.
-    private(set) var result: URL?
-    private(set) var errorMessage: String?
+    package private(set) var result: URL?
+    package private(set) var errorMessage: String?
     /// Entries the extraction will report, from the archive's listing; 0 while unknown.
     private var totalEntries = 0
     /// The archive's unpacked size (extracting), to weigh this job against copies in the overall progress.
-    private(set) var weight: Double = 1_000_000
+    package private(set) var weight: Double = 1_000_000
     private var task: Task<Void, Never>?
-    private(set) var entriesDone = 0
+    package private(set) var entriesDone = 0
     private let control = Archiver.Control()
     private weak var undoManager: UndoManager?
     /// Called on the main thread when the state changes, and when it finishes.
-    var onChange: ((ArchiveJob) -> Void)?
-    var onFinish: ((ArchiveJob) -> Void)?
+    package var onChange: ((ArchiveJob) -> Void)?
+    package var onFinish: ((ArchiveJob) -> Void)?
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(_ operation: Operation, undo: UndoManager?) {
+    package init(_ operation: Operation, undo: UndoManager?) {
         self.operation = operation
         self.undoManager = undo
     }
 
-    var sources: [URL] {
+    package var sources: [URL] {
         switch operation {
         case .compress(let items): items
         case .extract(let archive, _), .browse(let archive, _): [archive]
@@ -41,7 +41,7 @@ final class ArchiveJob {
     }
 
     /// Where results go.
-    var destination: URL {
+    package var destination: URL {
         switch operation {
         case .compress(let items): items.first?.deletingLastPathComponent() ?? URL(fileURLWithPath: "/")
         case .extract(_, let folder): folder
@@ -49,26 +49,26 @@ final class ArchiveJob {
         }
     }
 
-    var fractionCompleted: Double? {
+    package var fractionCompleted: Double? {
         guard state == .running, totalEntries > 0 else { return state == .finished ? 1 : nil }
         return min(1, Double(entriesDone) / Double(totalEntries))
     }
 
-    var isBrowse: Bool {
+    package var isBrowse: Bool {
         if case .browse = operation { true } else { false }
     }
 
     /// Waiting for another archive job to finish (they run one at a time).
-    var isWaiting: Bool { state == .queued }
+    package var isWaiting: Bool { state == .queued }
 
-    func start(on queue: TransferQueue) {
+    package func start(on queue: TransferQueue) {
         guard state == .queued else { return }
         state = .running
         onChange?(self)
         task = Task { await run(on: queue) }
     }
 
-    func cancel() {
+    package func cancel() {
         control.cancel()
         task?.cancel()
         if state == .queued {
@@ -77,7 +77,7 @@ final class ArchiveJob {
         }
     }
 
-    func finished() async {
+    package func finished() async {
         guard state.isActive else { return }
         await withCheckedContinuation { finishWaiters.append($0) }
     }
@@ -91,7 +91,7 @@ final class ArchiveJob {
     }
 
     /// Picks up progress from the worker; called a few times a second while running.
-    func sample() {
+    package func sample() {
         entriesDone = control.entriesDone
     }
 
@@ -172,7 +172,7 @@ final class ArchiveJob {
 
 extension ArchiveJob {
     /// "Compressing “Photos”", "Extracted “Archive.zip”", "Opening “Archive.zip”".
-    var title: String {
+    package var title: String {
         let done = state == .finished
         // Extracting and opening always have one archive.
         if case .compress(let items) = operation, items.count != 1 {
@@ -190,7 +190,7 @@ extension ArchiveJob {
         }
     }
 
-    var statusText: String {
+    package var statusText: String {
         switch state {
         case .queued: return String(localized: "Waiting for another archive to finish…")
         case .scanning: return String(localized: "Preparing…", comment: "Transfers list: a job reading what it will do")
@@ -214,7 +214,7 @@ extension ArchiveJob {
         }
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch operation {
         case .compress: "doc.zipper"
         case .extract, .browse: "archivebox"

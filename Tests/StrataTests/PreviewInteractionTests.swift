@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct PreviewInteractionTests {
     @Test func nativeSpaceKeepsEachViewsChosenFolderOrFileInItsOwnPane() async throws {

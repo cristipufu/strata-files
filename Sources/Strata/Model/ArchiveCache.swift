@@ -9,18 +9,18 @@ import Foundation
 /// The copy's files keep their usual permissions, so what you copy out is an ordinary file; Strata itself doesn't change
 /// anything inside a copy. Copies not opened for a day, copies whose archive is gone and older copies of an archive
 /// are removed, and the whole cache is kept under a size limit, least recently opened first.
-nonisolated enum ArchiveCache {
-    static let root: URL = {
+package nonisolated enum ArchiveCache {
+    package static let root: URL = {
         SecureStorage.caches.appending(path: "Archives", directoryHint: .isDirectory).standardizedFileURL
     }()
 
     private static let rootPath = root.path
     private static let copyName = "contents"
     /// Past this, the least recently opened copies go.
-    static let sizeLimit: Int64 = 10 << 30
+    package static let sizeLimit: Int64 = 10 << 30
 
     /// Where `archive`'s copy lives (whether or not it's been made). Nil when the archive can't be read.
-    static func folder(for archive: URL) -> URL? {
+    package static func folder(for archive: URL) -> URL? {
         let real = archive.resolvingSymlinksInPath()
         var info = stat()
         guard stat(real.path, &info) == 0 else { return nil }
@@ -32,14 +32,14 @@ nonisolated enum ArchiveCache {
     }
 
     /// The finished copy of `archive`, if there is one.
-    static func existing(for archive: URL) -> URL? {
+    package static func existing(for archive: URL) -> URL? {
         guard let folder = folder(for: archive), source(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,
               FileManager.default.fileExists(atPath: folder.path) else { return nil }
         return folder
     }
 
     /// Records where a finished copy came from, and removes older copies of the same archive.
-    static func finish(_ folder: URL, from archive: URL) throws {
+    package static func finish(_ folder: URL, from archive: URL) throws {
         let source = archive.resolvingSymlinksInPath().standardizedFileURL
         try Data(source.path.utf8).write(to: sourceFile(folder))
         for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {
@@ -48,13 +48,13 @@ nonisolated enum ArchiveCache {
     }
 
     /// Whether `url` is the cache or inside it (an archive's copy).
-    static func contains(_ url: URL) -> Bool {
+    package static func contains(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     /// For a folder inside an archive's copy: the archive, and the copy's top folder.
-    static func archive(containing url: URL) -> (archive: URL, top: URL)? {
+    package static func archive(containing url: URL) -> (archive: URL, top: URL)? {
         let path = url.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let parts = path.dropFirst(rootPath.count + 1).split(separator: "/")
@@ -66,20 +66,20 @@ nonisolated enum ArchiveCache {
 
     /// Where an item inside an archive's copy appears to be, spelled through the archive (".../Trip.zip/Trip/Day 1"):
     /// the copy's top folder is the archive itself. Nil outside copies.
-    static func apparentURL(_ url: URL) -> URL? {
+    package static func apparentURL(_ url: URL) -> URL? {
         guard let (archive, top) = archive(containing: url) else { return nil }
         let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
         return inner.reduce(archive) { $0.appending(path: String($1)) }
     }
 
     /// Marks a copy as just used, so pruning keeps it.
-    static func touch(_ folder: URL) {
+    package static func touch(_ folder: URL) {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: folder.deletingLastPathComponent().path)
     }
 
     /// Removes copies not opened for `age`, copies whose archive is gone (or unfinished ones), and then the least
     /// recently opened until the cache is under `sizeLimit`. `keeping`: top folders in use (shown, being made) stay.
-    static func prune(olderThan age: TimeInterval = 24 * 60 * 60, keeping keep: Set<String> = []) {
+    package static func prune(olderThan age: TimeInterval = 24 * 60 * 60, keeping keep: Set<String> = []) {
         var survivors: [(entry: URL, used: Date, size: Int64)] = []
         for copy in copies() {
             if keep.contains(copy.top.standardizedFileURL.path) { continue }
@@ -104,7 +104,7 @@ nonisolated enum ArchiveCache {
 
     /// Removes a copy's `<hash>` folder (made writable and cleared first, whatever the archive set). Never the cache
     /// itself or anything outside it.
-    static func remove(_ entry: URL) {
+    package static func remove(_ entry: URL) {
         let path = entry.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return }
         Archiver.removeTree(entry)
@@ -114,7 +114,7 @@ nonisolated enum ArchiveCache {
     /// copy) and is removed away from the main thread. One left by a quit goes at the next prune, as an unfinished
     /// copy. Returns where it was set aside; nil when it wasn't a whole copy of the cache, or wasn't there.
     @discardableResult
-    static func setAside(_ entry: URL) -> URL? {
+    package static func setAside(_ entry: URL) -> URL? {
         let path = entry.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return nil }
         let aside = root.appending(path: "removing-" + UUID().uuidString, directoryHint: .isDirectory)

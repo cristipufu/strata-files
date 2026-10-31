@@ -2,6 +2,7 @@ import AppKit
 import Testing
 import os
 @testable import Strata
+@testable import StrataFiles
 
 struct FolderNamesTests {
     /// The path bar, the title and a pane's header name a folder by its own name until Finder's is read away from the

@@ -1,31 +1,31 @@
 import Foundation
 
 /// One entry of a tar stream.
-nonisolated struct TarEntry: Sendable, Equatable {
-    enum Kind: Sendable, Equatable {
+package nonisolated struct TarEntry: Sendable, Equatable {
+    package enum Kind: Sendable, Equatable {
         case file, directory, symlink, hardlink, other
     }
 
     /// As stored ("etc/hosts", "/bin/"), without any trailing slash.
-    let path: String
-    let kind: Kind
-    let size: Int64
+    package let path: String
+    package let kind: Kind
+    package let size: Int64
     /// Permission bits.
-    let mode: UInt32
-    let modified: Date?
-    let linkTarget: String
+    package let mode: UInt32
+    package let modified: Date?
+    package let linkTarget: String
 }
 
 /// Reads a tar stream as it arrives (ustar, with GNU long names and PAX headers, as container engines write it).
 /// `feed` reports each entry, then its data in pieces, then its end; memory use stays small whatever the archive's size.
-nonisolated struct TarReader {
-    enum Event {
+package nonisolated struct TarReader {
+    package enum Event {
         case begin(TarEntry)
         case data(Data)
         case end
     }
 
-    enum Failure: Error, Equatable {
+    package enum Failure: Error, Equatable {
         case malformed
     }
 
@@ -51,12 +51,12 @@ nonisolated struct TarReader {
     /// Largest entry accepted (1 PB).
     private static let sizeLimit: Int64 = 1 << 50
 
-    var isFinished: Bool {
+    package var isFinished: Bool {
         if case .finished = state { return true }
         return false
     }
 
-    mutating func feed(_ data: Data, _ handle: (Event) throws -> Void) throws {
+    package mutating func feed(_ data: Data, _ handle: (Event) throws -> Void) throws {
         buffer.append(data)
         var offset = buffer.startIndex
         defer { buffer.removeSubrange(buffer.startIndex..<offset) }
@@ -169,7 +169,7 @@ nonisolated struct TarReader {
     }
 
     /// PAX records: "<length> <key>=<value>\n".
-    static func paxRecords(_ data: Data) -> [String: String] {
+    package static func paxRecords(_ data: Data) -> [String: String] {
         var records: [String: String] = [:]
         var index = data.startIndex
         while index < data.endIndex {
@@ -189,12 +189,12 @@ nonisolated struct TarReader {
     }
 
     /// A NUL-terminated string field.
-    static func string(_ bytes: some Collection<UInt8>) -> String {
+    package static func string(_ bytes: some Collection<UInt8>) -> String {
         String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
     }
 
     /// An octal number field, or GNU's base-256 for large values.
-    static func number(_ bytes: ArraySlice<UInt8>) -> Int64? {
+    package static func number(_ bytes: ArraySlice<UInt8>) -> Int64? {
         guard let first = bytes.first else { return nil }
         if first & 0x80 != 0 {
             var value: Int64 = Int64(first & 0x3F)
@@ -214,7 +214,7 @@ nonisolated struct TarReader {
         return value
     }
 
-    static func checksumMatches(_ bytes: [UInt8]) -> Bool {
+    package static func checksumMatches(_ bytes: [UInt8]) -> Bool {
         guard let stored = number(bytes[148..<156]) else { return false }
         var unsigned: Int64 = 0, signed: Int64 = 0
         for (index, byte) in bytes.enumerated() {
@@ -227,15 +227,15 @@ nonisolated struct TarReader {
 }
 
 /// Dates from a container (listings, archives): only ones that mean something, so arithmetic on them never traps.
-nonisolated enum ContainerTime {
+package nonisolated enum ContainerTime {
     /// A date from seconds since 1970, or nil for anything not finite or more than ~3000 years away.
-    static func date(_ seconds: Double) -> Date? {
+    package static func date(_ seconds: Double) -> Date? {
         guard seconds.isFinite, abs(seconds) < 1e11 else { return nil }
         return Date(timeIntervalSince1970: seconds)
     }
 
     /// Whole seconds, for comparing modification dates (0 for none).
-    static func seconds(_ date: Date?) -> Int {
+    package static func seconds(_ date: Date?) -> Int {
         guard let value = date?.timeIntervalSince1970, value.isFinite, abs(value) < 1e11 else { return 0 }
         return Int(value.rounded(.down))
     }

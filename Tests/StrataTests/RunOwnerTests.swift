@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct RunOwnerTests {
     private func owner(in folder: URL) throws -> RunOwner? {

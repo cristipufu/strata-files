@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension TransferTests {
     /// What each move's item is now, by its path: what an undo step means to move.

@@ -1,32 +1,32 @@
 import Foundation
 
 /// Unified line diff (Myers' O(ND) algorithm) for previewing small text files side by side in the conflict sheet.
-nonisolated enum LineDiff {
-    enum Kind: Sendable { case same, added, removed }
+package nonisolated enum LineDiff {
+    package enum Kind: Sendable { case same, added, removed }
 
-    struct Line: Sendable {
-        let kind: Kind
-        let text: String
-        let oldNumber: Int?
-        let newNumber: Int?
+    package struct Line: Sendable {
+        package let kind: Kind
+        package let text: String
+        package let oldNumber: Int?
+        package let newNumber: Int?
     }
 
-    enum Row: Sendable {
+    package enum Row: Sendable {
         case line(Line)
         /// Unchanged lines left out between hunks.
         case gap(Int)
     }
 
-    struct Result: Sendable {
-        let rows: [Row]
-        let added: Int
-        let removed: Int
-        var isIdentical: Bool { added == 0 && removed == 0 }
+    package struct Result: Sendable {
+        package let rows: [Row]
+        package let added: Int
+        package let removed: Int
+        package var isIdentical: Bool { added == 0 && removed == 0 }
     }
 
     /// Diff of `old` → `new` with `context` unchanged lines around each change. Nil when the inputs are too large
     /// or too different to show usefully.
-    static func compute(old: String, new: String, context: Int = 3, maxLines: Int = 50_000,
+    package static func compute(old: String, new: String, context: Int = 3, maxLines: Int = 50_000,
                         maxEdits: Int = 2_000) -> Result? {
         let a = lines(old), b = lines(new)
         guard a.count + b.count <= maxLines else { return nil }
@@ -63,7 +63,7 @@ nonisolated enum LineDiff {
         return Result(rows: hunks(lines, context: context), added: added, removed: removed)
     }
 
-    static func lines(_ text: String) -> [String] {
+    package static func lines(_ text: String) -> [String] {
         var result = text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
             line.hasSuffix("\r") ? String(line.dropLast()) : String(line)
         }
@@ -95,7 +95,7 @@ nonisolated enum LineDiff {
 
     /// Shortest edit script from `a` to `b`. Common prefix and suffix are peeled off first, so typical edits to
     /// large files stay cheap; the trace keeps only the 2d+3 live diagonals per step (O(D²) memory).
-    static func edits(_ a: [Int], _ b: [Int], maxEdits: Int) -> [Kind]? {
+    package static func edits(_ a: [Int], _ b: [Int], maxEdits: Int) -> [Kind]? {
         var prefix = 0
         while prefix < a.count, prefix < b.count, a[prefix] == b[prefix] { prefix += 1 }
         var suffix = 0

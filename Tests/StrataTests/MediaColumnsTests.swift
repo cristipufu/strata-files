@@ -4,6 +4,7 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataFiles
 
 struct MediaColumnsTests {
     private func image(_ url: URL, width: Int, height: Int, orientation: Int = 1) throws {

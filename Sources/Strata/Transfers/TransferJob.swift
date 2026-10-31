@@ -2,44 +2,44 @@ import AppKit
 
 /// One copy or move. It plans every top-level item, measures them, settles name conflicts up front, then hands the
 /// items one at a time to its worker queue. Errors on one file never stop the rest; they can be retried afterwards.
-final class TransferJob {
-    let id = UUID()
-    let mode: TransferMode
-    let sources: [URL]
+package final class TransferJob {
+    package let id = UUID()
+    package let mode: TransferMode
+    package let sources: [URL]
     /// The folder items go into (for undo jobs that restore to several places, the first one).
-    let destination: URL
+    package let destination: URL
     /// The destination folder's name as Finder shows it, once read away from the main thread; its own name until then.
-    private(set) var destinationName: String
-    let options: TransferEngine.Options
+    package private(set) var destinationName: String
+    package let options: TransferEngine.Options
 
-    private(set) var state: TransferState = .queued
+    package private(set) var state: TransferState = .queued
     /// Queued behind another transfer writing to the same disk.
-    private(set) var isWaitingForDisk = false
+    package private(set) var isWaitingForDisk = false
     /// A conflict sheet is up and the job is waiting for the answer.
-    private(set) var isAwaitingDecision = false
-    private(set) var totalBytes: Int64 = 0
-    private(set) var totalFiles = 0
-    private(set) var completedBytes: Int64 = 0
-    private(set) var completedFiles = 0
-    private(set) var verifiedBytes: Int64 = 0
-    private(set) var isVerifying = false
-    private(set) var currentItemName: String?
+    package private(set) var isAwaitingDecision = false
+    package private(set) var totalBytes: Int64 = 0
+    package private(set) var totalFiles = 0
+    package private(set) var completedBytes: Int64 = 0
+    package private(set) var completedFiles = 0
+    package private(set) var verifiedBytes: Int64 = 0
+    package private(set) var isVerifying = false
+    package private(set) var currentItemName: String?
     /// Bytes per second averaged over the last three seconds. Nil until there's a steady reading.
-    private(set) var throughput: Double?
-    private(set) var estimatedTimeRemaining: TimeInterval?
-    private(set) var failures: [TransferFailure] = []
+    package private(set) var throughput: Double?
+    package private(set) var estimatedTimeRemaining: TimeInterval?
+    package private(set) var failures: [TransferFailure] = []
     /// A problem with the job as a whole (not enough space…). Retry runs it again.
-    private(set) var errorMessage: String?
+    package private(set) var errorMessage: String?
     /// Items that exist at the destination because of this job, in order. Handy for selecting them afterwards.
-    private(set) var createdItems: [URL] = []
+    package private(set) var createdItems: [URL] = []
     /// Reading a container's items before they're copied (stopped with the job).
     private var containerFetch: Task<Void, Error>?
-    private(set) var skippedCount = 0
+    package private(set) var skippedCount = 0
     /// Top-level items done (moved, copied, or copied with some failures inside).
-    private(set) var completedItems = 0
+    package private(set) var completedItems = 0
 
     /// Called on the main actor every time the job finishes a pass (including after a retry).
-    var onFinish: ((TransferJob) -> Void)?
+    package var onFinish: ((TransferJob) -> Void)?
 
     private var items: [TransferItem]
     private var control = TransferControl()
@@ -48,13 +48,13 @@ final class TransferJob {
     private let resolver: ConflictResolver
     private weak var undoManager: UndoManager?
     /// False for jobs that are an undo or redo of something History already records.
-    var logsHistory = true
+    package var logsHistory = true
     /// What History and the Edit menu call the job, when not "Copy" or "Move" ("Put Back").
-    var actionName: String?
+    package var actionName: String?
     /// Folders made for the job's items beforehand: undo removes them once they're empty again.
-    var containers = CreatedFolders()
+    package var containers = CreatedFolders()
     /// Items moved so far, with where they actually landed (a clash may have renamed them).
-    private(set) var completedMoves: [TransferMove] = []
+    package private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?
     /// The queue's server and container copies, kept for the job's own lifetime.
     private let copies: CopyProviders
@@ -72,7 +72,7 @@ final class TransferJob {
 
     private let journal = TransferJournal()
     /// What each item is where it landed, recorded as it lands (for undo; see `LandedFiles`).
-    let landed = LandedFiles()
+    package let landed = LandedFiles()
 
     // Throughput: rates over a sliding window of recent samples.
     private var samples: [(time: TimeInterval, work: Double, bytes: Int64)] = []
@@ -85,7 +85,7 @@ final class TransferJob {
     private static let fileWeight: Double = 64 * 1024
 
     /// `expected`: what each item must be, by its path (an undo's or redo's own items).
-    init(mode: TransferMode, moves: [TransferMove], destination: URL, options: TransferEngine.Options,
+    package init(mode: TransferMode, moves: [TransferMove], destination: URL, options: TransferEngine.Options,
          undo: UndoManager?, conflicts: ConflictResolver, queue: TransferQueue,
          expected: [String: FileIdentity]? = nil) {
         self.mode = mode
@@ -106,21 +106,21 @@ final class TransferJob {
 
     // MARK: - Derived values
 
-    var canPause: Bool { state == .running }
-    var canResume: Bool { state == .paused }
-    var canCancel: Bool { state.isActive }
-    var canRetry: Bool { queue != nil && (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
+    package var canPause: Bool { state == .running }
+    package var canResume: Bool { state == .paused }
+    package var canCancel: Bool { state.isActive }
+    package var canRetry: Bool { queue != nil && (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
 
-    var totalWork: Double {
+    package var totalWork: Double {
         Double(totalBytes) * (options.verify ? 2 : 1) + Double(totalFiles) * Self.fileWeight
     }
 
-    var completedWork: Double {
+    package var completedWork: Double {
         Double(completedBytes) + Double(verifiedBytes) + Double(completedFiles) * Self.fileWeight
     }
 
     /// 0…1, or nil while the size isn't known yet.
-    var fractionCompleted: Double? {
+    package var fractionCompleted: Double? {
         if state == .finished { return 1 }
         guard measured, state != .scanning else { return nil }
         guard totalWork > 0 else { return state.isActive ? nil : 1 }
@@ -130,7 +130,7 @@ final class TransferJob {
     // MARK: - Control
 
     /// Stops at the next block. A paused job lets other transfers to the same disk go ahead.
-    func pause() {
+    package func pause() {
         guard canPause else { return }
         control.pause()
         state = .paused
@@ -144,7 +144,7 @@ final class TransferJob {
     }
 
     /// Carries on, after the disk is free again if another transfer took it meanwhile.
-    func resume() {
+    package func resume() {
         guard canResume else { return }
         Task {
             if let disk = pausedDisk, let queue {
@@ -168,7 +168,7 @@ final class TransferJob {
         }
     }
 
-    func cancel() {
+    package func cancel() {
         guard canCancel else { return }
         control.cancel()
         decisionTask?.cancel()
@@ -178,7 +178,7 @@ final class TransferJob {
     }
 
     /// Runs the failed parts again: whole items that failed, single files inside items, or removing originals.
-    func retryFailed() {
+    package func retryFailed() {
         guard canRetry, let queue else { return }
         let previous = failures
         failures = []
@@ -195,7 +195,7 @@ final class TransferJob {
 
     // MARK: - Running
 
-    func start() {
+    package func start() {
         guard !started, let queue else { return }
         started = true
         isRunningPass = true
@@ -207,7 +207,7 @@ final class TransferJob {
     }
 
     /// Waits until the current pass (first run or a retry) is over: finished, failed or cancelled.
-    func finished() async {
+    package func finished() async {
         guard isRunningPass else { return }
         await withCheckedContinuation { finishWaiters.append($0) }
     }
@@ -575,12 +575,12 @@ final class TransferJob {
     /// Whether `folder` is `item` or inside it, comparing real paths: a symlink can make a folder look like it's
     /// elsewhere, and copying a folder into itself recurses until names get too long. The item itself isn't
     /// resolved (moving or copying a symlink moves or copies the link, not what it points to).
-    nonisolated static func isInside(_ folder: String, _ item: String) -> Bool {
+    package nonisolated static func isInside(_ folder: String, _ item: String) -> Bool {
         isInside(resolvedFolder: realPath(folder), item)
     }
 
     /// `isInside` with `folder` already resolved by `realPath` (resolve it once when testing many items).
-    nonisolated static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
+    package nonisolated static func isInside(resolvedFolder folder: String, _ item: String) -> Bool {
         let parent = (item as NSString).deletingLastPathComponent
         let name = (item as NSString).lastPathComponent
         let resolved = parent == item ? item : (realPath(parent) as NSString).appendingPathComponent(name)
@@ -588,7 +588,7 @@ final class TransferJob {
     }
 
     /// The path with symlinks resolved (or standardized, if it doesn't exist).
-    nonisolated static func realPath(_ path: String) -> String {
+    package nonisolated static func realPath(_ path: String) -> String {
         guard let resolved = realpath(path, nil) else { return URL(fileURLWithPath: path).standardizedFileURL.path }
         defer { free(resolved) }
         return String(cString: resolved)
@@ -672,7 +672,7 @@ final class TransferJob {
     // MARK: - Progress
 
     /// Pulls the worker's counters and updates throughput and time left. Called a few times a second by the queue.
-    func sample(_ now: TimeInterval) {
+    package func sample(_ now: TimeInterval) {
         let snapshot = progress.snapshot
         completedBytes = snapshot.bytes
         completedFiles = snapshot.files

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Anything the Transfers list shows and the queue tracks: copies and moves, compressing and extracting.
-protocol QueueJob: AnyObject {
+package protocol QueueJob: AnyObject {
     var title: String { get }
     var statusText: String { get }
     /// What went wrong, for a tooltip.
@@ -32,22 +32,22 @@ protocol QueueJob: AnyObject {
 }
 
 extension TransferJob: QueueJob {
-    var failureCount: Int { failures.count }
+    package var failureCount: Int { failures.count }
 }
 
 extension ArchiveJob: QueueJob {
-    var failureSummary: String? { errorMessage }
-    var failureCount: Int { 0 }
-    var canPause: Bool { false }
-    var canResume: Bool { false }
-    var canCancel: Bool { state.isActive }
-    var canRetry: Bool { false }
-    var createdItems: [URL] { result.map { [$0] } ?? [] }
+    package var failureSummary: String? { errorMessage }
+    package var failureCount: Int { 0 }
+    package var canPause: Bool { false }
+    package var canResume: Bool { false }
+    package var canCancel: Bool { state.isActive }
+    package var canRetry: Bool { false }
+    package var createdItems: [URL] { result.map { [$0] } ?? [] }
     /// Weighed by the archive's unpacked size (or as a medium file when that isn't known), like copies by theirs.
-    var totalWork: Double { weight }
-    var completedWork: Double { state.isActive ? (fractionCompleted ?? 0) * weight : weight }
-    func pause() {}
-    func resume() {}
-    func retryFailed() {}
-    func sample(_ now: TimeInterval) { sample() }
+    package var totalWork: Double { weight }
+    package var completedWork: Double { state.isActive ? (fractionCompleted ?? 0) * weight : weight }
+    package func pause() {}
+    package func resume() {}
+    package func retryFailed() {}
+    package func sample(_ now: TimeInterval) { sample() }
 }

@@ -2,19 +2,19 @@ import AppKit
 
 extension Notification.Name {
     /// The container list or the engine changed.
-    static let containersChanged = Notification.Name("StrataContainersChanged")
+    package static let containersChanged = Notification.Name("StrataContainersChanged")
 }
 
 /// The containers of the engine Strata found (see `EngineDiscovery`), kept current from the engine's events. When no
 /// engine is running, it looks again now and then and whenever Strata comes to the front.
-final class ContainerStore {
-    static let shared = ContainerStore()
+package final class ContainerStore {
+    package static let shared = ContainerStore()
 
-    private(set) var engine: ContainerEngine?
+    package private(set) var engine: ContainerEngine?
     /// Running first, then by name.
-    private(set) var containers: [ContainerInfo] = []
+    package private(set) var containers: [ContainerInfo] = []
     /// Containers being started, stopped…, by ID.
-    private(set) var busy: [String: ContainerAction] = [:]
+    package private(set) var busy: [String: ContainerAction] = [:]
     private var watcher: EventWatcher?
     private var discovering = false
     private var refreshing = false
@@ -23,13 +23,13 @@ final class ContainerStore {
     private var retry: Timer?
     private var started = false
 
-    init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
+    package init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
         self.engine = engine
         self.containers = containers
         self.busy = busy
     }
 
-    func start() {
+    package func start() {
         guard !started else { return }
         started = true
         discover()
@@ -38,13 +38,13 @@ final class ContainerStore {
         }
     }
 
-    func container(id: String) -> ContainerInfo? {
+    package func container(id: String) -> ContainerInfo? {
         containers.first { $0.id == id }
     }
 
     /// Does `action` to each container (those it applies to), a few at a time. Returns what failed: the container's
     /// name and why.
-    func perform(_ action: ContainerAction, on targets: [ContainerInfo]) async -> [(name: String, message: String)] {
+    package func perform(_ action: ContainerAction, on targets: [ContainerInfo]) async -> [(name: String, message: String)] {
         guard let engine else { return targets.map { ($0.name, String(localized: "No container engine is running.", comment: "Container action failed: no Docker Desktop, OrbStack…")) } }
         let targets = targets.filter { action.applies(to: $0.state) && busy[$0.id] == nil }
         guard !targets.isEmpty else { return [] }
@@ -88,7 +88,7 @@ final class ContainerStore {
     }
 
     /// Fetches the list again (or looks for an engine when there's none).
-    func refresh() {
+    package func refresh() {
         guard let engine else { return discover() }
         guard !refreshing else {
             refreshAgain = true
@@ -202,10 +202,10 @@ final class ContainerStore {
 }
 
 /// Follows an engine's event stream on its own thread (it can stay quiet for hours).
-nonisolated final class EventWatcher: Sendable {
+package nonisolated final class EventWatcher: Sendable {
     private let stop = StopFlag()
 
-    init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void) {
+    package init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void) {
         let stop = self.stop
         Thread.detachNewThread {
             try? ContainerAPI.watchEvents(engine, shouldStop: { stop.isSet }) {
@@ -215,7 +215,7 @@ nonisolated final class EventWatcher: Sendable {
         }
     }
 
-    func cancel() {
+    package func cancel() {
         stop.set()
     }
 }

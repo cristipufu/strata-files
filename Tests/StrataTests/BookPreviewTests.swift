@@ -3,6 +3,7 @@ import ImageIO
 import WebKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataPreviews
 
 @Suite(.archiveWorkerApp)

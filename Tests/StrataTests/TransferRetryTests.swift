@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension TransferTests {
     @Test func retriesLeaveReplacementsAndChangedParentsAlone() throws {

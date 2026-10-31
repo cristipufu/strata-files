@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension TransferTests {
     /// A case-only rename goes through a hidden name. When it can't finish, and something has taken the item's old

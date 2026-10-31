@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Ask Strata: whatever the model or the rules propose, a plan only renames, moves or trashes the selected items, keeps
 /// them inside the window's folder unless you named another place, never replaces anything, and running it does only

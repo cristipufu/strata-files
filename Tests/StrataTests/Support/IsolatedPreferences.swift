@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 extension Prefs {
     /// Preferences in a suite of their own, with their own notification center. The suite is removed when the last

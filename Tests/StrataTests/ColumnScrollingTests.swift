@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ColumnScrollingTests {
     private func wheel(x: Int32 = 0, y: Int32 = 0, units: CGScrollEventUnit = .line,

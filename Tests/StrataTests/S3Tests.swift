@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Signature Version 4, checked against the examples in AWS's S3 documentation ("Signature Calculations for the
 /// Authorization Header: Transferring Payload in a Single Chunk"), which use AWS's published example key.

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// File ▸ New File: an empty "untitled.txt", the next free name when that's taken, never over anything.
 @MainActor

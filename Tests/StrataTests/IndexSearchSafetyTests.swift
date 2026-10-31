@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct IndexSearchSafetyTests {
     @Test(arguments: [1, 254, 255, 256, 300])

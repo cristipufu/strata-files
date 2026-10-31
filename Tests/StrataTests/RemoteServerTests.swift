@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Server addresses as they're typed, what's refused, and what reaches ssh and the shell.
 struct RemoteServerTests {

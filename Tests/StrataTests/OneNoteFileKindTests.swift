@@ -2,6 +2,7 @@ import AppKit
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataIndex
 @testable import StrataPreviews
 @testable import StrataSupport

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// Undo and redo of moves across disks, against a disk of the test's own (`ScratchVolume`). Such a move copies and
 /// then removes the original, so the item is a new file where it lands: undo and redo still move only the operation's

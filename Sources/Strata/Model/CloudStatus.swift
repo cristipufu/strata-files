@@ -2,7 +2,7 @@ import Foundation
 
 /// iCloud Drive and File Provider (Dropbox, OneDrive, Google Drive…) state of an item: in the cloud only, on its way
 /// down or up, or here. Read only for items in such folders, so ordinary folders pay nothing.
-nonisolated enum CloudStatus: Sendable, Equatable {
+package nonisolated enum CloudStatus: Sendable, Equatable {
     /// Only in the cloud (Download Now brings it here).
     case cloudOnly
     /// A File Provider placeholder. Its provider owns upload state and eviction.
@@ -16,13 +16,13 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     /// Here, and in the cloud (Remove Download frees the space).
     case downloaded
 
-    static let keys: Set<URLResourceKey> = [
+    package static let keys: Set<URLResourceKey> = [
         .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsDownloadingKey,
         .ubiquitousItemIsUploadingKey, .ubiquitousItemIsUploadedKey,
     ]
 
     /// The item's state, or nil when it isn't a cloud item.
-    static func read(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> CloudStatus? {
+    package static func read(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> CloudStatus? {
         var info = stat()
         guard lstat(url.path, &info) == 0, [S_IFREG, S_IFDIR].contains(info.st_mode & S_IFMT) else { return nil }
         // A fresh URL: resource values are cached per URL object, and these change while you watch.
@@ -36,7 +36,7 @@ nonisolated enum CloudStatus: Sendable, Equatable {
                                 downloadStatus: values.ubiquitousItemDownloadingStatus, uploaded: values.ubiquitousItemIsUploaded)
     }
 
-    static func ubiquitousStatus(downloading: Bool?, uploading: Bool?, downloadStatus: URLUbiquitousItemDownloadingStatus?,
+    package static func ubiquitousStatus(downloading: Bool?, uploading: Bool?, downloadStatus: URLUbiquitousItemDownloadingStatus?,
                                  uploaded: Bool?) -> CloudStatus {
         if downloading == true { return .downloading }
         if uploading == true { return .uploading }
@@ -45,13 +45,13 @@ nonisolated enum CloudStatus: Sendable, Equatable {
         return uploaded == true ? .downloaded : .local
     }
 
-    static func providerStatus(flags: UInt32) -> CloudStatus {
+    package static func providerStatus(flags: UInt32) -> CloudStatus {
         flags & UInt32(SF_DATALESS) != 0 ? .providerOnly : .local
     }
 
     /// Whether `folder` holds cloud items: iCloud Drive, a File Provider folder (`~/Library/CloudStorage`), or anything
     /// the system reports as ubiquitous.
-    static func isCloudFolder(_ folder: URL) -> Bool {
+    package static func isCloudFolder(_ folder: URL) -> Bool {
         let path = folder.standardizedFileURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if CloudFolders.contains(folder, in: URL(fileURLWithPath: home + "/Library/Mobile Documents"))
@@ -59,7 +59,7 @@ nonisolated enum CloudStatus: Sendable, Equatable {
         return (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .cloudOnly, .providerOnly: "icloud"
         case .local: "arrow.down.circle"
@@ -69,7 +69,7 @@ nonisolated enum CloudStatus: Sendable, Equatable {
         }
     }
 
-    var label: String {
+    package var label: String {
         switch self {
         // Neutral words: the same states appear in Dropbox, OneDrive and Google Drive folders.
         case .cloudOnly, .providerOnly: String(localized: "Only in the cloud", comment: "Cloud status of an item")
@@ -82,18 +82,18 @@ nonisolated enum CloudStatus: Sendable, Equatable {
     }
 
     /// Whether it's mid-transfer (worth checking again soon).
-    var isActive: Bool { self == .downloading || self == .uploading || self == .waitingToUpload }
-    var isPlaceholder: Bool { self == .cloudOnly || self == .providerOnly }
+    package var isActive: Bool { self == .downloading || self == .uploading || self == .waitingToUpload }
+    package var isPlaceholder: Bool { self == .cloudOnly || self == .providerOnly }
 }
 
 /// Asks the cloud provider to bring items here, or to free their space (they stay in the cloud). Each returns the items
 /// it couldn't ask about, with why (an item not uploaded yet can't have its download removed).
-enum CloudActions {
-    nonisolated struct Download: Sendable {
-        let chosen: ChosenFile
-        let provider: Bool
+package enum CloudActions {
+    package nonisolated struct Download: Sendable {
+        package let chosen: ChosenFile
+        package let provider: Bool
 
-        init(_ url: URL, status: CloudStatus?) throws {
+        package init(_ url: URL, status: CloudStatus?) throws {
             guard url.isFileURL, status == .cloudOnly || status == .providerOnly else { throw POSIXError(.EINVAL) }
             chosen = try ChosenFile(url, resolveParent: false)
             provider = status == .providerOnly
@@ -104,11 +104,11 @@ enum CloudActions {
             }
         }
 
-        func perform(request: (ChosenFile, Bool) throws -> Void) throws {
+        package func perform(request: (ChosenFile, Bool) throws -> Void) throws {
             try chosen.withDescriptor { _, _ in try request(chosen, provider) }
         }
 
-        static func request(_ chosen: ChosenFile, provider: Bool) throws {
+        package static func request(_ chosen: ChosenFile, provider: Bool) throws {
             let url = chosen.url
             if !provider {
                 try FileManager.default.startDownloadingUbiquitousItem(at: url)
@@ -135,7 +135,7 @@ enum CloudActions {
         }
     }
 
-    static func download(_ choices: [Download]) async -> [(URL, Error)] {
+    package static func download(_ choices: [Download]) async -> [(URL, Error)] {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let failures: [(URL, Error)] = choices.compactMap { choice in
@@ -150,7 +150,7 @@ enum CloudActions {
 
     /// What Remove Download frees: only items that are both here and in the cloud (one still uploading, or waiting to,
     /// exists only here), never through a link (that would free what it points to), each once.
-    static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
+    package static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
         var seen = Set<String>()
         return urls.filter { url in
             var info = stat()
@@ -160,7 +160,7 @@ enum CloudActions {
     }
 
     /// Asks for each item's space to be freed, going on past failures. `evict` is the system's (a test's records).
-    static func removeDownload(_ urls: [URL], status: (URL) -> CloudStatus? = { CloudStatus.read($0) },
+    package static func removeDownload(_ urls: [URL], status: (URL) -> CloudStatus? = { CloudStatus.read($0) },
                                evict: (URL) throws -> Void = { try FileManager.default.evictUbiquitousItem(at: $0) }) -> [(URL, Error)] {
         let choices = urls.map { url in (url, Result { try ChosenFile(url, resolveParent: false) }) }
         return choices.compactMap { url, choice in
@@ -181,17 +181,19 @@ enum CloudActions {
 extension Notification.Name {
     /// Cloud states were read (or changed) for items in a shown folder (object: the store); visible cells redraw their
     /// badges.
-    static let cloudStatusChanged = Notification.Name("StrataCloudStatusChanged")
+    package static let cloudStatusChanged = Notification.Name("StrataCloudStatusChanged")
 }
 
 /// The cloud states of the items in the folders being shown, read off the main thread and only for cloud folders (others
 /// cost one check per folder). Folders a window shows are kept; while anything in them is moving, they're read again
 /// every couple of seconds, so badges follow the transfer.
-final class CloudStore {
-    static let shared = CloudStore()
+package final class CloudStore {
+    package static let shared = CloudStore()
 
     /// The folders the app's windows show, as the app tells it at launch: only those are polled and kept.
-    var foldersShown: () -> Set<String> = { [] }
+    package var foldersShown: () -> Set<String> = { [] }
+
+    package init() {}
 
     private var statuses: [String: CloudStatus] = [:]
     /// Cloud folders read, most recently loaded last.
@@ -204,12 +206,12 @@ final class CloudStore {
     /// Past this many folders, the least recently loaded that no window shows are forgotten.
     private static let keptFolders = 48
 
-    func status(for url: URL) -> CloudStatus? {
+    package func status(for url: URL) -> CloudStatus? {
         statuses[url.standardizedFileURL.path]
     }
 
     /// Reads the states of `urls`, the items of `folder`, when it's a cloud folder.
-    func load(_ urls: [URL], in folder: URL) {
+    package func load(_ urls: [URL], in folder: URL) {
         let key = folder.standardizedFileURL.path
         Task {
             guard let (paths, read) = await Self.read(urls, in: key) else {
@@ -221,7 +223,7 @@ final class CloudStore {
     }
 
     /// Reads these folders again (after Download Now or Remove Download), and keeps reading them for a while.
-    func refresh(_ folders: Set<URL>) {
+    package func refresh(_ folders: Set<URL>) {
         for folder in folders {
             let key = folder.standardizedFileURL.path
             guard items[key] != nil else { continue }

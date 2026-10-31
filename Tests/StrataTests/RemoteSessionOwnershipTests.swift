@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct RemoteSessionOwnershipTests {
     nonisolated private final class Backend: RemoteBackend {

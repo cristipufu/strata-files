@@ -2,6 +2,7 @@ import AppKit
 import Testing
 import Synchronization
 @testable import Strata
+@testable import StrataFiles
 
 struct SessionNavigationTests {
     private final class Windows {

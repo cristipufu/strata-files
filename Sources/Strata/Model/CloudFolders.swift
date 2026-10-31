@@ -1,21 +1,21 @@
 import Foundation
 import StrataModel
 
-nonisolated struct CloudFolder: Equatable, Sendable {
-    let url: URL
-    let title: String
+package nonisolated struct CloudFolder: Equatable, Sendable {
+    package let url: URL
+    package let title: String
 }
 
 /// Accounts exposed by the installed sync apps, discovered without launching them or contacting their servers.
-nonisolated enum CloudFolders {
-    static func contains(_ url: URL, in root: URL) -> Bool {
+package nonisolated enum CloudFolders {
+    package static func contains(_ url: URL, in root: URL) -> Bool {
         guard url.isFileURL, root.isFileURL else { return false }
         let path = ChosenFile.systemSpelling(url.standardizedFileURL.path)
         let root = ChosenFile.systemSpelling(root.standardizedFileURL.path)
         return path == root || path.hasPrefix(root + "/")
     }
 
-    static func providerRoot(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
+    package static func providerRoot(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         guard url.isFileURL, home.isFileURL else { return nil }
         let root = URL(fileURLWithPath: ChosenFile.systemSpelling(home.appending(path: "Library/CloudStorage").standardizedFileURL.path))
         let path = ChosenFile.systemSpelling(url.standardizedFileURL.path)
@@ -24,11 +24,11 @@ nonisolated enum CloudFolders {
         return root.appending(path: String(account), directoryHint: .isDirectory)
     }
 
-    @concurrent static func discover() async -> [CloudFolder] {
+    @concurrent package static func discover() async -> [CloudFolder] {
         discover(in: FileManager.default.homeDirectoryForCurrentUser)
     }
 
-    static func discover(in home: URL) -> [CloudFolder] {
+    package static func discover(in home: URL) -> [CloudFolder] {
         guard home.isFileURL else { return [] }
         let fm = FileManager.default
         var urls: [URL] = []

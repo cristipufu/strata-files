@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 /// The folders and disks Strata offers are read away from the main thread: lists show what was last read, and a read
 /// under way takes the next request after it, never two at once.

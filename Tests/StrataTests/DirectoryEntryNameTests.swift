@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct DirectoryEntryNameTests {
     /// Allocate only the packed record, never a full imported dirent with its 1,024-byte name tuple.

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct CopyListingsTests {
     private let instant = Date(timeIntervalSince1970: 1000)

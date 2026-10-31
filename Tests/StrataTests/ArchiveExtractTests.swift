@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import StrataArchiveClient
 @testable import Strata
+@testable import StrataFiles
 
 /// Extract end to end: the archive service's sandboxed worker reads the archive and Strata writes what it sends. What
 /// tar kept is kept (Mac metadata, hard links, times), and what it refused or left out still is.

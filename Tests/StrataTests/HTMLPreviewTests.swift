@@ -4,6 +4,7 @@ import Synchronization
 import WebKit
 import Testing
 @testable import Strata
+@testable import StrataFiles
 @testable import StrataPreviews
 
 @Suite(.serialized) struct HTMLPreviewTests {

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ChosenFileFollowupTests {
     private func descriptors(for path: String) -> [Int32] {

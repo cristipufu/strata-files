@@ -1,5 +1,6 @@
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct TextExtractorTests {
     @Test func namedDecimalAndHexReferencesBecomeTheirCharacters() {

@@ -2,24 +2,26 @@ import Foundation
 import StrataModel
 
 /// Pause and cancel switches shared by a job (main actor) and the thread doing its work.
-nonisolated final class TransferControl: @unchecked Sendable {
+package nonisolated final class TransferControl: @unchecked Sendable {
     private let condition = NSCondition()
     private var paused = false
     private var cancelled = false
 
-    var isCancelled: Bool { condition.withLock { cancelled } }
-    var isPaused: Bool { condition.withLock { paused && !cancelled } }
+    package init() {}
 
-    func pause() { condition.withLock { paused = true } }
+    package var isCancelled: Bool { condition.withLock { cancelled } }
+    package var isPaused: Bool { condition.withLock { paused && !cancelled } }
 
-    func resume() {
+    package func pause() { condition.withLock { paused = true } }
+
+    package func resume() {
         condition.withLock {
             paused = false
             condition.broadcast()
         }
     }
 
-    func cancel() {
+    package func cancel() {
         condition.withLock {
             cancelled = true
             condition.broadcast()
@@ -27,7 +29,7 @@ nonisolated final class TransferControl: @unchecked Sendable {
     }
 
     /// Blocks while paused. Returns false once the job is cancelled.
-    func checkpoint() -> Bool {
+    package func checkpoint() -> Bool {
         condition.lock()
         defer { condition.unlock() }
         while paused && !cancelled { condition.wait() }
@@ -36,39 +38,39 @@ nonisolated final class TransferControl: @unchecked Sendable {
 }
 
 /// Counters the worker bumps as it goes; the job samples them a few times a second.
-nonisolated final class TransferProgress: @unchecked Sendable {
-    struct Snapshot: Sendable {
-        var bytes: Int64 = 0
-        var files = 0
-        var verifiedBytes: Int64 = 0
-        var currentName: String?
-        var isVerifying = false
+package nonisolated final class TransferProgress: @unchecked Sendable {
+    package struct Snapshot: Sendable {
+        package var bytes: Int64 = 0
+        package var files = 0
+        package var verifiedBytes: Int64 = 0
+        package var currentName: String?
+        package var isVerifying = false
     }
 
     private let lock = NSLock()
     private var value = Snapshot()
 
-    var snapshot: Snapshot { lock.withLock { value } }
+    package var snapshot: Snapshot { lock.withLock { value } }
 
-    func update(_ body: (inout Snapshot) -> Void) {
+    package func update(_ body: (inout Snapshot) -> Void) {
         lock.withLock { body(&value) }
     }
 
-    func reset() {
+    package func reset() {
         lock.withLock { value = Snapshot() }
     }
 }
 
 /// Runs blocking file work on its own serial queue, off the cooperative pool, so a paused or slow copy never
 /// starves Swift concurrency.
-nonisolated final class TransferWorker: Sendable {
+package nonisolated final class TransferWorker: Sendable {
     private let queue: DispatchQueue
 
-    init(label: String) {
+    package init(label: String) {
         queue = DispatchQueue(label: label, qos: .userInitiated)
     }
 
-    func run<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+    package func run<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
         await withCheckedContinuation { continuation in
             queue.async { continuation.resume(returning: body()) }
         }
@@ -76,8 +78,8 @@ nonisolated final class TransferWorker: Sendable {
 }
 
 /// One top-level item of a job, as planned on the main actor and carried out by `TransferEngine.perform`.
-nonisolated struct TransferItem: Sendable {
-    enum Operation: Sendable {
+package nonisolated struct TransferItem: Sendable {
+    package enum Operation: Sendable {
         /// Same-volume move: one `rename(2)`.
         case rename
         /// `copyfile(3)`, cloning when the volume allows it.
@@ -86,69 +88,69 @@ nonisolated struct TransferItem: Sendable {
         case copyThenDelete
     }
 
-    enum Outcome: Sendable {
+    package enum Outcome: Sendable {
         case pending, done, partial, failed, skipped, cancelled
     }
 
-    let source: URL
+    package let source: URL
     /// Where it goes. For "keep both" and same-folder copies the final name is picked right before writing.
-    var destination: URL
-    var operation: Operation
-    var decision: ConflictDecision?
+    package var destination: URL
+    package var operation: Operation
+    package var decision: ConflictDecision?
     /// Same-folder copy: name it like Finder's duplicates ("name copy.ext").
-    var copyStyleName = false
-    var bytes: Int64 = 0
-    var files = 1
+    package var copyStyleName = false
+    package var bytes: Int64 = 0
+    package var files = 1
     /// What the item must be (for an undo or redo, the item it means): one put in its place since is left where it
     /// is. Nil for any item there.
-    var expected: FileIdentity?
+    package var expected: FileIdentity?
 
     /// Whether `identity`, read at its source, is the item it means.
-    func means(_ identity: FileIdentity?) -> Bool {
+    package func means(_ identity: FileIdentity?) -> Bool {
         expected.map { identity == $0 } ?? true
     }
-    var outcome: Outcome = .pending
+    package var outcome: Outcome = .pending
 }
 
 /// What `perform` did to one item.
-nonisolated struct TransferItemResult: Sendable {
-    var outcome: TransferItem.Outcome
-    var destination: URL
-    var failures: [TransferFailure] = []
+package nonisolated struct TransferItemResult: Sendable {
+    package var outcome: TransferItem.Outcome
+    package var destination: URL
+    package var failures: [TransferFailure] = []
     /// The item it replaced, now in the Trash.
-    var replaced: TransferMove?
+    package var replaced: TransferMove?
     /// Captured before moving the replaced item into the Trash, never inferred at the later worker handoff.
-    var replacedIdentity: FileIdentity?
+    package var replacedIdentity: FileIdentity?
     /// The original is gone (move finished).
-    var sourceRemoved = false
+    package var sourceRemoved = false
     /// What the item is where it landed (see `LandedFiles`), read as it was put there: for undo.
-    var landed: FileIdentity?
-    var created: [String: FileIdentity] = [:]
+    package var landed: FileIdentity?
+    package var created: [String: FileIdentity] = [:]
 }
 
 /// State for one `copyfile` call, reached from the C callback through its context pointer.
-nonisolated final class CopySession: @unchecked Sendable {
-    let control: TransferControl
-    let progress: TransferProgress
-    let throttle: Int64?
-    var errors: [TransferEngine.EntryError] = []
-    var created: [String: FileIdentity] = [:]
-    var sourceIdentities: [String: FileIdentity] = [:]
-    var quit = false
+package nonisolated final class CopySession: @unchecked Sendable {
+    package let control: TransferControl
+    package let progress: TransferProgress
+    package let throttle: Int64?
+    package var errors: [TransferEngine.EntryError] = []
+    package var created: [String: FileIdentity] = [:]
+    package var sourceIdentities: [String: FileIdentity] = [:]
+    package var quit = false
     private var fileSize: Int64 = 0
     private var fileReported: Int64 = 0
     private var failedPaths: Set<String> = []
     private var directories: [String: DirectoryDescriptor] = [:]
     private let copyFailure: (@Sendable (URL) -> Int32?)?
 
-    init(control: TransferControl, progress: TransferProgress, throttle: Int64?, copyFailure: (@Sendable (URL) -> Int32?)?) {
+    package init(control: TransferControl, progress: TransferProgress, throttle: Int64?, copyFailure: (@Sendable (URL) -> Int32?)?) {
         self.control = control
         self.progress = progress
         self.throttle = throttle
         self.copyFailure = copyFailure
     }
 
-    func handle(what: Int32, stage: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
+    package func handle(what: Int32, stage: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
                 destination: UnsafePointer<CChar>?, code: Int32) -> Int32 {
         let quitCode = Int32(COPYFILE_QUIT)
         if quit { return quitCode }
@@ -242,10 +244,10 @@ nonisolated final class CopySession: @unchecked Sendable {
 
     /// Keep the originally opened directory alive through metadata cleanup. copyfile changes its birth time there,
     /// so read the final identity from that descriptor, never from the cleanup pass's reopened pathname.
-    final class DirectoryDescriptor {
-        let fd: Int32
+    package final class DirectoryDescriptor {
+        package let fd: Int32
 
-        init?(_ state: copyfile_state_t?) {
+        package init?(_ state: copyfile_state_t?) {
             var original: Int32 = -1
             guard let state, copyfile_state_get(state, UInt32(COPYFILE_STATE_DST_FD), &original) == 0,
                   original >= 0 else { return nil }
@@ -258,7 +260,7 @@ nonisolated final class CopySession: @unchecked Sendable {
             self.fd = fd
         }
 
-        static func openDirectory(_ path: String) -> DirectoryDescriptor? {
+        package static func openDirectory(_ path: String) -> DirectoryDescriptor? {
             let opened = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard opened >= 0 else { return nil }
             return DirectoryDescriptor(fd: opened)
@@ -266,7 +268,7 @@ nonisolated final class CopySession: @unchecked Sendable {
 
         deinit { close(fd) }
 
-        var identity: FileIdentity? {
+        package var identity: FileIdentity? {
             var info = stat()
             guard fstat(fd, &info) == 0 else { return nil }
             return FileIdentity.from(info)
@@ -300,13 +302,13 @@ nonisolated final class CopySession: @unchecked Sendable {
 }
 
 nonisolated extension TransferEngine {
-    static func canRestart(_ destination: URL, created: [String: FileIdentity]) -> Bool {
+    package static func canRestart(_ destination: URL, created: [String: FileIdentity]) -> Bool {
         let current = snapshotIdentities(destination)
         guard !current.isEmpty else { return true }
         return current.allSatisfy { created[$0.key] == $0.value }
     }
 
-    static func canRepair(_ source: URL, into destination: URL, owned: [String: FileIdentity]) -> Bool {
+    package static func canRepair(_ source: URL, into destination: URL, owned: [String: FileIdentity]) -> Bool {
         var srcRoot = stat(), dstRoot = stat()
         guard lstat(source.path, &srcRoot) == 0, srcRoot.st_mode & S_IFMT == S_IFDIR,
               lstat(destination.path, &dstRoot) == 0, dstRoot.st_mode & S_IFMT == S_IFDIR,
@@ -334,7 +336,7 @@ nonisolated extension TransferEngine {
         return true
     }
 
-    static func snapshotIdentities(_ root: URL) -> [String: FileIdentity] {
+    package static func snapshotIdentities(_ root: URL) -> [String: FileIdentity] {
         var result: [String: FileIdentity] = [:]
         guard let cpath = strdup(root.path) else { return result }
         defer { free(cpath) }
@@ -350,7 +352,7 @@ nonisolated extension TransferEngine {
     }
 
     /// Repairs an owned partial directory tree in place without touching unowned siblings (see `copy`).
-    static func repairOwnedDirectory(_ source: URL, to destination: URL, owned: [String: FileIdentity],
+    package static func repairOwnedDirectory(_ source: URL, to destination: URL, owned: [String: FileIdentity],
                                      clone: Bool, control: TransferControl, progress: TransferProgress) -> CopyOutcome {
         guard canRepair(source, into: destination, owned: owned) else {
             return CopyOutcome(fatal: TransferEngine.changedSince,

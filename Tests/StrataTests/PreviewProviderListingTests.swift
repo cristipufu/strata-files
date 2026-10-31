@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct PreviewProviderListingTests {
     private actor Backend: RemoteBackend {

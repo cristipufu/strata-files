@@ -1,18 +1,25 @@
 import AppKit
 
-nonisolated struct Place: Sendable, Equatable {
-    let title: String
-    let url: URL
-    let symbol: String
+package nonisolated struct Place: Sendable, Equatable {
+    package let title: String
+    package let url: URL
+    package let symbol: String
     /// A removable, ejectable or network volume.
-    var isEjectable = false
+    package var isEjectable = false
+
+    package init(title: String, url: URL, symbol: String, isEjectable: Bool = false) {
+        self.title = title
+        self.url = url
+        self.symbol = symbol
+        self.isEjectable = isEjectable
+    }
 }
 
-enum Places {
-    static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
+package enum Places {
+    package static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
     /// Unmounts (and for disks, ejects) the volume at `url` off the main thread; reports a failure in `window`.
-    static func eject(_ url: URL, from window: NSWindow?) {
+    package static func eject(_ url: URL, from window: NSWindow?) {
         let name = FileManager.default.displayName(atPath: url.path)
         Task.detached {
             do {
@@ -31,12 +38,12 @@ enum Places {
 
     /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults; as
     /// `checks` last read them, for lists that mustn't wait on a disk.
-    static func favorites(preferences: Prefs, checks: PlaceChecks) -> [Place] {
+    package static func favorites(preferences: Prefs, checks: PlaceChecks) -> [Place] {
         favorites(preferences: preferences, isFolder: { checks.isFolder($0) }, name: checks.name)
     }
 
     /// The favorites read from disk now, for changing them.
-    static func favorites(preferences: Prefs) -> [Place] {
+    package static func favorites(preferences: Prefs) -> [Place] {
         favorites(preferences: preferences, isFolder: { path in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
@@ -56,7 +63,7 @@ enum Places {
     }
 
     /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead.
-    static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs) {
+    package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs) {
         let folders = urls.map(\.standardizedFileURL).filter { url in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
@@ -71,7 +78,7 @@ enum Places {
         preferences.favoritePaths = current.map(\.path)
     }
 
-    static func removeFavorite(_ url: URL, preferences: Prefs) {
+    package static func removeFavorite(_ url: URL, preferences: Prefs) {
         let path = url.standardizedFileURL.path
         preferences.favoritePaths = favorites(preferences: preferences).map(\.url.standardizedFileURL.path).filter { $0 != path }
     }
@@ -85,7 +92,7 @@ enum Places {
     private static let applications = URL(fileURLWithPath: "/Applications")
 
     /// Every folder the default favorites are made of, or may be.
-    static var defaultCandidates: [URL] {
+    package static var defaultCandidates: [URL] {
         standardPlaces.map { $0.path.isEmpty ? home : home.appending(path: $0.path) } + [applications, iCloud]
             + codeFolders.map { home.appending(path: $0) }
     }
@@ -109,17 +116,17 @@ enum Places {
     }
 
     /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
-    static func displayName(_ url: URL, copies: CopyProviders) -> String {
+    package static func displayName(_ url: URL, copies: CopyProviders) -> String {
         ownName(url, copies: copies) ?? FileManager.default.displayName(atPath: url.path)
     }
 
     /// The same, with Finder's names as `names` last read them, for the folder on show, which mustn't wait on a disk.
-    static func displayName(_ url: URL, copies: CopyProviders, names: FolderNames) -> String {
+    package static func displayName(_ url: URL, copies: CopyProviders, names: FolderNames) -> String {
         ownName(url, copies: copies) ?? names.name(url)
     }
 
     /// The same, with Finder's names as `checks` last read them, for lists that mustn't wait on a disk.
-    static func displayName(_ url: URL, copies: CopyProviders, checks: PlaceChecks) -> String {
+    package static func displayName(_ url: URL, copies: CopyProviders, checks: PlaceChecks) -> String {
         ownName(url, copies: copies) ?? checks.name(url)
     }
 
@@ -142,7 +149,7 @@ enum Places {
     }
 
     /// The volumes mounted, read now: lists use `PlaceChecks`' last read.
-    nonisolated static func volumes() -> [Place] {
+    package nonisolated static func volumes() -> [Place] {
         let keys: [URLResourceKey] = [
             .volumeLocalizedNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey,
             .volumeIsBrowsableKey, .volumeIsRootFileSystemKey,

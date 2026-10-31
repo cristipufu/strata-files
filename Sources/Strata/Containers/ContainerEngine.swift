@@ -3,23 +3,23 @@ import Foundation
 
 /// A container engine Strata can read: Docker Desktop, OrbStack, Colima, Podman, Rancher Desktop, Lima or Docker Engine,
 /// reached through the Docker API on its socket.
-nonisolated struct ContainerEngine: Sendable, Equatable {
+package nonisolated struct ContainerEngine: Sendable, Equatable {
     /// The API socket's path.
-    let socket: String
+    package let socket: String
     /// What to call it ("Docker Desktop", "OrbStack"…).
-    let name: String
+    package let name: String
     /// The API version requests are made with ("1.41"), the engine's own.
-    let apiVersion: String
+    package let apiVersion: String
 
     /// `/v1.41/containers/json`: a path in this engine's API.
-    func path(_ endpoint: String) -> String { "/v\(apiVersion)\(endpoint)" }
+    package func path(_ endpoint: String) -> String { "/v\(apiVersion)\(endpoint)" }
 }
 
 /// Finding the engine to show: the one `docker` itself would use, else the first one running.
-nonisolated enum EngineDiscovery {
+package nonisolated enum EngineDiscovery {
     /// Sockets to try, in order: `DOCKER_HOST`, the current docker context, then where each engine keeps its socket.
     /// Only Unix sockets: an engine on another machine isn't Strata's to browse.
-    static func candidates(environment: [String: String] = ProcessInfo.processInfo.environment,
+    package static func candidates(environment: [String: String] = ProcessInfo.processInfo.environment,
                            home: URL = FileManager.default.homeDirectoryForCurrentUser,
                            temporary: URL = FileManager.default.temporaryDirectory) -> [String] {
         var paths: [String] = []
@@ -54,7 +54,7 @@ nonisolated enum EngineDiscovery {
     }
 
     /// `unix:///path/to.sock` → `/path/to.sock`; anything else (tcp, ssh, npipe) → nil.
-    static func socketPath(fromHost host: String) -> String? {
+    package static func socketPath(fromHost host: String) -> String? {
         let trimmed = host.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("unix://") else { return nil }
         let path = String(trimmed.dropFirst("unix://".count))
@@ -63,13 +63,13 @@ nonisolated enum EngineDiscovery {
     }
 
     /// The context `docker` uses, from its config file.
-    static func currentContext(config: URL) -> String? {
+    package static func currentContext(config: URL) -> String? {
         guard let object = readJSON(config.appending(path: "config.json")) as? [String: Any] else { return nil }
         return (object["currentContext"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// A context's Docker endpoint, from `contexts/meta/<sha256 of its name>/meta.json`.
-    static func contextHost(name: String, config: URL) -> String? {
+    package static func contextHost(name: String, config: URL) -> String? {
         let digest = SHA256.hash(data: Data(name.utf8)).map { String(format: "%02x", $0) }.joined()
         let meta = config.appending(path: "contexts/meta/\(digest)/meta.json")
         guard let object = readJSON(meta) as? [String: Any], let endpoints = object["Endpoints"] as? [String: Any],
@@ -84,14 +84,14 @@ nonisolated enum EngineDiscovery {
     }
 
     /// A socket you (or the system) own. Someone else's socket isn't trusted to be your engine.
-    static func isUsableSocket(_ path: String) -> Bool {
+    package static func isUsableSocket(_ path: String) -> Bool {
         var info = stat()
         guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK else { return false }
         return info.st_uid == getuid() || info.st_uid == 0
     }
 
     /// The first candidate that answers, with its name and API version. Blocking.
-    static func discover(candidates: [String] = candidates()) -> ContainerEngine? {
+    package static func discover(candidates: [String] = candidates()) -> ContainerEngine? {
         for socket in candidates where isUsableSocket(socket) {
             if let engine = probe(socket) { return engine }
         }
@@ -99,7 +99,7 @@ nonisolated enum EngineDiscovery {
     }
 
     /// Asks `socket` who it is; nil when nothing answers like a Docker API.
-    static func probe(_ socket: String) -> ContainerEngine? {
+    package static func probe(_ socket: String) -> ContainerEngine? {
         guard let ping = try? UnixHTTP.send("GET", "/_ping", to: socket, idle: 2, total: 4, limit: 1024), ping.status == 200,
               let version = try? UnixHTTP.send("GET", "/version", to: socket, idle: 3, total: 5, limit: 1 << 20), version.status == 200,
               let object = try? JSONSerialization.jsonObject(with: version.body) as? [String: Any],
@@ -112,13 +112,13 @@ nonisolated enum EngineDiscovery {
         return ContainerEngine(socket: socket, name: name, apiVersion: api)
     }
 
-    static func isAPIVersion(_ text: String) -> Bool {
+    package static func isAPIVersion(_ text: String) -> Bool {
         let parts = text.split(separator: ".", omittingEmptySubsequences: false)
         return parts.count == 2 && parts.allSatisfy { !$0.isEmpty && $0.count <= 3 && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }
     }
 
     /// The engine's name, from what it says it runs on, else from where its socket is.
-    static func engineName(socket: String, operatingSystem: String?) -> String {
+    package static func engineName(socket: String, operatingSystem: String?) -> String {
         if let system = operatingSystem {
             if system.localizedCaseInsensitiveContains("Docker Desktop") { return "Docker Desktop" }
             if system.localizedCaseInsensitiveContains("OrbStack") { return "OrbStack" }
@@ -135,61 +135,61 @@ nonisolated enum EngineDiscovery {
 }
 
 /// A container, as the list shows it.
-nonisolated struct ContainerInfo: Sendable, Equatable, Identifiable {
-    enum State: String, Sendable {
+package nonisolated struct ContainerInfo: Sendable, Equatable, Identifiable {
+    package enum State: String, Sendable {
         case running, paused, restarting, created, exited, dead, removing, unknown
     }
 
     /// 64 hex characters.
-    let id: String
-    let name: String
-    let image: String
-    let state: State
+    package let id: String
+    package let name: String
+    package let image: String
+    package let state: State
     /// The engine's own summary ("Up 3 hours", "Exited (0) 2 days ago").
-    let status: String
-    let created: Date?
-    let mounts: [ContainerMount]
-    let ports: [ContainerPort]
+    package let status: String
+    package let created: Date?
+    package let mounts: [ContainerMount]
+    package let ports: [ContainerPort]
     /// Compose's labels; no other labels are kept.
-    let compose: ComposeLabels?
+    package let compose: ComposeLabels?
 
-    var isRunning: Bool { state == .running }
+    package var isRunning: Bool { state == .running }
     /// The first 12 characters, as `docker ps` shows it.
-    var shortID: String { String(id.prefix(12)) }
+    package var shortID: String { String(id.prefix(12)) }
 }
 
-nonisolated struct ContainerMount: Sendable, Equatable {
-    enum Kind: String, Sendable {
+package nonisolated struct ContainerMount: Sendable, Equatable {
+    package enum Kind: String, Sendable {
         case bind, volume, tmpfs, other
     }
 
-    let kind: Kind
+    package let kind: Kind
     /// A volume's name.
-    let name: String?
+    package let name: String?
     /// Where it comes from: a folder on this Mac (bind) or inside the engine (volume).
-    let source: String
+    package let source: String
     /// Where it appears inside the container.
-    let destination: String
-    let isWritable: Bool
+    package let destination: String
+    package let isWritable: Bool
 }
 
-nonisolated struct ContainerPort: Sendable, Equatable, Hashable {
-    let containerPort: Int
-    let hostPort: Int?
-    let hostIP: String?
+package nonisolated struct ContainerPort: Sendable, Equatable, Hashable {
+    package let containerPort: Int
+    package let hostPort: Int?
+    package let hostIP: String?
     /// "tcp" or "udp".
-    let proto: String
+    package let proto: String
 }
 
-nonisolated struct ComposeLabels: Sendable, Equatable {
-    let project: String
-    let service: String
+package nonisolated struct ComposeLabels: Sendable, Equatable {
+    package let project: String
+    package let service: String
     /// The folder `docker compose` ran in.
-    let workingDirectory: String?
+    package let workingDirectory: String?
 }
 
 /// What came back from the engine, for messages.
-nonisolated enum ContainerAPIError: Error, Equatable {
+package nonisolated enum ContainerAPIError: Error, Equatable {
     case notRunning
     case notFound
     /// No shell or tools in the container to list a folder with.
@@ -200,11 +200,11 @@ nonisolated enum ContainerAPIError: Error, Equatable {
 }
 
 /// What you can do to a container (each a single POST to the engine).
-nonisolated enum ContainerAction: String, Sendable, CaseIterable {
+package nonisolated enum ContainerAction: String, Sendable, CaseIterable {
     case start, stop, restart, pause, unpause
 
     /// The engine's endpoint, after `/containers/<id>/`. Stopping waits 10 seconds before it forces.
-    var endpoint: String {
+    package var endpoint: String {
         switch self {
         case .stop, .restart: "\(rawValue)?t=10"
         default: rawValue
@@ -212,7 +212,7 @@ nonisolated enum ContainerAction: String, Sendable, CaseIterable {
     }
 
     /// Whether it makes sense for a container in `state`.
-    func applies(to state: ContainerInfo.State) -> Bool {
+    package func applies(to state: ContainerInfo.State) -> Bool {
         switch self {
         case .start: [.created, .exited, .dead].contains(state)
         case .stop: [.running, .paused, .restarting].contains(state)
@@ -224,9 +224,9 @@ nonisolated enum ContainerAction: String, Sendable, CaseIterable {
 }
 
 /// The engine's API: reading, Strata's own listing command in a container (`exec`), and the actions you choose.
-nonisolated enum ContainerAPI {
+package nonisolated enum ContainerAPI {
     /// Starts, stops, restarts, pauses or resumes a container. Already in that state is fine.
-    static func perform(_ action: ContainerAction, _ engine: ContainerEngine, id: String) throws {
+    package static func perform(_ action: ContainerAction, _ engine: ContainerEngine, id: String) throws {
         guard isContainerID(id) else { throw ContainerAPIError.notFound }
         let response: UnixHTTP.Response
         do {
@@ -240,19 +240,19 @@ nonisolated enum ContainerAPI {
     }
 
     /// Every container, running or not (at most 1000).
-    static func containers(_ engine: ContainerEngine) throws -> [ContainerInfo] {
+    package static func containers(_ engine: ContainerEngine) throws -> [ContainerInfo] {
         let response = try send(engine, "GET", "/containers/json?all=1", limit: 16 << 20)
         guard response.status == 200 else { throw failure(response) }
         return try parseContainers(response.body)
     }
 
-    static func parseContainers(_ data: Data) throws -> [ContainerInfo] {
+    package static func parseContainers(_ data: Data) throws -> [ContainerInfo] {
         guard let list = try? JSONDecoder().decode([RawContainer].self, from: data) else { throw ContainerAPIError.malformed }
         return list.prefix(1000).compactMap(\.info)
     }
 
     /// Waits for container events and calls `changed` for each, until the engine closes the stream or `shouldStop`.
-    static func watchEvents(_ engine: ContainerEngine, shouldStop: @escaping () -> Bool, changed: () -> Void) throws {
+    package static func watchEvents(_ engine: ContainerEngine, shouldStop: @escaping () -> Bool, changed: () -> Void) throws {
         // Lifecycle only: Strata's own listings (exec_*) and reads (copy) would otherwise each set off a refresh.
         let filters = queryEscaped(#"{"type":["container"],"event":["create","destroy","die","kill","oom","pause","rename","restart","start","stop","unpause","update"]}"#)
         var pending = Data()
@@ -270,15 +270,15 @@ nonisolated enum ContainerAPI {
         guard head.status == 200 else { throw ContainerAPIError.status(head.status, "") }
     }
 
-    struct ExecResult: Sendable {
-        let exitCode: Int?
-        let output: Data
-        let errors: Data
+    package struct ExecResult: Sendable {
+        package let exitCode: Int?
+        package let output: Data
+        package let errors: Data
     }
 
     /// Runs `command` in a running container, as the container's own user, and collects what it prints (output up to
     /// `limit` bytes). Tools are found on a fixed system PATH, never one the container's processes could have changed.
-    static func exec(_ engine: ContainerEngine, id: String, command: [String], limit: Int = 32 << 20,
+    package static func exec(_ engine: ContainerEngine, id: String, command: [String], limit: Int = 32 << 20,
                      idle: TimeInterval = 20, total: TimeInterval = 60, shouldStop: @escaping () -> Bool = { false }) throws -> ExecResult {
         guard isContainerID(id) else { throw ContainerAPIError.notFound }
         let request: [String: Any] = [
@@ -318,7 +318,7 @@ nonisolated enum ContainerAPI {
 
     /// Streams a path in the container as a tar archive (a folder with everything in it, or one file); works on stopped
     /// containers too.
-    static func archive(_ engine: ContainerEngine, id: String, path: String, idle: TimeInterval = 30, total: TimeInterval? = nil,
+    package static func archive(_ engine: ContainerEngine, id: String, path: String, idle: TimeInterval = 30, total: TimeInterval? = nil,
                         shouldStop: @escaping () -> Bool = { false }, receive: (Data) throws -> Bool) throws {
         guard isContainerID(id) else { throw ContainerAPIError.notFound }
         var errorBody = Data()
@@ -341,7 +341,7 @@ nonisolated enum ContainerAPI {
     }
 
     /// Docker's IDs: 64 lowercase hex characters. Anything else never goes into a request path.
-    static func isContainerID(_ id: String) -> Bool {
+    package static func isContainerID(_ id: String) -> Bool {
         id.utf8.count == 64 && id.utf8.allSatisfy { (0x30...0x39).contains($0) || (0x61...0x66).contains($0) }
     }
 
@@ -428,20 +428,20 @@ nonisolated enum ContainerAPI {
 }
 
 /// Splits Docker's multiplexed exec stream (8-byte frame headers: stream, 0, 0, 0, size) into output and errors.
-nonisolated struct StreamDemux {
-    private(set) var output = Data()
-    private(set) var errors = Data()
+package nonisolated struct StreamDemux {
+    package private(set) var output = Data()
+    package private(set) var errors = Data()
     private var pending = Data()
     private let outputLimit: Int
     private let errorLimit: Int
 
-    init(outputLimit: Int, errorLimit: Int) {
+    package init(outputLimit: Int, errorLimit: Int) {
         self.outputLimit = outputLimit
         self.errorLimit = errorLimit
     }
 
     /// Adds bytes from the stream; throws when the output passes its limit.
-    mutating func feed(_ data: Data) throws -> Bool {
+    package mutating func feed(_ data: Data) throws -> Bool {
         pending.append(data)
         while pending.count >= 8 {
             let header = [UInt8](pending.prefix(8))
@@ -466,8 +466,8 @@ nonisolated struct StreamDemux {
 }
 
 /// Text from the engine, made safe to show: no control characters, and not endless.
-nonisolated enum ContainerText {
-    static func clean(_ text: String, limit: Int) -> String {
+package nonisolated enum ContainerText {
+    package static func clean(_ text: String, limit: Int) -> String {
         let scalars = text.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) && $0.properties.generalCategory != .format }
         let cleaned = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.count > limit ? String(cleaned.prefix(limit)) + "…" : cleaned

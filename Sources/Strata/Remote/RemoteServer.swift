@@ -2,30 +2,46 @@ import Foundation
 
 /// A server you browse in Strata: an SFTP host (through your Mac's own `ssh`) or an S3 bucket. Saved without secrets:
 /// SSH logs in with your keys, agent or a password typed when asked; an S3 secret key lives in your keychain.
-nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identifiable {
-    enum Kind: String, Codable, Sendable { case sftp, s3 }
+package nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identifiable {
+    package enum Kind: String, Codable, Sendable { case sftp, s3 }
 
     /// Stable: names the server's folder in Strata's caches and its keychain item.
-    var id: String
-    var kind: Kind
+    package var id: String
+    package var kind: Kind
     /// What the sidebar calls it.
-    var name: String
+    package var name: String
     /// SFTP: a host name, an address or a Host from ~/.ssh/config. S3: the endpoint's host ("s3.eu-west-1.amazonaws.com",
     /// "<account>.r2.cloudflarestorage.com").
-    var host: String
-    var user: String?
-    var port: Int?
+    package var host: String
+    package var user: String?
+    package var port: Int?
     /// SFTP: the folder to start in (nil: where the login starts). S3: unused.
-    var path: String?
+    package var path: String?
     /// S3: the bucket, its region and the access key's ID (the secret is in the keychain).
-    var bucket: String?
-    var region: String?
-    var accessKeyID: String?
+    package var bucket: String?
+    package var region: String?
+    package var accessKeyID: String?
     /// S3: addresses the bucket as endpoint/bucket rather than bucket.endpoint (MinIO and most S3-compatible services).
-    var pathStyle: Bool?
+    package var pathStyle: Bool?
+
+    package init(id: String, kind: Kind, name: String, host: String, user: String? = nil, port: Int? = nil,
+                 path: String? = nil, bucket: String? = nil, region: String? = nil, accessKeyID: String? = nil,
+                 pathStyle: Bool? = nil) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.host = host
+        self.user = user
+        self.port = port
+        self.path = path
+        self.bucket = bucket
+        self.region = region
+        self.accessKeyID = accessKeyID
+        self.pathStyle = pathStyle
+    }
 
     /// "sftp://deploy@web-1:2222/srv/app" or "s3://bucket", for display and recents (never with a secret).
-    var address: String {
+    package var address: String {
         switch kind {
         case .sftp:
             var text = "sftp://"
@@ -41,10 +57,10 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
 
     // MARK: - Checking what's typed
 
-    enum Problem: Error, Equatable {
+    package enum Problem: Error, Equatable {
         case host, user, port, path, bucket, region, accessKey
 
-        var message: String {
+        package var message: String {
             switch self {
             case .host: String(localized: "That isn’t a server name or address.")
             case .user: String(localized: "That user name has characters a login can’t.")
@@ -58,43 +74,43 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     }
 
     /// Host names, addresses (IPv6 too) and ~/.ssh/config aliases; never anything ssh could take for an option.
-    static func isValidID(_ id: String) -> Bool {
+    package static func isValidID(_ id: String) -> Bool {
         UUID(uuidString: id)?.uuidString == id
     }
 
-    static func isValidHost(_ host: String) -> Bool {
+    package static func isValidHost(_ host: String) -> Bool {
         guard !host.isEmpty, host.count <= 253, !host.hasPrefix("-") else { return false }
         return host.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || ".-_:%".unicodeScalars.contains($0) }
             && host.unicodeScalars.allSatisfy(\.isASCII)
     }
 
-    static func isValidUser(_ user: String) -> Bool {
+    package static func isValidUser(_ user: String) -> Bool {
         guard !user.isEmpty, user.count <= 128, !user.hasPrefix("-") else { return false }
         return !user.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
             || "@:/\\'\"`$;|&<>(){}[]*?!#~".unicodeScalars.contains($0) }
     }
 
-    static func isValidPath(_ path: String) -> Bool {
+    package static func isValidPath(_ path: String) -> Bool {
         path.count <= 4096 && !path.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
     }
 
     /// Bucket names as S3 allows them (the strict, DNS-safe rules).
-    static func isValidBucket(_ bucket: String) -> Bool {
+    package static func isValidBucket(_ bucket: String) -> Bool {
         guard (3...63).contains(bucket.count), let first = bucket.first, let last = bucket.last,
               first.isLetter || first.isNumber, last.isLetter || last.isNumber, !bucket.contains("..") else { return false }
         return bucket.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "." || $0 == "-" }
     }
 
-    static func isValidRegion(_ region: String) -> Bool {
+    package static func isValidRegion(_ region: String) -> Bool {
         (1...40).contains(region.count) && region.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "-" }
     }
 
-    static func isValidAccessKey(_ key: String) -> Bool {
+    package static func isValidAccessKey(_ key: String) -> Bool {
         (8...128).contains(key.count) && key.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII }
     }
 
     /// Everything that has to be right before the server is saved or connected to.
-    func validate() -> Problem? {
+    package func validate() -> Problem? {
         guard Self.isValidHost(host) else { return .host }
         if let user, !Self.isValidUser(user) { return .user }
         if let port, !(1...65535).contains(port) { return .port }
@@ -108,7 +124,7 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     }
 
     /// An `sftp://user@host:port/path` address, or `user@host` / a config alias as ssh takes it.
-    static func sftp(from text: String) -> Result<RemoteServer, Problem> {
+    package static func sftp(from text: String) -> Result<RemoteServer, Problem> {
         var rest = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if rest.lowercased().hasPrefix("sftp://") { rest = String(rest.dropFirst(7)) } else if rest.lowercased().hasPrefix("ssh://") { rest = String(rest.dropFirst(6)) }
         var path: String?
@@ -139,7 +155,7 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     }
 
     /// Whether `other` (the same server, edited) reaches a different place: another host, login, port, bucket or region.
-    func reachesSomewhereElse(than other: RemoteServer) -> Bool {
+    package func reachesSomewhereElse(than other: RemoteServer) -> Bool {
         host.lowercased() != other.host.lowercased() || user != other.user || port != other.port || bucket != other.bucket
             || region != other.region || (pathStyle ?? false) != (other.pathStyle ?? false)
     }
@@ -148,7 +164,7 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
 
     /// `ssh` running the SFTP subsystem on this server. Your ~/.ssh/config applies (keys, ProxyJump, aliases), but
     /// nothing gets forwarded to the server: no agent, no X11, no ports.
-    var sshArguments: [String] {
+    package var sshArguments: [String] {
         var arguments = [
             "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes", "-o", "RequestTTY=no",
             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "ConnectTimeout=20",
@@ -164,7 +180,7 @@ nonisolated struct RemoteServer: Codable, Equatable, Hashable, Sendable, Identif
     /// browsing. Every argument is quoted for this Mac's shell. On the server, `path` becomes a `cd` before the login
     /// shell, single-quoted, which reads the same in sh, bash, zsh, fish and csh only without `'`, `\`, `!` or
     /// control characters: a folder with any of those opens at the login's folder instead.
-    func terminalScript(path: String) -> String {
+    package func terminalScript(path: String) -> String {
         var arguments = ["/usr/bin/ssh", "-t", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes"]
         if let port { arguments += ["-p", String(port)] }
         if let user, !user.isEmpty { arguments += ["-l", user] }

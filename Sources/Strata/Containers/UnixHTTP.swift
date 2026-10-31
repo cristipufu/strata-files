@@ -6,20 +6,20 @@ import Foundation
 ///
 /// It only ever talks to a socket file on this Mac, never the network. Every read waits at most `idle` seconds, a
 /// response body is capped, and `shouldStop` is checked between reads, so a stuck or chatty engine can't hang Strata.
-nonisolated enum UnixHTTP {
-    struct Head: Sendable, Equatable {
-        let status: Int
+package nonisolated enum UnixHTTP {
+    package struct Head: Sendable, Equatable {
+        package let status: Int
         /// Header names in lower case.
-        let headers: [String: String]
+        package let headers: [String: String]
     }
 
-    struct Response: Sendable {
-        let head: Head
-        let body: Data
-        var status: Int { head.status }
+    package struct Response: Sendable {
+        package let head: Head
+        package let body: Data
+        package var status: Int { head.status }
     }
 
-    enum Failure: Error, Equatable {
+    package enum Failure: Error, Equatable {
         case pathTooLong
         case connect(Int32)
         case send
@@ -31,10 +31,10 @@ nonisolated enum UnixHTTP {
     }
 
     /// The longest head (status line and headers) accepted.
-    static let headLimit = 64 * 1024
+    package static let headLimit = 64 * 1024
 
     /// Sends a request and returns the whole response; bodies over `limit` bytes fail with `.tooLarge`.
-    static func send(_ method: String, _ target: String, to socket: String, json: Data? = nil, idle: TimeInterval = 10,
+    package static func send(_ method: String, _ target: String, to socket: String, json: Data? = nil, idle: TimeInterval = 10,
                      total: TimeInterval? = nil, limit: Int = 32 << 20) throws -> Response {
         var body = Data()
         let head = try stream(method, target, to: socket, json: json, idle: idle, total: total) { chunk in
@@ -49,7 +49,7 @@ nonisolated enum UnixHTTP {
     /// and headers before any of the body. `receive` returns false to stop early, which closes the connection.
     /// `shouldStop` is polled at least every second while waiting; `total` caps the whole exchange.
     @discardableResult
-    static func stream(_ method: String, _ target: String, to socket: String, json: Data? = nil, idle: TimeInterval = 10,
+    package static func stream(_ method: String, _ target: String, to socket: String, json: Data? = nil, idle: TimeInterval = 10,
                        total: TimeInterval? = nil, shouldStop: @escaping () -> Bool = { false },
                        onHead: (Head) throws -> Void = { _ in }, receive: (Data) throws -> Bool) throws -> Head {
         let connection = try Connection(socket: socket, idle: idle, total: total, shouldStop: shouldStop)
@@ -74,7 +74,7 @@ nonisolated enum UnixHTTP {
     }
 
     /// The request's bytes. `target` is an origin-form path with its query, already percent-encoded.
-    static func request(_ method: String, _ target: String, json: Data?) -> Data {
+    package static func request(_ method: String, _ target: String, json: Data?) -> Data {
         var text = "\(method) \(target) HTTP/1.1\r\nHost: docker\r\nUser-Agent: Strata\r\nAccept: */*\r\nConnection: close\r\n"
         if let json {
             text += "Content-Type: application/json\r\nContent-Length: \(json.count)\r\n"
@@ -88,7 +88,7 @@ nonisolated enum UnixHTTP {
     }
 
     /// Parses a response head (without the blank line that ends it).
-    static func parseHead(_ data: Data) throws -> Head {
+    package static func parseHead(_ data: Data) throws -> Head {
         guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else { throw Failure.malformed }
         let lines = text.components(separatedBy: "\r\n")
         let status = lines[0].split(separator: " ", maxSplits: 2)
@@ -259,7 +259,7 @@ nonisolated enum UnixHTTP {
 }
 
 /// Percent-encodes a query value (a path inside a container: spaces, `&`, `#`, `+` and non-ASCII all escaped).
-nonisolated func queryEscaped(_ value: String) -> String {
+package nonisolated func queryEscaped(_ value: String) -> String {
     // ASCII only: `alphanumerics` would let other scripts' letters through unescaped.
     let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/")
     return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""

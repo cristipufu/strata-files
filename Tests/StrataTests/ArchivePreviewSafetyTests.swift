@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct ArchivePreviewSafetyTests {
     private func listing(_ records: [PreviewArchiveRecord], end: PreviewArchiveListing.End = .complete) throws -> ArchiveListing {

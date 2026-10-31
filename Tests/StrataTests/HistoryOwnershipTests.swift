@@ -4,6 +4,7 @@ import Foundation
 import Testing
 import Synchronization
 @testable import Strata
+@testable import StrataFiles
 
 private final class HistoryEnvironment {
     let storage: SecureStorage.Context

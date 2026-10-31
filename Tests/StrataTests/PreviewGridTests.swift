@@ -2,6 +2,7 @@ import AppKit
 import QuickLookThumbnailing
 import Testing
 @testable import Strata
+@testable import StrataFiles
 
 struct PreviewGridTests {
     @Test func nativeGridKeysMoveOpenFoldersAndReturnWithoutNavigatingTheBrowser() async throws {
