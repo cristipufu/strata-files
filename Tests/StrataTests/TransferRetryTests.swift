@@ -5,10 +5,10 @@ import Testing
 extension TransferTests {
     @Test func retriesLeaveReplacementsAndChangedParentsAlone() throws {
         for nested in [false, true] {
-            for replacement in ["none", "file", "folder", "link"] {
+            for replacement in ["none", "file", "folder", "link", "link to an empty folder"] {
                 let relative = nested ? "a/deeper/a.txt" : "a.txt"
                 let name = nested ? "a" : "a.txt"
-                let tree = try TestTree("from/" + relative, "from/ab.txt", "to/ab.txt", "outside/a.txt", "outside/keep")
+                let tree = try TestTree("from/" + relative, "from/ab.txt", "to/ab.txt", "outside/a.txt", "outside/keep", "empty/")
                 let root = tree.url("to/" + name), broken = tree.url("to/" + relative)
                 let location = Self.fixtureLocation(root)
                 TransferEngine.hooks.beforeVerify = { url in
@@ -38,6 +38,9 @@ extension TransferTests {
                         try Data("replacement".utf8).write(to: changed.appending(path: "a.txt"), options: .withoutOverwriting)
                     case "link":
                         try FileManager.default.createSymbolicLink(atPath: changed.path, withDestinationPath: tree.url("outside").path)
+                    case "link to an empty folder":
+                        // Nothing there to refuse an exclusive create: only the retry's own checks keep it out.
+                        try FileManager.default.createSymbolicLink(atPath: changed.path, withDestinationPath: tree.url("empty").path)
                     default: break
                     }
                 }
@@ -59,6 +62,28 @@ extension TransferTests {
                 withExtendedLifetime((tree, other)) {}
             }
         }
+    }
+
+    /// A failed part's place is the first attempt's only while what's there is what it left: nothing, or that item.
+    @Test func aRetryTargetMatchesOnlyWhatTheFirstAttemptLeft() throws {
+        let tree = try TestTree("to/a.txt", "to/ab.txt", "elsewhere/")
+        let place = tree.url("to/a.txt")
+        let left = try #require(TransferRetryTarget(place, identity: FileIdentity.read(place.path)))
+        #expect(left.matches(place))
+        // Another file in its place, or a link: not what it left.
+        try FileManager.default.moveItem(at: place, to: tree.url("kept.txt"))
+        try Data("other".utf8).write(to: place)
+        #expect(!left.matches(place))
+        try FileManager.default.removeItem(at: place)
+        try FileManager.default.createSymbolicLink(at: place, withDestinationURL: tree.url("elsewhere"))
+        #expect(!left.matches(place))
+        // A place it left empty is its own while it's empty.
+        try FileManager.default.removeItem(at: place)
+        let emptied = try #require(TransferRetryTarget(place, identity: nil))
+        #expect(emptied.matches(place))
+        try Data("other".utf8).write(to: place)
+        #expect(!emptied.matches(place))
+        #expect(tree.snapshot() == ["elsewhere/", "kept.txt", "to/", "to/a.txt", "to/ab.txt"])
     }
 
     @Test func retriesRepairOnlyTheirRetainedPartialCopies() throws {

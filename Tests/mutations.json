@@ -732,10 +732,18 @@
   },
   {
     "file": "Strata/Transfers/TransferQueue.swift",
-    "find": "var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to",
-    "replace": "var target = move.to",
     "rule": "Undo of a job can't put an item back beside a newcomer",
-    "tests": "TrashUndoTests/undoingAMoveJobPutsAnItemBackBeside"
+    "tests": "TrashUndoTests/undoingAMoveJobPutsAnItemBackBeside",
+    "edits": [
+      {
+        "find": "var target = TransferEngine.exists(move.to) ? FileOps.available(move.to, copyStyle: false) : move.to",
+        "replace": "var target = move.to"
+      },
+      {
+        "find": "                target = FileOps.available(move.to, copyStyle: false)",
+        "replace": "                break"
+      }
+    ]
   },
   {
     "file": "Strata/Model/FileOps.swift",
@@ -2091,7 +2099,7 @@
     "find": "return current == identity",
     "replace": "return true",
     "rule": "Retry cleanup never adopts a replacement partial copy",
-    "tests": "TransferTests/retriesRepairOnlyTheirRetainedPartialCopies"
+    "tests": "TransferTests/retriesRepairOnlyTheirRetainedPartialCopies|TransferTests/aRetryTargetMatchesOnlyWhatTheFirstAttemptLeft"
   },
   {
     "file": "Strata/Transfers/TransferRetryTarget.swift",
@@ -3026,8 +3034,8 @@
   },
   {
     "file": "Strata/Window/Pane.swift",
-    "find": "func stopBackgroundWork() {\n        browser.cancelPendingActions()\n        opening.cancel()",
-    "replace": "func stopBackgroundWork() {\n        browser.cancelPendingActions()",
+    "find": "func stopBackgroundWork() {\n        opening.cancel()",
+    "replace": "func stopBackgroundWork() {",
     "rule": "Pane opening ownership closing a pane leaves its opening alive",
     "tests": "RemoteSessionOwnershipTests/closingAnOpeningPaneCancelsItsRequestWithoutMovingTheRemainingPane|RemoteSessionOwnershipTests/closingAWindowCancelsItsOpeningBeforeTheBackendFinishes"
   },
@@ -3082,8 +3090,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "if !ReadOnlyCopies.contains(url, copies: services.copies) && !services.copies.contains(url) {",
-    "replace": "if !ReadOnlyCopies.contains(url, copies: services.copies) {",
+    "find": "if !ReadOnlyCopies.contains(url, copies: services.copies) {",
+    "replace": "if true {",
     "rule": "Provider directory ownership provider paths become saved local destinations",
     "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
   },
@@ -3214,9 +3222,9 @@
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
   },
   {
-    "file": "Strata/Window/Pane.swift",
-    "find": "func stopBackgroundWork() {\n        browser.cancelPendingActions()",
-    "replace": "func stopBackgroundWork() {",
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "    func stopBackgroundWork() {\n        cancelPendingActions()",
+    "replace": "    func stopBackgroundWork() {",
     "rule": "Provider fetch ownership closing a pane leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
   },

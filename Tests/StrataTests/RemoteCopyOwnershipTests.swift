@@ -103,7 +103,11 @@ struct RemoteCopyOwnershipTests {
                 let backend = Backend("unchanged"), connections = Counter()
                 let files = RemoteFiles(copies: copies, backends: { _ in connections.add(1); return backend })
                 if move {
-                    await #expect(throws: (any Error).self) { _ = try await files.move([selected, foreign], into: destination) }
+                    let error = await #expect(throws: (any Error).self) { _ = try await files.move([selected, foreign], into: destination) }
+                    // Another saved server's item is refused saying why: it would have to come through this Mac.
+                    if foreign.path.hasPrefix(copies.root.path), !Self.isRefusal(error) {
+                        Issue.record("Expected a refusal, got \(String(describing: error))")
+                    }
                 } else {
                     await #expect(throws: RemoteError.unknownServer) { try await files.delete([selected, foreign]) }
                 }
@@ -112,6 +116,11 @@ struct RemoteCopyOwnershipTests {
             }
         }
         #expect(tree.snapshot() == before)
+    }
+
+    private static func isRefusal(_ error: (any Error)?) -> Bool {
+        if case .refused = error as? RemoteError { return true }
+        return false
     }
 
     @Test func copyLookupRespectsPathBoundariesAndRejectsMismatchedRegistryEntries() throws {

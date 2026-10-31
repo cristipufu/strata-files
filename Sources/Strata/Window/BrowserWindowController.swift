@@ -463,7 +463,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             p.readFolderEntry(url) { [weak self] in self?.refreshPanels() }
             p.browser.load(url, select: select)
             // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
-            if !ReadOnlyCopies.contains(url, copies: services.copies) && !services.copies.contains(url) {
+            if !ReadOnlyCopies.contains(url, copies: services.copies) {
                 if countVisit { services.visits.record(url) }
                 services.preferences.lastLocation = url
             }
