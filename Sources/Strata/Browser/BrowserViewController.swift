@@ -434,7 +434,7 @@ final class BrowserViewController: NSViewController {
             case .success(let delivery):
                 services.tags.load(delivery.entries)
                 services.cloud.load(delivery.entries.map(\.url), in: url)
-                Privacy.markAccessible(url)
+                if Privacy.markAccessible(url) { services.index.refreshConfig() }
                 apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
                       sortedBy: delivery.sortedBy)
             case .failure:

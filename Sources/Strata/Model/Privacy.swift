@@ -22,19 +22,21 @@ enum Privacy {
 
     /// Remembers that a protected folder (e.g. Documents) was opened successfully, so it may be indexed and measured
     /// without another prompt.
-    static func markAccessible(_ url: URL) {
+    /// Whether this made one of them known: what the index may read has changed then.
+    @discardableResult
+    static func markAccessible(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let home = Places.home.path
         for relative in ["Desktop", "Documents", "Downloads"] {
             let root = home + "/" + relative
             guard path == root || path.hasPrefix(root + "/") else { continue }
             var known = Prefs.shared.defaults.stringArray(forKey: accessibleKey) ?? []
-            guard !known.contains(root) else { return }
+            guard !known.contains(root) else { return false }
             known.append(root)
             Prefs.shared.defaults.set(known, forKey: accessibleKey)
-            FileIndex.shared.refreshConfig()
-            return
+            return true
         }
+        return false
     }
 
     static func isKnownAccessible(_ path: String) -> Bool {

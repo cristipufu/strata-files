@@ -4076,7 +4076,7 @@
     "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
   },
   {
-    "file": "Strata/Transfers/FileCommands.swift",
+    "file": "Strata/AI/FileCommands+Plans.swift",
     "find": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: history)",
     "replace": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: .shared)",
     "rule": "File command plan records in another History",

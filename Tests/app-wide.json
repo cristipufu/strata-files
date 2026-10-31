@@ -54,12 +54,6 @@
   "reason": "What macOS lets Strata read (Full Disk Access, protected folders) is the app's, whichever window found out, as is the welcome shown once."
  },
  {
-  "file": "Sources/Strata/Model/Privacy.swift",
-  "instance": "FileIndex.shared",
-  "count": 1,
-  "reason": "Access to a protected folder changes what the app's index may read."
- },
- {
   "file": "Sources/Strata/Remote/RemoteConnections.swift",
   "instance": "RemoteSessions.shared",
   "count": 1,
