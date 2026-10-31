@@ -47,6 +47,7 @@ package enum PlanExecutor {
 package final class PlanTransaction {
     package typealias Pair = (from: URL, to: URL)
 
+    /// The new folders the plan asks for; each run makes only those its moves need.
     private let folders: [URL]
     private let moves: [Pair]
     private let copies: CopyProviders
@@ -69,13 +70,14 @@ package final class PlanTransaction {
             guard step.kind == .rename || step.kind == .move, let from = step.source, let to = step.destination else { return nil }
             return (from, to)
         }
-        folders = Self.needed(enabled.filter { $0.kind == .createFolder }.compactMap(\.destination), by: moves)
+        folders = enabled.filter { $0.kind == .createFolder }.compactMap(\.destination)
         self.moves = moves
         trashItems = enabled.filter { $0.kind == .trash }.compactMap(\.source)
     }
 
-    /// Of `folders`, only those `moves` need (outermost first, as given).
-    private static func needed(_ folders: [URL], by moves: [Pair]) -> [URL] {
+    /// Of `folders`, only those `moves` need (outermost first, as given): read away from the main thread, since how a
+    /// disk compares names decides it.
+    @concurrent private static func needed(_ folders: [URL], by moves: [Pair]) async -> [URL] {
         let needed = Set(moves.map { PlanValidator.key($0.to.deletingLastPathComponent()) })
         return folders.filter { folder in
             needed.contains { $0 == PlanValidator.key(folder) || $0.hasPrefix(PlanValidator.key(folder) + "/") }
@@ -110,7 +112,7 @@ package final class PlanTransaction {
         let moves = await Self.stillPutBack(self.moves, by: restored)
         let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
             ?? self.trashItems
-        let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
+        let folders = await Self.needed(self.folders, by: moves)
         // A whole disk among what goes to the Trash refuses the plan up front, before any step changes anything.
         if let disk = await Self.firstDisk(in: trashItems) {
             outcome.failures.append(String(localized: "“\(disk.lastPathComponent)” couldn’t be moved to the Trash: \(FileOps.HoldsADisk().localizedDescription)"))

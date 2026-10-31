@@ -20,7 +20,9 @@ final class PlanSheetController: NSViewController {
     private let urls: [URL]
     /// Each step's places as `PlanValidator.key` spells them, worked out with the plan: checking and unchecking
     /// steps compares them across the whole plan.
-    private var keys: [URL: String] = [:]
+    /// What the steps' places are on disk, read once the plan arrives: their keys (as their disks compare names),
+    /// whether each destination is taken, and whether by the step's own item.
+    private var facts = Facts()
     private let baseFolder: URL
     private let files: FileCommands
     private weak var undoManagerForApply: UndoManager?
@@ -423,9 +425,9 @@ final class PlanSheetController: NSViewController {
         planTask = Task { [weak self] in
             do {
                 let plan = try await PlanGenerator.generate(request)
-                let keys = await Self.keys(of: plan)
+                let facts = await Self.facts(of: plan)
                 guard !Task.isCancelled else { return }
-                self?.keys = keys
+                self?.facts = facts
                 self?.phase = .review(plan)
                 self?.view.window?.makeFirstResponder(self?.table)
             } catch {
@@ -483,24 +485,44 @@ final class PlanSheetController: NSViewController {
         completion = nil
     }
 
-    @concurrent private static func keys(of plan: Plan) async -> [URL: String] {
+    nonisolated struct Facts: Sendable {
+        var keys: [URL: String] = [:]
+        /// Destinations something is at.
+        var taken: Set<URL> = []
+        /// Steps whose destination is their own item (a case-only rename).
+        var ownPlace: Set<Int> = []
+
+        /// Every source, destination and destination's folder has a key; anything else is compared as spelled.
+        func key(_ url: URL) -> String { keys[url] ?? url.standardizedFileURL.path }
+        /// Whether `step`'s destination is taken by something other than its own item.
+        func occupied(_ step: PlanStep) -> Bool {
+            step.destination.map { taken.contains($0) && !ownPlace.contains(step.id) } ?? false
+        }
+    }
+
+    @concurrent private static func facts(of plan: Plan) async -> Facts {
         let places = plan.steps.flatMap { [$0.source, $0.destination, $0.destination?.deletingLastPathComponent()] }
-        return Dictionary(places.compactMap { $0 }.map { ($0, PlanValidator.key($0)) }, uniquingKeysWith: { first, _ in first })
+        var facts = Facts()
+        facts.keys = Dictionary(places.compactMap { $0 }.map { ($0, PlanValidator.key($0)) }, uniquingKeysWith: { first, _ in first })
+        for step in plan.steps {
+            guard let destination = step.destination, TransferEngine.exists(destination) else { continue }
+            facts.taken.insert(destination)
+            if let source = step.source, PlanValidator.sameItem(destination, source) { facts.ownPlace.insert(step.id) }
+        }
+        return facts
     }
 
     func toggle(_ id: Int, on: Bool) {
         guard case var .review(plan) = phase, let index = plan.steps.firstIndex(where: { $0.id == id }) else { return }
-        let keys = keys
-        func placeKey(_ url: URL) -> String { keys[url] ?? PlanValidator.key(url) }
+        let facts = facts
+        func placeKey(_ url: URL) -> String { facts.key(url) }
         plan.steps[index].isEnabled = on
         if !on {
             // Unchecking a step that vacates a name disables any step that would otherwise land on that existing file.
             var unvacated = plan.steps[index].source.map { [placeKey($0)] } ?? []
             while let key = unvacated.popLast() {
                 for i in plan.steps.indices where plan.steps[i].isEnabled {
-                    guard let dest = plan.steps[i].destination, placeKey(dest) == key,
-                          TransferEngine.exists(dest),
-                          plan.steps[i].source.map({ !PlanValidator.sameItem(dest, $0) }) ?? true else { continue }
+                    guard let dest = plan.steps[i].destination, placeKey(dest) == key, facts.occupied(plan.steps[i]) else { continue }
                     plan.steps[i].isEnabled = false
                     if let source = plan.steps[i].source { unvacated.append(placeKey(source)) }
                 }
@@ -508,14 +530,13 @@ final class PlanSheetController: NSViewController {
         } else {
             // Re-enabling a step whose destination is occupied by another planned item re-enables the step that vacates it.
             var needed: [String] = plan.steps[index].destination.flatMap { dest in
-                let same = plan.steps[index].source.map { PlanValidator.sameItem(dest, $0) } ?? false
-                return TransferEngine.exists(dest) && !same ? [placeKey(dest)] : nil
+                facts.occupied(plan.steps[index]) ? [placeKey(dest)] : nil
             } ?? []
             while let key = needed.popLast() {
                 for i in plan.steps.indices where !plan.steps[i].isEnabled && plan.steps[i].problem == nil {
                     guard let source = plan.steps[i].source, placeKey(source) == key else { continue }
                     plan.steps[i].isEnabled = true
-                    if let dest = plan.steps[i].destination, TransferEngine.exists(dest), !PlanValidator.sameItem(dest, source) {
+                    if let dest = plan.steps[i].destination, facts.occupied(plan.steps[i]) {
                         needed.append(placeKey(dest))
                     }
                 }
