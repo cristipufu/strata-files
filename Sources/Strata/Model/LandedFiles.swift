@@ -23,19 +23,6 @@ package final class LandedFiles {
     /// Ownership already captured by the operation, carried to a worker without reading a later replacement.
     package func identity(at url: URL) -> FileIdentity? { identities[url.path] }
 
-    /// The item at `url` is about to move to `destination`: a move on one disk keeps what it is, so it's expected
-    /// there already. Call `arrived` once it's moved.
-    package func expect(_ url: URL, at destination: URL) {
-        identities[destination.path] = FileIdentity.read(url.path)
-    }
-
-    /// An expected item has moved to `destination`. Moved across disks, it's a new file there, recorded now; on one
-    /// disk the expectation stands, so a file swapped in meanwhile is never taken for it.
-    package func arrived(_ destination: URL) {
-        guard let expected = identities[destination.path], let now = FileIdentity.read(destination.path) else { return }
-        if expected.device != now.device { identities[destination.path] = now }
-    }
-
     /// Convert live ownership to History's persistent format only while the item still matches. An empty key
     /// explicitly refuses Undo; omitting a key would invoke the compatibility rule for old, untracked records.
     package func historyIdentities(for urls: [URL]) -> [String: String] {

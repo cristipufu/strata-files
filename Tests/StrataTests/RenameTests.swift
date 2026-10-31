@@ -240,9 +240,21 @@ final class RenameTests {
         // A locked file can't be renamed: the swap fails halfway and is undone.
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: b.path)
         defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: b.path) }
-        let (done, error) = await FileOps.moveAll([(a, b), (b, a)])
+        let (done, error, _) = await FileOps.moveAll([(a, b), (b, a)])
         #expect(done.isEmpty && error != nil)
         #expect(try contents() == ["a.txt", "b.txt"])
         #expect(try text("a.txt") == "a.txt" && text("b.txt") == "b.txt")
+    }
+
+    @Test func aChainThatFailsAfterItsFirstStepPutsThatOneBack() async throws {
+        _ = try await make(["1.txt", "2.txt"])
+        let one = folder.appending(path: "1.txt"), two = folder.appending(path: "2.txt"), three = folder.appending(path: "3.txt")
+        // "2" moves to "3" first, making room; a locked "1" then can't take its place, so "2" comes back.
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: one.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: one.path) }
+        let (done, error, _) = await FileOps.moveAll([(one, two), (two, three)])
+        #expect(done.isEmpty && error != nil)
+        #expect(try contents() == ["1.txt", "2.txt"])
+        #expect(try text("1.txt") == "1.txt" && text("2.txt") == "2.txt")
     }
 }

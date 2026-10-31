@@ -40,12 +40,9 @@ package enum FileOps {
                      copies: CopyProviders) async throws {
         try refuseReadOnly(pairs, copies: copies)
         let landed = LandedFiles()
-        for pair in pairs { landed.expect(pair.from, at: pair.to) }
-        let (done, error) = await moveAll(pairs)
-        let arrivedPaths = Set(done.map(\.to.path))
-        for pair in pairs where !arrivedPaths.contains(pair.to.path) { landed.set(nil, at: pair.to) }
-        for pair in done where landed.identity(at: pair.to) == nil { landed.record([pair.to]) }
-        done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
+        let (done, error, identities) = await moveAll(pairs)
+        for pair in done { landed.set(identities[pair.to.path], at: pair.to) }
+        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
         let entry = history.recordMove(actionName, done, landed: landed)
         registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
         if let error { throw error }
@@ -56,7 +53,7 @@ package enum FileOps {
     /// registered.
     package static func moveAsPart(_ pairs: [Move], copies: CopyProviders) async throws {
         try refuseReadOnly(pairs, copies: copies)
-        let (done, error) = await moveAll(pairs)
+        let (done, error, _) = await moveAll(pairs)
         done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
         if let error { throw error }
     }
@@ -71,16 +68,45 @@ package enum FileOps {
     /// Moves each pair in order, stopping at the first error, and returns what moved and the error that stopped it.
     /// Swaps and chains ("a → b" with "b → a", or "1 → 2, 2 → 3") are ordered so each item moves only once the one
     /// whose place it takes has left; a cycle parks one item under a hidden name that keeps its own. They succeed or
-    /// fail as a whole: on an error everything moved goes back, and nothing is left under a hidden name.
-    package static func moveAll(_ pairs: [Move]) async -> (done: [Move], error: Error?) {
+    /// fail as a whole: on an error everything moved goes back, and nothing is left under a hidden name. `landed` is
+    /// what each moved item is where it went, by that path, read as it moved, away from the main thread.
+    @concurrent
+    package static func moveAll(_ pairs: [Move]) async -> (done: [Move], error: Error?, landed: [String: FileIdentity]) {
         guard isChain(pairs) else {
-            var done: [Move] = []
+            var done: [Move] = [], landed: [String: FileIdentity] = [:]
             for pair in pairs {
-                do { try await moveItem(pair.from, pair.to) } catch { return (done, error) }
+                let before = FileIdentity.read(pair.from.path)
+                do { try await moveItem(pair.from, pair.to) } catch { return (done, error, landed) }
                 done.append(pair)
+                landed[pair.to.path] = arrival(of: before, at: pair.to)
             }
-            return (done, nil)
+            return (done, nil, landed)
         }
+        // A chain's items are known before any moves: once one has, another may stand where it was.
+        let before = Dictionary(pairs.map { ($0.to.path, FileIdentity.read($0.from.path)) }) { first, _ in first }
+        let (done, error) = await moveChain(pairs)
+        var landed: [String: FileIdentity] = [:]
+        for pair in done { landed[pair.to.path] = arrival(of: before[pair.to.path] ?? nil, at: pair.to) }
+        return (done, error, landed)
+    }
+
+    /// What an item that was `before` is at `destination` now it's moved there: a move on one disk keeps what it is, so
+    /// a file swapped in meanwhile is never taken for it; moved across disks it's a new file, read where it went.
+    @concurrent package static func identity(of before: FileIdentity?, movedTo destination: URL) async -> FileIdentity? {
+        arrival(of: before, at: destination)
+    }
+
+    /// What's at `url` now, read away from the main thread: an item about to move.
+    @concurrent package static func identity(beforeMoving url: URL) async -> FileIdentity? { FileIdentity.read(url.path) }
+
+    nonisolated private static func arrival(of before: FileIdentity?, at destination: URL) -> FileIdentity? {
+        let now = FileIdentity.read(destination.path)
+        guard let before else { return now }
+        guard let now, now.device != before.device else { return before }
+        return now
+    }
+
+    nonisolated private static func moveChain(_ pairs: [Move]) async -> (done: [Move], error: Error?) {
         var executed: [(step: ChainStep, completes: Int?)] = []
         for step in chainSteps(pairs) {
             do {
@@ -112,7 +138,7 @@ package enum FileOps {
     }
 
     /// One rename of a chain: `completes` is the pair it finishes (nil while an item is parked).
-    package struct ChainStep {
+    package nonisolated struct ChainStep: Sendable {
         package let from: URL
         package let to: URL
         /// The pair this step belongs to.
@@ -547,17 +573,17 @@ package enum FileOps {
         register(actionName, undo) { undo in
             let returned = LandedFiles()
             afterUndoWork {
-                let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }
+                let held = Set(await landed.holding(moves.map(\.to)).map(\.path))
+                let back = moves.filter { held.contains($0.to.path) }.reversed().map { (from: $0.to, to: $0.from) }
                 guard !back.isEmpty else { return }
-                for pair in back { returned.expect(pair.from, at: pair.to) }
                 do {
                     guard !back.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
                         throw insideArchiveError
                     }
                     try await containers.prepare()
                     if let entry { history.updateContainerIdentities(entry, containers.historyIdentities) }
-                    let (done, error) = await moveAll(back)
-                    done.forEach { returned.arrived($0.to) }
+                    let (done, error, identities) = await moveAll(back)
+                    done.forEach { returned.set(identities[$0.to.path], at: $0.to) }
                     containers.finish()
                     if let error { throw error }
                     if let entry { history.setUndone(entry, marksUndone) }

@@ -143,32 +143,25 @@ package final class PlanTransaction {
         let movable = restored.map { restored in moves.filter { restored.holds($0.from) } } ?? moves
         if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
             // Swaps and chains move together, through temporary names, so they're checked before they start.
-            for pair in movable { applied.expect(pair.from, at: pair.to) }
-            let (moved, error) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
-            let arrivedPaths = Set(moved.map(\.to.path))
-            for pair in movable where !arrivedPaths.contains(pair.to.path) { applied.set(nil, at: pair.to) }
-            for pair in moved where applied.identity(at: pair.to) == nil { applied.record([pair.to]) }
-            moved.forEach { applied.arrived($0.to) }
+            let (moved, error, identities) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
+            for pair in movable { applied.set(identities[pair.to.path], at: pair.to) }
             done = moved.map { ($0.from, $0.to) }
             outcome.results += moved.map(\.to)
             if let error { outcome.failures.append(error.localizedDescription) }
         } else {
             for pair in movable {
                 // Each one waits for the one before: checked again as it goes.
-                if let restored, !restored.holds(pair.from) { continue }
+                if let restored, await restored.holding([pair.from]).isEmpty { continue }
                 do {
-                    applied.expect(pair.from, at: pair.to)
-                    try await Self.move(pair, copies: copies)
-                    applied.arrived(pair.to)
+                    applied.set(try await Self.move(pair, copies: copies), at: pair.to)
                     done.append(pair)
                     outcome.results.append(pair.to)
                 } catch {
-                    let expected = applied.identity(at: pair.to)
                     applied.set(nil, at: pair.to)
                     if let displaced = error as? Displaced {
                         // It moved, just not where it was meant to: recorded there (a rename keeps what it is), so
                         // History and Undo follow it. It isn't counted as applied.
-                        applied.set(expected, at: displaced.now)
+                        applied.set(displaced.identity, at: displaced.now)
                         done.append((pair.from, displaced.now))
                         displacedCount += 1
                         outcome.results.append(displaced.now)
@@ -188,24 +181,23 @@ package final class PlanTransaction {
         let restored = LandedFiles()
         self.restored = restored
         func moveBack(_ pairs: [Pair]) async {
-            for pair in pairs { restored.expect(pair.from, at: pair.to) }
-            let moved: [Pair]
             if FileOps.isChain(pairs) {
-                moved = await FileOps.moveAll(pairs).done.map { ($0.from, $0.to) }
-            } else {
-                // One that can't go back by its old name comes back beside it (`Displaced`), never hidden; redo then
-                // has nothing of its own there to move.
-                var done: [Pair] = []
-                for pair in pairs where (try? await Self.move(pair, copies: copies)) != nil { done.append(pair) }
-                moved = done
+                let (moved, _, identities) = await FileOps.moveAll(pairs)
+                for pair in moved { restored.set(identities[pair.to.path], at: pair.to) }
+                return
             }
-            let arrived = Set(moved.map(\.to.path))
+            // One that can't go back by its old name comes back beside it (`Displaced`), never hidden; redo then has
+            // nothing of its own there to move.
             for pair in pairs {
-                if arrived.contains(pair.to.path) { restored.arrived(pair.to) } else { restored.set(nil, at: pair.to) }
+                do { restored.set(try await Self.move(pair, copies: copies), at: pair.to) } catch {}
             }
         }
-        await moveBack(done.filter { applied.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) })
-        await moveBack(trashed.reversed().filter { applied.holds($0.to) }.map { (from: $0.to, to: $0.from) })
+        func held(_ pairs: [Pair]) async -> [Pair] {
+            let held = Set(await applied.holding(pairs.map(\.to)).map(\.path))
+            return pairs.filter { held.contains($0.to.path) }
+        }
+        await moveBack(await held(done).reversed().map { (from: $0.to, to: $0.from) })
+        await moveBack(await held(trashed.reversed()).map { (from: $0.to, to: $0.from) })
         // A name alone does not belong to the plan: the user may have replaced its folder while it was applied.
         createdFolders.removeEmpty()
     }
@@ -235,6 +227,8 @@ package final class PlanTransaction {
     package struct Displaced: LocalizedError {
         package let now: URL
         package let reason: Error
+        /// What the item is: a rename keeps it.
+        package var identity: FileIdentity?
 
         package var errorDescription: String? {
             reason.localizedDescription + " "
@@ -243,11 +237,13 @@ package final class PlanTransaction {
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes; one that
-    /// can't finish brings the item back, by its old name or beside it (`Displaced`).
-    private static func move(_ pair: Pair, copies: CopyProviders) async throws {
+    /// can't finish brings the item back, by its old name or beside it (`Displaced`). What the item is where it went,
+    /// read as it moves, away from the main thread.
+    private static func move(_ pair: Pair, copies: CopyProviders) async throws -> FileIdentity? {
         func move(_ from: URL, to: URL) async throws {
             try await FileOps.moveAsPart([(from: from, to: to)], copies: copies)
         }
+        let before = await FileOps.identity(beforeMoving: pair.from)
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
             let temporary = FileOps.parkingName(for: pair.from)
             try await move(pair.from, to: temporary)
@@ -255,11 +251,12 @@ package final class PlanTransaction {
                 try await move(temporary, to: pair.to)
             } catch {
                 guard let now = try? await FileOps.unpark(temporary, as: pair.from), now != pair.from else { throw error }
-                throw Displaced(now: now, reason: error)
+                throw Displaced(now: now, reason: error, identity: before)
             }
         } else {
             try await move(pair.from, to: pair.to)
         }
+        return await FileOps.identity(of: before, movedTo: pair.to)
     }
 
     // MARK: - Undo

@@ -148,7 +148,7 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "                let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }",
+    "find": "                let back = moves.filter { held.contains($0.to.path) }.reversed().map { (from: $0.to, to: $0.from) }",
     "replace": "                let back = moves.reversed().map { (from: $0.to, to: $0.from) }",
     "rule": "Undo of a rename moves back a file swapped in since",
     "tests": "TrashUndoTests|TransferTests/aRenamedFile"
@@ -161,9 +161,9 @@
     "tests": "TrashUndoTests/undoingTwoOperations|TrashUndoTests/undoAndRedoPressed"
   },
   {
-    "file": "Strata/Model/LandedFiles.swift",
-    "find": "        if expected.device != now.device { identities[destination.path] = now }",
-    "replace": "",
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        guard let now, now.device != before.device else { return before }\n        return now\n",
+    "replace": "        return before\n",
     "rule": "Redo across disks loses track of the item",
     "tests": "TransferTests/aRenameAcross"
   },
@@ -176,8 +176,8 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }",
-    "replace": "        done.forEach { TransferEngine.hooks.afterLanding?($0.to); landed.record([$0.to]) }",
+    "find": "        for pair in done { landed.set(identities[pair.to.path], at: pair.to) }\n        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }\n",
+    "replace": "        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }\n        landed.record(done.map(\\.to))\n        _ = identities\n",
     "rule": "A moved item's identity is read after it lands",
     "tests": "TransferTests/aRenamedFile"
   },
@@ -501,8 +501,8 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "        await moveBack(done.filter { applied.holds($0.to) }.reversed()",
-    "replace": "        await moveBack(done.reversed()",
+    "find": "        await moveBack(await held(done).reversed().map { (from: $0.to, to: $0.from) })",
+    "replace": "        await moveBack(done.reversed().map { (from: $0.to, to: $0.from) })",
     "rule": "Undo of a plan moves back a file swapped in since",
     "tests": "PlanSafetyTests"
   },
@@ -1618,9 +1618,9 @@
     "tests": "FileIdentityTests/identitiesBelongToTheItemAndNeverFollowItsLink"
   },
   {
-    "file": "Strata/Model/LandedFiles.swift",
-    "find": "if expected.device != now.device { identities[destination.path] = now }",
-    "replace": "identities[destination.path] = now",
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        guard let now, now.device != before.device else { return before }\n",
+    "replace": "        guard let now else { return before }\n",
     "rule": "File identity landing never accepts a same-disk replacement",
     "tests": "FileIdentityTests/landingRetainsSameDiskIdentityAndOnlyRefreshesItAcrossDisks"
   },
@@ -7211,14 +7211,14 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                guard let now = try? await FileOps.unpark(temporary, as: pair.from), now != pair.from else { throw error }\n                throw Displaced(now: now, reason: error)",
+    "find": "                guard let now = try? await FileOps.unpark(temporary, as: pair.from), now != pair.from else { throw error }\n                throw Displaced(now: now, reason: error, identity: before)",
     "replace": "                throw error",
     "rule": "A case-only rename that can't finish leaves the item under its hidden name",
     "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                throw Displaced(now: now, reason: error)",
+    "find": "                throw Displaced(now: now, reason: error, identity: before)",
     "replace": "                _ = now; throw error",
     "rule": "A case-only rename that can't finish moves the item without saying where",
     "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
@@ -7859,5 +7859,12 @@
     "replace": "        !Trash.isTrash(url) && !ReadOnlyCopies.contains(url, copies: copies)\n",
     "rule": "Menus and drags offer to trash what's already in the Trash",
     "tests": "DeleteScopeTests/whatIsOfferedForTheTrashIsJudgedBySpellingAlone"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }\n",
+    "replace": "                    continue\n",
+    "rule": "A swap or chain that fails partway leaves what moved where it went",
+    "tests": "RenameTests/aChainThatFailsAfterItsFirstStepPutsThatOneBack"
   }
 ]

@@ -30,29 +30,27 @@ struct FileIdentityTests {
         #expect(tree.snapshot() == ["dangling -> absent", "hardlink", "link -> original", "other", "renamed"])
     }
 
-    @Test func landingRetainsSameDiskIdentityAndOnlyRefreshesItAcrossDisks() throws {
+    @Test func landingRetainsSameDiskIdentityAndOnlyRefreshesItAcrossDisks() async throws {
         let tree = try TestTree("original", "other")
-        let landed = LandedFiles()
-        landed.expect(tree.url("original"), at: tree.url("destination"))
-        try FileManager.default.moveItem(at: tree.url("original"), to: tree.url("destination"))
-        landed.arrived(tree.url("destination"))
-        #expect(landed.holds(tree.url("destination")))
+        let before = try #require(FileIdentity.read(tree.url("original").path))
+        let destination = tree.url("destination")
+        try FileManager.default.moveItem(at: tree.url("original"), to: destination)
+        // Moved on one disk, it's what it was.
+        #expect(await FileOps.identity(of: before, movedTo: destination) == before)
         // Keep the old inode alive: the newcomer must be a different item without relying on inode reuse timing.
-        try FileManager.default.moveItem(at: tree.url("destination"), to: tree.url("saved"))
-        try FileManager.default.moveItem(at: tree.url("other"), to: tree.url("destination"))
-        landed.arrived(tree.url("destination"))
-        #expect(!landed.holds(tree.url("destination")))
-        let now = try #require(FileIdentity.read(tree.url("destination").path))
-        // Exercise the disk-change decision directly; AcrossDisksTests also cover real transfers to a scratch volume.
+        try FileManager.default.moveItem(at: destination, to: tree.url("saved"))
+        try FileManager.default.moveItem(at: tree.url("other"), to: destination)
+        // A file swapped in on the same disk is never taken for it.
+        let swapped = LandedFiles()
+        swapped.set(await FileOps.identity(of: before, movedTo: destination), at: destination)
+        #expect(!swapped.holds(destination))
+        // Moved across disks, it's a new file, read where it went (AcrossDisksTests also cover real transfers to a
+        // scratch volume); and one not known before it moved is read where it went too.
+        let now = try #require(FileIdentity.read(destination.path))
         let elsewhere = FileIdentity(device: ~now.device, inode: now.inode,
                                      birthSeconds: now.birthSeconds, birthNanoseconds: now.birthNanoseconds)
-        landed.set(elsewhere, at: tree.url("destination"))
-        #expect(!landed.holds(tree.url("destination")))
-        landed.arrived(tree.url("destination"))
-        #expect(landed.holds(tree.url("destination")))
-        landed.set(nil, at: tree.url("destination"))
-        landed.arrived(tree.url("destination"))
-        #expect(!landed.holds(tree.url("destination")))
+        #expect(await FileOps.identity(of: elsewhere, movedTo: destination) == now)
+        #expect(await FileOps.identity(of: nil, movedTo: destination) == now)
         #expect(tree.text("destination") == "other" && tree.text("saved") == "original")
         #expect(tree.snapshot() == ["destination", "saved"])
     }
