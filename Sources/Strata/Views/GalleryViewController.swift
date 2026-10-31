@@ -16,6 +16,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         self.thumbnails = thumbnails
         self.copies = copies
         self.clipboard = clipboard
+        strip = GalleryStripView(copies: copies)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -24,7 +25,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     private(set) var entries: [FileEntry] = []
     private var indexByKey: [String: Int] = [:]
-    let strip = GalleryStripView()
+    let strip: GalleryStripView
     private let stripScroll = NSScrollView()
     private let layout = NSCollectionViewFlowLayout()
     private let previewBox = NSView()
@@ -655,6 +656,15 @@ final class GalleryRootView: NSView {
 final class GalleryStripView: NSCollectionView {
     fileprivate weak var controller: GalleryViewController?
     private var windowObservers: [NSObjectProtocol] = []
+    private let copies: CopyProviders
+
+    init(copies: CopyProviders) {
+        self.copies = copies
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
     var isEmphasized: Bool {
         guard let window else { return false }
@@ -743,7 +753,7 @@ final class GalleryStripView: NSCollectionView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 }
 

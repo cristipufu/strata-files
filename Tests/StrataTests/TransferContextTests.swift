@@ -16,7 +16,7 @@ struct TransferContextTests {
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                              key: SymmetricKey(data: Data(repeating: 9, count: 32)))
             history = OperationLog(storage: storage, copies: .live)
-            queue = TransferQueue(preferences: preferences, history: history)
+            queue = TransferQueue(preferences: preferences, history: history, copies: .live)
         }
     }
 
@@ -190,7 +190,7 @@ struct TransferContextTests {
     @Test func failedJobsRetryWithTheirHistoryAndCompletedJobsReleaseTheirQueue() async throws {
         let tree = try TestTree("out/", "state/")
         let env = try Environment(tree)
-        var queue: TransferQueue? = TransferQueue(preferences: env.preferences, history: env.history)
+        var queue: TransferQueue? = TransferQueue(preferences: env.preferences, history: env.history, copies: .live)
         weak var owner: TransferQueue?
         owner = queue
         let job = try #require(queue).enqueue([tree.url("a.txt")], to: tree.url("out"), mode: .copy,

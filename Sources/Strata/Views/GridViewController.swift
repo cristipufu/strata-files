@@ -15,6 +15,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         self.itemInfo = itemInfo
         self.copies = copies
         self.clipboard = clipboard
+        collectionView = GridCollectionView(copies: copies)
         super.init(nibName: nil, bundle: nil)
         layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
     }
@@ -46,7 +47,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     private var matches: [String: [Int]] = [:]
     private var indexByKey: [String: Int] = [:]
 
-    let collectionView = GridCollectionView()
+    let collectionView: GridCollectionView
     private let scrollView = NSScrollView()
     private let layout = GridLayout()
     private let dropHighlight = DropHighlightView()
@@ -569,6 +570,15 @@ final class GridCollectionView: NSCollectionView {
     fileprivate weak var controller: GridViewController?
     fileprivate var lastMouseDownPoint: NSPoint?
     private let clickToRename = ClickToRename()
+    private let copies: CopyProviders
+
+    init(copies: CopyProviders) {
+        self.copies = copies
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
     var isEmphasized: Bool {
         guard let window else { return false }
@@ -654,7 +664,7 @@ final class GridCollectionView: NSCollectionView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {

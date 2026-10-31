@@ -23,14 +23,17 @@ class SharedDefaultsAuditTests(unittest.TestCase):
         for code in ["init(preferences: Prefs = .shared) {}", "func copy(copies: CopyProviders = .live) {}",
                      "var thumbnails: FileThumbnails = .shared", "init(budget: FolderWatchers.Budget = .shared) {}",
                      "init(history: OperationLog = OperationLog.shared) {}", "var store: ContainerStore? = .shared",
-                     "init(preferences: UserDefaults = Prefs.shared.defaults) {}"]:
+                     "init(preferences: UserDefaults = Prefs.shared.defaults) {}",
+                     "let copies = controller?.copies ?? .live", "func f() { self.copies = copies ?? .live }",
+                     "let w = controller?.services.workspaces ?? Workspaces.shared"]:
             issues = self.check(f"final class Pane {{\n    {code}\n}}\n")
             self.assertTrue(any("Falls back to" in issue for issue in issues), code)
 
     def test_passed_instances_pass(self):
         for code in ["init(preferences: Prefs) {}", "let preferences = services.preferences",
                      "static let shared = Prefs()", "init(copies: CopyProviders? = nil) {}",
-                     "// init(preferences: Prefs = .shared)", "let text = \"history: OperationLog = .shared\""]:
+                     "// init(preferences: Prefs = .shared)", "let text = \"history: OperationLog = .shared\"",
+                     "let name = given ?? fallback", "let shown = window ?? NSWorkspace.shared.frontmostWindow"]:
             self.assertEqual(self.check(f"final class Pane {{\n    {code}\n}}\n"), [], code)
 
     def test_reviewed_exceptions_must_match_exactly(self):

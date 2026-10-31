@@ -14,7 +14,7 @@ struct BrowserPreferencesTests {
             preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil), copies: .live)),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil), copies: .live), copies: .live),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: .shared,

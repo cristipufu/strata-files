@@ -56,6 +56,8 @@ final class TransferJob {
     /// Items moved so far, with where they actually landed (a clash may have renamed them).
     private(set) var completedMoves: [TransferMove] = []
     private weak var queue: TransferQueue?
+    /// The queue's server and container copies, kept for the job's own lifetime.
+    private let copies: CopyProviders
     private var rememberedDecision: ConflictDecision?
     /// Where this job has put items so far (lowercased paths): a later item of the job never replaces one of them.
     private var placed: Set<String> = []
@@ -94,6 +96,7 @@ final class TransferJob {
         self.resolver = conflicts
         self.undoManager = undo
         self.queue = queue
+        copies = queue.copies
         self.worker = TransferWorker(label: "dev.strata.transfer")
         self.items = moves.map {
             TransferItem(source: $0.from.standardizedFileURL, destination: $0.to, operation: .copy,
@@ -215,7 +218,6 @@ final class TransferJob {
         let folder = destination
         destinationName = await worker.run { FileManager.default.displayName(atPath: folder.path) }
         // From a container's files: everything copied out is fetched first (folders with all they hold).
-        let copies = queue?.copies ?? .live
         let fromContainers = sources.filter(copies.contains)
         if !fromContainers.isEmpty {
             let fetch = Task {
@@ -288,7 +290,7 @@ final class TransferJob {
                     let item = self.items[index]
                     let ownership = self.landed.identity(at: item.destination)
                     var options = self.options
-                    options.sanitizeCopy = self.queue?.copies.contains(item.source) == true
+                    options.sanitizeCopy = self.copies.contains(item.source)
                     options.sanitizationBoundary = self.sanitizationBoundary(for: item)
                     let control = self.control, progress = self.progress
                     let result = await self.worker.run { [options] in
@@ -333,7 +335,7 @@ final class TransferJob {
             guard await prepare(index) else { continue }
             let item = items[index], current = index
             var options = options
-            options.sanitizeCopy = queue?.copies.contains(item.source) == true
+            options.sanitizeCopy = copies.contains(item.source)
             options.sanitizationBoundary = sanitizationBoundary(for: item)
             let control = control, progress = progress
             let result = await worker.run { [options] in

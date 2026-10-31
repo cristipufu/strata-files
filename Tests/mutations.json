@@ -3575,8 +3575,8 @@
   },
   {
     "file": "Strata/Transfers/TransferJob.swift",
-    "find": "let copies = queue?.copies ?? .live\n        let fromContainers = sources.filter(copies.contains)",
-    "replace": "let copies = CopyProviders.live\n        let fromContainers = sources.filter(copies.contains)",
+    "find": "        let fromContainers = sources.filter(copies.contains)",
+    "replace": "        let copies = CopyProviders.live\n        let fromContainers = sources.filter(copies.contains)",
     "rule": "Browser copy provider ownership transfer job prepares copies with the global provider",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
@@ -4084,7 +4084,7 @@
     "file": "Strata/Transfers/TransferJob.swift",
     "rule": "Security review: queued copies sanitize before finished",
     "tests": "SecurityReviewTests",
-    "find": "options.sanitizeCopy = queue?.copies.contains(item.source) == true",
+    "find": "options.sanitizeCopy = copies.contains(item.source)",
     "replace": "options.sanitizeCopy = false"
   },
   {

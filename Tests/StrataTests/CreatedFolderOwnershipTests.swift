@@ -14,7 +14,7 @@ struct CreatedFolderOwnershipTests {
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                             key: SymmetricKey(data: Data(repeating: 7, count: 32)))
             history = OperationLog(storage: storage, copies: .live)
-            queue = TransferQueue(preferences: preferences, history: history)
+            queue = TransferQueue(preferences: preferences, history: history, copies: .live)
         }
     }
 

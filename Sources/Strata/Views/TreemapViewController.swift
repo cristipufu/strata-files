@@ -10,6 +10,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
 
     init(copies: CopyProviders) {
         self.copies = copies
+        treemapView = TreemapView(copies: copies)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -19,7 +20,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
     private(set) var items: [TreemapItem] = []
     private var indexByKey: [String: Int] = [:]
     private var entries: [String: FileEntry] = [:]
-    let treemapView = TreemapView()
+    let treemapView: TreemapView
     private let legend = TreemapLegendView()
     private var relayoutWork: DispatchWorkItem?
 
@@ -196,8 +197,11 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     override var acceptsFirstResponder: Bool { true }
     override var isOpaque: Bool { true }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    private let copies: CopyProviders
+
+    init(copies: CopyProviders) {
+        self.copies = copies
+        super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         setAccessibilityLabel(String(localized: "Disk usage", comment: "Accessibility label of the disk usage map"))
@@ -511,7 +515,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         let items: [NSDraggingItem] = dragged.compactMap { t in
             guard let tileItem = t.item else { return nil }
             // A container's or a server's item as a promise: dropped outside Strata it's fetched and finished first.
-            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: tileItem.url, copies: controller?.copies ?? .live))
+            let item = NSDraggingItem(pasteboardWriter: ContainerDragItem.writer(for: tileItem.url, copies: copies))
             let icon = icon(for: tileItem)
             let side: CGFloat = 48
             item.setDraggingFrame(NSRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side), contents: icon)
@@ -523,7 +527,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         FileDrop.sourceMask(context == .withinApplication ? [.copy, .move, .generic] : [.copy, .move, .link, .generic],
-                            session, copies: controller?.copies ?? .live)
+                            session, copies: copies)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

@@ -41,6 +41,15 @@ final class ColumnScrollView: NSScrollView {
 final class ColumnTableView: NSTableView {
     weak var pane: ColumnPane?
     private let clickToRename = ClickToRename()
+    private let copies: CopyProviders
+
+    init(copies: CopyProviders) {
+        self.copies = copies
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
     override func mouseDown(with event: NSEvent) {
         let url = ClickToRename.nameRow(in: self, column: 0, for: event).flatMap { row in
@@ -87,7 +96,7 @@ final class ColumnTableView: NSTableView {
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: pane?.controller?.copies ?? .live)
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {

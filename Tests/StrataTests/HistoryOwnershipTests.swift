@@ -14,7 +14,7 @@ private final class HistoryEnvironment {
         storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                         key: SymmetricKey(size: .bits256))
         history = OperationLog(storage: storage, copies: .live, moveItems: moveItems)
-        queue = TransferQueue(preferences: try Prefs.isolated(), history: history)
+        queue = TransferQueue(preferences: try Prefs.isolated(), history: history, copies: .live)
     }
 }
 

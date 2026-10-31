@@ -161,8 +161,9 @@ These apply everywhere below; the sections that follow add only what is specific
 - **One environment per window.** A window's settings, stores, providers, History and server access all come from its
   `BrowserServices`. Injected code never falls back to application-wide stores, and notifications are scoped by their
   owner even when environments share a notification center. Pass the owner's instance as an argument nobody can leave
-  out: a parameter or property defaulting to `.shared` or `.live` fails `scripts/audit-shared-defaults.py` unless
-  `Tests/shared-defaults.json` lists it with a reviewed reason.
+  out, and keep what a view or job needs from when it's made rather than reading it through a weak owner: a parameter
+  or property defaulting to `.shared` or `.live`, or a fallback like `owner?.copies ?? .live`, fails
+  `scripts/audit-shared-defaults.py` unless `Tests/shared-defaults.json` lists it with a reviewed reason.
 - **One owner per asynchronous request**: a pane, sheet, session or provider actor. Replacing the request, navigating,
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over

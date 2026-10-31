@@ -548,7 +548,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var matches: [String: [Int]] = [:]
     private var rowByKey: [String: Int] = [:]
     weak var controller: ColumnBrowserViewController?
-    let tableView = ColumnTableView()
+    let tableView: ColumnTableView
+    /// The window's, from the controller that made the column: a column outliving it still uses them.
+    private let copies: CopyProviders
+    private let clipboard: Clipboard
+    private let thumbnails: FileThumbnails
     fileprivate var renamingRow: Int?
     /// Opens the folder a drag rests on in the next column, by selecting it.
     lazy var springLoader = SpringLoader(view: tableView, frame: { [weak self] folder in
@@ -587,6 +591,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     init(folder: URL, controller: ColumnBrowserViewController) {
         self.folder = folder
         self.controller = controller
+        copies = controller.copies
+        clipboard = controller.clipboard
+        thumbnails = controller.thumbnails
+        tableView = ColumnTableView(copies: controller.copies)
         preferences = controller.preferences
         typography = FileViewTypography(preferences: controller.preferences)
         directoryReads = DirectoryReadSession(reader: controller.directoryReader)
@@ -814,12 +822,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let cell = tableView.makeView(withIdentifier: ColumnCellView.identifier, owner: nil) as? ColumnCellView ?? ColumnCellView()
         let entry = entries[row]
         let git = GitStatusStore.shared
-        let clipboard = controller?.clipboard ?? .shared
         cell.configure(entry, matches: matches[entry.url.fileViewKey] ?? [],
                        dimmed: entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url),
                        git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
                        cloud: CloudStore.shared.status(for: entry.url), scale: tableView.window?.backingScaleFactor ?? 2,
-                       preferences: preferences, typography: typography, thumbnails: controller?.thumbnails ?? .shared)
+                       preferences: preferences, typography: typography, thumbnails: thumbnails)
         return cell
     }
 
@@ -836,12 +843,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     // Drag and drop
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        entries.indices.contains(row) ? ContainerDragItem.writer(for: entries[row].url, copies: controller?.copies ?? .live) : nil
+        entries.indices.contains(row) ? ContainerDragItem.writer(for: entries[row].url, copies: copies) : nil
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        let copies = controller?.copies ?? .live
         let urls = FileDrop.urls(info, copies: copies)
         let resting = !urls.isEmpty && dropOperation == .on && row >= 0 && row < entries.count && entries[row].isFolder
             && !FileDrop.isInside(urls, entries[row].url, during: info)
@@ -859,7 +865,6 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool {
         springLoader.cancel()
-        let copies = controller?.copies ?? .live
         let urls = FileDrop.urls(info, copies: copies)
         let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
         let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: copies)

@@ -4,7 +4,8 @@
 A window's settings, stores, providers, History and server access all come from its `BrowserServices` (AGENTS.md:
 "Injected code never falls back to application-wide stores"). A parameter or property that defaults to `.shared` or
 `.live` lets a caller forget to pass the owner's instance, and nothing notices: the code then reads another
-environment's state. Every such default must be listed in Tests/shared-defaults.json with a count and a reason; new
+environment's state. `owner?.copies ?? .live` is the same fallback, taken when an owner is gone or wasn't given.
+Every such default and fallback must be listed in Tests/shared-defaults.json with a count and a reason; new
 ones and stale exceptions fail CI. Pass the owner's instance instead, as an argument nobody can leave out.
 """
 import argparse
@@ -21,6 +22,7 @@ from swift_source import code_only  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT = re.compile(r":\s*[A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*\??\s*=\s*"
                      r"((?:[A-Z][A-Za-z0-9]*)?(?:\.[A-Z][A-Za-z0-9]*)*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
+FALLBACK = re.compile(r"\?\?\s*((?:[A-Z][A-Za-z0-9]*)?(?:\.[A-Z][A-Za-z0-9]*)*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
 # The system's own (NSWorkspace, QLThumbnailGenerator…) aren't an environment's to pass.
 SYSTEM = re.compile(r"^(?:NS|QL|UN|CG|CF|AV|SC|Sec)[A-Z]")
 
@@ -35,7 +37,12 @@ def findings(source):
         if SYSTEM.match(owner):
             continue
         found.append((line, f"{owner}.{match.group(2)}{match.group(3)}", original[line - 1].strip()))
-    return found
+    for match in FALLBACK.finditer(code):
+        line = code.count("\n", 0, match.start()) + 1
+        if SYSTEM.match(match.group(1)):
+            continue
+        found.append((line, f"{match.group(1)}.{match.group(2)}{match.group(3)}", original[line - 1].strip()))
+    return sorted(found)
 
 
 def inventory(root):
