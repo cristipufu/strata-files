@@ -525,129 +525,160 @@ nonisolated private struct GenericLexer {
 
     private var u: UnsafeBufferPointer<UInt16> { s.u }
 
-    func lex(_ range: Range<Int>, into tokens: inout [Token]) {
-        let end = range.upperBound
-        var i = range.lowerBound
-        var lineHasContent = false
-        var onlyKeywordsOnLine = true
+    /// Where the scan is on its line, which decides how the next token reads.
+    private struct LineState {
+        /// Something other than spaces came before on this line.
+        var hasContent = false
+        /// Only keywords so far on this line: a leading identifier followed by `=` or `:` is then a key.
+        var onlyKeywords = true
+        /// The last keyword declares a name (`func`, `class`): the next identifier is that name.
         var pendingDeclaration = false
         var previous: UInt16 = Ch.newline
 
-        func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
-            if to > from { tokens.append(Token(location: from, length: to - from, kind: kind)) }
-        }
-
-        while i < end {
-            let c = u[i]
-            if c == Ch.newline {
-                lineHasContent = false
-                onlyKeywordsOnLine = true
-                previous = c
-                i += 1
-                continue
-            }
-            if c == Ch.space || c == Ch.tab { previous = c; i += 1; continue }
-            let atLineStart = !lineHasContent
-            lineHasContent = true
-
-            if let j = commentEnd(at: i, end: end, atLineStart: atLineStart, previous: previous) {
-                add(i, j, .comment)
-                i = j; continue
-            }
-            if rules.sectionHeaders, atLineStart, c == Ch.lbracket {
-                var j = i + 1
-                while j < end, u[j] != Ch.newline, u[j] != Ch.rbracket { j += 1 }
-                while j < end, u[j] == Ch.rbracket { j += 1 }
-                add(i, j, .type)
-                onlyKeywordsOnLine = false
-                i = j; continue
-            }
-            if rules.rustSyntax, c == Ch.apostrophe, Ch.isIdentStart(s.at(i + 1, end)) {
-                let j = s.identifierEnd(from: i + 1, end: end)
-                if s.at(j, end) != Ch.apostrophe {
-                    add(i, j, .attribute)
-                    i = j; continue
-                }
-            }
-            if let (j, kind) = stringEnd(at: i, end: end) {
-                add(i, j, kind)
-                pendingDeclaration = false
-                onlyKeywordsOnLine = false
-                i = j; previous = u[j - 1]; continue
-            }
-            if c == variablePrefix, let j = variableEnd(at: i, end: end) {
-                add(i, j, .attribute)
-                onlyKeywordsOnLine = false
-                i = j; previous = u[j - 1]; continue
-            }
-            if c == attributePrefix, Ch.isIdentStart(s.at(i + 1, end)) {
-                let j = s.identifierEnd(from: i + 1, end: end, extras: extras.union([Ch.dot]))
-                add(i, j, rules.keywords.contains(s.word(i, j)) ? .keyword : .attribute)
-                i = j; previous = u[j - 1]; continue
-            }
-            if rules.rustSyntax, c == Ch.hash, s.at(i + 1, end) == Ch.lbracket || (s.at(i + 1, end) == Ch.bang && s.at(i + 2, end) == Ch.lbracket) {
-                var j = i + 1, depth = 0
-                while j < end {
-                    if u[j] == Ch.lbracket { depth += 1 }
-                    if u[j] == Ch.rbracket { depth -= 1; if depth == 0 { j += 1; break } }
-                    if u[j] == Ch.newline { break }
-                    j += 1
-                }
-                add(i, j, .attribute)
-                i = j; continue
-            }
-            if c == preprocessorPrefix, rules.preprocessorAnywhere || atLineStart {
-                let nameStart = s.skipSpaces(from: i + 1, end: end)
-                if Ch.isIdentStart(s.at(nameStart, end)) {
-                    let j = s.identifierEnd(from: nameStart, end: end)
-                    add(i, j, .preprocessor)
-                    i = j; previous = u[j - 1]; continue
-                }
-            }
-            if Ch.isDigit(c) || (c == Ch.dot && Ch.isDigit(s.at(i + 1, end)) && !Ch.isIdentChar(previous)) {
-                let j = s.numberEnd(from: i, end: end)
-                add(i, j, .number)
-                pendingDeclaration = false
-                onlyKeywordsOnLine = false
-                i = j; previous = u[j - 1]; continue
-            }
-            if rules.symbols, c == Ch.colon, Ch.isIdentStart(s.at(i + 1, end)), previous != Ch.colon, !Ch.isIdentChar(previous) {
-                let j = s.identifierEnd(from: i + 1, end: end)
-                add(i, j, .number)
-                i = j; previous = u[j - 1]; continue
-            }
-            if Ch.isIdentStart(c) {
-                i = identifier(at: i, end: end, atLineStart: atLineStart, pendingDeclaration: &pendingDeclaration,
-                               onlyKeywordsOnLine: &onlyKeywordsOnLine, tokens: &tokens)
-                previous = u[i - 1]
-                continue
-            }
-            pendingDeclaration = pendingDeclaration && (c == Ch.backslash || c == 0x60)
-            onlyKeywordsOnLine = false
-            previous = c
-            i += 1
+        mutating func startLine() {
+            hasContent = false
+            onlyKeywords = true
+            previous = Ch.newline
         }
     }
 
-    private func identifier(at start: Int, end: Int, atLineStart: Bool, pendingDeclaration: inout Bool,
-                            onlyKeywordsOnLine: inout Bool, tokens: inout [Token]) -> Int {
+    /// A token a recognizer found, and what reading it does to the line.
+    private struct Read {
+        let end: Int
+        let kind: TokenKind
+        var endsDeclaration = false
+        var endsKeywordsOnly = false
+        var setsPrevious = false
+    }
+
+    func lex(_ range: Range<Int>, into tokens: inout [Token]) {
+        let end = range.upperBound
+        var i = range.lowerBound
+        var line = LineState()
+        while i < end {
+            let c = u[i]
+            if c == Ch.newline {
+                line.startLine()
+                i += 1
+                continue
+            }
+            if c == Ch.space || c == Ch.tab { line.previous = c; i += 1; continue }
+            let atLineStart = !line.hasContent
+            line.hasContent = true
+            if let read = token(at: i, end: end, atLineStart: atLineStart, previous: line.previous) {
+                if read.end > i { tokens.append(Token(location: i, length: read.end - i, kind: read.kind)) }
+                apply(read, to: &line)
+                i = read.end
+            } else if Ch.isIdentStart(c) {
+                i = identifier(at: i, end: end, atLineStart: atLineStart, line: &line, tokens: &tokens)
+                line.previous = u[i - 1]
+            } else {
+                line.pendingDeclaration = line.pendingDeclaration && (c == Ch.backslash || c == 0x60)
+                line.onlyKeywords = false
+                line.previous = c
+                i += 1
+            }
+        }
+    }
+
+    /// The token other than an identifier starting at `i`, if any: the first of these rules to match wins.
+    private func token(at i: Int, end: Int, atLineStart: Bool, previous: UInt16) -> Read? {
+        let c = u[i]
+        if let j = commentEnd(at: i, end: end, atLineStart: atLineStart, previous: previous) {
+            return Read(end: j, kind: .comment)
+        }
+        if rules.sectionHeaders, atLineStart, c == Ch.lbracket {
+            return Read(end: sectionHeaderEnd(at: i, end: end), kind: .type, endsKeywordsOnly: true)
+        }
+        if rules.rustSyntax, c == Ch.apostrophe, let j = lifetimeEnd(at: i, end: end) {
+            return Read(end: j, kind: .attribute)
+        }
+        if let (j, kind) = stringEnd(at: i, end: end) {
+            return Read(end: j, kind: kind, endsDeclaration: true, endsKeywordsOnly: true, setsPrevious: true)
+        }
+        if c == variablePrefix, let j = variableEnd(at: i, end: end) {
+            return Read(end: j, kind: .attribute, endsKeywordsOnly: true, setsPrevious: true)
+        }
+        if c == attributePrefix, Ch.isIdentStart(s.at(i + 1, end)) {
+            let j = s.identifierEnd(from: i + 1, end: end, extras: extras.union([Ch.dot]))
+            return Read(end: j, kind: rules.keywords.contains(s.word(i, j)) ? .keyword : .attribute, setsPrevious: true)
+        }
+        if rules.rustSyntax, c == Ch.hash,
+           s.at(i + 1, end) == Ch.lbracket || (s.at(i + 1, end) == Ch.bang && s.at(i + 2, end) == Ch.lbracket) {
+            return Read(end: rustAttributeEnd(at: i, end: end), kind: .attribute)
+        }
+        if c == preprocessorPrefix, rules.preprocessorAnywhere || atLineStart, let j = directiveEnd(at: i, end: end) {
+            return Read(end: j, kind: .preprocessor, setsPrevious: true)
+        }
+        if Ch.isDigit(c) || (c == Ch.dot && Ch.isDigit(s.at(i + 1, end)) && !Ch.isIdentChar(previous)) {
+            return Read(end: s.numberEnd(from: i, end: end), kind: .number, endsDeclaration: true, endsKeywordsOnly: true,
+                        setsPrevious: true)
+        }
+        if rules.symbols, c == Ch.colon, Ch.isIdentStart(s.at(i + 1, end)), previous != Ch.colon, !Ch.isIdentChar(previous) {
+            return Read(end: s.identifierEnd(from: i + 1, end: end), kind: .number, setsPrevious: true)
+        }
+        return nil
+    }
+
+    private func apply(_ read: Read, to line: inout LineState) {
+        if read.endsDeclaration { line.pendingDeclaration = false }
+        if read.endsKeywordsOnly { line.onlyKeywords = false }
+        if read.setsPrevious { line.previous = u[read.end - 1] }
+    }
+
+    /// `[section]` at the start of a line, its closing brackets included.
+    private func sectionHeaderEnd(at i: Int, end: Int) -> Int {
+        var j = i + 1
+        while j < end, u[j] != Ch.newline, u[j] != Ch.rbracket { j += 1 }
+        while j < end, u[j] == Ch.rbracket { j += 1 }
+        return j
+    }
+
+    /// A Rust lifetime (`'a`), not a character literal (`'a'`).
+    private func lifetimeEnd(at i: Int, end: Int) -> Int? {
+        guard Ch.isIdentStart(s.at(i + 1, end)) else { return nil }
+        let j = s.identifierEnd(from: i + 1, end: end)
+        return s.at(j, end) == Ch.apostrophe ? nil : j
+    }
+
+    /// A Rust attribute, `#[…]` or `#![…]`, up to its closing bracket or the end of the line.
+    private func rustAttributeEnd(at i: Int, end: Int) -> Int {
+        var j = i + 1, depth = 0
+        while j < end {
+            if u[j] == Ch.lbracket { depth += 1 }
+            if u[j] == Ch.rbracket { depth -= 1; if depth == 0 { j += 1; break } }
+            if u[j] == Ch.newline { break }
+            j += 1
+        }
+        return j
+    }
+
+    /// A preprocessor directive's name after its prefix (`#include`, `# define`); nil when no name follows.
+    private func directiveEnd(at i: Int, end: Int) -> Int? {
+        let nameStart = s.skipSpaces(from: i + 1, end: end)
+        guard Ch.isIdentStart(s.at(nameStart, end)) else { return nil }
+        return s.identifierEnd(from: nameStart, end: end)
+    }
+
+    private func identifier(at start: Int, end: Int, atLineStart: Bool, line: inout LineState,
+                            tokens: inout [Token]) -> Int {
         var j = s.identifierEnd(from: start, end: end, extras: extras)
         let word = s.word(start, j)
         let key = rules.caseInsensitive ? word.lowercased() : word
         if !rules.stringPrefixes.isEmpty, rules.stringPrefixes.contains(key), let (stringEnd, _) = stringEnd(at: j, end: end) {
             tokens.append(Token(location: start, length: stringEnd - start, kind: .string))
-            onlyKeywordsOnLine = false
+            line.onlyKeywords = false
             return stringEnd
         }
         let next = s.at(j, end)
         var kind: TokenKind?
         if rules.keywords.contains(key) || (atLineStart && rules.lineStartKeywords.contains(key)) {
             kind = .keyword
-        } else if pendingDeclaration {
+        } else if line.pendingDeclaration {
             kind = .declaration
         } else if rules.types.contains(key) {
             kind = .type
-        } else if !keyAssignment.isEmpty, onlyKeywordsOnLine, isAssignment(at: j, end: end) {
+        } else if !keyAssignment.isEmpty, line.onlyKeywords, isAssignment(at: j, end: end) {
             kind = .key
         } else if rules.rustSyntax, next == Ch.bang, s.at(j + 1, end) != Ch.equal {
             j += 1
@@ -661,8 +692,8 @@ nonisolated private struct GenericLexer {
         } else if rules.functionCalls, next == Ch.lparen {
             kind = .function
         }
-        pendingDeclaration = kind == .keyword && rules.declarationKeywords.contains(key)
-        if kind != .keyword { onlyKeywordsOnLine = false }
+        line.pendingDeclaration = kind == .keyword && rules.declarationKeywords.contains(key)
+        if kind != .keyword { line.onlyKeywords = false }
         if let kind { tokens.append(Token(location: start, length: j - start, kind: kind)) }
         return j
     }
