@@ -120,66 +120,79 @@ nonisolated package struct SpotlightQuery: Equatable, Sendable {
             return Condition(attributes: [attribute], test: .compare(comparison, number),
                              label: describe(comparison, count, key))
         case "duration", "length":
-            let units: [String: Double] = ["s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60,
-                                           "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600]
-            guard let (comparison, seconds) = comparison(value, units: units) else { return nil }
-            let length = duration(seconds)
-            let label = switch comparison {
-            case .greater: String(localized: "longer than \(length)", comment: "Search summary: a duration, like “longer than 10 min”")
-            case .greaterOrEqual: String(localized: "at least \(length)", comment: "Search summary: a duration, like “at least 10 min”")
-            case .less: String(localized: "shorter than \(length)", comment: "Search summary: a duration, like “shorter than 10 min”")
-            case .lessOrEqual: String(localized: "at most \(length)", comment: "Search summary: a duration, like “at most 10 min”")
-            case .equal: String(localized: "exactly \(length)", comment: "Search summary: a duration, like “exactly 10 min”")
-            }
-            return Condition(attributes: ["kMDItemDurationSeconds"], test: .compare(comparison, seconds), label: label)
+            return durationCondition(value)
         case "kind", "type", "is":
-            let types: [String: String] = [
-                "image": "public.image", "images": "public.image", "photo": "public.image",
-                "photos": "public.image", "picture": "public.image", "pictures": "public.image",
-                "video": "public.movie", "videos": "public.movie", "movie": "public.movie",
-                "movies": "public.movie", "audio": "public.audio", "music": "public.audio",
-                "song": "public.audio", "songs": "public.audio", "pdf": "com.adobe.pdf",
-                "pdfs": "com.adobe.pdf", "text": "public.text", "presentation": "public.presentation",
-                "presentations": "public.presentation", "spreadsheet": "public.spreadsheet",
-                "spreadsheets": "public.spreadsheet", "document": "public.content",
-                "documents": "public.content", "doc": "public.content",
-                "font": "public.font", "fonts": "public.font",
-            ]
-            // Keep the index's extension-based kinds useful alongside download metadata too.
-            guard let type = types[value.lowercased()] else {
-                let parsed = IndexQuery.parse(token)
-                var extensions = parsed.extensions
-                if let kind = parsed.kind { extensions.formUnion(IndexSearch.extensions(for: kind)) }
-                let condition: Condition
-                if parsed.kind == .folder {
-                    condition = Condition(attributes: ["kMDItemContentType"], test: .equals("public.folder"), label: value)
-                } else if parsed.kind == .file {
-                    condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals("public.data"), label: value)
-                } else {
-                    condition = Condition(attributes: ["kMDItemFSName"], test: .suffixes(extensions.sorted()), label: value)
-                }
-                var narrowing = condition
-                narrowing.isKind = true
-                return narrowing
-            }
-            // For the results summary.
-            let label = switch type {
-            case "public.image": String(localized: "images", comment: "Search summary: kind of files")
-            case "public.movie": String(localized: "videos", comment: "Search summary: kind of files")
-            case "public.audio": String(localized: "audio", comment: "Search summary: kind of files")
-            case "com.adobe.pdf": String(localized: "PDFs", comment: "Search summary: kind of files")
-            case "public.text": String(localized: "text", comment: "Search summary: kind of files (plain text)")
-            case "public.presentation": String(localized: "presentations", comment: "Search summary: kind of files")
-            case "public.spreadsheet": String(localized: "spreadsheets", comment: "Search summary: kind of files")
-            case "public.font": String(localized: "fonts", comment: "Search summary: kind of files")
-            default: String(localized: "documents", comment: "Search summary: kind of files")
-            }
-            var condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals(type), label: label)
-            condition.isKind = true
-            return condition
+            return kindCondition(value, token: token)
         default:
             return nil
         }
+    }
+
+    private static let durationUnits: [String: Double] = [
+        "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60, "minute": 60,
+        "minutes": 60, "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600,
+    ]
+
+    /// "duration:>10m": a comparison of how long a recording plays.
+    private static func durationCondition(_ value: String) -> Condition? {
+        guard let (comparison, seconds) = comparison(value, units: durationUnits) else { return nil }
+        let length = duration(seconds)
+        let label = switch comparison {
+        case .greater: String(localized: "longer than \(length)", comment: "Search summary: a duration, like “longer than 10 min”")
+        case .greaterOrEqual: String(localized: "at least \(length)", comment: "Search summary: a duration, like “at least 10 min”")
+        case .less: String(localized: "shorter than \(length)", comment: "Search summary: a duration, like “shorter than 10 min”")
+        case .lessOrEqual: String(localized: "at most \(length)", comment: "Search summary: a duration, like “at most 10 min”")
+        case .equal: String(localized: "exactly \(length)", comment: "Search summary: a duration, like “exactly 10 min”")
+        }
+        return Condition(attributes: ["kMDItemDurationSeconds"], test: .compare(comparison, seconds), label: label)
+    }
+
+    private static let kindTypes: [String: String] = [
+        "image": "public.image", "images": "public.image", "photo": "public.image",
+        "photos": "public.image", "picture": "public.image", "pictures": "public.image",
+        "video": "public.movie", "videos": "public.movie", "movie": "public.movie",
+        "movies": "public.movie", "audio": "public.audio", "music": "public.audio",
+        "song": "public.audio", "songs": "public.audio", "pdf": "com.adobe.pdf",
+        "pdfs": "com.adobe.pdf", "text": "public.text", "presentation": "public.presentation",
+        "presentations": "public.presentation", "spreadsheet": "public.spreadsheet",
+        "spreadsheets": "public.spreadsheet", "document": "public.content",
+        "documents": "public.content", "doc": "public.content",
+        "font": "public.font", "fonts": "public.font",
+    ]
+
+    /// "kind:pdf": files of a content type by its everyday name, or, for names the index knows ("kind:swift",
+    /// "kind:folder"), its extension-based kinds, which stay useful alongside download metadata too.
+    private static func kindCondition(_ value: String, token: String) -> Condition? {
+        guard let type = kindTypes[value.lowercased()] else { return indexKindCondition(value, token: token) }
+        let label = switch type {
+        case "public.image": String(localized: "images", comment: "Search summary: kind of files")
+        case "public.movie": String(localized: "videos", comment: "Search summary: kind of files")
+        case "public.audio": String(localized: "audio", comment: "Search summary: kind of files")
+        case "com.adobe.pdf": String(localized: "PDFs", comment: "Search summary: kind of files")
+        case "public.text": String(localized: "text", comment: "Search summary: kind of files (plain text)")
+        case "public.presentation": String(localized: "presentations", comment: "Search summary: kind of files")
+        case "public.spreadsheet": String(localized: "spreadsheets", comment: "Search summary: kind of files")
+        case "public.font": String(localized: "fonts", comment: "Search summary: kind of files")
+        default: String(localized: "documents", comment: "Search summary: kind of files")
+        }
+        var condition = Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals(type), label: label)
+        condition.isKind = true
+        return condition
+    }
+
+    private static func indexKindCondition(_ value: String, token: String) -> Condition {
+        let parsed = IndexQuery.parse(token)
+        var extensions = parsed.extensions
+        if let kind = parsed.kind { extensions.formUnion(IndexSearch.extensions(for: kind)) }
+        var condition = if parsed.kind == .folder {
+            Condition(attributes: ["kMDItemContentType"], test: .equals("public.folder"), label: value)
+        } else if parsed.kind == .file {
+            Condition(attributes: ["kMDItemContentTypeTree"], test: .anyEquals("public.data"), label: value)
+        } else {
+            Condition(attributes: ["kMDItemFSName"], test: .suffixes(extensions.sorted()), label: value)
+        }
+        condition.isKind = true
+        return condition
     }
 
     /// ">1920", ">=5", "<10m", "1h", "1,5" (a number, optionally with one of `units`) as a comparison.
