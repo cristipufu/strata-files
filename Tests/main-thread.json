@@ -154,5 +154,23 @@
   "call": "TransferJob.isInside(_:)",
   "count": 1,
   "reason": "Applying the decision you made in the conflict sheet to its one item: whether the item would go inside itself."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InspectorViewController.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "An item of a server's or container's copy, just fetched, read for its preview: Strata's own copy of it, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewBrowserController.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "A previewed item of a server's or container's copy, just fetched: Strata's own copy of it, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "InfoEditor.status(of:)",
+  "count": 1,
+  "reason": "Get Info, after a change you made to the one item shown (or one refused): its lock and permissions as they are now."
  }
 ]
