@@ -105,7 +105,7 @@ enum ProjectActions {
     /// Asks before moving `artifacts` to the Trash (sheet on `window`), then trashes them with undo. Calls
     /// `completion` with the trashed folders (empty when cancelled or failed).
     static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
-                             files: BrowserFileCommands,
+                             files: FileCommands,
                              completion: @escaping ([URL]) -> Void) {
         guard !artifacts.isEmpty else { return completion([]) }
         let total = artifacts.compactMap(\.bytes).saturatingSum

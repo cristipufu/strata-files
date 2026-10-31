@@ -60,7 +60,7 @@ final class BrowserServices {
                                           presentPanel: windows.preview)
 
     let transfers: TransferQueue
-    let files: BrowserFileCommands
+    let files: FileCommands
     let visits: Frecency
     let places: PlaceChecks
     let folderNames: FolderNames
@@ -95,7 +95,7 @@ final class BrowserServices {
                  tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil) {
         self.preferences = transfers.preferences
         self.transfers = transfers
-        self.files = BrowserFileCommands(transfers: transfers)
+        self.files = FileCommands(transfers: transfers)
         self.visits = visits
         self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: PlaceChecks.read)
         self.folderNames = FolderNames(read: FolderNames.read)

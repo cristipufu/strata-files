@@ -280,7 +280,7 @@ struct EdgeCaseSafetyTests {
             interpretation: ""
         )
         #expect(chainPlan.steps.count == 2)
-        let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil, files: BrowserFileCommands(transfers: .shared))
+        let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil, files: FileCommands(transfers: .shared))
         _ = sheet.view
         sheet.phase = .review(chainPlan)
         sheet.toggle(chainPlan.steps[0].id, on: false)

@@ -15,7 +15,7 @@ final class ProjectInspectorView: NSView {
 
     private(set) var info: ProjectInfo?
     let preferences: Prefs
-    let files: BrowserFileCommands
+    let files: FileCommands
     private let git: GitStatusStore
     private let stack = NSStackView()
     private var deselected: Set<String> = []
@@ -28,7 +28,7 @@ final class ProjectInspectorView: NSView {
     private var gitUpstream: String?
     private static let collapsedScriptCount = 6
 
-    init(frame: NSRect = .zero, files: BrowserFileCommands, git: GitStatusStore) {
+    init(frame: NSRect = .zero, files: FileCommands, git: GitStatusStore) {
         self.preferences = files.transfers.preferences
         self.files = files
         self.git = git

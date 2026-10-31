@@ -1071,28 +1071,28 @@
     "tests": "StorageContextTests/keyProvider"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "guard let defaults = UserDefaults(suiteName: testDomain) else {",
     "replace": "guard let defaults = Optional(UserDefaults.standard) else {",
     "rule": "Preference isolation tests select the standard app defaults",
     "tests": "PreferencesTests/processPreferences"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "        self.notifications = notifications",
     "replace": "        self.notifications = .default",
     "rule": "Preference isolation broadcasts independent settings into other environments",
     "tests": "PreferencesTests/independentSettings"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "get { (defaults.persistentDomain(forName: domainName)?[\"AppleLanguages\"] as? [String])?.first ?? \"\" }",
     "replace": "get { defaults.stringArray(forKey: \"AppleLanguages\")?.first ?? \"\" }",
     "rule": "Preference isolation treats inherited language as an explicit app override",
     "tests": "PreferencesTests/languageOverride"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "        self.notifications = notifications",
     "replace": "        self.notifications = notifications\n        defaults.register(defaults: [\"foldersFirst\": true, \"gridIconSize\": 72.0])",
     "rule": "Preference isolation registers defaults into every suite",
@@ -1176,7 +1176,7 @@
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
   {
-    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "file": "Strata/Transfers/FileCommands.swift",
     "find": "transfers.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
     "replace": "TransferQueue.shared.enqueue(urls, to: directory, mode: move ? .move : .copy, undo: undo, conflicts: conflicts)",
     "rule": "Browser service ownership browser transfers use the global queue",
@@ -1689,7 +1689,7 @@
     "tests": "BrowserPreferencesTests/readsSortAndSavedModesStayWithTheirEnvironment"
   },
   {
-    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "file": "Strata/Transfers/FileCommands.swift",
     "find": "extension: transfers.preferences.newFileExtension",
     "replace": "extension: Prefs.shared.newFileExtension",
     "rule": "Browser preferences New File uses another panes extension",
@@ -3978,7 +3978,7 @@
     "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
   },
   {
-    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "file": "Strata/Transfers/FileCommands.swift",
     "find": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: history)",
     "replace": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: .shared)",
     "rule": "File command ownership rename records in the application History",
@@ -4069,14 +4069,14 @@
     "tests": "FileCommandOwnershipTests/renameConfirmationCannotOutliveItsNavigationOrRenameAnotherSelection"
   },
   {
-    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "file": "Strata/Transfers/FileCommands.swift",
     "find": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: history)",
     "replace": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: .shared)",
     "rule": "File command Trash records in another History",
     "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
   },
   {
-    "file": "Strata/Browser/BrowserFileCommands.swift",
+    "file": "Strata/Transfers/FileCommands.swift",
     "find": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: history)",
     "replace": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: .shared)",
     "rule": "File command plan records in another History",
@@ -4890,14 +4890,14 @@
     "tests": "PreviewCommandTests/specialFilesAndPathsReplacedByLinksNeverReachFileRenderers"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "defaults.set(newValue.rawValue, forKey: Key.previewViewMode)",
     "replace": "defaults.set(newValue.rawValue, forKey: Key.viewMode)",
     "rule": "Space preview grid: choosing Icons never changes the browser view preference",
     "tests": "PreviewGridTests/theGridUsesIndependentPreferencesAndKeepsDeepSelectionWhenSwitchingToList"
   },
   {
-    "file": "Strata/App/Prefs.swift",
+    "file": "Strata/Model/Prefs.swift",
     "find": "defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.previewIconSize)",
     "replace": "defaults.set(newValue.isFinite ? min(max(newValue, 32), 256) : 80, forKey: Key.gridIconSize)",
     "rule": "Space preview grid: resizing thumbnails never changes browser icon size",

@@ -1,17 +1,5 @@
 import Foundation
 
-nonisolated enum SortKey: String, CaseIterable, Sendable {
-    case name, modified, created, added, size, kind, tags, dimensions, width, height, duration
-    case fileExtension = "extension"
-
-    var isMedia: Bool {
-        switch self {
-        case .dimensions, .width, .height, .duration: true
-        default: false
-        }
-    }
-}
-
 /// Owns the ordering policy independently of native headers and row animation. Results keep their supplied order
 /// until a column is chosen; returning to a folder restores its own choice.
 final class BrowserOrdering {

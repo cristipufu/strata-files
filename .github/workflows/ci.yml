@@ -42,7 +42,7 @@ jobs:
       - name: No unreviewed use of an app-wide instance outside the application's own code
         run: python3 scripts/audit-app-wide.py
 
-      - name: The model names nothing from the interface
+      - name: The layers below the interface name nothing from it
         run: python3 scripts/audit-layers.py
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}

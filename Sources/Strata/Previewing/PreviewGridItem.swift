@@ -1,7 +1,5 @@
 import AppKit
 
-enum PreviewViewMode: Int { case list, icons }
-
 /// Reuse the app's icon drawing and typography for real files and virtual archive members alike.
 @MainActor final class PreviewGridItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("PreviewGridItem")

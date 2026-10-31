@@ -2,7 +2,7 @@ import Foundation
 
 /// Executes local file commands with one owner for History, preferences, copy routing and transfers. AppKit keeps
 /// selection, confirmation sheets and presentation; this layer receives the captured items and never rereads a view.
-final class BrowserFileCommands {
+final class FileCommands {
     let transfers: TransferQueue
     var history: OperationLog { transfers.history }
     var copies: CopyProviders { transfers.copies }

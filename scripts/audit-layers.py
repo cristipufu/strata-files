@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Check that the model layer doesn't reach up into the user interface.
+"""Check that the layers below the interface don't reach up into it.
 
-Sources/Strata/Model holds files, History, places and stores; the folders above it (Browser, Window, Views, Sidebar,
-Toolbar, Inspector, Palette, Dock, Settings, Previewing) show them. Part of Model is the StrataModel module, where the
-compiler keeps it apart; the rest compiles into the app, where nothing would stop a model file from naming a window
-controller or a view. This finds every top-level type those interface folders declare and fails when a Model file
-names one: pass what the model needs in (a value, a closure set by the app), or move the type down.
+The lower folders hold what Strata does with files, servers, containers, the index, Ask Strata, projects and previews
+(Model, Transfers, Remote, Containers, Index, AI, Dev, Previews, Support); the interface folders show them (Browser,
+Window, Views, Sidebar, Toolbar, Inspector, Palette, Dock, Settings, Previewing, AppUpdates, and App apart from the
+StrataTheme files compiled from it). Some lower code is in library targets, where the compiler keeps it apart; the
+rest compiles into the app, where nothing would stop it from naming a window controller or a view. This finds every
+top-level type the interface declares and fails when a lower file names one: pass what it needs in (a value, a closure
+set by the app, as CloudStore.foldersShown is), move the type down, or move interface code up to the interface.
 """
 from pathlib import Path
 import re
@@ -16,37 +18,43 @@ from swift_source import code_only  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parent.parent
+LOWER = ["Model", "Transfers", "Remote", "Containers", "Index", "AI", "Dev", "Previews", "Support"]
 INTERFACE = ["Browser", "Window", "Views", "Sidebar", "Toolbar", "Inspector", "Palette", "Dock", "Settings",
-             "Previewing"]
+             "Previewing", "AppUpdates", "App"]
 DECLARATION = re.compile(r"^(?:[a-z@]+(?:\([^)]*\))?\s+)*(?:class|struct|enum|actor|protocol)\s+([A-Z][A-Za-z0-9]*)",
                          re.M)
+# A lower folder's own names: nested types, and properties spelled like types (a server's JSON keys, `let Name`).
+OWN = re.compile(r"\b(?:class|struct|enum|actor|protocol|typealias|let|var|case)\s+`?([A-Z][A-Za-z0-9]*)")
 
 
-def declared(root, folders):
-    names = {}
+def theme_files(root):
+    """The App files compiled into the StrataTheme library, as Package.swift lists them."""
+    manifest = (root / "Package.swift").read_text()
+    listed = re.search(r"let themeSources = \[(.*?)\]", manifest, re.S)
+    return set(re.findall(r'"([^"]+\.swift)"', listed.group(1))) if listed else set()
+
+
+def files(root, folders, skipping=frozenset()):
     for folder in folders:
         for path in sorted((root / "Sources/Strata" / folder).rglob("*.swift")):
-            for name in DECLARATION.findall(code_only(path.read_text())):
-                names.setdefault(name, folder)
-    return names
-
-
-NESTED = re.compile(r"\b(?:class|struct|enum|actor|protocol|typealias)\s+([A-Z][A-Za-z0-9]*)")
+            if not (folder == "App" and path.name in skipping):
+                yield folder, path
 
 
 def check(root):
-    interface = declared(root, INTERFACE)
-    # Its own types, nested ones included: a model's own `Pane` is no interface's.
-    own = {name for path in (root / "Sources/Strata/Model").rglob("*.swift")
-           for name in NESTED.findall(code_only(path.read_text()))}
+    theme = theme_files(root)
+    interface = {}
+    for folder, path in files(root, INTERFACE, theme):
+        for name in DECLARATION.findall(code_only(path.read_text())):
+            interface.setdefault(name, folder)
+    own = {name for _, path in files(root, LOWER) for name in OWN.findall(code_only(path.read_text()))}
     problems = []
-    for path in sorted((root / "Sources/Strata/Model").rglob("*.swift")):
-        code = code_only(path.read_text())
-        for number, line in enumerate(code.splitlines(), 1):
+    for folder, path in files(root, LOWER):
+        for number, line in enumerate(code_only(path.read_text()).splitlines(), 1):
             for name in sorted(set(re.findall(r"\b([A-Z][A-Za-z0-9]*)\b", line))):
                 if name in interface and name not in own:
-                    problems.append(f"{path.relative_to(root)}:{number}: Model names {name} "
-                                    f"({interface[name]}); pass it in or move it down")
+                    problems.append(f"{path.relative_to(root)}:{number}: {folder} names {name} "
+                                    f"({interface[name]}); pass it in, move it down, or move this up")
     return problems
 
 
@@ -55,7 +63,7 @@ def main():
     if problems:
         print("\n".join(problems))
         return 1
-    print("Model names nothing from the interface layers.")
+    print("The layers below the interface name nothing from it.")
     return 0
 
 

@@ -54,7 +54,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let tree = try TestTree("original.txt")
-        let controller = PlanSheetController(urls: [tree.url("original.txt")], baseFolder: tree.root, undoManager: nil, files: BrowserFileCommands(transfers: .shared))
+        let controller = PlanSheetController(urls: [tree.url("original.txt")], baseFolder: tree.root, undoManager: nil, files: FileCommands(transfers: .shared))
         let window = NSPanel(contentRect: NSRect(origin: .zero, size: PlanSheetController.size),
                              styleMask: [.titled], backing: .buffered, defer: false)
         window.contentViewController = controller
