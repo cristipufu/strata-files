@@ -2,8 +2,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// File ▸ New File: an empty "untitled.txt", the next free name when that's taken, never over anything.

@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// A server you browse in Strata: an SFTP host (through your Mac's own `ssh`) or an S3 bucket. Saved without secrets:
 /// SSH logs in with your keys, agent or a password typed when asked; an S3 secret key lives in your keychain.

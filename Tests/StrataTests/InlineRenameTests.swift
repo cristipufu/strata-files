@@ -3,8 +3,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Renaming one item in place (Return, a slow click, File ▸ Rename): only that item changes name, it stays in its

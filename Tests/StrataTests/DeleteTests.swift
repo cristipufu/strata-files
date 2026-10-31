@@ -2,8 +2,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Delete Immediately (⌥⌘⌫) and Empty Trash: only what was chosen goes, never anything beside, above or behind it.

@@ -3,8 +3,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Cut and paste: a paste moves only when the clipboard still holds Strata's own Cut. Once anything else is put there,

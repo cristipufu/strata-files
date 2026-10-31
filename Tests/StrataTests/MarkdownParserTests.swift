@@ -2,8 +2,10 @@ import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// The block structure each kind of Markdown makes, so a change to the parser shows in what it reads.

@@ -3,8 +3,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// The commands that change files (Delete Immediately, Move to Trash, Rename, Cut, Compress…) act on the browser's

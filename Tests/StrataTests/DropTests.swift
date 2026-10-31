@@ -4,8 +4,10 @@ import Testing
 import os
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Drag and drop, as every view decides it: a move on the same disk, a copy with Option or out of a read-only copy, and

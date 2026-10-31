@@ -2,8 +2,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Deleting, moving and renaming on a server: there's no Trash there, so only the chosen items may change. These run

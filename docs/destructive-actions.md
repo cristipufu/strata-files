@@ -180,7 +180,7 @@ on any function that is in neither this table nor a mutation.
 | `Model/SecureStorage :: removeLegacy`, `commit` | Remove the old store names Strata itself used; swap its own temporary into place with `rename()`, which replaces a planted link without following it (`savingAStoreReplacesOnlyItsOwnFile`). |
 | `Model/TagStore :: apply`, `write` | `canTag` (mutated) keeps links and read-only copies out; tags are the item's own metadata. |
 | `Remote/RemoteFiles :: makeFile`, `place`; `Remote/RemoteSession :: upload` | Refuse a taken name, then rename under the server's own refusal (`SFTPBackend.rename`, mutated); swap a fetched file over its placeholder inside the copy; replace a file or link as asked (`uploadingOverALinkReplacesTheLink`), never a folder. |
-| `Remote/S3Client :: download`; `Remote/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | Protocol calls and the copy's own temporary files; the refusals live in the backends (mutated). |
+| `Remote/S3Client :: download`; `Connections/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | Protocol calls and the copy's own temporary files; the refusals live in the backends (mutated). |
 | `Settings/SettingsWindowController :: install` | Goes ahead only when `mayReplace` (mutated) allows. |
 | `Transfers/Archiver :: clearFlagsAndAccessList`, `checkedPermissions`, `markQuarantined`, `run` | Act on the extracted copy in Strata's scratch folder before `check` (mutated) and `place` (mutated). |
 | `Transfers/ArchiveWriter :: run`, `setTimes` | Give items the writer made in Strata's scratch folder their times, through folders `openFolder` (mutated) opens, before `check` (mutated) and `place` (mutated). |
@@ -258,7 +258,7 @@ belong to.
 | `Remote/RemoteCopyStore :: prepare`, `remove` | `RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks`, `removingCopiesNeverFollowsAReplacedRootOrAChildLink` |
 | `Remote/RemoteFiles :: list`, `makeFile`, `rename`, `move`, `fetch`, `place` | `RemoteFilesTests/*`; `ServerSafetyTests/*` |
 | `Remote/RemoteSession :: rename`, `upload` (S3) | `S3Tests` rows above (in `DeleteScopeTests`) |
-| `Remote/S3Client :: download`, `Remote/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | `S3Tests/downloadsStopAtTheListedSize`; `SFTPClientTests/*` |
+| `Remote/S3Client :: download`, `Connections/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | `S3Tests/downloadsStopAtTheListedSize`; `SFTPClientTests/*` |
 | `Settings/SettingsWindowController :: install` | `DeleteScopeTests/theCommandReplacesOnlyItsOwnLink` |
 | `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (Eject) | not a file change; see above |
 | `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `checkItem`, `clearFlagsAndAccessList`, `checkedPermissions`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |

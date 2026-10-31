@@ -3,8 +3,10 @@ import Testing
 import StrataArchiveClient
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Extract writes what the archive service's worker sends, and trusts none of it: these streams are crafted as a worker

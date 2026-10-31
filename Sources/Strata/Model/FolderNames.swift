@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 extension Notification.Name {
     /// A `FolderNames` read found Finder names other than folders' own (object: the `FolderNames`, userInfo `paths`:

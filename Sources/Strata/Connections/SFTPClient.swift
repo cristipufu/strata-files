@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// What an SFTP server says about a file: whatever of these it sent.
 package nonisolated struct SFTPAttributes: Sendable, Equatable {

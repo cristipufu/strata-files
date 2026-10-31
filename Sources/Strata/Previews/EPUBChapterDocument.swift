@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// An EPUB chapter uses the same offline WebKit boundary as an HTML file, without unpacking onto disk.
 package actor EPUBChapterDocument {

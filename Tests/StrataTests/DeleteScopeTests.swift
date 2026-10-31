@@ -2,8 +2,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// What deletes everything in a folder, or replaces what's at a path, must only ever reach the folder or path it's for:

@@ -3,8 +3,10 @@ import Testing
 import StrataArchiveClient
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Extract end to end: the archive service's sandboxed worker reads the archive and Strata writes what it sends. What

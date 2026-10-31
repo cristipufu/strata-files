@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// A named set of tabs, each with one or two pane folders, reopened as a window.
 package nonisolated struct Workspace: Codable, Equatable, Sendable {

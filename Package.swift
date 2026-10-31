@@ -44,44 +44,44 @@ let themeSources = [
 let appModelSources = [
     "ApplicationsFolders.swift",
     "ArchiveCache.swift",
-    "CloudFolders.swift",
-    "CloudStatus.swift",
     "CreatedFolders.swift",
-    "DSStore.swift",
     "FileEntry.swift",
     "FileLayerImports.swift",
     "FileOps.swift",
     "FolderCompare.swift",
-    "FolderNames.swift",
     "Frecency.swift",
-    "LandedFiles.swift",
-    "NewWindowLocation.swift",
     "OperationLog.swift",
     "PlaceChecks.swift",
     "Places.swift",
     "Prefs.swift",
-    "PreviewLayout.swift",
     "Privacy.swift",
     "SavedSearches.swift",
-    "SavedNavigation.swift",
     "ServerConnectionSettings.swift",
     "TagStore.swift",
     "Trash.swift",
-    "ViewSettings.swift",
-    "Workspace.swift",
 ]
 
 let modelSources = [
     "ChosenFile.swift",
+    "CloudFolders.swift",
+    "CloudStatus.swift",
+    "DSStore.swift",
+    "FileFootprint.swift",
     "FileIdentity.swift",
     "FileInfoEditing.swift",
-    "FileFootprint.swift",
+    "FolderNames.swift",
     "FolderSizer.swift",
+    "LandedFiles.swift",
     "MediaInfo.swift",
+    "NewWindowLocation.swift",
     "PipeRead.swift",
+    "PreviewLayout.swift",
+    "SavedNavigation.swift",
     "SecureStorage.swift",
     "ServerConnection.swift",
     "ServerMountSession.swift",
+    "ViewSettings.swift",
+    "Workspace.swift",
 ]
 
 let indexSources = [
@@ -179,13 +179,22 @@ let package = Package(
             exclude: indexSources,
             swiftSettings: strataSwiftSettings
         ),
+        // Talking to servers and container engines: their definitions and credentials, SFTP, Docker's API over its
+        // socket, tar streams, and the downloads and listings their copies share.
+        .target(
+            name: "StrataConnections",
+            dependencies: ["StrataSupport", "StrataModel"],
+            path: "Sources/Strata/Connections",
+            swiftSettings: strataSwiftSettings
+        ),
         // The file layer: files, History, transfers, servers and containers. It names nothing of the interface.
         .target(
             name: "StrataFiles",
             dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataPreviews", "StrataIndex",
-                           "StrataArchiveClient"],
+                           "StrataArchiveClient", "StrataConnections"],
             path: "Sources/Strata",
-            exclude: ["AI", "App", "AppUpdates", "Browser", "Dev", "Dock", "Index", "Inspector", "main.swift", "Palette",
+            exclude: ["AI", "App", "AppUpdates", "Browser", "Connections", "Dev", "Dock", "Index", "Inspector", "main.swift",
+                      "Palette",
                       "Previewing", "Previews", "Settings", "Sidebar", "Support", "Toolbar", "Views", "Window"]
                 + modelSources.map { "Model/\($0)" },
             sources: ["Transfers", "Remote", "Containers"] + appModelSources.map { "Model/\($0)" },
@@ -206,7 +215,8 @@ let package = Package(
                 "StrataSearch",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "AI", "Dev", "Index"]
+            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "Connections", "AI", "Dev",
+                      "Index"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
                 + appModelSources.map { "Model/\($0)" }
@@ -234,6 +244,7 @@ let package = Package(
                 "StrataModel",
                 "StrataPreviews",
                 "StrataIndex",
+                "StrataConnections",
                 "StrataFiles",
                 "StrataAI",
                 "StrataDev",

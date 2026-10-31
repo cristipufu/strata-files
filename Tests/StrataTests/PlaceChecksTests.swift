@@ -2,8 +2,10 @@ import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// The folders and disks Strata offers are read away from the main thread: lists show what was last read, and a read

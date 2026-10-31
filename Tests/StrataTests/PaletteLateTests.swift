@@ -2,8 +2,10 @@ import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// ⌘K looks up a typed path, and `github/acme`-style paths, away from the main thread: they join the results when

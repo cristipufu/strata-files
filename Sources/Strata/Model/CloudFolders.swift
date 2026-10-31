@@ -1,5 +1,4 @@
 import Foundation
-import StrataModel
 
 package nonisolated struct CloudFolder: Equatable, Sendable {
     package let url: URL

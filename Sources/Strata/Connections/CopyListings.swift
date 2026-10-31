@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// Listing bookkeeping owned by the provider's actor. Starting, invalidating and finishing a request are synchronous
 /// decisions on that actor; the provider only suspends while awaiting the returned task. Payloads and freshness
@@ -16,6 +18,8 @@ package nonisolated struct CopyListings: Sendable {
 
     private var running: [String: Running] = [:]
     private var freshUntil: [String: Date] = [:]
+
+    package init() {}
 
     /// Nil for a fresh listing. Otherwise every caller gets the same request until it finishes.
     package mutating func request(for key: String, now: Date = Date(), start: () -> Task<TimeInterval?, Never>) -> Request? {

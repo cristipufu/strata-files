@@ -2,8 +2,10 @@ import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Open With is filled the first time it opens, away from the main thread, not on every right-click.

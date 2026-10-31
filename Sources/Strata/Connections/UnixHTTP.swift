@@ -1,5 +1,7 @@
 import Darwin
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// A small HTTP/1.1 client over a Unix domain socket, for a container engine's API (Docker's, and the engines that
 /// speak it: OrbStack, Colima, Podman, Rancher Desktop). Blocking: call it off the main thread.

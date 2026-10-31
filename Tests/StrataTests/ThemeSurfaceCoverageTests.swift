@@ -3,8 +3,10 @@ import SwiftUI
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 // These share the serialized suite because ThemeStyle is process-wide, just like the app’s appearance.

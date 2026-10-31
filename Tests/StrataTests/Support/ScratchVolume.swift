@@ -3,8 +3,10 @@ import Foundation
 import Synchronization
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// A disk of its own for a test (a small disk image, attached without showing in Finder and detached when the test

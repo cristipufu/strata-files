@@ -3,8 +3,10 @@ import CryptoKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// History is written away from the main thread and its window checks its rows there too: each write is of the

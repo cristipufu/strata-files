@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// Rendered Markdown: headings, lists, quotes, highlighted code blocks, tables and clickable links.
 package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {

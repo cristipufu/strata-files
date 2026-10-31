@@ -1387,42 +1387,42 @@
     "tests": "DirectoryReadSessionTests/aPendingColumnRevealDoesNotOverrideARenameRequestedWhileItLoads"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "if let current = running[key] { return current.request }",
     "replace": "if false, let current = running[key] { return current.request }",
     "rule": "Copy listing coordination starts a second read for an already running folder",
     "tests": "CopyListingsTests/callersShareOneReadAndFreshnessExpiresAtItsBoundary"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "guard current.request.id == request.id else { return true }",
     "replace": "// Mutation: accept an obsolete completion.",
     "rule": "Copy listing coordination lets an old waiter erase its replacement",
     "tests": "CopyListingsTests/lateWaitersCannotEraseTheReplacementOrMakeTheirOldResponseFresh"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "if current.invalidated { return true }",
     "replace": "if false { return true }",
     "rule": "Copy listing coordination marks an invalidated response fresh",
     "tests": "CopyListingsTests/lateWaitersCannotEraseTheReplacementOrMakeTheirOldResponseFresh"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "key == path || key.hasPrefix(path == \"/\" ? \"/\" : path + \"/\")",
     "replace": "key.hasPrefix(path)",
     "rule": "Copy listing coordination invalidates neighboring names as descendants",
     "tests": "CopyListingsTests/invalidationIncludesDescendantsButNeverLookalikesOrOtherCopies"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "freshUntil = freshUntil.filter { !Self.contains($0.key, under: path) }",
     "replace": "// Mutation: keep expired listings.",
     "rule": "Copy listing coordination keeps cached listings after invalidation",
     "tests": "CopyListingsTests/invalidationIncludesDescendantsButNeverLookalikesOrOtherCopies"
   },
   {
-    "file": "Strata/Remote/CopyListings.swift",
+    "file": "Strata/Connections/CopyListings.swift",
     "find": "running = running.filter { !Self.contains($0.key, under: path) }",
     "replace": "// Mutation: keep removed requests.",
     "rule": "Copy listing coordination lets a removed copy retain its pending read",
@@ -1457,49 +1457,49 @@
     "tests": "CopyListingsTests/discardingAContainerCopyDrainsItsListingBeforeRemovingIt"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "if let current = join(path, kind: kind) { return current }",
     "replace": "if false, let current = join(path, kind: kind) { return current }",
     "rule": "Copy fetch coordination starts another download for a shared request",
     "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "running[key]?.waiters.insert(request.waiter)",
     "replace": "// Mutation: forget the joining caller.",
     "rule": "Copy fetch coordination does not count another reader before cancellation",
     "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "if running[key]?.waiters.isEmpty == true { request.task.cancel() }",
     "replace": "request.task.cancel()",
     "rule": "Copy fetch coordination cancels another readers download",
     "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "if running[key]?.waiters.isEmpty == true { request.task.cancel() }",
     "replace": "// Mutation: ignore the last cancellation.",
     "rule": "Copy fetch coordination keeps downloading after every reader stops",
     "tests": "CopyFetchesTests/sharedFetchesKeepOneWaitPerCallerAndCancelOnlyAfterTheLastStops"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "if running[key]?.id == request.operation { running[key] = nil }",
     "replace": "running[key] = nil",
     "rule": "Copy fetch coordination lets an old waiter remove a new download",
     "tests": "CopyFetchesTests/oldWaitersCannotCancelOrRemoveAReplacementAfterSuccessOrFailure"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "running = running.filter { !Self.contains($0.key.path, under: path) }",
     "replace": "// Mutation: keep completed requests after removing the copy.",
     "rule": "Copy fetch coordination reopens onto the removed downloads",
     "tests": "CopyFetchesTests/reopeningAfterTeardownCannotJoinOrCancelTheRemovedDownload"
   },
   {
-    "file": "Strata/Remote/CopyFetches.swift",
+    "file": "Strata/Connections/CopyFetches.swift",
     "find": "key == path || key.hasPrefix(path == \"/\" ? \"/\" : path + \"/\")",
     "replace": "key.hasPrefix(path)",
     "rule": "Copy fetch coordination stops downloads in a neighboring copy",
@@ -2334,63 +2334,63 @@
     "tests": "ServerAddressTests/shareAddressesAcceptOrdinaryTextAndRejectEmbeddedControls"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "let updated = access.update(base as CFDictionary, changes as CFDictionary)",
     "replace": "_ = access.delete(base as CFDictionary)\n        let updated = access.update(base as CFDictionary, changes as CFDictionary)",
     "rule": "Remote credentials never deletes a working secret before replacing it",
     "tests": "RemoteKeychainTests/replacingASecretKeepsTheOriginalWhenSecurityRefusesTheUpdate"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "guard updated == errSecItemNotFound else { return false }",
     "replace": "guard true else { return false }",
     "rule": "Remote credentials returns update errors without trying to create another item",
     "tests": "RemoteKeychainTests/replacingASecretKeepsTheOriginalWhenSecurityRefusesTheUpdate"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "return access.update(base as CFDictionary, changes as CFDictionary) == errSecSuccess",
     "replace": "return true",
     "rule": "Remote credentials handles concurrent creation with a checked in-place update",
     "tests": "RemoteKeychainTests/anotherCreatorIsUpdatedInPlaceAndFailedRetriesLeaveItsItemIntact"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "kSecAttrAccount as String: server.id",
     "replace": "kSecAttrGeneric as String: server.id",
     "rule": "Remote credentials scopes reads and deletion to the selected server account",
     "tests": "RemoteKeychainTests/readsAndDeletesStayWithTheirStoreAndExactServer"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "kSecAttrService as String: Self.service",
     "replace": "kSecAttrGeneric as String: Self.service",
     "rule": "Remote credentials never changes another service’s credentials",
     "tests": "RemoteKeychainTests/readsAndDeletesStayWithTheirStoreAndExactServer"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "return String(data: data, encoding: .utf8)",
     "replace": "return String(data: data, encoding: .utf8) ?? \"\"",
     "rule": "Remote credentials refuses malformed credential bytes before constructing a backend",
     "tests": "RemoteKeychainTests/unreadableCredentialsNeverChangeTheStoreOrConstructAnAuthenticatedBackend"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "kSecAttrLabel as String: \"Strata S3: \\(server.bucket ?? server.host)\"]",
     "replace": "kSecAttrLabel as String: \"Strata S3: \\(server.bucket ?? server.host)\", kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked]",
     "rule": "Remote credentials preserves an existing item’s native protection",
     "tests": "RemoteKeychainTests/creationAndReplacementKeepExactIdentityAndNativeProtection"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked",
     "replace": "// Omit the new item protection.",
     "rule": "Remote credentials sets native protection when creating a credential",
     "tests": "RemoteKeychainTests/creationAndReplacementKeepExactIdentityAndNativeProtection"
   },
   {
-    "file": "Strata/Remote/RemoteKeychain.swift",
+    "file": "Strata/Connections/RemoteKeychain.swift",
     "find": "guard status == errSecSuccess, let data = result as? Data else { return nil }",
     "replace": "guard let data = result as? Data else { return nil }",
     "rule": "Remote credentials never accepts returned data with an error status",
@@ -2803,7 +2803,7 @@
     "tests": "RemoteCopyOwnershipTests/batchWritesValidateEverySourceOwnerBeforeChangingAnything"
   },
   {
-    "file": "Strata/Remote/SFTPClient.swift",
+    "file": "Strata/Connections/SFTPClient.swift",
     "find": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 1)",
     "replace": "fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 0)",
     "rule": "SFTP pipe ownership a closed child input terminates the application",
@@ -3814,7 +3814,7 @@
     "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
   },
   {
-    "file": "Strata/Remote/RemoteServer.swift",
+    "file": "Strata/Connections/RemoteServer.swift",
     "find": "        UUID(uuidString: id)?.uuidString == id",
     "replace": "        UUID(uuidString: id) != nil",
     "rule": "Shared operation safety server IDs accept non-canonical UUID casing",
@@ -4343,7 +4343,7 @@
     "replace": "guard depth <= treeDepthLimit else"
   },
   {
-    "file": "Strata/Remote/RemoteServer.swift",
+    "file": "Strata/Connections/RemoteServer.swift",
     "rule": "Security review: Terminal sessions disable inherited forwarding",
     "tests": "SecurityReviewTests/terminalSessions",
     "find": "var arguments = [\"/usr/bin/ssh\", \"-t\", \"-o\", \"ForwardAgent=no\", \"-o\", \"ForwardX11=no\", \"-o\", \"ClearAllForwardings=yes\"]",

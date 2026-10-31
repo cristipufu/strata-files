@@ -3,8 +3,10 @@ import os
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Against macOS's own `sftp-server` (what `ssh -s host sftp` runs on a server), over a pipe: no network, no login.

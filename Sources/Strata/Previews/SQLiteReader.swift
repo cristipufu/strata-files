@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import StrataSupport
 
 nonisolated package struct SQLiteTable: Sendable {
     package let name: String

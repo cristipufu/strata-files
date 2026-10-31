@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 import Security
 
 /// Synchronous Security calls stay at this boundary. Independent credential stores can exercise errors and races

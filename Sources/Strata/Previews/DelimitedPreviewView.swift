@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// CSV and TSV as a grid: the first row is the header, then up to `DelimitedLoader.rowLimit` rows.
 package final class DelimitedPreviewView: PreviewView {

@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// One entry of a tar stream.
 package nonisolated struct TarEntry: Sendable, Equatable {
@@ -45,6 +47,8 @@ package nonisolated struct TarReader {
     private var longLink: String?
     private var pax: [String: String] = [:]
     private var zeroBlocks = 0
+
+    package init() {}
 
     /// Longest long-name or PAX block accepted.
     private static let metaLimit: Int64 = 1 << 20

@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import StrataModel
+import StrataSupport
 
 /// One WebKit lifetime. Both resource delivery and navigation are refused after closure.
 @MainActor package final class HTMLWebSession: NSObject, WKURLSchemeHandler, WKNavigationDelegate, WKUIDelegate {

@@ -1,8 +1,10 @@
 import Foundation
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Blocking fixture tools use a dedicated queue so Process.waitUntilExit cannot pump a nested AppKit run loop

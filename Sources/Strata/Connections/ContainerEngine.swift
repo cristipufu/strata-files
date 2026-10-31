@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// A container engine Strata can read: Docker Desktop, OrbStack, Colima, Podman, Rancher Desktop, Lima or Docker Engine,
 /// reached through the Docker API on its socket.
@@ -10,6 +12,12 @@ package nonisolated struct ContainerEngine: Sendable, Equatable {
     package let name: String
     /// The API version requests are made with ("1.41"), the engine's own.
     package let apiVersion: String
+
+    package init(socket: String, name: String, apiVersion: String) {
+        self.socket = socket
+        self.name = name
+        self.apiVersion = apiVersion
+    }
 
     /// `/v1.41/containers/json`: a path in this engine's API.
     package func path(_ endpoint: String) -> String { "/v\(apiVersion)\(endpoint)" }

@@ -1,4 +1,6 @@
 import Foundation
+import StrataModel
+import StrataSupport
 
 /// Fetch bookkeeping owned by the provider's actor. Each caller owns one wait; cancelling that wait stops the
 /// download only when no other caller needs it. The provider awaits completion before releasing the request.
@@ -21,6 +23,8 @@ package nonisolated struct CopyFetches: Sendable {
         var waiters: Set<UUID> = []
     }
     private var running: [Key: Running] = [:]
+
+    package init() {}
 
     package mutating func join(_ path: String, kind: Kind = .file) -> Request? {
         let key = Key(path: path, kind: kind)

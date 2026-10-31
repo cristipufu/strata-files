@@ -2,8 +2,10 @@ import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// The Inspector keeps the main thread free: hidden, it reads nothing about the selection, and shown, it reads an

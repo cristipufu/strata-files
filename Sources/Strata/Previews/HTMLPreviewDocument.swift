@@ -2,6 +2,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import StrataModel
+import StrataSupport
 
 nonisolated package struct HTMLPreviewResource: Sendable {
     package let data: Data

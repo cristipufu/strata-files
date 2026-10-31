@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// Why a rich preview couldn't show a file.
 nonisolated package enum PreviewError: Error {
@@ -75,7 +76,7 @@ package class PreviewView: NSView {
             switch result {
             case .success(let value):
                 apply(value)
-            case .failure(PreviewError.unsupported):
+            case .failure(PreviewError.unsupported), .failure(is TextFile.NotText):
                 if let fallback { fallback() } else { showMessage(symbol: "eye.slash", String(localized: "No Preview Available")) }
             case .failure(PreviewError.message(let text, let symbol)):
                 showMessage(symbol: symbol, text)

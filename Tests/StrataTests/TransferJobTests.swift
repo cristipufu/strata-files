@@ -3,8 +3,10 @@ import Foundation
 import Testing
 @testable import Strata
 @testable import StrataAI
+@testable import StrataConnections
 @testable import StrataDev
 @testable import StrataFiles
+@testable import StrataModel
 @testable import StrataSearch
 
 /// Whole copy and move jobs, as drag and drop, paste and Copy/Move to Other Pane run them: only the items sent go, a

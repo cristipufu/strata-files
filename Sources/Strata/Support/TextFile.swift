@@ -8,18 +8,28 @@ nonisolated package struct TextFile: Sendable {
     /// True when the file is longer than what was read.
     package let isTruncated: Bool
 
-    /// Reads at most `limit` bytes of `url`, cut at a line boundary. Throws `PreviewError.unsupported` for binary data.
+    package init(text: String, isTruncated: Bool) {
+        self.text = text
+        self.isTruncated = isTruncated
+    }
+
+    /// Not a regular file of text: binary data, a device, a pipe (a preview leaves it to Quick Look).
+    package struct NotText: Error {
+        package init() {}
+    }
+
+    /// Reads at most `limit` bytes of `url`, cut at a line boundary. Throws `NotText` for binary data.
     package static func read(_ url: URL, limit: Int = TextFile.limit) throws -> TextFile {
         let (data, truncated) = try readPrefix(url, limit: limit)
         var bytes = data
         if truncated, let lastNewline = bytes.lastIndex(of: 0x0A) { bytes = bytes[..<lastNewline] }
-        guard let text = decode(bytes) else { throw PreviewError.unsupported }
+        guard let text = decode(bytes) else { throw NotText() }
         return TextFile(text: normalizeNewlines(text), isTruncated: truncated)
     }
 
     /// Up to `limit` bytes from the start of `url`, and whether there was more.
     package static func readPrefix(_ url: URL, limit: Int) throws -> (Data, Bool) {
-        guard limit >= 0, limit < Int.max else { throw PreviewError.unsupported }
+        guard limit >= 0, limit < Int.max else { throw NotText() }
         // A name ending in .txt can still be a FIFO or a device. Open without waiting for a writer and
         // inspect that descriptor, so a path replacement cannot bypass the regular-file check.
         let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
@@ -27,7 +37,7 @@ nonisolated package struct TextFile: Sendable {
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
         var status = stat()
-        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { throw PreviewError.unsupported }
+        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { throw NotText() }
         let data = try handle.read(upToCount: limit + 1) ?? Data()
         return data.count > limit ? (data.prefix(limit), true) : (data, false)
     }
