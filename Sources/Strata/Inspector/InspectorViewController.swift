@@ -272,20 +272,43 @@ final class InspectorViewController: NSViewController {
     /// Shows `entries`, or `folder` when the selection is empty. Calling again with the same items only refreshes metadata.
     func show(entries: [FileEntry], folder: FileEntry?, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
         let items = entries.isEmpty ? [folder].compactMap { $0 } : entries
-        // The project section follows a single selected folder, or the current folder when nothing is selected; never in
-        // a read-only copy (a container's scripts are not this Mac's to run).
+        showProject(of: items)
+        updateSummary(for: items)
+        let urls = items.map(\.url)
+        let sameItems = urls == shownURLs
+        shownURLs = urls
+        updateTags(of: items, sameItems: sameItems)
+        updateInfoCards(of: items)
+        guard let first = items.first else { return showNothing() }
+        if items.count == 1 {
+            showSingleItem(first, folderSize: folderSize, canMeasure: canMeasure)
+            if !sameItems || canPreview(first) != previewingContent {
+                schedulePreview(first)
+            }
+        } else {
+            showSelection(items, folderSize: folderSize, canMeasure: canMeasure)
+            if !sameItems {
+                hidePreview()
+                iconView.isHidden = false
+                showIcons(of: items)
+            }
+        }
+    }
+
+    /// The project section follows a single selected folder, or the current folder when nothing is selected; never in
+    /// a read-only copy (a container's scripts are not this Mac's to run).
+    private func showProject(of items: [FileEntry]) {
         let projectFolder = items.count == 1 && items[0].isFolder && !isReadOnlyCopy(items[0].url) && FileOps.canTrash(spelled: items[0].url, copies: services.copies) ? items[0].url : nil
         loadProject(projectFolder)
         composeFolder = projectFolder
         composeView.configure(projectFolder)
         containerView.configure(url: items.first?.url)
-        updateSummary(for: items)
-        let urls = items.map(\.url)
-        let sameItems = urls == shownURLs
-        shownURLs = urls
-        // Volumes, links and archives opened as folders don't take tags. A refresh while you type leaves your typing alone.
-        // Typing in the tag field belongs to the items it was opened on: a new selection (or a hidden field) ends it,
-        // applying what was typed to those items.
+    }
+
+    /// Volumes, links and archives opened as folders don't take tags. A refresh while you type leaves your typing alone.
+    /// Typing in the tag field belongs to the items it was opened on: a new selection (or a hidden field) ends it,
+    /// applying what was typed to those items.
+    private func updateTags(of items: [FileEntry], sameItems: Bool) {
         let taggable = !items.isEmpty
             && !items.contains { $0.isVolume || isReadOnlyCopy($0.url) || !TagStore.canTag($0, copies: services.copies) }
         if tagField.currentEditor() != nil, !sameItems || !taggable {
@@ -296,115 +319,143 @@ final class InspectorViewController: NSViewController {
         tagField.undo = view.window?.undoManager
         tagField.errorWindow = view.window
         if !sameItems {
-            tagField.urls = urls
+            tagField.urls = items.map(\.url)
         } else if tagField.currentEditor() == nil {
             tagField.reload()
         }
+    }
 
-        // Get Info's settings: one real item (not a disk, a link, or a temporary copy inside an archive).
+    /// Get Info's settings: one real item (not a disk, a link, or a temporary copy inside an archive).
+    private func updateInfoCards(of items: [FileEntry]) {
         let editable = items.count == 1 && !items[0].isVolume && !items[0].isSymlink && !isReadOnlyCopy(items[0].url)
         if editable { infoEditor.show(items[0]) } else { infoEditor.hide() }
         commentsCard.isHidden = !editable
         openWithCard.isHidden = !editable || !infoEditor.hasOpenWith
         permissionsCard.isHidden = !editable
+    }
 
-        guard let first = items.first else {
-            titleLabel.stringValue = ""
-            subtitleLabel.stringValue = ""
-            setRows([])
-            previewWork?.cancel()
-            previewingContent = false
-            removeRichPreview()
-            preview.clear()
-            preview.isHidden = true
-            iconView.isHidden = true
-            return
-        }
+    private func showNothing() {
+        titleLabel.stringValue = ""
+        subtitleLabel.stringValue = ""
+        setRows([])
+        hidePreview()
+        iconView.isHidden = true
+    }
 
-        if items.count == 1 {
-            let entry = first
-            showSingleItem(entry, folderSize: folderSize, canMeasure: canMeasure)
-            let canShowPreview = canPreview(entry)
-            if !sameItems || canShowPreview != previewingContent {
-                schedulePreview(entry)
-            }
-        } else {
-            titleLabel.stringValue = String(localized: "\(items.count) items", comment: "plural")
-            let known = items.compactMap { item -> Int64? in
-                guard item.isDirectory else { return item.size }
-                return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes
-            }
-            let total = known.saturatingSum
-            // Symlinked folders, volumes, provider copies and folders macOS guards aren't measured: their size never
-            // arrives, so they mustn't leave the total "calculating" forever.
-            let unmeasured = items.filter { item in
-                guard item.isDirectory else { return false }
-                if services.copies.contains(item.url) { return true }
-                guard folderSize(item.url) == nil else { return false }
-                return !canMeasure(item) || item.isSymlink || item.isVolume
-                    || Privacy.measuringWouldPrompt(item.url, browsing: item.url.deletingLastPathComponent())
-            }.count
-            let pending = known.count + unmeasured < items.count
-            subtitleLabel.stringValue = Format.bytes(total) + (pending || unmeasured > 0 ? "+" : "")
-            let folders = items.filter(\.isFolder).count
-            let totalText = pending ? String(localized: "\(Format.bytes(total)) (calculating…)", comment: "Inspector: a total size still being worked out")
-                : unmeasured > 0 ? String(localized: "\(Format.bytes(total)) (\(unmeasured) folders not measured)", comment: "plural")
-                : Format.bytes(total)
-            setRows([
-                (String(localized: "Folders", comment: "Inspector row: how many folders are selected"), InspectorRows.text(folders.formatted())),
-                (String(localized: "Files", comment: "Inspector row: how many files are selected"), InspectorRows.text((items.count - folders).formatted())),
-                (String(localized: "Total", comment: "Inspector row: the selection’s total size"), InspectorRows.text(totalText)),
-            ])
-            if !sameItems {
-                previewWork?.cancel()
-                previewingContent = false
-                removeRichPreview()
-                preview.clear()
-                preview.isHidden = true
-                iconView.isHidden = false
-                showIcons(of: items)
-            }
+    private func hidePreview() {
+        previewWork?.cancel()
+        previewingContent = false
+        removeRichPreview()
+        preview.clear()
+        preview.isHidden = true
+    }
+
+    /// Several items: how many folders and files, and their total size as far as it's known.
+    private func showSelection(_ items: [FileEntry], folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
+        titleLabel.stringValue = String(localized: "\(items.count) items", comment: "plural")
+        let size = selectionSize(items, folderSize: folderSize, canMeasure: canMeasure)
+        subtitleLabel.stringValue = Format.bytes(size.total) + (size.pending || size.unmeasured > 0 ? "+" : "")
+        let folders = items.filter(\.isFolder).count
+        let totalText = size.pending ? String(localized: "\(Format.bytes(size.total)) (calculating…)", comment: "Inspector: a total size still being worked out")
+            : size.unmeasured > 0 ? String(localized: "\(Format.bytes(size.total)) (\(size.unmeasured) folders not measured)", comment: "plural")
+            : Format.bytes(size.total)
+        setRows([
+            (String(localized: "Folders", comment: "Inspector row: how many folders are selected"), InspectorRows.text(folders.formatted())),
+            (String(localized: "Files", comment: "Inspector row: how many files are selected"), InspectorRows.text((items.count - folders).formatted())),
+            (String(localized: "Total", comment: "Inspector row: the selection’s total size"), InspectorRows.text(totalText)),
+        ])
+    }
+
+    /// `pending`: some sizes are still being measured. Symlinked folders, volumes, provider copies and folders macOS
+    /// guards aren't measured (`unmeasured`): their size never arrives, so they mustn't leave the total "calculating"
+    /// forever.
+    private func selectionSize(_ items: [FileEntry], folderSize: (URL) -> FolderSize?,
+                               canMeasure: (FileEntry) -> Bool) -> (total: Int64, pending: Bool, unmeasured: Int) {
+        let known = items.compactMap { item -> Int64? in
+            guard item.isDirectory else { return item.size }
+            return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes
         }
+        let unmeasured = items.filter { item in
+            guard item.isDirectory else { return false }
+            if services.copies.contains(item.url) { return true }
+            guard folderSize(item.url) == nil else { return false }
+            return !canMeasure(item) || item.isSymlink || item.isVolume
+                || Privacy.measuringWouldPrompt(item.url, browsing: item.url.deletingLastPathComponent())
+        }.count
+        return (known.saturatingSum, known.count + unmeasured < items.count, unmeasured)
+    }
+
+    /// Where an item appears to be, since things are described there: inside an archive opened as a folder, in a
+    /// container's files or on a server, rather than in Strata's copy of them.
+    private struct Placement {
+        let apparent: URL?
+        let container: (source: ContainerSource, top: URL)?
+        let containerPath: String?
+        let server: (server: RemoteServer, top: URL)?
+        let serverPath: String?
+    }
+
+    private func placement(of url: URL) -> Placement {
+        let container = services.copies.containerCopies.copy(containing: url)
+        let server = services.remote.copies.server(containing: url)
+        return Placement(apparent: ArchiveCache.apparentURL(url), container: container,
+                         containerPath: container.flatMap { ContainerCopies.containerPath(of: url, top: $0.top) },
+                         server: server, serverPath: server.flatMap { RemoteCopies.remotePath(of: url, top: $0.top) })
     }
 
     private func showSingleItem(_ entry: FileEntry, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
-        // Inside an archive opened as a folder, things are described where they appear: in the archive.
-        let apparent = ArchiveCache.apparentURL(entry.url)
-        let containerCopies = services.copies.containerCopies
-        let container = containerCopies.copy(containing: entry.url)
-        let containerPath = container.flatMap { ContainerCopies.containerPath(of: entry.url, top: $0.top) }
-        let server = services.remote.copies.server(containing: entry.url)
-        let serverPath = server.flatMap { RemoteCopies.remotePath(of: entry.url, top: $0.top) }
+        let place = placement(of: entry.url)
         let isCopy = services.copies.contains(entry.url)
-        titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.displayName
-            : containerPath == "/" ? container?.source.name ?? entry.displayName
-            : containerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url, copies: services.copies, names: services.folderNames)
-            : apparent.map { Places.displayName($0, copies: services.copies, names: services.folderNames) } ?? entry.displayName
+        titleLabel.stringValue = title(of: entry, place: place)
         let directorySize = entry.isDirectory && !isCopy ? folderSize(entry.url) : nil
         let size = entry.isDirectory ? directorySize.map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
         subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
-        var rows: [(String, NSView)] = []
+        var rows = [sizeRow(entry, directorySize: directorySize, isCopy: isCopy, canMeasure: canMeasure)].compactMap { $0 }
+        if let dimensions = imageDimensions(entry, at: rows.count) {
+            rows.append((Self.dimensionsTitle, InspectorRows.text(dimensions)))
+        }
+        rows += dateRows(entry, isCopy: isCopy)
+        if let row = whereRow(entry, place: place, isCopy: isCopy) {
+            rows.append(row)
+        }
+        if let cloud = services.cloud.status(for: entry.url) {
+            rows.append((String(localized: "Cloud", comment: "Inspector row: iCloud or File Provider download status"), InspectorRows.text(cloud.label)))
+        }
+        setRows(rows)
+    }
+
+    private func title(of entry: FileEntry, place: Placement) -> String {
+        place.serverPath == "/" ? place.server?.server.name ?? entry.displayName
+            : place.containerPath == "/" ? place.container?.source.name ?? entry.displayName
+            : services.copies.containerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url, copies: services.copies, names: services.folderNames)
+            : place.apparent.map { Places.displayName($0, copies: services.copies, names: services.folderNames) } ?? entry.displayName
+    }
+
+    private func sizeRow(_ entry: FileEntry, directorySize: FolderSize?, isCopy: Bool,
+                         canMeasure: (FileEntry) -> Bool) -> (String, NSView)? {
         let sizeTitle = String(localized: "Size", comment: "Inspector row: how big the item is")
         if entry.isDirectory {
             if let size = directorySize {
                 let files = String(localized: "\(size.files) files", comment: "plural")
-                rows.append((sizeTitle, InspectorRows.text("\(Format.bytes(size.bytes)) · \(files)")))
+                return (sizeTitle, InspectorRows.text("\(Format.bytes(size.bytes)) · \(files)"))
             } else if !isCopy, canMeasure(entry) {
-                rows.append((sizeTitle, InspectorRows.text(String(localized: "Calculating…"))))
+                return (sizeTitle, InspectorRows.text(String(localized: "Calculating…")))
             } else if entry.isVolume || entry.isSymlink || isCopy {
-                rows.append((sizeTitle, InspectorRows.text("—")))
+                return (sizeTitle, InspectorRows.text("—"))
             } else {
-                rows.append((sizeTitle, InspectorRows.text(String(localized: "Needs Full Disk Access", comment: "Inspector: a folder’s size can’t be measured without Full Disk Access"))))
+                return (sizeTitle, InspectorRows.text(String(localized: "Needs Full Disk Access", comment: "Inspector: a folder’s size can’t be measured without Full Disk Access")))
             }
         } else if let bytes = entry.size {
             // The exact byte count only adds information once the size is rounded to KB or more.
-            rows.append((sizeTitle, InspectorRows.text(bytes < 1000 ? Format.bytes(bytes)
-                : String(localized: "\(Format.bytes(bytes)) (\(Int(bytes)) bytes)", comment: "plural"))))
+            return (sizeTitle, InspectorRows.text(bytes < 1000 ? Format.bytes(bytes)
+                : String(localized: "\(Format.bytes(bytes)) (\(Int(bytes)) bytes)", comment: "plural")))
         }
-        if let dimensions = imageDimensions(entry, at: rows.count) {
-            rows.append((Self.dimensionsTitle, InspectorRows.text(dimensions)))
-        }
-        // A container's or a server's files have their modification dates; created and added would be the copy's.
+        return nil
+    }
+
+    /// A container's or a server's files have their modification dates; created and added would be the copy's.
+    private func dateRows(_ entry: FileEntry, isCopy: Bool) -> [(String, NSView)] {
+        var rows: [(String, NSView)] = []
         if !isCopy {
             rows.append((String(localized: "Created", comment: "Inspector row: creation date"), InspectorRows.text(Format.longDate(entry.created))))
         }
@@ -412,43 +463,46 @@ final class InspectorViewController: NSViewController {
         if !isCopy, let added = entry.added {
             rows.append((String(localized: "Added", comment: "Inspector row: date the item was added to its folder"), InspectorRows.text(Format.longDate(added))))
         }
-        // Where: the folder by name (and its path on one line); clicking shows it with the item selected. Inside an
-        // archive opened as a folder, it's where the item appears to be; the archive's own top is the archive, in
-        // the archive's folder.
+        return rows
+    }
+
+    /// Where: the folder by name (and its path on one line); clicking shows it with the item selected. Inside an
+    /// archive opened as a folder, it's where the item appears to be; the archive's own top is the archive, in
+    /// the archive's folder.
+    private func whereRow(_ entry: FileEntry, place: Placement, isCopy: Bool) -> (String, NSView)? {
         let target: (folder: URL, item: URL)
         if let (archive, top) = ArchiveCache.archive(containing: entry.url), top.standardizedFileURL == entry.url.standardizedFileURL {
             target = (archive.deletingLastPathComponent(), archive)
         } else {
             target = (entry.url.deletingLastPathComponent(), entry.url)
         }
-        let shownFolder = (apparent ?? entry.url).deletingLastPathComponent()
-        // In a container's files: the folder in the container ("web:/etc"), not Strata's copy of it. At the top, the
-        // container's name with its engine under it.
-        let inContainer: (name: String, location: String, leadsHere: Bool)? = container.flatMap { copy in
-            guard let path = containerPath, path != "/" else { return nil }
+        let shownFolder = (place.apparent ?? entry.url).deletingLastPathComponent()
+        let inCopy = copyLocation(place)
+        looks.keep(only: [target.folder, shownFolder])
+        guard !isCopy || inCopy != nil else { return nil }
+        return (String(localized: "Where", comment: "Inspector row: the folder the item is in"),
+                InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inCopy?.name,
+                                      location: inCopy?.location,
+                                      locationLeadsHere: inCopy?.leadsHere ?? true, looks: looks) { [weak self] in
+                    self?.onShowFolder?(target.folder, target.item)
+                })
+    }
+
+    /// In a container's files: the folder in the container ("web:/etc"), not Strata's copy of it; at the top, the
+    /// container's name with its engine under it. On a server: the folder there ("web-1:/srv/app"); at the top, the
+    /// server's name with its address.
+    private func copyLocation(_ place: Placement) -> (name: String, location: String, leadsHere: Bool)? {
+        place.container.flatMap { copy in
+            guard let path = place.containerPath, path != "/" else { return nil }
             let folder = (path as NSString).deletingLastPathComponent
             return folder == "/" ? (copy.source.name, copy.source.engineName, false)
                 : ((folder as NSString).lastPathComponent, "\(copy.source.name):" + ((folder as NSString).deletingLastPathComponent), true)
-        } ?? server.flatMap { copy in
-            // On a server: the folder there ("web-1:/srv/app"); at the top, the server's name with its address.
-            guard let path = serverPath, path != "/" else { return nil }
+        } ?? place.server.flatMap { copy in
+            guard let path = place.serverPath, path != "/" else { return nil }
             let folder = RemotePath.parent(path)
             return folder == "/" ? (copy.server.name, copy.server.address, false)
                 : (RemotePath.name(folder), "\(copy.server.name):" + RemotePath.parent(folder), true)
         }
-        looks.keep(only: [target.folder, shownFolder])
-        if !isCopy || inContainer != nil {
-            rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
-                         InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inContainer?.name,
-                                               location: inContainer?.location,
-                                               locationLeadsHere: inContainer?.leadsHere ?? true, looks: looks) { [weak self] in
-                             self?.onShowFolder?(target.folder, target.item)
-                         }))
-        }
-        if let cloud = services.cloud.status(for: entry.url) {
-            rows.append((String(localized: "Cloud", comment: "Inspector row: iCloud or File Provider download status"), InspectorRows.text(cloud.label)))
-        }
-        setRows(rows)
     }
 
     private func schedulePreview(_ entry: FileEntry) {

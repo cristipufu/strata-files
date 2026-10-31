@@ -3584,8 +3584,8 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "let server = services.remote.copies.server(containing: entry.url)",
-    "replace": "let server = RemoteCopyStore.shared.server(containing: entry.url)",
+    "find": "let server = services.remote.copies.server(containing: url)",
+    "replace": "let server = RemoteCopyStore.shared.server(containing: url)",
     "rule": "Inspector provider ownership server lookup uses the global remote copy store",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
   },
