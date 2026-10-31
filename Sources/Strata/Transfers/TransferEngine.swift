@@ -51,25 +51,75 @@ nonisolated enum TransferEngine {
     }
 
     private static func performItem(_ index: Int, _ item: TransferItem, options: Options, control: TransferControl,
-                                          progress: TransferProgress) -> TransferItemResult {
-        let replacing = item.decision == .replace
-        var result = TransferItemResult(outcome: .failed, destination: item.destination)
-        guard control.checkpoint() else { result.outcome = .cancelled; return result }
-        progress.update { $0.currentName = item.source.lastPathComponent }
+                                    progress: TransferProgress) -> TransferItemResult {
+        var attempt = ItemAttempt(index: index, item: item, options: options, control: control, progress: progress)
+        return attempt.run()
+    }
 
-        func fail(_ message: String, stage: TransferFailure.Stage = .item) -> TransferItemResult {
-            result.failures.append(TransferFailure(item: index, stage: stage, source: item.source,
-                                                   destination: item.destination, message: message))
-            result.outcome = .failed
+    /// One item, phase by phase: each phase either finishes the item, returning its result, or lets the next one run.
+    private struct ItemAttempt {
+        let index: Int
+        let item: TransferItem
+        let options: Options
+        let control: TransferControl
+        let progress: TransferProgress
+        let replacing: Bool
+        var result: TransferItemResult
+
+        init(index: Int, item: TransferItem, options: Options, control: TransferControl, progress: TransferProgress) {
+            self.index = index
+            self.item = item
+            self.options = options
+            self.control = control
+            self.progress = progress
+            replacing = item.decision == .replace
+            result = TransferItemResult(outcome: .failed, destination: item.destination)
+        }
+
+        mutating func run() -> TransferItemResult {
+            guard control.checkpoint() else { return finish(.cancelled) }
+            progress.update { $0.currentName = item.source.lastPathComponent }
+            // Read once, just before it goes: an undo or redo never takes what has taken its item's place, and a
+            // rename keeps what the item is.
+            let identity = item.expected != nil || item.operation == .rename ? FileIdentity.read(item.source.path) : nil
+            guard item.means(identity) else { return fail(changedSince) }
+            var operation = item.operation
+            if operation == .rename {
+                if let renamed = renameInPlace(keeping: identity) { return renamed }
+                operation = .copyThenDelete
+            }
+            // Copy into place, or next to it under a hidden temporary name when replacing.
+            let sourceParent = TransferRetryTarget.directoryIdentity(item.source.deletingLastPathComponent())
+            let target = replacing ? temporaryURL(for: item.destination) : item.destination
+            let copy = copy(item.source, to: target, clone: options.clone, control: control, progress: progress)
+            if let ended = land(copy, at: target) { return ended }
+            var failures = copyFailures(copy, at: target)
+            if options.verify, let ended = verify(copy, at: target, failures: &failures) { return ended }
+            if options.sanitizeCopy, let ended = finishCopyingOut(copy, at: target) { return ended }
+            if replacing, let ended = replaceExisting(with: copy, at: target, failures: failures) { return ended }
+            guard failures.isEmpty else {
+                result.failures = failures
+                return finish(.partial)
+            }
+            if operation == .copyThenDelete, let ended = removeOriginal(copied: copy, sourceParent: sourceParent) {
+                return ended
+            }
+            return finish(.done)
+        }
+
+        private mutating func finish(_ outcome: TransferItem.Outcome) -> TransferItemResult {
+            result.outcome = outcome
             return result
         }
 
-        // Read once, just before it goes: an undo or redo never takes what has taken its item's place, and a rename
-        // keeps what the item is.
-        let identity = item.expected != nil || item.operation == .rename ? FileIdentity.read(item.source.path) : nil
-        guard item.means(identity) else { return fail(changedSince) }
-        var operation = item.operation
-        if operation == .rename {
+        private mutating func fail(_ message: String, stage: TransferFailure.Stage = .item) -> TransferItemResult {
+            result.failures.append(TransferFailure(item: index, stage: stage, source: item.source,
+                                                   destination: item.destination, message: message))
+            return finish(.failed)
+        }
+
+        /// A rename on the item's own disk; nil when it's on another, to copy there and remove the original instead.
+        private mutating func renameInPlace(keeping identity: FileIdentity?) -> TransferItemResult? {
             var trashed: URL?
             if replacing {
                 result.replacedIdentity = FileIdentity.read(item.destination.path)
@@ -84,60 +134,62 @@ nonisolated enum TransferEngine {
                     $0.files += item.files
                     $0.bytes += item.bytes
                 }
-                result.outcome = .done
                 result.sourceRemoved = true
-                return result
+                return finish(.done)
             }
             if let trashed { _ = rename(trashed, to: item.destination) }
             guard code == EXDEV, !replacing else { return fail(describe(code)) }
-            operation = .copyThenDelete
+            return nil
         }
 
-        // Copy into place, or next to it under a hidden temporary name when replacing.
-        let sourceParent = TransferRetryTarget.directoryIdentity(item.source.deletingLastPathComponent())
-        let target = replacing ? temporaryURL(for: item.destination) : item.destination
-        let copy = copy(item.source, to: target, clone: options.clone, control: control, progress: progress)
-        result.created = copy.created
-        if copy.cancelled {
-            removeIfPresent(target, in: target, created: copy.created)
-            result.outcome = .cancelled
-            return result
+        /// The copy is in place (or next to it): kept and recorded, unless it was stopped, failed whole, or isn't of
+        /// the item meant.
+        private mutating func land(_ copy: CopyOutcome, at target: URL) -> TransferItemResult? {
+            result.created = copy.created
+            if copy.cancelled {
+                removeIfPresent(target, in: target, created: copy.created)
+                return finish(.cancelled)
+            }
+            if let fatal = copy.fatal {
+                if !copy.destinationExisted { removeIfPresent(target, in: target, created: copy.created) }
+                return fail(fatal)
+            }
+            // Swapped in the moment before the copy began: what was copied isn't the item meant, and its copy goes.
+            guard item.means(copy.sourceIdentities[item.source.path]) else {
+                removeIfPresent(target, in: target, created: copy.created)
+                return fail(changedSince)
+            }
+            if copy.cloned {
+                progress.update {
+                    $0.files += item.files
+                    $0.bytes += item.bytes
+                }
+            }
+            result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)
+            hooks.afterLanding?(target)
+            return nil
         }
-        if let fatal = copy.fatal {
-            if !copy.destinationExisted { removeIfPresent(target, in: target, created: copy.created) }
-            return fail(fatal)
-        }
-        // Swapped in the moment before the copy began: what was copied isn't the item meant, and its copy goes.
-        guard item.means(copy.sourceIdentities[item.source.path]) else {
-            removeIfPresent(target, in: target, created: copy.created)
-            return fail(changedSince)
-        }
-        if copy.cloned {
-            progress.update {
-                $0.files += item.files
-                $0.bytes += item.bytes
+
+        private func copyFailures(_ copy: CopyOutcome, at target: URL) -> [TransferFailure] {
+            copy.errors.map { error in
+                let errorURL = URL(fileURLWithPath: error.destination)
+                return TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
+                                       destination: replacing ? nil : errorURL, message: error.message,
+                                       retryTarget: TransferRetryTarget(errorURL, identity: error.identity,
+                                                                        root: target, created: copy.created,
+                                                                        source: item.source, sourceIdentities: copy.sourceIdentities))
             }
         }
-        result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)
-        hooks.afterLanding?(target)
-        var failures = copy.errors.map { error in
-            let errorURL = URL(fileURLWithPath: error.destination)
-            return TransferFailure(item: index, stage: .copy, source: URL(fileURLWithPath: error.source),
-                                   destination: replacing ? nil : errorURL, message: error.message,
-                                   retryTarget: TransferRetryTarget(errorURL, identity: error.identity,
-                                                                    root: target, created: copy.created,
-                                                                    source: item.source, sourceIdentities: copy.sourceIdentities))
-        }
 
-        if options.verify {
+        private mutating func verify(_ copy: CopyOutcome, at target: URL,
+                                     failures: inout [TransferFailure]) -> TransferItemResult? {
             hooks.beforeVerify?(target)
             let skip = Set(copy.errors.map(\.source))
-            let check = verify(item.source, against: target, created: copy.created, skipping: skip,
-                               control: control, progress: progress)
+            let check = TransferEngine.verify(item.source, against: target, created: copy.created, skipping: skip,
+                                              control: control, progress: progress)
             if check.cancelled {
                 removeIfPresent(target, in: target, created: copy.created)
-                result.outcome = .cancelled
-                return result
+                return finish(.cancelled)
             }
             for mismatch in check.mismatches {
                 // A bad copy is worse than none: drop it so a retry starts clean.
@@ -151,9 +203,11 @@ nonisolated enum TransferEngine {
                                                                                  root: target, created: copy.created,
                                                                                  source: item.source, sourceIdentities: copy.sourceIdentities)))
             }
+            return nil
         }
 
-        if options.sanitizeCopy {
+        /// A copy from a server's or container's files is finished like anything copied out of one.
+        private mutating func finishCopyingOut(_ copy: CopyOutcome, at target: URL) -> TransferItemResult? {
             let boundary = options.sanitizationBoundary == item.destination ? target : options.sanitizationBoundary ?? target
             do {
                 try ContainerCopies.finishCopyingOut(boundary, owned: copy.created)
@@ -163,9 +217,12 @@ nonisolated enum TransferEngine {
                 removeIfPresent(target, in: target, created: copy.created)
                 return fail(error.localizedDescription)
             }
+            return nil
         }
 
-        if replacing {
+        /// The complete copy, made under a temporary name, takes the existing item's place; that one goes to the Trash.
+        private mutating func replaceExisting(with copy: CopyOutcome, at target: URL,
+                                              failures: [TransferFailure]) -> TransferItemResult? {
             // Never swap a complete existing item for an incomplete one.
             guard failures.isEmpty else {
                 removeIfPresent(target, in: target, created: copy.created)
@@ -191,14 +248,11 @@ nonisolated enum TransferEngine {
             result.created = Dictionary(uniqueKeysWithValues: copy.created.map { path, identity in
                 (item.destination.path + path.dropFirst(target.path.count), identity)
             })
+            return nil
         }
 
-        guard failures.isEmpty else {
-            result.failures = failures
-            result.outcome = .partial
-            return result
-        }
-        if operation == .copyThenDelete {
+        /// A move across disks: the original goes once its copy is complete, unless it changed while being copied.
+        private mutating func removeOriginal(copied copy: CopyOutcome, sourceParent: TransferRetryTarget.PathIdentity?) -> TransferItemResult? {
             let removeRetry = TransferRetryTarget(item.destination, identity: result.landed, root: item.destination,
                                                   created: copy.created, source: item.source,
                                                   sourceIdentities: copy.sourceIdentities)
@@ -208,21 +262,18 @@ nonisolated enum TransferEngine {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message,
                                                        retryTarget: removeRetry))
-                result.outcome = .partial
-                return result
+                return finish(.partial)
             }
             if let message = removeSource(item.source, destination: item.destination, landed: result.landed,
                                           sourceParent: sourceParent, sourceIdentities: copy.sourceIdentities) {
                 result.failures.append(TransferFailure(item: index, stage: .removeSource, source: item.source,
                                                        destination: item.destination, message: message,
                                                        retryTarget: removeRetry))
-                result.outcome = .partial
-                return result
+                return finish(.partial)
             }
             result.sourceRemoved = true
+            return nil
         }
-        result.outcome = .done
-        return result
     }
 
     /// Second attempt at the parts of an item that failed: individual files and folders, or removing the original.

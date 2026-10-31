@@ -218,8 +218,8 @@
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "find": "        result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)\n        hooks.afterLanding?(target)",
-    "replace": "        hooks.afterLanding?(target)\n        result.landed = FileIdentity.read(target.path)",
+    "find": "            result.landed = copy.created[target.path] ?? FileIdentity.read(target.path)\n            hooks.afterLanding?(target)",
+    "replace": "            hooks.afterLanding?(target)\n            result.landed = FileIdentity.read(target.path)",
     "rule": "A copied item's identity is read after it lands",
     "tests": "TransferTests/aFileSwapped"
   },
