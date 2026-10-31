@@ -121,8 +121,9 @@ extension BrowserWindowController {
             let ownedRoots = [services.copies.remoteCopies.root.path, services.copies.containerCopies.root.path]
             guard ownedRoots.contains(root) else { return }
         }
-        // The folder shown, or one below it (a column, a folder expanded in the list).
-        let shownPath = shown.resolvingSymlinksInPath().standardizedFileURL.path, problem = folder.standardizedFileURL.path
+        // The folder shown, or one below it (a column, a folder expanded in the list). Both are in this window's copy
+        // root, spelled from it, so their paths compare without asking the disk.
+        let shownPath = shown.standardizedFileURL.path, problem = folder.standardizedFileURL.path
         guard problem == shownPath || problem.hasPrefix(shownPath + "/") else { return }
         split.noticeBar.show(symbol: "exclamationmark.triangle", text: message,
                              button: String(localized: "Try Again", comment: "Button: read a container's folder again")) { [weak self] in

@@ -184,9 +184,26 @@ package final class IconCache {
     }
 
     /// The icon the item at `path` has now, never one remembered: for a choice about it, such as whether to replace it.
-    package func currentIcon(forPath path: String) -> NSImage {
-        if let known = Self.knownKind(path) { return documentIcon(known) }
-        return NSWorkspace.shared.icon(forFile: path)
+    package func currentIcon(forPath path: String) async -> NSImage {
+        switch await Self.current(path) {
+        case .known(let known): documentIcon(known)
+        case .made(let made): made.image
+        }
+    }
+
+    /// The icon several items have now together, as Finder draws them: the one item's own when there's one.
+    package func currentIcon(forPaths paths: [String]) async -> NSImage? {
+        if paths.count == 1 { return await currentIcon(forPath: paths[0]) }
+        return await Self.together(paths)?.image
+    }
+
+    @concurrent nonisolated private static func current(_ path: String) async -> Found {
+        if let known = knownKind(path) { return .known(known) }
+        return .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
+    }
+
+    @concurrent nonisolated private static func together(_ paths: [String]) async -> MadeElsewhere? {
+        NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
     }
 
     /// A kind Strata draws a page for, unless the item has an icon of its own.

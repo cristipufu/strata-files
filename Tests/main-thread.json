@@ -216,32 +216,8 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Support/IconCache.swift",
-  "call": "NSWorkspace.shared.icon(forFile",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Queue/ArchiveJob.swift",
   "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ConflictSheetController.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ConflictSheetController.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ConflictSheetController.swift",
-  "call": "NSWorkspace.shared.isFilePackage",
   "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
@@ -254,48 +230,6 @@
  {
   "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
   "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/BrowserWindowController+Palette.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/BrowserWindowController+Palette.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/BrowserWindowController+Palette.swift",
-  "call": "NSWorkspace.shared.isFilePackage",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/BrowserWindowController+Trash.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ConnectToServerController.swift",
-  "call": "String(contentsOf:",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ShelfPanel.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Window/ShelfPanel.swift",
-  "call": "NSWorkspace.shared.icon(forFile",
   "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },

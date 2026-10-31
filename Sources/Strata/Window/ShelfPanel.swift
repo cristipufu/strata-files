@@ -53,6 +53,11 @@ final class ShelfPanel: NSPanel {
 
 final class ShelfWell: NSView, NSDraggingSource {
     private(set) var items: [URL] = []
+    /// Each item's icon, and theirs together, as last read.
+    private var icons: [URL: NSImage] = [:]
+    private var together: NSImage?
+    /// Reading which items are still there, and their icons.
+    private(set) var checking: Task<Void, Never>?
     var activeWindow: () -> BrowserWindowController? = {
         NSApp.orderedWindows.compactMap({ $0.windowController as? BrowserWindowController }).first
     }
@@ -111,8 +116,34 @@ final class ShelfWell: NSView, NSDraggingSource {
         refresh()
     }
 
+    /// Shows the items, then reads which are still there and what they look like now, and shows that.
     private func refresh() {
-        items = items.filter { FileManager.default.fileExists(atPath: $0.path) }
+        show()
+        checking?.cancel()
+        checking = nil
+        let urls = items
+        guard !urls.isEmpty else { return }
+        checking = Task { [weak self] in
+            let there = await Self.there(urls)
+            var icons: [URL: NSImage] = [:]
+            for url in there { icons[url] = await IconCache.shared.currentIcon(forPath: url.path) }
+            let together = there.count > 1 ? await IconCache.shared.currentIcon(forPaths: there.map(\.path)) : nil
+            guard let self, !Task.isCancelled else { return }
+            checking = nil
+            let gone = Set(urls).subtracting(there)
+            items.removeAll(where: gone.contains)
+            self.icons = icons
+            self.together = together
+            show()
+        }
+    }
+
+    @concurrent private static func there(_ urls: [URL]) async -> [URL] {
+        urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private func show() {
+        let wasEmpty = buttons.isHidden
         buttons.isHidden = items.isEmpty
         if items.isEmpty {
             iconView.image = NSImage(systemSymbolName: "tray.and.arrow.down", accessibilityDescription: nil)?
@@ -120,8 +151,12 @@ final class ShelfWell: NSView, NSDraggingSource {
             iconView.contentTintColor = .tertiaryLabelColor
             label.stringValue = String(localized: "Drop files here")
         } else {
-            iconView.image = items.count == 1 ? IconCache.shared.currentIcon(forPath: items[0].path)
-                : NSWorkspace.shared.icon(forFiles: items.map(\.path))
+            // Until they're read, the items' icon shown before, or a document's.
+            if let read = items.count == 1 ? icons[items[0]] : together {
+                iconView.image = read
+            } else if wasEmpty {
+                iconView.image = NSWorkspace.shared.icon(for: .item)
+            }
             iconView.contentTintColor = nil
             label.stringValue = items.count == 1 ? items[0].lastPathComponent
                 : String(localized: "\(items.count) items · drag out to drop them all", comment: "plural")
@@ -174,8 +209,7 @@ final class ShelfWell: NSView, NSDraggingSource {
         let draggingItems = zip(items.indices, zip(items, pasteboardWriters())).map { index, pair -> NSDraggingItem in
             let item = NSDraggingItem(pasteboardWriter: pair.1)
             let offset = CGFloat(min(index, 4)) * 4
-            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset),
-                                  contents: IconCache.shared.currentIcon(forPath: pair.0.path))
+            item.setDraggingFrame(iconView.frame.offsetBy(dx: offset, dy: -offset), contents: icons[pair.0] ?? iconView.image)
             return item
         }
         beginDraggingSession(with: draggingItems, event: event, source: self)

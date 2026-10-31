@@ -87,17 +87,17 @@ import UniformTypeIdentifiers
         let notes = try #require(FileEntry(url: tree.url("Notes.one")))
         #expect(icons.icon(for: notes, containerCopies: .shared, containerStore: .shared) === page)
         #expect(await loaded(tree.url("Notes.one")) === page)
-        #expect(icons.currentIcon(forPath: tree.url("Notes.one").path) === page)
+        #expect(await icons.currentIcon(forPath: tree.url("Notes.one").path) === page)
         #expect(icons.icon(forType: try #require(UTType(filenameExtension: "ONEPKG"))) === packagePage)
         // A folder named so isn't one, and a link or an alias keeps its own icon.
         for name in ["folder.one", "link.one", "alias.one"] {
             let entry = try #require(FileEntry(url: tree.url(name)))
             #expect(icons.icon(for: entry, containerCopies: .shared, containerStore: .shared) !== page, "\(name)")
             #expect(await loaded(tree.url(name)) !== page, "\(name)")
-            #expect(icons.currentIcon(forPath: tree.url(name).path) !== page, "\(name)")
+            #expect(await icons.currentIcon(forPath: tree.url(name).path) !== page, "\(name)")
         }
         // An icon pasted onto a section in Finder shows wherever its path's icon does.
-        #expect(icons.currentIcon(forPath: tree.url("Custom.one").path) !== page)
+        #expect(await icons.currentIcon(forPath: tree.url("Custom.one").path) !== page)
         #expect(await loaded(tree.url("Custom.one")) !== page)
         #expect(try marked(page))
         #expect(tree.snapshot() == ["Custom.one", "Notes.one", "alias.one", "folder.one/", "link.one -> Notes.one"])
@@ -128,16 +128,21 @@ import UniformTypeIdentifiers
     }
 
     /// The conflict sheet and the Shelf show what's there now, not an icon remembered from before.
-    @Test(.enabled(if: undeclared)) func aChoiceShowsTheItemsIconNow() throws {
+    @Test(.enabled(if: undeclared)) func aChoiceShowsTheItemsIconNow() async throws {
         let tree = try TestTree("Later.one/")
         let url = tree.url("Later.one")
         let page = try page("one")
         #expect(IconCache.shared.icon(forPath: url.path, folder: true) !== page)
+        // Remembered as the folder it was, so an icon from memory is the old one.
+        await IconCache.shared.loaded()
+        #expect(IconCache.shared.icon(forPath: url.path, folder: true) !== page)
         try FileManager.default.removeItem(at: url)
         try Data("section".utf8).write(to: url)
-        #expect(ItemCard(caption: "Existing", url: url).imageView.image === page)
+        let conflict = TransferConflict(mode: .copy, source: url, existing: url, remaining: 1)
+        #expect(await ConflictSheetController.Facts.read(conflict, icons: .shared).existingIcon === page)
         let shelf = ShelfWell(frame: .zero)
         shelf.add([url])
+        await shelf.checking?.value
         #expect(shelf.iconView.image === page)
         #expect(tree.text("Later.one") == "section")
     }

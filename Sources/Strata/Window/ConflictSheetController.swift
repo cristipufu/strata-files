@@ -8,7 +8,10 @@ extension ConflictResolver {
     /// Cancelling the job while the sheet is up closes it.
     package static func sheet(for window: NSWindow?) -> ConflictResolver {
         ConflictResolver { [weak window] conflict in
-            let controller = ConflictSheetController(conflict: conflict)
+            let facts = await ConflictSheetController.Facts.read(conflict, icons: IconCache.shared)
+            // A job cancelled while its items were read never shows a sheet.
+            guard !Task.isCancelled else { return ConflictResolution(decision: .stop) }
+            let controller = ConflictSheetController(conflict: conflict, facts: facts)
             return await controller.run(on: window)
         }
     }
@@ -18,6 +21,7 @@ extension ConflictResolver {
 /// files, and Skip / Keep Both / Replace. Esc stops the whole job.
 package final class ConflictSheetController: NSWindowController {
     package let conflict: TransferConflict
+    private let facts: Facts
     private let applyToAll = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private var continuation: CheckedContinuation<ConflictResolution, Never>?
     private var loadTasks: [Task<Void, Never>] = []
@@ -27,12 +31,37 @@ package final class ConflictSheetController: NSWindowController {
 
     package static let width: CGFloat = 620
 
-    package init(conflict: TransferConflict) {
+    /// What the sheet says about the two items, read away from the main thread before it's shown: the folder's name
+    /// as Finder shows it, whether the existing item is a folder, whether the two can merge, and their icons now.
+    package struct Facts {
+        let folderName: String
+        let existingIsFolder: Bool
+        let canMerge: Bool
+        let existingIcon: NSImage
+        let incomingIcon: NSImage
+
+        package static func read(_ conflict: TransferConflict, icons: IconCache) async -> Facts {
+            async let disk = Self.disk(conflict)
+            let existingIcon = await icons.currentIcon(forPath: conflict.existing.path)
+            let incomingIcon = await icons.currentIcon(forPath: conflict.source.path)
+            let (folderName, existingIsFolder, canMerge) = await disk
+            return Facts(folderName: folderName, existingIsFolder: existingIsFolder, canMerge: canMerge,
+                         existingIcon: existingIcon, incomingIcon: incomingIcon)
+        }
+
+        @concurrent private static func disk(_ conflict: TransferConflict) async -> (String, Bool, Bool) {
+            let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
+            return (folder, await FileEntry.leadsToFolder(conflict.existing), conflict.canMerge)
+        }
+    }
+
+    package init(conflict: TransferConflict, facts: Facts) {
         self.conflict = conflict
+        self.facts = facts
         existingCard = ItemCard(caption: String(localized: "Existing", comment: "Conflict sheet: over the item already there"),
-                                url: conflict.existing)
+                                url: conflict.existing, icon: facts.existingIcon)
         incomingCard = ItemCard(caption: String(localized: "Incoming", comment: "Conflict sheet: over the item being copied or moved"),
-                                url: conflict.source)
+                                url: conflict.source, icon: facts.incomingIcon)
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 400), styleMask: [.titled],
                             backing: .buffered, defer: true)
         super.init(window: panel)
@@ -89,11 +118,11 @@ package final class ConflictSheetController: NSWindowController {
 
     private func buildContent() -> NSView {
         let name = conflict.existing.lastPathComponent
-        let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
+        let folder = facts.folderName
         let title = NSTextField(wrappingLabelWithString: String(localized: "An item named “\(name)” already exists in “\(folder)”."))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
         title.preferredMaxLayoutWidth = Self.width - 48
-        let detail = switch (conflict.mode, ItemCard.isFolder(conflict.existing)) {
+        let detail = switch (conflict.mode, facts.existingIsFolder) {
         case (.copy, true): String(localized: "Replace it with the one you’re copying? The existing folder will be moved to the Trash.")
         case (.copy, false): String(localized: "Replace it with the one you’re copying? The existing item will be moved to the Trash.")
         case (.move, true): String(localized: "Replace it with the one you’re moving? The existing folder will be moved to the Trash.")
@@ -159,7 +188,7 @@ package final class ConflictSheetController: NSWindowController {
         replace.keyEquivalent = "\r"
         let merge = button("Merge", #selector(merge(_:)))
         merge.toolTip = String(localized: "Add what’s missing and merge the folders; where both have the same item, the newer one is kept")
-        merge.isHidden = !conflict.canMerge
+        merge.isHidden = !facts.canMerge
 
         applyToAll.title = String(localized: "Apply to all \(conflict.remaining) conflicts", comment: "plural")
         applyToAll.font = .systemFont(ofSize: 12)
@@ -338,13 +367,8 @@ package final class ItemCard: NSView {
     private let dateLabel = NSTextField(labelWithString: "")
     private let pills = NSStackView()
 
-    package static func isFolder(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-        return isDirectory.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
-    }
-
-    package init(caption: String, url: URL) {
+    /// `icon`: the item's icon now.
+    package init(caption: String, url: URL, icon: NSImage) {
         self.url = url
         super.init(frame: .zero)
         captionLabel.stringValue = caption.uppercased()
@@ -354,7 +378,7 @@ package final class ItemCard: NSView {
             .font: NSFont.systemFont(ofSize: 10, weight: .semibold), .kern: 0.6, .foregroundColor: NSColor.secondaryLabelColor,
         ])
 
-        imageView.image = IconCache.shared.currentIcon(forPath: url.path)
+        imageView.image = icon
         imageView.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel.stringValue = url.lastPathComponent

@@ -8,15 +8,7 @@ extension BrowserWindowController {
             palette.close()
             return
         }
-        palette.goToPath = { [weak self] url in
-            var isDirectory: ObjCBool = false
-            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            if isDirectory.boolValue, !NSWorkspace.shared.isFilePackage(atPath: url.path) {
-                self?.navigate(to: url)
-            } else {
-                self?.navigate(to: url.deletingLastPathComponent(), select: url)
-            }
-        }
+        palette.goToPath = { [weak self] url in self?.go(toPath: url) }
         let places = services.places
         palette.lateItems = { [weak self] query in
             // Both at once: a folder walk on a slow disk mustn't hold up what the index finds.
@@ -27,6 +19,23 @@ extension BrowserWindowController {
             return rows + (await found)
         }
         palette.show(in: window, items: paletteItems())
+    }
+
+    /// A typed path, in the pane it was typed for: into it when it's a folder (or a link to one), else to its folder
+    /// with it selected. Not when that pane went elsewhere, or closed, while that was read.
+    @discardableResult
+    func go(toPath url: URL) -> Task<Void, Never> {
+        let typedIn = pane, revision = pane.browser.navigationRevision
+        return Task { [weak self, weak typedIn] in
+            let isFolder = await FileEntry.leadsToFolder(url)
+            guard let self, let typedIn, panes.contains(where: { $0 === typedIn }),
+                  typedIn.browser.navigationRevision == revision else { return }
+            if isFolder {
+                go(.folder(url.standardizedFileURL), in: typedIn)
+            } else {
+                go(.folder(url.deletingLastPathComponent().standardizedFileURL), in: typedIn, select: url)
+            }
+        }
     }
 
     /// Anything on disk, from the index (plain English understood: "pdfs from last week"); ranked below folders you use
@@ -78,12 +87,12 @@ extension BrowserWindowController {
 
     /// Saved workspaces: the one this window came from isn't offered (it's here already).
     func workspaceItems() -> [PaletteItem] {
-        let current = groupWorkspaceName
+        let current = groupWorkspaceName, names = services.folderNames
         return services.workspaces.all.filter { $0.name != current }.map { workspace in
             let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
-                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) { [weak self] in
+                               keywords: workspace.tabs.joined().map { names.name(URL(fileURLWithPath: $0)) }, boost: 10) { [weak self] in
                 self?.services.workspaces.open(workspace)
             }
         }

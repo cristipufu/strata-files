@@ -37,6 +37,11 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         return url
     }
 
+    /// Whether `url` is a folder, or a link to one, that isn't a package: one you go into.
+    @concurrent package static func leadsToFolder(_ url: URL) async -> Bool {
+        isNavigableFolder(url.resolvingSymlinksInPath())
+    }
+
     /// A directory the browser lists. Apps and other packages open instead.
     package static func isNavigableFolder(_ url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }

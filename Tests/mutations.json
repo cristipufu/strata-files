@@ -2342,8 +2342,8 @@
   },
   {
     "file": "Strata/Window/ConnectToServerController.swift",
-    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }",
-    "replace": "isolated deinit { connection?.cancel(); connecting?.cancel() }",
+    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel(); readingHosts?.cancel() }",
+    "replace": "isolated deinit { connection?.cancel(); connecting?.cancel(); readingHosts?.cancel() }",
     "rule": "Share mount ownership releasing a native sheet cancels its retained session",
     "tests": "ServerMountSessionTests/releasingTheSheetCancelsEvenWhenItsSessionIsRetained"
   },
@@ -2524,8 +2524,8 @@
   },
   {
     "file": "Strata/Window/ConnectToServerController.swift",
-    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }",
-    "replace": "isolated deinit { mounts.cancel() }",
+    "find": "isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel(); readingHosts?.cancel() }",
+    "replace": "isolated deinit { mounts.cancel(); readingHosts?.cancel() }",
     "rule": "Staged connections releasing the sheet cancels private authentication",
     "tests": "RemoteConnectionTests/releasingTheNativeSheetCancelsItsPrivateConnection"
   },
@@ -7142,15 +7142,15 @@
   {
     "file": "Strata/Window/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet shows an item's icon as it is now",
-    "find": "        imageView.image = IconCache.shared.currentIcon(forPath: url.path)",
-    "replace": "        imageView.image = IconCache.shared.icon(forPath: url.path, folder: true)",
+    "find": "            let existingIcon = await icons.currentIcon(forPath: conflict.existing.path)",
+    "replace": "            let existingIcon = icons.icon(forPath: conflict.existing.path, folder: true)",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
     "file": "Strata/Window/ShelfPanel.swift",
     "rule": "Files: the Shelf shows an item's icon as it is now",
-    "find": "            iconView.image = items.count == 1 ? IconCache.shared.currentIcon(forPath: items[0].path)",
-    "replace": "            iconView.image = items.count == 1 ? IconCache.shared.icon(forPath: items[0].path, folder: true)",
+    "find": "            for url in there { icons[url] = await IconCache.shared.currentIcon(forPath: url.path) }",
+    "replace": "            for url in there { icons[url] = IconCache.shared.icon(forPath: url.path, folder: true) }",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
@@ -7348,5 +7348,40 @@
     "replace": "\n",
     "rule": "The container card keeps reading after nothing is selected",
     "tests": "InspectorReadsTests/aMountLinksToThisMacOnlyOnceItsFolderIsFoundThere"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "                  typedIn.browser.navigationRevision == revision else { return }",
+    "replace": "                  true else { return }",
+    "rule": "A typed path moves a pane that went elsewhere while it was read",
+    "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "        isNavigableFolder(url.resolvingSymlinksInPath())",
+    "replace": "        isNavigableFolder(url)",
+    "rule": "A link to a folder is treated as an item, not the folder it leads to",
+    "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse|WindowReadsTests/aConflictSheetSaysWhatItsItemsAreBeforeItShows"
+  },
+  {
+    "file": "Strata/Window/ShelfPanel.swift",
+    "find": "            items.removeAll(where: gone.contains)",
+    "replace": "",
+    "rule": "The Shelf keeps items that are gone",
+    "tests": "WindowReadsTests/theShelfDropsWhatsGoneOnceItsBeenRead"
+  },
+  {
+    "file": "Strata/Window/ConnectToServerController.swift",
+    "find": "            if isViewLoaded, kind == .sftp { addHosts() }",
+    "replace": "",
+    "rule": "ssh hosts read after the sheet opened never show",
+    "tests": "WindowReadsTests/sshHostsJoinTheAddressesOnceRead"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Palette.swift",
+    "find": "                go(.folder(url.standardizedFileURL), in: typedIn)",
+    "replace": "                go(.folder(url.standardizedFileURL))",
+    "rule": "A typed path goes to whichever pane has focus when it's read, not the one it was typed in",
+    "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse"
   }
 ]

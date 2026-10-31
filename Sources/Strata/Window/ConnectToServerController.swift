@@ -34,25 +34,33 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
     private let mounts: ServerMountSession
     private let connections: RemoteConnections
-    private let sshHosts: @MainActor () -> [String]
+    /// The Host names in ~/.ssh/config, once read.
+    private var hosts: [String] = []
+    private(set) var readingHosts: Task<Void, Never>?
     private var connection: RemoteConnectionRequest?
     private(set) var connecting: Task<Void, Never>?
 
     init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession,
-         connections: RemoteConnections, sshHosts: @escaping @MainActor () -> [String] = ConnectToServerController.sshConfigHosts) {
+         connections: RemoteConnections, sshHosts: @escaping @Sendable () async -> [String] = ConnectToServerController.sshConfigHosts) {
         self.connections = connections
-        self.sshHosts = sshHosts
         self.mounts = mounts
         self.settings = settings
         editing = server
         kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? settings.kind
         super.init(nibName: nil, bundle: nil)
+        readingHosts = Task { [weak self] in
+            let found = await sshHosts()
+            guard let self, !Task.isCancelled else { return }
+            hosts = found
+            readingHosts = nil
+            if isViewLoaded, kind == .sftp { addHosts() }
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }
+    isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel(); readingHosts?.cancel() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: editing.map {
@@ -206,8 +214,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         case .sftp:
             hint.stringValue = String(localized: "user@host, a Host from ~/.ssh/config, or sftp://user@host:port/folder. Your SSH keys and agent log in; a password is asked for when one is needed.")
             address.placeholderString = "deploy@example.com"
-            let saved = connections.savedServers.filter { $0.kind == .sftp }.map(\.address)
-            address.addItems(withObjectValues: saved + sshHosts().filter { !saved.contains($0) })
+            address.addItems(withObjectValues: connections.savedServers.filter { $0.kind == .sftp }.map(\.address))
+            addHosts()
             if editing == nil { address.stringValue = "" }
             clearRecents.isHidden = true
         case .s3:
@@ -217,8 +225,14 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         view.window?.layoutIfNeeded()
     }
 
+    /// The Host names offered after the saved servers, once they're read.
+    private func addHosts() {
+        let listed = Set(address.objectValues.compactMap { $0 as? String })
+        address.addItems(withObjectValues: hosts.filter { !listed.contains($0) })
+    }
+
     /// The Host names in ~/.ssh/config (not patterns), for picking.
-    private static func sshConfigHosts() -> [String] {
+    @concurrent private static func sshConfigHosts() async -> [String] {
         let file = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".ssh/config")
         guard let text = try? String(contentsOf: file, encoding: .utf8), text.utf8.count < 1 << 20 else { return [] }
         var hosts: [String] = []
