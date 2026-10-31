@@ -42,7 +42,7 @@
   "reason": "Updating Strata itself is the app's: opening this copy of Strata from a window checks with the app's updater."
  },
  {
-  "file": "Sources/Strata/Containers/ContainerDrag.swift",
+  "file": "Sources/Strata/Views/ContainerDrag.swift",
   "instance": "ContainerPromises.shared",
   "count": 1,
   "reason": "The app's one queue for file promises (two at a time); each promise fetches through the copies its drag item carries."

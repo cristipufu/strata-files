@@ -760,7 +760,7 @@
     "tests": "CacheRemovalTests/settingCopies"
   },
   {
-    "file": "Strata/Containers/ContainerDrag.swift",
+    "file": "Strata/Views/ContainerDrag.swift",
     "find": "Result { _ = try TransferEngine.copyForExport(source, to: url) }",
     "replace": "Result { try? FileManager.default.removeItem(at: url); _ = try TransferEngine.copyForExport(source, to: url) }",
     "rule": "Security review: file promises never replace existing drop targets",
@@ -3744,14 +3744,14 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Containers/ContainerDrag.swift",
+    "file": "Strata/Views/ContainerDrag.swift",
     "find": "let type = (rawType.conforms(to: .data) || rawType.conforms(to: .directory)) ? rawType : .data",
     "replace": "let type = (rawType.conforms(to: .data) || rawType.conforms(to: .directory)) ? rawType : .directory",
     "rule": "Browser copy provider ownership dragging a symlink in a copy uses a folder promise type",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Containers/ContainerDrag.swift",
+    "file": "Strata/Views/ContainerDrag.swift",
     "find": "copies.contains(url) ? ContainerDragItem(source: url, copies: copies) : url as NSURL",
     "replace": "CopyProviders.live.contains(url) ? ContainerDragItem(source: url, copies: .live) : url as NSURL",
     "rule": "Browser copy provider ownership drag writer checks the global copy provider",
@@ -7013,7 +7013,7 @@
     "tests": "OneNoteFileKindTests/oneNotesFilesHaveTheirKinds"
   },
   {
-    "file": "Strata/Transfers/ConflictSheetController.swift",
+    "file": "Strata/Window/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet's OneNote kind follows the item's own type",
     "find": "                                  type: values?.contentType)",
     "replace": "                                  type: UTType(filenameExtension: url.pathExtension))",
@@ -7076,7 +7076,7 @@
     "tests": "OneNoteFileKindTests/oneNotesFilesHaveAPageDrawnForThem"
   },
   {
-    "file": "Strata/Transfers/ConflictSheetController.swift",
+    "file": "Strata/Window/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet shows an item's icon as it is now",
     "find": "        imageView.image = IconCache.shared.currentIcon(forPath: url.path)",
     "replace": "        imageView.image = IconCache.shared.icon(forPath: url.path, folder: true)",

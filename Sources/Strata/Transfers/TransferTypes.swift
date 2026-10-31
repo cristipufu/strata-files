@@ -35,6 +35,11 @@ package nonisolated struct ConflictResolution: Sendable {
     package var decision: ConflictDecision
     /// Use the same decision for every remaining conflict in this job without asking again.
     package var applyToAll: Bool = false
+
+    package init(decision: ConflictDecision, applyToAll: Bool = false) {
+        self.decision = decision
+        self.applyToAll = applyToAll
+    }
 }
 
 package nonisolated struct TransferConflict: Sendable {

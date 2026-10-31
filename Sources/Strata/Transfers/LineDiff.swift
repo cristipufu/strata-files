@@ -22,6 +22,12 @@ package nonisolated enum LineDiff {
         package let added: Int
         package let removed: Int
         package var isIdentical: Bool { added == 0 && removed == 0 }
+
+        package init(rows: [Row], added: Int, removed: Int) {
+            self.rows = rows
+            self.added = added
+            self.removed = removed
+        }
     }
 
     /// Diff of `old` → `new` with `context` unchanged lines around each change. Nil when the inputs are too large

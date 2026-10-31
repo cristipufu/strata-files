@@ -156,49 +156,49 @@
     "reason": "The breadcrumb hover fill is translucent semantic ink over the existing toolbar surface."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.quaternarySystemFill.setFill()",
     "count": 2,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.setStroke()",
     "count": 2,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.5).setStroke()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.6).setFill()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.textBackgroundColor.setFill()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersToolbarItem.swift",
+    "file": "Sources/Strata/Window/TransfersToolbarItem.swift",
     "code": "NSColor.controlAccentColor.setStroke()",
     "count": 1,
     "reason": "The progress ring uses semantic label and system accent colors, not a window background."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersToolbarItem.swift",
+    "file": "Sources/Strata/Window/TransfersToolbarItem.swift",
     "code": "NSColor.labelColor.withAlphaComponent(0.2).setStroke()",
     "count": 1,
     "reason": "The progress ring uses semantic label and system accent colors, not a window background."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersViewController.swift",
+    "file": "Sources/Strata/Window/TransfersViewController.swift",
     "code": "NSColor.separatorColor.setFill()",
     "count": 1,
     "reason": "A native separator distinguishes transfer groups without recoloring their progress or warning states."
