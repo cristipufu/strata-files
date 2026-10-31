@@ -7146,6 +7146,13 @@
     "tests": "PlanSafetyTests/aRedoneTrashStepLeavesAnItemReplacedSince"
   },
   {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "                if (try? await move(temporary, to: pair.from)) == nil {\n                    try? await move(temporary, to: FileOps.available(pair.from, copyStyle: false))\n                }",
+    "replace": "                try? await move(temporary, to: pair.from)",
+    "rule": "A case-only rename that can't finish leaves the item under its hidden name",
+    "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
+  },
+  {
     "file": "Strata/Model/FileInfoEditing.swift",
     "rule": "An access change goes to a folder put in the place of the one shown",
     "find": "        let path = chosen.url.path\n        func updated",

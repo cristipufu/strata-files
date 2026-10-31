@@ -773,13 +773,10 @@ nonisolated enum TransferEngine {
         return (result as URL?) ?? url
     }
 
-    static func removeIfPresent(_ url: URL, in root: URL? = nil, created: [String: FileIdentity]? = nil,
+    /// Removes `url` while it's what the operation made (`created`, by path): in a folder, only what the operation made,
+    /// opened from `root`'s folder down without following links. Anything else stays.
+    static func removeIfPresent(_ url: URL, in root: URL? = nil, created: [String: FileIdentity],
                                 keepRootDirectory: Bool = false) {
-        guard let created else {
-            guard exists(url) else { return }
-            try? FileManager.default.removeItem(at: url)
-            return
-        }
         guard !created.isEmpty, let dirFD = openOwnedParent(of: url, in: root ?? url, created: created) else { return }
         defer { close(dirFD) }
         removeOwned(url, in: dirFD, created: created, keepRootDirectory: keepRootDirectory)

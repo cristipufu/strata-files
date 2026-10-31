@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Synchronization
 
 extension Notification.Name {
@@ -8,6 +9,7 @@ extension Notification.Name {
 /// A journal of file operations that survives restarts, so any of them can be undone later from the History window
 /// (the Edit menu's Undo only covers the current session).
 final class OperationLog {
+    nonisolated private static let log = Logger(subsystem: "dev.strata.app", category: "history")
     nonisolated struct Entry: Codable, Identifiable, Sendable {
         enum Kind: String, Codable, Sendable {
             /// `pairs` moved from → to (moves, renames, trash).
@@ -403,8 +405,14 @@ final class OperationLog {
         if unsaved.keep(entries) {
             let unsaved = unsaved, storage = storage, file = file
             Self.writes.async {
-                guard let entries = unsaved.take(), let data = try? JSONEncoder().encode(entries) else { return }
-                try? storage.write(data, to: file)
+                guard let entries = unsaved.take() else { return }
+                do {
+                    try storage.write(try JSONEncoder().encode(entries), to: file)
+                } catch {
+                    // Nothing to ask anyone: what's undoable now still is; it just won't be after quitting.
+                    let failure = error as NSError
+                    Self.log.error("History couldn't be saved: \(failure.domain, privacy: .public) \(failure.code, privacy: .public)")
+                }
             }
         }
         NotificationCenter.default.post(name: .operationLogChanged, object: self)

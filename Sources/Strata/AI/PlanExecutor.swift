@@ -218,8 +218,11 @@ final class PlanTransaction {
             do {
                 try await move(temporary, to: pair.to)
             } catch {
-                // Never leave the item under its hidden temporary name.
-                try? await move(temporary, to: pair.from)
+                // Never leave the item under its hidden temporary name: back where it was, or beside it when something
+                // has taken that place meanwhile.
+                if (try? await move(temporary, to: pair.from)) == nil {
+                    try? await move(temporary, to: FileOps.available(pair.from, copyStyle: false))
+                }
                 throw error
             }
         } else {
