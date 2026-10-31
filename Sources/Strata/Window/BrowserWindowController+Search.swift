@@ -135,7 +135,7 @@ extension BrowserWindowController {
         structural?.keywords = []
         let validContentQuery = contentQuery.flatMap { $0.count >= 3 ? $0 : nil }
         let contentHits = validContentQuery != nil
-            ? await StrataAI.index.search(validContentQuery ?? "", limit: 15) : []
+            ? await services.contentIndex.search(validContentQuery ?? "", limit: 15) : []
         var entries = result.hits.map(FileEntry.init(hit:))
         let known = Set(entries.map { $0.url.standardizedFileURL.path })
         let contentURLs = contentHits.map(\.url).filter { url in

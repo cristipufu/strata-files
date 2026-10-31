@@ -172,8 +172,8 @@ struct DeleteTests {
     // MARK: - Test runs
 
     @Test func testRunsKeepHistoryAndIndexesOutOfYourOwn() {
-        #expect(SecureStorage.isTestRun)
-        #expect(SecureStorage.directory.path.hasPrefix(FileManager.default.temporaryDirectory.path))
-        #expect(!SecureStorage.directory.path.contains("/Library/Application Support/"))
+        #expect(SecureStorage.Context.shared.temporary)
+        #expect(SecureStorage.Context.shared.directory.path.hasPrefix(FileManager.default.temporaryDirectory.path))
+        #expect(!SecureStorage.Context.shared.directory.path.contains("/Library/Application Support/"))
     }
 }

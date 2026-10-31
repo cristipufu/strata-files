@@ -11,7 +11,7 @@ import Testing
 
 /// What Strata deletes of its own: archives' copies, servers' and containers' copies. Each removal stays inside the
 /// cache it's for, takes only what it's meant to, and never follows a link out of it, however the copy's insides were
-/// made (an archive or a container decides them). Tests have caches of their own (`SecureStorage.caches`).
+/// made (an archive or a container decides them). Tests have caches of their own (`SecureStorage.Context.shared.caches`).
 struct CacheRemovalTests {
     private let fm = FileManager.default
 
@@ -135,7 +135,7 @@ struct CacheRemovalTests {
 
     @Test func resettingTheContentIndexRemovesOnlyItsStore() async throws {
         let tree = try TestTree("store/", "store/notes.txt", "store/index.sealed -> ../outside/keep.txt", "outside/", "outside/keep.txt")
-        var configuration = SemanticIndex.Configuration(roots: [])
+        var configuration = SemanticIndex.Configuration(roots: [], storage: .shared)
         configuration.storeDirectory = tree.url("store")
         let index = SemanticIndex(configuration: configuration)
         await index.reset()
@@ -146,7 +146,7 @@ struct CacheRemovalTests {
 
     @Test func savingAStoreReplacesOnlyItsOwnFile() throws {
         let tree = try TestTree("outside/", "outside/keep.txt")
-        let folder = SecureStorage.url("test-\(UUID().uuidString)", isDirectory: true)
+        let folder = SecureStorage.Context.shared.url("test-\(UUID().uuidString)", isDirectory: true)
         defer { try? fm.removeItem(at: folder) }
         let store = folder.appending(path: "history.sealed")
         // A link planted where the store goes, and temporary files: a crash's (old), a save in progress (new), others.
@@ -157,8 +157,8 @@ struct CacheRemovalTests {
         for name in ["history.sealed.old.tmp", "other.sealed.old.tmp"] {
             try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: folder.appending(path: name).path)
         }
-        try SecureStorage.write(Data("saved".utf8), to: store)
-        #expect(SecureStorage.read(store) == Data("saved".utf8))
+        try SecureStorage.Context.shared.write(Data("saved".utf8), to: store)
+        #expect(SecureStorage.Context.shared.read(store) == Data("saved".utf8))
         #expect((try? fm.destinationOfSymbolicLink(atPath: store.path)) == nil)
         #expect(tree.text("outside/keep.txt") == "outside/keep.txt")
         #expect(TestTree.listing(of: folder) == ["history.sealed", "history.sealed.new.tmp", "history.sealed.notes", "other.sealed.old.tmp"])

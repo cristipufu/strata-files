@@ -48,7 +48,8 @@ import StrataSupport
     package static func contentRules() async throws -> WKContentRuleList {
         if let rules { return try await rules.value }
         let task = Task { @MainActor in
-            guard let store = WKContentRuleListStore(url: SecureStorage.caches) else { throw PreviewError.unsupported }
+            let caches = SecureStorage.Context.shared.caches
+            guard let store = WKContentRuleListStore(url: caches) else { throw PreviewError.unsupported }
             // Start with a closed network boundary, then permit only the private scheme handled below.
             let json = #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}},{"trigger":{"url-filter":"^strata-html://"},"action":{"type":"ignore-previous-rules"}}]"#
             guard let list = try await store.compileContentRuleList(forIdentifier: "StrataOfflineHTML.v1", encodedContentRuleList: json) else {

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import Strata
@@ -16,7 +17,7 @@ struct SemanticPersistenceSafetyTests {
         let source = title ? "<html><head><title>annual budget report</title></head><body>ok</body></html>" : "ok"
         let tree = try TestTree("state/", name)
         try source.write(to: tree.url(name), atomically: true, encoding: .utf8)
-        var configuration = SemanticIndex.Configuration(roots: [])
+        var configuration = SemanticIndex.Configuration(roots: [], storage: .shared)
         configuration.storeDirectory = tree.url("state")
         let index = SemanticIndex(configuration: configuration)
         await index.refresh(tree.url(name))
@@ -37,6 +38,22 @@ struct SemanticPersistenceSafetyTests {
         #expect(tree.snapshot() == [name, "state/", "state/index.sealed"].sorted())
     }
 
+    @Test func anIndexMakesItsFolderWhenItFirstSaves() async throws {
+        let tree = try TestTree("notes.txt")
+        try "annual budget report".write(to: tree.url("notes.txt"), atomically: true, encoding: .utf8)
+        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
+                                            key: SymmetricKey(size: .bits256))
+        let configuration = SemanticIndex.Configuration(roots: [], storage: storage)
+        let index = SemanticIndex(configuration: configuration)
+        #expect(tree.snapshot() == ["notes.txt", "state/", "state/Caches/"])
+        await index.refresh(tree.url("notes.txt"))
+        await index.save()
+        #expect(tree.snapshot() == ["notes.txt", "state/", "state/Caches/", "state/semantic/", "state/semantic/index.sealed"])
+        let reopened = SemanticIndex(configuration: configuration)
+        #expect(await reopened.search("annual budget report").first?.url.lastPathComponent == "notes.txt")
+        #expect(await reopened.indexedFileCount == 1)
+    }
+
     @Test(arguments: ["counts", "partialTerm", "partialPage", "offset", "length", "partialVector", "nonfiniteVector"])
     func malformedPassagesAreSkippedBeforeSearch(_ damage: String) async throws {
         let tree = try TestTree("state/")
@@ -53,7 +70,7 @@ struct SemanticPersistenceSafetyTests {
         }
         try SemanticFixture.write(fixture, to: tree.url("state"))
         let before = try Data(contentsOf: tree.url("state/index.sealed"))
-        var configuration = SemanticIndex.Configuration(roots: [])
+        var configuration = SemanticIndex.Configuration(roots: [], storage: .shared)
         configuration.storeDirectory = tree.url("state")
         let index = SemanticIndex(configuration: configuration)
         _ = await index.search("")

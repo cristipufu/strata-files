@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 INSTANCE = r"((?:[A-Z][A-Za-z0-9]*)?(?:\.[A-Z][A-Za-z0-9]*)*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)"
 DEFAULT = re.compile(r":\s*([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\??\s*=\s*" + INSTANCE)
 FALLBACK = re.compile(r"\?\?\s*" + INSTANCE)
-DIRECT = re.compile(r"\b([A-Z][A-Za-z0-9]*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
+DIRECT = re.compile(r"\b((?:[A-Z][A-Za-z0-9]*\.)*[A-Z][A-Za-z0-9]*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
 ARGUMENT = re.compile(r"\b([a-z][A-Za-z0-9]*):\s*\.(shared|live)\b")
 DEFINITION = re.compile(r"\bstatic\s+(?:let|var)\s+(?:shared|live)\b")
 OWNED_POST = re.compile(r"\bpost\(name:\s*\.([A-Za-z0-9]+),\s*object:\s*self\b")

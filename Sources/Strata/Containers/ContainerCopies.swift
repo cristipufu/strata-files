@@ -46,7 +46,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
     private let engines = Mutex<[String: EngineRecord]>([:])
 
     package static let shared = ContainerCopyStore(
-        root: SecureStorage.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory))
+        root: SecureStorage.Context.shared.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory))
 
     package init(root: URL) {
         let resolved = Self.rootURL(root)

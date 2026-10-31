@@ -109,11 +109,11 @@ package final class OperationLog {
         }
     }
 
-    package static let shared = OperationLog(copies: .live)
+    package static let shared = OperationLog(storage: .shared, copies: .live)
 
     package private(set) var entries: [Entry] = []
     private let file: URL
-    private let storage: SecureStorage.Context
+    package let storage: SecureStorage.Context
     private let limit = 500
     private var undoing: Set<UUID> = []
     private var retiredTransfers: Set<UUID> = []
@@ -151,7 +151,7 @@ package final class OperationLog {
     /// The environment's server and container copies: undo and redo refuse to change what's inside them.
     private let copies: CopyProviders
 
-    package init(storage: SecureStorage.Context = SecureStorage.current, copies: CopyProviders, moveItems: Mover? = nil) {
+    package init(storage: SecureStorage.Context, copies: CopyProviders, moveItems: Mover? = nil) {
         self.storage = storage
         self.copies = copies
         self.moveItems = moveItems ?? { pairs, name in
@@ -167,7 +167,7 @@ package final class OperationLog {
 
     // A bad record must not hide valid neighbors. Authentication and the JSON array itself still have to be
     // intact; loading never repairs or overwrites the saved file.
-    package nonisolated static func readEntries(from file: URL, storage: SecureStorage.Context = SecureStorage.current) -> [Entry] {
+    package nonisolated static func readEntries(from file: URL, storage: SecureStorage.Context) -> [Entry] {
         guard let data = storage.read(file),
               let decoded = try? JSONDecoder().decode([SavedEntry].self, from: data) else { return [] }
         return decoded.compactMap(\.entry)

@@ -19,8 +19,9 @@ nonisolated package enum IndexPersistence {
 
     /// Streams the columns, encrypted, straight to disk (no in-memory copy of the whole file), then swaps the file in
     /// atomically.
-    package static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL) throws {
-        let writer = try SecureStorage.Writer(url: url)
+    package static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL,
+                             storage: SecureStorage.Context) throws {
+        let writer = try SecureStorage.Writer(url: url, storage: storage)
         func put(_ bytes: UnsafeRawBufferPointer) { writer.write(bytes) }
         func put<T>(_ value: T) { withUnsafeBytes(of: value) { put($0) } }
         func putString(_ string: String) {
@@ -59,8 +60,8 @@ nonisolated package enum IndexPersistence {
         try writer.commit()
     }
 
-    package static func load(from url: URL) throws -> (IndexStore, Header) {
-        let reader = try SecureStorage.Reader(url: url)
+    package static func load(from url: URL, storage: SecureStorage.Context) throws -> (IndexStore, Header) {
+        let reader = try SecureStorage.Reader(url: url, storage: storage)
         struct Corrupt: Error {}
         func get<T>(_: T.Type) throws -> T {
             try withUnsafeTemporaryAllocation(of: T.self, capacity: 1) { buffer in

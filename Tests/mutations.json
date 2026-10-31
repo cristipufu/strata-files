@@ -946,10 +946,10 @@
   },
   {
     "file": "Strata/Index/FileIndex.swift",
-    "find": "        excluded.insert(Self.realPath(SecureStorage.directory.path))\n",
+    "find": "        excluded.insert(Self.realPath(storage.directory.path))\n",
     "replace": "",
     "rule": "Index performance: private state stays out of its own index",
-    "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState"
+    "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState|IndexWorkerTests/anIndexLeavesOutItsOwnEnvironmentsStateAndCopies"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
@@ -1037,8 +1037,8 @@
   },
   {
     "file": "Strata/Model/SecureStorage.swift",
-    "find": "init(url: URL, storage: Context = SecureStorage.current) throws {\n            guard let key = storage.key else { throw Failure() }\n            self.url = url",
-    "replace": "init(url: URL, storage: Context = SecureStorage.current) throws {\n            let key = storage.key ?? SymmetricKey(size: .bits256)\n            self.url = url",
+    "find": "init(url: URL, storage: Context) throws {\n            guard let key = storage.key else { throw Failure() }\n            self.url = url",
+    "replace": "init(url: URL, storage: Context) throws {\n            let key = storage.key ?? SymmetricKey(size: .bits256)\n            self.url = url",
     "rule": "Storage isolation replaces a store when its key is unavailable",
     "tests": "StorageContextTests/keyProvider"
   },
@@ -3983,6 +3983,21 @@
     "replace": "let showHidden = Prefs.shared.showHidden || prefix.hasPrefix(\".\")",
     "rule": "Module and provider boundaries path suggestions read hidden files from global preferences",
     "tests": "PathQueryTests/pathSuggestionsFollowInjectedHiddenFilesPreference"
+  },
+  {
+    "file": "Strata/Browser/BrowserServices.swift",
+    "rule": "An environment's own indexes save into the app's storage",
+    "tests": "FileCommandOwnershipTests/anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage",
+    "edits": [
+      {
+        "find": "FileIndex(storage: transfers.history.storage, copies: transfers.copies)",
+        "replace": "FileIndex(storage: .shared, copies: transfers.copies)"
+      },
+      {
+        "find": "SemanticIndex(configuration: .init(roots: [], storage: transfers.history.storage))",
+        "replace": "SemanticIndex(configuration: .init(roots: [], storage: .shared))"
+      }
+    ]
   },
   {
     "file": "Strata/Queue/FileCommands.swift",

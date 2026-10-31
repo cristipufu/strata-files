@@ -8,7 +8,8 @@ final class BrowserServices {
     private static func application() -> BrowserServices {
         BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
                         containers: .shared, containerStore: .shared, clipboard: .shared,
-                        cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared)
+                        cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
+                        contentIndex: .shared)
     }
 
     /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
@@ -41,13 +42,13 @@ final class BrowserServices {
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
                            tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil,
-                           index: FileIndex? = nil) -> BrowserServices {
+                           index: FileIndex? = nil, contentIndex: SemanticIndex? = nil) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         availableCapacity: availableCapacity, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
                         mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
-                        index: index)
+                        index: index, contentIndex: contentIndex)
     }
 
     let preferences: Prefs
@@ -82,6 +83,7 @@ final class BrowserServices {
     let cloud: CloudStore
     let git: GitStatusStore
     let index: FileIndex
+    let contentIndex: SemanticIndex
     var statuses: FileStatuses { FileStatuses(tags: tags, cloud: cloud, git: git) }
 
     private init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, windows: BrowserWindows,
@@ -92,7 +94,8 @@ final class BrowserServices {
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
-                 tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil) {
+                 tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil,
+                 contentIndex: SemanticIndex? = nil) {
         self.preferences = transfers.preferences
         self.transfers = transfers
         self.files = FileCommands(transfers: transfers)
@@ -116,10 +119,12 @@ final class BrowserServices {
         self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
         self.availableCapacity = availableCapacity
         self.windows = windows
-        // An environment of its own reads its own: an unstarted index, and stores no other window shares.
+        // An environment of its own reads its own: unstarted indexes in its History's storage, and stores no other window
+        // shares.
         self.tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
         self.cloud = cloud ?? CloudStore()
         self.git = git ?? GitStatusStore()
-        self.index = index ?? FileIndex(copies: transfers.copies)
+        self.index = index ?? FileIndex(storage: transfers.history.storage, copies: transfers.copies)
+        self.contentIndex = contentIndex ?? SemanticIndex(configuration: .init(roots: [], storage: transfers.history.storage))
     }
 }

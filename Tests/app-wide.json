@@ -10,8 +10,8 @@
  {
   "file": "Sources/Strata/Browser/BrowserServices.swift",
   "instance": "*",
-  "count": 10,
-  "reason": "BrowserServices.application() composes the app's services from the app's queue, visits, servers, containers, clipboard and stores (a function: the initializer's concurrent defaults can't be read in a static's)."
+  "count": 11,
+  "reason": "BrowserServices.application() composes the app's services from the app's queue, visits, servers, containers, clipboard, stores and indexes (a function: the initializer's concurrent defaults can't be read in a static's)."
  },
  {
   "instance": ".iconsLoaded",
@@ -124,5 +124,23 @@
   "instance": "RemoteCopyStore.shared",
   "count": 1,
   "reason": "ReadOnlyCopies: refusing a change inside a copy Strata keeps is never wrong, so every window refuses changes in the app's own copies too, not only in its environment's."
+ },
+ {
+  "file": "Sources/Strata/AI/AIIntegration.swift",
+  "instance": "SemanticIndex.shared",
+  "count": 2,
+  "reason": "Indexing the contents of your Documents, Desktop and Downloads is the app's, started at launch and from Settings; windows search their own environment's content index."
+ },
+ {
+  "file": "Sources/Strata/Model/ArchiveCache.swift",
+  "instance": "SecureStorage.Context.shared",
+  "count": 1,
+  "reason": "Archives opened as folders are one cache for the app (ArchiveCache is the app's, whichever window opened them), kept in the app's caches."
+ },
+ {
+  "file": "Sources/Strata/Previews/HTMLWebSession.swift",
+  "instance": "SecureStorage.Context.shared",
+  "count": 1,
+  "reason": "WebKit's compiled content rules are the same for every window and preview; keeping them in the app's caches only saves compiling them again."
  }
 ]

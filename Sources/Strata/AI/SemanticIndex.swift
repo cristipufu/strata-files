@@ -46,7 +46,10 @@ package nonisolated struct SemanticIndexProgress: Sendable {
 package actor SemanticIndex {
     package nonisolated struct Configuration: Sendable {
         package var roots: [URL]
-        package var storeDirectory: URL = SemanticIndex.defaultStoreDirectory
+        /// Whose key seals it.
+        package let storage: SecureStorage.Context
+        /// Made when the index is first saved, not before.
+        package var storeDirectory: URL
         package var extraction = TextExtractor.Options(maxCharacters: 40_000, maxPDFPages: 20)
         package var chunkSize = 1000
         package var chunkOverlap = 160
@@ -65,12 +68,15 @@ package actor SemanticIndex {
         /// Results below this blended score are dropped.
         package var minimumScore: Float = 0.2
 
-        package init(roots: [URL]) { self.roots = roots }
+        package init(roots: [URL], storage: SecureStorage.Context) {
+            self.roots = roots
+            self.storage = storage
+            storeDirectory = storage.directory.appending(path: "semantic", directoryHint: .isDirectory)
+        }
     }
 
-    package nonisolated static var defaultStoreDirectory: URL {
-        SecureStorage.url("semantic", isDirectory: true)
-    }
+    /// The content index over ~/Documents, ~/Desktop and ~/Downloads, in the app's saved state.
+    package static let shared = SemanticIndex(configuration: Configuration(roots: standardRoots, storage: .shared))
 
     package nonisolated static var standardRoots: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -559,7 +565,8 @@ package actor SemanticIndex {
         }
         // Earlier builds kept passages in a plain property list: start over rather than keep that copy around.
         SecureStorage.removeLegacy(configuration.storeDirectory.appending(path: "index.plist"))
-        guard let stored = await Self.read(storeURL), stored.version == StoredIndex.currentVersion,
+        guard let stored = await Self.read(storeURL, storage: configuration.storage),
+              stored.version == StoredIndex.currentVersion,
               stored.revision == Embedder.revision, stored.sentences == configuration.sentenceEmbeddings else { return }
         for file in stored.files {
             guard !file.path.isEmpty else { continue }
@@ -596,21 +603,22 @@ package actor SemanticIndex {
         }
         unsavedChanges = 0
         lastSave = .now
-        await Self.write(stored, to: storeURL)
+        await Self.write(stored, to: storeURL, storage: configuration.storage)
     }
 
     @concurrent
-    private static func read(_ url: URL) async -> StoredIndex? {
-        guard let data = SecureStorage.read(url) else { return nil }
+    private static func read(_ url: URL, storage: SecureStorage.Context) async -> StoredIndex? {
+        guard let data = storage.read(url) else { return nil }
         return try? PropertyListDecoder().decode(StoredIndex.self, from: data)
     }
 
     @concurrent
-    private static func write(_ index: StoredIndex, to url: URL) async {
+    private static func write(_ index: StoredIndex, to url: URL, storage: SecureStorage.Context) async {
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         guard let data = try? encoder.encode(index) else { return }
-        try? SecureStorage.write(data, to: url)
+        storage.makeFolder(url.deletingLastPathComponent())
+        try? storage.write(data, to: url)
     }
 
     /// Bytes used on disk.

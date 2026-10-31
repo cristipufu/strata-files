@@ -44,9 +44,9 @@ struct IndexPersistenceSafetyTests {
             }
         }
         let url = tree.url("state/index.sealed")
-        try IndexPersistence.save(store, eventID: 1, excluded: [], to: url)
+        try IndexPersistence.save(store, eventID: 1, excluded: [], to: url, storage: .shared)
         let before = try Data(contentsOf: url)
-        #expect(throws: (any Error).self) { try IndexPersistence.load(from: url) }
+        #expect(throws: (any Error).self) { try IndexPersistence.load(from: url, storage: .shared) }
         #expect(try Data(contentsOf: url) == before)
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
     }
@@ -55,8 +55,8 @@ struct IndexPersistenceSafetyTests {
         let tree = try TestTree("state/")
         let store = fixture()
         store.write { $0.remove(1) }
-        try IndexPersistence.save(store, eventID: 1, excluded: [], to: tree.url("state/index.sealed"))
-        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(store, eventID: 1, excluded: [], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         #expect(loaded.read { $0.lookup("/synthetic/a") } == nil)
         #expect(loaded.read { $0.lookup("/synthetic/b") } == 2)
         #expect(loaded.read { $0.deletedCount() } == 1)

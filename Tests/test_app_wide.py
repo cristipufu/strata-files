@@ -40,6 +40,13 @@ class AppWideAuditTests(unittest.TestCase):
         for file in ["App/Example.swift", "Settings/Example.swift", "Dock/Example.swift", "main.swift"]:
             self.assertEqual(self.check(code, file=file), [], file)
 
+    def test_a_nested_types_instance_is_named_in_full(self):
+        issues = self.check("let caches = SecureStorage.Context.shared.caches")
+        self.assertTrue(any("Names the app's SecureStorage.Context.shared" in issue for issue in issues), issues)
+        reviewed = [{"file": "Sources/Strata/Browser/Example.swift", "instance": "SecureStorage.Context.shared", "count": 1,
+                     "reason": "Reviewed."}]
+        self.assertEqual(self.check("let caches = SecureStorage.Context.shared.caches", reviewed), [])
+
     def test_implicit_arguments_need_review_outside_the_applications_own_code(self):
         code = "func f() { _ = ProjectInfo.load(for: url, store: .shared) }"
         self.assertTrue(any("Names the app's store: .shared" in issue for issue in self.check(code)))

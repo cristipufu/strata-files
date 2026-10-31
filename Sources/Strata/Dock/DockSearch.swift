@@ -517,7 +517,7 @@ enum DockSearchItems {
             let known = Set(found.hits.map(\.path))
             // The costliest part (it reads meaning, not just names): not for words already typed over.
             guard !Task.isCancelled else { return [] }
-            let hits = await StrataAI.index.search(contentQuery, limit: 8).filter { hit in
+            let hits = await SemanticIndex.shared.search(contentQuery, limit: 8).filter { hit in
                 !known.contains(hit.url.path) && (structural.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
             }
             items += PaletteItem.contentMatches(hits) { NSWorkspace.shared.open($0) }

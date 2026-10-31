@@ -11,7 +11,8 @@ import Foundation
 /// are removed, and the whole cache is kept under a size limit, least recently opened first.
 package nonisolated enum ArchiveCache {
     package static let root: URL = {
-        SecureStorage.caches.appending(path: "Archives", directoryHint: .isDirectory).standardizedFileURL
+        SecureStorage.Context.shared.caches.appending(path: "Archives", directoryHint: .isDirectory)
+            .standardizedFileURL
     }()
 
     private static let rootPath = root.path

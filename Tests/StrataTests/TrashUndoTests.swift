@@ -11,7 +11,7 @@ import Testing
 
 /// Move to Trash and undo (⌘Z, and later from History): only the chosen items go to the Trash, and undo only ever
 /// moves those very items back, never something that took their place since. The Trash tests use your real Trash and
-/// take back out exactly what they put in; History is a test run's own (see `SecureStorage.isTestRun`).
+/// take back out exactly what they put in; History is a test run's own (see `SecureStorage.Context.shared.temporary`).
 struct TrashUndoTests {
     /// The last History entry for items of `tree`.
     private func entry(for tree: TestTree) -> OperationLog.Entry? {

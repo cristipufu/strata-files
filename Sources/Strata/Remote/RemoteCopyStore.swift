@@ -8,7 +8,7 @@ package nonisolated struct RemoteCopyStore: Sendable {
     private let lookup: @Sendable (String) -> RemoteServer?
 
     package static let shared = RemoteCopyStore(
-        root: SecureStorage.caches.appending(path: "Servers.noindex", directoryHint: .isDirectory),
+        root: SecureStorage.Context.shared.caches.appending(path: "Servers.noindex", directoryHint: .isDirectory),
         server: { RemoteRegistry.shared.server(id: $0) })
 
     package init(root: URL, server: @escaping @Sendable (String) -> RemoteServer?) {

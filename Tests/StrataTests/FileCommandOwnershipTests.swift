@@ -40,6 +40,17 @@ struct FileCommandOwnershipTests {
         }
     }
 
+    @Test func anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage() async throws {
+        let environment = try Environment()
+        let services = environment.services, folder = environment.storage.directory.path + "/"
+        #expect(services.index !== FileIndex.shared && services.contentIndex !== SemanticIndex.shared)
+        let config = services.index.currentConfig()
+        #expect(config.storage === environment.storage && config.file.path.hasPrefix(folder))
+        let content = await services.contentIndex.configuration
+        #expect(content.storage === environment.storage && content.storeDirectory.path.hasPrefix(folder))
+        #expect(content.roots.isEmpty)
+    }
+
     private func undoManager() -> UndoManager {
         let undo = UndoManager()
         undo.groupsByEvent = false

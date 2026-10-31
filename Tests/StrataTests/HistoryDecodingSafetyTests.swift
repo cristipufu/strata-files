@@ -56,9 +56,9 @@ struct HistoryDecodingSafetyTests {
         older["id"] = olderID.uuidString
         let values: [Any] = [NSNull(), valid[0], invalid, "bad", [], 42, older, valid[1], invalid]
         let file = tree.url("history.sealed")
-        try SecureStorage.write(JSONSerialization.data(withJSONObject: values), to: file)
+        try SecureStorage.Context.shared.write(JSONSerialization.data(withJSONObject: values), to: file)
         let original = try Data(contentsOf: file)
-        let decoded = OperationLog.readEntries(from: file)
+        let decoded = OperationLog.readEntries(from: file, storage: .shared)
         #expect(decoded.count == 3)
         #expect(decoded.map(\.id) == [first.id, olderID, last.id])
         if decoded.count == 3 {
@@ -78,21 +78,21 @@ struct HistoryDecodingSafetyTests {
         let file = tree.url("history.sealed")
         let valid = try JSONEncoder().encode([OperationLog.Entry(name: "Copy", kind: .create)])
         for malformed in [Data("{}".utf8), Data(valid.dropLast())] {
-            try SecureStorage.write(malformed, to: file)
+            try SecureStorage.Context.shared.write(malformed, to: file)
             let original = try Data(contentsOf: file)
-            #expect(OperationLog.readEntries(from: file).isEmpty)
+            #expect(OperationLog.readEntries(from: file, storage: .shared).isEmpty)
             #expect(try Data(contentsOf: file) == original)
         }
-        try SecureStorage.write(valid, to: file)
+        try SecureStorage.Context.shared.write(valid, to: file)
         var damaged = try Data(contentsOf: file)
         damaged[damaged.count - 1] ^= 1
         try damaged.write(to: file)
-        #expect(OperationLog.readEntries(from: file).isEmpty)
+        #expect(OperationLog.readEntries(from: file, storage: .shared).isEmpty)
         #expect(try Data(contentsOf: file) == damaged)
-        #expect(OperationLog.readEntries(from: tree.url("missing.sealed")).isEmpty)
+        #expect(OperationLog.readEntries(from: tree.url("missing.sealed"), storage: .shared).isEmpty)
         // Plain JSON is not authenticated History, even when it contains well-formed records.
         try valid.write(to: file)
-        #expect(OperationLog.readEntries(from: file).isEmpty)
+        #expect(OperationLog.readEntries(from: file, storage: .shared).isEmpty)
         #expect(try Data(contentsOf: file) == valid)
         #expect(tree.snapshot() == ["history.sealed"])
     }

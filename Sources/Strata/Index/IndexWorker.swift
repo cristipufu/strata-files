@@ -1,18 +1,24 @@
 import Foundation
 import os
+#if canImport(StrataModel)
+import StrataModel
+#endif
 
 /// What to index. Changing exclusions only rescans the affected folders.
-nonisolated package struct IndexConfig: Sendable, Equatable {
+nonisolated package struct IndexConfig: Sendable {
     package var roots: [String]
     package var excluded: Set<String>
     package var noise: Set<String>
     package var file: URL
+    /// Whose key seals `file`.
+    package var storage: SecureStorage.Context
 
-    package init(roots: [String], excluded: Set<String>, noise: Set<String>, file: URL) {
+    package init(roots: [String], excluded: Set<String>, noise: Set<String>, file: URL, storage: SecureStorage.Context) {
         self.roots = roots
         self.excluded = excluded
         self.noise = noise
         self.file = file
+        self.storage = storage
     }
 }
 
@@ -108,7 +114,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func boot(_ config: IndexConfig) {
         self.config = config
         onPhase?(.loading)
-        let loadResult = Result { try IndexPersistence.load(from: config.file) }
+        let loadResult = Result { try IndexPersistence.load(from: config.file, storage: config.storage) }
         if case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots {
             log.info("Loaded \(loaded.read { $0.count }) entries, replaying events since \(header.eventID)")
             store = loaded
@@ -190,7 +196,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Apply events already received first: the saved event ID says they're in the file.
         if !pending.isEmpty { flush() }
         guard !interrupted, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
-        try? IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file)
+        try? IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file,
+                                   storage: config.storage)
         dirty = false
     }
 

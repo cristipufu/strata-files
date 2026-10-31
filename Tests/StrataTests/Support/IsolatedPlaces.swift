@@ -21,7 +21,7 @@ extension PathSuggestions {
     convenience init(_ preferences: Prefs) {
         let visits = Frecency(preferences: preferences.defaults)
         self.init(preferences: preferences, places: PlaceChecks(preferences: preferences, visits: visits, read: PlaceChecks.read),
-                  index: FileIndex(copies: .live))
+                  index: FileIndex(storage: .shared, copies: .live))
     }
 }
 

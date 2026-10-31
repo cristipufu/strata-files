@@ -57,11 +57,11 @@ nonisolated enum SemanticFixture {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        try SecureStorage.write(encoder.encode(store), to: directory.appending(path: "index.sealed"))
+        try SecureStorage.Context.shared.write(encoder.encode(store), to: directory.appending(path: "index.sealed"))
     }
 
     static func read(from directory: URL) throws -> Store {
-        guard let data = SecureStorage.read(directory.appending(path: "index.sealed")) else { throw SecureStorage.Failure() }
+        guard let data = SecureStorage.Context.shared.read(directory.appending(path: "index.sealed")) else { throw SecureStorage.Failure() }
         return try PropertyListDecoder().decode(Store.self, from: data)
     }
 }

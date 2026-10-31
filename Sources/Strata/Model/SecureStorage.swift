@@ -25,32 +25,27 @@ nonisolated package enum SecureStorage {
         }
     }
 
-    package static var current: Context {
-        selected.withLock { context in
-            if let context { return context }
-            let directory = FileManager.default.temporaryDirectory
-                .appending(path: "strata-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
-            let made = Context(directory: directory, caches: directory.appending(path: "Caches", directoryHint: .isDirectory),
-                               key: SymmetricKey(size: .bits256), temporary: true)
-            context = made
-            atexit { try? FileManager.default.removeItem(at: SecureStorage.directory) }
-            return made
-        }
-    }
-
-    package static var isTestRun: Bool { current.temporary }
-    package static var directory: URL { current.directory }
-    package static var caches: URL { current.caches }
-    package static func url(_ relative: String, isDirectory: Bool = false) -> URL {
-        current.url(relative, isDirectory: isDirectory)
-    }
-
     /// An immutable storage dependency. Separate contexts can coexist without changing the process defaults or
     /// each other's keys. The key provider is evaluated once, on first use, even when readers run concurrently.
     package final class Context: Sendable {
+        /// The process's: the user's stores once `useApplicationStorage` chose them, else a private temporary one.
+        package static var shared: Context {
+            selected.withLock { context in
+                if let context { return context }
+                let directory = FileManager.default.temporaryDirectory
+                    .appending(path: "strata-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+                let made = Context(directory: directory,
+                                   caches: directory.appending(path: "Caches", directoryHint: .isDirectory),
+                                   key: SymmetricKey(size: .bits256), temporary: true)
+                context = made
+                atexit { try? FileManager.default.removeItem(at: SecureStorage.Context.shared.directory) }
+                return made
+            }
+        }
+
         package let directory: URL
         package let caches: URL
-        fileprivate let temporary: Bool
+        let temporary: Bool
         private enum KeyState { case pending, resolved(SymmetricKey?) }
         private let keyState = Mutex<KeyState>(.pending)
         private let keyProvider: @Sendable () -> SymmetricKey?
@@ -104,6 +99,11 @@ nonisolated package enum SecureStorage {
             let folder = isDirectory ? url : url.deletingLastPathComponent()
             if folder.standardizedFileURL != directory.standardizedFileURL { Self.prepare(folder) }
             return url
+        }
+
+        /// Makes `folder` where it's missing (0700, never through a link), as naming one with `url` does.
+        package func makeFolder(_ folder: URL) {
+            Self.prepare(folder)
         }
 
         package func write(_ data: Data, to url: URL) throws {
@@ -161,11 +161,6 @@ nonisolated package enum SecureStorage {
         }
         return key
     }
-
-    // MARK: Whole files
-
-    package static func write(_ data: Data, to url: URL) throws { try current.write(data, to: url) }
-    package static func read(_ url: URL) -> Data? { current.read(url) }
 
     // MARK: Streams
 
@@ -233,7 +228,7 @@ nonisolated package enum SecureStorage {
         private let salt: Data
         private let name: Data
 
-        package init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context) throws {
             guard let key = storage.key else { throw Failure() }
             self.url = url
             self.key = key
@@ -327,7 +322,7 @@ nonisolated package enum SecureStorage {
         /// Upper bound on the plaintext, for sanity-checking lengths before allocating.
         package let maximumLength: Int
 
-        package init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context) throws {
             guard let key = storage.key else { throw Failure() }
             let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }

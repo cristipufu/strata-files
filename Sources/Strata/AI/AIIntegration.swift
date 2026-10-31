@@ -2,8 +2,6 @@ import AppKit
 
 /// App-wide AI services. Everything runs on this Mac; nothing is sent anywhere.
 package enum StrataAI {
-    /// Content index over ~/Documents, ~/Desktop and ~/Downloads, stored in ~/Library/Application Support/Strata/semantic.
-    package static let index = SemanticIndex(configuration: SemanticIndex.Configuration(roots: SemanticIndex.standardRoots))
 
     private static var indexing: Task<Void, Never>?
     package private(set) static var progress = SemanticIndexProgress(phase: .done)
@@ -15,8 +13,8 @@ package enum StrataAI {
         let roots = SemanticIndex.standardRoots.filter { !Privacy.measuringWouldPrompt($0, browsing: Places.home) }
         guard !roots.isEmpty else { return }
         indexing = Task(priority: .utility) {
-            await index.setRoots(roots)
-            try? await index.update { update in
+            await SemanticIndex.shared.setRoots(roots)
+            try? await SemanticIndex.shared.update { update in
                 Task { @MainActor in
                     progress = update
                     onProgress?(update)

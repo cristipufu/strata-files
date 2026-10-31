@@ -11,7 +11,7 @@ import Testing
 
 struct SemanticMemoryTests {
     private func configuration(_ directory: URL, sentences: Bool = false) -> SemanticIndex.Configuration {
-        var config = SemanticIndex.Configuration(roots: [])
+        var config = SemanticIndex.Configuration(roots: [], storage: .shared)
         config.storeDirectory = directory
         config.sentenceEmbeddings = sentences
         config.throttle = .zero

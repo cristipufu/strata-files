@@ -64,8 +64,8 @@ struct IndexGrowthTests {
     @Test func aBurstAfterLoadingKeepsEveryColumnBufferAndPersistsAllItems() throws {
         let tree = try TestTree("state/")
         let count = 200_000, burst = 4096
-        try IndexPersistence.save(fixture(files: count), eventID: 1, excluded: [], to: tree.url("state/index.sealed"))
-        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(fixture(files: count), eventID: 1, excluded: [], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         try #require(loaded.read { $0.count } == count + 1)
         let buffers = addresses(loaded)
         let first = Int32(loaded.read { $0.count })
@@ -84,8 +84,8 @@ struct IndexGrowthTests {
         }
         #expect(loaded.read { $0.flags[6] } & IndexStore.Flag.symlink != 0)
         #expect(loaded.read { $0.flags[7] } & IndexStore.Flag.hidden != 0)
-        try IndexPersistence.save(loaded, eventID: 2, excluded: [], to: tree.url("state/new.sealed"))
-        let (reopened, header) = try IndexPersistence.load(from: tree.url("state/new.sealed"))
+        try IndexPersistence.save(loaded, eventID: 2, excluded: [], to: tree.url("state/new.sealed"), storage: .shared)
+        let (reopened, header) = try IndexPersistence.load(from: tree.url("state/new.sealed"), storage: .shared)
         #expect(header.eventID == 2)
         #expect(reopened.read { $0.count } == loaded.read { $0.count })
         #expect(reopened.read { $0.size[0] } == total)
@@ -97,16 +97,16 @@ struct IndexGrowthTests {
     @Test func reservedCapacityIsNeverReadOrSavedAsFileEntries() throws {
         let tree = try TestTree("state/")
         let original = fixture(files: 10_000)
-        try IndexPersistence.save(original, eventID: 42, excluded: ["/private"], to: tree.url("state/index.sealed"))
-        let (loaded, header) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(original, eventID: 42, excluded: ["/private"], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, header) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         try #require(loaded.read { $0.count } == original.read { $0.count })
         #expect(loaded.read { $0.names } == original.read { $0.names })
         #expect(loaded.read { $0.parent } == original.read { $0.parent })
         #expect(loaded.read { $0.flags } == original.read { $0.flags })
         #expect(loaded.read { $0.fileCount } == original.read { $0.fileCount })
-        try IndexPersistence.save(loaded, eventID: 42, excluded: header.excluded, to: tree.url("state/reopened.sealed"))
-        let before = try #require(SecureStorage.read(tree.url("state/index.sealed")))
-        let after = try #require(SecureStorage.read(tree.url("state/reopened.sealed")))
+        try IndexPersistence.save(loaded, eventID: 42, excluded: header.excluded, to: tree.url("state/reopened.sealed"), storage: .shared)
+        let before = try #require(SecureStorage.Context.shared.read(tree.url("state/index.sealed")))
+        let after = try #require(SecureStorage.Context.shared.read(tree.url("state/reopened.sealed")))
         #expect(before == after)
         #expect(tree.snapshot() == ["state/", "state/index.sealed", "state/reopened.sealed"])
     }
@@ -115,15 +115,15 @@ struct IndexGrowthTests {
     func emptySmallAndReserveBoundaryIndexesRoundTrip(_ entries: Int) throws {
         let tree = try TestTree("state/")
         let original = entries == 0 ? IndexStore() : fixture(files: entries - 1)
-        try IndexPersistence.save(original, eventID: 42, excluded: ["/private"], to: tree.url("state/index.sealed"))
-        let (loaded, header) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(original, eventID: 42, excluded: ["/private"], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, header) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         try #require(loaded.read { $0.count } == entries)
         expectSameColumns(loaded, original)
         #expect(header.eventID == 42 && header.excluded == ["/private"])
         #expect(header.roots.map(\.path) == original.read { $0.roots }.map(\.path))
-        try IndexPersistence.save(loaded, eventID: header.eventID, excluded: header.excluded, to: tree.url("state/reopened.sealed"))
-        let before = try #require(SecureStorage.read(tree.url("state/index.sealed")))
-        let after = try #require(SecureStorage.read(tree.url("state/reopened.sealed")))
+        try IndexPersistence.save(loaded, eventID: header.eventID, excluded: header.excluded, to: tree.url("state/reopened.sealed"), storage: .shared)
+        let before = try #require(SecureStorage.Context.shared.read(tree.url("state/index.sealed")))
+        let after = try #require(SecureStorage.Context.shared.read(tree.url("state/reopened.sealed")))
         #expect(before == after)
         #expect(tree.snapshot() == ["state/", "state/index.sealed", "state/reopened.sealed"])
     }
@@ -131,16 +131,16 @@ struct IndexGrowthTests {
     @Test func growthBeyondTheReserveStillPreservesEveryItemAndItsMetadata() throws {
         let tree = try TestTree("state/")
         let count = 4096, burst = 4096
-        try IndexPersistence.save(fixture(files: count), eventID: 1, excluded: [], to: tree.url("state/index.sealed"))
-        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(fixture(files: count), eventID: 1, excluded: [], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         let first = Int32(loaded.read { $0.count })
         append(count..<(count + burst), to: loaded)
         loaded.write { $0.integrateNew(from: first) }
         #expect(loaded.read { $0.count } == count + burst + 1)
         #expect(loaded.read { $0.fileCount[0] } == count + burst)
         #expect(loaded.read { $0.size[0] } == Int64(count + burst) * Int64(count + burst + 1) / 2)
-        try IndexPersistence.save(loaded, eventID: 2, excluded: [], to: tree.url("state/new.sealed"))
-        let (reopened, _) = try IndexPersistence.load(from: tree.url("state/new.sealed"))
+        try IndexPersistence.save(loaded, eventID: 2, excluded: [], to: tree.url("state/new.sealed"), storage: .shared)
+        let (reopened, _) = try IndexPersistence.load(from: tree.url("state/new.sealed"), storage: .shared)
         expectSameColumns(reopened, loaded)
         #expect(reopened.read { $0.lookup("/synthetic/file-\(count + burst - 1).txt") } != nil)
         #expect(tree.snapshot() == ["state/", "state/index.sealed", "state/new.sealed"])
@@ -150,11 +150,11 @@ struct IndexGrowthTests {
     func truncatedAndUnauthenticatedIndexesAreRefusedWithoutChangingFiles(_ damage: String) throws {
         let tree = try TestTree("state/", "kept.txt")
         let file = tree.url("state/index.sealed")
-        try IndexPersistence.save(fixture(files: 10_000), eventID: 1, excluded: [], to: file)
+        try IndexPersistence.save(fixture(files: 10_000), eventID: 1, excluded: [], to: file, storage: .shared)
         if damage == "shortColumn" {
             // An authenticated but incomplete last column reaches the buffer's partial-read failure path.
-            let plain = try #require(SecureStorage.read(file))
-            try SecureStorage.write(Data(plain.dropLast(17)), to: file)
+            let plain = try #require(SecureStorage.Context.shared.read(file))
+            try SecureStorage.Context.shared.write(Data(plain.dropLast(17)), to: file)
         } else {
             var encrypted = try Data(contentsOf: file)
             if damage == "truncatedCiphertext" { encrypted.removeLast(13) }
@@ -162,7 +162,7 @@ struct IndexGrowthTests {
             try encrypted.write(to: file)
         }
         let before = try Data(contentsOf: file)
-        #expect(throws: (any Error).self) { _ = try IndexPersistence.load(from: file) }
+        #expect(throws: (any Error).self) { _ = try IndexPersistence.load(from: file, storage: .shared) }
         #expect(try Data(contentsOf: file) == before)
         #expect(tree.text("kept.txt") == "kept.txt")
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
@@ -172,14 +172,14 @@ struct IndexGrowthTests {
     func unrepresentableAndOversizedColumnLengthsAreRefusedBeforeAllocation(_ length: UInt64) throws {
         let tree = try TestTree("state/", "kept.txt")
         let file = tree.url("state/index.sealed")
-        try IndexPersistence.save(IndexStore(), eventID: 1, excluded: [], to: file)
-        var plain = try #require(SecureStorage.read(file))
+        try IndexPersistence.save(IndexStore(), eventID: 1, excluded: [], to: file, storage: .shared)
+        var plain = try #require(SecureStorage.Context.shared.read(file))
         // With no roots or exclusions, the first column's count follows the 24-byte version-6 header.
         try #require(plain.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 24, as: UInt64.self) } == 0)
         withUnsafeBytes(of: length.littleEndian) { plain.replaceSubrange(24..<32, with: $0) }
-        try SecureStorage.write(plain, to: file)
+        try SecureStorage.Context.shared.write(plain, to: file)
         let before = try Data(contentsOf: file)
-        #expect(throws: (any Error).self) { _ = try IndexPersistence.load(from: file) }
+        #expect(throws: (any Error).self) { _ = try IndexPersistence.load(from: file, storage: .shared) }
         #expect(try Data(contentsOf: file) == before)
         #expect(tree.text("kept.txt") == "kept.txt")
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])

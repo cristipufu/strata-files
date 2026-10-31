@@ -21,7 +21,7 @@ struct IndexWorkerTests {
 
     private func start(_ tree: TestTree) async throws -> Fixture {
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
-                                 file: tree.url(".state/index.sealed"))
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
         let worker = IndexWorker(watchesChanges: false)
         let store = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         let changes = OSAllocatedUnfairLock(initialState: 0)
@@ -47,25 +47,27 @@ struct IndexWorkerTests {
     }
 
     @Test func appConfigurationExcludesItsOwnPrivateState() throws {
-        let config = FileIndex(copies: .live).currentConfig()
-        let resolved = try #require(realpath(SecureStorage.directory.path, nil))
+        let config = FileIndex(storage: .shared, copies: .live).currentConfig()
+        let resolved = try #require(realpath(SecureStorage.Context.shared.directory.path, nil))
         defer { free(resolved) }
         let directory = String(cString: resolved)
         #expect(config.excluded.contains(directory))
-        #expect(config.file.deletingLastPathComponent().path == SecureStorage.directory.path)
+        #expect(config.file.deletingLastPathComponent().path == SecureStorage.Context.shared.directory.path)
     }
 
-    @Test func anIndexLeavesOutItsOwnEnvironmentsCopies() throws {
-        let tree = try TestTree("Servers/", "Containers/", "Clipboard/", "elsewhere/")
+    @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() throws {
+        let tree = try TestTree("state/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
+        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
         let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
                                    containerCopies: ContainerCopyStore(root: tree.url("Containers")),
                                    clipboardRoot: tree.url("Clipboard"))
-        let excluded = FileIndex(copies: copies).currentConfig().excluded
-        for name in ["Servers", "Containers", "Clipboard"] {
-            #expect(excluded.contains(tree.url(name).path), "\(name)")
+        let config = FileIndex(storage: storage, copies: copies).currentConfig()
+        for name in ["state", "Servers", "Containers", "Clipboard"] {
+            #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }
-        #expect(!excluded.contains(tree.url("elsewhere").path))
-        #expect(tree.snapshot() == ["Clipboard/", "Containers/", "Servers/", "elsewhere/"])
+        #expect(!config.excluded.contains(tree.url("elsewhere").path))
+        #expect(config.file == storage.url("index.sealed") && config.storage === storage)
+        #expect(tree.snapshot() == ["Clipboard/", "Containers/", "Servers/", "elsewhere/", "state/", "state/Caches/"])
     }
 
     @Test func stateFolderEventsDoNotNotifyOrRewriteTheIndex() async throws {
@@ -95,7 +97,7 @@ struct IndexWorkerTests {
             .init(path: tree.url("files").path, flags: 0, id: 2),
         ])
         await save(fixture.worker)
-        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         #expect(loaded.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
         #expect(loaded.read { $0.lookup(tree.url(".state/history.sealed").path) } == nil)
         #expect(tree.text("files/a.txt") == "files/a.txt")
@@ -155,7 +157,7 @@ struct IndexWorkerTests {
             .init(path: tree.url("b").path, flags: 0, id: 2),
         ])
         await save(fixture.worker)
-        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         let a = try #require(loaded.read { $0.lookup(tree.url("a").path) })
         let b = try #require(loaded.read { $0.lookup(tree.url("b").path) })
         #expect(loaded.read { $0.size[Int(a)] } == Int64(first.count))
@@ -173,7 +175,7 @@ struct IndexWorkerTests {
         try FileManager.default.removeItem(at: tree.url("files/removed"))
         fixture.worker.receive([.init(path: tree.url("files/removed").path, flags: 0, id: 1)])
         await save(fixture.worker)
-        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         #expect(loaded.read { $0.lookup(tree.url("files/removed").path) } == nil)
         #expect(loaded.read { $0.lookup(tree.url("files/kept.txt").path) } != nil)
         #expect(fixture.changes.withLock { $0 } > 0)
@@ -199,7 +201,7 @@ struct IndexWorkerTests {
         }
         fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
         await save(fixture.worker)
-        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         let file = try #require(loaded.read { $0.lookup(tree.url("files/file.txt").path) })
         let replacement = try #require(loaded.read { $0.lookup(tree.url("files/folder").path) })
         if change == "hidden" { #expect(loaded.read { $0.flags[Int(file)] } & IndexStore.Flag.hidden != 0) }
@@ -218,7 +220,7 @@ struct IndexWorkerTests {
         config.excluded.insert(tree.url("private").path)
         fixture.worker.update(config)
         await save(fixture.worker)
-        let (loaded, header) = try IndexPersistence.load(from: config.file)
+        let (loaded, header) = try IndexPersistence.load(from: config.file, storage: .shared)
         #expect(header.excluded.contains(tree.url("private").path))
         #expect(loaded.read { $0.lookup(tree.url("private/a.txt").path) } == nil)
         #expect(loaded.read { $0.lookup(tree.url("private-lookalike/b.txt").path) } != nil)

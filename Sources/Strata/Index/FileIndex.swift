@@ -9,12 +9,14 @@ extension Notification.Name {
 
 /// The app's view of the file index: instant folder sizes and search across the home folder and Applications.
 package final class FileIndex {
-    package static let shared = FileIndex(copies: .live)
+    package static let shared = FileIndex(storage: .shared, copies: .live)
 
-    /// Its environment's server and container copies and clipboard staging, which it leaves out.
+    /// Where it's saved, which it leaves out like its environment's server and container copies and clipboard staging.
+    private let storage: SecureStorage.Context
     private let copies: CopyProviders
 
-    package init(copies: CopyProviders) {
+    package init(storage: SecureStorage.Context, copies: CopyProviders) {
+        self.storage = storage
         self.copies = copies
     }
 
@@ -215,16 +217,16 @@ package final class FileIndex {
             }
         }
         // Saving the index must not index that save and trigger another full rewrite of the index.
-        excluded.insert(Self.realPath(SecureStorage.directory.path))
+        excluded.insert(Self.realPath(storage.directory.path))
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
         excluded.insert(Self.realPath(copies.containerCopies.root.path))
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.
         excluded.insert(Self.realPath(copies.remoteCopies.root.path))
         excluded.insert(Self.realPath(copies.clipboardRoot.path))
         // The encrypted index replaces the plain index.bin of earlier builds.
-        SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
+        SecureStorage.removeLegacy(storage.url("index.bin"))
         let config = IndexConfig(roots: Self.rootPaths, excluded: excluded,
-                                 noise: [home + "/Library"], file: SecureStorage.url("index.sealed"))
+                                 noise: [home + "/Library"], file: storage.url("index.sealed"), storage: storage)
         return config
     }
 

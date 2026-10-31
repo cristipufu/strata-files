@@ -12,11 +12,12 @@ extension BrowserWindowController {
         guard !urls.isEmpty else { return }
         let folder = location
         let selectAfterReload = selectionAfterOperation()
+        let contentIndex = services.contentIndex
         PlanSheetController.present(on: window, urls: urls, baseFolder: folder, undoManager: window.undoManager,
                                     instruction: instruction, files: services.files) { [weak self] outcome in
             guard self != nil, let outcome, !outcome.results.isEmpty else { return }
             selectAfterReload(outcome.results)
-            Task { for url in outcome.results { await StrataAI.index.refresh(url) } }
+            Task { for url in outcome.results { await contentIndex.refresh(url) } }
         }
     }
 
