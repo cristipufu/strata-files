@@ -78,10 +78,6 @@ final class TagStore {
         }
     }
 
-    /// Folders whose tags are being read in the background: keep their last known values until then, rather than
-    /// each cell reading on the main thread (slow on network disks).
-    private var loading: Set<String> = []
-
     /// Last known tags only: sorting must never read extended attributes inside its comparator.
     func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
 
@@ -91,7 +87,7 @@ final class TagStore {
     func tags(for url: URL) -> [FinderTag] {
         let path = url.standardizedFileURL.path
         if let cached = cache[path], !stale.contains(path) { return cached }
-        if !loading.contains(url.deletingLastPathComponent().standardizedFileURL.path) { request(path) }
+        request(path)
         return cache[path] ?? []
     }
 
@@ -102,12 +98,10 @@ final class TagStore {
     private var requestedSince: [String: Int] = [:]
     /// Items invalidated while their read was under way, read again once it's in.
     private var readAgain: Set<String> = []
-    /// Folder loads under way: with none, and nothing asked about, no read can be from before a change, so the
-    /// counts go.
-    private var loadsUnderWay = 0
     /// The labels of Finder's colored tags, for the reads (taken on the main thread when a run of asking starts).
     private let labels = OSAllocatedUnfairLock(initialState: [String]())
-    /// Rows' reads, one batch per disk on a thread of its own: a server that stopped answering holds up only its own.
+    /// Every read, rows' and folders', one batch per disk on a thread of its own: a server that stopped answering
+    /// holds up only its own items, and an item being read isn't read again meanwhile.
     private lazy var reads = BatchedReads<[FinderTag]>(
         read: { [labels, reader] paths in reader(paths, labels.withLock { $0 }) },
         arrived: { [weak self] tags in self?.arrived(tags) })
@@ -147,38 +141,19 @@ final class TagStore {
             cache[path] = list
             stale.remove(path)
         }
-        if loadsUnderWay == 0, requestedSince.isEmpty { tagChanges.removeAll() }
+        if requestedSince.isEmpty { tagChanges.removeAll() }
         return changed
     }
 
-    /// Reads the tags of a folder's items off the main thread, then shows them (cells redraw on `.tagsChanged`).
+    /// Reads the tags of a folder's items off the main thread, with the rows asked about meanwhile; cells redraw on
+    /// `.tagsLoaded` when what's read differs from what they show.
     @discardableResult
-    func load(_ entries: [FileEntry], in folder: URL? = nil) -> Task<Void, Never> {
-        let folders = folder.map { Set([$0.standardizedFileURL.path]) }
-            ?? Set(entries.map { $0.url.deletingLastPathComponent().standardizedFileURL.path })
-        loading.formUnion(folders)
-        let paths = entries.map { $0.url.standardizedFileURL.path }
-        let labels = NSWorkspace.shared.fileLabels
-        let before = tagChanges
-        loadsUnderWay += 1
-        let disk = DiskOfPath.of(folders.first ?? paths.first ?? "/")
-        let previous = diskLoads[disk]
-        let load = Task {
-            // One load at a time on each disk, on a thread of its own: a server that stopped answering holds one
-            // thread, not one per refresh, and never a shared one.
-            await previous?.value
-            let tags = await OwnThread.run { Self.readAll(paths, labels: labels) }
-            loadsUnderWay -= 1
-            keep(tags, unchangedSince: before)
-            loading.subtract(folders)
-            NotificationCenter.default.post(name: .tagsLoaded, object: self)
-        }
-        diskLoads[disk] = load
-        return load
+    func load(_ entries: [FileEntry]) -> Task<Void, Never> {
+        let current = NSWorkspace.shared.fileLabels
+        labels.withLock { $0 = current }
+        for entry in entries { request(entry.url.standardizedFileURL.path) }
+        return Task { await reads.settled() }
     }
-
-    /// Each disk's latest folder load, which the next one on it waits for.
-    private var diskLoads: [String: Task<Void, Never>] = [:]
 
     nonisolated static func readAll(_ paths: [String], labels: [String]) -> [String: [FinderTag]] {
         var result: [String: [FinderTag]] = [:]
@@ -192,14 +167,14 @@ final class TagStore {
     func invalidate(_ folder: URL?) {
         guard let folder else {
             cache.removeAll(); stale.removeAll()
-            readAgain.formUnion(requestedSince.keys)
+            readAgain.formUnion(requestedSince.keys.filter(reads.isUnderWay))
             return
         }
         let path = folder.standardizedFileURL.path
         let prefix = path == "/" ? "/" : path + "/"
         stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })
-        // A read under way may be from before: read again once it's in.
-        readAgain.formUnion(requestedSince.keys.filter { $0.hasPrefix(prefix) })
+        // A read under way may be from before: read again once it's in. One still waiting begins after this.
+        readAgain.formUnion(requestedSince.keys.filter { $0.hasPrefix(prefix) && reads.isUnderWay($0) })
     }
 
     /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without

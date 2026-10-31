@@ -432,7 +432,7 @@ final class BrowserViewController: NSViewController {
             guard let self else { return }
             switch result {
             case .success(let delivery):
-                services.tags.load(delivery.entries, in: url)
+                services.tags.load(delivery.entries)
                 services.cloud.load(delivery.entries.map(\.url), in: url)
                 Privacy.markAccessible(url)
                 apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
@@ -487,7 +487,7 @@ final class BrowserViewController: NSViewController {
     func loadChildren(of node: FileNode, selecting: [URL] = []) {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
-            services.tags.load(entries, in: node.url)
+            services.tags.load(entries)
             services.cloud.load(entries.map(\.url), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)

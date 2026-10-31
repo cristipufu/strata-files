@@ -7079,14 +7079,14 @@
     "file": "Strata/Transfers/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet shows an item's icon as it is now",
     "find": "        imageView.image = IconCache.shared.currentIcon(forPath: url.path)",
-    "replace": "        imageView.image = IconCache.shared.icon(forPath: url.path)",
+    "replace": "        imageView.image = IconCache.shared.icon(forPath: url.path, folder: true)",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
     "file": "Strata/Window/ShelfPanel.swift",
     "rule": "Files: the Shelf shows an item's icon as it is now",
     "find": "            iconView.image = items.count == 1 ? IconCache.shared.currentIcon(forPath: items[0].path)",
-    "replace": "            iconView.image = items.count == 1 ? IconCache.shared.icon(forPath: items[0].path)",
+    "replace": "            iconView.image = items.count == 1 ? IconCache.shared.icon(forPath: items[0].path, folder: true)",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
@@ -7147,17 +7147,24 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "        for n in 2...999 {",
-    "replace": "        for n in 2..<2 {",
+    "find": "                guard let now = try? await FileOps.unpark(temporary, as: pair.from), now != pair.from else { throw error }\n                throw Displaced(now: now, reason: error)",
+    "replace": "                throw error",
     "rule": "A case-only rename that can't finish leaves the item under its hidden name",
     "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                if now != pair.from { throw Displaced(now: now, reason: error) }\n",
-    "replace": "",
+    "find": "                throw Displaced(now: now, reason: error)",
+    "replace": "                _ = now; throw error",
     "rule": "A case-only rename that can't finish moves the item without saying where",
     "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        try Archiver.place(parked, in: original.deletingLastPathComponent(), as: original.lastPathComponent)",
+    "replace": "        parked",
+    "rule": "A parked item is left hidden when it can't come back",
+    "tests": "RenameTests/aParkedItemComesBackBesideWhatTookItsName|TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
   },
   {
     "file": "Strata/Model/FileInfoEditing.swift",

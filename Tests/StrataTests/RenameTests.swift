@@ -195,6 +195,28 @@ final class RenameTests {
         #expect(Date().timeIntervalSince(start) < 3)
     }
 
+    /// A parked item comes back by its name, or beside it, keeping its own extension, when something has taken that
+    /// (a file or a folder): never left hidden, and nothing in the way is replaced.
+    @Test func aParkedItemComesBackBesideWhatTookItsName() async throws {
+        for newcomerIsFolder in [false, true] {
+            let tree = try TestTree("photo.jpg", "photo 2.txt")
+            let original = tree.url("photo.jpg")
+            let parked = FileOps.parkingName(for: original)
+            try FileManager.default.moveItem(at: original, to: parked)
+            #expect(try await FileOps.unpark(parked, as: original) == original)
+            try FileManager.default.moveItem(at: original, to: parked)
+            if newcomerIsFolder {
+                try FileManager.default.createDirectory(at: original, withIntermediateDirectories: false)
+            } else {
+                try Data("someone else's".utf8).write(to: original)
+            }
+            let now = try await FileOps.unpark(parked, as: original)
+            #expect(now.lastPathComponent == "photo 2.jpg", "\(newcomerIsFolder)")
+            #expect(tree.snapshot() == ["photo 2.jpg", "photo 2.txt", newcomerIsFolder ? "photo.jpg/" : "photo.jpg"])
+            #expect(tree.text("photo 2.jpg") == "photo.jpg")
+        }
+    }
+
     @Test func chainsMoveInOrderAndOnlyCyclesPark() {
         let url = { (name: String) in self.folder.appending(path: name) }
         let chain = FileOps.chainSteps([(url("1"), url("2")), (url("2"), url("3")), (url("3"), url("4"))])

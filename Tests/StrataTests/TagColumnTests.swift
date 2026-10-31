@@ -17,7 +17,7 @@ struct TagColumnTests {
         let tree = try TestTree("folder/a")
         let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         try write(["Alpha"], to: entry.url)
-        await store.load([entry], in: tree.url("folder")).value
+        await store.load([entry]).value
         store.invalidate(tree.root)
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Alpha"])
         try write(["Beta"], to: entry.url)
@@ -28,7 +28,7 @@ struct TagColumnTests {
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Beta"])
         store.invalidate(tree.root)
         try write(["Gamma"], to: entry.url)
-        await store.load([entry], in: tree.url("folder")).value
+        await store.load([entry]).value
         #expect(store.cachedTags(for: entry.url).map(\.name) == ["Gamma"])
         store.invalidate(nil)
         #expect(store.cachedTags(for: entry.url).isEmpty)
@@ -40,7 +40,7 @@ struct TagColumnTests {
         let tree = try TestTree("folder/a")
         let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         try write(["Red"], to: entry.url)
-        let reading = store.load([entry], in: tree.url("folder"))
+        let reading = store.load([entry])
         try store.update([entry.url], adding: ["Blue"], removing: [], undo: nil)
         await reading.value
         #expect(store.cachedTags(for: entry.url).isEmpty)
@@ -76,6 +76,21 @@ struct TagColumnTests {
         #expect(!store.cachedTags(for: item).contains { $0.name == "From Before" })
         store.forget("Blue")
         #expect(tree.snapshot() == ["a.txt"])
+    }
+
+    /// A folder's tags are read like the rows', by the store's reader, one batch per disk.
+    @Test func aFolderLoadReadsThroughTheStoresReader() async throws {
+        let tree = try TestTree("folder/a.txt", "folder/b.txt")
+        let entries = try ["folder/a.txt", "folder/b.txt"].map { try #require(FileEntry(url: tree.url($0))) }
+        let read = OSAllocatedUnfairLock(initialState: [String]())
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live) { paths, _ in
+            read.withLock { $0 += paths }
+            return Dictionary(uniqueKeysWithValues: paths.map { ($0, [FinderTag(name: "Read", color: 0)]) })
+        }
+        await store.load(entries).value
+        #expect(Set(read.withLock { $0 }) == Set(entries.map { $0.url.standardizedFileURL.path }))
+        #expect(entries.allSatisfy { store.cachedTags(for: $0.url).map(\.name) == ["Read"] })
+        #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/b.txt"])
     }
 
     /// A row's read under way when its folder is invalidated is read again once it's in: it may be from before.

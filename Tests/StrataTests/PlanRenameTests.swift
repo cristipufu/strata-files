@@ -42,4 +42,40 @@ extension TransferTests {
             withExtendedLifetime(state) {}
         }
     }
+
+    /// Undoing a case-only rename goes through a hidden name too. When something takes the name meanwhile, the item
+    /// comes back beside it, still the plan's own: redoing leaves the newcomer alone.
+    @Test func undoingACaseOnlyRenameKeepsTrackOfAnItemPutBeside() async throws {
+        let tree = try TestTree("photo.jpg")
+        let state = try TestTree()
+        let history = OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"),
+                                                                  key: SymmetricKey(size: .bits256)), copies: .live)
+        let items = await PlanItem.load([tree.url("photo.jpg")])
+        let plan = PlanValidator.validate([.rename(tree.url("photo.jpg"), to: "Photo.jpg")],
+                                          request: .init(instruction: "", items: items, baseFolder: tree.root),
+                                          source: .rules, interpretation: "")
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        let result = await PlanExecutor.apply(plan, actionName: "Rename", undo: undo, copies: .live, history: history)
+        undo.endUndoGrouping()
+        #expect(result.applied == 1 && tree.snapshot() == ["Photo.jpg"])
+        let folder = tree.root.resolvingSymlinksInPath().path, newcomer = tree.url("photo.jpg")
+        TransferEngine.hooks.afterLanding = { url in
+            guard url.resolvingSymlinksInPath().deletingLastPathComponent().path == folder,
+                  url.lastPathComponent.hasPrefix(".strata-") else { return }
+            do { try Data("someone else's".utf8).write(to: newcomer) } catch { Issue.record(error) }
+        }
+        defer { TransferEngine.hooks = .init() }
+        undo.undo()
+        await FileOps.undoWork?.value
+        TransferEngine.hooks = .init()
+        #expect(tree.snapshot() == ["Photo 2.jpg", "photo.jpg"])
+        #expect(tree.text("Photo 2.jpg") == "photo.jpg" && tree.text("photo.jpg") == "someone else's")
+        undo.redo()
+        await FileOps.undoWork?.value
+        #expect(tree.snapshot() == ["Photo 2.jpg", "photo.jpg"])
+        #expect(tree.text("photo.jpg") == "someone else's")
+        withExtendedLifetime(state) {}
+    }
 }

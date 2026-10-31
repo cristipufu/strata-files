@@ -718,7 +718,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             switch result {
             case .success(let entries):
                 statuses.tags.invalidate(self.folder)
-                statuses.tags.load(entries, in: self.folder)
+                statuses.tags.load(entries)
                 statuses.cloud.load(entries.map(\.url), in: self.folder)
                 self.message.isHidden = true
                 let presorted = sortedBy != nil && sortedBy == self.controller?.sortedBy

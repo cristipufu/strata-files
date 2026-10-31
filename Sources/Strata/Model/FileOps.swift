@@ -92,18 +92,18 @@ enum FileOps {
                     NSLocalizedDescriptionKey: String(localized: "“\(pair.from.lastPathComponent)” couldn’t be renamed to “\(pair.to.lastPathComponent)”: \(error.localizedDescription)"),
                     NSUnderlyingErrorKey: error,
                 ])
-                // Back the way it came; whatever can't go back stays where it is, but never hidden.
+                // Back the way it came; whatever can't go back stays where it is, and a parked item comes back beside
+                // its name when something has taken it.
                 var kept: [Move] = []
                 for item in executed.reversed() {
-                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
                     if item.step.isParking {
-                        let fallback = available(item.step.from, copyStyle: false)
-                        if (try? await moveItem(item.step.to, fallback)) != nil {
-                            kept.insert((from: item.step.from, to: fallback), at: 0)
+                        if let now = try? await unpark(item.step.to, as: item.step.from), now != item.step.from {
+                            kept.insert((from: item.step.from, to: now), at: 0)
                         }
-                    } else if let completed = item.completes {
-                        kept.insert(pairs[completed], at: 0)
+                        continue
                     }
+                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
+                    if let completed = item.completes { kept.insert(pairs[completed], at: 0) }
                 }
                 return (kept, named)
             }
@@ -161,6 +161,14 @@ enum FileOps {
             steps.append(ChainStep(from: parked, to: pairs[start].to, pair: start, completes: start))
         }
         return steps
+    }
+
+    /// Brings an item parked under a hidden name (`parkingName`) back by `original`'s name, or by the first free one
+    /// beside it ("Photo 2.jpg") when something has taken that: never replacing anything. Throws when it can't, and
+    /// the item stays parked.
+    @concurrent
+    static func unpark(_ parked: URL, as original: URL) async throws -> URL {
+        try Archiver.place(parked, in: original.deletingLastPathComponent(), as: original.lastPathComponent)
     }
 
     /// A hidden name beside `url` that still says what the item was called (".strata-1a2b3c4d-Photo.jpg"), so an

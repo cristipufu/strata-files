@@ -438,7 +438,7 @@ extension BrowserViewController {
     func rereadTags() {
         guard let directory, !isShowingResults else { return }
         services.tags.invalidate(directory)
-        services.tags.load(nodes.map(\.entry), in: directory)
+        services.tags.load(nodes.map(\.entry))
         services.cloud.load(nodes.map(\.url), in: directory)
     }
 
