@@ -780,67 +780,77 @@ nonisolated enum TransferEngine {
             try? FileManager.default.removeItem(at: url)
             return
         }
-        guard !created.isEmpty else { return }
-        let base = root ?? url
+        guard !created.isEmpty, let dirFD = openOwnedParent(of: url, in: root ?? url, created: created) else { return }
+        defer { close(dirFD) }
+        removeOwned(url, in: dirFD, created: created, keepRootDirectory: keepRootDirectory)
+    }
+
+    /// The folder `url` is in, opened from `base`'s folder down without following links, each folder below `base`'s
+    /// one the operation made (`created`); nil when one isn't, or `url` isn't inside `base`.
+    private static func openOwnedParent(of url: URL, in base: URL, created: [String: FileIdentity]) -> Int32? {
         let baseParent = base.deletingLastPathComponent().path
         var dirFD = open(baseParent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard dirFD >= 0 else { return }
-        if url.path != base.path {
-            let prefix = base.path == "/" ? "/" : base.path + "/"
-            guard url.path.hasPrefix(prefix) else {
-                close(dirFD)
-                return
-            }
-            let relativeParent = String(url.deletingLastPathComponent().path.dropFirst(baseParent.count))
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            var currentPath = baseParent
-            for component in relativeParent.split(separator: "/").map(String.init) {
-                currentPath = (currentPath as NSString).appendingPathComponent(component)
-                guard let expected = created[currentPath] else {
-                    close(dirFD)
-                    return
-                }
-                let nextFD = openat(dirFD, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                close(dirFD)
-                guard nextFD >= 0 else { return }
-                var info = stat()
-                guard fstat(nextFD, &info) == 0, FileIdentity.from(info) == expected else {
-                    close(nextFD)
-                    return
-                }
-                dirFD = nextFD
-            }
+        guard dirFD >= 0 else { return nil }
+        guard url.path != base.path else { return dirFD }
+        let prefix = base.path == "/" ? "/" : base.path + "/"
+        guard url.path.hasPrefix(prefix) else {
+            close(dirFD)
+            return nil
         }
+        let relativeParent = String(url.deletingLastPathComponent().path.dropFirst(baseParent.count))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var currentPath = baseParent
+        for component in relativeParent.split(separator: "/").map(String.init) {
+            currentPath = (currentPath as NSString).appendingPathComponent(component)
+            guard let expected = created[currentPath] else {
+                close(dirFD)
+                return nil
+            }
+            let nextFD = openat(dirFD, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            close(dirFD)
+            guard nextFD >= 0 else { return nil }
+            var info = stat()
+            guard fstat(nextFD, &info) == 0, FileIdentity.from(info) == expected else {
+                close(nextFD)
+                return nil
+            }
+            dirFD = nextFD
+        }
+        return dirFD
+    }
+
+    /// Removes `url` from its open folder `dirFD` while it's the item the operation made: a file or link directly, a
+    /// folder through `removeOwnedTree`.
+    private static func removeOwned(_ url: URL, in dirFD: Int32, created: [String: FileIdentity], keepRootDirectory: Bool) {
         let targetName = url.lastPathComponent
         let targetPath = url.path
-        guard let expectedTarget = created[targetPath] else {
-            close(dirFD)
-            return
-        }
+        guard let expectedTarget = created[targetPath] else { return }
         var targetInfo = stat()
         guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0,
               FileIdentity.from(targetInfo) == expectedTarget else {
-            close(dirFD)
             return
         }
         if targetInfo.st_mode & S_IFMT != S_IFDIR {
             if !keepRootDirectory { _ = unlinkat(dirFD, targetName, 0) }
-            close(dirFD)
             return
         }
         let rootDirFD = openat(dirFD, targetName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard rootDirFD >= 0 else {
-            close(dirFD)
-            return
-        }
+        guard rootDirFD >= 0 else { return }
         var openedInfo = stat()
         guard fstat(rootDirFD, &openedInfo) == 0, FileIdentity.from(openedInfo) == expectedTarget else {
             close(rootDirFD)
-            close(dirFD)
             return
         }
+        removeOwnedTree(rootDirFD, named: targetName, at: targetPath, in: dirFD, created: created, keep: keepRootDirectory)
+    }
+
+    /// Removes what in the open folder `rootFD` the operation made, depth first, each folder opened without following
+    /// links and checked against `created` before anything in it goes; then the folder itself, unless `keep`. Closes
+    /// `rootFD`, never `dirFD`.
+    private static func removeOwnedTree(_ rootFD: Int32, named name: String, at path: String, in dirFD: Int32,
+                                        created: [String: FileIdentity], keep: Bool) {
         var stack: [(parentFD: Int32, fd: Int32, name: String, path: String, expanded: Bool, keep: Bool)] = [
-            (parentFD: dirFD, fd: rootDirFD, name: targetName, path: targetPath, expanded: false, keep: keepRootDirectory)
+            (parentFD: dirFD, fd: rootFD, name: name, path: path, expanded: false, keep: keep)
         ]
         while let frame = stack.popLast() {
             if !frame.expanded {
@@ -881,7 +891,6 @@ nonisolated enum TransferEngine {
             } else {
                 close(frame.fd)
                 if !frame.keep { _ = unlinkat(frame.parentFD, frame.name, AT_REMOVEDIR) }
-                if frame.parentFD == dirFD { close(dirFD) }
             }
         }
     }
