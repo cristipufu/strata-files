@@ -17,6 +17,8 @@ import AppKit
     private var duplicateSearch: CancelFlag?
     /// The scan behind a search in a folder the index doesn't cover, kept while you keep searching that folder.
     private var folderScan: FolderSearch?
+    /// The scope `folderScan` was made for, as asked.
+    private var folderScanScope: URL?
 
     init(pane: Pane, services: BrowserServices) {
         self.pane = pane
@@ -41,7 +43,7 @@ import AppKit
             task?.cancel()
             task = nil
         }
-        if case .search(_, let scope?) = target, folderScan?.canServe(scope) == true {} else if folderScan?.isFinished == false {
+        if case .search(_, let scope?) = target, scope == folderScanScope {} else if folderScan?.isFinished == false {
             folderScan?.cancel()
             folderScan = nil
         }
@@ -210,14 +212,17 @@ import AppKit
     /// folder reuses the scan.
     private func searchDirectly(_ text: String, in scope: URL, pane p: Pane, generation: Int, target: Destination) async {
         let search: FolderSearch
-        if let current = folderScan, current.canServe(scope) {
+        let path = await FolderSearch.path(of: scope)
+        guard generation == latest, p.destination == target else { return }
+        if let current = folderScan, current.canServe(path) {
             search = current
         } else {
             let indexed = await services.index.indexedParts(inside: scope)
             guard generation == latest, p.destination == target else { return }
             folderScan?.cancel()
-            search = FolderSearch(folder: scope, indexed: indexed)
+            search = FolderSearch(path: path, indexed: indexed)
             folderScan = search
+            folderScanScope = scope
             search.start()
         }
         let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)

@@ -28,8 +28,14 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
     private var finished = false
     private var finishedAt: Date?
 
-    package init(folder: URL, indexed: IndexedParts? = nil) {
-        self.folder = folder.resolvingSymlinksInPath().standardizedFileURL.path
+    /// `path`: where the folder searched really is (`FolderSearch.path(of:)`).
+    /// Where `folder` really is, its links followed: asked of its disk, away from the main thread.
+    @concurrent package static func path(of folder: URL) async -> String {
+        folder.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    package init(path: String, indexed: IndexedParts? = nil) {
+        folder = path
         self.indexed = indexed
         // Only the index's own folders are skipped (they still show up as entries). Build and cache folders count as
         // noise, like in the index.
@@ -48,8 +54,9 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
 
     /// Whether another search in `folder` can use this scan instead of reading the folder again: while it's still
     /// reading, and for a minute after it's done (counted from the end, so a slow network share stays reusable too).
-    package func canServe(_ folder: URL) -> Bool {
-        guard folder.resolvingSymlinksInPath().standardizedFileURL.path == self.folder, !scanner.isCancelled else { return false }
+    /// Whether this scan can answer a search of the folder at `path` (`FolderSearch.path(of:)`).
+    package func canServe(_ path: String) -> Bool {
+        guard path == folder, !scanner.isCancelled else { return false }
         return lock.withLock { finishedAt.map { Date().timeIntervalSince($0) < 60 } ?? true }
     }
 

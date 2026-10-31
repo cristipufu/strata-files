@@ -483,7 +483,7 @@ final class Workspaces {
                     continue
                 }
                 sheet.show(ServerConnection.displayString(url))
-                if let already = ServerConnection.mounted(url) {
+                if let already = await ServerConnection.mounted(url) {
                     mounted[mountPoint] = already.path
                     continue
                 }

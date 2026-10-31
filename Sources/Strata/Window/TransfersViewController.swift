@@ -152,13 +152,17 @@ package final class TransfersViewController: NSViewController {
         return row
     }
 
+    /// Shows what the job made that's still there (read away from the main thread), or its destination.
     private func reveal(_ job: any QueueJob) {
         if let onReveal { return onReveal(job) }
-        let existing = job.createdItems.filter { TransferEngine.exists($0) }
-        if existing.isEmpty {
-            NSWorkspace.shared.open(job.destination)
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting(existing)
+        let created = job.createdItems, destination = job.destination
+        Task {
+            let existing = await OwnThread.run { created.filter { TransferEngine.exists($0) } }
+            if existing.isEmpty {
+                NSWorkspace.shared.open(destination)
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting(existing)
+            }
         }
     }
 }
