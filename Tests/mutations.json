@@ -238,7 +238,7 @@
     "tests": "TrashUndoTests|FileIdentityTests/decodedHistoryRecognizesBothFormatsAndRefusesReplacements"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Operations.swift",
     "find": "        if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return 0 }",
     "replace": "        if Darwin.rename(source.path, destination.path) == 0 { return 0 }",
     "rule": "A move replaces what has its name without asking",
@@ -724,14 +724,14 @@
     "tests": "DeleteTests"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Operations.swift",
     "find": "        try FileManager.default.trashItem(at: url, resultingItemURL: &result)",
     "replace": "        try FileManager.default.removeItem(at: url)",
     "rule": "A replaced item is deleted instead of moved to the Trash",
     "tests": "TransferTests/replacingSwaps|TransferTests/aMoveThatReplaces"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Copying.swift",
     "edits": [
       {
         "find": "        guard !exists(destination) else {\n            // copyfile would copy *into* an existing folder; the planner guarantees this never happens.",
@@ -3920,7 +3920,7 @@
     "tests": "ContainerTests/aFetchThat"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Copying.swift",
     "edits": [
       {
         "find": "            if let expectedIdentity, currentIdentity != expectedIdentity {",
@@ -3935,7 +3935,7 @@
     "tests": "TransferTests/verificationDetectsReplacedCopiesAndNeverDeletesUnownedReplacements"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Operations.swift",
     "find": "        guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0,\n              FileIdentity.from(targetInfo) == expectedTarget else {",
     "replace": "        guard fstatat(dirFD, targetName, &targetInfo, AT_SYMLINK_NOFOLLOW) == 0 else {",
     "rule": "Shared operation safety transfer cleanup removes an unowned replacement at the target path",
@@ -3949,14 +3949,14 @@
     "tests": "TransferTests/retryingAPartialDirectoryRepairsInPlaceAndPreservesUnownedChildren"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Operations.swift",
     "find": "        if let destination, let landed, FileIdentity.read(destination.path) != landed {\n            let reason = describe(EACCES)\n            return String(localized: \"Copied, but the original couldn’t be removed: \\(reason)\")\n        }",
     "replace": "        if false {}",
     "rule": "Shared operation safety cross-disk move deletes the source after its destination copy was replaced",
     "tests": "TransferTests/crossDiskMoveKeepsOriginalWhenDestinationOrSourceIdentityIsReplaced"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Operations.swift",
     "edits": [
       {
         "find": "        for (path, expected) in owned {\n            if let current = FileIdentity.read(path), current != expected {\n                let reason = describe(EACCES)\n                return String(localized: \"Copied, but the original couldn’t be removed: \\(reason)\")\n            }\n        }",
@@ -4224,7 +4224,7 @@
     "replace": "options.sanitizeCopy = false"
   },
   {
-    "file": "Strata/Transfers/TransferEngine.swift",
+    "file": "Strata/Transfers/TransferEngine+Copying.swift",
     "rule": "Security review: promises and clipboard copies are sanitized",
     "tests": "ContainerTests/aDraggedOut|RemoteFilesTests/theClipboard",
     "find": "try ContainerCopies.finishCopyingOut(destination, owned: copied.created)",
