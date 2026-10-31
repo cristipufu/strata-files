@@ -151,6 +151,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func configure(_ pane: Pane) {
         pane.browser.delegate = self
+        // Each pane keeps its search's line; the active pane's shows (the other's when you switch).
+        pane.search.onSummary = { [weak self, weak pane] summary in
+            guard let self, pane === self.pane else { return }
+            split.scopeBar.setSummary(summary)
+        }
         pane.host.onActivate = { [weak self, weak pane] in
             guard let self, let pane else { return }
             activate(pane)
@@ -268,8 +273,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             origin.browser.pending.selection = results.filter { $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == folder }
             switch origin.destination {
             case .folder: origin.browser.reloadFolder(nil)
-            case .search, .recents: runSearch(in: origin)
-            case .duplicates: findDuplicates(in: origin)
+            case .search, .recents, .duplicates: origin.search.run()
             }
         }
     }
@@ -439,17 +443,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         p.columnLocation = nil
         p.waiting = nil
-        if target != .duplicates { p.duplicateSearch?.set() }
-        // Leaving a folder search stops its scan; a finished one stays a minute, so Back shows the results at once.
-        // A search left behind stops (a Spotlight query would otherwise run on to its time limit).
-        if case .search = target {} else {
-            p.searchTask?.cancel()
-            p.searchTask = nil
-        }
-        if case .search(_, let scope?) = target, p.folderSearch?.canServe(scope) == true {} else if p.folderSearch?.isFinished == false {
-            p.folderSearch?.cancel()
-            p.folderSearch = nil
-        }
+        p.search.leave(for: target)
         if recordHistory, target != p.destination {
             p.backStack.append(p.destination)
             p.forwardStack.removeAll()
@@ -467,10 +461,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 if countVisit { services.visits.record(url) }
                 services.preferences.lastLocation = url
             }
-        case .search, .recents:
-            runSearch(in: p)
-        case .duplicates:
-            findDuplicates(in: p)
+        case .search, .recents, .duplicates:
+            p.search.run()
         }
         if p === pane {
             updateChrome()
@@ -510,7 +502,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             split.scopeBar.configure(folderName: Places.displayName((scope ?? location), copies: services.copies),
                                      everywhere: scope == nil, matchCase: IndexQuery.isCaseSensitive(text),
                                      caseApplies: Self.caseApplies(text))
-            split.scopeBar.setSummary(pane.searchSummary)
+            split.scopeBar.setSummary(pane.search.summary)
             split.scopeBar.isHidden = false
             split.noticeBar.hide()
         case .duplicates:

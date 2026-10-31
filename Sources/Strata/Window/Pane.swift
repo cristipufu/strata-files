@@ -33,14 +33,7 @@ final class Pane {
     private var folderEntryRead: Task<Void, Never>?
     /// In column view, the folder of the focused column (deeper than `location`).
     var columnLocation: URL?
-    var searchGeneration = 0
-    /// The search running in this pane, stopped when another starts or the pane goes elsewhere.
-    var searchTask: Task<Void, Never>?
-    var duplicateSearch: CancelFlag?
-    /// The scan behind a search in a folder the index doesn't cover, kept while you keep searching that folder.
-    var folderSearch: FolderSearch?
-    /// The scope bar's line for this pane's search, kept so switching panes shows the right one.
-    var searchSummary = ""
+    lazy var search = PaneSearch(pane: self, services: browser.services)
     /// A workspace folder this pane is kept for until its share or disk is connected (it shows Home meanwhile).
     /// Going anywhere else lets it go.
     var waiting: WaitingFolder?
@@ -60,12 +53,7 @@ final class Pane {
         host.pathBar.cancelEditing()
         browser.stopBackgroundWork()
         folderEntryRead?.cancel()
-        searchTask?.cancel()
-        searchTask = nil
-        duplicateSearch?.set()
-        duplicateSearch = nil
-        folderSearch?.cancel()
-        folderSearch = nil
+        search.stop()
     }
 
     /// Reads `url`'s entry for `folderEntry`, then `shown`; going elsewhere first drops it.

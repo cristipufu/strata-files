@@ -7278,5 +7278,12 @@
     "find": "                                    logHistory: false, expected: expected)",
     "replace": "                                    logHistory: false)",
     "tests": "TransferTests/undoAcrossDisksChecksEachItemAsItsJobReachesIt"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        let isCurrent = { generation == self.latest && p.destination == target }",
+    "replace": "        let isCurrent = { true }",
+    "rule": "Search: a folder search still running shows its results after the pane went elsewhere",
+    "tests": "PaneSearchTests/aSearchStillRunningWhenThePaneGoesBackToItsFolderNeverShows"
   }
 ]

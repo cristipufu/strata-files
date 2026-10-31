@@ -395,9 +395,9 @@ struct DirectoryReadSessionTests {
             pane.destination = changed
             #expect(pane.navigationRevision == revision + 1 && browser.pending.selection == nil)
             pane.destination = original
-            let searchGeneration = pane.searchGeneration
+            let searchGeneration = pane.search.latest
             completion([entry.url])
-            #expect(pane.searchGeneration == searchGeneration && browser.pending.selection == nil)
+            #expect(pane.search.latest == searchGeneration && browser.pending.selection == nil)
             #expect(browser.directoryReads.task == nil)
             let unchanged = pane.navigationRevision
             pane.destination = original

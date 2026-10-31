@@ -97,7 +97,7 @@ struct SearchFilterContext {
         else {
             pane.destination = .search(query, scope: scope)
             owner.updateChrome()
-            owner.runSearch(in: pane)
+            pane.search.run()
         }
         return true
     }
