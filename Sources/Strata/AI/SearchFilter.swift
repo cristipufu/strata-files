@@ -3,11 +3,11 @@ import UniformTypeIdentifiers
 
 /// A structured file search: what `QueryInterpreter` makes of "pdfs from last week bigger than 10mb about invoices".
 /// Metadata fields are for the filename index; `contentQuery` is for `SemanticIndex`.
-nonisolated struct SearchFilter: Sendable, Hashable, Codable {
-    enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
+package nonisolated struct SearchFilter: Sendable, Hashable, Codable {
+    package enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
         case folder, document, pdf, text, image, movie, audio, archive, code, spreadsheet, presentation, application, diskImage, book, comic
 
-        var title: String {
+        package var title: String {
             switch self {
             case .book: String(localized: "Books")
             case .comic: String(localized: "Comics")
@@ -28,7 +28,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         }
 
         /// The title in English: the name of a folder a plan groups this kind into when the translation can't be one.
-        var englishTitle: String {
+        package var englishTitle: String {
             switch self {
             case .book: "Books"
             case .comic: "Comics"
@@ -49,7 +49,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         }
 
         /// The kind inside a sentence ("Move into “Archive” — only images named “Screenshot”").
-        var noun: String {
+        package var noun: String {
             switch self {
             case .book: String(localized: "books")
             case .comic: String(localized: "comics")
@@ -69,7 +69,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
             }
         }
 
-        var symbol: String {
+        package var symbol: String {
             switch self {
             case .book: "book.closed"
             case .comic: "book.pages"
@@ -89,7 +89,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
             }
         }
 
-        func matches(type: UTType?, isDirectory: Bool, isPackage: Bool, extension ext: String) -> Bool {
+        package func matches(type: UTType?, isDirectory: Bool, isPackage: Bool, extension ext: String) -> Bool {
             if self == .folder { return isDirectory && !isPackage }
             let type = type ?? UTType(filenameExtension: ext)
             func conforms(_ identifiers: [String]) -> Bool {
@@ -129,27 +129,27 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
     }
 
     /// An item matches when it is any of `kinds` or has any of `extensions` (both empty: anything).
-    var kinds: Set<Kind> = []
+    package var kinds: Set<Kind> = []
     /// Lowercased, without the dot.
-    var extensions: Set<String> = []
-    var minSize: Int64?
-    var maxSize: Int64?
+    package var extensions: Set<String> = []
+    package var minSize: Int64?
+    package var maxSize: Int64?
     /// Inclusive.
-    var modifiedAfter: Date?
+    package var modifiedAfter: Date?
     /// Exclusive.
-    var modifiedBefore: Date?
+    package var modifiedBefore: Date?
     /// Every fragment must appear in the name (case- and accent-insensitive).
-    var nameContains: [String] = []
+    package var nameContains: [String] = []
     /// What the documents are about, for `SemanticIndex.search`.
-    var contentQuery: String?
+    package var contentQuery: String?
     /// Words nothing else claimed (no model to place them). An item matches when its name contains at least one of them
     /// (plural-tolerant); a content-aware search can also run `keywords.joined(" ")` through `SemanticIndex`.
-    var keywords: [String] = []
+    package var keywords: [String] = []
 
-    var isEmpty: Bool { self == SearchFilter() }
+    package var isEmpty: Bool { self == SearchFilter() }
 
     /// Matches metadata only (`contentQuery` needs the semantic index).
-    func matches(name: String, contentType: UTType?, isDirectory: Bool, isPackage: Bool = false, size: Int64?, modified: Date?) -> Bool {
+    package func matches(name: String, contentType: UTType?, isDirectory: Bool, isPackage: Bool = false, size: Int64?, modified: Date?) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         if !kinds.isEmpty || !extensions.isEmpty {
             let kindMatch = kinds.contains { $0.matches(type: contentType, isDirectory: isDirectory, isPackage: isPackage, extension: ext) }
@@ -177,20 +177,20 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         return true
     }
 
-    func matches(_ entry: FileEntry) -> Bool {
+    package func matches(_ entry: FileEntry) -> Bool {
         matches(name: entry.name, contentType: entry.contentType, isDirectory: entry.isDirectory, isPackage: entry.isPackage,
                 size: entry.size, modified: entry.modified)
     }
 
     // MARK: - Display
 
-    struct Chip: Sendable, Hashable {
-        let symbol: String
-        let text: String
+    package struct Chip: Sendable, Hashable {
+        package let symbol: String
+        package let text: String
     }
 
     /// One token per constraint, for showing what was understood.
-    var chips: [Chip] {
+    package var chips: [Chip] {
         var chips: [Chip] = []
         for kind in Kind.allCases where kinds.contains(kind) { chips.append(Chip(symbol: kind.symbol, text: kind.title)) }
         for ext in extensions.sorted() { chips.append(Chip(symbol: "doc", text: "." + ext)) }
@@ -209,9 +209,9 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         return chips
     }
 
-    var summary: String { chips.map(\.text).joined(separator: " · ") }
+    package var summary: String { chips.map(\.text).joined(separator: " · ") }
 
-    var dateDescription: String? {
+    package var dateDescription: String? {
         let day = Date.FormatStyle(date: .abbreviated, time: .omitted)
         switch (modifiedAfter, modifiedBefore) {
         case let (after?, before?):
@@ -231,7 +231,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
 }
 
 nonisolated extension SearchFilter: CustomStringConvertible {
-    var description: String {
+    package var description: String {
         var parts: [String] = []
         if !kinds.isEmpty { parts.append("kinds=\(kinds.map(\.rawValue).sorted())") }
         if !extensions.isEmpty { parts.append("ext=\(extensions.sorted())") }

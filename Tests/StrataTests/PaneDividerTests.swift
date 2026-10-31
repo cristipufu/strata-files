@@ -1,7 +1,10 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct PaneDividerTests {
     @Test(arguments: [BrowserViewMode.columns, .treemap, .list, .grid, .gallery])

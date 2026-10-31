@@ -14,7 +14,7 @@ extension ProjectInfo {
     /// artifacts git tracks are dropped (a committed `bin/` is not a build artifact). `onUpdate` receives the result
     /// before sizes are known, so the inspector can show it immediately; the return value has sizes. Cancel the
     /// calling task when the selection changes: the size walks stop and nil is returned.
-    static func load(for folder: URL, store: GitStatusStore,
+    package static func load(for folder: URL, store: GitStatusStore,
                      onUpdate: ((ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
         let folder = folder.standardizedFileURL
         var info = await ProjectDetector.detect(folder)
@@ -55,7 +55,7 @@ extension ProjectInfo {
 
     /// The same info with the git summary taken from the store's current snapshot. No I/O: use it when
     /// `.gitStatusDidChange` fires instead of reloading (which could re-measure artifacts).
-    func withCurrentGit(store: GitStatusStore) -> ProjectInfo {
+    package func withCurrentGit(store: GitStatusStore) -> ProjectInfo {
         guard let repository = store.repository(containing: folder), let snapshot = store.snapshot(for: repository.root) else {
             return self
         }
@@ -65,7 +65,7 @@ extension ProjectInfo {
     }
 
     /// Forgets measured sizes under `folder` (after cleaning, or a reload).
-    static func invalidateSizes(under folder: URL) {
+    package static func invalidateSizes(under folder: URL) {
         let prefix = folder.standardizedFileURL.path + "/"
         sizeCache = sizeCache.filter { !$0.key.hasPrefix(prefix) }
     }
@@ -101,10 +101,10 @@ extension ProjectInfo {
 
 // MARK: - Actions
 
-enum ProjectActions {
+package enum ProjectActions {
     /// Asks before moving `artifacts` to the Trash (sheet on `window`), then trashes them with undo. Calls
     /// `completion` with the trashed folders (empty when cancelled or failed).
-    static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
+    package static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
                              files: FileCommands,
                              completion: @escaping ([URL]) -> Void) {
         guard !artifacts.isEmpty else { return completion([]) }
@@ -161,7 +161,7 @@ enum ProjectActions {
     /// window title shows the temporary file's name; the command runs through `$SHELL -lic` so it sees the same PATH
     /// as your interactive shell (nvm, Homebrew), which costs one rc-file load.
     @discardableResult
-    static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) -> Bool {
+    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) -> Bool {
         let project = projectName ?? script.directory.lastPathComponent
         return openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
     }
@@ -169,7 +169,7 @@ enum ProjectActions {
     /// Writes `body` (a `/bin/sh` script that deletes itself first) to a `.command` file and opens it in the preferred
     /// terminal. `name` is the file's name, which the terminal shows as the window's title.
     @discardableResult
-    static func openCommandFile(named name: String, body: String) -> Bool {
+    package static func openCommandFile(named name: String, body: String) -> Bool {
         let folder = FileManager.default.temporaryDirectory.appending(path: "Strata Scripts", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
@@ -192,7 +192,7 @@ enum ProjectActions {
     }
 
     /// The `.command` file body: cd, echo the command, run it in a login+interactive shell, then stay in a shell.
-    static func commandFile(for script: ProjectScript) -> String {
+    package static func commandFile(for script: ProjectScript) -> String {
         let directory = ShellQuote.quote(script.directory.path)
         let invocation = script.invocation
         return """
@@ -207,10 +207,10 @@ enum ProjectActions {
         """
     }
 
-    static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
+    package static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
 
     /// First installed terminal from `terminalBundleIDs` that declares it can open `file`; Terminal as the fallback.
-    static func preferredTerminal(for file: URL) -> URL? {
+    package static func preferredTerminal(for file: URL) -> URL? {
         let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.standardizedFileURL))
         for id in terminalBundleIDs {
             if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.standardizedFileURL) {
@@ -223,7 +223,7 @@ enum ProjectActions {
     /// A `.command` file name every terminal can open: plain ASCII letters, digits, spaces, dots, dashes and
     /// underscores. (Ghostty garbles other characters in the path it runs, an em dash included, and then can't find the
     /// file.)
-    static func sanitize(_ name: String) -> String {
+    package static func sanitize(_ name: String) -> String {
         let folded = name.folding(options: [.diacriticInsensitive, .widthInsensitive], locale: nil)
         let kept = folded.unicodeScalars.map { scalar -> Character in
             scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || " ._-".unicodeScalars.contains(scalar)) ? Character(scalar) : "-"
@@ -236,7 +236,7 @@ enum ProjectActions {
 
     /// The files delete themselves when they run; this catches any that never ran (each in a folder of its own, left
     /// for an hour). Anything else in `folder` is removed as itself, never through a link.
-    static func removeStaleCommandFiles(in folder: URL) {
+    package static func removeStaleCommandFiles(in folder: URL) {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-3600)
         for url in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {

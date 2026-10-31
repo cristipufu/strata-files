@@ -1,6 +1,9 @@
 import AppKit
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Browser services whose container copies live in their own temporary store, with no live engine: the Inspector
 /// shows these containers' cards and files as it would a real engine's.

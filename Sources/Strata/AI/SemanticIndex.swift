@@ -4,32 +4,32 @@ import NaturalLanguage
 import UniformTypeIdentifiers
 
 /// One document that matches a content search.
-nonisolated struct SemanticHit: Sendable, Hashable, Identifiable {
-    var id: URL { url }
-    let url: URL
+package nonisolated struct SemanticHit: Sendable, Hashable, Identifiable {
+    package var id: URL { url }
+    package let url: URL
     /// From the document's metadata or first heading, when it has one.
-    let title: String?
+    package let title: String?
     /// 0…1, blended from meaning (embeddings) and wording (keywords).
-    let score: Float
+    package let score: Float
     /// The best-matching passage, about one or two sentences, for display.
-    let snippet: String
+    package let snippet: String
     /// Words in `snippet` that match the query, for bolding.
-    let highlights: [String]
+    package let highlights: [String]
     /// 1-based page of the snippet, for PDFs.
-    let page: Int?
-    let semanticScore: Float
-    let keywordScore: Float
+    package let page: Int?
+    package let semanticScore: Float
+    package let keywordScore: Float
 }
 
-nonisolated struct SemanticIndexProgress: Sendable {
-    enum Phase: String, Sendable { case scanning, indexing, saving, done }
-    var phase: Phase
-    var processed = 0
-    var total = 0
+package nonisolated struct SemanticIndexProgress: Sendable {
+    package enum Phase: String, Sendable { case scanning, indexing, saving, done }
+    package var phase: Phase
+    package var processed = 0
+    package var total = 0
     /// Documents in the index so far.
-    var indexedFiles = 0
-    var current: URL?
-    var fraction: Double { total == 0 ? (phase == .done ? 1 : 0) : Double(processed) / Double(total) }
+    package var indexedFiles = 0
+    package var current: URL?
+    package var fraction: Double { total == 0 ? (phase == .done ? 1 : 0) : Double(processed) / Double(total) }
 }
 
 /// On-device semantic search over the text of documents in a few root folders (Documents, Desktop, Downloads…).
@@ -43,41 +43,41 @@ nonisolated struct SemanticIndexProgress: Sendable {
 /// - the mean of `NLEmbedding.wordEmbedding` vectors of a passage's distinct words: the best topical signal ("dessert" → cake);
 /// - optionally `NLEmbedding.sentenceEmbedding`: slower, adds little on top (off by default);
 /// - BM25 keyword scoring: exact names, numbers and rare words that embeddings blur.
-actor SemanticIndex {
-    nonisolated struct Configuration: Sendable {
-        var roots: [URL]
-        var storeDirectory: URL = SemanticIndex.defaultStoreDirectory
-        var extraction = TextExtractor.Options(maxCharacters: 40_000, maxPDFPages: 20)
-        var chunkSize = 1000
-        var chunkOverlap = 160
-        var maxChunksPerFile = 24
+package actor SemanticIndex {
+    package nonisolated struct Configuration: Sendable {
+        package var roots: [URL]
+        package var storeDirectory: URL = SemanticIndex.defaultStoreDirectory
+        package var extraction = TextExtractor.Options(maxCharacters: 40_000, maxPDFPages: 20)
+        package var chunkSize = 1000
+        package var chunkOverlap = 160
+        package var maxChunksPerFile = 24
         /// Also embed passages with the sentence model (~0.1 ms per character; about 20× slower indexing).
-        var sentenceEmbeddings = false
+        package var sentenceEmbeddings = false
         /// Pause between files; longer in Low Power Mode or when the Mac is hot.
-        var throttle: Duration = .milliseconds(15)
-        var maxFiles = 40_000
+        package var throttle: Duration = .milliseconds(15)
+        package var maxFiles = 40_000
         /// Skip folders that are git work trees.
-        var skipsRepositories = true
-        var excludedFolderNames: Set<String> = [
+        package var skipsRepositories = true
+        package var excludedFolderNames: Set<String> = [
             "node_modules", ".git", "build", ".build", "DerivedData", "Pods", "Carthage", "vendor", "__pycache__", ".venv",
             "venv", "target", "dist", "Library",
         ]
         /// Results below this blended score are dropped.
-        var minimumScore: Float = 0.2
+        package var minimumScore: Float = 0.2
 
-        init(roots: [URL]) { self.roots = roots }
+        package init(roots: [URL]) { self.roots = roots }
     }
 
-    nonisolated static var defaultStoreDirectory: URL {
+    package nonisolated static var defaultStoreDirectory: URL {
         SecureStorage.url("semantic", isDirectory: true)
     }
 
-    nonisolated static var standardRoots: [URL] {
+    package nonisolated static var standardRoots: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return ["Documents", "Desktop", "Downloads"].map { home.appending(path: $0, directoryHint: .isDirectory) }
     }
 
-    private(set) var configuration: Configuration
+    package private(set) var configuration: Configuration
     private let indexEmbedder: Embedder
     private let queryEmbedder: Embedder
 
@@ -94,7 +94,7 @@ actor SemanticIndex {
     private var unsavedChanges = 0
     private var lastSave = ContinuousClock.now
 
-    init(configuration: Configuration) {
+    package init(configuration: Configuration) {
         self.configuration = configuration
         // Disabled sentence embeddings keep an empty matrix, including while loading or recycling passage rows.
         sentenceRows = VectorRows(dimension: configuration.sentenceEmbeddings ? Embedder.sentenceDimension : 0)
@@ -102,19 +102,19 @@ actor SemanticIndex {
         queryEmbedder = Embedder(label: "dev.strata.semantic.query", qos: .userInitiated, sentences: configuration.sentenceEmbeddings)
     }
 
-    func setRoots(_ roots: [URL]) {
+    package func setRoots(_ roots: [URL]) {
         configuration.roots = roots
     }
 
-    var indexedFileCount: Int { files.values.filter { !$0.chunks.isEmpty }.count }
+    package var indexedFileCount: Int { files.values.filter { !$0.chunks.isEmpty }.count }
 
     /// Reserved vector storage, including reusable rows, for memory measurements.
-    var vectorStorageBytes: (word: Int, sentence: Int) { (wordRows.storageBytes, sentenceRows.storageBytes) }
+    package var vectorStorageBytes: (word: Int, sentence: Int) { (wordRows.storageBytes, sentenceRows.storageBytes) }
 
     // MARK: - Indexing
 
     /// Brings the index up to date with the roots. Cancel the calling task to stop; work done so far is kept.
-    func update(progress: (@Sendable (SemanticIndexProgress) -> Void)? = nil) async throws {
+    package func update(progress: (@Sendable (SemanticIndexProgress) -> Void)? = nil) async throws {
         await loadIfNeeded()
         guard !updating else { return }
         updating = true
@@ -163,7 +163,7 @@ actor SemanticIndex {
     }
 
     /// Indexes or re-indexes one file now (for example right after Strata renamed or saved it), regardless of roots.
-    func refresh(_ url: URL) async {
+    package func refresh(_ url: URL) async {
         await loadIfNeeded()
         let path = url.standardizedFileURL.path
         guard let stamp = Self.stamp(url) else {
@@ -174,12 +174,12 @@ actor SemanticIndex {
     }
 
     /// Forgets a file (deleted or moved out of the roots).
-    func forget(_ url: URL) {
+    package func forget(_ url: URL) {
         remove(url.standardizedFileURL.path)
     }
 
     /// Deletes everything stored on disk and in memory.
-    func reset() {
+    package func reset() {
         files = [:]
         wordRows.removeAll()
         sentenceRows.removeAll()
@@ -237,7 +237,7 @@ actor SemanticIndex {
     // MARK: - Search
 
     /// Documents whose content best matches `text`, best first.
-    func search(_ text: String, limit: Int = 20) async -> [SemanticHit] {
+    package func search(_ text: String, limit: Int = 20) async -> [SemanticHit] {
         await loadIfNeeded()
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !files.isEmpty, limit > 0 else { return [] }
@@ -269,7 +269,7 @@ actor SemanticIndex {
     }
 
     /// Diagnostics: the raw signals behind a search, per document (best passage cosines, keyword score, name overlap).
-    func explain(_ text: String) async -> [(url: URL, word: Float, sentence: Float, keyword: Float, name: Float)] {
+    package func explain(_ text: String) async -> [(url: URL, word: Float, sentence: Float, keyword: Float, name: Float)] {
         await loadIfNeeded()
         return await signals(for: text).candidates.compactMap {
             guard !$0.path.isEmpty else { return nil }
@@ -349,16 +349,16 @@ actor SemanticIndex {
 
     /// Embedding cosines depend on the query (a short query scores low against everything), so each document is measured
     /// against the collection's typical score for this query rather than on an absolute scale.
-    nonisolated struct Calibration {
-        static let wordPrior: Float = 0.45
-        static let wordSpread: Float = 0.25
-        static let sentencePrior: Float = 0.1
-        static let sentenceSpread: Float = 0.25
+    package nonisolated struct Calibration {
+        package static let wordPrior: Float = 0.45
+        package static let wordSpread: Float = 0.25
+        package static let sentencePrior: Float = 0.1
+        package static let sentenceSpread: Float = 0.25
 
-        let typical: Float
-        let spread: Float
+        package let typical: Float
+        package let spread: Float
 
-        init(_ cosines: [Float], prior: Float, minimumSpread: Float) {
+        package init(_ cosines: [Float], prior: Float, minimumSpread: Float) {
             let sorted = cosines.sorted()
             let median = sorted.isEmpty ? prior : sorted[sorted.count / 2]
             // Small collections give a noisy median; lean on the usual unrelated level until there are enough documents.
@@ -367,19 +367,19 @@ actor SemanticIndex {
             spread = max((sorted.last ?? 0) - typical, minimumSpread)
         }
 
-        func semantic(_ cosine: Float) -> Float { min(1, max(0, (cosine - typical) / spread)) }
+        package func semantic(_ cosine: Float) -> Float { min(1, max(0, (cosine - typical) / spread)) }
 
-        func isClearlyRelated(_ cosine: Float) -> Bool { cosine - typical >= 0.6 * spread }
+        package func isClearlyRelated(_ cosine: Float) -> Bool { cosine - typical >= 0.6 * spread }
     }
 
-    nonisolated static func blend(semantic: Float, keyword: Float, nameBonus: Float) -> Float {
+    package nonisolated static func blend(semantic: Float, keyword: Float, nameBonus: Float) -> Float {
         min(1, 0.6 * semantic + 0.4 * keyword.squareRoot() + 0.1 * nameBonus)
     }
 
     // MARK: - Snippets
 
     /// The sentence (or two) of a passage that best matches the query, with the matching words and its PDF page.
-    nonisolated static func snippet(_ text: String, chunkStart: Int, pages: [PageMark], terms: Set<String>, queryVector: [Float]?,
+    package nonisolated static func snippet(_ text: String, chunkStart: Int, pages: [PageMark], terms: Set<String>, queryVector: [Float]?,
                                     embedder: Embedder) async -> (text: String, highlights: [String], page: Int?) {
         let sentences = TextChunker.segments(text)
         guard !sentences.isEmpty else { return (String(text.prefix(220)), [], pages.first.map { Int($0.page) }) }
@@ -415,7 +415,7 @@ actor SemanticIndex {
     }
 
     /// Passage text as prose: Markdown markers and table pipes removed, lines joined.
-    nonisolated static func displayText(_ text: String) -> String {
+    package nonisolated static func displayText(_ text: String) -> String {
         var lines: [String] = []
         for raw in text.split(separator: "\n") {
             var line = raw.trimmingCharacters(in: .whitespaces)
@@ -451,7 +451,7 @@ actor SemanticIndex {
         return (start > 0 ? "…" : "") + output
     }
 
-    nonisolated static func highlights(in text: String, terms: Set<String>) -> [String] {
+    package nonisolated static func highlights(in text: String, terms: Set<String>) -> [String] {
         var seen: Set<String> = []
         var words: [String] = []
         for word in Terms.words(text) {
@@ -498,7 +498,7 @@ actor SemanticIndex {
         return found
     }
 
-    nonisolated static func stamp(_ url: URL) -> FileStamp? {
+    package nonisolated static func stamp(_ url: URL) -> FileStamp? {
         guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isPackageKey]) else { return nil }
         if values.isPackage == true {
             // Packages (RTFD): the newest member decides, since editors may rewrite one file inside.
@@ -582,7 +582,7 @@ actor SemanticIndex {
     }
 
     /// Writes the index if anything changed.
-    func save() async {
+    package func save() async {
         guard unsavedChanges > 0 else { return }
         var stored = StoredIndex(sentences: configuration.sentenceEmbeddings, files: [])
         stored.files.reserveCapacity(files.count)
@@ -614,23 +614,23 @@ actor SemanticIndex {
     }
 
     /// Bytes used on disk.
-    func storeSize() -> Int64 {
+    package func storeSize() -> Int64 {
         Int64((try? storeURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
     }
 }
 
 // MARK: - Storage types
 
-nonisolated struct FileStamp: Sendable, Hashable {
-    var size: Int64
-    var modified: Double
+package nonisolated struct FileStamp: Sendable, Hashable {
+    package var size: Int64
+    package var modified: Double
 
-    init(size: Int64, modified: Double) {
+    package init(size: Int64, modified: Double) {
         self.size = size
         self.modified = modified
     }
 
-    init?(_ values: URLResourceValues) {
+    package init?(_ values: URLResourceValues) {
         guard let date = values.contentModificationDate else { return nil }
         size = Int64(values.fileSize ?? 0)
         modified = date.timeIntervalSinceReferenceDate
@@ -638,15 +638,15 @@ nonisolated struct FileStamp: Sendable, Hashable {
 }
 
 /// A PDF page starting at a UTF-16 offset of a passage.
-nonisolated struct PageMark: Sendable, Hashable {
-    var offset: UInt32
-    var page: UInt32
+package nonisolated struct PageMark: Sendable, Hashable {
+    package var offset: UInt32
+    package var page: UInt32
 
-    static func pack(_ marks: [PageMark]) -> Data {
+    package static func pack(_ marks: [PageMark]) -> Data {
         .packed(marks.flatMap { [$0.offset, $0.page] })
     }
 
-    static func unpack(_ data: Data) -> [PageMark] {
+    package static func unpack(_ data: Data) -> [PageMark] {
         let values = data.unpacked()
         return stride(from: 0, to: values.count - 1, by: 2).map { PageMark(offset: values[$0], page: values[$0 + 1]) }
     }
@@ -884,23 +884,23 @@ private nonisolated struct KeywordScorer {
 
 // MARK: - Embedding
 
-nonisolated struct PassageEmbedding: Sendable {
-    var word: [Float]?
-    var sentence: [Float]?
+package nonisolated struct PassageEmbedding: Sendable {
+    package var word: [Float]?
+    package var sentence: [Float]?
 }
 
 /// On-device embeddings on a private serial queue (NLEmbedding isn't thread-safe), returned unit-length:
 /// the mean of word vectors over a passage's distinct content words, and optionally a sentence embedding.
-nonisolated final class Embedder: @unchecked Sendable {
-    static let wordDimension = 300
-    static let sentenceDimension = 512
-    static let language = NLLanguage.english
-    static var revision: Int {
+package nonisolated final class Embedder: @unchecked Sendable {
+    package static let wordDimension = 300
+    package static let sentenceDimension = 512
+    package static let language = NLLanguage.english
+    package static var revision: Int {
         NLEmbedding.currentRevision(for: language) * 1000 + NLEmbedding.currentSentenceEmbeddingRevision(for: language)
     }
 
     /// Whether on-device word embeddings exist for the index language (they ship with macOS).
-    static var isAvailable: Bool { NLEmbedding.wordEmbedding(for: language) != nil }
+    package static var isAvailable: Bool { NLEmbedding.wordEmbedding(for: language) != nil }
 
     private let queue: DispatchQueue
     private let sentences: Bool
@@ -909,12 +909,12 @@ nonisolated final class Embedder: @unchecked Sendable {
     private var sentenceModel: NLEmbedding?
     private var didLoad = false
 
-    init(label: String, qos: DispatchQoS, sentences: Bool) {
+    package init(label: String, qos: DispatchQoS, sentences: Bool) {
         queue = DispatchQueue(label: label, qos: qos)
         self.sentences = sentences
     }
 
-    func embed(_ texts: [String]) async -> [PassageEmbedding] {
+    package func embed(_ texts: [String]) async -> [PassageEmbedding] {
         await withCheckedContinuation { continuation in
             queue.async {
                 continuation.resume(returning: texts.map { text in
@@ -925,7 +925,7 @@ nonisolated final class Embedder: @unchecked Sendable {
     }
 
     /// Mean word vector of the distinct content words; nil when none are in the vocabulary. Cheap (table lookups).
-    func wordVector(_ text: String) -> [Float]? {
+    package func wordVector(_ text: String) -> [Float]? {
         lock.lock()
         defer { lock.unlock() }
         loadIfNeeded()
@@ -970,8 +970,8 @@ nonisolated final class Embedder: @unchecked Sendable {
 }
 
 /// Float ⇄ IEEE half conversion via vImage (works on every architecture, unlike `Float16`).
-nonisolated enum Half {
-    static func encode(_ floats: [Float]) -> [UInt16] {
+package nonisolated enum Half {
+    package static func encode(_ floats: [Float]) -> [UInt16] {
         guard !floats.isEmpty else { return [] }
         var halves = [UInt16](repeating: 0, count: floats.count)
         floats.withUnsafeBufferPointer { source in
@@ -986,7 +986,7 @@ nonisolated enum Half {
         return halves
     }
 
-    static func decode(_ halves: UnsafeBufferPointer<UInt16>, into floats: UnsafeMutablePointer<Float>) {
+    package static func decode(_ halves: UnsafeBufferPointer<UInt16>, into floats: UnsafeMutablePointer<Float>) {
         guard let base = halves.baseAddress, !halves.isEmpty else { return }
         var src = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: base), height: 1, width: vImagePixelCount(halves.count),
                                 rowBytes: halves.count * 2)

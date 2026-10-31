@@ -2,8 +2,8 @@ import Foundation
 
 /// Plain-English searches ("pdfs from last week bigger than 10mb") become index filters. Explicit syntax
 /// (`ext:`, `size:`, …) always wins; plain name searches ("invoice") are left alone.
-nonisolated enum NaturalQuery {
-    static func interpret(_ text: String) -> (query: IndexQuery, filter: SearchFilter)? {
+package nonisolated enum NaturalQuery {
+    package static func interpret(_ text: String) -> (query: IndexQuery, filter: SearchFilter)? {
         let syntax = IndexQuery.parse(text)
         guard syntax.extensions.isEmpty, syntax.kind == nil, syntax.minSize == nil, syntax.maxSize == nil,
               syntax.modifiedAfter == nil, syntax.modifiedBefore == nil, syntax.scopePath == nil,
@@ -51,21 +51,21 @@ nonisolated enum NaturalQuery {
 extension IndexSearch {
     /// Where a search looks: a store, the folder in it to search (nil: all of it), and how many levels below the
     /// searched folder the store's root sits. Scores count depth, so the offset lines results from different stores up.
-    nonisolated struct Source: Sendable {
-        let store: IndexStore
-        let scopePath: String?
-        let depth: Int
+    package nonisolated struct Source: Sendable {
+        package let store: IndexStore
+        package let scopePath: String?
+        package let depth: Int
         /// Keeps this source's results per query (the index's part of a folder search doesn't change while the folder
         /// is read, so it isn't searched again on every refresh).
-        var cache: ResultCache? = nil
+        package var cache: ResultCache? = nil
     }
 
     /// Results by query, for a source that doesn't change while it's searched repeatedly.
-    nonisolated final class ResultCache: @unchecked Sendable {
+    package nonisolated final class ResultCache: @unchecked Sendable {
         private let lock = NSLock()
         private var results: [String: (hits: [IndexHit], total: Int)] = [:]
 
-        func value(_ key: String, _ make: () -> (hits: [IndexHit], total: Int)) -> (hits: [IndexHit], total: Int) {
+        package func value(_ key: String, _ make: () -> (hits: [IndexHit], total: Int)) -> (hits: [IndexHit], total: Int) {
             if let cached = lock.withLock({ results[key] }) { return cached }
             let made = make()
             lock.withLock {
@@ -78,7 +78,7 @@ extension IndexSearch {
 
     /// A search as typed: plain English when it reads as such (name matches first, then what the reading found), the
     /// search syntax otherwise. The index and folder searches (`FolderSearch`) both run it, over their own stores.
-    static func understand(_ text: String, scopePath: String?, in store: IndexStore,
+    package static func understand(_ text: String, scopePath: String?, in store: IndexStore,
                            limit: Int) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
         await understand(text, sources: [Source(store: store, scopePath: scopePath, depth: 0)], limit: limit)
     }
@@ -86,7 +86,7 @@ extension IndexSearch {
     /// `understand` over several stores at once, merged by score: a folder search reads the parts of a folder the
     /// index doesn't have and takes the rest from the index.
     @concurrent
-    static func understand(_ text: String, sources: [Source],
+    package static func understand(_ text: String, sources: [Source],
                            limit: Int) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
         func runAll(_ query: IndexQuery, limit: Int, tag: String) -> (hits: [IndexHit], total: Int) {
             var hits: [IndexHit] = []

@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Archives are read by workers of the archive service, an XPC service with an App Sandbox of its own, which only an
 /// app can carry. Suites and tests that read archives get `StrataArchiveHarness.app` assembled around the built service

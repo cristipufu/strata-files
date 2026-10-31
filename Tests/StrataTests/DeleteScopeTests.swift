@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// What deletes everything in a folder, or replaces what's at a path, must only ever reach the folder or path it's for:
 /// Empty Trash only Trash folders, the bucket never as a whole, the `strata` command only its own link.

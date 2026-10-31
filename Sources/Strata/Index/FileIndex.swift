@@ -3,23 +3,25 @@ import UniformTypeIdentifiers
 
 extension Notification.Name {
     /// Entries or sizes changed (posted at most a few times per second).
-    static let indexDidChange = Notification.Name("StrataIndexDidChange")
-    static let indexPhaseDidChange = Notification.Name("StrataIndexPhaseDidChange")
+    package static let indexDidChange = Notification.Name("StrataIndexDidChange")
+    package static let indexPhaseDidChange = Notification.Name("StrataIndexPhaseDidChange")
 }
 
 /// The app's view of the file index: instant folder sizes and search across the home folder and Applications.
-final class FileIndex {
-    static let shared = FileIndex()
+package final class FileIndex {
+    package static let shared = FileIndex()
 
-    private(set) var phase: IndexWorker.Phase = .loading
+    package init() {}
+
+    package private(set) var phase: IndexWorker.Phase = .loading
     private var store: IndexStore?
     private lazy var worker = IndexWorker()
     private var started = false
     private var changePosted = false
 
-    var isReady: Bool { store != nil }
+    package var isReady: Bool { store != nil }
 
-    func start() {
+    package func start() {
         guard !started else { return }
         started = true
         worker.onStore = { [weak self] store in Task { @MainActor in self?.store = store } }
@@ -31,7 +33,7 @@ final class FileIndex {
     }
 
     /// Re-evaluates what may be indexed (after Full Disk Access changes or a protected folder was opened).
-    func refreshConfig() {
+    package func refreshConfig() {
         guard started else { return }
         let config = Self.currentConfig()
         excludedPaths = config.excluded
@@ -39,14 +41,14 @@ final class FileIndex {
     }
 
     /// Number of entries, including ones deleted since the last full scan.
-    var itemCount: Int { store?.read { $0.count } ?? 0 }
+    package var itemCount: Int { store?.read { $0.count } ?? 0 }
 
-    func rebuild() {
+    package func rebuild() {
         guard started else { return }
         worker.rebuildNow()
     }
 
-    func saveNow() {
+    package func saveNow() {
         guard started else { return }
         worker.saveNow()
     }
@@ -69,7 +71,7 @@ final class FileIndex {
     // MARK: - Queries
 
     /// Total size and file count of a folder, if it's indexed.
-    func folderSize(_ url: URL) -> FolderSize? {
+    package func folderSize(_ url: URL) -> FolderSize? {
         guard let store else { return nil }
         let path = url.standardizedFileURL.path
         return store.read { store in
@@ -80,7 +82,7 @@ final class FileIndex {
 
     /// Sizes of every indexed subfolder of `folder`, by path, from one walk of its children (looking each up by path
     /// re-walks the sibling list every time).
-    func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
+    package func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
         let base = folder.standardizedFileURL.path
         return store.read { store in
@@ -99,7 +101,7 @@ final class FileIndex {
         store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0 && excludedPaths.contains(store.path(of: id))
     }
 
-    func search(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int)? {
+    package func search(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int)? {
         guard let store else { return nil }
         var query = IndexQuery.parse(text)
         if let scope { query.scopePath = scope.standardizedFileURL.path }
@@ -108,14 +110,14 @@ final class FileIndex {
     }
 
     /// Like `search`, but plain English is understood too; returns how it was interpreted when it was.
-    func understand(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?)? {
+    package func understand(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?)? {
         guard let store else { return nil }
         return await IndexSearch.understand(text, scopePath: scope?.standardizedFileURL.path, in: store, limit: limit)
     }
 
     /// The index's roots inside `folder` (your home folder and Applications, when searching `/` or `/Users`): a folder
     /// search skips reading those and takes them from the index instead.
-    func indexedParts(inside folder: URL) -> FolderSearch.IndexedParts? {
+    package func indexedParts(inside folder: URL) -> FolderSearch.IndexedParts? {
         guard let store else { return nil }
         let base = folder.resolvingSymlinksInPath().standardizedFileURL.path
         let prefix = base == "/" ? "/" : base + "/"
@@ -128,7 +130,7 @@ final class FileIndex {
     /// Whether a search in `folder` can use the index: the folder is in it and wasn't left out (folders kept out for
     /// privacy are listed but not read). Anything else — outside your home folder and Applications, other disks,
     /// a folder too new to be indexed yet — is searched directly (`FolderSearch`).
-    func covers(_ folder: URL) -> Bool {
+    package func covers(_ folder: URL) -> Bool {
         guard let store else { return false }
         let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
         if excludedPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return false }
@@ -144,7 +146,7 @@ final class FileIndex {
 
     /// Whether `folder` is inside the index's folders or contains one. Until the first index is built, searches there
     /// wait for it rather than reading your home folder (and the folders macOS guards in it) directly.
-    func overlapsIndexedFolders(_ folder: URL) -> Bool {
+    package func overlapsIndexedFolders(_ folder: URL) -> Bool {
         let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
         return Self.rootPaths.contains { root in
             path == root || path.hasPrefix(root + "/") || root.hasPrefix(path == "/" ? "/" : path + "/")
@@ -157,9 +159,9 @@ final class FileIndex {
     }
 
     /// The folders the index covers.
-    static var rootPaths: [String] { [realPath(Places.home.path), "/Applications"] }
+    package static var rootPaths: [String] { [realPath(Places.home.path), "/Applications"] }
 
-    func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
+    package func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
         guard let store else { return nil }
         let clampedDays = max(-365_000, min(365_000, days))
         let raw = max(0, Date().timeIntervalSince1970 - Double(clampedDays) * 86_400)
@@ -168,7 +170,7 @@ final class FileIndex {
     }
 
     /// Duplicate files of at least `minSize`, largest savings first. `progress` reports (done, total) size groups.
-    func duplicates(minSize: Int64 = 1_000_000, progress: @escaping @Sendable (Int, Int) -> Void,
+    package func duplicates(minSize: Int64 = 1_000_000, progress: @escaping @Sendable (Int, Int) -> Void,
                     isCancelled: @escaping @Sendable () -> Bool) async -> [DuplicateGroup]? {
         guard let store else { return nil }
         return await Self.findDuplicates(store, minSize, progress, isCancelled)
@@ -195,7 +197,7 @@ final class FileIndex {
 
     private var excludedPaths: Set<String> = []
 
-    static func currentConfig() -> IndexConfig {
+    package static func currentConfig() -> IndexConfig {
         let home = realPath(Places.home.path)
         var excluded: Set<String> = []
         if !Privacy.hasFullDiskAccess {
@@ -230,7 +232,7 @@ final class FileIndex {
 
 extension FileEntry {
     /// An entry built from an index hit, without touching the disk.
-    init(hit: IndexHit) {
+    package init(hit: IndexHit) {
         let url = URL(fileURLWithPath: hit.path, isDirectory: hit.isDirectory)
         let type = hit.isDirectory && !hit.isPackage ? UTType.folder : UTType(filenameExtension: url.pathExtension)
         self.init(url: url, name: url.lastPathComponent, isDirectory: hit.isDirectory, isPackage: hit.isPackage,

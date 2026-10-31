@@ -2,7 +2,10 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// The commands that change files (Delete Immediately, Move to Trash, Rename, Cut, Compress…) act on the browser's
 /// `selectedURLs`. In every view that's exactly what's selected, and it stays the same items when the folder is read

@@ -2,7 +2,10 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 extension Prefs {
     /// Preferences in a suite of their own, with their own notification center. The suite is removed when the last

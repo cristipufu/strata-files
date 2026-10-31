@@ -3,7 +3,10 @@ import CryptoKit
 import Security
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct FileCommandOwnershipTests {
     private final class Environment {

@@ -1,7 +1,10 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Open With is filled the first time it opens, away from the main thread, not on every right-click.
 @MainActor struct OpenWithMenuTests {

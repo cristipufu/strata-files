@@ -3,7 +3,10 @@ import CryptoKit
 import SQLite3
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 @testable import StrataPreviews
 
 struct SecurityReviewTests {

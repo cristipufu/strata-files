@@ -2,7 +2,10 @@ import AppKit
 import Testing
 import os
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct TagColumnTests {
     private func write(_ names: [String], to url: URL) throws {

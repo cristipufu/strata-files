@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// A repository you only browse brings its own `.git/config`, which can tell git to run commands: a `core.fsmonitor` on
 /// every status, a filter driver whenever a changed file is hashed. Strata's git runs none of them.

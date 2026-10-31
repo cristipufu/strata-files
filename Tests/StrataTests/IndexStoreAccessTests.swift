@@ -2,7 +2,10 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct IndexStoreAccessTests {
     private nonisolated static func append(_ name: String, to storage: inout IndexStore.Storage,

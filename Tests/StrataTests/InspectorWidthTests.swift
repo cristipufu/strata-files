@@ -1,7 +1,10 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Dragging the Inspector's divider sets its width at `.dragThatCannotResizeWindow`. Nothing the Inspector shows may
 /// hold it at one width: long names give way and truncate instead.

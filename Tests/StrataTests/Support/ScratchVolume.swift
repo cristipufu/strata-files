@@ -2,7 +2,10 @@ import Darwin
 import Foundation
 import Synchronization
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// A disk of its own for a test (a small disk image, attached without showing in Finder and detached when the test
 /// process exits), for moves that cross disks: a copy and then the original removed, so the item is a new file where it

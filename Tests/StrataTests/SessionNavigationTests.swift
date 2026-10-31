@@ -2,7 +2,10 @@ import AppKit
 import Testing
 import Synchronization
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct SessionNavigationTests {
     private final class Windows {

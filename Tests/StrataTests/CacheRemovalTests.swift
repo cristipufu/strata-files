@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// What Strata deletes of its own: archives' copies, servers' and containers' copies. Each removal stays inside the
 /// cache it's for, takes only what it's meant to, and never follows a link out of it, however the copy's insides were

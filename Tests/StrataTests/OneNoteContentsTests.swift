@@ -2,7 +2,10 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 @testable import StrataPreviews
 
 /// A notebook's table of contents (.onetoc2): read for the order of its sections, in a package Space shows and in a

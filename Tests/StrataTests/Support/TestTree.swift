@@ -1,6 +1,9 @@
 import Foundation
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// A folder of files made for one test and removed after it. `snapshot` lists everything in it (links as links, never
 /// followed), so a test can check that an operation changed what it was meant to and nothing else.

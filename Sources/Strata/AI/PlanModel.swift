@@ -3,28 +3,28 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// A selected file and everything a plan may refer to.
-nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
-    var id: URL { url }
-    let url: URL
-    let name: String
-    let isFolder: Bool
-    let kind: String
-    let contentType: UTType?
-    let size: Int64?
-    let created: Date?
-    let modified: Date?
+package nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
+    package var id: URL { url }
+    package let url: URL
+    package let name: String
+    package let isFolder: Bool
+    package let kind: String
+    package let contentType: UTType?
+    package let size: Int64?
+    package let created: Date?
+    package let modified: Date?
     /// EXIF DateTimeOriginal (with its offset when present), for photos.
-    let captureDate: Date?
-    let cameraModel: String?
+    package let captureDate: Date?
+    package let cameraModel: String?
 
     /// Name without the extension (folders keep their whole name).
-    var baseName: String { isFolder || ext.isEmpty ? name : (name as NSString).deletingPathExtension }
-    var ext: String { isFolder ? "" : (name as NSString).pathExtension }
+    package var baseName: String { isFolder || ext.isEmpty ? name : (name as NSString).deletingPathExtension }
+    package var ext: String { isFolder ? "" : (name as NSString).pathExtension }
 
     /// When the content came to be: the capture date, else the earlier of created and modified (copies reset "created").
-    var bestDate: Date? { captureDate ?? [created, modified].compactMap { $0 }.min() }
+    package var bestDate: Date? { captureDate ?? [created, modified].compactMap { $0 }.min() }
 
-    func date(_ source: PlanRecipe.DateSource) -> Date? {
+    package func date(_ source: PlanRecipe.DateSource) -> Date? {
         switch source {
         case .taken: captureDate
         case .created: created
@@ -33,7 +33,7 @@ nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
         }
     }
 
-    init(url: URL, name: String, isFolder: Bool, kind: String, contentType: UTType?, size: Int64?, created: Date?, modified: Date?,
+    package init(url: URL, name: String, isFolder: Bool, kind: String, contentType: UTType?, size: Int64?, created: Date?, modified: Date?,
          captureDate: Date?, cameraModel: String?) {
         self.url = url.standardizedFileURL
         self.name = name
@@ -49,7 +49,7 @@ nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
 
     /// Reads metadata (and EXIF for images) off the main thread.
     @concurrent
-    static func load(_ urls: [URL]) async -> [PlanItem] {
+    package static func load(_ urls: [URL]) async -> [PlanItem] {
         urls.compactMap { url in
             guard let entry = FileEntry(url: url) else { return nil }
             var capture: (Date?, String?) = (nil, nil)
@@ -61,7 +61,7 @@ nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
     }
 
     /// Date taken and camera model from the image header (no pixel decoding).
-    static func exif(_ url: URL) -> (Date?, String?) {
+    package static func exif(_ url: URL) -> (Date?, String?) {
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return (nil, nil) }
         var info = stat()
@@ -100,7 +100,7 @@ private nonisolated extension TimeZone {
 }
 
 /// An operation as proposed by the model or expanded from a recipe, before validation.
-nonisolated enum ProposedOperation: Sendable, Hashable {
+package nonisolated enum ProposedOperation: Sendable, Hashable {
     case rename(URL, to: String)
     /// Folder: relative to the plan's base folder, or `~/…` / an absolute path.
     case move(URL, into: String)
@@ -109,12 +109,12 @@ nonisolated enum ProposedOperation: Sendable, Hashable {
 }
 
 /// One validated, reviewable change.
-nonisolated struct PlanStep: Sendable, Hashable, Identifiable {
-    enum Kind: String, Sendable {
+package nonisolated struct PlanStep: Sendable, Hashable, Identifiable {
+    package enum Kind: String, Sendable {
         case rename, move, createFolder, trash
 
         /// For VoiceOver and other spoken or written descriptions.
-        var title: String {
+        package var title: String {
             switch self {
             case .rename: String(localized: "Rename", comment: "Kind of plan step, read by VoiceOver: rename an item")
             case .move: String(localized: "Move", comment: "Kind of plan step, read by VoiceOver: move an item")
@@ -124,29 +124,29 @@ nonisolated struct PlanStep: Sendable, Hashable, Identifiable {
         }
     }
 
-    let id: Int
-    let kind: Kind
+    package let id: Int
+    package let kind: Kind
     /// The selected item (nil for a new folder).
-    let source: URL?
+    package let source: URL?
     /// Where it ends up (nil for Trash).
-    let destination: URL?
-    var isEnabled = true
+    package let destination: URL?
+    package var isEnabled = true
     /// Why the step was excluded; nil for valid steps.
-    var problem: String?
+    package var problem: String?
     /// A small adjustment made during validation ("Kept the .jpg extension").
-    var note: String?
+    package var note: String?
 
-    var beforeName: String { source?.lastPathComponent ?? destination?.lastPathComponent ?? "" }
+    package var beforeName: String { source?.lastPathComponent ?? destination?.lastPathComponent ?? "" }
 }
 
 /// A reviewable plan: valid steps (applied when checked) and steps that were excluded, with reasons.
-nonisolated struct Plan: Sendable {
-    enum Source: String, Sendable {
+package nonisolated struct Plan: Sendable {
+    package enum Source: String, Sendable {
         case rules = "Built-in rules"
         case model = "Apple Intelligence"
 
         /// For the review sheet's badge.
-        var title: String {
+        package var title: String {
             switch self {
             case .rules: String(localized: "Built-in rules", comment: "Badge: the plan was made by Strata’s rules, not by AI")
             case .model: "Apple Intelligence"
@@ -154,20 +154,20 @@ nonisolated struct Plan: Sendable {
         }
     }
 
-    var instruction: String
-    var source: Source
+    package var instruction: String
+    package var source: Source
     /// What the instruction was understood as ("Rename by date taken").
-    var interpretation: String
-    var baseFolder: URL
-    var steps: [PlanStep]
-    var excluded: [PlanStep]
+    package var interpretation: String
+    package var baseFolder: URL
+    package var steps: [PlanStep]
+    package var excluded: [PlanStep]
     /// Selected items the plan leaves alone (not matched, or already as asked).
-    var unaffected: Int
+    package var unaffected: Int
 
-    var enabledSteps: [PlanStep] { steps.filter(\.isEnabled) }
+    package var enabledSteps: [PlanStep] { steps.filter(\.isEnabled) }
 
     /// "4 renames · 2 moves · 1 new folder".
-    var summary: String {
+    package var summary: String {
         let enabled = enabledSteps
         func count(_ kind: PlanStep.Kind) -> Int { enabled.filter { $0.kind == kind }.count }
         var parts: [String] = []
@@ -181,5 +181,5 @@ nonisolated struct Plan: Sendable {
     }
 
     /// Steps that change an item (not folder creation).
-    var changeCount: Int { enabledSteps.filter { $0.kind != .createFolder }.count }
+    package var changeCount: Int { enabledSteps.filter { $0.kind != .createFolder }.count }
 }

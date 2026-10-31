@@ -2,7 +2,10 @@ import Foundation
 import SQLite3
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct SQLitePreviewSafetyTests {
     @Test func menusColumnsAndCellDecodingHaveIndependentBounds() throws {

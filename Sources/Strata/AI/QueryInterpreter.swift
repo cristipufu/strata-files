@@ -2,18 +2,18 @@ import Foundation
 import FoundationModels
 
 /// What a search phrase was understood as, and by what.
-nonisolated struct QueryInterpretation: Sendable {
-    enum Source: String, Sendable {
+package nonisolated struct QueryInterpretation: Sendable {
+    package enum Source: String, Sendable {
         /// The deterministic parser understood everything.
         case rules
         /// The on-device model filled in what the rules couldn't place.
         case rulesAndModel
     }
 
-    var filter: SearchFilter
-    var source: Source
+    package var filter: SearchFilter
+    package var source: Source
     /// Words the rules couldn't place. Without the model they stay in `filter.keywords` (matched against names).
-    var unrecognized: [String]
+    package var unrecognized: [String]
 }
 
 /// Turns a natural-language search ("pdfs from last week bigger than 10mb about invoices") into a `SearchFilter`.
@@ -22,10 +22,10 @@ nonisolated struct QueryInterpretation: Sendable {
 /// phrasing (kinds, sizes, "today", "last week", "older than 30 days", "in 2024", "since March", "named …", "about …") with no
 /// model and no latency. Only when words are left over, and Apple Intelligence is available, the on-device model reads the whole
 /// phrase with guided generation (constrained to the filter's shape); the rules' explicit findings always win.
-nonisolated enum QueryInterpreter {
+package nonisolated enum QueryInterpreter {
     // MARK: - Entry points
 
-    static func interpret(_ text: String, now: Date = .now, calendar: Calendar = .current, allowModel: Bool = true,
+    package static func interpret(_ text: String, now: Date = .now, calendar: Calendar = .current, allowModel: Bool = true,
                           timeout: Double = 6) async -> QueryInterpretation {
         let rules = parse(text, now: now, calendar: calendar)
         guard allowModel, !rules.unrecognized.isEmpty, AIModel.isAvailable else { return rules }
@@ -38,7 +38,7 @@ nonisolated enum QueryInterpreter {
     }
 
     /// The deterministic fast path: no model, no I/O, a millisecond or so.
-    static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current) -> QueryInterpretation {
+    package static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current) -> QueryInterpretation {
         let parser = Parser(text, now: now, calendar: calendar)
         parser.run()
         var filter = parser.filter
@@ -47,7 +47,7 @@ nonisolated enum QueryInterpreter {
     }
 
     /// Rules first; the model fills only what the rules left empty and takes over the unplaced words.
-    static func merge(_ rules: QueryInterpretation, _ model: SearchFilter) -> QueryInterpretation {
+    package static func merge(_ rules: QueryInterpretation, _ model: SearchFilter) -> QueryInterpretation {
         var filter = rules.filter
         if filter.kinds.isEmpty, filter.extensions.isEmpty {
             filter.kinds = model.kinds
@@ -74,10 +74,10 @@ nonisolated enum QueryInterpreter {
 
     // MARK: - Model
 
-    static let dateRanges = ["any", "today", "yesterday", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "thisYear", "lastYear",
+    package static let dateRanges = ["any", "today", "yesterday", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "thisYear", "lastYear",
                              "lastDays", "olderThanDays", "year", "since", "before", "between"]
 
-    static func schema() throws -> GenerationSchema {
+    package static func schema() throws -> GenerationSchema {
         let kind = Schema.choice("Kind", SearchFilter.Kind.allCases.map(\.rawValue))
         return try Schema.root(Schema.object("FileSearch", "A filter for finding files on a Mac", [
             Schema.field("kinds", "Kinds of files asked for; empty if none named", Schema.array(kind, max: 4)),
@@ -95,7 +95,7 @@ nonisolated enum QueryInterpreter {
         ]))
     }
 
-    static func instructions(now: Date, calendar: Calendar) -> String {
+    package static func instructions(now: Date, calendar: Calendar) -> String {
         let today = now.formatted(Date.ISO8601FormatStyle(timeZone: calendar.timeZone).year().month().day())
         let weekday = now.formatted(Date.FormatStyle(timeZone: calendar.timeZone).weekday(.wide))
         return """
@@ -107,7 +107,7 @@ nonisolated enum QueryInterpreter {
         """
     }
 
-    static func askModel(_ text: String, now: Date, calendar: Calendar) async throws -> SearchFilter {
+    package static func askModel(_ text: String, now: Date, calendar: Calendar) async throws -> SearchFilter {
         let session = LanguageModelSession(model: SystemLanguageModel(useCase: .general), instructions: instructions(now: now, calendar: calendar))
         let response = try await session.respond(to: "Request: \(text)", schema: try schema(),
                                                  options: .greedy(maximumResponseTokens: 220))
@@ -115,7 +115,7 @@ nonisolated enum QueryInterpreter {
     }
 
     /// Model output → filter. Relative dates are computed here, not by the model (small models get date arithmetic wrong).
-    static func decode(_ content: GeneratedContent, now: Date, calendar: Calendar) -> SearchFilter {
+    package static func decode(_ content: GeneratedContent, now: Date, calendar: Calendar) -> SearchFilter {
         var filter = SearchFilter()
         filter.kinds = Set(content["kinds"]?.strings.compactMap(SearchFilter.Kind.init(rawValue:)) ?? [])
         filter.extensions = Set((content["extensions"]?.strings ?? []).map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". ")) }
@@ -154,48 +154,48 @@ nonisolated enum QueryInterpreter {
 // MARK: - Dates
 
 /// Calendar ranges relative to "now". Ranges are [after, before).
-nonisolated struct Dates {
-    let now: Date
-    let calendar: Calendar
+package nonisolated struct Dates {
+    package let now: Date
+    package let calendar: Calendar
 
-    func startOfDay(_ date: Date) -> Date { calendar.startOfDay(for: date) }
-    func today() -> (Date?, Date?) { (startOfDay(now), nil) }
-    func yesterday() -> (Date?, Date?) {
+    package func startOfDay(_ date: Date) -> Date { calendar.startOfDay(for: date) }
+    package func today() -> (Date?, Date?) { (startOfDay(now), nil) }
+    package func yesterday() -> (Date?, Date?) {
         let today = startOfDay(now)
         return (calendar.date(byAdding: .day, value: -1, to: today), today)
     }
-    func current(_ unit: Calendar.Component) -> (Date?, Date?) { (calendar.dateInterval(of: unit, for: now)?.start, nil) }
-    func previous(_ unit: Calendar.Component) -> (Date?, Date?) {
+    package func current(_ unit: Calendar.Component) -> (Date?, Date?) { (calendar.dateInterval(of: unit, for: now)?.start, nil) }
+    package func previous(_ unit: Calendar.Component) -> (Date?, Date?) {
         guard let current = calendar.dateInterval(of: unit, for: now),
               let previous = calendar.dateInterval(of: unit, for: current.start.addingTimeInterval(-1)) else { return (nil, nil) }
         return (previous.start, current.start)
     }
-    func ago(_ count: Int, _ unit: Calendar.Component) -> Date? {
+    package func ago(_ count: Int, _ unit: Calendar.Component) -> Date? {
         let bounded = boundedCount(Double(count))
         if unit == .weekOfYear { return calendar.date(byAdding: .day, value: -7 * bounded, to: now) }
         return calendar.date(byAdding: unit, value: -bounded, to: now)
     }
     /// The whole calendar unit that contained "N units ago" ("3 days ago" = that day).
-    func unit(containing count: Int, _ unit: Calendar.Component) -> (Date?, Date?) {
+    package func unit(containing count: Int, _ unit: Calendar.Component) -> (Date?, Date?) {
         guard let date = ago(count, unit) else { return (nil, nil) }
         let component: Calendar.Component = unit == .hour || unit == .minute ? .day : unit
         guard let interval = calendar.dateInterval(of: component, for: date) else { return (nil, nil) }
         return (interval.start, interval.end)
     }
-    func year(_ year: Int) -> (Date?, Date?) {
+    package func year(_ year: Int) -> (Date?, Date?) {
         let y = min(max(year, 1), 99_999)
         return (calendar.date(from: DateComponents(year: y, month: 1, day: 1)),
                 calendar.date(from: DateComponents(year: y + 1, month: 1, day: 1)))
     }
     /// A month without a year means the latest one that has started.
-    func month(_ month: Int, year: Int?) -> (Date?, Date?) {
+    package func month(_ month: Int, year: Int?) -> (Date?, Date?) {
         let thisYear = calendar.component(.year, from: now)
         let thisMonth = calendar.component(.month, from: now)
         let y = year ?? (month <= thisMonth ? thisYear : thisYear - 1)
         guard let start = calendar.date(from: DateComponents(year: y, month: month, day: 1)) else { return (nil, nil) }
         return (start, calendar.date(byAdding: .month, value: 1, to: start))
     }
-    func day(year: Int?, month: Int, day: Int) -> (Date?, Date?) {
+    package func day(year: Int?, month: Int, day: Int) -> (Date?, Date?) {
         let thisYear = calendar.component(.year, from: now)
         var y = year ?? thisYear
         guard var start = calendar.date(from: DateComponents(year: y, month: month, day: day)) else { return (nil, nil) }
@@ -206,7 +206,7 @@ nonisolated struct Dates {
         return (start, calendar.date(byAdding: .day, value: 1, to: start))
     }
     /// The latest such weekday on or before today (strictly before with `last`).
-    func weekday(_ weekday: Int, strictlyBefore: Bool) -> (Date?, Date?) {
+    package func weekday(_ weekday: Int, strictlyBefore: Bool) -> (Date?, Date?) {
         var date = startOfDay(now)
         for _ in 0..<8 {
             if calendar.component(.weekday, from: date) == weekday, !(strictlyBefore && calendar.isDate(date, inSameDayAs: now)) {
@@ -217,7 +217,7 @@ nonisolated struct Dates {
         }
         return (nil, nil)
     }
-    func isoDay(_ text: String) -> Date? {
+    package func isoDay(_ text: String) -> Date? {
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))

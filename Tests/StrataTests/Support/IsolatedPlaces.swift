@@ -1,5 +1,8 @@
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 extension PlaceChecks {
     /// Checks of its own, reading the disk, with preferences and visits of their own.

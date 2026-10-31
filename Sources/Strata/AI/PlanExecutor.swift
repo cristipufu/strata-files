@@ -5,17 +5,17 @@ import AppKit
 /// Renames and moves go through `FileOps.move` one pair at a time (so a failure part-way still knows exactly what happened).
 /// New folders and Trash are coordinated here so per-item failures and the plan's ordering stay part of one action.
 /// Undo restores Trash items, reverses moves and removes only the plan's own empty folders; redo applies it again.
-enum PlanExecutor {
-    struct Outcome {
-        var applied = 0
-        var failures: [String] = []
+package enum PlanExecutor {
+    package struct Outcome {
+        package var applied = 0
+        package var failures: [String] = []
         /// Where the changed items are now (for selecting them afterwards).
-        var results: [URL] = []
+        package var results: [URL] = []
     }
 
     /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
     /// `undoName` when given ("Rename 3 Items"), else that translation.
-    static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
+    package static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
                       copies: CopyProviders, history: OperationLog) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
@@ -35,7 +35,7 @@ enum PlanExecutor {
 
     /// "AI Rename", "AI Move", "AI Organize", "AI Trash". English identifiers: History saves them and picks icons by
     /// them; `OperationLog.displayName` translates them for display.
-    static func actionName(for plan: Plan) -> String {
+    package static func actionName(for plan: Plan) -> String {
         let kinds = Set(plan.enabledSteps.map(\.kind)).subtracting([.createFolder])
         if kinds == [.rename] { return "AI Rename" }
         if kinds == [.trash] { return "AI Move to Trash" }
@@ -44,8 +44,8 @@ enum PlanExecutor {
     }
 }
 
-final class PlanTransaction {
-    typealias Pair = (from: URL, to: URL)
+package final class PlanTransaction {
+    package typealias Pair = (from: URL, to: URL)
 
     private let folders: [URL]
     private let moves: [Pair]
@@ -62,7 +62,7 @@ final class PlanTransaction {
     private var restored: LandedFiles?
     private var queue: Task<Void, Never>?
 
-    init(plan: Plan, copies: CopyProviders) {
+    package init(plan: Plan, copies: CopyProviders) {
         self.copies = copies
         let enabled = plan.enabledSteps
         let moves = enabled.compactMap { step -> Pair? in
@@ -82,15 +82,15 @@ final class PlanTransaction {
         }
     }
 
-    var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
+    package var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
 
-    func record(_ name: String, history: OperationLog) -> UUID? {
+    package func record(_ name: String, history: OperationLog) -> UUID? {
         // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
         history.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created,
                            containerIdentities: createdFolders.historyIdentities, landed: applied)
     }
 
-    func perform() async -> PlanExecutor.Outcome {
+    package func perform() async -> PlanExecutor.Outcome {
         var outcome = PlanExecutor.Outcome()
         var displacedCount = 0
         created = []
@@ -173,7 +173,7 @@ final class PlanTransaction {
         return outcome
     }
 
-    func revert() async {
+    package func revert() async {
         // The reverse of `perform`: moves back first (freeing names), then the Trash. Only items still where it put
         // them; what's back is recorded as it lands, for redo.
         let restored = LandedFiles()
@@ -201,7 +201,7 @@ final class PlanTransaction {
         createdFolders.removeEmpty()
     }
 
-    nonisolated enum Trashed: Sendable {
+    package nonisolated enum Trashed: Sendable {
         case alreadyInTrash
         /// Where it went, and what it is there, read as it landed.
         case trashed(URL, FileIdentity?)
@@ -210,7 +210,7 @@ final class PlanTransaction {
 
     /// One item to the Trash, away from the main thread, and only if it's still `expecting` when given. One already in
     /// a Trash isn't: trashing it again would lose where it came from.
-    @concurrent static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
+    @concurrent package static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
         if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
         if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
         var result: NSURL?
@@ -221,11 +221,11 @@ final class PlanTransaction {
 
     /// An item a case-only rename couldn't finish, and something else took its old name meanwhile: it's at `now`,
     /// beside that name.
-    struct Displaced: LocalizedError {
-        let now: URL
-        let reason: Error
+    package struct Displaced: LocalizedError {
+        package let now: URL
+        package let reason: Error
 
-        var errorDescription: String? {
+        package var errorDescription: String? {
             reason.localizedDescription + " "
                 + String(localized: "Something else took its name meanwhile, so it’s now “\(now.lastPathComponent)”.")
         }
@@ -255,7 +255,7 @@ final class PlanTransaction {
 
     /// One undo step for the whole plan. Each handler registers its opposite synchronously, so redo works too.
     /// The undo manager is the target (it doesn't retain targets); the closure keeps the transaction alive.
-    func registerUndo(_ undo: UndoManager, actionName: String) {
+    package func registerUndo(_ undo: UndoManager, actionName: String) {
         undo.registerUndo(withTarget: undo) { [self] undo in
             MainActor.assumeIsolated {
                 registerRedo(undo, actionName: actionName)
@@ -285,12 +285,12 @@ final class PlanTransaction {
     }
 
     /// Waits for queued undo/redo work (for tests).
-    func waitForIdle() async {
+    package func waitForIdle() async {
         await queue?.value
     }
 }
 
 extension Notification.Name {
     /// Posted after an undo or redo of an AI plan has finished moving files.
-    static let planTransactionDidFinish = Notification.Name("StrataPlanTransactionDidFinish")
+    package static let planTransactionDidFinish = Notification.Name("StrataPlanTransactionDidFinish")
 }

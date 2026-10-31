@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Deleting, moving and renaming on a server: there's no Trash there, so only the chosen items may change. These run
 /// with `RemoteFilesTests`' server (macOS's `sftp-server` over a pipe, in a temporary folder). That server can reach

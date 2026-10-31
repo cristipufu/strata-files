@@ -4,8 +4,8 @@ import FoundationModels
 /// A whole-selection transformation ("rename by date taken", "group by year"). The model (or the rules) picks a recipe and
 /// Strata expands it over every item deterministically: this scales past what fits in the model's context, and dates,
 /// numbering and collisions are computed exactly rather than generated.
-nonisolated struct PlanRecipe: Sendable, Hashable {
-    enum Action: Sendable, Hashable {
+package nonisolated struct PlanRecipe: Sendable, Hashable {
+    package enum Action: Sendable, Hashable {
         /// Template tokens: {date} {time} {datetime} {year} {month} {monthname} {day} {name} {n} {camera} {kind} {parent}.
         case rename(template: String, transforms: [NameTransform])
         case move(folder: String)
@@ -13,17 +13,17 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
         case trash
     }
 
-    enum GroupKey: String, Sendable, CaseIterable { case year, month, day, kind, `extension`, camera }
-    enum DateSource: String, Sendable, CaseIterable { case taken, created, modified, best }
-    enum NameTransform: String, Sendable, CaseIterable { case lowercase, uppercase, titlecase, spacesToDashes, spacesToUnderscores, removeSpaces }
+    package enum GroupKey: String, Sendable, CaseIterable { case year, month, day, kind, `extension`, camera }
+    package enum DateSource: String, Sendable, CaseIterable { case taken, created, modified, best }
+    package enum NameTransform: String, Sendable, CaseIterable { case lowercase, uppercase, titlecase, spacesToDashes, spacesToUnderscores, removeSpaces }
 
-    var action: Action
+    package var action: Action
     /// Which selected items it applies to (metadata only; empty = all).
-    var filter = SearchFilter()
-    var dateSource = DateSource.best
+    package var filter = SearchFilter()
+    package var dateSource = DateSource.best
 
     /// "Rename by date taken", "Move into “Archive” — only images named “Screenshot”, modified before Sep 11, 2026".
-    var title: String {
+    package var title: String {
         let dateWord: String = switch dateSource {
         case .taken: String(localized: "date taken", comment: "Which date a plan uses, as in “Group into folders by year (date taken)”")
         case .created: String(localized: "date created", comment: "Which date a plan uses, as in “Group into folders by year (date created)”")
@@ -85,7 +85,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "Group into folders by year (date taken) inside “Photos”", as one sentence per case.
-    static func groupDescription(_ key: PlanRecipe.GroupKey, date: String?, inside: String?) -> String {
+    package static func groupDescription(_ key: PlanRecipe.GroupKey, date: String?, inside: String?) -> String {
         switch (key, date, inside) {
         case (.year, nil, nil): return String(localized: "Group into folders by year", comment: "Plan description")
         case (.year, nil, let folder?): return String(localized: "Group into folders by year inside “\(folder)”", comment: "Plan description; a folder name")
@@ -113,7 +113,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "{year}-{month} {name}" → "year-month name".
-    static func readable(_ template: String) -> String {
+    package static func readable(_ template: String) -> String {
         let words = ["{date}": String(localized: "date", comment: "A part of a name pattern, as in “Rename to “year-month name””"),
                      "{time}": String(localized: "time", comment: "A part of a name pattern, as in “Rename to “date time””"),
                      "{datetime}": String(localized: "date time", comment: "A part of a name pattern: the date and time"),
@@ -130,7 +130,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "images named “Screenshot”, modified before Sep 11, 2026", or nil for no constraints.
-    static func describe(_ filter: SearchFilter) -> String? {
+    package static func describe(_ filter: SearchFilter) -> String? {
         var things: [String] = []
         if !filter.kinds.isEmpty {
             things.append(ListFormatter.localizedString(byJoining: SearchFilter.Kind.allCases.filter(filter.kinds.contains).map(\.noun)))
@@ -159,7 +159,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
 }
 
 nonisolated extension PlanRecipe.NameTransform {
-    var title: String {
+    package var title: String {
         switch self {
         case .lowercase: String(localized: "lowercase", comment: "Name change: make names lowercase")
         case .uppercase: String(localized: "uppercase", comment: "Name change: make names uppercase")
@@ -170,7 +170,7 @@ nonisolated extension PlanRecipe.NameTransform {
         }
     }
 
-    func apply(_ name: String) -> String {
+    package func apply(_ name: String) -> String {
         switch self {
         case .lowercase: name.lowercased()
         case .uppercase: name.uppercased()
@@ -182,11 +182,11 @@ nonisolated extension PlanRecipe.NameTransform {
     }
 }
 
-nonisolated enum PlanError: LocalizedError {
+package nonisolated enum PlanError: LocalizedError {
     case notUnderstood(suggestions: [String])
     case nothingSelected
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .notUnderstood:
             switch AIModel.status {
@@ -207,17 +207,24 @@ nonisolated enum PlanError: LocalizedError {
 }
 
 /// Instruction + selection → validated `Plan`.
-nonisolated enum PlanGenerator {
-    struct Request: Sendable {
-        var instruction: String
-        var items: [PlanItem]
+package nonisolated enum PlanGenerator {
+    package struct Request: Sendable {
+        package var instruction: String
+        package var items: [PlanItem]
         /// The window's folder: new folders and moves stay inside it unless the instruction names another place.
-        var baseFolder: URL
-        var now = Date()
+        package var baseFolder: URL
+        package var now = Date()
+
+        package init(instruction: String, items: [PlanItem], baseFolder: URL, now: Date = Date()) {
+            self.instruction = instruction
+            self.items = items
+            self.baseFolder = baseFolder
+            self.now = now
+        }
     }
 
     /// Away from the main thread: checking a plan looks at every item it would change.
-    @concurrent static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
+    @concurrent package static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
         guard !request.items.isEmpty else { throw PlanError.nothingSelected }
         let rules = PlanRules.recipe(for: request.instruction, now: request.now)
         let useModel = allowModel && AIModel.isAvailable && (rules == nil || rules?.fullyUnderstood == false)
@@ -243,7 +250,7 @@ nonisolated enum PlanGenerator {
     }
 
     /// Instructions that fit the selection, for the sheet's suggestion buttons.
-    static func suggestions(for items: [PlanItem]) -> [String] {
+    package static func suggestions(for items: [PlanItem]) -> [String] {
         var result: [String] = []
         let images = items.filter { $0.contentType?.conforms(to: .image) == true }
         if images.contains(where: { $0.captureDate != nil }) { result.append("Rename these photos by date taken") }
@@ -263,14 +270,14 @@ nonisolated enum PlanGenerator {
 // MARK: - Rules
 
 /// Deterministic instruction → recipe for the common requests. Works without Apple Intelligence.
-nonisolated enum PlanRules {
-    struct Result {
-        let recipe: PlanRecipe
+package nonisolated enum PlanRules {
+    package struct Result {
+        package let recipe: PlanRecipe
         /// No meaningful words were left unexplained (otherwise the model, when available, gets a say).
-        let fullyUnderstood: Bool
+        package let fullyUnderstood: Bool
     }
 
-    static func recipe(for instruction: String, now: Date = .now) -> Result? {
+    package static func recipe(for instruction: String, now: Date = .now) -> Result? {
         let text = instruction.lowercased()
         let dateSource = Self.dateSource(text)
         var filter = itemFilter(instruction, now: now)
@@ -338,7 +345,7 @@ nonisolated enum PlanRules {
         return Result(recipe: PlanRecipe(action: action, filter: filter, dateSource: dateSource), fullyUnderstood: unexplained.isEmpty)
     }
 
-    static func nameTransforms(_ text: String) -> [PlanRecipe.NameTransform] {
+    package static func nameTransforms(_ text: String) -> [PlanRecipe.NameTransform] {
         var transforms: [PlanRecipe.NameTransform] = []
         if text.contains("lowercase") || text.contains("lower case") { transforms.append(.lowercase) }
         if text.contains("uppercase") || text.contains("upper case") { transforms.append(.uppercase) }
@@ -351,7 +358,7 @@ nonisolated enum PlanRules {
 
     /// Which items an instruction is about ("these PDFs", "screenshots older than 30 days"), ignoring its own wording about
     /// destinations ("into folders by year" is not a request for folders).
-    static func itemFilter(_ text: String, now: Date) -> SearchFilter {
+    package static func itemFilter(_ text: String, now: Date) -> SearchFilter {
         var cleaned = text
         for pattern in ["(?i)\\b(?:into|in|to)\\s+(?:separate\\s+|sub|new\\s+)?folders?\\b", "(?i)\\bby\\s+(?:the\\s+)?(?:year|month|day|date|type|kind|extension|file type|format|camera)\\b",
                         "(?i)\\b(?:a|an|the|new)\\s+folder\\s+(?:called|named)\\s+\\S+", "(?i)\\bfolders?\\b(?=\\s+(?:by|for|per))",
@@ -364,7 +371,7 @@ nonisolated enum PlanRules {
         return filter
     }
 
-    static func dateSource(_ text: String) -> PlanRecipe.DateSource {
+    package static func dateSource(_ text: String) -> PlanRecipe.DateSource {
         if text.range(of: "\\b(?:date taken|taken|capture|captured|shot|exif|camera date)\\b", options: .regularExpression) != nil { return .taken }
         if text.range(of: "\\b(?:created|creation|date created)\\b", options: .regularExpression) != nil { return .created }
         if text.range(of: "\\b(?:modified|modification|last changed|date modified|edited)\\b", options: .regularExpression) != nil { return .modified }
@@ -372,7 +379,7 @@ nonisolated enum PlanRules {
     }
 
     /// Capture groups of the first match ([0] = whole match).
-    static func match(_ text: String, _ pattern: String) -> [String]? {
+    package static func match(_ text: String, _ pattern: String) -> [String]? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
         return (0..<m.numberOfRanges).map { m.range(at: $0).location == NSNotFound ? "" : (text as NSString).substring(with: m.range(at: $0)) }
@@ -383,16 +390,16 @@ nonisolated enum PlanRules {
 
 /// Guided generation: the model either picks a recipe (preferred) or, for small selections and one-off requests, lists
 /// explicit operations by item number. Either way the output is constrained by the schema and validated afterwards.
-nonisolated enum ModelPlanner {
-    enum Answer: Sendable {
+package nonisolated enum ModelPlanner {
+    package enum Answer: Sendable {
         case recipe(PlanRecipe)
         case explicit([ProposedOperation], summary: String)
         case unsupported
     }
 
-    static let maxListedItems = 40
+    package static let maxListedItems = 40
 
-    static func schema() throws -> GenerationSchema {
+    package static func schema() throws -> GenerationSchema {
         let kinds = Schema.choice("ItemKind", SearchFilter.Kind.allCases.map(\.rawValue))
         let match = Schema.object("Match", "Which of the listed items the plan applies to; leave empty for all", [
             Schema.field("kinds", nil, Schema.array(kinds, max: 4)),
@@ -422,7 +429,7 @@ nonisolated enum ModelPlanner {
         ]))
     }
 
-    static func listing(_ items: [PlanItem], now: Date) -> String {
+    package static func listing(_ items: [PlanItem], now: Date) -> String {
         let day = Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
         let time = Date.FormatStyle(date: .omitted, time: .shortened)
         var lines: [String] = []
@@ -439,7 +446,7 @@ nonisolated enum ModelPlanner {
         return lines.joined(separator: "\n")
     }
 
-    static func plan(_ request: PlanGenerator.Request) async throws -> Answer {
+    package static func plan(_ request: PlanGenerator.Request) async throws -> Answer {
         let today = request.now.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
         let instructions = """
         You plan file operations in a Mac file manager. Today is \(today). The user selected the numbered items below in the folder \
@@ -457,7 +464,7 @@ nonisolated enum ModelPlanner {
     }
 
     /// Model output → recipe or explicit operations. Item numbers outside the list are dropped (and so can't touch anything).
-    static func decode(_ content: GeneratedContent, items: [PlanItem], now: Date) -> Answer {
+    package static func decode(_ content: GeneratedContent, items: [PlanItem], now: Date) -> Answer {
         let dateSource = content["dateSource"]?.string.flatMap(PlanRecipe.DateSource.init(rawValue:)) ?? .best
         var filter = SearchFilter()
         if let match = content["match"] {
@@ -510,14 +517,14 @@ nonisolated enum ModelPlanner {
 // MARK: - Expansion
 
 /// Recipe × selection → proposed operations (plus items it had to skip, with reasons).
-nonisolated enum PlanExpander {
-    struct Output {
-        var operations: [ProposedOperation] = []
-        var skipped: [(item: PlanItem, reason: String)] = []
-        var unaffected = 0
+package nonisolated enum PlanExpander {
+    package struct Output {
+        package var operations: [ProposedOperation] = []
+        package var skipped: [(item: PlanItem, reason: String)] = []
+        package var unaffected = 0
     }
 
-    static func expand(_ recipe: PlanRecipe, items: [PlanItem], baseFolder: URL) -> Output {
+    package static func expand(_ recipe: PlanRecipe, items: [PlanItem], baseFolder: URL) -> Output {
         var output = Output()
         let matching = items.filter { item in
             recipe.filter.isEmpty || recipe.filter.matches(name: item.name, contentType: item.contentType, isDirectory: item.isFolder,
@@ -582,7 +589,7 @@ nonisolated enum PlanExpander {
         }
     }()
 
-    static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
+    package static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
         // Only what the template uses is worked out (a big selection renders on every keystroke).
         func value(_ token: String) -> String {
             if let formatter = dateFormatters[token] { return formatter.string(from: item.date(source) ?? item.bestDate ?? Date()) }
@@ -612,7 +619,7 @@ nonisolated enum PlanExpander {
         return result
     }
 
-    static func groupName(_ item: PlanItem, key: PlanRecipe.GroupKey, source: PlanRecipe.DateSource) -> String? {
+    package static func groupName(_ item: PlanItem, key: PlanRecipe.GroupKey, source: PlanRecipe.DateSource) -> String? {
         let date = item.date(source) ?? (source == .taken ? nil : item.bestDate)
         let calendar = Calendar.current
         switch key {

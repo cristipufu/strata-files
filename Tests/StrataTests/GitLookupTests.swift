@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Which repository a folder is in is found away from the main thread, walking up to "/": until then the folder shows
 /// none, and a status change says when it's found.

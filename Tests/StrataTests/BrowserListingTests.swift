@@ -1,7 +1,10 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct BrowserListingTests {
     private func entry(_ path: String, size: Int64 = 0, label: String? = nil, folder: Bool = false) -> FileEntry {

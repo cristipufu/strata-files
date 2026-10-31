@@ -4,7 +4,7 @@ import Foundation
 
 /// How a path shows up in the file list, ordered from least to most notable. A folder shows the most notable state
 /// among the paths below it (ignored paths never bubble up).
-nonisolated enum GitFileState: Int, Sendable, Comparable, CaseIterable {
+package nonisolated enum GitFileState: Int, Sendable, Comparable, CaseIterable {
     case clean
     case ignored
     case untracked
@@ -15,14 +15,14 @@ nonisolated enum GitFileState: Int, Sendable, Comparable, CaseIterable {
     case modified
     case conflicted
 
-    static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+    package static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 }
 
 /// One side (index or work tree) of a porcelain `XY` status code.
-nonisolated enum GitChange: Sendable, Equatable {
+package nonisolated enum GitChange: Sendable, Equatable {
     case unmodified, modified, typeChanged, added, deleted, renamed, copied, unmerged
 
-    init(_ byte: UInt8) {
+    package init(_ byte: UInt8) {
         switch byte {
         case UInt8(ascii: "M"): self = .modified
         case UInt8(ascii: "T"): self = .typeChanged
@@ -37,28 +37,28 @@ nonisolated enum GitChange: Sendable, Equatable {
 }
 
 /// Whether a tracked change is in the index, the work tree, or both.
-nonisolated enum GitStaging: Sendable, Equatable {
+package nonisolated enum GitStaging: Sendable, Equatable {
     case staged, unstaged, partiallyStaged
 }
 
 /// One entry from `git status`: a changed, conflicted, untracked or ignored path.
-nonisolated struct GitPathStatus: Sendable, Equatable {
-    enum Kind: Sendable, Equatable { case tracked, conflicted, untracked, ignored }
+package nonisolated struct GitPathStatus: Sendable, Equatable {
+    package enum Kind: Sendable, Equatable { case tracked, conflicted, untracked, ignored }
 
     /// Relative to the repository root, without a trailing slash.
-    let path: String
-    let kind: Kind
+    package let path: String
+    package let kind: Kind
     /// Staged side (`X`).
-    let index: GitChange
+    package let index: GitChange
     /// Unstaged side (`Y`).
-    let worktree: GitChange
+    package let worktree: GitChange
     /// The source of a rename or copy.
-    let originalPath: String?
-    let isSubmodule: Bool
+    package let originalPath: String?
+    package let isSubmodule: Bool
     /// Untracked or ignored folders are reported as a whole (`dir/`).
-    let isDirectory: Bool
+    package let isDirectory: Bool
 
-    var state: GitFileState {
+    package var state: GitFileState {
         switch kind {
         case .conflicted: return .conflicted
         case .untracked: return .untracked
@@ -72,7 +72,7 @@ nonisolated struct GitPathStatus: Sendable, Equatable {
         }
     }
 
-    var staging: GitStaging? {
+    package var staging: GitStaging? {
         guard kind == .tracked else { return nil }
         switch (index != .unmodified, worktree != .unmodified) {
         case (true, true): return .partiallyStaged
@@ -84,23 +84,23 @@ nonisolated struct GitPathStatus: Sendable, Equatable {
 
 // MARK: - Branch and repository state
 
-nonisolated struct GitBranchInfo: Sendable, Equatable {
+package nonisolated struct GitBranchInfo: Sendable, Equatable {
     /// Branch name, or nil when HEAD is detached.
-    var head: String?
+    package var head: String?
     /// Commit HEAD points at; nil before the first commit.
-    var oid: String?
-    var upstream: String?
-    var ahead = 0
-    var behind = 0
+    package var oid: String?
+    package var upstream: String?
+    package var ahead = 0
+    package var behind = 0
 
-    var isDetached: Bool { head == nil }
-    var shortOID: String? { oid.map { String($0.prefix(7)) } }
+    package var isDetached: Bool { head == nil }
+    package var shortOID: String? { oid.map { String($0.prefix(7)) } }
     /// Branch name, or the short commit when detached.
-    var displayName: String { head ?? shortOID ?? "HEAD" }
+    package var displayName: String { head ?? shortOID ?? "HEAD" }
 }
 
 /// A multi-step operation in progress, read from marker files in the git directory.
-nonisolated enum GitOperation: Sendable, Equatable {
+package nonisolated enum GitOperation: Sendable, Equatable {
     case merging
     case rebasing(step: Int?, total: Int?)
     case cherryPicking
@@ -108,7 +108,7 @@ nonisolated enum GitOperation: Sendable, Equatable {
     case bisecting
     case applyingMailbox
 
-    var title: String {
+    package var title: String {
         switch self {
         case .merging: return String(localized: "Merging", comment: "Git operation in progress")
         case .rebasing(let step?, let total?):
@@ -123,20 +123,20 @@ nonisolated enum GitOperation: Sendable, Equatable {
 }
 
 /// How many paths are in each state, for summaries like "3 modified · 1 untracked".
-nonisolated struct GitStatusCounts: Sendable, Equatable {
-    var modified = 0
-    var added = 0
-    var deleted = 0
-    var renamed = 0
-    var untracked = 0
-    var conflicted = 0
-    var staged = 0
-    var unstaged = 0
+package nonisolated struct GitStatusCounts: Sendable, Equatable {
+    package var modified = 0
+    package var added = 0
+    package var deleted = 0
+    package var renamed = 0
+    package var untracked = 0
+    package var conflicted = 0
+    package var staged = 0
+    package var unstaged = 0
 
-    var changed: Int { modified + added + deleted + renamed + untracked + conflicted }
-    var isClean: Bool { changed == 0 }
+    package var changed: Int { modified + added + deleted + renamed + untracked + conflicted }
+    package var isClean: Bool { changed == 0 }
 
-    mutating func add(_ status: GitPathStatus) {
+    package mutating func add(_ status: GitPathStatus) {
         switch status.state {
         case .conflicted: conflicted += 1
         case .modified: modified += 1
@@ -155,7 +155,7 @@ nonisolated struct GitStatusCounts: Sendable, Equatable {
     }
 
     /// "3 modified · 1 untracked", most important first.
-    var summary: String {
+    package var summary: String {
         var parts: [String] = []
         if conflicted > 0 { parts.append(String(localized: "\(conflicted) conflicted", comment: "plural")) }
         if modified > 0 { parts.append(String(localized: "\(modified) modified", comment: "plural")) }
@@ -167,7 +167,7 @@ nonisolated struct GitStatusCounts: Sendable, Equatable {
     }
 }
 
-nonisolated enum GitIgnoredMode: String, Sendable {
+package nonisolated enum GitIgnoredMode: String, Sendable {
     /// Lists paths that match an ignore pattern; doesn't descend into ignored folders. Fast on big trees.
     case matching
     /// Also lists folders whose contents are all ignored, which means walking every ignored folder. Can take
@@ -178,47 +178,47 @@ nonisolated enum GitIgnoredMode: String, Sendable {
 // MARK: - Snapshot
 
 /// The parsed result of one `git status` run, with indexes for constant-time lookups from the file list.
-nonisolated struct GitStatusSnapshot: Sendable {
-    enum Outcome: Sendable, Equatable {
+package nonisolated struct GitStatusSnapshot: Sendable {
+    package enum Outcome: Sendable, Equatable {
         case ok
         case timedOut
         case failed(String)
     }
 
-    let repository: GitRepository
-    let branch: GitBranchInfo
-    let operation: GitOperation?
-    let stashCount: Int
+    package let repository: GitRepository
+    package let branch: GitBranchInfo
+    package let operation: GitOperation?
+    package let stashCount: Int
     /// Changed, conflicted and untracked paths (not ignored ones), keyed by root-relative path.
-    let entries: [String: GitPathStatus]
-    let ignoredFiles: Set<String>
-    let ignoredDirectories: Set<String>
-    let untrackedDirectories: Set<String>
+    package let entries: [String: GitPathStatus]
+    package let ignoredFiles: Set<String>
+    package let ignoredDirectories: Set<String>
+    package let untrackedDirectories: Set<String>
     /// Most notable state below each folder that contains changes; `""` is the repository root.
-    let directoryStates: [String: GitFileState]
-    let counts: GitStatusCounts
-    let outcome: Outcome
-    let duration: TimeInterval
-    let date: Date
+    package let directoryStates: [String: GitFileState]
+    package let counts: GitStatusCounts
+    package let outcome: Outcome
+    package let duration: TimeInterval
+    package let date: Date
     /// Hash of git's raw output, to skip redraws when a refresh finds nothing new.
-    let fingerprint: Int
+    package let fingerprint: Int
 
-    var root: URL { repository.root }
-    var isComplete: Bool { outcome == .ok }
+    package var root: URL { repository.root }
+    package var isComplete: Bool { outcome == .ok }
 
     /// `url` relative to the repository root ("" for the root itself), or nil when it's outside the work tree.
-    func relativePath(_ url: URL) -> String? {
+    package func relativePath(_ url: URL) -> String? {
         GitStatusSnapshot.relativePath(url.standardizedFileURL.path, root: repository.rootPath)
     }
 
-    static func relativePath(_ path: String, root: String) -> String? {
+    package static func relativePath(_ path: String, root: String) -> String? {
         if path == root { return "" }
         let prefix = root == "/" ? "/" : root + "/"
         guard path.hasPrefix(prefix) else { return nil }
         return String(path.dropFirst(prefix.count))
     }
 
-    func state(forRelativePath path: String, isDirectory: Bool) -> GitFileState {
+    package func state(forRelativePath path: String, isDirectory: Bool) -> GitFileState {
         if isIgnored(relativePath: path) { return .ignored }
         if let entry = entries[path] {
             // A submodule is reported as one entry but is also a folder; show whichever is more notable.
@@ -228,25 +228,25 @@ nonisolated struct GitStatusSnapshot: Sendable {
         return isDirectory ? directoryStates[path] ?? .clean : .clean
     }
 
-    func status(forRelativePath path: String) -> GitPathStatus? {
+    package func status(forRelativePath path: String) -> GitPathStatus? {
         entries[path]
     }
 
     /// True for ignored files and folders, and anything inside an ignored folder.
-    func isIgnored(relativePath path: String) -> Bool {
+    package func isIgnored(relativePath path: String) -> Bool {
         if ignoredFiles.contains(path) || ignoredDirectories.contains(path) { return true }
         return hasAncestor(of: path, in: ignoredDirectories)
     }
 
     /// Whether `path` lies in a folder git doesn't track (ignored or untracked), so deleting it loses nothing in git.
-    func isUntrackedOrIgnored(relativePath path: String) -> Bool {
+    package func isUntrackedOrIgnored(relativePath path: String) -> Bool {
         if isIgnored(relativePath: path) || untrackedDirectories.contains(path) { return true }
         if let entry = entries[path], entry.kind == .untracked { return true }
         return hasAncestor(of: path, in: untrackedDirectories)
     }
 
     /// Counts for the paths inside `folder` (relative; "" for the whole repository).
-    func counts(inside folder: String) -> GitStatusCounts {
+    package func counts(inside folder: String) -> GitStatusCounts {
         guard !folder.isEmpty else { return counts }
         let prefix = folder + "/"
         var result = GitStatusCounts()
@@ -269,19 +269,19 @@ nonisolated struct GitStatusSnapshot: Sendable {
 // MARK: - Parser
 
 /// Parses `git status --porcelain=v2 -z --branch [--show-stash]` output.
-nonisolated enum GitStatusParser {
-    struct Result: Sendable {
-        var branch = GitBranchInfo()
-        var stashCount = 0
-        var entries: [String: GitPathStatus] = [:]
-        var ignoredFiles: Set<String> = []
-        var ignoredDirectories: Set<String> = []
-        var untrackedDirectories: Set<String> = []
-        var directoryStates: [String: GitFileState] = [:]
-        var counts = GitStatusCounts()
+package nonisolated enum GitStatusParser {
+    package struct Result: Sendable {
+        package var branch = GitBranchInfo()
+        package var stashCount = 0
+        package var entries: [String: GitPathStatus] = [:]
+        package var ignoredFiles: Set<String> = []
+        package var ignoredDirectories: Set<String> = []
+        package var untrackedDirectories: Set<String> = []
+        package var directoryStates: [String: GitFileState] = [:]
+        package var counts = GitStatusCounts()
     }
 
-    static func parse(_ data: Data) -> Result {
+    package static func parse(_ data: Data) -> Result {
         var result = Result()
         let bytes = [UInt8](data)
         var records = bytes.split(separator: 0, omittingEmptySubsequences: true)[...]

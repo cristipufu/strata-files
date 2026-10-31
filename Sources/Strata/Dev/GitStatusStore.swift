@@ -3,7 +3,7 @@ import CoreServices
 
 extension Notification.Name {
     /// Posted on the main thread when a repository's status changed. `userInfo["root"]` is the work tree URL.
-    static let gitStatusDidChange = Notification.Name("StrataGitStatusDidChange")
+    package static let gitStatusDidChange = Notification.Name("StrataGitStatusDidChange")
 }
 
 /// Caches `git status` per repository and answers per-URL questions for the file list.
@@ -12,19 +12,21 @@ extension Notification.Name {
 /// last snapshot. Refreshes coalesce: while one runs for a repository, further requests queue a single follow-up, and
 /// runs are spaced at least `minimumInterval` apart. A run that times out leaves the repository alone for
 /// `timeoutBackoff` unless a refresh is forced (⌘R).
-final class GitStatusStore {
-    static let shared = GitStatusStore()
+package final class GitStatusStore {
+    package static let shared = GitStatusStore()
 
-    var timeout: TimeInterval = 3
-    var ignoredMode: GitIgnoredMode = .matching
-    var minimumInterval: TimeInterval = 0.4
-    var timeoutBackoff: TimeInterval = 30
+    package init() {}
+
+    package var timeout: TimeInterval = 3
+    package var ignoredMode: GitIgnoredMode = .matching
+    package var minimumInterval: TimeInterval = 0.4
+    package var timeoutBackoff: TimeInterval = 30
     /// A snapshot younger than this is reused when navigating between folders of the same repository.
-    var maximumAge: TimeInterval = 2
+    package var maximumAge: TimeInterval = 2
     /// Off when no git binary is installed.
-    var isEnabled = GitRunner.isAvailable
+    package var isEnabled = GitRunner.isAvailable
     /// Number of status runs so far, for diagnostics.
-    private(set) var completedRuns = 0
+    package private(set) var completedRuns = 0
 
     // Everything is keyed by standardized path: URLs for the same folder can differ by a trailing slash.
     private var repositoriesByFolder: [String: GitRepository?] = [:]
@@ -44,7 +46,7 @@ final class GitStatusStore {
     /// The repository whose work tree contains `folder`, as last found. Not found yet, it's looked for away from the
     /// main thread (an lstat or two at every level up to "/", each a round trip on a server) and nil until then; a
     /// status change says when it's found. `observe` looks again.
-    func repository(containing folder: URL) -> GitRepository? {
+    package func repository(containing folder: URL) -> GitRepository? {
         let path = folder.standardizedFileURL.path
         if let cached = repositoriesByFolder[path] { return cached }
         find(path)
@@ -53,7 +55,7 @@ final class GitStatusStore {
 
     /// The same, waiting for the lookup when it isn't known yet: for deciding something by it, such as which of a
     /// project's folders git tracks.
-    func repositoryFound(containing folder: URL) async -> GitRepository? {
+    package func repositoryFound(containing folder: URL) async -> GitRepository? {
         let path = folder.standardizedFileURL.path
         if let cached = repositoriesByFolder[path] { return cached }
         return await find(path).value
@@ -61,7 +63,7 @@ final class GitStatusStore {
 
     /// The repository an item in the list belongs to: its parent folder's. (A nested repository's root is an
     /// untracked folder of the outer one, which is how it should look from outside.)
-    func repository(forItem url: URL) -> GitRepository? {
+    package func repository(forItem url: URL) -> GitRepository? {
         repository(containing: url.standardizedFileURL.deletingLastPathComponent())
     }
 
@@ -104,16 +106,16 @@ final class GitStatusStore {
         if let repository { repositoriesByRoot[repository.rootPath] = repository }
     }
 
-    func snapshot(for root: URL) -> GitStatusSnapshot? {
+    package func snapshot(for root: URL) -> GitStatusSnapshot? {
         snapshots[Self.key(root)]
     }
 
-    func snapshot(containing folder: URL) -> GitStatusSnapshot? {
+    package func snapshot(containing folder: URL) -> GitStatusSnapshot? {
         repository(containing: folder).flatMap { snapshots[$0.rootPath] }
     }
 
     /// Why the last run for `root` produced no fresh data, if it didn't.
-    func lastFailure(for root: URL) -> GitStatusSnapshot.Outcome? {
+    package func lastFailure(for root: URL) -> GitStatusSnapshot.Outcome? {
         lastFailure[Self.key(root)]?.outcome
     }
 
@@ -123,7 +125,7 @@ final class GitStatusStore {
     /// main thread, which repository the folder is in, watches the work tree and git directory (FSEvents) so edits,
     /// staging, commits and checkouts made anywhere refresh it, and runs status unless a watched snapshot is already
     /// current. Returns nil outside a repository.
-    func observe(_ folder: URL) async -> GitObservation? {
+    package func observe(_ folder: URL) async -> GitObservation? {
         guard let repository = await find(folder.standardizedFileURL.path, fresh: true).value else { return nil }
         let root = repository.rootPath
         let watched = watchers[root] != nil
@@ -141,7 +143,7 @@ final class GitStatusStore {
     }
 
     /// Whether an FSEvents watcher is keeping `root` current (it can fail to start, e.g. on some network volumes).
-    func isWatching(root: URL) -> Bool {
+    package func isWatching(root: URL) -> Bool {
         watchers[Self.key(root)] != nil
     }
 
@@ -155,7 +157,7 @@ final class GitStatusStore {
 
     /// Marks `root`'s status out of date and refreshes it (coalesced). The hook for anything that knows the work
     /// tree changed: a DirectoryWatcher event, a file operation, the window becoming key.
-    func invalidate(root: URL) {
+    package func invalidate(root: URL) {
         invalidate(rootPath: Self.key(root))
     }
 
@@ -165,12 +167,12 @@ final class GitStatusStore {
     }
 
     /// Re-runs status for the repository containing `url`, if any.
-    func invalidate(containing url: URL) {
+    package func invalidate(containing url: URL) {
         if let repository = repository(containing: url) { invalidate(root: repository.root) }
     }
 
     /// Runs status now, or queues one follow-up run if one is already going. `force` ignores the time-out back-off.
-    func refresh(_ repository: GitRepository, force: Bool = false) {
+    package func refresh(_ repository: GitRepository, force: Bool = false) {
         guard isEnabled else { return }
         let root = repository.rootPath
         repositoriesByRoot[root] = repository
@@ -197,7 +199,7 @@ final class GitStatusStore {
 
     /// The current status of `repository`: the cached snapshot when fresh, else the result of the running or a new
     /// run. Used by loaders that need status before they can answer (the project inspector).
-    func status(of repository: GitRepository) async -> GitStatusSnapshot? {
+    package func status(of repository: GitRepository) async -> GitStatusSnapshot? {
         let root = repository.rootPath
         if let task = running[root] { return await task.value }
         if let snapshot = snapshots[root], !stale.contains(root), Date().timeIntervalSince(snapshot.date) < maximumAge {
@@ -233,24 +235,24 @@ final class GitStatusStore {
     // MARK: - Lookups for the file list
 
     /// State of an item in the list; nil when it isn't in a repository or status hasn't arrived yet.
-    func state(of url: URL, isDirectory: Bool) -> GitFileState? {
+    package func state(of url: URL, isDirectory: Bool) -> GitFileState? {
         guard let (snapshot, path) = locateItem(url) else { return nil }
         return snapshot.state(forRelativePath: path, isDirectory: isDirectory)
     }
 
-    func pathStatus(of url: URL) -> GitPathStatus? {
+    package func pathStatus(of url: URL) -> GitPathStatus? {
         guard let (snapshot, path) = locateItem(url) else { return nil }
         return snapshot.status(forRelativePath: path)
     }
 
     /// Whether git ignores `url` (directly, or because a folder above it is ignored). Use it to dim rows.
-    func isIgnored(_ url: URL) -> Bool {
+    package func isIgnored(_ url: URL) -> Bool {
         guard let (snapshot, path) = locateItem(url) else { return false }
         return snapshot.isIgnored(relativePath: path)
     }
 
     /// What to draw in the name cell, or nil for clean and ignored items.
-    func badge(for url: URL, isDirectory: Bool) -> GitBadge? {
+    package func badge(for url: URL, isDirectory: Bool) -> GitBadge? {
         guard let (snapshot, path) = locateItem(url) else { return nil }
         let state = snapshot.state(forRelativePath: path, isDirectory: isDirectory)
         guard state != .clean, state != .ignored else { return nil }
@@ -273,7 +275,7 @@ final class GitStatusStore {
 
     /// `/private/var/…` as `/var/…`, and so on for the aliases macOS fixes, the way `standardizedFileURL` spells
     /// them, without asking the disk.
-    nonisolated static func shortSpelling(_ path: String) -> String {
+    package nonisolated static func shortSpelling(_ path: String) -> String {
         for alias in ["/private/var", "/private/tmp", "/private/etc"] where path == alias || path.hasPrefix(alias + "/") {
             return String(path.dropFirst("/private".count))
         }
@@ -294,8 +296,8 @@ final class GitStatusStore {
 }
 
 /// Keeps a repository watched; drop it (or assign another) to stop.
-@MainActor final class GitObservation {
-    let repository: GitRepository
+@MainActor package final class GitObservation {
+    package let repository: GitRepository
     private weak var store: GitStatusStore?
 
     fileprivate init(store: GitStatusStore, repository: GitRepository) {
@@ -305,7 +307,7 @@ final class GitStatusStore {
 
     /// False when FSEvents couldn't watch the repository: callers should then invalidate on their own change
     /// signals (the browser's DirectoryWatcher).
-    var isWatching: Bool { store?.isWatching(root: repository.root) ?? false }
+    package var isWatching: Bool { store?.isWatching(root: repository.root) ?? false }
 
     isolated deinit {
         store?.endObserving(repository.rootPath)
@@ -316,15 +318,15 @@ final class GitStatusStore {
 
 /// Decides whether a file-system event path could change `git status`. Sendable, so FSEvents batches are filtered on
 /// a background queue: a build writing thousands of files into an ignored `target/` costs the main thread nothing.
-nonisolated struct GitEventFilter: Sendable {
+package nonisolated struct GitEventFilter: Sendable {
     /// The work tree root and git directory, each as given and as the real path (FSEvents reports /private/tmp/…
     /// where standardized URLs say /tmp/…).
-    let rootPaths: [String]
-    let gitPaths: [String]
-    var ignoredDirectories: Set<String> = []
-    var ignoredFiles: Set<String> = []
+    package let rootPaths: [String]
+    package let gitPaths: [String]
+    package var ignoredDirectories: Set<String> = []
+    package var ignoredFiles: Set<String> = []
 
-    init(repository: GitRepository) {
+    package init(repository: GitRepository) {
         func variants(_ url: URL) -> [String] {
             let path = url.standardizedFileURL.path
             guard let real = realpath(path, nil) else { return [path] }
@@ -336,7 +338,7 @@ nonisolated struct GitEventFilter: Sendable {
         gitPaths = variants(repository.gitDirectory)
     }
 
-    func isRelevant(_ rawPath: String) -> Bool {
+    package func isRelevant(_ rawPath: String) -> Bool {
         let path = rawPath.hasSuffix("/") ? String(rawPath.dropLast()) : rawPath
         for gitPath in gitPaths {
             guard let inside = GitStatusSnapshot.relativePath(path, root: gitPath) else { continue }
@@ -370,11 +372,11 @@ nonisolated struct GitEventFilter: Sendable {
 /// FSEvents on the work tree (and the git directory, when a worktree or submodule keeps it elsewhere). Calls
 /// `onChange` on the main thread for changes git status could notice: work tree edits outside ignored paths, and
 /// index, HEAD, ref and merge-state changes. Filtering happens on a background queue.
-@MainActor final class GitRepoWatcher {
+@MainActor package final class GitRepoWatcher {
     private var stream: FSEventStreamRef?
     private let context: GitWatcherContext
 
-    init?(repository: GitRepository, snapshot: GitStatusSnapshot?, onChange: @escaping @MainActor () -> Void) {
+    package init?(repository: GitRepository, snapshot: GitStatusSnapshot?, onChange: @escaping @MainActor () -> Void) {
         var filter = GitEventFilter(repository: repository)
         if let snapshot {
             filter.ignoredDirectories = snapshot.ignoredDirectories
@@ -410,34 +412,34 @@ nonisolated struct GitEventFilter: Sendable {
     }
 
     /// New ignore lists from a fresh snapshot.
-    func update(from snapshot: GitStatusSnapshot) {
+    package func update(from snapshot: GitStatusSnapshot) {
         context.updateIgnored(directories: snapshot.ignoredDirectories, files: snapshot.ignoredFiles)
     }
 
-    var filter: GitEventFilter { context.currentFilter }
+    package var filter: GitEventFilter { context.currentFilter }
 }
 
-nonisolated final class GitWatcherContext: @unchecked Sendable {
-    static let queue = DispatchQueue(label: "dev.strata.git-events", qos: .utility)
+package nonisolated final class GitWatcherContext: @unchecked Sendable {
+    package static let queue = DispatchQueue(label: "dev.strata.git-events", qos: .utility)
     private let lock = NSLock()
     private var filter: GitEventFilter
     private let onChange: @MainActor () -> Void
 
-    init(filter: GitEventFilter, onChange: @escaping @MainActor () -> Void) {
+    package init(filter: GitEventFilter, onChange: @escaping @MainActor () -> Void) {
         self.filter = filter
         self.onChange = onChange
     }
 
-    var currentFilter: GitEventFilter { lock.withLock { filter } }
+    package var currentFilter: GitEventFilter { lock.withLock { filter } }
 
-    func updateIgnored(directories: Set<String>, files: Set<String>) {
+    package func updateIgnored(directories: Set<String>, files: Set<String>) {
         lock.withLock {
             filter.ignoredDirectories = directories
             filter.ignoredFiles = files
         }
     }
 
-    func handle(_ paths: [String]) {
+    package func handle(_ paths: [String]) {
         let filter = currentFilter
         guard paths.contains(where: filter.isRelevant) else { return }
         DispatchQueue.main.async {
@@ -463,19 +465,19 @@ nonisolated private func gitWatcherContextRelease(_ info: UnsafeRawPointer?) {
 // MARK: - Display
 
 /// What the file list draws for one item.
-struct GitBadge: Equatable {
-    let state: GitFileState
+package struct GitBadge: Equatable {
+    package let state: GitFileState
     /// Staged / unstaged / both, for tracked files.
-    let staging: GitStaging?
+    package let staging: GitStaging?
     /// Folders show a dot in the color of the most notable change inside; files show a letter.
-    let isFolder: Bool
-    var originalPath: String? = nil
+    package let isFolder: Bool
+    package var originalPath: String? = nil
 
-    var letter: String { state.letter }
-    var color: NSColor { state.color }
+    package var letter: String { state.letter }
+    package var color: NSColor { state.color }
 
     /// "Modified, staged", "Renamed from docs/old.md", "Contains modified files"…
-    var accessibilityLabel: String {
+    package var accessibilityLabel: String {
         if isFolder {
             switch state {
             case .untracked: return String(localized: "Untracked folder", comment: "Git status of a folder")
@@ -507,7 +509,7 @@ struct GitBadge: Equatable {
 
 extension GitFileState {
     /// git's own short-status letters: U is a conflict (unmerged), ? untracked, ! ignored.
-    var letter: String {
+    package var letter: String {
         switch self {
         case .clean: return ""
         case .ignored: return "!"
@@ -521,7 +523,7 @@ extension GitFileState {
         }
     }
 
-    var title: String {
+    package var title: String {
         switch self {
         case .clean: return String(localized: "Unmodified", comment: "Git status of a file or folder")
         case .ignored: return String(localized: "Ignored", comment: "Git status of a file or folder")
@@ -535,11 +537,11 @@ extension GitFileState {
         }
     }
 
-    var accessibilityLabel: String { title }
+    package var accessibilityLabel: String { title }
 
     /// Tuned per appearance so the letters read at 10 pt on both the light and dark list backgrounds: the light
     /// variants are deeper than the system colors, the dark ones a touch brighter.
-    var color: NSColor {
+    package var color: NSColor {
         switch self {
         case .modified: return GitColors.modified
         case .added: return GitColors.added
@@ -552,20 +554,20 @@ extension GitFileState {
     }
 }
 
-enum GitColors {
-    typealias RGB = (CGFloat, CGFloat, CGFloat)
+package enum GitColors {
+    package typealias RGB = (CGFloat, CGFloat, CGFloat)
 
     /// Letter and dot colors: deeper than the system colors in light mode so 10 pt letters stay legible on white,
     /// brighter in dark mode.
-    static let modified = dynamic(light: (0.80, 0.47, 0.00), dark: (1.00, 0.72, 0.30), name: "gitModified")
-    static let added = dynamic(light: (0.16, 0.60, 0.25), dark: (0.36, 0.84, 0.45), name: "gitAdded")
-    static let deleted = dynamic(light: (0.85, 0.20, 0.18), dark: (1.00, 0.45, 0.42), name: "gitDeleted")
-    static let renamed = dynamic(light: (0.12, 0.45, 0.88), dark: (0.42, 0.68, 1.00), name: "gitRenamed")
-    static let untracked = dynamic(light: (0.00, 0.56, 0.62), dark: (0.30, 0.82, 0.86), name: "gitUntracked")
-    static let conflicted = dynamic(light: (0.62, 0.25, 0.85), dark: (0.80, 0.55, 1.00), name: "gitConflicted")
+    package static let modified = dynamic(light: (0.80, 0.47, 0.00), dark: (1.00, 0.72, 0.30), name: "gitModified")
+    package static let added = dynamic(light: (0.16, 0.60, 0.25), dark: (0.36, 0.84, 0.45), name: "gitAdded")
+    package static let deleted = dynamic(light: (0.85, 0.20, 0.18), dark: (1.00, 0.45, 0.42), name: "gitDeleted")
+    package static let renamed = dynamic(light: (0.12, 0.45, 0.88), dark: (0.42, 0.68, 1.00), name: "gitRenamed")
+    package static let untracked = dynamic(light: (0.00, 0.56, 0.62), dark: (0.30, 0.82, 0.86), name: "gitUntracked")
+    package static let conflicted = dynamic(light: (0.62, 0.25, 0.85), dark: (0.80, 0.55, 1.00), name: "gitConflicted")
 
     /// Fills for solid (staged) tiles under a white letter: deep enough for contrast in both appearances.
-    static func solid(_ state: GitFileState) -> NSColor {
+    package static func solid(_ state: GitFileState) -> NSColor {
         switch state {
         case .modified: return solidModified
         case .added: return solidAdded

@@ -1,7 +1,10 @@
 import Foundation
 #if !MEMORY_BENCHMARK
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 #endif
 
 /// A version-3 encrypted content index with predictable passages; never reads the app's saved index.

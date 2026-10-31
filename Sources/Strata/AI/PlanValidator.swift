@@ -7,8 +7,8 @@ import Foundation
 /// - new folders and moves stay inside the window's folder, unless the instruction itself names the other place;
 /// - a folder can't move into itself, and symlinks can't be used to escape.
 /// Invalid operations become excluded steps with a reason, shown in the review sheet.
-nonisolated enum PlanValidator {
-    static func validate(expanding recipe: PlanRecipe, request: PlanGenerator.Request, source: Plan.Source) -> Plan {
+package nonisolated enum PlanValidator {
+    package static func validate(expanding recipe: PlanRecipe, request: PlanGenerator.Request, source: Plan.Source) -> Plan {
         let expansion = PlanExpander.expand(recipe, items: request.items, baseFolder: request.baseFolder)
         var plan = validate(expansion.operations, request: request, source: source, interpretation: recipe.title)
         let kind: PlanStep.Kind = switch recipe.action {
@@ -29,7 +29,7 @@ nonisolated enum PlanValidator {
     /// `allowChains`: an item may take a name another renamed item gives up (swaps, "1, 2, 3 → 2, 3, 4"); the
     /// executor moves those through temporary names. `keepExtensions`: a new name without the item's extension gets it
     /// back (off when renaming extensions on purpose).
-    static func validate(_ operations: [ProposedOperation], request: PlanGenerator.Request, source: Plan.Source,
+    package static func validate(_ operations: [ProposedOperation], request: PlanGenerator.Request, source: Plan.Source,
                          interpretation: String, allowChains: Bool = false, keepExtensions: Bool = true) -> Plan {
         var validation = Validation(request: request, keepExtensions: keepExtensions)
         if allowChains {
@@ -242,7 +242,7 @@ nonisolated enum PlanValidator {
     // MARK: - Rules
 
     /// Why a file name can't be used, or nil.
-    static func nameProblem(_ name: String) -> String? {
+    package static func nameProblem(_ name: String) -> String? {
         if name.isEmpty { return String(localized: "The new name is empty") }
         if name == "." || name == ".." { return String(localized: "“\(name)” isn’t a valid name") }
         if name.contains("/") { return String(localized: "Names can’t contain “/”") }
@@ -253,12 +253,12 @@ nonisolated enum PlanValidator {
         return nil
     }
 
-    struct Problem: Error {
-        let message: String
+    package struct Problem: Error {
+        package let message: String
     }
 
     /// A folder for a move or a new folder: relative to `base`, or a `~`/absolute path that the instruction itself names.
-    static func resolveFolder(_ raw: String, base: URL, instruction: String) -> Result<URL, Problem> {
+    package static func resolveFolder(_ raw: String, base: URL, instruction: String) -> Result<URL, Problem> {
         var text = raw.trimmingCharacters(in: CharacterSet(charactersIn: " \"'“”‘’"))
         while text.count > 1, text.hasSuffix("/") { text.removeLast() }
         guard !text.isEmpty else { return .failure(Problem(message: String(localized: "No folder name"))) }
@@ -291,7 +291,7 @@ nonisolated enum PlanValidator {
     /// Whether `instruction` names the folder `path` as a whole. Only a mention that ends there counts (at a space, the
     /// end, closing punctuation, or a "/" or full stop with nothing after it): "~/Archive/2024" doesn't name
     /// "~/Archive" above it, nor "~/Archive/20".
-    static func names(_ instruction: String, _ path: String) -> Bool {
+    package static func names(_ instruction: String, _ path: String) -> Bool {
         guard !path.isEmpty else { return false }
         let opening: Set<Character> = ["\"", "'", "“", "‘", "(", "[", "<"]
         let closing: Set<Character> = [",", ";", "!", "?", ")", "]", ">", "\"", "'", "”", "’"]
@@ -309,7 +309,7 @@ nonisolated enum PlanValidator {
         return false
     }
 
-    static func isInside(_ url: URL, _ folder: URL) -> Bool {
+    package static func isInside(_ url: URL, _ folder: URL) -> Bool {
         let path = url.standardizedFileURL.path.lowercased()
         let parent = folder.standardizedFileURL.path.lowercased()
         return path.hasPrefix(parent == "/" ? "/" : parent + "/") && path != parent
@@ -317,12 +317,12 @@ nonisolated enum PlanValidator {
 
     /// Paths compare case-insensitively (APFS default).
     /// Whether two paths are the same file (device and inode), whatever their spelling.
-    static func sameItem(_ a: URL, _ b: URL) -> Bool {
+    package static func sameItem(_ a: URL, _ b: URL) -> Bool {
         var x = stat(), y = stat()
         return lstat(a.path, &x) == 0 && lstat(b.path, &y) == 0 && x.st_dev == y.st_dev && x.st_ino == y.st_ino
     }
 
-    static func key(_ url: URL) -> String {
+    package static func key(_ url: URL) -> String {
         let standardized = url.standardizedFileURL
         if (try? standardized.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames == true
             || (try? standardized.deletingLastPathComponent().resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames == true {

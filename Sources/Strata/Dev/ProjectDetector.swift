@@ -2,10 +2,10 @@ import Foundation
 
 // MARK: - Model
 
-nonisolated enum ProjectKind: String, Sendable, CaseIterable {
+package nonisolated enum ProjectKind: String, Sendable, CaseIterable {
     case node, rust, swift, dotnet, python, go, ruby, jvm, godot, docker, terraform
 
-    var title: String {
+    package var title: String {
         switch self {
         case .node: return "Node"
         case .rust: return "Rust"
@@ -22,7 +22,7 @@ nonisolated enum ProjectKind: String, Sendable, CaseIterable {
     }
 
     /// Generic SF Symbols (no brand marks).
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .node: return "hexagon"
         case .rust: return "gearshape"
@@ -39,14 +39,14 @@ nonisolated enum ProjectKind: String, Sendable, CaseIterable {
     }
 }
 
-nonisolated struct ProjectKindInfo: Sendable, Hashable {
-    let kind: ProjectKind
+package nonisolated struct ProjectKindInfo: Sendable, Hashable {
+    package let kind: ProjectKind
     /// Package manager or build system, e.g. "pnpm", "Gradle", "Xcode".
-    var detail: String?
+    package var detail: String?
 }
 
-nonisolated struct ProjectArtifact: Sendable, Hashable, Identifiable {
-    enum Role: Sendable, Hashable {
+package nonisolated struct ProjectArtifact: Sendable, Hashable, Identifiable {
+    package enum Role: Sendable, Hashable {
         /// Build output: target, .build, bin/obj, .next…
         case build
         /// Tool caches: .turbo, .pytest_cache, .gradle…
@@ -58,39 +58,39 @@ nonisolated struct ProjectArtifact: Sendable, Hashable, Identifiable {
     }
 
     /// What the row shows: the folder name, or a short relative path ("Billing.Api/bin").
-    let name: String
+    package let name: String
     /// Usually one folder; scattered ones (`__pycache__`) are grouped.
-    let urls: [URL]
-    let kind: ProjectKind
-    let role: Role
-    var bytes: Int64?
-    var files: Int?
+    package let urls: [URL]
+    package let kind: ProjectKind
+    package let role: Role
+    package var bytes: Int64?
+    package var files: Int?
 
-    var id: String { name }
-    var isSelectedByDefault: Bool { role != .environment }
-    var isMeasured: Bool { bytes != nil }
+    package var id: String { name }
+    package var isSelectedByDefault: Bool { role != .environment }
+    package var isMeasured: Bool { bytes != nil }
 }
 
-nonisolated struct ProjectScript: Sendable, Hashable, Identifiable {
-    enum Runner: String, Sendable, Hashable {
+package nonisolated struct ProjectScript: Sendable, Hashable, Identifiable {
+    package enum Runner: String, Sendable, Hashable {
         case npm, yarn, pnpm, bun, make, just, cargo
     }
 
-    let name: String
+    package let name: String
     /// What it runs: the package.json script body, or the first recipe line. May be empty.
-    let command: String
+    package let command: String
     /// Prose describing it, when the file has some: a Makefile `## help` comment or a justfile doc comment.
-    var summary: String? = nil
-    let runner: Runner
+    package var summary: String? = nil
+    package let runner: Runner
     /// Where to run it.
-    let directory: URL
+    package let directory: URL
     /// The file it came from, for grouping: "package.json", "Makefile", "justfile", ".cargo/config.toml".
-    let source: String
+    package let source: String
 
-    var id: String { source + "/" + name }
+    package var id: String { source + "/" + name }
 
     /// The shell command that runs it, with the name quoted when it needs to be.
-    var invocation: String {
+    package var invocation: String {
         let quoted = ShellQuote.quoteIfNeeded(name)
         switch runner {
         case .npm, .pnpm, .bun: return "\(runner.rawValue) run \(quoted)"
@@ -102,16 +102,16 @@ nonisolated struct ProjectScript: Sendable, Hashable, Identifiable {
     }
 }
 
-nonisolated struct ProjectGitSummary: Sendable, Equatable {
-    let branch: GitBranchInfo
-    let operation: GitOperation?
+package nonisolated struct ProjectGitSummary: Sendable, Equatable {
+    package let branch: GitBranchInfo
+    package let operation: GitOperation?
     /// Changes inside the project folder (the whole repository when it's the root).
-    let counts: GitStatusCounts
-    let isRepositoryRoot: Bool
-    let stashCount: Int
-    let outcome: GitStatusSnapshot.Outcome
+    package let counts: GitStatusCounts
+    package let isRepositoryRoot: Bool
+    package let stashCount: Int
+    package let outcome: GitStatusSnapshot.Outcome
 
-    init(_ snapshot: GitStatusSnapshot, folder: URL) {
+    package init(_ snapshot: GitStatusSnapshot, folder: URL) {
         let relative = snapshot.relativePath(folder) ?? ""
         branch = snapshot.branch
         operation = snapshot.operation
@@ -123,16 +123,16 @@ nonisolated struct ProjectGitSummary: Sendable, Equatable {
 }
 
 /// Everything the project inspector shows for a folder. Built by `ProjectInfo.load(for:)`; the view never scans.
-nonisolated struct ProjectInfo: Sendable {
-    let folder: URL
-    var kinds: [ProjectKindInfo]
-    var artifacts: [ProjectArtifact]
-    var scripts: [ProjectScript]
-    var git: ProjectGitSummary?
+package nonisolated struct ProjectInfo: Sendable {
+    package let folder: URL
+    package var kinds: [ProjectKindInfo]
+    package var artifacts: [ProjectArtifact]
+    package var scripts: [ProjectScript]
+    package var git: ProjectGitSummary?
 
     /// Some artifact sizes are still being measured.
-    var isMeasuring: Bool { artifacts.contains { !$0.isMeasured } }
-    var isProject: Bool { !kinds.isEmpty || !scripts.isEmpty }
+    package var isMeasuring: Bool { artifacts.contains { !$0.isMeasured } }
+    package var isProject: Bool { !kinds.isEmpty || !scripts.isEmpty }
 }
 
 // MARK: - Detection
@@ -140,13 +140,13 @@ nonisolated struct ProjectInfo: Sendable {
 /// Detects project kinds, regenerable artifact folders and runnable scripts from marker files. Reads one directory
 /// listing plus the few small files that hold scripts; never walks deep trees (except a bounded search for
 /// `__pycache__` and .NET project folders).
-nonisolated enum ProjectDetector {
+package nonisolated enum ProjectDetector {
     @concurrent
-    static func detect(_ folder: URL) async -> ProjectInfo {
+    package static func detect(_ folder: URL) async -> ProjectInfo {
         detectSync(folder)
     }
 
-    static func detectSync(_ folder: URL) -> ProjectInfo {
+    package static func detectSync(_ folder: URL) -> ProjectInfo {
         var detection = Detection(folder: folder)
         detection.node()
         detection.rust()
@@ -307,7 +307,7 @@ nonisolated enum ProjectDetector {
     }
 
     /// A directory, not a symlink to one (deleting a symlinked node_modules wouldn't free anything).
-    static func isRealDirectory(_ path: String) -> Bool {
+    package static func isRealDirectory(_ path: String) -> Bool {
         var info = stat()
         return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR
     }
@@ -369,7 +369,7 @@ nonisolated enum ProjectDetector {
 
     /// Targets from a Makefile: `name:` rules, skipping special (.PHONY), pattern (%.o) and variable-built targets.
     /// The command shown is the `## help` text if present, else the first recipe line.
-    static func makeTargets(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
+    package static func makeTargets(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
         guard let text = readText(url) else { return [] }
         var results: [(name: String, command: String, summary: String)] = []
         var pending: [Int] = []
@@ -403,7 +403,7 @@ nonisolated enum ProjectDetector {
 
     /// Public recipes from a justfile. Skips settings, aliases, assignments, `_private` and `[private]` recipes.
     /// The command shown is the doc comment above the recipe, else its first line.
-    static func justRecipes(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
+    package static func justRecipes(_ url: URL, directory: URL, source: String) -> [ProjectScript] {
         guard let text = readText(url) else { return [] }
         var results: [(name: String, command: String, summary: String)] = []
         var comment = ""
@@ -463,7 +463,7 @@ nonisolated enum ProjectDetector {
     }
 
     /// `[alias]` entries from `.cargo/config.toml` (or the legacy `.cargo/config`).
-    static func cargoAliases(_ folder: URL) -> [ProjectScript] {
+    package static func cargoAliases(_ folder: URL) -> [ProjectScript] {
         let candidates = [".cargo/config.toml", ".cargo/config"].map { folder.appending(path: $0) }
         guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let text = readText(url) else { return [] }
@@ -495,7 +495,7 @@ nonisolated enum ProjectDetector {
     ]
 
     /// Folders named `name` up to `depth` levels below `root`, skipping dependency, VCS and build trees.
-    static func findFolders(named name: String, under root: URL, depth: Int) -> [URL] {
+    package static func findFolders(named name: String, under root: URL, depth: Int) -> [URL] {
         var results: [URL] = []
         var visited = 0
         func visit(_ folder: URL, _ level: Int) {
@@ -547,7 +547,7 @@ nonisolated enum ProjectDetector {
     /// Measures every artifact (summing grouped folders) with the same fts walk as the size column. Runs on GCD
     /// utility threads, not the Swift concurrency pool, since a big node_modules walk blocks for a while. Cancelling
     /// the calling task stops the walks.
-    static func measure(_ artifacts: [ProjectArtifact]) async -> [ProjectArtifact] {
+    package static func measure(_ artifacts: [ProjectArtifact]) async -> [ProjectArtifact] {
         let cancelled = CancelFlag()
         return await withTaskCancellationHandler {
             await withTaskGroup(of: (Int, Int64, Int).self) { group in
@@ -583,9 +583,12 @@ nonisolated enum ProjectDetector {
 }
 
 /// A thread-safe "stop" switch for background work.
-nonisolated final class CancelFlag: @unchecked Sendable {
+package nonisolated final class CancelFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
-    func set() { lock.withLock { value = true } }
-    var isSet: Bool { lock.withLock { value } }
+
+    package init() {}
+
+    package func set() { lock.withLock { value = true } }
+    package var isSet: Bool { lock.withLock { value } }
 }

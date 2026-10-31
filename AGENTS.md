@@ -12,9 +12,10 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   plans), `Remote` (SFTP and S3), `Containers`, `Dev` (git, project cleanup), `Inspector`, `Toolbar` (path bar,
   suggestions), `Palette` (command palette), `Previews` (file previews), `Previewing` (Space previews of folders and
   archives), `Index`, `Sidebar`, `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower
-  layers as library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`, and
-  `StrataFiles`: the rest of `Model`, `Transfers`, `Remote` and `Containers`) imported by `Strata`, so the compiler
-  enforces module boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
+  layers as library targets (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`,
+  `StrataFiles` for the rest of `Model`, `Transfers`, `Remote` and `Containers`, then `StrataAI`, `StrataDev` and
+  `StrataSearch` for the rest of `Index`) imported by `Strata`, the interface, so the compiler enforces module
+  boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
@@ -40,7 +41,6 @@ python3 scripts/localize.py check --all --complete  # every supported language m
 python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthemed Inspector gray text
 python3 scripts/audit-main-thread.py     # no unreviewed blocking calls on the main thread
 python3 scripts/audit-app-wide.py        # no unreviewed app-wide instance outside App, Settings, Dock, AppUpdates
-python3 scripts/audit-layers.py          # no lower folder (Model, Transfers, Remote…) names an interface type
 python3 scripts/audit-destructive.py --check  # the map names every flagged function; mutations.json fits the code
 python3 -m unittest discover -s Tests -p 'test_*.py'  # checkers and generated resources
 ```
@@ -209,12 +209,10 @@ These apply everywhere below; the sections that follow add only what is specific
   queue until completion, but finished jobs must not form a queue/job retain cycle. Queue-held completion callbacks
   keep panes weak, and one-shot fetch actions release their captures on every terminal path. Test teardown while
   finished jobs remain in the queue.
-- The library targets name nothing of the interface, and the compiler sees to it: `StrataFiles` (files, History,
-  transfers, servers and containers) can't reach `Browser`, `Window` or any other interface code, and the targets below
-  it can't reach it. `AI`, `Dev` and the rest of `Index` compile into the app, where `scripts/audit-layers.py` keeps
-  every lower folder from naming an interface type (Browser, Window, Views, Sidebar, Toolbar, Inspector, Palette, Dock,
-  Settings, Previewing, AppUpdates, and App apart from the StrataTheme files): pass what they need in, as
-  `CloudStore.foldersShown` is set by `main.swift`, move the type down, as `Fuzzy` and `ShellQuote` live in `Support`
+- The library targets name nothing of the interface, and the compiler sees to it: every folder below the interface
+  is a library (`StrataFiles` for files, History, transfers, servers and containers; `StrataAI`, `StrataDev` and
+  `StrataSearch` above it), and none can see the app, where the interface is. Pass what a library needs in, as
+  `CloudStore.foldersShown` is set by `main.swift`, move a type down, as `Fuzzy` and `ShellQuote` live in `Support`
   and settings' values in `Model/ViewSettings.swift`, or move interface code up, as the Inspector's cards live in
   `Inspector`. `FileThumbnails` and `ItemInfoLoader` resolve container and Compose stack icon marks and status text
   from their injected `CopyProviders` and `ContainerStore`; `FileDrop` and `ShelfWell` use their injected or active

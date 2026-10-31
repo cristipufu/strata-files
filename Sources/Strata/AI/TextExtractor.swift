@@ -5,21 +5,21 @@ import UniformTypeIdentifiers
 import Vision
 
 /// Plain text pulled out of a document, ready for chunking, embedding or summarising.
-nonisolated struct ExtractedText: Sendable {
-    enum Source: String, Sendable { case plain, markdown, code, rich, html, pdf, ocr }
+package nonisolated struct ExtractedText: Sendable {
+    package enum Source: String, Sendable { case plain, markdown, code, rich, html, pdf, ocr }
 
-    var text: String
+    package var text: String
     /// From document metadata, a Markdown heading or an HTML `<title>`.
-    var title: String?
-    var source: Source
+    package var title: String?
+    package var source: Source
     /// UTF-16 offsets where each extracted PDF page starts, for "page 4" in results.
-    var pageStarts: [Int] = []
-    var pageCount: Int?
+    package var pageStarts: [Int] = []
+    package var pageCount: Int?
     /// Some of the document was left out (page or character limits).
-    var truncated = false
+    package var truncated = false
 
     /// 1-based page holding the UTF-16 offset, for PDFs.
-    func page(atUTF16Offset offset: Int) -> Int? {
+    package func page(atUTF16Offset offset: Int) -> Int? {
         guard !pageStarts.isEmpty else { return nil }
         var low = 0, high = pageStarts.count - 1
         while low < high {
@@ -32,32 +32,32 @@ nonisolated struct ExtractedText: Sendable {
 
 /// Reads text from documents without opening them in an app: plain text and code, Markdown, RTF/RTFD, Word, OpenDocument,
 /// HTML, PDF (PDFKit) and, optionally, images and scanned PDFs (Vision OCR). Safe to call off the main thread.
-nonisolated enum TextExtractor {
-    struct Options: Sendable, Hashable {
-        var maxCharacters = 120_000
-        var maxPDFPages = 30
+package nonisolated enum TextExtractor {
+    package struct Options: Sendable, Hashable {
+        package var maxCharacters = 120_000
+        package var maxPDFPages = 30
         /// Recognise text in images and in PDF pages without a text layer. Slow; off by default.
-        var ocr = false
-        var maxOCRPages = 3
+        package var ocr = false
+        package var maxOCRPages = 3
         /// Files bigger than this are skipped (PDFs and rich text are parsed whole).
-        var maxFileBytes: Int64 = 80 * 1024 * 1024
+        package var maxFileBytes: Int64 = 80 * 1024 * 1024
     }
 
-    static let plainTextExtensions: Set<String> = [
+    package static let plainTextExtensions: Set<String> = [
         "txt", "text", "md", "markdown", "mdown", "mkd", "log", "csv", "tsv", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
         "swift", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "rs", "rb", "java", "kt", "kts", "c", "h", "m", "mm", "cc",
         "cpp", "hpp", "cs", "php", "pl", "lua", "r", "scala", "sh", "zsh", "bash", "fish", "sql", "css", "scss", "less", "xml",
         "tex", "org", "rst", "adoc", "gradle", "properties", "env", "graphql", "proto", "vue", "svelte", "dart", "ex", "exs",
     ]
-    static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
-    static let richTextTypes: [String: NSAttributedString.DocumentType] = [
+    package static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
+    package static let richTextTypes: [String: NSAttributedString.DocumentType] = [
         "rtf": .rtf, "rtfd": .rtfd, "doc": .docFormat, "docx": .officeOpenXML, "odt": .openDocument, "wordml": .wordML,
     ]
-    static let htmlExtensions: Set<String> = ["html", "htm", "xhtml"]
-    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff", "tif", "gif", "bmp", "webp"]
+    package static let htmlExtensions: Set<String> = ["html", "htm", "xhtml"]
+    package static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff", "tif", "gif", "bmp", "webp"]
 
     /// Whether `extract` can read this kind of file (cheap: looks at the extension and type only).
-    static func canExtract(_ url: URL, contentType: UTType? = nil, options: Options = Options()) -> Bool {
+    package static func canExtract(_ url: URL, contentType: UTType? = nil, options: Options = Options()) -> Bool {
         let ext = url.pathExtension.lowercased()
         if ext == "pdf" || plainTextExtensions.contains(ext) || richTextTypes[ext] != nil || htmlExtensions.contains(ext) { return true }
         if options.ocr, imageExtensions.contains(ext) { return true }
@@ -68,7 +68,7 @@ nonisolated enum TextExtractor {
     }
 
     @concurrent
-    static func extract(_ url: URL, options: Options = Options()) async -> ExtractedText? {
+    package static func extract(_ url: URL, options: Options = Options()) async -> ExtractedText? {
         let ext = url.pathExtension.lowercased()
         let type = UTType(filenameExtension: ext)
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
@@ -118,7 +118,7 @@ nonisolated enum TextExtractor {
     // MARK: - Formats
 
     /// Reads up to `limit` bytes and decodes them, refusing binary files.
-    static func readPlain(_ url: URL, limit: Int) -> String? {
+    package static func readPlain(_ url: URL, limit: Int) -> String? {
         guard let (data, _) = try? TextFile.readPrefix(url, limit: limit), !data.isEmpty else { return nil }
         if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
             return String(data: data, encoding: .utf16)
@@ -140,7 +140,7 @@ nonisolated enum TextExtractor {
         return fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
     }
 
-    static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20) -> ExtractedText? {
+    package static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20) -> ExtractedText? {
         var attributes: NSDictionary?
         let string: NSAttributedString
         if type == .rtfd {
@@ -163,7 +163,7 @@ nonisolated enum TextExtractor {
         return ExtractedText(text: text, title: title, source: .rich)
     }
 
-    static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
+    package static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
         guard isRegularFile(url), let document = PDFDocument(url: url), !document.isLocked else { return nil }
         let count = max(0, document.pageCount)
         let limit = max(0, min(count, options.maxPDFPages))
@@ -202,7 +202,7 @@ nonisolated enum TextExtractor {
         return page.thumbnail(of: size, for: .mediaBox).cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
-    static func ocrImage(_ url: URL) async -> String? {
+    package static func ocrImage(_ url: URL) async -> String? {
         guard isRegularFile(url) else { return nil }
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
@@ -211,7 +211,7 @@ nonisolated enum TextExtractor {
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
-    static func ocr(_ image: CGImage) async -> String? {
+    package static func ocr(_ image: CGImage) async -> String? {
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         guard let observations = try? await request.perform(on: image) else { return nil }
@@ -238,7 +238,7 @@ nonisolated enum TextExtractor {
 
     /// Visible text, title (`<title>`, else the first `<h1>`) of an HTML document, in one linear pass over the bytes.
     /// (Lazy regexes did this before and went quadratic on an unclosed `<script>` or `<title>`: 80 KB took seconds.)
-    static func html(_ source: String) -> ExtractedText {
+    package static func html(_ source: String) -> ExtractedText {
         let bytes = Array(source.utf8)
         let n = bytes.count
         func lower(_ byte: UInt8) -> UInt8 { byte >= 65 && byte <= 90 ? byte + 32 : byte }
@@ -346,12 +346,12 @@ nonisolated enum TextExtractor {
 
     /// Replaces character references ("&amp;", "&#38;", "&#x26;") in one pass. Unknown names, malformed references
     /// and numbers that aren't a character (0, surrogates, past U+10FFFF) stay as written.
-    static func decodeEntities(_ text: String) -> String {
+    package static func decodeEntities(_ text: String) -> String {
         guard text.contains("&") else { return text }
         return String(decoding: decodeEntities(Array(text.utf8)), as: UTF8.self)
     }
 
-    static func decodeEntities(_ bytes: [UInt8]) -> [UInt8] {
+    package static func decodeEntities(_ bytes: [UInt8]) -> [UInt8] {
         guard bytes.contains(UInt8(ascii: "&")) else { return bytes }
         var output: [UInt8] = []
         output.reserveCapacity(bytes.count)
@@ -402,7 +402,7 @@ nonisolated enum TextExtractor {
         decimalDigits.contains(byte) || hex && hexLetters.contains(byte | 0x20)
     }
 
-    static func markdownTitle(_ text: String) -> String? {
+    package static func markdownTitle(_ text: String) -> String? {
         for line in text.split(separator: "\n", omittingEmptySubsequences: true).prefix(12) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("# ") { return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces) }
@@ -411,7 +411,7 @@ nonisolated enum TextExtractor {
     }
 
     /// Collapses runs of spaces and blank lines; keeps single line breaks (they separate list items and table rows).
-    static func normalizeWhitespace(_ text: String) -> String {
+    package static func normalizeWhitespace(_ text: String) -> String {
         var output = ""
         output.reserveCapacity(text.utf8.count)
         var pendingSpace = false
@@ -440,18 +440,18 @@ nonisolated enum TextExtractor {
 // MARK: - Chunking
 
 /// Splits text into overlapping passages along sentence boundaries, so each embedding covers one coherent stretch.
-nonisolated enum TextChunker {
-    struct Chunk: Sendable, Hashable {
-        var text: String
+package nonisolated enum TextChunker {
+    package struct Chunk: Sendable, Hashable {
+        package var text: String
         /// UTF-16 offset of the first character in the source text.
-        var start: Int
+        package var start: Int
         /// For each sentence: its UTF-16 offset in `text` and in the source text.
-        var offsets: [Offset] = []
+        package var offsets: [Offset] = []
     }
 
-    struct Offset: Sendable, Hashable {
-        var inChunk: Int
-        var inSource: Int
+    package struct Offset: Sendable, Hashable {
+        package var inChunk: Int
+        package var inSource: Int
     }
 
     private static func make(_ pieces: [(text: String, start: Int)]) -> Chunk {
@@ -466,7 +466,7 @@ nonisolated enum TextChunker {
         return Chunk(text: text, start: pieces.first?.start ?? 0, offsets: offsets)
     }
 
-    static func chunks(_ text: String, target: Int = 1000, overlap: Int = 160, maxChunks: Int = 32) -> [Chunk] {
+    package static func chunks(_ text: String, target: Int = 1000, overlap: Int = 160, maxChunks: Int = 32) -> [Chunk] {
         guard target > 0, maxChunks > 0 else { return [] }
         let sentences = segments(text)
         guard !sentences.isEmpty else { return [] }
@@ -506,7 +506,7 @@ nonisolated enum TextChunker {
     }
 
     /// Lines, then sentences within lines: lists and tables have no full stops but each row stands alone.
-    static func segments(_ text: String) -> [(text: String, start: Int)] {
+    package static func segments(_ text: String) -> [(text: String, start: Int)] {
         var result: [(String, Int)] = []
         let tokenizer = NLTokenizer(unit: .sentence)
         var lineStart = text.startIndex
@@ -549,13 +549,13 @@ nonisolated enum TextChunker {
 
 /// Word normalisation shared by the index (keyword scoring), snippets, summaries and name matching:
 /// lowercase, accents folded, stop words dropped, light English stemming.
-nonisolated enum Terms {
-    static func words(_ text: String) -> [Substring] {
+package nonisolated enum Terms {
+    package static func words(_ text: String) -> [Substring] {
         text.split(whereSeparator: { !($0.isLetter || $0.isNumber) })
     }
 
     /// Stemmed, folded terms in order (with repeats).
-    static func normalize(_ text: String) -> [String] {
+    package static func normalize(_ text: String) -> [String] {
         words(text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)).compactMap { word in
             guard word.count >= 2 || word.first?.isNumber == true else { return nil }
             let w = String(word)
@@ -564,7 +564,7 @@ nonisolated enum Terms {
         }
     }
 
-    static func stem(_ word: String) -> String {
+    package static func stem(_ word: String) -> String {
         var w = word
         guard w.count > 3, w.allSatisfy({ $0.isLetter }) else { return w }
         if w.hasSuffix("ies"), w.count > 4 { w = String(w.dropLast(3)) + "y" }
@@ -588,7 +588,7 @@ nonisolated enum Terms {
     }
 
     /// FNV-1a: stable across launches, unlike `hashValue`.
-    static func hash(_ term: String) -> UInt32 {
+    package static func hash(_ term: String) -> UInt32 {
         var h: UInt32 = 2_166_136_261
         for byte in term.utf8 {
             h ^= UInt32(byte)
@@ -597,7 +597,7 @@ nonisolated enum Terms {
         return h
     }
 
-    static let stopwords: Set<String> = [
+    package static let stopwords: Set<String> = [
         "a", "an", "the", "and", "or", "but", "if", "of", "to", "in", "on", "at", "by", "for", "with", "about", "from", "into",
         "over", "under", "as", "is", "are", "was", "were", "be", "been", "being", "it", "its", "this", "that", "these", "those",
         "i", "me", "my", "we", "our", "you", "your", "he", "she", "they", "them", "their", "his", "her", "do", "does", "did",

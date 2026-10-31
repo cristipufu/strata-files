@@ -154,8 +154,29 @@ let package = Package(
             name: "StrataIndex",
             dependencies: ["StrataSupport", "StrataModel"],
             path: "Sources/Strata/Index",
-            exclude: ["FileIndex.swift", "FolderSearch.swift", "NaturalQuery.swift"],
+            exclude: ["FileIndex.swift", "FolderSearch.swift", "NaturalQuery.swift", "LayerImports.swift"],
             sources: indexSources,
+            swiftSettings: strataSwiftSettings
+        ),
+        // Ask Strata (plans, the content index, summaries), project detection and cleanup, and the app's file index and
+        // searches: above the file layer, below the interface.
+        .target(
+            name: "StrataAI",
+            dependencies: ["StrataFiles"],
+            path: "Sources/Strata/AI",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataDev",
+            dependencies: ["StrataFiles"],
+            path: "Sources/Strata/Dev",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataSearch",
+            dependencies: ["StrataFiles", "StrataAI"],
+            path: "Sources/Strata/Index",
+            exclude: indexSources,
             swiftSettings: strataSwiftSettings
         ),
         // The file layer: files, History, transfers, servers and containers. It names nothing of the interface.
@@ -164,6 +185,9 @@ let package = Package(
             dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataPreviews", "StrataIndex",
                            "StrataArchiveClient"],
             path: "Sources/Strata",
+            exclude: ["AI", "App", "AppUpdates", "Browser", "Dev", "Dock", "Index", "Inspector", "main.swift", "Palette",
+                      "Previewing", "Previews", "Settings", "Sidebar", "Support", "Toolbar", "Views", "Window"]
+                + modelSources.map { "Model/\($0)" },
             sources: ["Transfers", "Remote", "Containers"] + appModelSources.map { "Model/\($0)" },
             swiftSettings: strataSwiftSettings
         ),
@@ -177,9 +201,12 @@ let package = Package(
                 "StrataPreviews",
                 "StrataIndex",
                 "StrataFiles",
+                "StrataAI",
+                "StrataDev",
+                "StrataSearch",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers"]
+            exclude: ["Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "AI", "Dev", "Index"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
                 + appModelSources.map { "Model/\($0)" }
@@ -208,6 +235,9 @@ let package = Package(
                 "StrataPreviews",
                 "StrataIndex",
                 "StrataFiles",
+                "StrataAI",
+                "StrataDev",
+                "StrataSearch",
                 "StrataArchiveClient",
             ],
             path: "Tests/StrataTests",

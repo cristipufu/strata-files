@@ -1,7 +1,10 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Copies and moves (drag and drop, paste, Copy/Move to Other Pane, Duplicate, sync): each item goes only where it was
 /// sent; an existing item is replaced only when asked, and only once a complete copy is there to take its place; an

@@ -1,7 +1,10 @@
 import Foundation
 import Synchronization
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 nonisolated final class PreviewTestProvider: CopyProvider, Sendable {
     let root: URL

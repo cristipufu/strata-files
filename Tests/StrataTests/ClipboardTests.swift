@@ -2,7 +2,10 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 /// Cut and paste: a paste moves only when the clipboard still holds Strata's own Cut. Once anything else is put there,
 /// by Strata or another app, the next paste copies. Each test uses a pasteboard of its own, never the real one.

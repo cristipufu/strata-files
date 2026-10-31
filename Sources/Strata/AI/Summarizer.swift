@@ -2,23 +2,23 @@ import Foundation
 import FoundationModels
 
 /// A one-line title and a few bullets about a document.
-nonisolated struct DocumentSummary: Sendable, Hashable {
-    enum Method: String, Sendable {
+package nonisolated struct DocumentSummary: Sendable, Hashable {
+    package enum Method: String, Sendable {
         /// Written by the on-device model.
         case model
         /// Picked from the document's own sentences (no model).
         case keySentences
     }
 
-    var title: String
-    var bullets: [String]
-    var method: Method
+    package var title: String
+    package var bullets: [String]
+    package var method: Method
     /// False while tokens are still streaming in.
-    var isComplete: Bool
+    package var isComplete: Bool
     /// What was left out or why the fallback was used ("Summarised from the first 20 of 48 pages").
-    var note: String?
+    package var note: String?
     /// Progress while condensing a long document ("Reading part 2 of 4…").
-    var status: String?
+    package var status: String?
 }
 
 /// Summarises documents into a title and 3–5 bullets.
@@ -28,12 +28,12 @@ nonisolated struct DocumentSummary: Sendable, Hashable {
 /// pass streams, so the title and bullets appear as they're generated. The output shape is enforced by guided generation.
 ///
 /// Without it (or if the model refuses): the most representative sentences of the document, chosen by word frequency and position.
-nonisolated enum Summarizer {
-    static func canSummarize(_ url: URL) -> Bool {
+package nonisolated enum Summarizer {
+    package static func canSummarize(_ url: URL) -> Bool {
         TextExtractor.canExtract(url)
     }
 
-    static func summarize(url: URL, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
+    package static func summarize(url: URL, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 guard let extracted = await TextExtractor.extract(url, options: TextExtractor.Options(maxCharacters: 60_000, maxPDFPages: 30)) else {
@@ -63,7 +63,7 @@ nonisolated enum Summarizer {
         }
     }
 
-    static func summarize(text: String, titleHint: String?, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
+    package static func summarize(text: String, titleHint: String?, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 let fallback = keySentences(text: text, titleHint: titleHint)
@@ -93,7 +93,7 @@ nonisolated enum Summarizer {
 
     // MARK: - Model
 
-    static func schema() throws -> GenerationSchema {
+    package static func schema() throws -> GenerationSchema {
         try Schema.root(Schema.object("Summary", nil, [
             Schema.field("title", "A specific title for the document, at most 8 words", Schema.string()),
             Schema.field("bullets", "The key points: concrete facts, names, amounts, dates and decisions; one short sentence each",
@@ -101,18 +101,18 @@ nonisolated enum Summarizer {
         ]))
     }
 
-    static let instructions = """
+    package static let instructions = """
     You summarise documents for the preview pane of a Mac file manager. Write a specific title and 3 to 5 short bullets with the \
     most useful concrete facts. No preamble, no opinions. Write in the document's language.
     """
 
     /// Characters of document text that fit one request, leaving room for instructions, schema and answer.
-    static var characterBudget: Int {
+    package static var characterBudget: Int {
         let tokens = max(1000, AIModel.contextSize - 900)
         return tokens * 3  // ~3 characters per token is conservative for English prose.
     }
 
-    static func modelSummary(text: String, titleHint: String?, yield: @Sendable (DocumentSummary) -> Void) async throws {
+    package static func modelSummary(text: String, titleHint: String?, yield: @Sendable (DocumentSummary) -> Void) async throws {
         var body = text
         var note: String?
         if body.count > characterBudget {
@@ -154,7 +154,7 @@ nonisolated enum Summarizer {
     }
 
     /// Trims text to the context budget; on macOS 26.4+ checks the real token count.
-    static func fitted(_ text: String) async throws -> String {
+    package static func fitted(_ text: String) async throws -> String {
         var body = String(text.prefix(characterBudget))
         if #available(macOS 26.4, *) {
             let budget = max(1000, AIModel.contextSize - 900)
@@ -172,7 +172,7 @@ nonisolated enum Summarizer {
 
     /// Splits on paragraph boundaries into parts of at most `size` characters; keeps the first, last and evenly spaced
     /// middle parts when there are more than `limit`.
-    static func sections(_ text: String, size: Int, limit: Int) -> (kept: [String], total: Int) {
+    package static func sections(_ text: String, size: Int, limit: Int) -> (kept: [String], total: Int) {
         // Non-positive sizes or limits keep no sections.
         guard size > 0, limit > 0 else { return ([], 0) }
         var parts: [String] = []
@@ -210,7 +210,7 @@ nonisolated enum Summarizer {
     // MARK: - Key sentences
 
     /// An extractive summary: the most representative sentences, in document order.
-    static func keySentences(text: String, titleHint: String?, count: Int = 4) -> DocumentSummary {
+    package static func keySentences(text: String, titleHint: String?, count: Int = 4) -> DocumentSummary {
         let segments = TextChunker.segments(String(text.prefix(60_000)))
         let title = bestTitle(segments.map(\.text), hint: titleHint)
 
@@ -259,13 +259,13 @@ nonisolated enum Summarizer {
     }
 
     /// A short first line that reads like a heading ("Q3 Planning Offsite — Summary").
-    static func heading(_ text: String) -> String? {
+    package static func heading(_ text: String) -> String? {
         guard let line = text.split(separator: "\n", omittingEmptySubsequences: true).first.map({ SemanticIndex.displayText(String($0)) }),
               line.count >= 3, line.count <= 80, !line.hasSuffix("."), !line.hasSuffix(":"), line.filter(\.isLetter).count >= 3 else { return nil }
         return line
     }
 
-    static func shorten(_ text: String, to limit: Int) -> String {
+    package static func shorten(_ text: String, to limit: Int) -> String {
         guard limit > 0 else { return "" }
         guard text.count > limit else { return text }
         var cut = String(text.prefix(limit))
@@ -274,10 +274,10 @@ nonisolated enum Summarizer {
     }
 }
 
-nonisolated enum SummaryError: LocalizedError {
+package nonisolated enum SummaryError: LocalizedError {
     case noText
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .noText: String(localized: "There’s no readable text in this file.")
         }

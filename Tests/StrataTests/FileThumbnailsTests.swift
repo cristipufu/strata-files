@@ -2,7 +2,10 @@ import AppKit
 import QuickLookThumbnailing
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct FileThumbnailsTests {
     private final class Generator {

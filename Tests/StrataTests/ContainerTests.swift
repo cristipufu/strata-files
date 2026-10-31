@@ -2,7 +2,10 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct ContainerTests {
     // MARK: HTTP over a Unix socket

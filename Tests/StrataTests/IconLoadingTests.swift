@@ -2,7 +2,10 @@ import AppKit
 import Testing
 import os
 @testable import Strata
+@testable import StrataAI
+@testable import StrataDev
 @testable import StrataFiles
+@testable import StrataSearch
 
 struct IconLoadingTests {
     /// A row shows its kind's icon until the item's own is read away from the main thread, and only items whose own
