@@ -42,6 +42,7 @@ class MainThreadAuditTests(unittest.TestCase):
             f"func read() async {{\n    _ = await OwnThread.run {{ {call} }}\n}}\n",
             f"func read() {{\n    Task.detached {{ _ = {call} }}\n}}\n",
             f"func read() {{\n    let thread = Thread {{\n        _ = {call}\n    }}\n    thread.start()\n}}\n",
+            f"nonisolated static func read(check: () -> Bool = {{ true }}) -> Bool {{\n    {call}\n}}\n",
         ]:
             self.assertEqual(self.check(code), [], code)
         # Comments and text say nothing.

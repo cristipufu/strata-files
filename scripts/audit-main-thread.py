@@ -91,6 +91,15 @@ class Source:
         self.path, self.text, self.original = path, text, text.splitlines()
         self.code = code_only(text)
         self.opened = headers(self.code)
+        # A function's body is headed by its whole declaration: default arguments can hold closures, whose braces
+        # would otherwise cut `nonisolated` or `@concurrent` off it.
+        for match in FUNCTION.finditer(self.code):
+            end = closing(self.code, match.end() - 1)
+            body = self.code.find("{", end) if end is not None else -1
+            if body > 0 and not re.search(r"[;}]|\b(?:func|var|let|case)\b", self.code[end:body]):
+                # From where the declaration begins (its attributes too), after whatever came before it.
+                start = max(self.code.rfind(mark, 0, match.start()) for mark in "{};") + 1
+                self.opened[body] = self.code[start:body]
         stack, self.blocks = [], []
         for index, char in enumerate(self.code):
             if char == "{":
