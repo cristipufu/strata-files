@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let byDisk = Dictionary(grouping: urls.indices) { disk(urls[$0].path) }
         await withTaskGroup(of: Void.self) { group in
             for indices in byDisk.values {
-                group.addTask {
+                group.addTask { @Sendable in
                     _ = await OwnThread.run(within: max(end - .now, .zero), otherwise: false) {
                         for index in indices {
                             let opening = reader(urls[index])

@@ -46,7 +46,7 @@ package nonisolated enum OwnThread {
         let waiting = Mutex<CheckedContinuation<T, Never>?>(nil)
         return await withCheckedContinuation { continuation in
             waiting.withLock { $0 = continuation }
-            Task {
+            Task { @Sendable in
                 let value = await work()
                 waiting.withLock { $0.take() }?.resume(returning: value)
             }
