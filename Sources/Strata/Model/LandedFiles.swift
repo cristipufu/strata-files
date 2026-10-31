@@ -23,14 +23,26 @@ package final class LandedFiles {
     /// Ownership already captured by the operation, carried to a worker without reading a later replacement.
     package func identity(at url: URL) -> FileIdentity? { identities[url.path] }
 
-    /// Convert live ownership to History's persistent format only while the item still matches. An empty key
-    /// explicitly refuses Undo; omitting a key would invoke the compatibility rule for old, untracked records.
-    package func historyIdentities(for urls: [URL]) -> [String: String] {
-        var saved: [String: String] = [:]
-        for url in urls {
-            saved[url.path] = identities[url.path]?.historyKey(at: url.path) ?? ""
-        }
+    /// Convert live ownership to History's persistent format only while the item still matches, away from the main
+    /// thread. An empty key explicitly refuses Undo; omitting a key would invoke the compatibility rule for old,
+    /// untracked records.
+    package func historyKeys(for urls: [URL]) async -> [String: String] {
+        let wanted = Set(urls.map(\.path))
+        return await Self.historyKeys(identities.filter { wanted.contains($0.key) }, paths: urls.map(\.path))
+    }
+
+    /// History's keys for `identities` (each read where it is now), and an empty one for each of `paths` without one.
+    @concurrent package static func historyKeys(_ identities: [String: FileIdentity], paths: [String] = []) async
+        -> [String: String] {
+        var saved = Dictionary(paths.map { ($0, "") }) { first, _ in first }
+        for (path, identity) in identities { saved[path] = identity.historyKey(at: path) ?? "" }
         return saved
+    }
+
+    /// `historyKeys`, converted at once: only for the one item New Folder or New File makes, or New Folder's undo
+    /// trashes inside the UndoManager callback.
+    package func historyKeysNow(for urls: [URL]) -> [String: String] {
+        Dictionary(urls.map { ($0.path, identities[$0.path]?.historyKey(at: $0.path) ?? "") }) { first, _ in first }
     }
 
     /// `holds`, read at once: only for the one item an undo inside the UndoManager callback acts on, where its redo

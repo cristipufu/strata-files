@@ -12,3 +12,8 @@ extension OperationLog.Entry {
                   containerIdentities: containerIdentities, fileIdentities: now)
     }
 }
+
+extension LandedFiles {
+    /// What History keeps of everything recorded here, converted now.
+    var savedKeys: [String: String] { historyKeysNow(for: recorded.keys.map { URL(fileURLWithPath: $0) }) }
+}

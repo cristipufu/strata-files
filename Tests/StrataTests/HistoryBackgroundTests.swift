@@ -21,7 +21,7 @@ import Testing
         for index in 0..<40 {
             let destination = tree.url("to/\(index).txt")
             history.recordMove("Move", [(from: tree.url("from/\(index).txt"), to: destination)],
-                               landed: LandedFiles([destination]))
+                               fileIdentities: LandedFiles([destination]).savedKeys)
         }
         history.setUndone(try #require(history.entries.last?.id), true)
         let reopened = OperationLog(storage: storage, copies: .live)
@@ -37,7 +37,7 @@ import Testing
                                             key: SymmetricKey(size: .bits256))
         let history = OperationLog(storage: storage, copies: .live)
         let destination = tree.url("to/a.txt")
-        history.recordMove("Move", [(from: tree.url("from/a.txt"), to: destination)], landed: LandedFiles([destination]))
+        history.recordMove("Move", [(from: tree.url("from/a.txt"), to: destination)], fileIdentities: LandedFiles([destination]).savedKeys)
         let panel = HistoryWindowController(history: history, undoManager: nil)
         let table = NSTableView()
         func undoEnabled() throws -> Bool {

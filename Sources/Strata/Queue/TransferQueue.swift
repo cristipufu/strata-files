@@ -325,18 +325,20 @@ package enum TransferUndo {
     /// `landed`: what the items are where they went, recorded as each landed.
     package static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
                          undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles,
-                         queue: TransferQueue) {
+                         historyKeys: [String: String], queue: TransferQueue) {
         register(receipt: TransferJournal.Receipt(created: created, moved: moved, replaced: replaced, landed: landed),
-                 actionName: actionName, undo: undo, logHistory: logHistory, containers: containers, queue: queue)
+                 actionName: actionName, undo: undo, logHistory: logHistory, containers: containers,
+                 historyKeys: historyKeys, queue: queue)
     }
 
+    /// `historyKeys`: what History keeps of the receipt's items, converted away from the main thread beforehand.
     package static func register(receipt: TransferJournal.Receipt, actionName: String, undo: UndoManager?, logHistory: Bool,
-                         containers: CreatedFolders, queue: TransferQueue) {
+                         containers: CreatedFolders, historyKeys: [String: String], queue: TransferQueue) {
         if logHistory {
             receipt.historyEntry = queue.history.recordTransfer(actionName, created: receipt.created,
                 moved: receipt.moved.map { (from: $0.from, to: $0.to) },
                 replaced: receipt.replaced.map { (from: $0.from, to: $0.to) }, containers: containers.urls,
-                containerIdentities: containers.historyIdentities, landed: receipt.landed, updating: receipt.historyEntry)
+                containerIdentities: containers.historyIdentities, fileIdentities: historyKeys, updating: receipt.historyEntry)
         }
         guard let undo, !receipt.isEmpty, !receipt.undoRegistered else { return }
         receipt.undoRegistered = true

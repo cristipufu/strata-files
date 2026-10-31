@@ -237,7 +237,7 @@ extension TransferTests {
             let env = try HistoryEnvironment(tree)
             let source = tree.url("a.txt"), target = tree.url("b.txt")
             try FileManager.default.moveItem(at: source, to: target)
-            env.history.recordMove("Rename", [(from: source, to: target)], landed: LandedFiles([target]))
+            env.history.recordMove("Rename", [(from: source, to: target)], fileIdentities: LandedFiles([target]).savedKeys)
             let row = try #require(env.history.entries.first)
             #expect(await env.history.canUndo(row))
             if retirement == "clear" { env.history.clear() }
@@ -259,6 +259,7 @@ extension TransferTests {
         undo.groupsByEvent = false
         journal.append(TransferItemResult(outcome: .partial, destination: target), source: source, originalKept: false)
         undo.beginUndoGrouping()
+        await journal.prepareHistory()
         journal.finish(actionName: "Move", undo: undo, logHistory: false, containers: CreatedFolders(), queue: env.queue)
         undo.endUndoGrouping()
         undo.undo()
@@ -268,6 +269,7 @@ extension TransferTests {
         journal.append(TransferItemResult(outcome: .done, destination: target, sourceRemoved: true, landed: FileIdentity.read(target.path)),
                        source: source, originalKept: false)
         undo.beginUndoGrouping()
+        await journal.prepareHistory()
         journal.finish(actionName: "Move", undo: undo, logHistory: false, containers: CreatedFolders(), queue: env.queue)
         undo.endUndoGrouping()
         #expect(undo.canUndo && env.history.entries.isEmpty)
@@ -300,12 +302,14 @@ extension TransferTests {
             let partial = TransferItemResult(outcome: .partial, destination: target, landed: ownership)
             journal.append(partial, source: source, originalKept: false)
             undo.beginUndoGrouping()
+            await journal.prepareHistory()
             journal.finish(actionName: "Move", undo: undo, logHistory: true, containers: CreatedFolders(), queue: env.queue)
             undo.endUndoGrouping()
             let first = try #require(env.history.entries.first)
             #expect(await env.history.canUndo(first))
             // The retry kept the source. A previous partial-copy action must no longer offer to trash this copy.
             journal.append(partial, source: source, originalKept: true)
+            await journal.prepareHistory()
             journal.finish(actionName: "Move", undo: undo, logHistory: true, containers: CreatedFolders(), queue: env.queue)
             let kept = try #require(env.history.entries.first)
             let keptUndoable = await env.history.canUndo(kept)
@@ -316,6 +320,7 @@ extension TransferTests {
                 try FileManager.default.removeItem(at: source)
                 let done = TransferItemResult(outcome: .done, destination: target, sourceRemoved: true, landed: ownership)
                 journal.append(done, source: source, originalKept: false)
+                await journal.prepareHistory()
                 journal.finish(actionName: "Move", undo: undo, logHistory: true, containers: CreatedFolders(), queue: env.queue)
                 let moved = try #require(env.history.entries.first)
                 #expect(moved.id == first.id && moved.kind == .move && moved.created.isEmpty)
@@ -790,7 +795,7 @@ struct HistoryOwnershipTests {
                 try FileManager.default.moveItem(at: tree.url("b.txt"), to: tree.url("saved.txt"))
                 try tree.add(["b.txt"])
             }
-            try #require(transaction.record("AI Rename", history: env.history) != nil)
+            try #require(await transaction.record("AI Rename", history: env.history) != nil)
             let reopened = OperationLog(storage: env.storage, copies: .live)
             let entry = try #require(reopened.entries.first)
             #expect(await reopened.canUndo(entry) == !replaced)
@@ -810,12 +815,12 @@ struct HistoryOwnershipTests {
         let env = try HistoryEnvironment(tree)
         let urls = ["mine", "link", "dangling", "missing"].map(tree.url)
         let ownership = LandedFiles(urls)
-        let valid = ownership.historyIdentities(for: urls)
+        let valid = await ownership.historyKeys(for: urls)
         for url in urls.dropLast() { #expect(valid[url.path] == OperationLog.identity(url.path)) }
         #expect(valid[tree.url("missing").path] == "")
         try FileManager.default.moveItem(at: tree.url("mine"), to: tree.url("saved"))
         try FileManager.default.moveItem(at: tree.url("other"), to: tree.url("mine"))
-        let invalid = ownership.historyIdentities(for: [tree.url("mine"), tree.url("unrecorded")])
+        let invalid = await ownership.historyKeys(for: [tree.url("mine"), tree.url("unrecorded")])
         #expect(invalid == [tree.url("mine").path: "", tree.url("unrecorded").path: ""])
         // An explicitly supplied but incomplete map must not fall back to recapturing the current file.
         for supplied in [invalid, [:]] {
@@ -870,7 +875,7 @@ struct HistoryOwnershipTests {
                     env.history.recordTransfer("Move", created: [tree.url("copy.txt")],
                                                moved: [(from: tree.url("source.txt"), to: tree.url("moved.txt")),
                                                        (from: tree.url("other.txt"), to: tree.url("good.txt"))],
-                                               replaced: [], containerIdentities: [:], landed: ownership)
+                                               replaced: [], containerIdentities: [:], fileIdentities: ownership.savedKeys)
                 }
                 if !beforeRegistration { record() }
                 try FileManager.default.moveItem(at: tree.url("moved.txt"), to: tree.url("saved.txt"))

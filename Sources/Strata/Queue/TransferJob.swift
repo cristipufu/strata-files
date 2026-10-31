@@ -229,7 +229,7 @@ package final class TransferJob {
                 try await fetch.value
             } catch {
                 errorMessage = fromContainers.first.map { copies.message(for: error, about: $0) } ?? error.localizedDescription
-                return finish()
+                return await finishing()
             }
         }
         await plan()
@@ -237,14 +237,14 @@ package final class TransferJob {
         if !control.isCancelled { await resolveConflicts() }
         if !control.isCancelled, let problem = await spaceProblem() {
             errorMessage = problem
-            return finish()
+            return await finishing()
         }
         if !control.isCancelled {
             await execute(needsDisk: items.contains { $0.outcome == .pending && $0.operation != .rename }) {
                 await self.performPending()
             }
         }
-        finish()
+        await finishing()
     }
 
     private func runRetry(_ previous: [TransferFailure]) async {
@@ -276,7 +276,7 @@ package final class TransferJob {
         if !control.isCancelled, let problem = await spaceProblem() {
             errorMessage = problem
             failures += previous.filter { $0.stage != .item }
-            return finish()
+            return await finishing()
         }
         if !control.isCancelled {
             let needsDisk = !entries.isEmpty || items.contains { $0.outcome == .pending && $0.operation != .rename }
@@ -302,7 +302,7 @@ package final class TransferJob {
         } else {
             failures += previous.filter { $0.stage != .item }
         }
-        finish()
+        await finishing()
     }
 
     /// Waits for the destination disk if bytes need copying, then runs `body` in the running state.
@@ -625,6 +625,12 @@ package final class TransferJob {
             break
         }
         changed()
+    }
+
+    /// `finish`, once what History keeps of the items is read away from the main thread.
+    private func finishing() async {
+        await journal.prepareHistory()
+        finish()
     }
 
     private func finish() {

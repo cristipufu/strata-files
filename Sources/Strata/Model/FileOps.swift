@@ -43,7 +43,7 @@ package enum FileOps {
         let (done, error, identities) = await moveAll(pairs)
         for pair in done { landed.set(identities[pair.to.path], at: pair.to) }
         done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
-        let entry = history.recordMove(actionName, done, landed: landed)
+        let entry = history.recordMove(actionName, done, fileIdentities: await landed.historyKeys(for: done.map(\.to)))
         registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
         if let error { throw error }
     }
@@ -233,7 +233,7 @@ package enum FileOps {
         let url = available(directory.appending(path: name), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         let landed = LandedFiles([url])
-        let entry = history.recordCreate("New Folder", [url], landed: landed)
+        let entry = history.recordCreate("New Folder", [url], fileIdentities: landed.historyKeysNow(for: [url]))
         registerTrashUndo([url], "New Folder", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
@@ -255,7 +255,7 @@ package enum FileOps {
             }
         }
         let landed = LandedFiles([url])
-        let entry = history.recordCreate("New File", [url], landed: landed)
+        let entry = history.recordCreate("New File", [url], fileIdentities: landed.historyKeysNow(for: [url]))
         registerTrashUndo([url], "New File", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
@@ -285,7 +285,7 @@ package enum FileOps {
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
-            let logged = record ? history.recordMove("Move to Trash", moved, landed: landed) : entry
+            let logged = record ? history.recordMove("Move to Trash", moved, fileIdentities: landed.historyKeysNow(for: moved.map(\.to))) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
             if !moved.isEmpty { Sounds.movedToTrash() }
         }
@@ -352,7 +352,7 @@ package enum FileOps {
         let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
-        let entry = history.recordMove("Move to Trash", moved, landed: landed)
+        let entry = history.recordMove("Move to Trash", moved, fileIdentities: await landed.historyKeys(for: moved.map(\.to)))
         registerMoveUndo(moved, "Move to Trash", undo, entry: entry, copies: copies, landed: landed, history: history)
         if !moved.isEmpty { Sounds.movedToTrash() }
         if let failure { throw failure }

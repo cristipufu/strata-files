@@ -106,7 +106,7 @@ package final class ArchiveJob {
                 let made = try await Self.onWorkerThread { try Self.compress(items, copies: copies, control: control) }
                 url = made.zip
                 resultBytes = made.bytes
-                register(url, made.identity, actionName: "Compress", queue: queue)
+                await register(url, made.identity, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 try Self.requireArchive(archive)
                 let inspection = try await inspect(archive)
@@ -116,7 +116,7 @@ package final class ArchiveJob {
                     return (url, FileIdentity.read(url.path))
                 }
                 url = made.0
-                register(url, made.1, actionName: "Extract", queue: queue)
+                await register(url, made.1, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
                 url = try await browse(archive, into: folder)
             }
@@ -165,11 +165,12 @@ package final class ArchiveJob {
     }
 
     /// History and ⌘Z for what the job made (`identity`, read where it was made): undo moves it to the Trash.
-    private func register(_ url: URL, _ identity: FileIdentity?, actionName: String, queue: TransferQueue) {
+    private func register(_ url: URL, _ identity: FileIdentity?, actionName: String, queue: TransferQueue) async {
         let landed = LandedFiles()
         landed.set(identity, at: url)
+        let keys = await landed.historyKeys(for: [url])
         TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager,
-                              landed: landed, queue: queue)
+                              landed: landed, historyKeys: keys, queue: queue)
         FolderSizer.invalidate(url.deletingLastPathComponent())
     }
 

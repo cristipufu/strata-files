@@ -1163,8 +1163,8 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "                              landed: landed, queue: queue)",
-    "replace": "                              landed: landed, queue: .shared)",
+    "find": "                              landed: landed, historyKeys: keys, queue: queue)",
+    "replace": "                              landed: landed, historyKeys: keys, queue: .shared)",
     "rule": "Transfer ownership archive records in the global History",
     "tests": "TransferContextTests/queuedArchivesRecordInTheirOwnersHistory"
   },
@@ -1887,29 +1887,29 @@
   },
   {
     "file": "Strata/Queue/TransferQueue.swift",
-    "find": "containerIdentities: containers.historyIdentities, landed: receipt.landed, updating: receipt.historyEntry)",
-    "replace": "containerIdentities: containers.historyIdentities, updating: receipt.historyEntry)",
+    "find": "containerIdentities: containers.historyIdentities, fileIdentities: historyKeys, updating: receipt.historyEntry)",
+    "replace": "containerIdentities: containers.historyIdentities, fileIdentities: Dictionary((receipt.created + receipt.moved.map(\\.to) + receipt.replaced.map(\\.to)).map { ($0.path, FileIdentity.historyKey(at: $0.path) ?? \"\") }) { a, _ in a }, updating: receipt.historyEntry)",
     "rule": "Transfer History ownership survives callbacks before registration",
     "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration"
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "history.recordMove(actionName, done, landed: landed)",
-    "replace": "history.recordMove(actionName, done)",
+    "find": "history.recordMove(actionName, done, fileIdentities: await landed.historyKeys(for: done.map(\\.to)))",
+    "replace": "history.recordMove(actionName, done, fileIdentities: Dictionary(done.map(\\.to).map { ($0.path, FileIdentity.historyKey(at: $0.path) ?? \"\") }) { a, _ in a })",
     "rule": "Rename History ownership survives callbacks before registration",
     "tests": "TransferTests/historyRejectsARenameReplacedBeforeRegistration"
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "containerIdentities: createdFolders.historyIdentities, landed: applied)",
-    "replace": "containerIdentities: createdFolders.historyIdentities)",
+    "find": "        let keys = await applied.historyKeys(for: moved.map(\\.to))\n",
+    "replace": "        let keys = Dictionary(moved.map(\\.to).map { ($0.path, FileIdentity.historyKey(at: $0.path) ?? \"\") }) { a, _ in a }\n",
     "rule": "Plan History ownership survives changes before registration",
     "tests": "HistoryOwnershipTests/planHistoryUsesTheTransactionOwnership"
   },
   {
     "file": "Strata/Model/LandedFiles.swift",
-    "find": "saved[url.path] = identities[url.path]?.historyKey(at: url.path) ?? \"\"",
-    "replace": "saved[url.path] = FileIdentity.historyKey(at: url.path) ?? \"\"",
+    "find": "        for (path, identity) in identities { saved[path] = identity.historyKey(at: path) ?? \"\" }",
+    "replace": "        for (path, _) in identities { saved[path] = FileIdentity.historyKey(at: path) ?? \"\" }",
     "rule": "Saved History ownership never adopts current replacements",
     "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
   },
@@ -4043,15 +4043,15 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "let entry = history.recordCreate(\"New Folder\", [url], landed: landed)",
-    "replace": "let entry = OperationLog.shared.recordCreate(\"New Folder\", [url], landed: landed)",
+    "find": "let entry = history.recordCreate(\"New Folder\", [url], fileIdentities: landed.historyKeysNow(for: [url]))",
+    "replace": "let entry = OperationLog.shared.recordCreate(\"New Folder\", [url], fileIdentities: landed.historyKeysNow(for: [url]))",
     "rule": "File command ownership new folder records in another History",
     "tests": "FileCommandOwnershipTests/newItemsKeepHistoryThroughNativeAndHistoryUndo"
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "let entry = history.recordCreate(\"New File\", [url], landed: landed)",
-    "replace": "let entry = OperationLog.shared.recordCreate(\"New File\", [url], landed: landed)",
+    "find": "let entry = history.recordCreate(\"New File\", [url], fileIdentities: landed.historyKeysNow(for: [url]))",
+    "replace": "let entry = OperationLog.shared.recordCreate(\"New File\", [url], fileIdentities: landed.historyKeysNow(for: [url]))",
     "rule": "File command ownership new file records in another History",
     "tests": "FileCommandOwnershipTests/newItemsKeepHistoryThroughNativeAndHistoryUndo"
   },
@@ -4731,8 +4731,8 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, queue: queue)",
-    "replace": "        TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, queue: queue)",
+    "find": "        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, historyKeys: keys, queue: queue)",
+    "replace": "        TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, historyKeys: keys, queue: queue)",
     "rule": "Extract: Undo leaves what Extract made in place",
     "tests": "TransferContextTests/undoingAnExtractTrashesOnlyWhatItMade"
   },

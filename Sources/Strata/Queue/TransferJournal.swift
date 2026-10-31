@@ -10,10 +10,24 @@ package final class TransferJournal {
     }
 
     private var pending: [Update] = []
+    private var historyKeys: [String: String] = [:]
     private var receipt = Receipt()
 
     package func append(_ result: TransferItemResult, source: URL, originalKept: Bool) {
         pending.append(Update(source: source, result: result, originalKept: originalKept))
+    }
+
+    /// What History will keep of every item the job's record may hold (the receipt's and what its passes landed),
+    /// converted away from the main thread before the job finishes: `finish` then decides, at once, which record they
+    /// go in.
+    package func prepareHistory() async {
+        guard !pending.isEmpty else { return }
+        var identities = receipt.landed.recorded
+        for update in pending {
+            identities[update.result.destination.path] = update.originalKept ? nil : update.result.landed
+            if let replaced = update.result.replaced { identities[replaced.to.path] = update.result.replacedIdentity }
+        }
+        historyKeys = await LandedFiles.historyKeys(identities.compactMapValues { $0 })
     }
 
     package func finish(actionName: String, undo: UndoManager?, logHistory: Bool, containers: CreatedFolders, queue: TransferQueue) {
@@ -26,7 +40,7 @@ package final class TransferJournal {
         }
         pending = []
         TransferUndo.register(receipt: receipt, actionName: actionName, undo: undo, logHistory: logHistory,
-                              containers: containers, queue: queue)
+                              containers: containers, historyKeys: historyKeys, queue: queue)
     }
 
     /// Shared by persisted History and the native Undo action. Only completed worker receipts can change ownership.

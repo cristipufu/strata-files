@@ -188,30 +188,28 @@ package final class OperationLog {
     }
 
     @discardableResult
-    package func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], landed: LandedFiles) -> UUID? {
+    package func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], fileIdentities: [String: String]) -> UUID? {
         guard !pairs.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs),
-                            fileIdentities: landed.historyIdentities(for: pairs.map(\.to))))
+        return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs), fileIdentities: fileIdentities))
     }
 
     @discardableResult
-    package func recordCreate(_ name: String, _ created: [URL], landed: LandedFiles) -> UUID? {
+    package func recordCreate(_ name: String, _ created: [URL], fileIdentities: [String: String]) -> UUID? {
         guard !created.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .create, created: created.map(\.path),
-                            fileIdentities: landed.historyIdentities(for: created)))
+        return append(Entry(name: name, kind: .create, created: created.map(\.path), fileIdentities: fileIdentities))
     }
 
     /// One entry for a whole copy or move job, including what it replaced.
     @discardableResult
     package func recordTransfer(_ name: String, created: [URL], moved: [(from: URL, to: URL)],
                         replaced: [(from: URL, to: URL)], containers: [URL] = [],
-                        containerIdentities: [String: String], landed: LandedFiles,
+                        containerIdentities: [String: String], fileIdentities: [String: String],
                         updating id: UUID? = nil) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
         var entry = Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
                           created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
                           containerIdentities: containerIdentities,
-                          fileIdentities: landed.historyIdentities(for: created + moved.map(\.to) + replaced.map(\.to)))
+                          fileIdentities: fileIdentities)
         guard let id else { return append(entry) }
         // A retry updates its original operation, never an entry that has been undone or cleared meanwhile.
         guard canUpdateTransfer(id), let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
@@ -231,11 +229,11 @@ package final class OperationLog {
     /// One entry for an applied Ask Strata plan: its moves (Trash included) and the folders it made for them.
     @discardableResult
     package func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
-                    containerIdentities: [String: String], landed: LandedFiles) -> UUID? {
+                    containerIdentities: [String: String], fileIdentities: [String: String]) -> UUID? {
         guard !moved.isEmpty else { return nil }
         return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path),
                             containerIdentities: containerIdentities,
-                            fileIdentities: landed.historyIdentities(for: moved.map(\.to))))
+                            fileIdentities: fileIdentities))
     }
 
     /// Keeps an entry in step with ⌘Z and ⇧⌘Z (undoing marks it undone; redoing marks it done again).

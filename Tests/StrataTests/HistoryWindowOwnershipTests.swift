@@ -31,7 +31,7 @@ struct HistoryWindowOwnershipTests {
         func record(_ tree: TestTree, name: String) throws -> OperationLog.Entry {
             let destination = tree.url(name + "/to/a.txt")
             history.recordMove("Move", [(from: tree.url(name + "/from/a.txt"), to: destination)],
-                               landed: LandedFiles([destination]))
+                               fileIdentities: LandedFiles([destination]).savedKeys)
             return try #require(history.entries.last)
         }
     }

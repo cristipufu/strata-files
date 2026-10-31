@@ -25,7 +25,7 @@ package enum PlanExecutor {
         let transaction = PlanTransaction(plan: plan, copies: copies)
         let outcome = await transaction.perform()
         // One History entry for the whole plan, named like its undo action.
-        let entry = transaction.hasChanges ? transaction.record(actionName, history: history) : nil
+        let entry = transaction.hasChanges ? await transaction.record(actionName, history: history) : nil
         if let undo, transaction.hasChanges {
             transaction.registerUndo(undo, actionName: undoName ?? OperationLog.displayName(actionName))
             if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: history) }
@@ -86,10 +86,12 @@ package final class PlanTransaction {
 
     package var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
 
-    package func record(_ name: String, history: OperationLog) -> UUID? {
+    package func record(_ name: String, history: OperationLog) async -> UUID? {
         // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
-        history.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created,
-                           containerIdentities: createdFolders.historyIdentities, landed: applied)
+        let moved = (trashed + done).map { (from: $0.from, to: $0.to) }
+        let keys = await applied.historyKeys(for: moved.map(\.to))
+        return history.recordPlan(name, moved: moved, containers: created,
+                                  containerIdentities: createdFolders.historyIdentities, fileIdentities: keys)
     }
 
     /// The first of `urls` that's a whole disk, asked of each away from the main thread.
