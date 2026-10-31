@@ -24,10 +24,9 @@ final class Pane {
     let opening = FolderOpenSession()
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
-    var backStack: [Destination] = []
+    var history = PaneHistory()
     /// The drag whose spring-loading last moved this pane: the rest of that dive adds no Back steps.
     var springDrag: Int?
-    var forwardStack: [Destination] = []
     /// The folder on show, for the Inspector when nothing's selected; read away from the main thread.
     private(set) var folderEntry: FileEntry?
     private var folderEntryRead: Task<Void, Never>?

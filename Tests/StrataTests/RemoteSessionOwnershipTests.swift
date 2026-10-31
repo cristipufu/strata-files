@@ -494,8 +494,8 @@ struct RemoteSessionOwnershipTests {
         #expect(window.pane === focused)
         #expect(window.location == focusedLocation)
         #expect(original.location == top.standardizedFileURL)
-        #expect(original.backStack == [.folder(tree.url("local").standardizedFileURL)])
-        #expect(focused.backStack.isEmpty)
+        #expect(original.history.back == [.folder(tree.url("local").standardizedFileURL)])
+        #expect(focused.history.back.isEmpty)
         #expect(tree.snapshot() == before)
     }
 
@@ -514,11 +514,11 @@ struct RemoteSessionOwnershipTests {
         await gate.waitForHeldStatus()
         window.navigate(to: tree.url("other"))
         window.navigate(to: originalLocation)
-        let history = window.pane.backStack
+        let history = window.pane.history.back
         await gate.releaseStatus()
         await opening.value
         #expect(window.location == originalLocation)
-        #expect(window.pane.backStack == history)
+        #expect(window.pane.history.back == history)
         #expect(window.window?.attachedSheet == nil)
         #expect(tree.snapshot() == before)
     }

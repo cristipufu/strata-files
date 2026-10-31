@@ -445,8 +445,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         p.waiting = nil
         p.search.leave(for: target)
         if recordHistory, target != p.destination {
-            p.backStack.append(p.destination)
-            p.forwardStack.removeAll()
+            p.history.leave(p.destination)
         }
         p.host.pathBar.cancelEditing()
         if p === pane { pathBar.cancelEditing() }
@@ -554,25 +553,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @discardableResult func navigateHistory(_ direction: BrowserNavigation.Direction, in owner: Pane) -> Bool {
         guard !isClosed, window?.attachedSheet == nil, panes.contains(where: { $0 === owner }) else { return false }
-        guard direction == .back ? !owner.backStack.isEmpty : !owner.forwardStack.isEmpty else { return false }
+        guard owner.history.canGo(direction) else { return false }
         activate(owner)
-        guard pane === owner, !isClosed else { return false }
-        if direction == .forward { return stepForward() }
-        guard let previous = pane.backStack.popLast() else { return false }
-        pane.forwardStack.append(destination)
-        go(previous, select: childToSelect(in: previous, from: destination), recordHistory: false)
+        guard pane === owner, !isClosed, let next = pane.history.step(direction, from: destination) else { return false }
+        go(next, select: childToSelect(in: next, from: destination), recordHistory: false)
         return true
     }
 
     @objc func goForward(_ sender: Any?) {
         _ = navigateHistory(.forward, in: pane)
-    }
-
-    private func stepForward() -> Bool {
-        guard let next = pane.forwardStack.popLast() else { return false }
-        pane.backStack.append(destination)
-        go(next, select: childToSelect(in: next, from: destination), recordHistory: false)
-        return true
     }
 
     @objc func goToEnclosingFolder(_ sender: Any?) {
@@ -951,8 +940,8 @@ extension BrowserWindowController: NSMenuItemValidation {
         case #selector(syncViewMode(_:)):
             item.state = item.tag == browser.effectiveMode.rawValue ? .on : .off
             return !browser.isShowingResults || item.tag == BrowserViewMode.list.rawValue
-        case #selector(goBack(_:)): return !pane.backStack.isEmpty
-        case #selector(goForward(_:)): return !pane.forwardStack.isEmpty
+        case #selector(goBack(_:)): return pane.history.canGo(.back)
+        case #selector(goForward(_:)): return pane.history.canGo(.forward)
         case #selector(toggleDualPane(_:)):
             item.state = isDualPane ? .on : .off
             return true

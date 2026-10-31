@@ -142,11 +142,11 @@ struct InspectorFolderOpeningTests {
             await calls.started(1)
             window.navigate(to: tree.url("other"))
             window.navigate(to: start)
-            let history = window.pane.backStack
+            let history = window.pane.history.back
             await calls.finish(0, result: result)
             await work.value
             #expect(work.isCancelled && window.location == start)
-            #expect(window.pane.backStack == history && window.window?.attachedSheet == nil)
+            #expect(window.pane.history.back == history && window.window?.attachedSheet == nil)
             window.window?.close()
             #expect(tree.snapshot() == before)
             withExtendedLifetime(environment) {}
@@ -173,7 +173,7 @@ struct InspectorFolderOpeningTests {
             if !oldFirst { await calls.finish(0); await first.value }
             #expect(first.isCancelled && !second.isCancelled)
             #expect(window.location == tree.url("provider/second").standardizedFileURL)
-            #expect(window.pane.backStack == [.folder(tree.url("local").standardizedFileURL)])
+            #expect(window.pane.history.back == [.folder(tree.url("local").standardizedFileURL)])
             window.window?.close()
             #expect(tree.snapshot() == before)
             withExtendedLifetime(environment) {}

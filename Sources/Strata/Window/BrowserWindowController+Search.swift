@@ -38,8 +38,8 @@ extension BrowserWindowController {
 
     /// Clearing the field returns to the folder the search started from.
     func leaveSearch() {
-        if case .folder = pane.backStack.last {
-            go(pane.backStack.removeLast(), recordHistory: false)
+        if case .folder = pane.history.back.last {
+            go(pane.history.back.removeLast(), recordHistory: false)
         } else {
             go(.folder(location), recordHistory: false)
         }

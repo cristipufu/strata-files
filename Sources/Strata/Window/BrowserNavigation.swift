@@ -49,14 +49,14 @@ final class BrowserNavigation {
     }
 
     private func navigate(_ direction: Direction, owner: BrowserWindowController, pane: Pane) -> Bool {
-        guard direction == .back ? !pane.backStack.isEmpty : !pane.forwardStack.isEmpty else { return false }
+        guard pane.history.canGo(direction) else { return false }
         guard owner.window?.makeFirstResponder(pane.browser.focusView) == true else { return false }
         return owner.navigateHistory(direction, in: pane)
     }
 
     func canTrackSwipe(at point: NSPoint) -> Bool {
         guard !isEditingText, let pane = pane(at: point), pane.browser.effectiveMode != .columns, pane.browser.effectiveMode != .gallery else { return false }
-        return !pane.backStack.isEmpty || !pane.forwardStack.isEmpty
+        return pane.history.canGo(.back) || pane.history.canGo(.forward)
     }
 
     @discardableResult
@@ -66,14 +66,14 @@ final class BrowserNavigation {
               event.momentumPhase.isEmpty, event.phase.contains(.began) || event.phase.contains(.changed),
               canTrackSwipe(at: event.locationInWindow), let pane = pane(at: event.locationInWindow),
               let direction = swipeDirection(x: event.scrollingDeltaX, y: event.scrollingDeltaY),
-              direction == .back ? !pane.backStack.isEmpty : !pane.forwardStack.isEmpty else { return false }
+              pane.history.canGo(direction) else { return false }
         cancel()
         let id = attempt
         let revision = pane.navigationRevision, browserRevision = pane.browser.navigationRevision
         let mode = pane.browser.effectiveMode
         let sign: CGFloat = rightToLeft ? -1 : 1
-        let back = pane.backStack.isEmpty ? 0 : sign
-        let forward = pane.forwardStack.isEmpty ? 0 : -sign
+        let back = pane.history.canGo(.back) ? sign : 0
+        let forward = pane.history.canGo(.forward) ? -sign : 0
         let minimum = min(back, forward), maximum = max(back, forward)
         var finished = false
         track(event, minimum, maximum) { [weak self, weak pane] amount, phase, complete in

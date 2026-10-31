@@ -54,16 +54,16 @@ extension BrowserWindowController {
     var snapshotNavigation: [SavedNavigation] {
         panes.map { pane in
             SavedNavigation(current: SavedDestination.capture(pane.destination, services: services),
-                back: pane.backStack.suffix(SavedNavigation.limit).compactMap { SavedDestination.capture($0, services: services) },
-                forward: pane.forwardStack.suffix(SavedNavigation.limit).compactMap { SavedDestination.capture($0, services: services) })
+                back: pane.history.back.suffix(SavedNavigation.limit).compactMap { SavedDestination.capture($0, services: services) },
+                forward: pane.history.forward.suffix(SavedNavigation.limit).compactMap { SavedDestination.capture($0, services: services) })
         }
     }
 
     func restoreNavigation(_ planned: [WorkspacePlan.Pane]) {
         for (pane, saved) in zip(panes, planned) {
             guard let navigation = saved.navigation else { continue }
-            pane.backStack = navigation.back.compactMap { $0.destination(services: services) }
-            pane.forwardStack = navigation.forward.compactMap { $0.destination(services: services) }
+            pane.history.back = navigation.back.compactMap { $0.destination(services: services) }
+            pane.history.forward = navigation.forward.compactMap { $0.destination(services: services) }
             // Reopening a session must not initiate a server login. Its waiting pane keeps the history until opened.
             guard pane.waiting == nil, navigation.current?.server == nil, let current = navigation.current?.destination(services: services),
                   current != pane.destination else { continue }

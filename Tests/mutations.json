@@ -5546,8 +5546,8 @@
   },
   {
     "file": "Strata/Window/BrowserSession.swift",
-    "find": "pane.backStack = navigation.back.compactMap { $0.destination(services: services) }",
-    "replace": "pane.backStack = []",
+    "find": "pane.history.back = navigation.back.compactMap { $0.destination(services: services) }",
+    "replace": "pane.history.back = []",
     "rule": "Session navigation restores each panes own Back history",
     "tests": "SessionNavigationTests/realSessionWriterReopensEachPanesHistoryAndActiveSide"
   },
@@ -7285,5 +7285,12 @@
     "replace": "        let isCurrent = { true }",
     "rule": "Search: a folder search still running shows its results after the pane went elsewhere",
     "tests": "PaneSearchTests/aSearchStillRunningWhenThePaneGoesBackToItsFolderNeverShows"
+  },
+  {
+    "file": "Strata/Window/PaneHistory.swift",
+    "find": "        back.append(current)\n        forward.removeAll()\n",
+    "replace": "        back.append(current)\n",
+    "rule": "Back and Forward: going somewhere new keeps the old Forward steps",
+    "tests": "PaneHistoryTests/goingSomewhereNewRecordsWhereThePaneWasAndClearsForward"
   }
 ]

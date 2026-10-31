@@ -17,7 +17,7 @@ struct PointerNavigationTests {
                 let owner = fixture.controller.panes[index], other = fixture.controller.panes[1 - index]
                 let otherLocation = other.location, current = owner.location
                 let previous = fixture.tree.url(index == 0 ? "left/previous" : "right/previous")
-                owner.backStack = [.folder(previous)]
+                owner.history.back = [.folder(previous)]
                 let point = fixture.point(in: owner)
                 let window = try #require(fixture.controller.window as? BrowserWindow)
                 window.sendEvent(try mouse(button: 3, at: point))
@@ -39,7 +39,7 @@ struct PointerNavigationTests {
         let fixture = try Fixture()
         let owner = fixture.controller.panes[1], other = fixture.controller.panes[0]
         let previous = fixture.tree.url("right/previous")
-        owner.backStack = [.folder(previous)]
+        owner.history.back = [.folder(previous)]
         var update: BrowserNavigation.SwipeUpdate?
         let wheel = try wheel(x: 10, y: 0, at: fixture.point(in: owner))
         let began = fixture.controller.navigationGestures.beginSwipe(wheel, enabled: true) { _, minimum, maximum, handler in
@@ -63,7 +63,7 @@ struct PointerNavigationTests {
     @Test func cancelledAndStaleSwipesLeaveTheCurrentFolderAlone() async throws {
         let fixture = try Fixture()
         let controller = fixture.controller, owner = controller.panes[0]
-        owner.backStack = [.folder(fixture.tree.url("left/previous"))]
+        owner.history.back = [.folder(fixture.tree.url("left/previous"))]
         var update: BrowserNavigation.SwipeUpdate?
         func begin() throws -> BrowserNavigation.SwipeUpdate {
             #expect(controller.navigationGestures.beginSwipe(try wheel(x: 10, y: 0, at: fixture.point(in: owner)), enabled: true) {
@@ -93,7 +93,7 @@ struct PointerNavigationTests {
     @Test func scrollingAndTheSystemSwipePreferenceKeepTheirMeaning() throws {
         let fixture = try Fixture()
         let owner = fixture.controller.panes[0]
-        owner.backStack = [.folder(fixture.tree.url("left/previous"))]
+        owner.history.back = [.folder(fixture.tree.url("left/previous"))]
         let navigation = fixture.controller.navigationGestures
         let point = fixture.point(in: owner)
         var tracked = false
@@ -119,7 +119,7 @@ struct PointerNavigationTests {
         let fixture = try Fixture()
         let controller = fixture.controller, owner = controller.panes[0]
         for pane in controller.panes { await pane.browser.directoryReads.task?.value }
-        owner.backStack = [.folder(fixture.tree.url("left/previous"))]
+        owner.history.back = [.folder(fixture.tree.url("left/previous"))]
         let navigation = controller.navigationGestures, point = fixture.point(in: owner)
         let window = try #require(controller.window)
         let field = NSTextField(string: "Editing")
@@ -148,7 +148,7 @@ struct PointerNavigationTests {
     @Test func aRemovedPaneRejectsItsOldSwipeAndRightToLeftNavigationMirrors() async throws {
         let fixture = try Fixture()
         let controller = fixture.controller, owner = controller.panes[1]
-        owner.backStack = [.folder(fixture.tree.url("right/previous"))]
+        owner.history.back = [.folder(fixture.tree.url("right/previous"))]
         controller.window?.contentView?.userInterfaceLayoutDirection = .rightToLeft
         var update: BrowserNavigation.SwipeUpdate?
         var limits: (CGFloat, CGFloat)?
@@ -161,7 +161,7 @@ struct PointerNavigationTests {
         await owner.browser.directoryReads.task?.value
         #expect(owner.location.standardizedFileURL.fileViewKey == fixture.tree.url("right/previous").standardizedFileURL.fileViewKey)
         #expect(BrowserNavigation.direction(x: 1, y: 0, rightToLeft: true) == .forward)
-        owner.backStack = [.folder(fixture.tree.url("right/current"))]
+        owner.history.back = [.folder(fixture.tree.url("right/current"))]
         #expect(controller.navigationGestures.beginSwipe(try wheel(x: -10, y: 0, at: fixture.point(in: owner)), enabled: true) {
             _, _, _, handler in update = handler
         })
@@ -184,7 +184,7 @@ struct PointerNavigationTests {
             tree = active.tree; environment = active.environment; before = active.before
             released = active.controller
             let owner = active.controller.panes[0]
-            owner.backStack = [.folder(active.tree.url("left/previous"))]
+            owner.history.back = [.folder(active.tree.url("left/previous"))]
             let started = active.controller.navigationGestures.beginSwipe(try wheel(x: 10, y: 0, at: active.point(in: owner)), enabled: true) {
                 _, _, _, handler in update = handler
             }

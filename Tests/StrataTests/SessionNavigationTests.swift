@@ -40,8 +40,8 @@ struct SessionNavigationTests {
         let owner = try #require(environment.services.windows.open(tree.url("left"), tree.url("right"), nil, environment.services))
         for pane in owner.panes { await pane.browser.directoryReads.task?.value }
         for (index, side) in ["left", "right"].enumerated() {
-            owner.panes[index].backStack = [.recents, .folder(tree.url(side + "/previous"))]
-            owner.panes[index].forwardStack = [.duplicates, .folder(tree.url(side + "/next"))]
+            owner.panes[index].history.back = [.recents, .folder(tree.url(side + "/previous"))]
+            owner.panes[index].history.forward = [.duplicates, .folder(tree.url(side + "/next"))]
         }
         owner.window?.makeFirstResponder(owner.panes[1].browser.focusView)
         let named = Workspaces.workspace(named: "Named", of: [owner])
@@ -58,7 +58,7 @@ struct SessionNavigationTests {
         #expect(restored.pane === restored.panes[1])
         for (index, side) in ["left", "right"].enumerated() {
             let pane = restored.panes[index]
-            #expect(pane.backStack.count == 2 && pane.forwardStack.count == 2)
+            #expect(pane.history.back.count == 2 && pane.history.forward.count == 2)
             #expect(restored.navigateHistory(.back, in: pane))
             await pane.browser.directoryReads.task?.value
             #expect(pane.location.standardizedFileURL.fileViewKey == tree.url(side + "/previous").standardizedFileURL.fileViewKey)
@@ -142,7 +142,7 @@ struct SessionNavigationTests {
         let owner = try #require(environment.services.workspaces.openWindows(environment.services.workspaces.plan(session), name: "").first)
         await owner.browser.directoryReads.task?.value
         if case .folder = owner.destination {} else { Issue.record("Restoring a remote search must wait for an explicit request") }
-        #expect(owner.pane.backStack == [.folder(url)])
+        #expect(owner.pane.history.back == [.folder(url)])
         #expect(connects.withLock { $0 } == 0)
         #expect(tree.snapshot() == ["local/"])
         withExtendedLifetime((environment, peer, state, peerState)) {}
@@ -172,7 +172,7 @@ struct SessionNavigationTests {
             #expect(SavedDestination(kind: "folder", path: url.path).destination(services: environment.services) == nil)
             owner.pane.location = url
             owner.pane.destination = .folder(url)
-            owner.pane.backStack = [.folder(url), .folder(tree.url("local"))]
+            owner.pane.history.back = [.folder(url), .folder(tree.url("local"))]
             let saved = Workspaces.workspace(named: "", of: [owner], includingNavigation: true)
             #expect(saved.tabs == [[Places.home.path]])
             #expect(saved.history(tab: 0, pane: 0)?.current == nil)
