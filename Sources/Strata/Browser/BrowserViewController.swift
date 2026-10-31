@@ -467,6 +467,14 @@ final class BrowserViewController: NSViewController {
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
     func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
 
+    /// What Quick Look shows of a selection: its files, and links (a link to a folder previews as the link).
+    static func quickLookItems(_ entries: [FileEntry]) -> [URL] {
+        entries.filter { !$0.isDirectory || $0.isSymlink }.map(\.url)
+    }
+
+    /// Where `url` really is, its links followed (each one looked up on its disk).
+    @concurrent static func realURL(_ url: URL) async -> URL { url.resolvingSymlinksInPath() }
+
     private func showLoadError() {
         cancelPendingActions()
         sizer.cancelPending()
@@ -866,7 +874,7 @@ final class BrowserViewController: NSViewController {
     }
 
     func openQuickLook(showPanel: @escaping () -> Void = { QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil) }) {
-        let urls = selectedURLs.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true }
+        let urls = Self.quickLookItems(selectedEntries)
         let selectedKeys = Set(selectedURLs.map(Self.key))
         guard !selectedKeys.isEmpty else { return }
         let revision = navigationRevision

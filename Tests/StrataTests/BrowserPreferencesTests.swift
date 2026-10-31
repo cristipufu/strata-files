@@ -369,15 +369,15 @@ struct BrowserPreferencesTests {
         #expect(first.preferences.newFileExtension == "one" && second.preferences.newFileExtension == "two")
     }
 
-    @Test func serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks() throws {
+    @Test func serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks() async throws {
         let tree = try TestTree("UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt")
         let first = try Environment(), second = try Environment()
         first.preferences.newFileExtension = "one"; second.preferences.newFileExtension = "two"
         let a = BrowserViewController(services: first.services), b = BrowserViewController(services: second.services)
-        #expect(a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
-        #expect(b.newFileNameOnServer(in: tree.root) == "untitled.two")
+        #expect(await a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
+        #expect(await b.newFileNameOnServer(in: tree.root) == "untitled.two")
         first.preferences.newFileExtension = "../escape"
-        #expect(a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
+        #expect(await a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
         #expect(tree.snapshot() == ["UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt"])
     }
 

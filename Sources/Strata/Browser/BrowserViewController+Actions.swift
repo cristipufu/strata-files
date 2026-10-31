@@ -337,9 +337,10 @@ extension BrowserViewController {
     @objc func showInFinder(_ sender: Any?) {
         // Inside an archive opened as a folder, Finder shows the archive (not Strata's copy in its caches).
         if isInsideArchive { return showArchiveInFinder(sender) }
-        guard let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else { return }
         let target = selectedURLs.first?.deletingLastPathComponent() ?? directory
         guard let target else { return }
+        // Finder, not the default file viewer (which may be Strata itself); the system keeps it at this path.
+        let finder = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app", isDirectory: true)
         NSWorkspace.shared.open([target], withApplicationAt: finder, configuration: NSWorkspace.OpenConfiguration())
     }
 

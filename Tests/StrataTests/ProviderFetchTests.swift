@@ -189,13 +189,14 @@ struct ProviderFetchTests {
             let environment = try Environment(tree, copies: copies)
             let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
             var actions = 0
-            let work = browser.afterFetching([item]) { actions += 1 }
+            // The placeholder's size is read away from the main thread; then a small read runs, a big one is queued.
+            let work = try #require(browser.afterFetching([item]) { actions += 1 })
             if size == 8 << 20 {
-                #expect(work != nil && environment.services.transfers.jobs.isEmpty)
-                await work?.value
-                #expect(state.events == ["fetch"])
+                await work.value
+                #expect(environment.services.transfers.jobs.isEmpty && state.events == ["fetch"])
             } else {
-                #expect(work == nil && environment.services.transfers.jobs.count == 1)
+                await work.value
+                #expect(environment.services.transfers.jobs.count == 1)
                 let job = try #require(environment.services.transfers.jobs.first as? CopyFetchJob)
                 await job.finished()
                 #expect(job.state == .finished && job.sourceName == "Fixture")

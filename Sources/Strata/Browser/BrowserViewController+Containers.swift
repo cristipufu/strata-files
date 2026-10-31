@@ -39,11 +39,10 @@ extension BrowserViewController {
             Sounds.beep()
             return true
         }
-        let path = ContainerCopies.containerPath(of: folder.resolvingSymlinksInPath(), top: top) ?? "/"
-        guard let container = store.container(id: source.id),
-              ContainerControl.openTerminal(in: container, at: path, engine: engine) else {
-            Sounds.beep()
-            return true
+        Task {
+            let path = ContainerCopies.containerPath(of: await Self.realURL(folder), top: top) ?? "/"
+            guard let container = store.container(id: source.id),
+                  ContainerControl.openTerminal(in: container, at: path, engine: engine) else { return Sounds.beep() }
         }
         return true
     }

@@ -25,17 +25,22 @@ extension BrowserViewController {
 
     /// Runs `action` once `urls` (the placeholders among them) are fetched; says what went wrong if they can't be. A big
     /// fetch shows in Transfers, with a Stop button. Small reads return their task for completion and cancellation.
+    /// A placeholder has its file's size.
+    @concurrent static func size(of placeholders: [URL]) async -> Int64 {
+        placeholders.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
+    }
+
     @discardableResult
     func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {
         let copies = services.copies
         let pending = urls.filter(copies.isPlaceholder)
         guard !pending.isEmpty else { action(); return nil }
-        let bytes = pending.map { Int64((try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0) }.saturatingSum
-        if bytes > 8 << 20 {
-            services.transfers.add(CopyFetchJob(pending, copies: copies, then: action))
-            return nil
-        }
+        let transfers = services.transfers
         return Task { [weak self] in
+            if await Self.size(of: pending) > 8 << 20 {
+                guard !Task.isCancelled else { return }
+                return transfers.add(CopyFetchJob(pending, copies: copies, then: action))
+            }
             do {
                 try Task.checkCancellation()
                 try await copies.fetch(pending)

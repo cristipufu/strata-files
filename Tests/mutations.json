@@ -3724,8 +3724,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let made = try await files.makeFolder(named: name, in: folder)",
-    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let made = try await files.makeFolder(named: name, in: folder)",
+    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
+    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
     "rule": "Browser copy provider ownership New Folder on a server uses the global remote files",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
@@ -7306,5 +7306,19 @@
     "replace": "        folder.standardizedFileURL.path\n",
     "rule": "Index: a folder reached through a link is judged by its link's path, not where it is",
     "tests": "IndexWorkerTests/foldersOverlapTheIndexByTheirRealPaths"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Cloud.swift",
+    "find": "            return status == .cloudOnly || status == .providerOnly && !entry.isDirectory && !entry.isSymlink",
+    "replace": "            return status == .cloudOnly || status == .providerOnly && !entry.isDirectory",
+    "rule": "Download Now asks a provider to download a link",
+    "tests": "SelectionChoiceTests/downloadNowTakesICloudItemsAndOtherProvidersFilesOnly"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        entries.filter { !$0.isDirectory || $0.isSymlink }.map(\\.url)",
+    "replace": "        entries.filter { !$0.isDirectory }.map(\\.url)",
+    "rule": "Quick Look leaves out a link to a folder",
+    "tests": "SelectionChoiceTests/quickLookTakesFilesAndLinksButNotFolders"
   }
 ]

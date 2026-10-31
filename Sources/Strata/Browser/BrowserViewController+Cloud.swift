@@ -9,12 +9,16 @@ extension BrowserViewController {
     }
 
     var downloadableCloudURLs: [URL] {
-        selectedURLs.filter { url in
-            let status = services.cloud.status(for: url)
-            if status == .cloudOnly { return true }
-            var info = stat()
-            return status == .providerOnly && lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
-        }
+        Self.downloadable(selectedEntries) { [cloud = services.cloud] in cloud.status(for: $0) }
+    }
+
+    /// What the listing read decides which items a provider can download: those in iCloud, and other providers' files
+    /// (not folders, not links).
+    static func downloadable(_ entries: [FileEntry], status: (URL) -> CloudStatus?) -> [URL] {
+        entries.filter { entry in
+            let status = status(entry.url)
+            return status == .cloudOnly || status == .providerOnly && !entry.isDirectory && !entry.isSymlink
+        }.map(\.url)
     }
 
     @objc func downloadNow(_ sender: Any?) {

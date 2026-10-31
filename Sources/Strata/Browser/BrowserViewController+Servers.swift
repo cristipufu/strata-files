@@ -33,16 +33,16 @@ extension BrowserViewController {
 
     /// A new "untitled folder" on the server, then renaming it right away, as on this Mac.
     func newFolderOnServer(in folder: URL) {
-        let existing = Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
         let base = FileOps.nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"), english: "untitled folder")
-        var name = base
-        var number = 2
-        while existing.contains(name.lowercased()) {
-            name = "\(base) \(number)"
-            number += 1
-        }
         let files = services.remote.files
         runOnServer(in: folder) { [weak self] in
+            let existing = await Self.names(in: folder)
+            var name = base
+            var number = 2
+            while existing.contains(name.lowercased()) {
+                name = "\(base) \(number)"
+                number += 1
+            }
             let made = try await files.makeFolder(named: name, in: folder)
             self?.renameWhenShown(made, in: folder)
         }
@@ -50,18 +50,27 @@ extension BrowserViewController {
 
     /// An empty "untitled.txt" on the server, like New File on this Mac.
     func newFileOnServer(in folder: URL) {
-        let name = newFileNameOnServer(in: folder)
         let files = services.remote.files
         runOnServer(in: folder) { [weak self] in
+            guard let name = await self?.newFileNameOnServer(in: folder) else { return }
             let made = try await files.makeFile(named: name, in: folder)
             self?.renameWhenShown(made, in: folder)
         }
     }
 
-    /// Choose a name from this pane's settings and listing before starting the server write.
-    func newFileNameOnServer(in folder: URL) -> String {
-        let existing = Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
+    /// A name from this pane's settings, not taken in the server's copy of `folder`.
+    func newFileNameOnServer(in folder: URL) async -> String {
         let ext = preferences.newFileExtension
+        return await Self.newFileName(extension: ext, in: folder)
+    }
+
+    /// The names in the server's copy of `folder`, lowercased: what a new item's name must not take.
+    @concurrent static func names(in folder: URL) async -> Set<String> {
+        Set(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).map { $0.lowercased() })
+    }
+
+    private static func newFileName(extension ext: String, in folder: URL) async -> String {
+        let existing = await names(in: folder)
         let base = FileOps.newFileName(extension: "")
         var name = FileOps.newFileName(extension: ext)
         var number = 2
@@ -200,10 +209,14 @@ extension BrowserViewController {
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
         let copies = services.remote.copies
         guard let folder, let (server, top) = copies.server(containing: folder) else { return false }
-        guard server.kind == .sftp, let path = RemoteCopies.remotePath(of: folder.resolvingSymlinksInPath(), top: top),
-              ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path)) else {
+        guard server.kind == .sftp else {
             Sounds.beep()
             return true
+        }
+        Task {
+            guard let path = RemoteCopies.remotePath(of: await Self.realURL(folder), top: top),
+                  ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path))
+            else { return Sounds.beep() }
         }
         return true
     }
