@@ -20,22 +20,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteCopies.setAsideForRemoval()
         Self.raiseFileLimit()
         registerRevealHandler()
-        FileViewStyle.applyTheme()
-        ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: [])
+        let preferences = browserServices.preferences
+        FileViewStyle.applyTheme(preferences)
+        ThemeStyle.apply(preferences.colorThemeOptions, windows: [])
         NotificationCenter.default.addObserver(forName: .appearanceChanged, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
-                FileViewStyle.applyTheme()
-                ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows)
+                FileViewStyle.applyTheme(preferences)
+                ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows)
             }
         }
         NotificationCenter.default.addObserver(forName: .colorThemeChanged, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows) }
+            MainActor.assumeIsolated { ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows) }
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
                                                           object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
-                FileViewStyle.applyTheme()
-                ThemeStyle.apply(Prefs.shared.colorThemeOptions, windows: NSApp.windows)
+                FileViewStyle.applyTheme(preferences)
+                ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows)
             }
         }
         NSApp.mainMenu = MainMenu.build()

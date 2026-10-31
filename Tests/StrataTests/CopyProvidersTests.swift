@@ -51,10 +51,10 @@ struct CopyProvidersTests {
     @Test func theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors() {
         for root in [RemoteCopies.root, ContainerCopies.root] {
             for url in [root, root.appending(path: "unregistered-copy/file")] {
-                #expect(CopyProviders.live.contains(url) && LazyCopies.contains(url))
+                #expect(CopyProviders.live.contains(url))
             }
             let neighbor = root.deletingLastPathComponent().appending(path: root.lastPathComponent + "-other/file")
-            #expect(!CopyProviders.live.contains(neighbor) && !LazyCopies.contains(neighbor))
+            #expect(!CopyProviders.live.contains(neighbor))
         }
     }
 

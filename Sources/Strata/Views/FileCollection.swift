@@ -433,8 +433,8 @@ enum FileViewStyle {
     }
 
     /// Light, dark, or the system's (Settings ▸ Appearance).
-    static func applyTheme() {
-        switch Prefs.shared.theme {
+    static func applyTheme(_ preferences: Prefs) {
+        switch preferences.theme {
         case 1: NSApp.appearance = NSAppearance(named: .aqua)
         case 2: NSApp.appearance = NSAppearance(named: .darkAqua)
         default: NSApp.appearance = nil

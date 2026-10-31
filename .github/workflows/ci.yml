@@ -7,10 +7,10 @@ on:
   push:
     branches: [main]
     paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/audit-main-thread.py", "scripts/audit-shared-defaults.py", "scripts/audit-layers.py", "scripts/swift_source.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/audit-main-thread.py", "scripts/audit-app-wide.py", "scripts/audit-layers.py", "scripts/swift_source.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
   pull_request:
     paths: ["Sources/**", "Tests/**", "Resources/**", "Package.swift", "Package.resolved", "docs/destructive-actions.md", "scripts/audit-destructive.py",
-            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/audit-main-thread.py", "scripts/audit-shared-defaults.py", "scripts/audit-layers.py", "scripts/swift_source.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
+            "scripts/mutate.py", "scripts/build.sh", "scripts/build-icon.py", "scripts/audit-theme-colors.py", "scripts/audit-main-thread.py", "scripts/audit-app-wide.py", "scripts/audit-layers.py", "scripts/swift_source.py", "scripts/run-test-check.py", "AGENTS.md", ".github/workflows/ci.yml", ".github/workflows/release.yml"]
 
 permissions:
   contents: read
@@ -39,8 +39,8 @@ jobs:
       - name: Main-thread blocking calls are reviewed
         run: python3 scripts/audit-main-thread.py
 
-      - name: No unreviewed default falls back to an app-wide instance
-        run: python3 scripts/audit-shared-defaults.py
+      - name: No unreviewed use of an app-wide instance outside the application's own code
+        run: python3 scripts/audit-app-wide.py
 
       - name: The model names nothing from the interface
         run: python3 scripts/audit-layers.py

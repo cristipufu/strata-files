@@ -38,7 +38,7 @@ python3 scripts/localize.py extract     # after editing Swift files: regenerates
 python3 scripts/localize.py check --all --complete  # every supported language must be complete
 python3 scripts/audit-theme-colors.py    # no unreviewed surface colors or unthemed Inspector gray text
 python3 scripts/audit-main-thread.py     # no unreviewed blocking calls on the main thread
-python3 scripts/audit-shared-defaults.py # no unreviewed default falling back to an app-wide instance
+python3 scripts/audit-app-wide.py        # no unreviewed app-wide instance outside App, Settings, Dock, AppUpdates
 python3 scripts/audit-layers.py          # Sources/Strata/Model names no Browser, Window, Views… type
 python3 scripts/audit-destructive.py --check  # the map names every flagged function; mutations.json fits the code
 python3 -m unittest discover -s Tests -p 'test_*.py'  # checkers and generated resources
@@ -161,9 +161,10 @@ These apply everywhere below; the sections that follow add only what is specific
 - **One environment per window.** A window's settings, stores, providers, History and server access all come from its
   `BrowserServices`. Injected code never falls back to application-wide stores, and notifications are scoped by their
   owner even when environments share a notification center. Pass the owner's instance as an argument nobody can leave
-  out, and keep what a view or job needs from when it's made rather than reading it through a weak owner: a parameter
-  or property defaulting to `.shared` or `.live`, or a fallback like `owner?.copies ?? .live`, fails
-  `scripts/audit-shared-defaults.py` unless `Tests/shared-defaults.json` lists it with a reviewed reason.
+  out, and keep what a view or job needs from when it's made rather than reading it through a weak owner. A
+  parameter or property defaulting to `.shared` or `.live`, a fallback like `owner?.copies ?? .live`, and, outside
+  the application's own code (App, Settings, Dock, AppUpdates, `main.swift`), any use of an app-wide instance such as
+  `TagStore.shared` fail `scripts/audit-app-wide.py` unless `Tests/app-wide.json` lists it with a reviewed reason.
 - **One owner per asynchronous request**: a pane, sheet, session or provider actor. Replacing the request, navigating,
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over
@@ -196,10 +197,10 @@ These apply everywhere below; the sections that follow add only what is specific
   mutate a supplied queue when constructing a window; copy routing is immutable.
 - `BrowserServices` owns its `Clipboard`, `CopyProviders` (`remoteCopies`, `containerCopies` and `clipboardRoot`),
   `ContainerFiles`, `ContainerStore`, `FileIndex` and the stores file views read (`TagStore`, `CloudStore` and
-  `GitStatusStore`, handed to Icons, Columns and Gallery together as `statuses`), and passes them to `TransferQueue`, `TransferJob`, `RemoteUploadJob`,
-  `BrowserViewController` (server and container commands, deletion plans, clipboard staging, `Copy Path`, archive
-  checks, drag and drop), `InspectorViewController`, `PathBar` and every presentation (`FileOutlineView`, Icons,
-  Columns, Gallery, Disk Usage, Sidebar).
+  `GitStatusStore`, handed to Icons, Columns and Gallery together as `statuses`), and passes them to `TransferQueue`,
+  `TransferJob`, `RemoteUploadJob`, `BrowserViewController` (server and container commands, deletion plans, clipboard
+  staging, `Copy Path`, archive checks, drag and drop), `InspectorViewController`, `PathBar` and every presentation
+  (`FileOutlineView`, Icons, Columns, Gallery, Disk Usage, Sidebar).
 - Transfer queues own their preferences and History, through archive work, retries and every Undo/Redo step,
   including queued moves across disks; an injected job never falls back to the global queue. Active work keeps its
   queue until completion, but finished jobs must not form a queue/job retain cycle. Queue-held completion callbacks
@@ -209,10 +210,10 @@ These apply everywhere below; the sections that follow add only what is specific
   `Browser`, `Window`, `Transfers`, `Remote` or `Containers`. The rest of `Sources/Strata/Model` compiles into the app,
   where `scripts/audit-layers.py` keeps it from naming any interface type (Browser, Window, Views, Sidebar, Toolbar,
   Inspector, Palette, Dock, Settings, Previewing): pass what it needs in, as `CloudStore.foldersShown` is set by
-  `main.swift`, or move the type down, as `Fuzzy` lives in `Support`. `FileThumbnails` and `ItemInfoLoader` resolve container
-  and Compose stack icon marks and status text from their injected `CopyProviders` and `ContainerStore`; `FileDrop` and
-  `ShelfWell` use their injected or active window's `CopyProviders`; `PathSuggestions` reads `showHidden` from its
-  injected `Prefs`.
+  `main.swift`, or move the type down, as `Fuzzy` lives in `Support`. `FileThumbnails` and `ItemInfoLoader` resolve
+  container and Compose stack icon marks and status text from their injected `CopyProviders` and `ContainerStore`;
+  `FileDrop` and `ShelfWell` use their injected or active window's `CopyProviders`; `PathSuggestions` reads `showHidden`
+  from its injected `Prefs`.
 - **Settings.** Windows, panes, sidebars and View Options use the preferences and notification center in
   `BrowserServices`, and pass them into native file views, typography, rename fields and favorite operations. An
   injected pane never reads or changes another environment's settings: file views have no app-wide font or sort

@@ -1,0 +1,88 @@
+[
+ {
+  "instance": "IconCache.shared",
+  "reason": "macOS's icons for a file, a type or a folder are the same in every window; the cache only saves reading them again."
+ },
+ {
+  "instance": "ShortcutStore.shared",
+  "reason": "Keyboard shortcuts are the app's: every window's menus, palette and Shortcuts window show the same ones."
+ },
+ {
+  "file": "Sources/Strata/App/MainMenu.swift",
+  "instance": "Workspaces.shared",
+  "count": 1,
+  "reason": "The app's Workspaces menu: with no browser window in front, it lists and saves the app's own workspaces."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
+  "instance": "ShelfPanel.shared",
+  "count": 1,
+  "reason": "Add to Shelf: the Shelf is the app's one panel, shared by every window."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController+AppUpdates.swift",
+  "instance": "Updates.shared",
+  "count": 2,
+  "reason": "Updating Strata itself is the app's: opening this copy of Strata from a window checks with the app's updater."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerDrag.swift",
+  "instance": "ContainerPromises.shared",
+  "count": 1,
+  "reason": "The app's one queue for file promises (two at a time); each promise fetches through the copies its drag item carries."
+ },
+ {
+  "file": "Sources/Strata/Model/Privacy.swift",
+  "instance": "Prefs.shared",
+  "count": 4,
+  "reason": "What macOS lets Strata read (Full Disk Access, protected folders) is the app's, whichever window found out, as is the welcome shown once."
+ },
+ {
+  "file": "Sources/Strata/Model/Privacy.swift",
+  "instance": "FileIndex.shared",
+  "count": 1,
+  "reason": "Access to a protected folder changes what the app's index may read."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteConnections.swift",
+  "instance": "RemoteSessions.shared",
+  "count": 1,
+  "reason": "Composes the app's own RemoteConnections.shared; independent environments compose theirs in RemoteServices."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteConnections.swift",
+  "instance": "RemoteFiles.shared",
+  "count": 1,
+  "reason": "Composes the app's own RemoteConnections.shared: disconnecting discards the app's copies."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteServers.swift",
+  "instance": "RemoteRegistry.shared",
+  "count": 1,
+  "reason": "The app's saved servers; independent environments own their store, registry and credentials together."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteServers.swift",
+  "instance": "RemoteConnections.shared",
+  "count": 1,
+  "reason": "Removing one of the app's saved servers (Settings) ends the app's connections to it."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteSession.swift",
+  "instance": "RemoteKeychain.shared",
+  "count": 1,
+  "reason": "Composes the app's own RemoteSessions.shared: its logins read the app's keychain."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteSession.swift",
+  "instance": "RemoteStatus.shared",
+  "count": 1,
+  "reason": "Composes the app's own RemoteSessions.shared: it reports to the app's connection status."
+ },
+ {
+  "file": "Sources/Strata/Window/ShelfPanel.swift",
+  "instance": ".live",
+  "count": 3,
+  "reason": "The Shelf is the app's, not a window's: it uses the active window's copies (AGENTS.md), and with no window active, the app's, which production windows share."
+ }
+]

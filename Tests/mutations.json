@@ -3478,14 +3478,14 @@
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
     "find": "let isCopy = services.copies.contains(entry.url)",
-    "replace": "let isCopy = LazyCopies.contains(entry.url)",
+    "replace": "let isCopy = CopyProviders.live.contains(entry.url)",
     "rule": "Inspector provider ownership single-item metadata uses the global copy store",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
     "find": "if services.copies.contains(item.url) { return true }",
-    "replace": "if LazyCopies.contains(item.url) { return true }",
+    "replace": "if CopyProviders.live.contains(item.url) { return true }",
     "rule": "Inspector provider ownership multi-selection leaves provider folders calculating",
     "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
   },
@@ -3506,7 +3506,7 @@
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
     "find": "!entry.isSymlink && !services.copies.isPlaceholder(entry.url)",
-    "replace": "!entry.isSymlink && !LazyCopies.isPlaceholder(entry.url)",
+    "replace": "!entry.isSymlink && !CopyProviders.live.isPlaceholder(entry.url)",
     "rule": "Inspector provider ownership preview placeholder check uses the global copy store",
     "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
   },
@@ -3653,7 +3653,7 @@
   {
     "file": "Strata/Remote/CopyProviders.swift",
     "find": "if contains(url) { return displayPath(url) }",
-    "replace": "if LazyCopies.contains(url) { return LazyCopies.displayPath(url) }",
+    "replace": "if CopyProviders.live.contains(url) { return CopyProviders.live.displayPath(url) }",
     "rule": "Browser copy provider ownership Copy Path uses the global copy provider",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },

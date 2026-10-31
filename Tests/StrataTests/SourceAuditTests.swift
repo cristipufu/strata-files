@@ -18,8 +18,8 @@ struct SourceAuditTests {
         #expect(status == 0, Comment(rawValue: output))
     }
 
-    @Test func defaultsFallingBackToAppWideInstancesHaveAReviewedReason() async throws {
-        let (status, output) = try await run("scripts/audit-shared-defaults.py")
+    @Test func appWideInstancesOutsideTheApplicationsOwnCodeHaveAReviewedReason() async throws {
+        let (status, output) = try await run("scripts/audit-app-wide.py")
         #expect(status == 0, Comment(rawValue: output))
     }
 

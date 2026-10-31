@@ -1,22 +1,8 @@
 import Foundation
 
-/// Copies filled in as you browse: containers' files (`ContainerCopies`) and servers' (`RemoteCopies`). What they have
-/// in common (a folder is listed when it's shown, files are fetched before they're opened, previewed, dragged or
-/// copied, placeholders stand in until then) goes through here, whichever kind a path is in.
+/// Copies filled in as you browse: containers' files (`ContainerCopies`) and servers' (`RemoteCopies`). Reading them
+/// goes through a window's `CopyProviders`; what's here is the clipboard staging they all share.
 nonisolated enum LazyCopies {
-    private static let providers = CopyProviders.live
-
-    static func contains(_ url: URL) -> Bool { providers.contains(url) }
-    static func isPlaceholder(_ url: URL) -> Bool { providers.isPlaceholder(url) }
-    static func refresh(_ folder: URL) async { await providers.refresh(folder) }
-    static func invalidate(_ folder: URL) async { await providers.invalidate(folder) }
-    static func reveal(_ url: URL) async -> Bool { await providers.reveal(url) }
-    static func fetch(_ urls: [URL]) async throws { try await providers.fetch(urls) }
-    static func fetchSelection(_ urls: [URL], limit: Int64) async { await providers.fetchSelection(urls, limit: limit) }
-    static func prepareForCopying(_ urls: [URL]) async throws { try await providers.prepareForCopying(urls) }
-    static func message(for error: Error, about url: URL) -> String { providers.message(for: error, about: url) }
-    static func displayPath(_ url: URL) -> String? { providers.displayPath(url) }
-
     /// Where items copied to the clipboard from a copy are staged (see `stageForClipboard`), next to the copies.
     static let clipboardRoot: URL = RemoteCopies.root.deletingLastPathComponent()
         .appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
@@ -59,10 +45,5 @@ nonisolated enum LazyCopies {
     static func removeClipboardStaging() {
         guard FileManager.default.fileExists(atPath: clipboardRoot.path) else { return }
         Archiver.removeTree(clipboardRoot)
-    }
-
-    /// The container or server an item comes from, by name.
-    static func sourceName(_ url: URL) -> String? {
-        providers.sourceName(url)
     }
 }

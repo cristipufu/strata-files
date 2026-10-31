@@ -508,7 +508,7 @@ struct BrowserCopyProviderTests {
         #expect(staged.count == 2)
         #expect(second.clipboard.read().urls.isEmpty)
         #expect(staged.allSatisfy { $0.standardizedFileURL.path.hasPrefix(first.copies.clipboardRoot.standardizedFileURL.path + "/") })
-        #expect(staged.allSatisfy { !first.copies.contains($0) && !LazyCopies.contains($0) })
+        #expect(staged.allSatisfy { !first.copies.contains($0) && !CopyProviders.live.contains($0) })
         #expect(first.copies.stageForClipboard([escapingLink]).isEmpty)
 
         // Copy Path in Browser writes to the environment's clipboard pasteboard (and uses the provider's displayPath in the browser).

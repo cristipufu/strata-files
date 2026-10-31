@@ -483,7 +483,7 @@ struct RemoteFilesTests {
         #expect(staged.last == elsewhere)
         let docs = staged[0], note = staged[1]
         #expect(docs.path.hasPrefix(LazyCopies.clipboardRoot.path) && note.path.hasPrefix(LazyCopies.clipboardRoot.path))
-        #expect(!LazyCopies.contains(docs) && !RemoteCopies.contains(note))
+        #expect(!CopyProviders.live.contains(docs) && !RemoteCopies.contains(note))
         #expect(try String(contentsOf: note, encoding: .utf8) == "hello")
         #expect(try String(contentsOf: docs.appending(path: "inside.txt"), encoding: .utf8) == "inside")
         // Ordinary files: writable, unlike in the copy.
