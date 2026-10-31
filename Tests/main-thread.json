@@ -76,5 +76,83 @@
   "call": "PreviewFileView.isStillRegular(_:)",
   "count": 2,
   "reason": "The one item about to be previewed, checked just before a renderer opens it by path (it can't be handed a descriptor): a pipe swapped in for it would hang the renderer, a link would show what it points to."
+ },
+ {
+  "helper": "ContainerCopyStore(root:)",
+  "reason": "Strata's own cache folder for containers' copies, looked at once when a window's services are made: in its caches on the startup disk."
+ },
+ {
+  "helper": "RemoteCopyStore(root:)",
+  "reason": "Strata's own cache folder for servers' copies, looked at once when a window's services are made: in its caches on the startup disk."
+ },
+ {
+  "helper": "Prefs.registerTestCleanup()",
+  "reason": "Only in its `atexit` callback, as the process ends: the test preference domain's own file."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 2,
+  "reason": "Rename, the one item you renamed: what it is before its confirmation, checked again as the name is committed (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "FileInfoEditing.comment(at:)",
+  "count": 2,
+  "reason": "Get Info's comment, of the one item shown, as you finish editing it: read to see whether it changed (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "ChosenFile(_:)",
+  "count": 1,
+  "reason": "Get Info's comment: the one item shown, chosen as you begin editing it, so the comment is saved on that item (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "FileInfoEditing.setComment(_:)",
+  "count": 1,
+  "reason": "Get Info's comment, saved on the one item you edited it for (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "TransferEngine.exists(_:)",
+  "count": 1,
+  "reason": "Rename: whether the one new name is taken (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileOps.available(_:)",
+  "count": 1,
+  "reason": "New Folder: a free name for the one folder made (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileOps.canTrash(_:)",
+  "count": 1,
+  "reason": "Only the undo of New Folder and New File, with the one item it made: inside the UndoManager callback, where its redo must be registered."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewCommands.swift",
+  "call": "ChosenFile(_:)",
+  "count": 1,
+  "reason": "A preview command on the one item you chose: what it is when the command is chosen, so the command acts on that item."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewCommands.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "A preview command on the one item you chose: its preview's root checked again just before the command acts."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewFileView.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "A member copied out of an archive for its preview: Strata's own private copy, just written, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Queue/TransferJob.swift",
+  "call": "TransferJob.isInside(_:)",
+  "count": 1,
+  "reason": "Applying the decision you made in the conflict sheet to its one item: whether the item would go inside itself."
  }
 ]

@@ -55,8 +55,9 @@ OFF_MAIN = re.compile("|".join([
     r"\bonWorkerThread\b",
     # The read handed to a pane's action, its first closure (the action that gets the answer runs on the main actor).
     r"\bafterReading\(\s*$",
-    r"\bblocking\s*(?:\(|\{)",
-    r"\bThread\s*\{",
+    # A header ends where its block's `{` begins.
+    r"\bblocking\s*(?:\(|$)",
+    r"\bThread\s*$",
     r"\baddOperation\b",
 ]))
 MAIN_QUEUE = re.compile(r"\bDispatchQueue\.main\.async")
