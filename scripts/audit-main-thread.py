@@ -124,6 +124,18 @@ def label(code, open_paren):
     return match.group(1) if match and match.group(1) != "_" else "_"
 
 
+def arity(source, open_paren):
+    """How many arguments (or parameters) the parentheses at `open_paren` hold."""
+    end = closing(source.code, open_paren)
+    if end is None or not source.text[open_paren + 1:end].strip():
+        return 0
+    depth, count = 0, 1
+    for char in source.code[open_paren + 1:end]:
+        depth += {"(": 1, "[": 1, "{": 1, ")": -1, "]": -1, "}": -1}.get(char, 0)
+        count += char == "," and depth == 0
+    return count
+
+
 def closing(code, open_paren):
     depth = 0
     for index in range(open_paren, len(code)):
@@ -153,7 +165,8 @@ def functions(source):
         block = next(((start, stop) for start, stop in source.blocks if start == body), None)
         owner = source.owner(match.start())
         if block and owner:
-            found.setdefault((owner, match.group(1) or "init", label(source.text, open_paren)), []).append((source, block))
+            key = (owner, match.group(1) or "init", label(source.text, open_paren))
+            found.setdefault(key, []).append((source, block, arity(source, open_paren)))
     return found
 
 
@@ -169,14 +182,16 @@ def calls(source, start, end):
         if awaited(source.code, match.start()):
             continue
         target = source.owner(match.start()) if match.group(1) == "Self" else match.group(1)
-        yield match.start(), (target, match.group(2), label(source.text, match.end() - 1))
+        yield match.start(), (target, match.group(2), label(source.text, match.end() - 1)), arity(source, match.end() - 1)
     for match in CONSTRUCTED.finditer(source.code, start, end):
         if not awaited(source.code, match.start()):
-            yield match.start(), (match.group(1), "init", label(source.text, match.end() - 1))
+            yield match.start(), (match.group(1), "init", label(source.text, match.end() - 1)), arity(source, match.end() - 1)
     for match in UNQUALIFIED.finditer(source.code, start, end):
-        if re.search(r"\bfunc\s*$", source.code[max(0, match.start() - 8):match.start()]) or awaited(source.code, match.start()):
+        # An initializer is only called through its type or `self.`/`super.`; `init(` alone declares one.
+        if (match.group(1) == "init" or re.search(r"\bfunc\s*$", source.code[max(0, match.start() - 8):match.start()])
+                or awaited(source.code, match.start())):
             continue
-        yield match.start(), (source.owner(match.start()), match.group(1), label(source.text, match.end() - 1))
+        yield match.start(), (source.owner(match.start()), match.group(1), label(source.text, match.end() - 1)), arity(source, match.end() - 1)
 
 
 def blocking_functions(sources, reviewed=frozenset()):
@@ -187,29 +202,34 @@ def blocking_functions(sources, reviewed=frozenset()):
         for key, bodies in functions(source).items():
             if display(key) not in reviewed:
                 candidates.setdefault(key, []).extend(bodies)
+    # Each overload by its key and how many parameters it takes; a call can't be one taking fewer than it passes.
     blocking = {}
     for key, bodies in candidates.items():
-        for source, (start, end) in bodies:
+        for source, (start, end), count in bodies:
             direct = next((match for match in CALLS.finditer(source.code, start, end)
                            if not source.off_main(match.start(), within=(start, end))), None)
             if direct:
-                blocking[key] = re.sub(r"\s+", "", direct.group(0))
-                break
+                blocking.setdefault(key, {})[count] = re.sub(r"\s+", "", direct.group(0))
     while True:
         grown = {}
         for key, bodies in candidates.items():
-            if key in blocking:
-                continue
-            for source, (start, end) in bodies:
-                called = next((called for position, called in calls(source, start, end)
-                               if called in blocking and called != key
+            for source, (start, end), count in bodies:
+                if count in blocking.get(key, {}):
+                    continue
+                called = next((called for position, called, passed in calls(source, start, end)
+                               if blocks(called, passed, blocking) and called != key
                                and not source.off_main(position, within=(start, end))), None)
                 if called:
-                    grown[key] = display(called)
-                    break
+                    grown.setdefault(key, {})[count] = display(called)
         if not grown:
             return blocking
-        blocking.update(grown)
+        for key, counts in grown.items():
+            blocking.setdefault(key, {}).update(counts)
+
+
+def blocks(called, passed, blocking):
+    """Whether a call passing `passed` arguments to `called` may reach one of its overloads that blocks."""
+    return any(count >= passed for count in blocking.get(called, {}))
 
 
 def display(key):
@@ -227,8 +247,8 @@ def findings(source, blocking=None):
             continue
         line = source.line(match.start())
         found.append((line, re.sub(r"\s+", "", match.group(0)), source.original[line - 1].strip()))
-    for position, called in calls(source, 0, len(source.code)) if blocking else ():
-        if called in blocking and not source.off_main(position):
+    for position, called, passed in calls(source, 0, len(source.code)) if blocking else ():
+        if blocks(called, passed, blocking) and not source.off_main(position):
             line = source.line(position)
             found.append((line, display(called), source.original[line - 1].strip()))
     return sorted(found)
@@ -274,7 +294,7 @@ def check(root, entries, derived=False):
         expected[key] = entry.get("count", 0)
     for path, line, call, text in uses:
         if (path, call) not in expected:
-            through = f" through {call}" if "." in call.split("(")[0] and call.endswith(")") else ""
+            through = f" through {call}" if through_helper(call) else ""
             problems.append(f"{path}:{line}: Blocks the main thread{through}; move it off (see AGENTS.md) or review it: {text}")
     for key, count in expected.items():
         if found[key] != count:

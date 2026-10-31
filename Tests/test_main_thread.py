@@ -81,6 +81,14 @@ class MainThreadAuditTests(unittest.TestCase):
             self.assertEqual(AUDIT.check(root, [entry]), [])
             self.assertEqual(AUDIT.check(root, [entry], derived=True), [])
 
+    def test_an_overload_taking_fewer_arguments_than_a_call_passes_isnt_it(self):
+        code = ("nonisolated struct Item {\n    init(url: String) { _ = stat(url, nil) }\n"
+                "    init(url: String, name: String, size: Int) {}\n}\n"
+                "func show() {\n    _ = Item(url: \"a\", name: \"b\", size: 1)\n}\n")
+        self.assertEqual(self.check(code), [])
+        issues = self.check(code.replace('Item(url: "a", name: "b", size: 1)', 'Item(url: "a")'))
+        self.assertTrue(any("through Item(url:)" in issue for issue in issues))
+
     def test_a_reviewed_helper_counts_nowhere_and_must_still_block(self):
         helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
         code = helper + "func show() {\n    _ = Disk.isThere(\"a\")\n}\n"
