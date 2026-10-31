@@ -15,6 +15,8 @@ struct WorkspaceOwnershipTests {
         var opened: [BrowserWindowController] = []
         var parents: [NSWindow?] = []
         var failAt: Int?
+        /// What the app would have brought to the front: never on screen in a test.
+        var shown: [NSWindow] = []
 
         var boundary: BrowserWindows {
             BrowserWindows(controllers: { [weak self] in self?.visible ?? [] }, open: { [weak self] location, second, parent, services in
@@ -26,7 +28,7 @@ struct WorkspaceOwnershipTests {
                 opened.append(controller)
                 parents.append(parent)
                 return controller
-            })
+            }, show: { [weak self] window in self?.shown.append(window) })
         }
 
         func detach() {
@@ -286,10 +288,13 @@ struct WorkspaceOwnershipTests {
         #expect(env.services.workspaces.open(saved) == nil)
         await first.value
         #expect(env.windows.opened.count == 1 && env.windows.opened[0].workspaceName == saved.name)
+        let window = try #require(env.windows.opened[0].window)
+        #expect(env.windows.shown == [window])
         // Open now: chosen again, its window comes forward.
         env.windows.visible = env.windows.opened
         await env.services.workspaces.open(saved)?.value
-        #expect(env.windows.opened.count == 1)
+        #expect(env.windows.opened.count == 1 && env.windows.shown == [window, window])
+        #expect(!window.isVisible)
         #expect(tree.snapshot() == before)
     }
 

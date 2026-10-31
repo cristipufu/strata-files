@@ -441,6 +441,8 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   ownership, and that reuse needs its own coverage. Keep parked originals alive through cleanup so their identities
   can't be reused before the checks. Never empty, trash or delete a real Trash, even to show it's refused: test the
   decision (`FileOps.canTrash`, `deletionPlan`), and pass `Trash.empty(_:)` a fake folder.
+- Tests never put a window on screen: bring windows forward through the window boundary (`BrowserWindows.show`), which
+  headless environments leave empty, never with `makeKeyAndOrderFront` in code a test reaches.
 - Strata's sounds stay silent until `main.swift` turns them on, so tests that refuse or trash things play none: play
   them through `Sounds`, never `NSSound`, `NSBeep` or `AudioServicesPlay…` (a Python check enforces this).
 - Never use `NSPasteboard.general` or Strata's own preferences. Inject

@@ -7,6 +7,8 @@ struct BrowserWindows {
     var open: (URL, URL?, NSWindow?, BrowserServices) -> BrowserWindowController?
     var preview: (NSPanel, NSView) -> Bool = { _, _ in true }
     var openFile: (URL) -> Void = { _ in }
+    /// Brings a window to the front, out of the Dock if it's there: on screen only in the app, never in tests.
+    var show: (NSWindow) -> Void = { _ in }
 
     static let headless = BrowserWindows(controllers: { [] }, open: { _, _, _, _ in nil })
 
@@ -20,5 +22,9 @@ struct BrowserWindows {
             panel.makeKeyAndOrderFront(nil)
             return true
         },
-        openFile: { NSWorkspace.shared.open($0) })
+        openFile: { NSWorkspace.shared.open($0) },
+        show: { window in
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        })
 }

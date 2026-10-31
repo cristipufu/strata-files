@@ -11,6 +11,7 @@ final class Workspaces {
     private weak var services: BrowserServices?
     private let preferences: Prefs
     private let remote: RemoteServices
+    private let windows: BrowserWindows
     private let key = "workspaces"
     /// Workspaces whose folders are being looked at before they open.
     private var planning: Set<String> = []
@@ -19,6 +20,7 @@ final class Workspaces {
         self.services = services
         preferences = services.preferences
         remote = services.remote
+        windows = services.windows
     }
 
     /// Only this environment’s live tabs contribute to a saved workspace.
@@ -216,9 +218,8 @@ final class Workspaces {
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
             let front = window.tabGroup?.selectedWindow ?? window
-            if front.isMiniaturized { front.deminiaturize(nil) }
             if connecting.contains(workspace.name) {
-                front.makeKeyAndOrderFront(nil)
+                windows.show(front)
                 return nil
             }
             if let current, (window.tabGroup?.windows ?? [window]).contains(current) {
@@ -255,7 +256,7 @@ final class Workspaces {
         guard !controllers.isEmpty else { return }
         old.forEach { $0.workspaceName = nil }
         if let frame { controllers.first?.window?.setFrame(frame, display: false) }
-        controllers.first?.window?.makeKeyAndOrderFront(nil)
+        if let shown = controllers.first?.window { windows.show(shown) }
         // After this click (or menu choice) is done with the window it came from.
         DispatchQueue.main.async { old.forEach { $0.window?.close() } }
         connect(controllers, of: workspace, missing: plan.missing, offline: plan.offline)
@@ -263,7 +264,7 @@ final class Workspaces {
 
     /// Its window, open elsewhere, to the front; panes still waiting get another go.
     private func bringForward(_ window: NSWindow, of workspace: Workspace) -> Task<Void, Never> {
-        window.makeKeyAndOrderFront(nil)
+        windows.show(window)
         let controllers = ownedControllers(of: window)
         // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
         let waiting = controllers.map { controller in (controller, controller.waitingPanes.filter { $0.folder.mountPoint == nil }) }
