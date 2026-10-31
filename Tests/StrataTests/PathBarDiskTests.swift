@@ -19,12 +19,16 @@ import Testing
     }
 
     @Test func aTypedPathIsAFolderAnotherItemOrNothing() async throws {
-        let tree = try TestTree("folder/", "file.txt", "Tool.app/Contents/")
-        #expect(await PathBar.kind(of: tree.url("folder").path) == .folder)
-        #expect(await PathBar.kind(of: tree.url("file.txt").path) == .item)
-        #expect(await PathBar.kind(of: tree.url("Tool.app").path) == .item)
-        #expect(await PathBar.kind(of: tree.url("missing").path) == nil)
-        #expect(tree.snapshot() == ["Tool.app/", "Tool.app/Contents/", "file.txt", "folder/"])
+        let tree = try TestTree("folder/", "file.txt", "Tool.app/Contents/", "folder link -> folder", "file link -> file.txt")
+        func opening(_ path: String) async -> FileEntry.Opening { await FileEntry.opening(tree.url(path)) }
+        #expect(await opening("folder") == .folder)
+        #expect(await opening("file.txt") == .item)
+        #expect(await opening("Tool.app") == .item)
+        #expect(await opening("missing") == .missing)
+        // A link opens what it leads to: a link to a folder goes into it.
+        #expect(await opening("folder link") == .folder)
+        #expect(await opening("file link") == .item)
+        #expect(tree.snapshot() == ["Tool.app/", "Tool.app/Contents/", "file link -> file.txt", "file.txt", "folder link -> folder", "folder/"])
     }
 
     @Test func completionAndChevronsListOnlyTheFoldersTheyShow() async throws {
@@ -38,7 +42,7 @@ import Testing
     }
 
     @Test func returnOpensAFolderOrShowsAFileAndANewerTextWins() async throws {
-        let tree = try TestTree("start/", "folder/", "file.txt")
+        let tree = try TestTree("start/", "folder/", "file.txt", "folder link -> folder")
         let environment = try IndependentEnvironment()
         let bar = pathBar(environment, at: tree.url("start"))
         var navigated: [(String, String?)] = []
@@ -53,6 +57,12 @@ import Testing
         await bar.suggesting?.value
         #expect(navigated.count == 2 && navigated[1].0 == tree.root.standardizedFileURL.path
                 && navigated[1].1 == tree.url("file.txt").standardizedFileURL.path)
+        // A link to a folder goes into it, as the folder would.
+        bar.beginEditing()
+        bar.editorField.stringValue = tree.url("folder link").path
+        press(#selector(NSResponder.insertNewline(_:)), in: bar)
+        await bar.suggesting?.value
+        #expect(navigated.count == 3 && navigated[2].0 == tree.url("folder link").standardizedFileURL.path && navigated[2].1 == nil)
         // Typed on while the disk was asked: the answer was for older text.
         bar.beginEditing()
         bar.editorField.stringValue = tree.url("folder").path
@@ -60,8 +70,8 @@ import Testing
         let pending = bar.suggesting
         bar.editorField.stringValue = tree.url("fold").path
         await pending?.value
-        #expect(navigated.count == 2 && bar.isEditing)
-        #expect(tree.snapshot() == ["file.txt", "folder/", "start/"])
+        #expect(navigated.count == 3 && bar.isEditing)
+        #expect(tree.snapshot() == ["file.txt", "folder link -> folder", "folder/", "start/"])
     }
 
     @Test func tabCompletesToTheOnlyFolderThatMatches() async throws {

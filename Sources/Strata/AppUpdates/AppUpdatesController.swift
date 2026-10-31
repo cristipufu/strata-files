@@ -284,7 +284,7 @@ private final class AppUpdateRow: NSView {
         updateAccessibility()
         reading = Task { [weak self, url] in
             let image = await IconCache.shared.currentIcon(forPath: url.path)
-            guard let self, !Task.isCancelled else { return }
+            guard let self, let image else { return }
             icon.image = image
         }
     }

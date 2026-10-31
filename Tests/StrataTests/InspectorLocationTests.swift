@@ -24,7 +24,7 @@ struct InspectorLocationTests {
     @Test func whereReadsAsOnePathEndingInTheFolderName() async throws {
         let tree = try TestTree("Projects/Site/index.html")
         let folder = tree.url("Projects/Site")
-        let view = await read(InspectorLocationView(folder: folder, shownAs: folder) {})
+        let view = await read(InspectorLocationView(folder: folder, shownAs: folder, looks: FinderLooks()) {})
         #expect(shown(view) == Format.tildePath(tree.url("Projects")) + "/Site")
         #expect(view.toolTip == shown(view))
         // The path leading there is secondary ink; the folder's name is primary ink and comes last.
@@ -36,13 +36,13 @@ struct InspectorLocationTests {
 
         // The top of the disk shows its name alone, never a stray "/" with it.
         let top = URL(fileURLWithPath: "/")
-        #expect(shown(await read(InspectorLocationView(folder: top, shownAs: top) {})) == FileManager.default.displayName(atPath: "/"))
+        #expect(shown(await read(InspectorLocationView(folder: top, shownAs: top, looks: FinderLooks()) {})) == FileManager.default.displayName(atPath: "/"))
 
         // Server and container folders join their location the same way; a server's top keeps its address under
         // its name, because the address describes the server instead of leading to it.
         func joined(_ name: String, in location: String, leadsHere: Bool = true) -> String {
             shown(InspectorLocationView(folder: folder, shownAs: folder, name: name, location: location,
-                                        locationLeadsHere: leadsHere) {})
+                                        locationLeadsHere: leadsHere, looks: FinderLooks()) {})
         }
         #expect(joined("app", in: "web-1:/srv") == "web-1:/srv/app")
         #expect(joined("etc", in: "web:/") == "web:/etc")
@@ -57,10 +57,10 @@ struct InspectorLocationTests {
         let app = tree.url("Tool.app"), colon = tree.url("a:b")
         try #require(FileManager.default.displayName(atPath: app.path) == "Tool")
         try #require(FileManager.default.displayName(atPath: colon.path) == "a/b")
-        let appView = await read(InspectorLocationView(folder: app, shownAs: app) {})
+        let appView = await read(InspectorLocationView(folder: app, shownAs: app, looks: FinderLooks()) {})
         #expect(shown(appView) == Format.tildePath(tree.root) + "/Tool.app")
         #expect(appView.accessibilityLabel() == String(localized: "Show “\("Tool")”", comment: "Inspector: the item’s folder, as a button that shows it"))
-        #expect(shown(await read(InspectorLocationView(folder: colon, shownAs: colon) {})) == Format.tildePath(tree.root) + "/a:b")
+        #expect(shown(await read(InspectorLocationView(folder: colon, shownAs: colon, looks: FinderLooks()) {})) == Format.tildePath(tree.root) + "/a:b")
         #expect(tree.snapshot() == ["Tool.app/", "a/", "a/b/", "a:b/"])
     }
 
@@ -69,7 +69,7 @@ struct InspectorLocationTests {
         // A Hebrew name, a Latin name behind an invisible right-to-left mark, and an override left open in the path.
         let cases: [(name: String, location: String)] = [("מסמכים", "~"), ("\u{200F}Docs", "~"), ("Docs", "~/a\u{202E}bc")]
         for (name, location) in cases {
-            let view = InspectorLocationView(folder: folder, shownAs: folder, name: name, location: location) {}
+            let view = InspectorLocationView(folder: folder, shownAs: folder, name: name, location: location, looks: FinderLooks()) {}
             let text = view.pathLabel.attributedStringValue
             let storage = NSTextStorage(attributedString: text)
             let layout = NSLayoutManager()
@@ -98,7 +98,7 @@ struct InspectorLocationTests {
     @Test func aLongPathWrapsInFullFollowsResizingAndLinesUpWithItsTitle() throws {
         let tree = try TestTree("Clients/Northwind Traders/Quarterly Reports/2026/")
         let folder = tree.url("Clients/Northwind Traders/Quarterly Reports/2026")
-        let view = InspectorLocationView(folder: folder, shownAs: folder) {}
+        let view = InspectorLocationView(folder: folder, shownAs: folder, looks: FinderLooks()) {}
         let title = String(localized: "Where", comment: "Inspector row: the folder the item is in")
         let rows = InspectorRows()
         rows.set([(title, view)])
@@ -138,7 +138,7 @@ struct InspectorLocationTests {
 
     @Test func theIconStaysOnTheFirstLineWhateverItsImageReports() throws {
         let tree = try TestTree("Projects/Site/")
-        let view = InspectorLocationView(folder: tree.url("Projects/Site"), shownAs: tree.url("Projects/Site")) {}
+        let view = InspectorLocationView(folder: tree.url("Projects/Site"), shownAs: tree.url("Projects/Site"), looks: FinderLooks()) {}
         let host = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
         view.translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(view)

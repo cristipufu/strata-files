@@ -86,8 +86,8 @@ extension BrowserViewController {
         let asked = window != nil
         Task { [weak window] in
             let plan = await deletionPlan(urls, copies: copies)
-            // The window to ask in closed while the plan was read: nothing changes.
-            guard !asked || window?.isVisible == true else { return }
+            // The window to ask in closed while the plan was read: nothing changes. One minimized meanwhile still asks.
+            guard !asked || window.map({ $0.isVisible || $0.isMiniaturized }) == true else { return }
             confirm(plan, in: window, noTrash: noTrash, then: done)
         }
     }

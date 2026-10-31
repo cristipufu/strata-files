@@ -18,6 +18,8 @@ final class InspectorViewController: NSViewController {
     private var tagField: TagField { tagPicker.field }
     /// Comments, Open With, Locked and permissions, for one item.
     let infoEditor: InfoEditor
+    /// The Where row's folder names and icons, read once each.
+    private let looks = FinderLooks()
     var infoCard: InspectorCard!
     var tagsCard: InspectorCard!
     var commentsCard: InspectorCard!
@@ -438,7 +440,7 @@ final class InspectorViewController: NSViewController {
             rows.append((String(localized: "Where", comment: "Inspector row: the folder the item is in"),
                          InspectorLocationView(folder: target.folder, shownAs: shownFolder, name: inContainer?.name,
                                                location: inContainer?.location,
-                                               locationLeadsHere: inContainer?.leadsHere ?? true) { [weak self] in
+                                               locationLeadsHere: inContainer?.leadsHere ?? true, looks: looks) { [weak self] in
                              self?.onShowFolder?(target.folder, target.item)
                          }))
         }

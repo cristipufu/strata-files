@@ -285,7 +285,7 @@ final class InspectorLocationView: NSView {
 
     /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
     init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil,
-         locationLeadsHere: Bool = true, action: @escaping () -> Void) {
+         locationLeadsHere: Bool = true, looks: FinderLooks, action: @escaping () -> Void) {
         self.action = action
         self.folder = folder
         self.path = path
@@ -322,8 +322,7 @@ final class InspectorLocationView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         reading = Task { [weak self, folder, path] in
-            async let named = FinderLook.read(path), drawn = FinderLook.read(folder)
-            let (name, image) = await (named.name, drawn.image)
+            let name = await looks.look(path).name, image = await looks.look(folder).image
             guard let self, !Task.isCancelled else { return }
             if shownName == nil { nameText = name }
             if let image { icon.image = image }

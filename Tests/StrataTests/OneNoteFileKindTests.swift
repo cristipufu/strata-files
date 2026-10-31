@@ -139,7 +139,7 @@ import UniformTypeIdentifiers
         try FileManager.default.removeItem(at: url)
         try Data("section".utf8).write(to: url)
         let conflict = TransferConflict(mode: .copy, source: url, existing: url, remaining: 1)
-        #expect(await ConflictSheetController.Facts.read(conflict, icons: .shared).existingIcon === page)
+        #expect(await ConflictSheetController.Facts.read(conflict, icons: .shared)?.existingIcon === page)
         let shelf = ShelfWell(frame: .zero)
         shelf.add([url])
         await shelf.checking?.value

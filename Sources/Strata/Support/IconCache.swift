@@ -184,30 +184,37 @@ package final class IconCache {
     }
 
     /// The icon the item at `path` has now, never one remembered: for a choice about it, such as whether to replace it.
-    package func currentIcon(forPath path: String) async -> NSImage {
-        switch await Self.current(path) {
-        case .known(let known): documentIcon(known)
-        case .made(let made): made.image
+    /// Nil when the task asking is cancelled first: the read is left to finish on its own thread.
+    package func currentIcon(forPath path: String) async -> NSImage? {
+        await currentIcons(forPaths: [path])?[path]
+    }
+
+    /// The icons the items at `paths` have now, read together on one thread of their own; nil when cancelled first.
+    package func currentIcons(forPaths paths: [String]) async -> [String: NSImage]? {
+        guard let found = await OwnThread.runUnlessCancelled({ Self.current(paths) }) else { return nil }
+        return found.mapValues { found in
+            switch found {
+            case .known(let known): documentIcon(known)
+            case .made(let made): made.image
+            }
         }
     }
 
-    /// The icon several items have now together, as Finder draws them: the one item's own when there's one.
-    package func currentIcon(forPaths paths: [String]) async -> NSImage? {
-        if paths.count == 1 { return await currentIcon(forPath: paths[0]) }
-        return await Self.together(paths)?.image
+    /// The icon several items have now together, as Finder draws them; nil when cancelled first.
+    package func togetherIcon(forPaths paths: [String]) async -> NSImage? {
+        await OwnThread.runUnlessCancelled { Self.together(paths) }??.image
     }
 
-    nonisolated private static func current(_ path: String) async -> Found {
-        await OwnThread.run {
-            if let known = knownKind(path) { return .known(known) }
-            return .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
+    nonisolated private static func current(_ paths: [String]) -> [String: Found] {
+        var found: [String: Found] = [:]
+        for path in paths {
+            found[path] = knownKind(path).map(Found.known) ?? .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
         }
+        return found
     }
 
-    nonisolated private static func together(_ paths: [String]) async -> MadeElsewhere? {
-        await OwnThread.run {
-            NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
-        }
+    nonisolated private static func together(_ paths: [String]) -> MadeElsewhere? {
+        NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
     }
 
     /// A kind Strata draws a page for, unless the item has an icon of its own.

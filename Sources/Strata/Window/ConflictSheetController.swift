@@ -8,9 +8,10 @@ extension ConflictResolver {
     /// Cancelling the job while the sheet is up closes it.
     package static func sheet(for window: NSWindow?) -> ConflictResolver {
         ConflictResolver { [weak window] conflict in
-            let facts = await ConflictSheetController.Facts.read(conflict, icons: IconCache.shared)
-            // A job cancelled while its items were read never shows a sheet.
-            guard !Task.isCancelled else { return ConflictResolution(decision: .stop) }
+            // A job stopped while its items are read never shows a sheet, and isn't held up by a read that hangs.
+            guard let facts = await ConflictSheetController.Facts.read(conflict, icons: IconCache.shared), !Task.isCancelled else {
+                return ConflictResolution(decision: .stop)
+            }
             let controller = ConflictSheetController(conflict: conflict, facts: facts)
             return await controller.run(on: window)
         }
@@ -40,17 +41,18 @@ package final class ConflictSheetController: NSWindowController {
         let existingIcon: NSImage
         let incomingIcon: NSImage
 
-        package static func read(_ conflict: TransferConflict, icons: IconCache) async -> Facts {
-            async let disk = Self.disk(conflict)
-            let existingIcon = await icons.currentIcon(forPath: conflict.existing.path)
-            let incomingIcon = await icons.currentIcon(forPath: conflict.source.path)
-            let (folderName, existingIsFolder, canMerge) = await disk
+        /// Nil when the task asking is cancelled first.
+        package static func read(_ conflict: TransferConflict, icons: IconCache) async -> Facts? {
+            let paths = [conflict.existing.path, conflict.source.path]
+            guard let (folderName, existingIsFolder, canMerge) = await Self.disk(conflict),
+                  let read = await icons.currentIcons(forPaths: paths),
+                  let existingIcon = read[paths[0]], let incomingIcon = read[paths[1]] else { return nil }
             return Facts(folderName: folderName, existingIsFolder: existingIsFolder, canMerge: canMerge,
                          existingIcon: existingIcon, incomingIcon: incomingIcon)
         }
 
-        nonisolated private static func disk(_ conflict: TransferConflict) async -> (String, Bool, Bool) {
-            await OwnThread.run {
+        nonisolated private static func disk(_ conflict: TransferConflict) async -> (String, Bool, Bool)? {
+            await OwnThread.runUnlessCancelled {
                 let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
                 return (folder, FileEntry.readOpening(conflict.existing) == .folder, conflict.canMerge)
             }

@@ -447,6 +447,8 @@ package final class TransferJob {
             let existing = try? item.destination.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             return (false, (incoming ?? .distantPast) > (existing ?? .distantPast))
         }
+        // Stopped while the dates were read: nothing is decided for a job that's been stopped.
+        guard !control.isCancelled else { return }
         guard folders else { return apply(newer ? .replace : .skip, to: index) }
         let control = control
         let steps = await worker.run { TransferEngine.mergePlan(item.source, into: item.destination) }

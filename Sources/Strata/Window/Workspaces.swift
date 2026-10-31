@@ -56,12 +56,16 @@ final class Workspaces {
     }
 
     /// A workspace named `name` of `controllers`' tabs and panes, as they are now.
-    /// Panes waiting for a share keep its address, so the folder still opens next time.
+    /// Panes waiting for a share keep its address, so the folder still opens next time; so do folders on a share the
+    /// disks haven't been read for yet, by the address saved with the workspace before.
     static func workspace(named name: String, of controllers: [BrowserWindowController], includingNavigation: Bool = false) -> Workspace {
         let tabs = controllers.map(\.snapshot)
-        let volumes = controllers.first?.services.places.snapshot.volumes ?? []
-        var found = shares(for: tabs.flatMap { $0 }, on: volumes) ?? [:]
+        let services = controllers.first?.services
+        let paths = tabs.flatMap { $0 }
+        var found = shares(for: paths, on: services?.places.snapshot.volumes ?? []) ?? [:]
         for controller in controllers { found.merge(controller.waitingShares) { current, _ in current } }
+        let saved = name.isEmpty ? nil : services?.workspaces.named(name)?.shares
+        found.merge(still(saved ?? [:], holding: paths)) { current, _ in current }
         var workspace = Workspace(name: name, tabs: tabs, modes: controllers.map(\.snapshotModes), saved: Date(),
                                   shares: found.isEmpty ? nil : found)
         if includingNavigation {
@@ -78,6 +82,14 @@ final class Workspaces {
             }
         }
         return workspace
+    }
+
+    /// Of `shares` (mount point → address), those some of `paths` are on.
+    static func still(_ shares: [String: String], holding paths: [String]) -> [String: String] {
+        shares.filter { mountPoint, _ in
+            let top = mountPoint.hasSuffix("/") ? mountPoint : mountPoint + "/"
+            return paths.contains { $0 == mountPoint || $0.hasPrefix(top) }
+        }
     }
 
     /// The network shares `paths` are on, with the address each mounts from, as `volumes` (the disks last read) say:
@@ -218,7 +230,8 @@ final class Workspaces {
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
             let front = window.tabGroup?.selectedWindow ?? window
-            if connecting.contains(workspace.name) {
+            // Connecting, or brought forward with its panes still being looked at: once is enough.
+            if connecting.contains(workspace.name) || planning.contains(workspace.name) {
                 windows.show(front)
                 return nil
             }
@@ -262,24 +275,34 @@ final class Workspaces {
         connect(controllers, of: workspace, missing: plan.missing, offline: plan.offline)
     }
 
-    /// Its window, open elsewhere, to the front; panes still waiting get another go.
+    /// Its window, open elsewhere, to the front; panes still waiting get another go. The tabs are held weakly while
+    /// their folders are read: a read may never return.
     private func bringForward(_ window: NSWindow, of workspace: Workspace) -> Task<Void, Never> {
         windows.show(window)
-        let controllers = ownedControllers(of: window)
         // Panes still waiting: a disk plugged in since shows its folder; a share is connected again.
-        let waiting = controllers.map { controller in (controller, controller.waitingPanes.filter { $0.folder.mountPoint == nil }) }
+        let waiting = ownedControllers(of: window).map { controller in
+            WaitingTab(controller: controller, panes: controller.waitingPanes.filter { $0.folder.mountPoint == nil })
+        }
+        planning.insert(workspace.name)
         return Task {
-            for (controller, panes) in waiting {
-                for (index, folder) in panes {
-                    guard await Self.there(folder.path), Self.isWaiting(controller, index, for: folder) else { continue }
+            for tab in waiting {
+                for (index, folder) in tab.panes {
+                    guard await Self.there(folder.path), let controller = tab.controller,
+                          Self.isWaiting(controller, index, for: folder) else { continue }
                     controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
                 }
             }
-            let open = controllers.filter { !$0.isClosed }
+            planning.remove(workspace.name)
+            let open = waiting.compactMap(\.controller).filter { !$0.isClosed }
             if open.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
                 connect(open, of: workspace, missing: [], offline: [])
             }
         }
+    }
+
+    private struct WaitingTab {
+        weak var controller: BrowserWindowController?
+        let panes: [(index: Int, folder: WaitingFolder)]
     }
 
     /// Whether `controller`'s pane `index` still waits for `folder`: not once it was closed, or went elsewhere.

@@ -42,6 +42,18 @@ import Testing
         compose.configure(nil)
         await dropped.value
         #expect(compose.isHidden && compose.reading == nil)
+
+        // The same folder again while it's read: that read stands, and one more follows it.
+        compose.configure(tree.url("shop"))
+        let standing = try #require(compose.reading)
+        compose.configure(tree.url("shop"))
+        compose.configure(tree.url("shop"))
+        #expect(compose.reading == standing)
+        await standing.value
+        let following = try #require(compose.reading)
+        #expect(following != standing)
+        await following.value
+        #expect(!compose.isHidden && compose.reading == nil)
         #expect(tree.snapshot() == ["plain/", "shop/", "shop/compose.yaml"])
     }
 

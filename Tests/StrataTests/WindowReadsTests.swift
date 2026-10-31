@@ -49,18 +49,24 @@ import Testing
 
     @Test func aConflictSheetSaysWhatItsItemsAreBeforeItShows() async throws {
         let tree = try TestTree("to/folder/", "to/file.txt", "to/Tool.app/Contents/", "to/link -> to/folder", "from/folder/", "from/file.txt")
-        func facts(_ existing: String, _ source: String, _ mode: TransferMode = .copy) async -> ConflictSheetController.Facts {
-            await ConflictSheetController.Facts.read(TransferConflict(mode: mode, source: tree.url(source), existing: tree.url(existing),
-                                                                      remaining: 1), icons: .shared)
+        func conflict(_ existing: String, _ source: String, _ mode: TransferMode = .copy) -> TransferConflict {
+            TransferConflict(mode: mode, source: tree.url(source), existing: tree.url(existing), remaining: 1)
         }
-        let folder = await facts("to/folder", "from/folder")
+        func facts(_ existing: String, _ source: String, _ mode: TransferMode = .copy) async throws -> ConflictSheetController.Facts {
+            try #require(await ConflictSheetController.Facts.read(conflict(existing, source, mode), icons: .shared))
+        }
+        let folder = try await facts("to/folder", "from/folder")
         #expect(folder.existingIsFolder && folder.canMerge && folder.folderName == "to")
-        #expect(!(await facts("to/folder", "from/folder", .move)).canMerge)
-        let file = await facts("to/file.txt", "from/file.txt")
+        #expect(!(try await facts("to/folder", "from/folder", .move)).canMerge)
+        let file = try await facts("to/file.txt", "from/file.txt")
         #expect(!file.existingIsFolder && !file.canMerge)
-        #expect(!(await facts("to/Tool.app", "from/folder")).existingIsFolder)
-        let link = await facts("to/link", "from/folder")
+        #expect(!(try await facts("to/Tool.app", "from/folder")).existingIsFolder)
+        let link = try await facts("to/link", "from/folder")
         #expect(link.existingIsFolder && !link.canMerge)
+        // A job stopped while its items are read gets no facts, and so no sheet, without waiting for the read.
+        let stopped = Task { await ConflictSheetController.Facts.read(conflict("to/file.txt", "from/file.txt"), icons: .shared) }
+        stopped.cancel()
+        #expect(await stopped.value == nil)
         #expect(tree.snapshot() == ["from/", "from/file.txt", "from/folder/", "to/", "to/Tool.app/", "to/Tool.app/Contents/",
                                     "to/file.txt", "to/folder/", "to/link -> to/folder"])
     }

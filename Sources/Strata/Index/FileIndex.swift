@@ -61,10 +61,11 @@ package final class FileIndex {
     /// Number of entries, including ones deleted since the last full scan.
     package var itemCount: Int { store?.read { $0.count } ?? 0 }
 
+    /// Takes its turn after the settings changes before it, and those after it wait for it.
     package func rebuild() {
         guard started else { return }
         let previous = configuring
-        Task { [weak self] in
+        configuring = Task { [weak self] in
             await previous?.value
             self?.worker.rebuildNow()
         }

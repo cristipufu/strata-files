@@ -35,4 +35,22 @@ import Testing
         #expect(!pane.browser.isShowingResults && shown(pane) == ["notes.txt", "report.txt"])
         #expect(tree.snapshot() == ["docs/", "docs/notes.txt", "docs/report.txt"])
     }
+
+    @Test func aSearchTheIndexIsntReadyForNeverShowsOverTheFolderThePaneWentTo() async throws {
+        let tree = try TestTree("docs/notes.txt")
+        let environment = try IndependentEnvironment()
+        let controller = BrowserWindowController(location: tree.url("docs"), services: environment.services)
+        let pane = controller.pane
+        await pane.browser.directoryReads.task?.value
+        try #require(!environment.services.index.isReady)
+        for destination in [Destination.search("notes", scope: nil), .recents] {
+            controller.go(destination, in: pane)
+            let running = try #require(pane.search.task)
+            controller.go(.folder(tree.url("docs")), in: pane)
+            await running.value
+            await pane.browser.directoryReads.task?.value
+            #expect(!pane.browser.isShowingResults && shown(pane) == ["notes.txt"], "\(destination)")
+        }
+        #expect(tree.snapshot() == ["docs/", "docs/notes.txt"])
+    }
 }

@@ -56,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var welcome: WelcomeSheetController?
+    /// Files and folders opened while Strata launches (AppKit hands them over before launch is done), until the first
+    /// windows have opened.
+    private var launchOpenings: [Task<Void, Never>]? = []
 
     /// Strata ▸ Check for Updates….
     @objc func checkForUpdates(_ sender: Any?) {
@@ -84,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Task { [weak self] in
             guard let self else { return }
-            if windowControllers.isEmpty, !(await restoreSession()) { openWindow(at: startLocation) }
+            await openFirstWindows()
             DockSearch.shared.apply(atLaunch: true)
             if !Privacy.hasFullDiskAccess, !Prefs.shared.defaults.bool(forKey: "welcomeShown"),
                let window = windowControllers.first?.window {
@@ -94,6 +97,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sheet.present(on: window)
             }
         }
+    }
+
+    /// What was opened at launch, else the last session's windows, else one at the start location. A read that's slow
+    /// to answer (a share that stopped) doesn't leave Strata without a window: after a few seconds the start window
+    /// opens, and a session read after that isn't opened over it.
+    private func openFirstWindows() async {
+        let fallback = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let self, windowControllers.isEmpty else { return }
+            openWindow(at: startLocation)
+        }
+        defer { fallback.cancel() }
+        for opening in launchOpenings ?? [] { await opening.value }
+        launchOpenings = nil
+        guard windowControllers.isEmpty, !(await restoreSession()), windowControllers.isEmpty else { return }
+        openWindow(at: startLocation)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -217,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
         // In the order given, each once what it is has been read.
-        Task {
+        let opening = Task {
             for url in files {
                 if await FileEntry.opening(url) == .folder {
                     openWindow(at: url)
@@ -226,6 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        launchOpenings?.append(opening)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -7142,15 +7142,15 @@
   {
     "file": "Strata/Window/ConflictSheetController.swift",
     "rule": "Files: the conflict sheet shows an item's icon as it is now",
-    "find": "            let existingIcon = await icons.currentIcon(forPath: conflict.existing.path)",
-    "replace": "            let existingIcon = icons.icon(forPath: conflict.existing.path, folder: true)",
+    "find": "                  let read = await icons.currentIcons(forPaths: paths),",
+    "replace": "                  let read = Optional(paths.reduce(into: [String: NSImage]()) { $0[$1] = icons.icon(forPath: $1, folder: true) }),",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
     "file": "Strata/Window/ShelfPanel.swift",
     "rule": "Files: the Shelf shows an item's icon as it is now",
-    "find": "            for url in there { icons[url] = await IconCache.shared.currentIcon(forPath: url.path) }",
-    "replace": "            for url in there { icons[url] = IconCache.shared.icon(forPath: url.path, folder: true) }",
+    "find": "                  let read = await IconCache.shared.currentIcons(forPaths: there.map(\\.path)) else { return }",
+    "replace": "                  let read = Optional(there.reduce(into: [String: NSImage]()) { $0[$1.path] = IconCache.shared.icon(forPath: $1.path, folder: true) }) else { return }",
     "tests": "OneNoteFileKindTests/aChoiceShowsTheItemsIconNow"
   },
   {
@@ -7295,8 +7295,8 @@
   },
   {
     "file": "Strata/Toolbar/PathBar.swift",
-    "find": "            let kind = await Self.kind(of: path)\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
-    "replace": "            let kind = await Self.kind(of: path)\n            guard let self, !Task.isCancelled, isEditing else { return }",
+    "find": "            let opening = await FileEntry.opening(URL(fileURLWithPath: path))\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
+    "replace": "            let opening = await FileEntry.opening(URL(fileURLWithPath: path))\n            guard let self, !Task.isCancelled, isEditing else { return }",
     "rule": "Path bar: Return acts on an answer for text that was typed over",
     "tests": "PathBarDiskTests/returnOpensAFolderOrShowsAFileAndANewerTextWins"
   },
@@ -7400,8 +7400,8 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "                    guard await Self.there(folder.path), Self.isWaiting(controller, index, for: folder) else { continue }",
-    "replace": "                    guard await Self.there(folder.path) else { continue }",
+    "find": "                    guard await Self.there(folder.path), let controller = tab.controller,\n                          Self.isWaiting(controller, index, for: folder) else { continue }",
+    "replace": "                    guard await Self.there(folder.path), let controller = tab.controller else { continue }",
     "rule": "Bringing a workspace forward pulls back a pane that went elsewhere while its folder was read",
     "tests": "WorkspaceOwnershipTests/bringingAWorkspaceForwardShowsAFolderThatAppearedButNotInAPaneThatMovedOn"
   },
@@ -7467,5 +7467,40 @@
     "replace": "",
     "rule": "A finished Compress leaves out the zip's size",
     "tests": "ArchiveStatusTests/aFinishedCompressSaysTheZipsNameAndSize"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        let understood = await services.index.understand(text, in: scope)\n        guard generation == latest, p.destination == target else { return }\n",
+    "replace": "        let understood = await services.index.understand(text, in: scope)\n",
+    "rule": "A search the index isn't ready for shows over the folder its pane went to",
+    "tests": "PaneSearchTests/aSearchTheIndexIsntReadyForNeverShowsOverTheFolderThePaneWentTo"
+  },
+  {
+    "file": "Strata/Inspector/ContainerInspector.swift",
+    "find": "        if folder == self.folder, reading != nil {\n            readAgain = true\n            return\n        }\n",
+    "replace": "",
+    "rule": "The Compose card starts another read of the same folder each time it's refreshed",
+    "tests": "InspectorReadsTests/aComposeCardShowsOnceItsFolderIsReadAndALateReadNeverShows"
+  },
+  {
+    "file": "Strata/Support/DiskOfPath.swift",
+    "find": "        if let mount = mountedAbove.max(by: { $0.count < $1.count }) { return mount }",
+    "replace": "        if let mount = mountedAbove.min(by: { $0.count < $1.count }) { return mount }",
+    "rule": "A disk mounted inside another one's folder is batched with the outer one",
+    "tests": "WorkspaceTests/diskOfAPath"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        await OwnThread.run { urls.contains { (try? $0.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true } }",
+    "replace": "        await OwnThread.run { urls.contains { $0.path == \"/\" } }",
+    "rule": "The sidebar's Trash takes a disk reached through a link",
+    "tests": "DropTests/theSidebarsTrashRefusesADiskHoweverItsReached"
+  },
+  {
+    "file": "Strata/Model/Places.swift",
+    "find": "        preferences.favoritePaths.map { $0.map { URL(fileURLWithPath: $0).standardizedFileURL } } ?? shown",
+    "replace": "        shown",
+    "rule": "Changing favorites drops one last found missing",
+    "tests": "FavoritesTests/aFavoriteLastFoundMissingIsKeptWhenOthersChange"
   }
 ]

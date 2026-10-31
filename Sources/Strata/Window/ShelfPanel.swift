@@ -124,10 +124,11 @@ final class ShelfWell: NSView, NSDraggingSource {
         let urls = items
         guard !urls.isEmpty else { return }
         checking = Task { [weak self] in
-            let there = await Self.there(urls)
-            var icons: [URL: NSImage] = [:]
-            for url in there { icons[url] = await IconCache.shared.currentIcon(forPath: url.path) }
-            let together = there.count > 1 ? await IconCache.shared.currentIcon(forPaths: there.map(\.path)) : nil
+            // A newer refresh cancels this one: what it was waiting for is dropped, not waited behind.
+            guard let there = await Self.there(urls),
+                  let read = await IconCache.shared.currentIcons(forPaths: there.map(\.path)) else { return }
+            let icons = Dictionary(uniqueKeysWithValues: there.compactMap { url in read[url.path].map { (url, $0) } })
+            let together = there.count > 1 ? await IconCache.shared.togetherIcon(forPaths: there.map(\.path)) : nil
             guard let self, !Task.isCancelled else { return }
             checking = nil
             let gone = Set(urls).subtracting(there)
@@ -138,8 +139,8 @@ final class ShelfWell: NSView, NSDraggingSource {
         }
     }
 
-    nonisolated private static func there(_ urls: [URL]) async -> [URL] {
-        await OwnThread.run {
+    nonisolated private static func there(_ urls: [URL]) async -> [URL]? {
+        await OwnThread.runUnlessCancelled {
             urls.filter { FileManager.default.fileExists(atPath: $0.path) }
         }
     }

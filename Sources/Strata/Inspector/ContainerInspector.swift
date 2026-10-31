@@ -502,6 +502,8 @@ final class ComposeInspectorView: NSView {
     private var folder: URL?
     /// Reading the folder's compose file and its containers' working folders.
     private(set) var reading: Task<Void, Never>?
+    /// Asked for the same folder again while it was read.
+    private var readAgain = false
 
     private struct Shown: Equatable {
         let project: String
@@ -549,8 +551,15 @@ final class ComposeInspectorView: NSView {
     /// The folder shown (nil, or a folder without Compose, hides the card). The card keeps what it shows while the
     /// same folder is read again; another folder's card waits for its read.
     func configure(_ folder: URL?) {
+        // The same folder while it's read: that read stands, and one more follows it with what changed meanwhile. A
+        // read can't be interrupted, so starting another each time would only add threads waiting on a slow disk.
+        if folder == self.folder, reading != nil {
+            readAgain = true
+            return
+        }
         reading?.cancel()
         reading = nil
+        readAgain = false
         if folder != self.folder { isHidden = true }
         self.folder = folder
         guard let folder else { return show(nil) }
@@ -564,6 +573,7 @@ final class ComposeInspectorView: NSView {
             reading = nil
             Self.remember(read)
             show(Self.compose(in: folder, read, store: store))
+            if readAgain { configure(folder) }
         }
     }
 

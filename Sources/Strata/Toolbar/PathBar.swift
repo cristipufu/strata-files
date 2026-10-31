@@ -374,7 +374,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if found.count == 1, found[0].url.standardizedFileURL.path == URL(fileURLWithPath: typed).standardizedFileURL.path {
                 return closeSuggestions()
             }
-            let typedIsThere = await Self.kind(of: typed) != nil
+            let typedIsThere = await FileEntry.opening(URL(fileURLWithPath: typed)) != .missing
             guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             suggestionList.show(found, for: text, highlightFirst: !typedIsThere, below: self)
         }
@@ -417,9 +417,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
         let path = resolvedPath(), text = field.stringValue, current = url
         suggesting?.cancel()
         suggesting = Task { [weak self] in
-            let kind = await Self.kind(of: path)
+            let opening = await FileEntry.opening(URL(fileURLWithPath: path))
             guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
-            guard let kind else {
+            guard opening != .missing else {
                 if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
                 let found = await suggestions.suggestions(for: text, in: current)
                 guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
@@ -428,23 +428,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
             }
             let target = URL(fileURLWithPath: path).standardizedFileURL
             endEditing(restoreFocus: true)
-            if kind == .folder {
+            if opening == .folder {
                 onNavigate?(target, nil)
             } else {
                 onNavigate?(target.deletingLastPathComponent(), target)
             }
-        }
-    }
-
-    enum Kind { case folder, item }
-
-    /// What's at `path`: a folder to open, another item (a file, a package) to show in its folder, or nothing.
-    nonisolated static func kind(of path: String) async -> Kind? {
-        await OwnThread.run {
-            guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
-                return nil
-            }
-            return values.isDirectory == true && values.isPackage != true ? .folder : .item
         }
     }
 

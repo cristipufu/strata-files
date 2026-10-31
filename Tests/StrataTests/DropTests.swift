@@ -79,6 +79,17 @@ struct DropTests {
         #expect(tree.snapshot() == ["a.txt", "disk two/", "disk/", "trash link -> \(Trash.home.path)"])
     }
 
+    /// A disk reached through a link in its path isn't in the mount table by that spelling: the drop asks the item.
+    @Test func theSidebarsTrashRefusesADiskHoweverItsReached() async throws {
+        let tree = try TestTree("a.txt", "volumes -> /System/Volumes")
+        let data = tree.url("volumes/Data")
+        #expect(SidebarViewController.canTrash([data], copies: .live, mounts: MountPoints.current()))
+        #expect(await SidebarViewController.holdsADisk([tree.url("a.txt"), data]))
+        #expect(await SidebarViewController.holdsADisk([URL(fileURLWithPath: "/")]))
+        #expect(!(await SidebarViewController.holdsADisk([tree.url("a.txt"), tree.url("volumes")])))
+        #expect(tree.snapshot() == ["a.txt", "volumes -> /System/Volumes"])
+    }
+
     /// While a drag moves, its checks go by what the paths say until the disk's answers arrive, read away from the main
     /// thread once per drag for every path asked about, a batch per disk; then they go by those, and ask nothing more.
     @Test func aDragsChecksAreReadOnceAwayFromTheMainThread() async {

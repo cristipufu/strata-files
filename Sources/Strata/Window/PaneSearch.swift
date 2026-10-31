@@ -107,7 +107,9 @@ import AppKit
         folderScan?.cancel()
         folderScan = nil
         let givenUpBefore = NameRegex.namesGivenUp
-        guard let result = await services.index.understand(text, in: scope) else {
+        let understood = await services.index.understand(text, in: scope)
+        guard generation == latest, p.destination == target else { return }
+        guard let result = understood else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Search works as soon as the first index is built."))
             return
@@ -153,11 +155,9 @@ import AppKit
     }
 
     private func runRecents(in p: Pane, generation: Int, target: Destination) async {
-        guard let hits = await services.index.recentFiles() else {
-            p.browser.showResults([], total: 0)
-            return
-        }
+        let recent = await services.index.recentFiles()
         guard generation == latest, p.destination == target else { return }
+        let hits = recent ?? []
         p.browser.showResults(hits.map(FileEntry.init(hit:)), total: hits.count)
     }
 

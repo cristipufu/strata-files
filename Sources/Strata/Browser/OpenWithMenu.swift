@@ -17,6 +17,25 @@ nonisolated struct FinderLook: Sendable {
     var image: NSImage? { icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) } }
 }
 
+/// Finder's looks of the folders a view shows, each read once and kept: a view built again for the same folder (the
+/// Inspector's, on each refresh) waits for the read under way instead of starting another a slow disk would hold up.
+final class FinderLooks {
+    private var known: [String: FinderLook] = [:]
+    private var reading: [String: Task<FinderLook, Never>] = [:]
+
+    func look(_ url: URL) async -> FinderLook {
+        let key = url.path
+        if let known = known[key] { return known }
+        let task = reading[key] ?? Task { await FinderLook.read(url) }
+        reading[key] = task
+        let look = await task.value
+        reading[key] = nil
+        if known.count > 1_000 { known.removeAll() }
+        known[key] = look
+        return look
+    }
+}
+
 /// An app that can open something, with its name and a small icon, read where it's found.
 nonisolated struct OpenWithApp: Sendable, Equatable {
     let url: URL

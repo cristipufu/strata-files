@@ -119,6 +119,13 @@ struct WorkspaceTests {
         #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Box/a", home: "/Users/me/")
             == "/Users/me/Library/CloudStorage/Box")
         #expect(DiskOfPath.of("/Volumes", home: home) == "/")
+        // A disk mounted outside /Volumes counts as its own, by the innermost mount point it's under, never a look-alike.
+        let mounts: Set<String> = ["/", "/Users/me/mnt/server", "/Users/me/mnt/server/inner", "/net/nas"]
+        #expect(DiskOfPath.of("/Users/me/mnt/server/a", home: home, mounts: mounts) == "/Users/me/mnt/server")
+        #expect(DiskOfPath.of("/Users/me/mnt/server/inner/b", home: home, mounts: mounts) == "/Users/me/mnt/server/inner")
+        #expect(DiskOfPath.of("/Users/me/mnt/serverless/a", home: home, mounts: mounts) == "/")
+        #expect(DiskOfPath.of("/net/nas", home: home, mounts: mounts) == "/net/nas")
+        #expect(DiskOfPath.of("/Volumes/Share/a", home: home, mounts: mounts) == "/Volumes/Share")
     }
 
     @Test func theInnermostShareWins() {

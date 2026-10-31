@@ -46,7 +46,8 @@ extension BrowserViewController {
         Task { [weak window] in
             let (urls, failures) = await CloudActions.removeDownloads(selection, known: known)
             guard !urls.isEmpty else { return }
-            if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: window) }
+            // Said in its window; one closed meanwhile isn't told with an alert of the app's.
+            if !failures.isEmpty, let window { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: window) }
             cloud.refresh(Set(urls.map { $0.deletingLastPathComponent() }))
         }
     }
