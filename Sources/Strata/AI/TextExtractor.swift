@@ -239,43 +239,60 @@ package nonisolated enum TextExtractor {
     /// Visible text, title (`<title>`, else the first `<h1>`) of an HTML document, in one linear pass over the bytes.
     /// (Lazy regexes did this before and went quadratic on an unclosed `<script>` or `<title>`: 80 KB took seconds.)
     package static func html(_ source: String) -> ExtractedText {
-        let bytes = Array(source.utf8)
-        let n = bytes.count
-        func lower(_ byte: UInt8) -> UInt8 { byte >= 65 && byte <= 90 ? byte + 32 : byte }
+        var scanner = HTMLScanner(source)
+        let text = scanner.visibleText()
+        let title = (scanner.firstElement("title") ?? scanner.firstElement("h1")).map { decodeEntities(strip($0)) }
+        return ExtractedText(text: String(decoding: decodeEntities(text), as: UTF8.self), title: title, source: .html)
+    }
+
+    private struct HTMLScanner {
+        let bytes: [UInt8]
+        let n: Int
+        // The next ">" at or after the last position asked about. Callers ask in increasing order (reset it to scan
+        // again from the start), so finding every tag's end costs one pass, not one pass per "<".
+        private var nextClose = -1
+
+        init(_ source: String) {
+            bytes = Array(source.utf8)
+            n = bytes.count
+        }
+
+        private static func lower(_ byte: UInt8) -> UInt8 { byte >= 65 && byte <= 90 ? byte + 32 : byte }
+
         /// Index of the next case-insensitive occurrence of `needle` at or after `from`.
         func find(_ needle: String, from: Int) -> Int? {
             let pattern = Array(needle.utf8)
             guard let first = pattern.first, n >= pattern.count else { return nil }
             var i = from
             while i <= n - pattern.count {
-                if lower(bytes[i]) == first {
+                if Self.lower(bytes[i]) == first {
                     var k = 1
-                    while k < pattern.count && lower(bytes[i + k]) == pattern[k] { k += 1 }
+                    while k < pattern.count && Self.lower(bytes[i + k]) == pattern[k] { k += 1 }
                     if k == pattern.count { return i }
                 }
                 i += 1
             }
             return nil
         }
-        // The next ">" at or after the last position asked about. Callers ask in increasing order (reset it to scan
-        // again from the start), so finding every tag's end costs one pass, not one pass per "<".
-        var nextClose = -1
-        func close(from i: Int) -> Int? {
+
+        mutating func close(from i: Int) -> Int? {
             if nextClose < i { nextClose = bytes[i...].firstIndex(of: UInt8(ascii: ">")) ?? n }
             return nextClose < n ? nextClose : nil
         }
+
         /// The tag at `<` position `i`: its lowercased name, whether it closes, and the index past its `>`.
-        func tag(at i: Int) -> (name: String, closing: Bool, end: Int)? {
+        mutating func tag(at i: Int) -> (name: String, closing: Bool, end: Int)? {
             var j = i + 1
             let closing = j < n && bytes[j] == UInt8(ascii: "/")
             if closing { j += 1 }
             let nameStart = j
             while j < n, isLetter(bytes[j]) || (isDigit(bytes[j], hex: false) && j > nameStart) { j += 1 }
             guard j > nameStart, let end = close(from: j) else { return nil }
-            return (String(decoding: bytes[nameStart..<j].map(lower), as: UTF8.self), closing, end + 1)
+            return (String(decoding: bytes[nameStart..<j].map(Self.lower), as: UTF8.self), closing, end + 1)
         }
+
         /// Text of the first `<name>…</name>` element.
-        func firstElement(_ name: String) -> String? {
+        mutating func firstElement(_ name: String) -> String? {
             nextClose = -1
             var from = 0
             while let open = find("<" + name, from: from) {
@@ -288,41 +305,44 @@ package nonisolated enum TextExtractor {
             return nil
         }
 
-        var text: [UInt8] = []
-        text.reserveCapacity(n)
-        var i = 0
-        while i < n {
-            guard bytes[i] == UInt8(ascii: "<") else {
-                text.append(bytes[i])
-                i += 1
-                continue
-            }
-            if i + 3 < n, bytes[i + 1] == UInt8(ascii: "!"), bytes[i + 2] == UInt8(ascii: "-"), bytes[i + 3] == UInt8(ascii: "-") {
-                i = find("-->", from: i + 4).map { $0 + 3 } ?? n
-                text.append(UInt8(ascii: " "))
-                continue
-            }
-            guard let found = tag(at: i) else {
-                // Not a tag ("a < b", or one never closed): it's text.
-                text.append(bytes[i])
-                i += 1
-                continue
-            }
-            if !found.closing, droppedElements.contains(found.name) {
-                // Skip to past the matching close tag; an unclosed one hides the rest of the document.
-                if let closing = find("</" + found.name, from: found.end) {
-                    i = close(from: closing).map { $0 + 1 } ?? n
-                } else {
-                    i = n
+        /// The document's text: tags and comments become spaces (block elements line breaks), and elements whose
+        /// contents aren't text a reader sees are left out.
+        mutating func visibleText() -> [UInt8] {
+            var text: [UInt8] = []
+            text.reserveCapacity(n)
+            var i = 0
+            while i < n {
+                guard bytes[i] == UInt8(ascii: "<") else {
+                    text.append(bytes[i])
+                    i += 1
+                    continue
                 }
-                text.append(UInt8(ascii: " "))
-                continue
+                if i + 3 < n, bytes[i + 1] == UInt8(ascii: "!"), bytes[i + 2] == UInt8(ascii: "-"), bytes[i + 3] == UInt8(ascii: "-") {
+                    i = find("-->", from: i + 4).map { $0 + 3 } ?? n
+                    text.append(UInt8(ascii: " "))
+                    continue
+                }
+                guard let found = tag(at: i) else {
+                    // Not a tag ("a < b", or one never closed): it's text.
+                    text.append(bytes[i])
+                    i += 1
+                    continue
+                }
+                if !found.closing, droppedElements.contains(found.name) {
+                    // Skip to past the matching close tag; an unclosed one hides the rest of the document.
+                    if let closing = find("</" + found.name, from: found.end) {
+                        i = close(from: closing).map { $0 + 1 } ?? n
+                    } else {
+                        i = n
+                    }
+                    text.append(UInt8(ascii: " "))
+                    continue
+                }
+                text.append(blockElements.contains(found.name) ? UInt8(ascii: "\n") : UInt8(ascii: " "))
+                i = found.end
             }
-            text.append(blockElements.contains(found.name) ? UInt8(ascii: "\n") : UInt8(ascii: " "))
-            i = found.end
+            return text
         }
-        let title = (firstElement("title") ?? firstElement("h1")).map { decodeEntities(strip($0)) }
-        return ExtractedText(text: String(decoding: decodeEntities(text), as: UTF8.self), title: title, source: .html)
     }
 
     /// Replaces each tag with a space (linear: a "<" with no ">" after it is kept as text).

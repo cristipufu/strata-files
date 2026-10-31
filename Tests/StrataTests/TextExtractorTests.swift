@@ -40,4 +40,29 @@ struct TextExtractorTests {
         #expect(page.title == "Q&A — notes")
         #expect(page.text.contains("Fish & chips"))
     }
+
+    @Test(arguments: [
+        ("<p>one</p><p>two</p>", "\none\n\ntwo\n"),
+        ("<b>bold</b> and <i>it</i>", " bold  and  it "),
+        ("a < b and c > d", "a < b and c > d"),
+        ("a <!-- hidden --> b", "a   b"),
+        ("a <!-- never closed", "a  "),
+        ("x<SCRIPT>alert(1)</script>y", "x y"),
+        ("x<style>p { }</STYLE >y", "x y"),
+        ("shown<script>never closed", "shown "),
+        ("<DIV>Up</DIV><br/>end", "\nUp\n\nend"),
+        ("<h2>Sub</h2><x-tag>custom</x-tag>", "\nSub\n custom "),
+        ("<title>T</title><p>body</p>", " T \nbody\n"),
+    ])
+    func htmlKeepsWhatAReaderSees(source: String, text: String) {
+        #expect(TextExtractor.html(source).text == text)
+    }
+
+    @Test func htmlTitleIsTheTitleElseTheFirstHeading() {
+        #expect(TextExtractor.html("<h1>First <b>bold</b></h1><h1>Second</h1>").title == "First  bold ")
+        #expect(TextExtractor.html("<h1>Heading</h1><TITLE>Named</TITLE>").title == "Named")
+        #expect(TextExtractor.html("<title>Open to the end").title == "Open to the end")
+        #expect(TextExtractor.html("<titles>no</titles><p>none</p>").title == nil)
+        #expect(TextExtractor.html("<p>plain</p>").title == nil)
+    }
 }
