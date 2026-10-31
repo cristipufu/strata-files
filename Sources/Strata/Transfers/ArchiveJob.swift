@@ -100,15 +100,15 @@ final class ArchiveJob {
             let url: URL
             switch operation {
             case .compress(let items):
-                let control = control
-                url = try await Self.onWorkerThread { try Archiver.compress(items, control: control) }
+                let control = control, copies = queue.copies
+                url = try await Self.onWorkerThread { try Archiver.compress(items, copies: copies, control: control) }
                 register(url, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 try Self.requireArchive(archive)
                 let inspection = try await inspect(archive)
-                let control = control
+                let control = control, copies = queue.copies
                 url = try await Self.onWorkerThread {
-                    try Archiver.extract(archive, inspection: inspection, into: folder, control: control)
+                    try Archiver.extract(archive, inspection: inspection, into: folder, copies: copies, control: control)
                 }
                 register(url, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):

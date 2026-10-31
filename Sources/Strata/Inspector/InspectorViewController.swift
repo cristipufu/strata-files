@@ -220,7 +220,7 @@ final class InspectorViewController: NSViewController {
     }
 
     private func isReadOnlyCopy(_ url: URL) -> Bool {
-        ReadOnlyCopies.contains(url) || services.copies.contains(url)
+        ReadOnlyCopies.contains(url, copies: services.copies)
     }
 
     /// Containers started, stopped or went away: their cards follow.
@@ -264,7 +264,7 @@ final class InspectorViewController: NSViewController {
         // Typing in the tag field belongs to the items it was opened on: a new selection (or a hidden field) ends it,
         // applying what was typed to those items.
         let taggable = !items.isEmpty
-            && !items.contains { $0.isVolume || isReadOnlyCopy($0.url) || !TagStore.canTag($0) }
+            && !items.contains { $0.isVolume || isReadOnlyCopy($0.url) || !TagStore.canTag($0, copies: services.copies) }
         if tagField.currentEditor() != nil, !sameItems || !taggable {
             tagField.commit()
             view.window?.makeFirstResponder(nil)
@@ -504,8 +504,8 @@ final class InspectorViewController: NSViewController {
         projectTask?.cancel()
         if !same { showProject(nil) }
         guard let url else { return }
-        projectTask = Task { [weak self] in
-            let info = await ProjectInfo.load(for: url, store: .shared) { partial in
+        projectTask = Task { [weak self, git = services.git] in
+            let info = await ProjectInfo.load(for: url, store: git) { partial in
                 guard !Task.isCancelled, let self, self.projectFolder == url else { return }
                 self.showProject(partial)
             }
@@ -528,7 +528,7 @@ final class InspectorViewController: NSViewController {
         guard let info = projectView.info, let root = notification.userInfo?["root"] as? URL else { return }
         let path = info.folder.standardizedFileURL.path
         guard path == root.path || path.hasPrefix(root.path + "/") else { return }
-        projectView.configure(info.withCurrentGit(store: .shared))
+        projectView.configure(info.withCurrentGit(store: services.git))
     }
 
     private func setRows(_ rows: [(String, NSView)]) {

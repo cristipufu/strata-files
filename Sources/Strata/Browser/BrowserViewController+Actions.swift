@@ -317,7 +317,7 @@ extension BrowserViewController {
     /// The selection's tags in a popover with suggestions (Finder's Tags…).
     @objc func editTags(_ sender: Any?) {
         let urls = selectedURLs
-        guard !urls.isEmpty, urls.allSatisfy(TagStore.canTag) else { return }
+        guard !urls.isEmpty, urls.allSatisfy({ TagStore.canTag($0, copies: services.copies) }) else { return }
         let (rect, _) = selectionAnchor()
         TagEditorController(urls: urls, undo: undoManager, tags: services.tags).show(relativeTo: rect, of: view)
     }

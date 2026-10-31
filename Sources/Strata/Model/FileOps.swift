@@ -362,10 +362,6 @@ enum FileOps {
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
     /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
     /// (a temporary copy). A link to a Trash is only a link.
-    nonisolated static func canTrash(_ url: URL) -> Bool {
-        canTrash(url, copies: .live)
-    }
-
     nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
         !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
             && !ReadOnlyCopies.contains(url, copies: copies)

@@ -40,13 +40,16 @@ extension Notification.Name {
 /// visible cell asks; a folder's tags are read off the main thread when it loads, and changes are always worked out from
 /// what's on disk now, never from the cache.
 final class TagStore {
-    static let shared = TagStore(preferences: .shared)
+    static let shared = TagStore(preferences: .shared, copies: .live)
 
     /// Where the tags you've added are remembered, for suggestions and the sidebar.
     private let preferences: Prefs
+    /// Its window's server and container copies, whose items carry no tags from Strata.
+    private let copies: CopyProviders
 
-    init(preferences: Prefs) {
+    init(preferences: Prefs, copies: CopyProviders) {
         self.preferences = preferences
+        self.copies = copies
     }
 
     nonisolated private static let attribute = "com.apple.metadata:_kMDItemUserTags"
@@ -170,20 +173,20 @@ final class TagStore {
 
     /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without
     /// reading the disk again. Tagging itself checks `canTag(_: URL)` as it writes.
-    nonisolated static func canTag(_ entry: FileEntry) -> Bool {
-        !entry.isSymlink && !ReadOnlyCopies.contains(entry.url)
+    nonisolated static func canTag(_ entry: FileEntry, copies: CopyProviders) -> Bool {
+        !entry.isSymlink && !ReadOnlyCopies.contains(entry.url, copies: copies)
     }
 
     /// Whether `url` can carry tags from Strata: not a link (its target's tags would change instead), and not inside an
     /// archive opened as a folder (a temporary copy).
-    nonisolated static func canTag(_ url: URL) -> Bool {
+    nonisolated static func canTag(_ url: URL, copies: CopyProviders) -> Bool {
         var info = stat()
-        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url)
+        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
     /// Adds `tag` to every item, or removes it from all of them when they all have it already (Finder's colored circles).
     func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) throws {
-        let current = urls.filter(Self.canTag).map { (url: $0, tags: onDisk($0)) }
+        let current = urls.filter { Self.canTag($0, copies: copies) }.map { (url: $0, tags: onDisk($0)) }
         let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
         try apply(current.map { item in
             var tags = item.tags.filter { $0.name.caseInsensitiveCompare(tag.name) != .orderedSame }
@@ -195,7 +198,7 @@ final class TagStore {
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
     func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) throws {
         let added = adding.map(Self.clean).filter { !$0.isEmpty }
-        try apply(urls.filter(Self.canTag).map { url in
+        try apply(urls.filter { Self.canTag($0, copies: copies) }.map { url in
             var tags = onDisk(url).filter { !removing.contains($0.name.lowercased()) }
             for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
                 tags.append(FinderTag(name: name, color: Self.color(forNew: name)))
@@ -237,7 +240,7 @@ final class TagStore {
         let labels = NSWorkspace.shared.fileLabels
         for (url, tags) in changes {
             let path = url.standardizedFileURL.path
-            guard Self.canTag(url) else { continue }
+            guard Self.canTag(url, copies: copies) else { continue }
             guard let chosen = try? ChosenFile(url) else {
                 failures.append((url, POSIXError(.ESTALE)))
                 continue

@@ -374,10 +374,25 @@
   },
   {
     "file": "Strata/Model/TagStore.swift",
-    "find": "return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url)",
-    "replace": "return lstat(url.path, &info) == 0 && !ReadOnlyCopies.contains(url)",
+    "find": "return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT != S_IFLNK && !ReadOnlyCopies.contains(url, copies: copies)",
+    "replace": "return lstat(url.path, &info) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
     "rule": "Tags go on links",
     "tests": "MetadataEditTests"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "rule": "Tags go on items of their window's own copies",
+    "tests": "FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies",
+    "edits": [
+      {
+        "find": "try apply(urls.filter { Self.canTag($0, copies: copies) }.map { url in",
+        "replace": "try apply(urls.filter { Self.canTag($0, copies: .live) }.map { url in"
+      },
+      {
+        "find": "            guard Self.canTag(url, copies: copies) else { continue }",
+        "replace": "            guard Self.canTag(url, copies: .live) else { continue }"
+      }
+    ]
   },
   {
     "file": "Strata/Model/FolderCompare.swift",
@@ -3471,8 +3486,8 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "ReadOnlyCopies.contains(url) || services.copies.contains(url)",
-    "replace": "ReadOnlyCopies.contains(url)",
+    "find": "        ReadOnlyCopies.contains(url, copies: services.copies)\n    }",
+    "replace": "        ReadOnlyCopies.contains(url, copies: .live)\n    }",
     "rule": "Inspector provider ownership read-only copy check ignores the inspector's copy provider",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider|InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem"
   },
@@ -3640,7 +3655,7 @@
   {
     "file": "Strata/Browser/BrowserViewController+Trash.swift",
     "find": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
-    "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url)",
+    "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: .live)",
     "rule": "Browser copy provider ownership deletionPlan checks the global copy provider",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },

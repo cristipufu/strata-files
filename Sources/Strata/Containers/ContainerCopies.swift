@@ -448,10 +448,6 @@ nonisolated enum ContainerCopies {
 /// Strata's read-only copies: archives opened as folders and container files. Nothing inside one is changed from
 /// Strata, and nothing is moved or saved into one.
 nonisolated enum ReadOnlyCopies {
-    static func contains(_ url: URL) -> Bool {
-        contains(url, copies: .live)
-    }
-
     static func contains(_ url: URL, copies: CopyProviders) -> Bool {
         ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
             || copies.isClipboardStaging(url)

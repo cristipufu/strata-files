@@ -809,7 +809,7 @@ extension PreviewArchiveTests {
         let fork = Data("second data fork".utf8)
         try #require(fork.withUnsafeBytes { setxattr(tree.url("payload/file").path, "com.apple.ResourceFork", $0.baseAddress, fork.count, 0, 0) } == 0)
         let folder = tree.url("payload")
-        let zip = try await TestWork.run { try Archiver.compress([folder], control: .init()) }
+        let zip = try await TestWork.run { try Archiver.compress([folder], copies: .live, control: .init()) }
         let source = try PreviewArchiveSource(zip), before = tree.snapshot()
         let listing = try await PreviewArchiveReader.read(source)
         #expect(listing.contains { $0.path == ["payload", "file"] })

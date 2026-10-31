@@ -71,12 +71,12 @@ nonisolated enum Archiver {
 
     /// Zips `items` next to the first one: `Name.zip` for one item, `Archive.zip` for several (a taken name gets a
     /// number). Returns the zip.
-    static func compress(_ items: [URL], control: Control) throws -> URL {
+    static func compress(_ items: [URL], copies: CopyProviders, control: Control) throws -> URL {
         guard let first = items.first else { throw Failure(message: String(localized: "Nothing to compress.")) }
         let fm = FileManager.default
         let folder = first.deletingLastPathComponent()
         try requireWritable(folder)
-        try requireOutsideCopies(folder)
+        try requireOutsideCopies(folder, copies: copies)
         let name = items.count == 1 ? first.lastPathComponent + ".zip"
             // The name is translated; the extension stays .zip whatever the translation.
             : FileOps.nameText(String(localized: "Archive", comment: "Name of the zip made from several items, as Finder names it (“Archive.zip”); the .zip is added"),
@@ -116,11 +116,11 @@ nonisolated enum Archiver {
 
     /// Extracts `archive` into `folder` like Archive Utility: one top-level item keeps its name; several go in a folder
     /// named after the archive. Taken names get a number. Returns what was created.
-    static func extract(_ archive: URL, inspection: Inspection, into folder: URL,
+    static func extract(_ archive: URL, inspection: Inspection, into folder: URL, copies: CopyProviders,
                         control: Control) throws -> URL {
         let fm = FileManager.default
         try requireWritable(folder)
-        try requireOutsideCopies(folder)
+        try requireOutsideCopies(folder, copies: copies)
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true)
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
@@ -511,8 +511,8 @@ nonisolated enum Archiver {
     }
 
     /// Nothing is made inside an archive opened as a folder (a temporary copy).
-    private static func requireOutsideCopies(_ folder: URL) throws {
-        guard !ReadOnlyCopies.contains(folder) else {
+    private static func requireOutsideCopies(_ folder: URL, copies: CopyProviders) throws {
+        guard !ReadOnlyCopies.contains(folder, copies: copies) else {
             throw Failure(message: String(localized: "Nothing can be made in a read-only copy (an archive opened as a folder, or a container’s files). Copy what you need out first."))
         }
     }

@@ -117,7 +117,7 @@ final class BrowserServices {
         self.availableCapacity = availableCapacity
         self.windows = windows
         // An environment of its own reads its own: an unstarted index, and stores no other window shares.
-        self.tags = tags ?? TagStore(preferences: transfers.preferences)
+        self.tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
         self.cloud = cloud ?? CloudStore()
         self.git = git ?? GitStatusStore()
         self.index = index ?? FileIndex()

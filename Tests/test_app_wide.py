@@ -40,6 +40,17 @@ class AppWideAuditTests(unittest.TestCase):
         for file in ["App/Example.swift", "Settings/Example.swift", "Dock/Example.swift", "main.swift"]:
             self.assertEqual(self.check(code, file=file), [], file)
 
+    def test_implicit_arguments_need_review_outside_the_applications_own_code(self):
+        code = "func f() { _ = ProjectInfo.load(for: url, store: .shared) }"
+        self.assertTrue(any("Names the app's store: .shared" in issue for issue in self.check(code)))
+        self.assertEqual(self.check(code, file="App/Example.swift"), [])
+
+    def test_a_definition_composes_the_apps_instance_to_its_closing_parenthesis(self):
+        code = "static let shared = Services(transfers: .shared,\n        history: OperationLog.shared, copies: .live)\n    func f() {}"
+        self.assertEqual(self.check(code), [])
+        after = "static let shared = Services(transfers: .shared)\n    func f() { _ = Store(copies: .live) }"
+        self.assertTrue(any("copies: .live" in issue for issue in self.check(after)))
+
     def test_passed_instances_definitions_and_the_system_pass(self):
         for code in ["init(preferences: Prefs) {}", "let preferences = services.preferences",
                      "static let shared = Prefs()", "static let shared = Frecency(preferences: Prefs.shared.defaults)",
@@ -70,6 +81,13 @@ class AppWideAuditTests(unittest.TestCase):
         self.assertEqual(self.check(code, [entry]), [])
         self.assertTrue(any("Stale exception" in issue for issue in self.check(code, [{**entry, "count": 2}])))
         self.assertTrue(any("reason" in issue for issue in self.check(code, [{**entry, "reason": " "}])))
+
+    def test_an_exception_for_every_instance_in_a_file_keeps_its_count(self):
+        code = "func compose() { _ = Services(transfers: .shared, clipboard: .shared) }"
+        composing = {"file": "Sources/Strata/Browser/Example.swift", "instance": "*", "count": 2,
+                     "reason": "Composes the app's services."}
+        self.assertEqual(self.check(code, [composing]), [])
+        self.assertTrue(any("Stale exception" in issue for issue in self.check(code, [{**composing, "count": 3}])))
 
     def test_an_exception_without_a_file_covers_every_use_and_goes_stale_unused(self):
         anywhere = {"instance": "IconCache.shared", "reason": "macOS's icons are the same in every window."}

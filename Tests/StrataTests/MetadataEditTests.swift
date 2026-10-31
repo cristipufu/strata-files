@@ -30,10 +30,10 @@ struct MetadataEditTests {
         let tree = try TestTree("a.txt", "b/", "b/inner.txt", "a.txt.zip", "Archive.zip")
         let before = tree.snapshot()
         let single = [tree.url("a.txt")]
-        let one = try await TestWork.run { try Archiver.compress(single, control: Archiver.Control()) }
+        let one = try await TestWork.run { try Archiver.compress(single, copies: .live, control: Archiver.Control()) }
         #expect(one.lastPathComponent == "a.txt 2.zip")
         let selection = [tree.url("a.txt"), tree.url("b")]
-        let several = try await TestWork.run { try Archiver.compress(selection, control: Archiver.Control()) }
+        let several = try await TestWork.run { try Archiver.compress(selection, copies: .live, control: Archiver.Control()) }
         #expect(several.lastPathComponent == "Archive 2.zip")
         #expect(tree.snapshot() == (before + ["a.txt 2.zip", "Archive 2.zip"]).sorted())
         // What was there and what was compressed are as they were.
@@ -45,7 +45,7 @@ struct MetadataEditTests {
         let tree = try TestTree("target/", "target/big.txt", "link -> target", "out/")
         let links = [tree.url("link")], destination = tree.url("out")
         try await TestWork.run {
-            let archive = try Archiver.compress(links, control: Archiver.Control())
+            let archive = try Archiver.compress(links, copies: .live, control: Archiver.Control())
             let unzip = Process()
             unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
             unzip.arguments = ["-x", "-k", archive.path, destination.path]
@@ -147,7 +147,7 @@ struct MetadataEditTests {
     @Test func tagsGoOnTheChosenFilesOnly() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt", "link -> b.txt")
         setKeep(tree.url("a.txt").path)
-        let store = TagStore(preferences: try Prefs.isolated())
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()

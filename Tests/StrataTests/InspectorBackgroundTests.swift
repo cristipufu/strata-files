@@ -85,8 +85,8 @@ import Testing
 
     @Test func tagsAreOfferedByWhatTheListingSaysWithoutReadingTheDiskAgain() throws {
         let tree = try TestTree("a.txt", "link -> a.txt")
-        #expect(TagStore.canTag(try #require(FileEntry(url: tree.url("a.txt")))))
-        #expect(!TagStore.canTag(try #require(FileEntry(url: tree.url("link")))))
+        #expect(TagStore.canTag(try #require(FileEntry(url: tree.url("a.txt"))), copies: .live))
+        #expect(!TagStore.canTag(try #require(FileEntry(url: tree.url("link"))), copies: .live))
         #expect(tree.snapshot() == ["a.txt", "link -> a.txt"])
     }
 

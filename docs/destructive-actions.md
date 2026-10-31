@@ -65,7 +65,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Action | Code | Tests |
 |---|---|---|
 | Locked, permissions, comments (Get Info) | `FileInfoEditing`; `InfoEditor` retains a chosen comment item while editing | `MetadataEditTests/lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem`, `aCommentChangesOnlyTheComment`; `SecurityFollowupTests/commentEditsRefuseItemsReplacedWhileTyping`, `focusedCommentsKeepTheirDisplayedItemBeforeTheFirstEditNotification`; `InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem`; `ChosenFileFollowupTests/commentWritesAndRemovalRefuseReplacedParents`, `commentRemovalChangesOnlyTheChosenLink` |
-| Tags | `TagStore.update`, `toggle`, `canTag` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly` |
+| Tags | `TagStore.update`, `toggle`, `canTag` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly`, `FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies` |
 
 ## Compare and Sync, archives, Ask Strata, project cleanup
 
@@ -251,7 +251,7 @@ belong to.
 | `Model/FileOps :: rename`, `moveAll`, `moveItem`, `newFolder`, `newFile`, `trash`, `trashItems`, `trashOwned`, `removeEmptyFolders`, `registerMoveUndo` | `InlineRenameTests/*`, `RenameTests/*`, `NewFileTests/*`, `TrashUndoTests/*`, `AcrossDisksTests/*`, `TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies` |
 | `Model/Places :: eject` (hands the disk to macOS) | not a file change; see above |
 | `Model/SecureStorage :: (top level)`, `prepare`, `useApplicationStorage`, `url`, `removeLegacy`, `sweepStaleTemporaries`, `init`, `commit` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`; `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
-| `Model/TagStore :: apply`, `write` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly` |
+| `Model/TagStore :: apply`, `write` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly`, `FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies` |
 | `Model/Trash :: removeTree` | `DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse`, `aTrashThatIsALinkIsNeverFollowed`, `aLockedItemInTheTrashIsReportedAndTheRestGo`, `aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported`, `anItemThatWentMeanwhileIsntAFailureAndHidesNoOther` |
 | `Remote/LazyCopies :: newFolder` (stages a clipboard copy) | `RemoteFilesTests/theClipboardGetsAFinishedCopy` |
 | `Remote/RemoteCopies :: setAsideForRemoval` | `RemoteFilesTests/listsIntoTheCopy`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |

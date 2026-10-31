@@ -24,7 +24,7 @@ struct ArchiveSafetyTests {
     private func extract(_ archive: URL, into folder: URL) async throws -> URL {
         let inspection = await Archiver.inspect(archive)
         return try await TestWork.run {
-            try Archiver.extract(archive, inspection: inspection, into: folder, control: Archiver.Control())
+            try Archiver.extract(archive, inspection: inspection, into: folder, copies: .live, control: Archiver.Control())
         }
     }
 
@@ -37,14 +37,14 @@ struct ArchiveSafetyTests {
         let partial = Archiver.Inspection(entries: 1, bytes: .max, limited: true), destination = tree.url("dest")
         await #expect(throws: Archiver.Failure.self) {
             try await TestWork.run {
-                try Archiver.extract(archive, inspection: partial, into: destination, control: Archiver.Control())
+                try Archiver.extract(archive, inspection: partial, into: destination, copies: .live, control: Archiver.Control())
             }
         }
         #expect(tree.snapshot() == before)
         // One stopped by damage may have counted a size the archive doesn't hold, so it refuses nothing.
         let damaged = Archiver.Inspection(entries: 1, bytes: .max)
         let placed = try await TestWork.run {
-            try Archiver.extract(archive, inspection: damaged, into: destination, control: Archiver.Control())
+            try Archiver.extract(archive, inspection: damaged, into: destination, copies: .live, control: Archiver.Control())
         }
         #expect(placed.lastPathComponent == "ok.txt" && tree.text("dest/ok.txt") == "payload/ok.txt")
     }
@@ -68,7 +68,7 @@ struct ArchiveSafetyTests {
         let encrypted = Archiver.Inspection(entries: 1, bytes: 1, encrypted: true, complete: true)
         await #expect(throws: Archiver.Failure.self) {
             try await TestWork.run {
-                try Archiver.extract(archive, inspection: encrypted, into: destination, control: Archiver.Control())
+                try Archiver.extract(archive, inspection: encrypted, into: destination, copies: .live, control: Archiver.Control())
             }
         }
         #expect(tree.snapshot() == before)

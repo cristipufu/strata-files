@@ -83,10 +83,6 @@ final class ColumnPreviewPane: NSView {
         setAccessibilityRole(.group)
     }
 
-    convenience override init(frame: NSRect) {
-        self.init(frame: frame, thumbnails: .shared, itemInfo: .shared)
-    }
-
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 

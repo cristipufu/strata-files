@@ -184,6 +184,20 @@ struct FileCommandOwnershipTests {
         #expect(peer.services.transfers.history.entries.isEmpty)
     }
 
+    /// An item of a window's container or server copy carries no tags from Strata, though the app's copies don't
+    /// know it.
+    @Test func tagsNeverGoOnItemsOfTheirWindowsCopies() throws {
+        let env = try Environment()
+        try FileManager.default.createDirectory(at: env.state.url("containers"), withIntermediateDirectories: true)
+        let item = env.state.url("containers/item.txt")
+        try Data("item".utf8).write(to: item)
+        #expect(env.services.copies.contains(item) && !CopyProviders.live.contains(item))
+        #expect(!TagStore.canTag(item, copies: env.services.copies))
+        try env.services.tags.update([item], adding: ["Strata Test"], removing: [], undo: nil)
+        #expect(getxattr(item.path, "com.apple.metadata:_kMDItemUserTags", nil, 0, 0, XATTR_NOFOLLOW) < 0)
+        #expect(env.state.text("containers/item.txt") == "item")
+    }
+
     @Test func creationUndoNeverAdoptsAReplacementFromHistoryNotification() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt")

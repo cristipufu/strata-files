@@ -23,12 +23,12 @@ final class RemoteUploadJob {
     private var finishWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil,
-         files: RemoteFiles, copies: CopyProviders? = nil) {
+         files: RemoteFiles, copies: CopyProviders) {
         self.sources = sources
         self.folder = folder
         self.skipping = skipping
         self.files = files
-        self.copies = copies ?? CopyProviders(servers: files, containers: .shared)
+        self.copies = copies
         expectedServer = expected ?? files.copies.server(containing: folder)?.server
         serverName = expectedServer?.name ?? ""
     }

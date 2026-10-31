@@ -133,7 +133,7 @@ struct EdgeCaseSafetyTests {
         #expect((browser.previewPanel(nil, previewItemAt: 0) as? URL) == entry.url)
         #expect(browser.previewPanel(nil, previewItemAt: 1) == nil)
 
-        let pane = ColumnPreviewPane()
+        let pane = ColumnPreviewPane(thumbnails: .shared, itemInfo: .shared)
         pane.frame = NSRect(x: 0, y: 0, width: 10, height: 200)
         pane.show(entry)
         pane.layoutSubtreeIfNeeded()
@@ -308,7 +308,7 @@ struct EdgeCaseSafetyTests {
         let tree = try TestTree("doc.txt", "replacement.txt")
         let doc = tree.url("doc.txt")
         let replacement = tree.url("replacement.txt")
-        let store = TagStore(preferences: try Prefs.isolated())
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         defer { store.forget("Strata Edge Test") }
         // Tags are read in the background: what's there once that read is done.
         func current(_ url: URL) async -> [String] {

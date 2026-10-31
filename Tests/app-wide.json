@@ -8,6 +8,12 @@
   "reason": "Keyboard shortcuts are the app's: every window's menus, palette and Shortcuts window show the same ones."
  },
  {
+  "file": "Sources/Strata/Browser/BrowserServices.swift",
+  "instance": "*",
+  "count": 10,
+  "reason": "BrowserServices.application() composes the app's services from the app's queue, visits, servers, containers, clipboard and stores (a function: the initializer's concurrent defaults can't be read in a static's)."
+ },
+ {
   "instance": ".iconsLoaded",
   "reason": "Posted by the app's IconCache: macOS's icons are the same in every window."
  },
@@ -57,7 +63,13 @@
   "file": "Sources/Strata/Remote/RemoteConnections.swift",
   "instance": "RemoteSessions.shared",
   "count": 1,
-  "reason": "Composes the app's own RemoteConnections.shared; independent environments compose theirs in RemoteServices."
+  "reason": "Composes the app's own RemoteConnections.shared (in a function: its callbacks keep their actor there); independent environments compose theirs in RemoteServices."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteConnections.swift",
+  "instance": "catalog: .live",
+  "count": 1,
+  "reason": "Composes the app's own RemoteConnections.shared from the app's saved servers."
  },
  {
   "file": "Sources/Strata/Remote/RemoteConnections.swift",
@@ -94,5 +106,35 @@
   "instance": ".live",
   "count": 3,
   "reason": "The Shelf is the app's, not a window's: it uses the active window's copies (AGENTS.md), and with no window active, the app's, which production windows share."
+ },
+ {
+  "file": "Sources/Strata/Previews/PreviewArchiveReader.swift",
+  "instance": "allowance: .shared",
+  "count": 1,
+  "reason": "Archive workers are the Mac's to spend: Space previews in every window share two at a time (ArchiveReadAllowance)."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteServers.swift",
+  "instance": "preferences: .shared",
+  "count": 1,
+  "reason": "The app's saved servers; independent environments own their store, registry and credentials together."
+ },
+ {
+  "file": "Sources/Strata/Remote/RemoteServers.swift",
+  "instance": "credentials: .shared",
+  "count": 1,
+  "reason": "The app's saved servers' credentials, in the app's keychain; independent environments inject their own."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
+  "instance": "watchBudget: .shared",
+  "count": 1,
+  "reason": "Folders a sidebar watches are the process's open directories: every window's trees share one limit (AGENTS.md: sidebar watchers)."
+ },
+ {
+  "file": "Sources/Strata/Window/BrowserWindowController+Trash.swift",
+  "instance": "mounter: .live",
+  "count": 1,
+  "reason": "Mounting a share is macOS's (NetFS), for the whole Mac; tests inject a ServerMounter into the sheet itself."
  }
 ]

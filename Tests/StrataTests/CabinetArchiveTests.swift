@@ -99,7 +99,7 @@ struct CabinetArchiveTests {
         try write(Self.lzx, to: tree.url("Notebook.onepkg"))
         let archive = tree.url("Notebook.onepkg"), out = tree.url("out")
         let placed = try await TestWork.run {
-            try Archiver.extract(archive, inspection: .init(), into: out, control: .init())
+            try Archiver.extract(archive, inspection: .init(), into: out, copies: .live, control: .init())
         }
         #expect(placed.path == tree.url("out/Notebook").path)
         #expect(tree.text("out/Notebook/dir1/file1") == Self.file1)
@@ -148,7 +148,7 @@ struct CabinetArchiveTests {
         #expect(listing.note == PreviewArchiveError.unsafe.localizedDescription)
         await #expect(throws: Archiver.Failure(message: PreviewArchiveError.unsafe.localizedDescription)) {
             _ = try await TestWork.run {
-                try Archiver.extract(archive, inspection: .init(), into: out, control: .init())
+                try Archiver.extract(archive, inspection: .init(), into: out, copies: .live, control: .init())
             }
         }
         #expect(tree.text("escape.one") == "escape.one")

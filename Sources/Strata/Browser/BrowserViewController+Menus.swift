@@ -13,7 +13,7 @@ extension BrowserViewController {
     }
 
     var canTagSelection: Bool {
-        !selectedEntries.isEmpty && selectedEntries.allSatisfy { !$0.isVolume && TagStore.canTag($0) }
+        !selectedEntries.isEmpty && selectedEntries.allSatisfy { !$0.isVolume && TagStore.canTag($0, copies: services.copies) }
     }
 
     // MARK: - Context menu

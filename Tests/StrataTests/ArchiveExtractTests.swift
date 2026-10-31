@@ -36,7 +36,7 @@ struct ArchiveExtractTests {
 
     private func extract(_ archive: URL, into folder: URL, control: Archiver.Control = .init()) async throws -> URL {
         try await TestWork.run {
-            try Archiver.extract(archive, inspection: .init(), into: folder, control: control)
+            try Archiver.extract(archive, inspection: .init(), into: folder, copies: .live, control: control)
         }
     }
 

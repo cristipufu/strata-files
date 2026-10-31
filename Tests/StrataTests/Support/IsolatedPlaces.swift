@@ -21,6 +21,6 @@ extension PathSuggestions {
 extension FileStatuses {
     /// Tag, iCloud and git stores of their own, the tags' settings included.
     static func isolated() throws -> FileStatuses {
-        FileStatuses(tags: TagStore(preferences: try Prefs.isolated()), cloud: CloudStore(), git: GitStatusStore())
+        FileStatuses(tags: TagStore(preferences: try Prefs.isolated(), copies: .live), cloud: CloudStore(), git: GitStatusStore())
     }
 }
