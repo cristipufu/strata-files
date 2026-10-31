@@ -76,10 +76,12 @@ package enum Places {
         preferences.favoritePaths = favorites(preferences: preferences, checks: checks).map(\.url.standardizedFileURL.path).filter { $0 != path }
     }
 
-    @concurrent private static func folders(among urls: [URL]) async -> [URL] {
-        urls.filter { url in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    nonisolated private static func folders(among urls: [URL]) async -> [URL] {
+        await OwnThread.run {
+            urls.filter { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }
         }
     }
 

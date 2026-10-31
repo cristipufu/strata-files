@@ -59,7 +59,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
 
     /// Markdown comes from untrusted files, so links never launch anything: web and mail links open, links to
     /// local files are revealed (not opened, so a link to a script can't run it), other schemes are ignored.
-    @concurrent private static func exists(_ url: URL) async -> Bool { FileManager.default.fileExists(atPath: url.path) }
+    nonisolated private static func exists(_ url: URL) async -> Bool { await OwnThread.run { FileManager.default.fileExists(atPath: url.path) } }
 
     package func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         let url = (link as? URL) ?? (link as? String).flatMap { URL(string: $0) }

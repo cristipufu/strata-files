@@ -439,11 +439,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
     enum Kind { case folder, item }
 
     /// What's at `path`: a folder to open, another item (a file, a package) to show in its folder, or nothing.
-    @concurrent static func kind(of path: String) async -> Kind? {
-        guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
-            return nil
+    nonisolated static func kind(of path: String) async -> Kind? {
+        await OwnThread.run {
+            guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
+                return nil
+            }
+            return values.isDirectory == true && values.isPackage != true ? .folder : .item
         }
-        return values.isDirectory == true && values.isPackage != true ? .folder : .item
     }
 
     /// Completes the last path component against the folders on disk, as far as it's unambiguous.
@@ -462,14 +464,16 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     /// The folders in `directory` whose names start with `prefix` (any case; hidden ones only for a hidden prefix), in
     /// Finder's order; nil when `directory` can't be read.
-    @concurrent static func folders(in directory: String, startingWith prefix: String) async -> [String]? {
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: directory) else { return nil }
-        return names.filter { name in
-            guard name.lowercased().hasPrefix(prefix.lowercased()), !name.hasPrefix(".") || prefix.hasPrefix(".") else { return false }
-            var isDir: ObjCBool = false
-            return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
-        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    nonisolated static func folders(in directory: String, startingWith prefix: String) async -> [String]? {
+        await OwnThread.run {
+            let fm = FileManager.default
+            guard let names = try? fm.contentsOfDirectory(atPath: directory) else { return nil }
+            return names.filter { name in
+                guard name.lowercased().hasPrefix(prefix.lowercased()), !name.hasPrefix(".") || prefix.hasPrefix(".") else { return false }
+                var isDir: ObjCBool = false
+                return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
+            }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
     }
 
     /// Completes `prefix` as far as `matches` (the folders of `directory` starting with it) agree.
@@ -621,13 +625,15 @@ final class ChevronButton: NSButton {
     }
 
     /// The folders in `folder` a click on the chevron lists: visible ones, not packages, in Finder's order.
-    @concurrent static func subfolders(of folder: URL) async -> [URL] {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
-        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-        return urls.filter {
-            let values = try? $0.resourceValues(forKeys: Set(keys))
-            return values?.isDirectory == true && values?.isPackage != true
-        }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    nonisolated static func subfolders(of folder: URL) async -> [URL] {
+        await OwnThread.run {
+            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+            let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+            return urls.filter {
+                let values = try? $0.resourceValues(forKeys: Set(keys))
+                return values?.isDirectory == true && values?.isPackage != true
+            }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }
     }
 
     private func popUpMenu(listing folders: [URL]) {

@@ -12,7 +12,7 @@ nonisolated struct FinderLook: Sendable {
         icon = NSWorkspace.shared.icon(forFile: url.path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 
-    @concurrent static func read(_ url: URL) async -> FinderLook { FinderLook(url) }
+    nonisolated static func read(_ url: URL) async -> FinderLook { await OwnThread.run { FinderLook(url) } }
 
     var image: NSImage? { icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) } }
 }

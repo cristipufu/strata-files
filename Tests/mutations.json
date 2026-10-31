@@ -92,8 +92,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Trash.swift",
-    "find": "            if fixed || !changeable { refused.append(url) }\n            return !fixed && changeable",
-    "replace": "            if fixed { refused.append(url) }\n            return !fixed",
+    "find": "                if fixed || !changeable { refused.append(url) }\n                return !fixed && changeable",
+    "replace": "                if fixed { refused.append(url) }\n                return !fixed",
     "rule": "Delete goes ahead in a folder that can't be changed",
     "tests": "DeleteTests"
   },

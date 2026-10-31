@@ -43,8 +43,14 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         case folder, item, missing
     }
 
-    /// Read away from the main thread: on a server, each step of the path is a round trip.
-    @concurrent package static func opening(_ url: URL) async -> Opening {
+    /// Read on a thread of its own: on a server each step of the path is a round trip, and one that stopped answering
+    /// holds only that thread.
+    package static func opening(_ url: URL) async -> Opening {
+        await OwnThread.run { readOpening(url) }
+    }
+
+    /// The same, read where it's called.
+    package static func readOpening(_ url: URL) -> Opening {
         guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
             return .missing
         }

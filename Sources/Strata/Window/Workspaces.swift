@@ -286,8 +286,10 @@ final class Workspaces {
         !controller.isClosed && controller.waitingPanes.contains { $0.index == index && $0.folder == folder }
     }
 
-    @concurrent private static func there(_ path: String) async -> Bool {
-        FileManager.default.fileExists(atPath: path)
+    nonisolated private static func there(_ path: String) async -> Bool {
+        await OwnThread.run {
+            FileManager.default.fileExists(atPath: path)
+        }
     }
 
     /// One window with a tab per planned tab, in order. Panes whose folder can't be shown yet start at Home and wait
@@ -329,8 +331,10 @@ final class Workspaces {
         return await Self.plan(workspace, servers: servers)
     }
 
-    @concurrent private static func plan(_ workspace: Workspace, servers: [String: String]) async -> WorkspacePlan {
-        WorkspacePlan(workspace, exists: isThere, server: { servers[$0] })
+    nonisolated private static func plan(_ workspace: Workspace, servers: [String: String]) async -> WorkspacePlan {
+        await OwnThread.run {
+            WorkspacePlan(workspace, exists: isThere, server: { servers[$0] })
+        }
     }
 
     /// Connects to the shares and servers that `controllers`' panes wait for, one at a time (macOS or ssh may ask for a

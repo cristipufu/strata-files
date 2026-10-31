@@ -138,8 +138,10 @@ final class ContainerInspectorView: NSView {
 
     isolated deinit { reading?.cancel() }
 
-    @concurrent private static func present(_ paths: [String]) async -> Set<String> {
-        Set(paths.filter { FileManager.default.fileExists(atPath: $0) })
+    nonisolated private static func present(_ paths: [String]) async -> Set<String> {
+        await OwnThread.run {
+            Set(paths.filter { FileManager.default.fileExists(atPath: $0) })
+        }
     }
 
     private func addCard(_ card: InspectorCard) {
@@ -627,19 +629,21 @@ final class ComposeInspectorView: NSView {
     private static var resolvedCache: [String: String] = [:]
 
     /// `resolved` and `cached`: what's known already, so only the rest is read.
-    @concurrent private static func read(_ folder: URL, directories: Set<String>, resolved known: [String: String],
+    nonisolated private static func read(_ folder: URL, directories: Set<String>, resolved known: [String: String],
                                          cached: [String: (modified: Date?, names: [String])]) async -> Read {
-        var resolved = known
-        for directory in directories where resolved[directory] == nil {
-            resolved[directory] = URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
+        await OwnThread.run {
+            var resolved = known
+            for directory in directories where resolved[directory] == nil {
+                resolved[directory] = URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
+            }
+            let file = fileNames.lazy.map { folder.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
+            let modified = file.flatMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
+            let names = file.map { file in
+                cached[file.path].flatMap { $0.modified == modified ? $0.names : nil } ?? serviceNames(in: file)
+            } ?? []
+            return Read(real: folder.resolvingSymlinksInPath().standardizedFileURL.path, resolved: resolved,
+                        file: file, modified: modified, names: names)
         }
-        let file = fileNames.lazy.map { folder.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
-        let modified = file.flatMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
-        let names = file.map { file in
-            cached[file.path].flatMap { $0.modified == modified ? $0.names : nil } ?? serviceNames(in: file)
-        } ?? []
-        return Read(real: folder.resolvingSymlinksInPath().standardizedFileURL.path, resolved: resolved,
-                    file: file, modified: modified, names: names)
     }
 
     private static func remember(_ read: Read) {

@@ -138,8 +138,10 @@ final class ShelfWell: NSView, NSDraggingSource {
         }
     }
 
-    @concurrent private static func there(_ urls: [URL]) async -> [URL] {
-        urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+    nonisolated private static func there(_ urls: [URL]) async -> [URL] {
+        await OwnThread.run {
+            urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        }
     }
 
     private func show() {

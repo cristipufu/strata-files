@@ -49,9 +49,11 @@ package final class ConflictSheetController: NSWindowController {
                          existingIcon: existingIcon, incomingIcon: incomingIcon)
         }
 
-        @concurrent private static func disk(_ conflict: TransferConflict) async -> (String, Bool, Bool) {
-            let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
-            return (folder, await FileEntry.opening(conflict.existing) == .folder, conflict.canMerge)
+        nonisolated private static func disk(_ conflict: TransferConflict) async -> (String, Bool, Bool) {
+            await OwnThread.run {
+                let folder = FileManager.default.displayName(atPath: conflict.existing.deletingLastPathComponent().path)
+                return (folder, FileEntry.readOpening(conflict.existing) == .folder, conflict.canMerge)
+            }
         }
     }
 

@@ -39,8 +39,10 @@ final class SummaryView: NSView {
         let path: String
         let modified: Date?
 
-        @concurrent static func read(_ url: URL) async -> CacheKey {
-            CacheKey(path: url.path, modified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        nonisolated static func read(_ url: URL) async -> CacheKey {
+            await OwnThread.run {
+                CacheKey(path: url.path, modified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+            }
         }
     }
 

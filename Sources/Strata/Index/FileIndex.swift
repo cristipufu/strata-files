@@ -175,13 +175,17 @@ package final class FileIndex {
         }
     }
 
-    @concurrent private static func resolved(_ folder: URL) async -> String {
-        folder.resolvingSymlinksInPath().standardizedFileURL.path
+    nonisolated private static func resolved(_ folder: URL) async -> String {
+        await OwnThread.run {
+            folder.resolvingSymlinksInPath().standardizedFileURL.path
+        }
     }
 
-    @concurrent private static func sameVolume(_ a: String, _ b: String) async -> Bool {
-        var first = stat(), second = stat()
-        return stat(a, &first) == 0 && stat(b, &second) == 0 && first.st_dev == second.st_dev
+    nonisolated private static func sameVolume(_ a: String, _ b: String) async -> Bool {
+        await OwnThread.run {
+            var first = stat(), second = stat()
+            return stat(a, &first) == 0 && stat(b, &second) == 0 && first.st_dev == second.st_dev
+        }
     }
 
     /// The folders the index covers, given the home folder's real path.

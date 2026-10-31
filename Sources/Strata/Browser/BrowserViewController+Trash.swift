@@ -145,17 +145,19 @@ extension BrowserViewController {
         let choices: [DeletionRequest]
     }
 
-    @concurrent static func deletionPlan(_ urls: [URL], copies: CopyProviders) async -> DeletionPlan {
-        var refused: [URL] = []
-        let candidates = outermost(urls).filter { url in
-            // A Trash is emptied, never deleted itself.
-            let fixed = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true || Trash.isTrash(anySpelling: url)
-            // An archive opened as a folder isn't changed either.
-            let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)
-            if fixed || !changeable { refused.append(url) }
-            return !fixed && changeable
+    nonisolated static func deletionPlan(_ urls: [URL], copies: CopyProviders) async -> DeletionPlan {
+        await OwnThread.run {
+            var refused: [URL] = []
+            let candidates = outermost(urls).filter { url in
+                // A Trash is emptied, never deleted itself.
+                let fixed = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true || Trash.isTrash(anySpelling: url)
+                // An archive opened as a folder isn't changed either.
+                let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)
+                if fixed || !changeable { refused.append(url) }
+                return !fixed && changeable
+            }
+            return DeletionPlan(candidates: candidates, refused: refused, choices: candidates.map(DeletionRequest.init))
         }
-        return DeletionPlan(candidates: candidates, refused: refused, choices: candidates.map(DeletionRequest.init))
     }
 
     /// What couldn't be done, for `report`: a whole sentence for one item (by name) and one for several (a count).

@@ -197,13 +197,17 @@ package final class IconCache {
         return await Self.together(paths)?.image
     }
 
-    @concurrent nonisolated private static func current(_ path: String) async -> Found {
-        if let known = knownKind(path) { return .known(known) }
-        return .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
+    nonisolated private static func current(_ path: String) async -> Found {
+        await OwnThread.run {
+            if let known = knownKind(path) { return .known(known) }
+            return .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
+        }
     }
 
-    @concurrent nonisolated private static func together(_ paths: [String]) async -> MadeElsewhere? {
-        NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
+    nonisolated private static func together(_ paths: [String]) async -> MadeElsewhere? {
+        await OwnThread.run {
+            NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
+        }
     }
 
     /// A kind Strata draws a page for, unless the item has an icon of its own.

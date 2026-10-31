@@ -133,8 +133,10 @@ enum StackProjects {
     /// Those of `folders` that are folders on this Mac. The paths come from the containers' labels, which an image can
     /// set, so each is checked to be a plain folder before Terminal or an editor is asked to open it: Terminal *runs*
     /// a script it's given, and an app would launch.
-    @concurrent static func existing(_ folders: [URL]) async -> [URL] {
-        folders.filter(FileEntry.isNavigableFolder)
+    nonisolated static func existing(_ folders: [URL]) async -> [URL] {
+        await OwnThread.run {
+            folders.filter(FileEntry.isNavigableFolder)
+        }
     }
 
     /// Hands `open` those of `directories` that are folders on this Mac when asked, or beeps when none is.
