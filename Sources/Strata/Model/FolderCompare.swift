@@ -102,14 +102,8 @@ package nonisolated enum FolderCompare {
     package static func compare(_ left: URL, _ right: URL, contents: Bool, includeHidden: Bool, control: Control,
                         progress: @escaping @Sendable (Int) -> Void) async -> Result {
         var result = Result()
-        for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
-            result.failure = String(localized: "“\(root.lastPathComponent)” can’t be read.")
-            return result
-        }
-        // Where they really are, whatever links lead there: a sync between a folder and one inside it would copy a
-        // folder into itself, or trash one side's own folder.
-        guard !nested(RealPath.of(left.path), RealPath.of(right.path)) else {
-            result.failure = String(localized: "A folder can’t be copied into itself")
+        if let refusal = refusal(left, right) {
+            result.failure = refusal
             return result
         }
         var seen = 0
@@ -122,23 +116,65 @@ package nonisolated enum FolderCompare {
         let ignoringCase = !caseSensitive(left) || !caseSensitive(right)
         let leftScan = scan(left, includeHidden: includeHidden, ignoringCase: ignoringCase, control: control, counted: report)
         let rightScan = scan(right, includeHidden: includeHidden, ignoringCase: ignoringCase, control: control, counted: report)
-        let fat = isFATLike(left) || isFATLike(right)
+        let comparison = Comparison(left: left, right: right, sides: Sides(leftScan, rightScan), contents: contents,
+                                    fat: isFATLike(left) || isFATLike(right), control: control)
         result.scanned = leftScan.items.count + rightScan.items.count
         result.truncated = leftScan.truncated || rightScan.truncated
         guard !control.isCancelled else {
             result.cancelled = true
             return result
         }
-        let leftItems = leftScan.items, rightItems = rightScan.items
-        let unknown = leftScan.unknown.merging(rightScan.unknown) { first, _ in first }
-        let keys = Set(leftItems.keys).union(rightItems.keys).union(unknown.keys)
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        for key in comparison.sides.keys {
+            if control.isCancelled {
+                result.cancelled = true
+                break
+            }
+            switch comparison.outcome(of: key) {
+            case .skipped: break
+            case .identical: result.identical += 1
+            case .differs(let difference): result.differences.append(difference)
+            }
+        }
+        return result
+    }
+
+    /// Why `left` and `right` can't be compared: a side can't be read, or one is the other or inside it, where they
+    /// really are, whatever links lead there (a sync between a folder and one inside it would copy a folder into
+    /// itself, or trash one side's own folder).
+    private static func refusal(_ left: URL, _ right: URL) -> String? {
+        for root in [left, right] where !FileManager.default.isReadableFile(atPath: root.path) {
+            return String(localized: "“\(root.lastPathComponent)” can’t be read.")
+        }
+        guard !nested(RealPath.of(left.path), RealPath.of(right.path)) else {
+            return String(localized: "A folder can’t be copied into itself")
+        }
+        return nil
+    }
+
+    /// Both sides' items by key, and what couldn't be read on either.
+    private struct Sides {
+        let left: [String: Item]
+        let right: [String: Item]
+        let unknown: [String: String]
+
+        init(_ left: Scan, _ right: Scan) {
+            self.left = left.items
+            self.right = right.items
+            unknown = left.unknown.merging(right.unknown) { first, _ in first }
+        }
+
+        /// Every key on either side, in the order the list shows them.
+        var keys: [String] {
+            Set(left.keys).union(right.keys).union(unknown.keys).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+
         /// Whether `key`'s folder is a folder on both sides (otherwise a row above already covers it).
         func parentShared(_ key: String) -> Bool {
             let parent = (key as NSString).deletingLastPathComponent
-            return parent.isEmpty || (leftItems[parent]?.isDirectory == true && rightItems[parent]?.isDirectory == true
-                && leftItems[parent]?.isLink == false && rightItems[parent]?.isLink == false && unknown[parent] == nil)
+            return parent.isEmpty || (left[parent]?.isDirectory == true && right[parent]?.isDirectory == true
+                && left[parent]?.isLink == false && right[parent]?.isLink == false && unknown[parent] == nil)
         }
+
         /// Whether `key` is inside something that couldn't be read (on either side).
         func insideUnknown(_ key: String) -> Bool {
             var parent = (key as NSString).deletingLastPathComponent
@@ -148,34 +184,50 @@ package nonisolated enum FolderCompare {
             }
             return false
         }
-        for key in keys {
-            if control.isCancelled {
-                result.cancelled = true
-                break
+    }
+
+    private enum Outcome {
+        /// Covered by a row above, inside something that couldn't be read, or a folder on both sides.
+        case skipped
+        case identical
+        case differs(Difference)
+    }
+
+    private struct Comparison {
+        let left: URL
+        let right: URL
+        let sides: Sides
+        let contents: Bool
+        let fat: Bool
+        let control: Control
+
+        func outcome(of key: String) -> Outcome {
+            guard !sides.insideUnknown(key) else { return .skipped }
+            if let reason = sides.unknown[key] {
+                let l = sides.left[key], r = sides.right[key]
+                return .differs(Difference(id: l?.path ?? r?.path ?? key, kind: .unknown, left: l, right: r, note: reason))
             }
-            guard !insideUnknown(key) else { continue }
-            if let reason = unknown[key] {
-                let l = leftItems[key], r = rightItems[key]
-                result.differences.append(Difference(id: l?.path ?? r?.path ?? key, kind: .unknown, left: l, right: r, note: reason))
-                continue
-            }
-            guard parentShared(key) else { continue }
-            let l = leftItems[key], r = rightItems[key]
+            guard sides.parentShared(key) else { return .skipped }
+            let l = sides.left[key], r = sides.right[key]
             guard let l, let r else {
-                guard let item = l ?? r else { continue }
-                result.differences.append(Difference(id: item.path, kind: l == nil ? .onlyRight : .onlyLeft, left: l, right: r))
-                continue
+                guard let item = l ?? r else { return .skipped }
+                return .differs(Difference(id: item.path, kind: l == nil ? .onlyRight : .onlyLeft, left: l, right: r))
             }
             if l.isDirectory != r.isDirectory || l.isLink != r.isLink {
-                result.differences.append(Difference(id: l.path, kind: .kindsDiffer, left: l, right: r))
-                continue
+                return .differs(Difference(id: l.path, kind: .kindsDiffer, left: l, right: r))
             }
-            if l.isDirectory && !l.isLink { continue }
+            if l.isDirectory && !l.isLink { return .skipped }
+            return compareFiles(l, r)
+        }
+
+        /// Two files (or links) at one place on both sides: links by where they lead, files by size, then by content
+        /// when asked, else by date.
+        private func compareFiles(_ l: Item, _ r: Item) -> Outcome {
             let gap = l.modified.timeIntervalSince(r.modified)
             // FAT and exFAT keep local time: across a daylight-saving change everything looks an hour apart.
             let sameDate = abs(gap) <= dateTolerance || fat && abs(abs(gap) - 3600) <= dateTolerance
             let newer: Kind = gap > 0 ? .leftNewer : .rightNewer
-            var same: Bool
+            let same: Bool
             if l.isLink {
                 same = (try? FileManager.default.destinationOfSymbolicLink(atPath: left.appending(path: l.path).path))
                     == (try? FileManager.default.destinationOfSymbolicLink(atPath: right.appending(path: r.path).path))
@@ -186,13 +238,8 @@ package nonisolated enum FolderCompare {
             } else {
                 same = sameDate
             }
-            if same {
-                result.identical += 1
-            } else {
-                result.differences.append(Difference(id: l.path, kind: sameDate ? .changed : newer, left: l, right: r))
-            }
+            return same ? .identical : .differs(Difference(id: l.path, kind: sameDate ? .changed : newer, left: l, right: r))
         }
-        return result
     }
 
     /// Whether the disk holding `url` tells "a" from "A" in names.
