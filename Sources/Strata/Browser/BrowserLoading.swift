@@ -4,7 +4,11 @@ import Foundation
 /// deferring it while a native name editor is open; a read completing does not mean those entries are on screen.
 @MainActor final class BrowserLoading {
     struct Delivery {
+        /// The folder the read listed: the one asked for, or where a link or alias to a folder led.
+        let folder: URL
         let entries: [FileEntry]
+        /// The first listing since the browser went to this folder: where it has arrived.
+        let landed: Bool
         let fromTop: Bool
         /// The order the entries were read in, if they were sorted as they were read.
         let sortedBy: BrowserOrdering.Snapshot?
@@ -49,20 +53,23 @@ import Foundation
     }
 
     func reload(showHidden: Bool, applications: ApplicationsFolders, scrollToTop: Bool, invalidateCopy: Bool = false,
-                sortedBy: BrowserOrdering.Snapshot?,
+                sortedBy: BrowserOrdering.Snapshot?, after: Task<Void, Never>? = nil,
                 receive: @escaping (Result<Delivery, Error>) -> Void, capacityChanged: @escaping () -> Void) {
         guard let directory else { return }
         cancelAuxiliaryReads()
         reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy,
-                   sortedBy: sortedBy) { [weak self] result, generation in
+                   sortedBy: sortedBy, after: after) { [weak self] result, generation in
             guard let self else { return }
             isLoadingFolder = false
             switch result {
-            case .success(let entries):
+            case .success(let listing):
                 error = nil
-                let fromTop = scrollToTop || opensAtTop
+                // Where a link led is where the browser is: refreshing reads that folder from now on.
+                self.directory = listing.folder
+                let landed = opensAtTop, fromTop = scrollToTop || opensAtTop
                 opensAtTop = false
-                receive(.success(Delivery(entries: entries, fromTop: fromTop, sortedBy: sortedBy)))
+                receive(.success(Delivery(folder: listing.folder, entries: listing.entries, landed: landed,
+                                          fromTop: fromTop, sortedBy: sortedBy)))
             case .failure(let failure):
                 error = failure
                 isLoaded = true
@@ -121,7 +128,7 @@ import Foundation
         return session.load(node.url, showHidden: showHidden, applications: applications) { [weak self, weak session] result, _ in
             guard let self, let session, children[key]?.session === session else { return }
             children.removeValue(forKey: key)
-            receive((try? result.get()) ?? [])
+            receive((try? result.get())?.entries ?? [])
         }
     }
 

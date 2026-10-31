@@ -17,7 +17,7 @@ final class IndependentEnvironment {
     let storage: SecureStorage.Context
     let services: BrowserServices
 
-    init() throws {
+    init(directories: DirectoryReader? = nil) throws {
         state = try TestTree()
         let preferences = try Prefs.isolated()
         preferences.showIconPreviews = false
@@ -32,7 +32,8 @@ final class IndependentEnvironment {
             readTree: { _, _, _, _ in throw ContainerAPIError.notFound })
         services = BrowserServices.isolated(preferences: preferences, storage: storage, credentials: credentials,
             connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
-            clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers)
+            clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers,
+            directories: directories)
     }
 
     isolated deinit {

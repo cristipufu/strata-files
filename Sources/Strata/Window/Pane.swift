@@ -11,16 +11,12 @@ enum Destination: Equatable {
 /// One side of a window: a browser with its own place and back/forward history.
 final class Pane {
     let browser: BrowserViewController
-    var destination: Destination {
-        didSet {
-            opening.cancel()
-            guard destination != oldValue else { return }
-            navigationRevision += 1
-            browser.cancelPendingActions()
-            host.pathBar.cancelEditing()
-        }
-    }
+    /// Changed by going somewhere (`navigate(to:)`), or by the place's read finding it to be another folder
+    /// (`settle(at:)`, where a link led): the same visit, not a new one.
+    private(set) var destination: Destination
     private(set) var navigationRevision = 0
+    /// Going to a folder counts as a visit to it once it has been listed (where a link led, if it was one).
+    var countsVisitOnLanding = false
     let opening = FolderOpenSession()
     /// The current folder, or the last one shown before a search or Recents.
     var location: URL
@@ -43,6 +39,22 @@ final class Pane {
         self.location = location.standardizedFileURL
         destination = .folder(self.location)
         host = PaneHostViewController(browser: browser)
+    }
+
+    /// Somewhere new: what was under way for the old place stops.
+    func navigate(to target: Destination) {
+        opening.cancel()
+        guard target != destination else { return }
+        destination = target
+        navigationRevision += 1
+        browser.cancelPendingActions()
+        host.pathBar.cancelEditing()
+    }
+
+    /// The folder this visit's read found it to be: where a link or alias led.
+    func settle(at folder: URL) {
+        destination = .folder(folder)
+        location = folder
     }
 
     /// Stops what the pane is doing in the background (duplicate hashing, a folder scan): its window or the pane is

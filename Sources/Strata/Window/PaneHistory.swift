@@ -15,6 +15,11 @@ struct PaneHistory: Equatable {
         forward.removeAll()
     }
 
+    /// Arrived at `place`, where a link led: one that led back to where the last step left from isn't a step.
+    mutating func arrived(at place: Destination) {
+        if back.last == place { back.removeLast() }
+    }
+
     /// Where one step `direction` from `current` goes, if anywhere.
     mutating func step(_ direction: BrowserNavigation.Direction, from current: Destination) -> Destination? {
         switch direction {

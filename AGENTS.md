@@ -262,6 +262,13 @@ These apply everywhere below; the sections that follow add only what is specific
   content through `FileCollectionController.apply`; each keeps its native selection policy and requests only the
   metadata it needs. Keep cached views, safe-area placement, theme refresh on reattachment and native responder
   routing.
+- **Where a pane is comes from its read.** Navigation asks for a URL and asks the disk nothing; `DirectoryLoader`
+  resolves a link or Finder alias off the main thread and returns a `Listing`, the folder it listed and its items.
+  The pane settles there when its first listing lands (`browser(_:landedAt:asked:)`, `Pane.settle(at:)`, the same
+  visit, not a new one), and visits and the last location record that folder. A folder is watched before it's read:
+  `BrowserWatching.watch` returns once its watchers are live, opened off the main actor, and the read waits for that,
+  so no change made while it's read is missed. Compare path spellings with `PathSpelling`, never `standardizedFileURL`
+  on the main thread: it asks the disk, and its answer changes once an item is gone.
 - **`DirectoryReadSession`** schedules folder reads: each presentation owns its generation, rejects late success and
   error responses, and invalidates reads when removed or replaced by results. An explicit Reload's invalidation and
   the listing that follows are one cancellable request: check cancellation after invalidation, and an old Reload never

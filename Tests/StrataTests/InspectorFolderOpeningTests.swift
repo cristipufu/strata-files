@@ -209,6 +209,8 @@ struct InspectorFolderOpeningTests {
         let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), calls: calls)]))
         let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
         defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        // Its first folder counts once it has been listed.
+        await window.browser.directoryReads.task?.value
         let before = tree.snapshot(), remembered = environment.services.preferences.lastLocation
         let visits = environment.services.visits.ranked()
         try await open(target, in: window)
@@ -234,12 +236,12 @@ struct InspectorFolderOpeningTests {
         let first = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("first"), calls: a)]))
         let second = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("second"), calls: b)]))
         let before = tree.snapshot()
-        let entries = try await first.services.directories.load(tree.url("first"), showHidden: false, applications: .standard)
+        let entries = try await first.services.directories.load(tree.url("first"), showHidden: false, applications: .standard).entries
         #expect(entries.map(\.name) == ["visible.txt"])
-        let hidden = try await first.services.directories.load(tree.url("first"), showHidden: true, applications: .standard)
+        let hidden = try await first.services.directories.load(tree.url("first"), showHidden: true, applications: .standard).entries
         #expect(hidden.map(\.name).sorted() == [".hidden.txt", "visible.txt"])
-        _ = try await second.services.directories.load(tree.url("second"), showHidden: false, applications: .standard)
-        let local = try await first.services.directories.load(tree.url("local"), showHidden: false, applications: .standard)
+        _ = try await second.services.directories.load(tree.url("second"), showHidden: false, applications: .standard).entries
+        let local = try await first.services.directories.load(tree.url("local"), showHidden: false, applications: .standard).entries
         #expect(local.map(\.name) == ["item.txt"])
         #expect(await a.refreshed == [tree.url("first"), tree.url("first")])
         #expect(await b.refreshed == [tree.url("second")])

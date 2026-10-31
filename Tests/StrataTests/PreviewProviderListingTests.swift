@@ -40,7 +40,7 @@ struct PreviewProviderListingTests {
             let copies = CopyProviders([ServerCopyProvider(files: files)], remoteCopies: store,
                                        containerCopies: ContainerCopyStore(root: tree.url(root + "-containers")),
                                        clipboardRoot: tree.url(root + "-clipboard"))
-            let listed = try await DirectoryLoader.loadPreview(top, showHidden: true, applications: .standard, copies: copies, limit: 10)
+            let listed = try await DirectoryLoader.loadPreview(top, showHidden: true, applications: .standard, copies: copies, limit: 10).entries
             #expect(listed.map(\.name) == ["public.txt"] && copies.isPlaceholder(top.appendingPathComponent("public.txt")))
             #expect(await backend.downloads == 0)
         }

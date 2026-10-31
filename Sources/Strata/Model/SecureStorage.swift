@@ -3,6 +3,7 @@ import Foundation
 import Security
 import Synchronization
 import os
+import StrataSupport
 
 /// Strata's saved state (the file index, the content index, the operation history) reveals what is inside folders that
 /// macOS guards with privacy prompts, like Documents, Desktop and Downloads. A plain copy would let anything running as
@@ -72,7 +73,7 @@ nonisolated package enum SecureStorage {
             var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             guard fd >= 0 else { return }
             defer { close(fd) }
-            let path = ChosenFile.systemSpelling(directory.path)
+            let path = PathSpelling.system(directory.path)
             for component in path.split(separator: "/") {
                 let name = String(component)
                 if mkdirat(fd, name, 0o700) != 0, errno != EEXIST { return }

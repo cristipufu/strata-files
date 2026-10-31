@@ -17,7 +17,7 @@ nonisolated package final class ChosenFile: Sendable {
         self.url = url
         guard !url.lastPathComponent.isEmpty, ![".", "..", "/"].contains(url.lastPathComponent) else { throw POSIXError(.EINVAL) }
         let path = url.deletingLastPathComponent().path
-        parentPath = resolveParent ? try Self.resolvedDirectory(path) : Self.systemSpelling(path)
+        parentPath = resolveParent ? try Self.resolvedDirectory(path) : PathSpelling.system(path)
         parent = try Self.openDirectory(parentPath)
         var info = stat()
         guard fstat(parent, &info) == 0 else { close(parent); throw POSIXError(.ESTALE) }
@@ -32,15 +32,6 @@ nonisolated package final class ChosenFile: Sendable {
 
     deinit { close(parent) }
 
-    package static func systemSpelling(_ path: String) -> String {
-        // Foundation shortens /private/var back to /var. These root-owned aliases are fixed by macOS;
-        // user-controlled directory components below them are still opened with O_NOFOLLOW.
-        for alias in ["/var", "/tmp", "/etc"] where path == alias || path.hasPrefix(alias + "/") {
-            return "/private" + path
-        }
-        return path
-    }
-
     private static func resolvedDirectory(_ path: String) throws -> String {
         guard let resolved = realpath(path, nil) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { free(resolved) }
@@ -50,7 +41,7 @@ nonisolated package final class ChosenFile: Sendable {
     package static func openDirectory(_ path: String) throws -> Int32 {
         var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { throw POSIXError(.EIO) }
-        for component in systemSpelling(path).split(separator: "/") {
+        for component in PathSpelling.system(path).split(separator: "/") {
             guard component != ".", component != ".." else { close(fd); throw POSIXError(.EINVAL) }
             let next = openat(fd, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             let code = errno

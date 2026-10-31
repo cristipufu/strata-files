@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// One private, complete materialization. Cleanup knows only the identities created by this receipt.
 /// Clipboard exports relinquish cleanup after publication, matching the existing next-launch staging lifetime.
@@ -265,7 +266,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
         var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { throw POSIXError(.EIO) }
         do {
-            for part in ChosenFile.systemSpelling(base.path).split(separator: "/") {
+            for part in PathSpelling.system(base.path).split(separator: "/") {
                 let name = String(part)
                 guard name != ".", name != ".." else { throw POSIXError(.EINVAL) }
                 if mkdirat(fd, name, 0o700) != 0, errno != EEXIST { throw POSIXError(.EIO) }

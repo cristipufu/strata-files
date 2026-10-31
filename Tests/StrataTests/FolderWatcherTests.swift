@@ -138,6 +138,23 @@ struct FolderWatcherTests {
         #expect(tree.snapshot() == before)
     }
 
+    /// A folder collapsed while it opens gives its share back at once; watched again, it holds only its new share,
+    /// whenever the first opening ends.
+    @Test func aFolderRemovedWhileItOpensGivesItsShareBackOnce() async throws {
+        let tree = try TestTree("a/")
+        let before = tree.snapshot(), budget = FolderWatchers.Budget(limit: 1)
+        let watchers = FolderWatchers(budget: budget)
+        watchers.watch(tree.url("a")) {}
+        watchers.remove(under: tree.url("a"))
+        #expect(!watchers.contains(tree.url("a")) && budget.count == 0)
+        watchers.watch(tree.url("a")) {}
+        await watchers.settled()
+        #expect(watchers.contains(tree.url("a")) && budget.count == 1)
+        watchers.removeAll()
+        #expect(budget.count == 0)
+        #expect(tree.snapshot() == before)
+    }
+
     @Test func applicationsUsesPhysicalWatcherCountAndCollapseIncludesSystemDescendants() throws {
         let tree = try TestTree("apps/", "system/child/", "system-extra/", "other/")
         let before = tree.snapshot(), budget = FolderWatchers.Budget(limit: 4)
@@ -162,18 +179,24 @@ struct FolderWatcherTests {
         #expect(tree.snapshot() == before)
     }
 
-    @Test func failedOpensUseNoAllowanceAndOptionalApplicationsFolderUsesOnlyItsSuccessfulOpen() throws {
+    /// Folders open away from the main thread, each holding its share of the allowance meanwhile: one that doesn't open
+    /// gives it back once that's known, and an Applications folder whose system folder is missing keeps only its own.
+    @Test func failedOpensUseNoAllowanceAndOptionalApplicationsFolderUsesOnlyItsSuccessfulOpen() async throws {
         let tree = try TestTree("apps/", "other/")
         let before = tree.snapshot(), budget = FolderWatchers.Budget(limit: 2)
         let directories = ApplicationsFolders(installed: tree.url("apps"), system: tree.url("missing"))
         let watchers = FolderWatchers(budget: budget, directories: directories)
         watchers.watch(tree.url("missing")) {}
+        #expect(watchers.contains(tree.url("missing")) && budget.count == 1)
+        await watchers.settled()
         #expect(!watchers.contains(tree.url("missing")))
         #expect(budget.count == 0)
         watchers.watch(tree.url("apps")) {}
+        await watchers.settled()
         #expect(watchers.contains(tree.url("apps")))
         #expect(budget.count == 1)
         watchers.watch(tree.url("other")) {}
+        await watchers.settled()
         #expect(watchers.contains(tree.url("apps")))
         #expect(watchers.contains(tree.url("other")))
         #expect(budget.count == 2)

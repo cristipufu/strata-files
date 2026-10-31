@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// One row in the list. Children load the first time a folder is expanded.
 final class FileNode {
@@ -36,7 +37,7 @@ final class BrowserListing {
     /// Folder URLs may have a trailing slash; commands and restored selections may omit it.
     private var nodesByPath: [String: FileNode] = [:]
 
-    static func key(_ url: URL) -> String { url.standardizedFileURL.path }
+    static func key(_ url: URL) -> String { PathSpelling.short(url) }
 
     func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
 

@@ -11,6 +11,8 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package let isPackage: Bool
     package let isHidden: Bool
     package let isSymlink: Bool
+    /// A Finder alias (not a symbolic link): opening it goes where it points.
+    package let isAlias: Bool
     package let isVolume: Bool
     package let size: Int64?
     package let modified: Date?
@@ -101,11 +103,12 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package static let resourceKeys: [URLResourceKey] = [
         .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey,
         .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey, .localizedTypeDescriptionKey,
-        .contentTypeKey, .isVolumeKey,
+        .contentTypeKey, .isVolumeKey, .isAliasFileKey,
     ]
 
     package init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
-         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil) {
+         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
+         isAlias: Bool = false) {
         self.url = url
         self.name = name
         self.displayName = displayName ?? name
@@ -113,6 +116,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.isPackage = isPackage
         self.isHidden = isHidden
         self.isSymlink = isSymlink
+        self.isAlias = isAlias
         self.isVolume = isVolume
         self.size = size
         self.modified = modified
@@ -127,6 +131,8 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         name = values.name ?? url.lastPathComponent
         displayName = values.localizedName ?? name
         isSymlink = values.isSymbolicLink ?? false
+        // The key says yes for symbolic links too.
+        isAlias = values.isAliasFile == true && !isSymlink
         isVolume = values.isVolume ?? false
         var isDirectory = values.isDirectory ?? false
         var isPackage = values.isPackage ?? false
@@ -151,7 +157,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package func with(kind: String? = nil, displayName: String? = nil) -> FileEntry {
         FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
                   isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind ?? self.kind,
-                  contentType: contentType, displayName: displayName ?? self.displayName)
+                  contentType: contentType, displayName: displayName ?? self.displayName, isAlias: isAlias)
     }
 
     /// Filtering accepts both the name on disk and the visible label, without highlighting offsets from another name.
@@ -179,21 +185,34 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     }
 }
 
+/// What reading a folder found: the folder it listed (a link or Finder alias to a folder is listed as that folder, by
+/// its own path, so the folder and its items always agree) and the items in it.
+package nonisolated struct Listing: Sendable {
+    package let folder: URL
+    package let entries: [FileEntry]
+
+    package init(folder: URL, entries: [FileEntry]) {
+        self.folder = folder
+        self.entries = entries
+    }
+}
+
 package nonisolated enum DirectoryLoader {
     /// A preview reads one level and stops before allocating an unbounded URL array. Expanded children have their
     /// own request; hidden files, Applications merging and provider routing match the main browser.
     @concurrent
     package static func loadPreview(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
-                            copies: CopyProviders, limit: Int) async throws -> [FileEntry] {
+                            copies: CopyProviders, limit: Int) async throws -> Listing {
         try Task.checkCancellation()
         if copies.contains(directory) { try await copies.previewFolder(directory) }
         try Task.checkCancellation()
-        return try previewEntries(directory, showHidden: showHidden, applications: applications, limit: limit)
+        let folder = FileEntry.openedFolder(directory)
+        return Listing(folder: folder, entries: try previewEntries(folder, showHidden: showHidden, applications: applications,
+                                                                   limit: limit))
     }
 
     private static func previewEntries(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
                                        limit: Int) throws -> [FileEntry] {
-        let directory = FileEntry.openedFolder(directory)
         let options: FileManager.DirectoryEnumerationOptions = showHidden
             ? [.skipsSubdirectoryDescendants, .skipsPackageDescendants]
             : [.skipsSubdirectoryDescendants, .skipsPackageDescendants, .skipsHiddenFiles]
@@ -218,12 +237,18 @@ package nonisolated enum DirectoryLoader {
     }
 
     @concurrent
-    package static func load(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
-                     copies: CopyProviders) async throws -> [FileEntry] {
+    package static func load(_ requested: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
+                     copies: CopyProviders) async throws -> Listing {
         // A container's files: list the folder from the container first (every view loads folders here).
-        if copies.contains(directory) { await copies.refresh(directory) }
+        if copies.contains(requested) { await copies.refresh(requested) }
         // Follow a symlink or Finder alias. FileManager will not list the link itself.
-        let directory = FileEntry.openedFolder(directory)
+        let directory = FileEntry.openedFolder(requested)
+        return Listing(folder: directory, entries: try entries(of: directory, showHidden: showHidden,
+                                                               applications: applications, copies: copies))
+    }
+
+    private static func entries(of directory: URL, showHidden: Bool, applications: ApplicationsFolders,
+                                copies: CopyProviders) throws -> [FileEntry] {
         let isContainersFolder = copies.containerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try applications.contents(of: directory, keys: keys, options: showHidden ? [] : [.skipsHiddenFiles])

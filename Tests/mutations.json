@@ -1205,8 +1205,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "if countVisit { services.visits.record(url) }",
-    "replace": "if countVisit { Frecency.shared.record(url) }",
+    "find": "        if p.countsVisitOnLanding { services.visits.record(folder) }\n",
+    "replace": "        if p.countsVisitOnLanding { Frecency.shared.record(folder) }\n",
     "rule": "Browser service ownership navigation records visits globally",
     "tests": "TransferContextTests/windowNavigationAndSuggestionsUseTheirOwnVisitHistory"
   },
@@ -1262,8 +1262,8 @@
   },
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
-    "find": "        directoryReads.invalidate()\n        watchers = []",
-    "replace": "        watchers = []",
+    "find": "        directoryReads.invalidate()\n        watchersOpening?.cancel()",
+    "replace": "        watchersOpening?.cancel()",
     "rule": "Directory read ownership removed columns apply outstanding reads",
     "tests": "DirectoryReadSessionTests/columnsRejectStaleReadsAndStopApplyingAfterTeardown"
   },
@@ -1283,8 +1283,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [weak self] result in\n            guard let self else { return }",
-    "replace": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [self] result in",
+    "find": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [weak self] result in\n            guard let self else { return }",
+    "replace": "invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [self] result in",
     "rule": "Directory read ownership outstanding reads retain closed browsers",
     "tests": "DirectoryReadSessionTests/pendingReadsDoNotKeepTheirBrowserAlive"
   },
@@ -1367,8 +1367,8 @@
   },
   {
     "file": "Strata/Window/Pane.swift",
-    "find": "            navigationRevision += 1\n            browser.cancelPendingActions()",
-    "replace": "            // Mutation: search edits leave captured actions alive.",
+    "find": "        navigationRevision += 1\n        browser.cancelPendingActions()",
+    "replace": "        // Mutation: search edits leave captured actions alive.",
     "rule": "Applied browser actions search edits leave stale selections waiting",
     "tests": "DirectoryReadSessionTests/changingSearchTextScopeOrCaseCancelsCapturedActions"
   },
@@ -2671,15 +2671,15 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "let fromTop = scrollToTop || opensAtTop",
-    "replace": "let fromTop = scrollToTop",
+    "find": "let landed = opensAtTop, fromTop = scrollToTop || opensAtTop",
+    "replace": "let landed = opensAtTop, fromTop = scrollToTop",
     "rule": "Browser loading a superseding refresh loses the new folders scroll policy",
     "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "            case .success(let entries):\n                error = nil",
-    "replace": "            case .success(let entries):\n                isLoaded = true\n                error = nil",
+    "find": "            case .success(let listing):\n                error = nil",
+    "replace": "            case .success(let listing):\n                isLoaded = true\n                error = nil",
     "rule": "Browser loading a completed read claims deferred entries are already on screen",
     "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
   },
@@ -3084,8 +3084,8 @@
   },
   {
     "file": "Strata/Sidebar/FolderWatchers.swift",
-    "find": "budget.count += opened.count",
-    "replace": "budget.count += folders.count",
+    "find": "        budget.count -= reserved - watchers.count\n",
+    "replace": "",
     "rule": "Folder watcher ownership failed native opens consume allowance",
     "tests": "FolderWatcherTests"
   },
@@ -3098,8 +3098,8 @@
   },
   {
     "file": "Strata/Sidebar/FolderWatchers.swift",
-    "find": "budget.count -= removed.count",
-    "replace": "budget.count -= 1",
+    "find": "        budget.count -= removed.held\n",
+    "replace": "        budget.count -= 1\n",
     "rule": "Folder watcher ownership composite Applications watcher release counts as one",
     "tests": "FolderWatcherTests"
   },
@@ -3133,8 +3133,8 @@
   },
   {
     "file": "Strata/Window/Pane.swift",
-    "find": "didSet {\n            opening.cancel()",
-    "replace": "didSet {",
+    "find": "        opening.cancel()\n        guard target != destination else { return }",
+    "replace": "        guard target != destination else { return }",
     "rule": "Pane opening ownership a delayed open overrides newer navigation",
     "tests": "RemoteSessionOwnershipTests/navigatingAwayAndBackDiscardsADeferredServerOpening"
   },
@@ -3175,8 +3175,8 @@
   },
   {
     "file": "Strata/Model/FileEntry.swift",
-    "find": "if copies.contains(directory) { await copies.refresh(directory) }\n        // Follow a symlink or Finder alias.",
-    "replace": "// Follow a symlink or Finder alias.",
+    "find": "        if copies.contains(requested) { await copies.refresh(requested) }\n        // Follow a symlink or Finder alias.",
+    "replace": "        // Follow a symlink or Finder alias.",
     "rule": "Provider directory ownership directory reading skips provider preparation",
     "tests": "InspectorFolderOpeningTests/independentDirectoryReadersUseTheirOwnProvidersAndKeepNativeHiddenFileFiltering"
   },
@@ -3196,8 +3196,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "if !ReadOnlyCopies.contains(url, copies: services.copies) {",
-    "replace": "if true {",
+    "find": "        guard !ReadOnlyCopies.contains(folder, copies: services.copies) else { return }",
+    "replace": "        guard true else { return }",
     "rule": "Provider directory ownership provider paths become saved local destinations",
     "tests": "InspectorFolderOpeningTests/providerFoldersArePreparedWithoutBecomingLocalSavedLocationsOrDraggableTitles"
   },
@@ -7705,5 +7705,54 @@
     "replace": "        let free = windows\n",
     "rule": "The welcome goes on a window asking something in a sheet, where it can't be ended",
     "tests": "OpeningAtLaunchTests/theWelcomeGoesOnTheFirstWindowShownAndFree"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        let aliases = entries.filter { $0.isAlias && !$0.isFolder }\n",
+    "replace": "        let aliases = entries.filter { _ in false }\n",
+    "rule": "A Finder alias to a folder is handed to another app rather than opened here",
+    "tests": "LinkNavigationTests/openingAFinderAliasToAFolderGoesThereAndAFileOpensAtOnce"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "        isAlias = values.isAliasFile == true && !isSymlink\n",
+    "replace": "        isAlias = values.isAliasFile == true\n",
+    "rule": "A symbolic link is taken for a Finder alias",
+    "tests": "LinkNavigationTests/openingAFinderAliasToAFolderGoesThereAndAFileOpensAtOnce"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            pending.selection = pending.selection?.map { item in\n",
+    "replace": "            pending.selection = pending.selection?.map { item in return item\n",
+    "rule": "What was to be selected in a link's folder is lost once the link leads elsewhere",
+    "tests": "LinkNavigationTests/aLinkToAFolderShowsThatFolderAndBackAndForwardStepBetweenRealPlaces"
+  },
+  {
+    "file": "Strata/Window/PaneHistory.swift",
+    "find": "        if back.last == place { back.removeLast() }\n",
+    "replace": "",
+    "rule": "A link to where the pane already is adds a Back step to the same place",
+    "tests": "LinkNavigationTests/aLinkToWhereThePaneIsAddsNoBackStep"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        if p.countsVisitOnLanding { services.visits.record(folder) }\n",
+    "replace": "        if p.countsVisitOnLanding { services.visits.record(asked) }\n",
+    "rule": "A visit through a link counts the link rather than the folder it led to",
+    "tests": "LinkNavigationTests/aVisitThroughALinkCountsTheFolderItLedTo"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "            await after?.value\n",
+    "replace": "",
+    "rule": "A folder is read before its watchers are open, so a change made while it's read is missed",
+    "tests": "DirectoryReadSessionTests/aReadWaitsForWhatHasToBeReadyFirst|LinkNavigationTests/aChangeMadeWhileAFolderIsReadIsSeen"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "                self.directory = listing.folder\n",
+    "replace": "",
+    "rule": "A browser keeps reading a link after it has led to its folder",
+    "tests": "LinkNavigationTests/aLinkToAFolderShowsThatFolderAndBackAndForwardStepBetweenRealPlaces"
   }
 ]

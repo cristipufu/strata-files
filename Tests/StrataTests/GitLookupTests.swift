@@ -8,6 +8,7 @@ import Testing
 @testable import StrataQueue
 @testable import StrataModel
 @testable import StrataSearch
+import StrataSupport
 
 /// Which repository a folder is in is found away from the main thread, walking up to "/": until then the folder shows
 /// none, and a status change says when it's found.
@@ -43,11 +44,11 @@ import Testing
     /// without asking the disk.
     @Test func rowsSpellPrivateFoldersWithoutTheDisk() throws {
         let tree = try TestTree("a")
-        #expect(GitStatusStore.shortSpelling(tree.root.path) == tree.root.standardizedFileURL.path)
-        #expect(GitStatusStore.shortSpelling("/private/tmp") == "/tmp")
-        #expect(GitStatusStore.shortSpelling("/private/etc/hosts") == "/etc/hosts")
-        #expect(GitStatusStore.shortSpelling("/private/variable/a") == "/private/variable/a")
-        #expect(GitStatusStore.shortSpelling("/Users/a") == "/Users/a")
+        #expect(PathSpelling.short(tree.root.path) == tree.root.standardizedFileURL.path)
+        #expect(PathSpelling.short("/private/tmp") == "/tmp")
+        #expect(PathSpelling.short("/private/etc/hosts") == "/etc/hosts")
+        #expect(PathSpelling.short("/private/variable/a") == "/private/variable/a")
+        #expect(PathSpelling.short("/Users/a") == "/Users/a")
         #expect(tree.snapshot() == ["a"])
     }
 }

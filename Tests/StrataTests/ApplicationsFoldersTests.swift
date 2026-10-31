@@ -20,7 +20,7 @@ struct ApplicationsFoldersTests {
         }
 
         private func load(_ folder: URL, hidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
-            let work = Task { try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications, copies: .live) }
+            let work = Task { try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications, copies: .live).entries }
             pending.append(work)
             return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
         }
@@ -81,16 +81,16 @@ struct ApplicationsFoldersTests {
     @Test func includesBothApplicationsFoldersWithRealURLsAndDuplicateNames() async throws {
         let tree = try fixture()
         let before = tree.snapshot(), apps = folders(tree)
-        let entries = try await DirectoryLoader.load(apps.installed, showHidden: false, applications: apps, copies: .live)
+        let entries = try await DirectoryLoader.load(apps.installed, showHidden: false, applications: apps, copies: .live).entries
         #expect(entries.count == 7)
         #expect(Set(entries.filter { $0.name == "Same.app" }.map(\.url.path)) ==
                 [tree.url("Installed/Applications/Same.app").path, tree.url("System/Applications/Same.app").path])
         #expect(Set(entries.filter { $0.name == "Utilities" }.map(\.url.path)) ==
                 [tree.url("Installed/Applications/Utilities").path, tree.url("System/Applications/Utilities").path])
-        #expect(try await DirectoryLoader.load(apps.installed, showHidden: true, applications: apps, copies: .live).count == 8)
-        let direct = try await DirectoryLoader.load(apps.system, showHidden: false, applications: apps, copies: .live)
+        #expect(try await DirectoryLoader.load(apps.installed, showHidden: true, applications: apps, copies: .live).entries.count == 8)
+        let direct = try await DirectoryLoader.load(apps.system, showHidden: false, applications: apps, copies: .live).entries
         #expect(Set(direct.map(\.name)) == ["BuiltIn.app", "Same.app", "SameExtra.app", "Utilities"])
-        let unrelated = try await DirectoryLoader.load(tree.url("Other/Applications"), showHidden: false, applications: apps, copies: .live)
+        let unrelated = try await DirectoryLoader.load(tree.url("Other/Applications"), showHidden: false, applications: apps, copies: .live).entries
         #expect(unrelated.map(\.name) == ["Own.app"])
         #expect(apps.revealChain(to: tree.url("Other/Applications/Own.app"), from: apps.installed, listed: entries) == nil)
         #expect(tree.snapshot() == before)
@@ -100,13 +100,13 @@ struct ApplicationsFoldersTests {
         let tree = try TestTree("Applications/a.app/", "System/Applications/b.app/")
         let before = tree.snapshot()
         let missingSystem = ApplicationsFolders(installed: tree.url("Applications"), system: tree.url("missing"))
-        #expect(try await DirectoryLoader.load(missingSystem.installed, showHidden: false, applications: missingSystem, copies: .live).map(\.name) == ["a.app"])
+        #expect(try await DirectoryLoader.load(missingSystem.installed, showHidden: false, applications: missingSystem, copies: .live).entries.map(\.name) == ["a.app"])
         let missingPrimary = ApplicationsFolders(installed: tree.url("missing"), system: tree.url("System/Applications"))
         await #expect(throws: (any Error).self) {
-            try await DirectoryLoader.load(missingPrimary.installed, showHidden: false, applications: missingPrimary, copies: .live)
+            try await DirectoryLoader.load(missingPrimary.installed, showHidden: false, applications: missingPrimary, copies: .live).entries
         }
         let same = ApplicationsFolders(installed: tree.url("Applications"), system: tree.url("Applications"))
-        #expect(try await DirectoryLoader.load(same.installed, showHidden: false, applications: same, copies: .live).count == 1)
+        #expect(try await DirectoryLoader.load(same.installed, showHidden: false, applications: same, copies: .live).entries.count == 1)
         #expect(tree.snapshot() == before)
     }
 

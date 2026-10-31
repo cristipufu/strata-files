@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 package nonisolated struct CloudFolder: Equatable, Sendable {
     package let url: URL
@@ -9,15 +10,15 @@ package nonisolated struct CloudFolder: Equatable, Sendable {
 package nonisolated enum CloudFolders {
     package static func contains(_ url: URL, in root: URL) -> Bool {
         guard url.isFileURL, root.isFileURL else { return false }
-        let path = ChosenFile.systemSpelling(url.standardizedFileURL.path)
-        let root = ChosenFile.systemSpelling(root.standardizedFileURL.path)
+        let path = PathSpelling.system(PathSpelling.short(url))
+        let root = PathSpelling.system(PathSpelling.short(root))
         return path == root || path.hasPrefix(root + "/")
     }
 
     package static func providerRoot(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         guard url.isFileURL, home.isFileURL else { return nil }
-        let root = URL(fileURLWithPath: ChosenFile.systemSpelling(home.appending(path: "Library/CloudStorage").standardizedFileURL.path))
-        let path = ChosenFile.systemSpelling(url.standardizedFileURL.path)
+        let root = URL(fileURLWithPath: PathSpelling.system(home.appending(path: "Library/CloudStorage").standardizedFileURL.path))
+        let path = PathSpelling.system(PathSpelling.short(url))
         guard path.hasPrefix(root.path + "/"),
               let account = path.dropFirst(root.path.count + 1).split(separator: "/").first else { return nil }
         return root.appending(path: String(account), directoryHint: .isDirectory)

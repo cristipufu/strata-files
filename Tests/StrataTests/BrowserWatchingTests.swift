@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataDev
@@ -31,12 +32,13 @@ import Testing
     @Test func aChangeInTheWatchedFolderReadsItAgain() async throws {
         let tree = try TestTree("folder/")
         let watching = BrowserWatching()
-        var changes = 0
-        watching.watch([tree.url("folder")], repositoryOf: tree.url("folder"), in: GitStatusStore(), changed: { changes += 1 },
-                       isCurrent: { true })
+        let changes = Mutex(0)
+        // Watching once its folder is open: a change made then is caught.
+        await watching.watch([tree.url("folder")], repositoryOf: tree.url("folder"), in: GitStatusStore(),
+                             changed: { changes.withLock { $0 += 1 } }, isCurrent: { true }).value
         try tree.add(["folder/new.txt"])
-        for _ in 0..<500 where changes == 0 { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(changes > 0)
+        for _ in 0..<500 where changes.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(changes.withLock { $0 } > 0)
         watching.stop()
         #expect(tree.snapshot() == ["folder/", "folder/new.txt"])
     }

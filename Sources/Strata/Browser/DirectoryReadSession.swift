@@ -4,16 +4,24 @@ import Foundation
 /// loader; tests can hold a read open and deliver success or failure in a chosen order.
 nonisolated struct DirectoryReader: Sendable {
     static let previewLimit = 50_000
-    let read: @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]
-    private let previewRead: @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]
+    let read: @Sendable (URL, Bool, ApplicationsFolders) async throws -> Listing
+    private let previewRead: @Sendable (URL, Bool, ApplicationsFolders) async throws -> Listing
     let invalidate: @Sendable (URL) async -> Void
 
     static let live = DirectoryReader(copies: .live)
 
+    /// A reader of folders that are what they're asked as (no links among them), handing back their items.
     init(invalidate: @escaping @Sendable (URL) async -> Void = { _ in },
          read: @escaping @Sendable (URL, Bool, ApplicationsFolders) async throws -> [FileEntry]) {
-        self.read = read
-        self.previewRead = read
+        self.init(invalidate: invalidate, listing: { folder, hidden, applications in
+            Listing(folder: folder, entries: try await read(folder, hidden, applications))
+        })
+    }
+
+    init(invalidate: @escaping @Sendable (URL) async -> Void = { _ in },
+         listing: @escaping @Sendable (URL, Bool, ApplicationsFolders) async throws -> Listing) {
+        self.read = listing
+        self.previewRead = listing
         self.invalidate = invalidate
     }
 
@@ -28,9 +36,9 @@ nonisolated struct DirectoryReader: Sendable {
         }
     }
 
-    var forPreview: DirectoryReader { DirectoryReader(invalidate: invalidate, read: previewRead) }
+    var forPreview: DirectoryReader { DirectoryReader(invalidate: invalidate, listing: previewRead) }
 
-    func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
+    func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders) async throws -> Listing {
         try await read(folder, showHidden, applications)
     }
 }
@@ -54,23 +62,26 @@ nonisolated struct DirectoryReader: Sendable {
 
     @discardableResult
     func load(_ folder: URL, showHidden: Bool, applications: ApplicationsFolders,
-              invalidateCopy: Bool = false, sortedBy: BrowserOrdering.Snapshot? = nil,
-              receive: @escaping (Result<[FileEntry], Error>, Int) -> Void) -> Task<Void, Never> {
+              invalidateCopy: Bool = false, sortedBy: BrowserOrdering.Snapshot? = nil, after: Task<Void, Never>? = nil,
+              receive: @escaping (Result<Listing, Error>, Int) -> Void) -> Task<Void, Never> {
         invalidate()
         let generation = generation, reader = reader
         let work = Task { [weak self] in
-            let result: Result<[FileEntry], Error>
+            let result: Result<Listing, Error>
+            // What has to be ready first: the folder's watchers, so no change made while it's read is missed.
+            await after?.value
             do {
                 if invalidateCopy {
                     await reader.invalidate(folder)
                     try Task.checkCancellation()
                 }
-                let entries = try await reader.load(folder, showHidden: showHidden, applications: applications)
+                let listing = try await reader.load(folder, showHidden: showHidden, applications: applications)
                 // Sorted here, away from the main thread: a folder of thousands of files took the list seconds.
                 if let sortedBy {
-                    result = .success(await BrowserOrdering.sorted(entries, by: sortedBy))
+                    result = .success(Listing(folder: listing.folder,
+                                              entries: await BrowserOrdering.sorted(listing.entries, by: sortedBy)))
                 } else {
-                    result = .success(entries)
+                    result = .success(listing)
                 }
             }
             catch { result = .failure(error) }

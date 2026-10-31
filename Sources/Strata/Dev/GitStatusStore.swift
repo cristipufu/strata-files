@@ -1,5 +1,6 @@
 import AppKit
 import CoreServices
+import StrataSupport
 
 extension Notification.Name {
     /// Posted on the main thread when a repository's status changed. `userInfo["root"]` is the work tree URL.
@@ -269,17 +270,8 @@ package final class GitStatusStore {
         guard path.hasPrefix("/private/") || path.contains("/./") || path.contains("/../") || path.contains("//") else {
             return nil
         }
-        let standardized = Self.shortSpelling(url.standardized.path)
+        let standardized = PathSpelling.short(url)
         return standardized == path ? nil : locateItem(path: standardized)
-    }
-
-    /// `/private/var/…` as `/var/…`, and so on for the aliases macOS fixes, the way `standardizedFileURL` spells
-    /// them, without asking the disk.
-    package nonisolated static func shortSpelling(_ path: String) -> String {
-        for alias in ["/private/var", "/private/tmp", "/private/etc"] where path == alias || path.hasPrefix(alias + "/") {
-            return String(path.dropFirst("/private".count))
-        }
-        return path
     }
 
     private func locateItem(path: String) -> (GitStatusSnapshot, String)? {

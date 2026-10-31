@@ -113,7 +113,7 @@ struct SearchFiltersTests {
         defer { owner.windowWillClose(Notification(name: NSWindow.willCloseNotification)); owner.window?.contentViewController = nil }
         for pane in owner.panes { await pane.browser.directoryReads.task?.value }
         let pane = owner.pane
-        pane.destination = .search("invoice", scope: tree.url("left"))
+        pane.navigate(to: .search("invoice", scope: tree.url("left")))
         let controller = SearchFiltersController(query: "invoice", context: SearchFilterContext(owner))
         controller.loadViewIfNeeded()
         func descendants(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + descendants($0) } }
@@ -126,7 +126,7 @@ struct SearchFiltersTests {
         #expect(pane.destination == .search(#"invoice size:">1mb""#, scope: tree.url("left")))
         let context = SearchFilterContext(owner)
         let saved = pane.destination
-        pane.destination = .folder(tree.url("left")); pane.destination = saved
+        pane.navigate(to: .folder(tree.url("left"))); pane.navigate(to: saved)
         #expect(!context.apply("kind:pdf"))
         let switched = SearchFilterContext(owner)
         owner.window?.makeFirstResponder(owner.panes[1].browser.focusView)

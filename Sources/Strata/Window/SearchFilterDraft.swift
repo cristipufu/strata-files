@@ -95,7 +95,7 @@ struct SearchFilterContext {
               pane.destination == destination, case .search(_, let scope) = destination else { return false }
         if query.isEmpty { owner.leaveSearch() }
         else {
-            pane.destination = .search(query, scope: scope)
+            pane.navigate(to: .search(query, scope: scope))
             owner.updateChrome()
             pane.search.run()
         }

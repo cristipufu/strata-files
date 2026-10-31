@@ -155,6 +155,24 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == ["a.txt", "b.txt"])
     }
 
+    /// What a read has to wait for (the folder's watchers) comes first: its reader isn't asked until that's done.
+    @Test func aReadWaitsForWhatHasToBeReadyFirst() async throws {
+        let tree = try TestTree("a.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let session = DirectoryReadSession(reader: reads.reader)
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        let ready = Task { for await _ in gate { break } }
+        let work = session.load(tree.root, showHidden: false, applications: .standard, after: ready) { _, _ in }
+        for _ in 0..<50 where reads.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(reads.requests.isEmpty)
+        open.yield()
+        let request = try await reads.request(0)
+        request.finish(.success([]))
+        await work.value
+        #expect(tree.snapshot() == ["a.txt"])
+    }
+
     @Test func aRefreshSupersedesAReadOfTheSameFolderAndDeliversItsError() async throws {
         let tree = try TestTree("a.txt")
         let reads = Reads()
@@ -387,20 +405,20 @@ struct DirectoryReadSessionTests {
         // All search controls write the pane's destination, including changes that keep the same history entry.
         let original = Destination.search("a", scope: nil)
         for changed in [Destination.search("b", scope: nil), .search("a", scope: tree.root), .search("case:a", scope: nil)] {
-            pane.destination = original
+            pane.navigate(to: original)
             browser.showResults([entry], total: 1)
             let completion = controller.selectionAfterOperation()
             let revision = pane.navigationRevision
             browser.pending.selection = [entry.url]
-            pane.destination = changed
+            pane.navigate(to: changed)
             #expect(pane.navigationRevision == revision + 1 && browser.pending.selection == nil)
-            pane.destination = original
+            pane.navigate(to: original)
             let searchGeneration = pane.search.latest
             completion([entry.url])
             #expect(pane.search.latest == searchGeneration && browser.pending.selection == nil)
             #expect(browser.directoryReads.task == nil)
             let unchanged = pane.navigationRevision
-            pane.destination = original
+            pane.navigate(to: original)
             #expect(pane.navigationRevision == unchanged)
         }
         #expect(tree.snapshot() == ["a.txt"])

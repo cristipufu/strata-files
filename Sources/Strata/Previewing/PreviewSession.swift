@@ -71,8 +71,8 @@ import StrataPreviews
                 guard let self, !isClosed, self.revision == revision else { return }
                 isLoading = false
                 do {
-                    let entries = try result.get()
-                    roots = try makeItems(entries, in: entry.url)
+                    let listing = try result.get(), entries = listing.entries
+                    roots = try makeItems(entries, in: listing.folder)
                     if OneNoteContents.pick(entries.map(\.name)) != nil {
                         order { [isPlaceholder] in
                             try await Self.notebook(among: entries, isPlaceholder: isPlaceholder)
@@ -237,7 +237,10 @@ import StrataPreviews
         return read.load(entry.url, showHidden: showHidden, applications: applications) { [weak self, weak item, weak read] result, _ in
             guard let self, let item, let read, !isClosed, self.revision == revision, childReads[key] === read else { return }
             childReads[key] = nil
-            do { item.children = try makeItems(result.get(), in: entry.url, parent: item) }
+            do {
+                let listing = try result.get()
+                item.children = try makeItems(listing.entries, in: listing.folder, parent: item)
+            }
             catch { self.error = error }
             onChange?(.children(item))
         }

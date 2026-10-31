@@ -576,6 +576,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     /// Shown instead of rows when the folder can't be read.
     private let message = NSTextField(wrappingLabelWithString: "")
     private var watchers: [DirectoryWatcher] = []
+    private var watchedFolder: URL?
+    private var watchersOpening: Task<Void, Never>?
     let directoryReads: DirectoryReadSession
     private var generation: Int { directoryReads.generation }
     private var suppressSelection = false
@@ -684,6 +686,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tearDown() {
         directoryReads.invalidate()
+        watchersOpening?.cancel()
+        watchedFolder = nil
         watchers = []
     }
 
@@ -694,13 +698,36 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         self.order = order
         self.sortedBy = sortedBy
         self.showHidden = showHidden
-        watchers = (controller?.applicationFolders ?? .standard).directories(for: FileEntry.openedFolder(folder)).compactMap { folder in
-            DirectoryWatcher(url: folder) { [weak self] in self?.reload() }
-        }
-        reload()
+        // Watched before it's read, so no change made while it's read is missed.
+        reload(after: watch(folder))
     }
 
-    fileprivate func reload() {
+    /// Watches `watched`, opened away from the main thread: open when the task it returns ends. A column torn down,
+    /// or watching elsewhere, meanwhile drops it.
+    private func watch(_ watched: URL) -> Task<Void, Never> {
+        watchedFolder = watched
+        let directories = (controller?.applicationFolders ?? .standard).directories(for: watched)
+        watchersOpening?.cancel()
+        let opened = Self.open(directories) { [weak self] in self?.reload() }
+        watchersOpening = Task { [weak self] in
+            let watchers = await opened.value
+            guard let self, !Task.isCancelled, watchedFolder == watched else { return }
+            self.watchers = watchers
+        }
+        return Self.ready(opened)
+    }
+
+    /// Opened away from the main actor, so the read waiting for them never waits for it.
+    nonisolated private static func open(_ folders: [URL], onChange: @escaping @MainActor @Sendable () -> Void)
+        -> Task<[DirectoryWatcher], Never> {
+        Task { await DirectoryWatcher.watching(folders, onChange: onChange) }
+    }
+
+    nonisolated private static func ready(_ opened: Task<[DirectoryWatcher], Never>) -> Task<Void, Never> {
+        Task { _ = await opened.value }
+    }
+
+    fileprivate func reload(after watched: Task<Void, Never>? = nil) {
         let gen = generation + 1
         let folder = folder
         let showHidden = showHidden
@@ -715,14 +742,24 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
         let sortedBy = sortedBy
         directoryReads.load(folder, showHidden: showHidden, applications: applications,
-                            sortedBy: sortedBy) { [weak self] result, _ in
+                            sortedBy: sortedBy, after: watched) { [weak self] result, _ in
             guard let self else { return }
             self.spinner.stopAnimation(nil)
             switch result {
-            case .success(let entries):
-                statuses.tags.invalidate(self.folder)
+            case .success(let listing):
+                let entries = listing.entries
+                statuses.tags.invalidate(listing.folder)
                 statuses.tags.load(entries)
-                statuses.cloud.load(entries.map(\.url), in: self.folder)
+                statuses.cloud.load(entries.map(\.url), in: listing.folder)
+                // Where a link or alias led is watched in its place, and read once more when it is.
+                if listing.folder != self.watchedFolder {
+                    let watched = self.watch(listing.folder), listed = listing.folder
+                    Task { [weak self] in
+                        await watched.value
+                        guard let self, watchedFolder == listed else { return }
+                        reload()
+                    }
+                }
                 self.message.isHidden = true
                 let presorted = sortedBy != nil && sortedBy == self.controller?.sortedBy
                 self.setEntries(presorted ? entries : self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])

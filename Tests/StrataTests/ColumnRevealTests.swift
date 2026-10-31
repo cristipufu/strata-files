@@ -28,7 +28,7 @@ struct ColumnRevealTests {
 
         let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 500)
-        let entries = try await DirectoryLoader.load(made, showHidden: false, copies: .live)
+        let entries = try await DirectoryLoader.load(made, showHidden: false, copies: .live).entries
         // Spelled as listed (the temporary folder is reached through a link), like the browser has them.
         let parent = try #require(entries.first { $0.name == "Parent" }).url
         let root = parent.deletingLastPathComponent()
@@ -40,7 +40,7 @@ struct ColumnRevealTests {
 
         try FileManager.default.removeItem(at: deleted)
         // What the browser does after deleting: shows its folder again, then selects what was selected.
-        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false, copies: .live))
+        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false, copies: .live).entries)
         columns.select([deleted])
         await wait { columns.location?.fileViewKey == parent.fileViewKey }
         #expect(columns.location?.fileViewKey == parent.fileViewKey)

@@ -7,6 +7,9 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browserContentDidChange(_ browser: BrowserViewController)
     /// Column view moved deeper without changing the browser's folder.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL)
+    /// The browser, asked to show `asked`, has listed `folder` for the first time since: `asked` itself, or where a
+    /// link or alias to a folder led.
+    func browser(_ browser: BrowserViewController, landedAt folder: URL, asked: URL)
     /// A drag rested on `url` long enough to spring it open; `drag` is the drag's sequence number.
     func browser(_ browser: BrowserViewController, springLoadTo url: URL, drag: Int)
     /// An archive opened as a folder is ready: show its copy (if this pane is still the one you're using).
@@ -330,6 +333,7 @@ final class BrowserViewController: NSViewController {
         let isNewDirectory = url != directory || isShowingResults
         if isShowingResults { leaveResults() }
         loading.navigate(to: url, newFolder: isNewDirectory)
+        var watched: Task<Void, Never>?
         if isNewDirectory {
             cancelPendingActions()
             inlineRename.dropHeldListing()
@@ -337,15 +341,13 @@ final class BrowserViewController: NSViewController {
             resorting.cancel()
             sizer.cancelPending()
             mediaInfo.cancelPending()
-            let revision = navigationRevision
-            watching.watch(applicationFolders.directories(for: FileEntry.openedFolder(url)), repositoryOf: url,
-                           in: services.git, changed: { [weak self] in self?.refresh() },
-                           isCurrent: { [weak self] in self?.navigationRevision == revision && self?.directory == url })
+            // Watched before it's read, so no change made while it's read is missed.
+            watched = watch(url)
             pending.selection = select.map { [$0] } ?? []
         }
         // Revealing an item in the folder already showing selects it too.
         if !isNewDirectory, let select { pending.selection = [select] }
-        reload(scrollToTop: isNewDirectory && select == nil)
+        reload(scrollToTop: isNewDirectory && select == nil, after: isNewDirectory ? watched : nil)
         // Keep the old rows briefly for fast reads; slow folders show a native loading state.
         if isNewDirectory {
             let loading = generation
@@ -378,16 +380,17 @@ final class BrowserViewController: NSViewController {
         reload(scrollToTop: false, invalidateCopy: invalidateCopy)
     }
 
-    private func reload(scrollToTop: Bool, invalidateCopy: Bool = false) {
+    private func reload(scrollToTop: Bool, invalidateCopy: Bool = false, after watched: Task<Void, Never>? = nil) {
         guard let url = directory else { return }
         loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
-                       invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot) { [weak self] result in
+                       invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let delivery):
+                settle(at: delivery.folder, asked: url, landed: delivery.landed)
                 services.tags.load(delivery.entries)
-                services.cloud.load(delivery.entries.map(\.url), in: url)
-                if Privacy.markAccessible(url) { services.index.refreshConfig() }
+                services.cloud.load(delivery.entries.map(\.url), in: delivery.folder)
+                if Privacy.markAccessible(delivery.folder) { services.index.refreshConfig() }
                 apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
                       sortedBy: delivery.sortedBy)
             case .failure:
@@ -397,6 +400,35 @@ final class BrowserViewController: NSViewController {
             guard let self else { return }
             delegate?.browserContentDidChange(self)
         }
+    }
+
+    /// Where a read of `asked` found the browser to be: `folder`, where a link or alias led, or `asked` itself. What's
+    /// waiting to be selected follows it there, and the window hears where it has `landed`. A folder elsewhere is
+    /// watched in its place and read once more when it is, so a change made before that isn't missed.
+    private func settle(at folder: URL, asked: URL, landed: Bool) {
+        if folder != asked {
+            pending.selection = pending.selection?.map { item in
+                PathSpelling.short(item.deletingLastPathComponent()) == PathSpelling.short(asked)
+                    ? folder.appending(path: item.lastPathComponent) : item
+            }
+        }
+        if landed { delegate?.browser(self, landedAt: folder, asked: asked) }
+        guard watching.folder != folder else { return }
+        let watched = watch(folder), revision = navigationRevision
+        Task { [weak self] in
+            await watched.value
+            guard let self, navigationRevision == revision, directory == folder else { return }
+            refresh()
+        }
+    }
+
+    /// Watches `folder` (both Applications folders for Applications), and finds its repository, away from the main
+    /// thread: the watchers are open when the task it returns ends.
+    private func watch(_ folder: URL) -> Task<Void, Never> {
+        let revision = navigationRevision
+        return watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
+                              changed: { [weak self] in self?.refresh() },
+                              isCurrent: { [weak self] in self?.navigationRevision == revision && self?.directory == folder })
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.

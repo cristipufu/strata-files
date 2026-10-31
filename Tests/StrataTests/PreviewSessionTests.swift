@@ -15,15 +15,15 @@ struct PreviewSessionTests {
         let tree = try TestTree("folder/sub/inside", "folder/a", "folder/.hidden", "installed/app", "system/tool")
         let before = tree.snapshot(), copies = CopyProviders([])
         let entries = try await DirectoryLoader.loadPreview(tree.url("folder"), showHidden: false,
-                                                           applications: .standard, copies: copies, limit: 2)
+                                                           applications: .standard, copies: copies, limit: 2).entries
         #expect(Set(entries.map(\.name)) == ["sub", "a"])
         await #expect(throws: (any Error).self) {
             try await DirectoryLoader.loadPreview(tree.url("folder"), showHidden: true,
-                                                   applications: .standard, copies: copies, limit: 2)
+                                                   applications: .standard, copies: copies, limit: 2).entries
         }
         let applications = ApplicationsFolders(installed: tree.url("installed"), system: tree.url("system"))
         let merged = try await DirectoryLoader.loadPreview(tree.url("installed"), showHidden: false,
-                                                           applications: applications, copies: copies, limit: 2)
+                                                           applications: applications, copies: copies, limit: 2).entries
         #expect(Set(merged.map(\.url)) == [tree.url("installed/app"), tree.url("system/tool")])
         #expect(tree.snapshot() == before)
     }

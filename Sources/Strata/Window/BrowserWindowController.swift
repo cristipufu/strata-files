@@ -49,7 +49,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var destination: Destination {
         get { pane.destination }
-        set { pane.destination = newValue }
+        set { pane.navigate(to: newValue) }
     }
 
     var location: URL { pane.location }
@@ -430,17 +430,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func go(_ target: Destination, in targetPane: Pane? = nil, select: URL? = nil, recordHistory: Bool = true,
             countVisit: Bool = true) {
         let p = targetPane ?? pane
-        // A link or Finder alias to a folder shows that folder, by its own path (however it was reached: a click,
-        // a restored window, a workspace, spring loading), so the folder and the items listed in it always agree.
-        var target = target, select = select
-        if case .folder(let url) = target {
-            let opened = FileEntry.openedFolder(url).standardizedFileURL
-            if opened != url.standardizedFileURL, let item = select,
-               item.deletingLastPathComponent().standardizedFileURL == url.standardizedFileURL {
-                select = opened.appending(path: item.lastPathComponent)
-            }
-            target = .folder(opened)
-        }
+        // A link or Finder alias to a folder shows that folder, by its own path, once its read has said where it led
+        // (`browser(_:landedAt:asked:)`): nothing here asks the disk.
         p.columnLocation = nil
         p.waiting = nil
         p.search.leave(for: target)
@@ -449,17 +440,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         p.host.pathBar.cancelEditing()
         if p === pane { pathBar.cancelEditing() }
-        p.destination = target
+        p.navigate(to: target)
         switch target {
         case .folder(let url):
             p.location = url
+            p.countsVisitOnLanding = countVisit
             p.readFolderEntry(url) { [weak self] in self?.refreshPanels() }
             p.browser.load(url, select: select)
-            // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
-            if !ReadOnlyCopies.contains(url, copies: services.copies) {
-                if countVisit { services.visits.record(url) }
-                services.preferences.lastLocation = url
-            }
         case .search, .recents, .duplicates:
             p.search.run()
         }
@@ -847,6 +834,21 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
     }
 
     /// Column view went deeper: show that folder in the path bar and title, without a new history entry.
+    func browser(_ browser: BrowserViewController, landedAt folder: URL, asked: URL) {
+        guard let p = panes.first(where: { $0.browser === browser }), p.destination == .folder(asked) else { return }
+        if folder != asked {
+            p.settle(at: folder)
+            p.history.arrived(at: .folder(folder))
+            p.readFolderEntry(folder) { [weak self] in self?.refreshPanels() }
+            if p === pane { updateChrome() } else { updateHeaders() }
+        }
+        // An archive's copy is temporary: it doesn't become a frequent place or where the next window opens.
+        guard !ReadOnlyCopies.contains(folder, copies: services.copies) else { return }
+        if p.countsVisitOnLanding { services.visits.record(folder) }
+        p.countsVisitOnLanding = false
+        services.preferences.lastLocation = folder
+    }
+
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL) {
         guard let owner = panes.first(where: { $0.browser === browser }), case .folder = owner.destination else { return }
         if (owner.columnLocation ?? owner.location).fileViewKey != url.fileViewKey {

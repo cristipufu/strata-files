@@ -75,7 +75,7 @@ extension ColorThemeTests {
         }
         // Search, Recents and Duplicates share the results list, even when a different folder view is saved.
         split.panes.add(second)
-        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live)
+        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live).entries
         for host in [first, second] {
             host.setHeader(visible: true, title: "Results", symbol: "magnifyingglass", active: host === first)
             host.browser.showResults(entries, total: names.count)

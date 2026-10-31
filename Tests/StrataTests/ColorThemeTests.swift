@@ -108,7 +108,7 @@ struct ColorThemeTests {
         let scroll = NSScrollView()
         let columns = ColumnBrowserViewController(scrollView: scroll, directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live).entries)
         columns.select([tree.url("a/b/c/note.txt")])
         let strip = try #require(scroll.documentView)
         for _ in 0..<100 {

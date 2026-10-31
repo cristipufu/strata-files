@@ -28,7 +28,7 @@ struct LocalizedNamesTests {
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: tree.url("Original.app/Contents/Info.plist"))
         try Data("\"CFBundleDisplayName\" = \"Translated App\"; \"CFBundleName\" = \"Translated App\";".utf8)
             .write(to: tree.url("Original.app/Contents/Resources/en.lproj/InfoPlist.strings"))
-        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live)
+        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live).entries
         #expect(entries.first { $0.name == "Original.localized" }?.displayName == "Translated Folder")
         #expect(entries.first { $0.name == "Original.app" }?.displayName == "Translated App")
         let browser = BrowserViewController(services: .shared)

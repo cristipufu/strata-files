@@ -171,7 +171,7 @@ struct SessionNavigationTests {
             #expect(SavedDestination.capture(.folder(url), services: environment.services) == nil)
             #expect(SavedDestination(kind: "folder", path: url.path).destination(services: environment.services) == nil)
             owner.pane.location = url
-            owner.pane.destination = .folder(url)
+            owner.pane.navigate(to: .folder(url))
             owner.pane.history.back = [.folder(url), .folder(tree.url("local"))]
             let saved = Workspaces.workspace(named: "", of: [owner], includingNavigation: true)
             #expect(saved.tabs == [[Places.home.path]])
