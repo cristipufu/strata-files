@@ -72,16 +72,10 @@
   "reason": "Composes the app's own RemoteConnections.shared: disconnecting discards the app's copies."
  },
  {
-  "file": "Sources/Strata/Remote/RemoteServers.swift",
-  "instance": "RemoteRegistry.shared",
+  "file": "Sources/Strata/Remote/RemoteConnections.swift",
+  "instance": "RemoteServerStore.shared",
   "count": 1,
-  "reason": "The app's saved servers; independent environments own their store, registry and credentials together."
- },
- {
-  "file": "Sources/Strata/Remote/RemoteServers.swift",
-  "instance": "RemoteConnections.shared",
-  "count": 1,
-  "reason": "Removing one of the app's saved servers (Settings) ends the app's connections to it."
+  "reason": "Composes the app's own RemoteConnections.shared: its disconnections are announced as the app's saved-server store's, which the app's windows observe."
  },
  {
   "file": "Sources/Strata/Remote/RemoteSession.swift",
@@ -108,18 +102,6 @@
   "reason": "Archive workers are the Mac's to spend: Space previews in every window share two at a time (ArchiveReadAllowance)."
  },
  {
-  "file": "Sources/Strata/Remote/RemoteServers.swift",
-  "instance": "preferences: .shared",
-  "count": 1,
-  "reason": "The app's saved servers; independent environments own their store, registry and credentials together."
- },
- {
-  "file": "Sources/Strata/Remote/RemoteServers.swift",
-  "instance": "credentials: .shared",
-  "count": 1,
-  "reason": "The app's saved servers' credentials, in the app's keychain; independent environments inject their own."
- },
- {
   "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
   "instance": "watchBudget: .shared",
   "count": 1,
@@ -130,5 +112,17 @@
   "instance": "mounter: .live",
   "count": 1,
   "reason": "Mounting a share is macOS's (NetFS), for the whole Mac; tests inject a ServerMounter into the sheet itself."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerCopies.swift",
+  "instance": "ContainerCopyStore.shared",
+  "count": 1,
+  "reason": "ReadOnlyCopies: refusing a change inside a copy Strata keeps is never wrong, so every window refuses changes in the app's own copies too, not only in its environment's."
+ },
+ {
+  "file": "Sources/Strata/Containers/ContainerCopies.swift",
+  "instance": "RemoteCopyStore.shared",
+  "count": 1,
+  "reason": "ReadOnlyCopies: refusing a change inside a copy Strata keeps is never wrong, so every window refuses changes in the app's own copies too, not only in its environment's."
  }
 ]

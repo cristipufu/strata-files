@@ -8,7 +8,7 @@ import Foundation
 /// copied. Changes (a new folder, a rename, a deletion, files dropped in) happen on the server first, then the folder
 /// is listed again, so the copy only ever shows what the server has.
 package actor RemoteFiles {
-    package static let shared = RemoteFiles(sessions: .shared)
+    package static let shared = RemoteFiles(sessions: .shared, copies: .shared)
 
     /// A folder listed this recently isn't listed again (several views load the same folder).
     package static let freshFor: TimeInterval = 10
@@ -37,7 +37,7 @@ package actor RemoteFiles {
     /// Servers whose copies are being removed: nothing new starts in them.
     package private(set) var closing: Set<String> = []
 
-    package init(sessions: RemoteSessions, copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(sessions: RemoteSessions, copies: RemoteCopyStore, now: @escaping @Sendable () -> Date = { Date() },
          removeCopy: (@Sendable (String) -> Void)? = nil) {
         self.init(copies: copies, now: now, backends: { try await sessions.backend(for: $0) },
                   serverBackends: { try await sessions.backend(for: $0) },
@@ -45,7 +45,7 @@ package actor RemoteFiles {
     }
 
     /// Standalone backends can omit pool retirement. A managed source must supply its matching retirement callback.
-    package init(copies: RemoteCopyStore = RemoteCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(copies: RemoteCopyStore, now: @escaping @Sendable () -> Date = { Date() },
          backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
          serverBackends: (@Sendable (RemoteServer) async throws -> any RemoteBackend)? = nil,
          retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },

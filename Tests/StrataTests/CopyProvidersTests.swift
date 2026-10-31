@@ -56,7 +56,7 @@ struct CopyProvidersTests {
     }
 
     @Test func theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors() {
-        for root in [RemoteCopies.root, ContainerCopies.root] {
+        for root in [RemoteCopyStore.shared.root, ContainerCopyStore.shared.root] {
             for url in [root, root.appending(path: "unregistered-copy/file")] {
                 #expect(CopyProviders.live.contains(url))
             }

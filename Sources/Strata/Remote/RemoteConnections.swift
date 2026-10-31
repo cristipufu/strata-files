@@ -7,7 +7,7 @@ package struct RemoteConnectionCatalog {
     package let secret: (RemoteServer) -> String?
     package let save: (RemoteServer, String?) throws -> Void
 
-    package static let live = RemoteConnectionCatalog(store: RemoteServers.store)
+    package static let live = RemoteConnectionCatalog(store: .shared)
 }
 
 extension RemoteConnectionCatalog {
@@ -45,7 +45,7 @@ package final class RemoteConnections {
 
     private static func discardCopies(_ id: String) async { await RemoteFiles.shared.discard(id) }
     private static func announceDisconnection(_ id: String) {
-        NotificationCenter.default.post(name: .remoteServerDisconnected, object: RemoteServers.store, userInfo: ["serverID": id])
+        NotificationCenter.default.post(name: .remoteServerDisconnected, object: RemoteServerStore.shared, userInfo: ["serverID": id])
     }
 
     private let catalog: RemoteConnectionCatalog

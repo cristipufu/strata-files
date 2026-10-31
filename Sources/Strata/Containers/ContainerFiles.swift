@@ -18,7 +18,7 @@ extension Notification.Name {
 /// a placeholder until it's opened, previewed or copied. Everything here reads; the only thing run in a container is the
 /// listing script.
 package actor ContainerFiles {
-    package static let shared = ContainerFiles()
+    package static let shared = ContainerFiles(copies: .shared)
 
     /// Files up to this size are fetched with their folder's listing…
     package static let eagerFileSize: Int64 = 1 << 20
@@ -42,7 +42,7 @@ package actor ContainerFiles {
     private let readFile: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
     private let readTree: @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void
 
-    package init(copies: ContainerCopyStore = ContainerCopies.store, now: @escaping @Sendable () -> Date = { Date() },
+    package init(copies: ContainerCopyStore, now: @escaping @Sendable () -> Date = { Date() },
          readListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
          readPreviewListing: (@Sendable (ContainerSource, String) async throws -> ContainerListingResult)? = nil,
          readFile: @escaping @Sendable (ContainerSource, String, URL, StopFlag) async throws -> Void = { source, path, url, stop in
@@ -367,26 +367,22 @@ package nonisolated enum CopyWriter {
         return name.hasPrefix(base + "/") ? name.dropFirst(base.count + 1) : nil
     }
 
-    /// The copy's disk tells `Foo` from `foo`? (Linux does; a Mac's usually doesn't.)
-    package static let isCaseSensitive: Bool = {
-        let probe = FileManager.default.fileExists(atPath: ContainerCopies.root.path) ? ContainerCopies.root
-            : ContainerCopies.root.deletingLastPathComponent()
-        return pathconf(probe.path, _PC_CASE_SENSITIVE) == 1
-    }()
-
-    /// How the copy's disk compares names: two names that fold the same are one item there.
-    package static func folded(_ name: String) -> String {
-        isCaseSensitive ? name : name.decomposedStringWithCanonicalMapping.lowercased()
+    /// How the disk of the folder open at `fd` compares names: two names that fold the same are one item there. Linux
+    /// tells `Foo` from `foo`; a Mac's disk usually doesn't.
+    package static func folding(in fd: Int32) -> @Sendable (String) -> String {
+        if fpathconf(fd, _PC_CASE_SENSITIVE) == 1 { return { $0 } }
+        return { $0.decomposedStringWithCanonicalMapping.lowercased() }
     }
 
     /// Makes the Containers `folder` match `containers`. A Compose project's containers go in a folder named after the
     /// project; the rest stay beside those. Returns the folders to discard: containers gone, and ones made again under
     /// the same name (made afresh after). A container that moved into its project keeps the files already fetched.
     package static func syncContainers(_ containers: [ContainerInfo], engine: ContainerEngine, in folder: URL,
-                               copies: ContainerCopyStore = ContainerCopies.store) throws -> [URL] {
+                               copies: ContainerCopyStore) throws -> [URL] {
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
         defer { close(fd) }
+        let folded = folding(in: fd)
         let looseNames = Set(containers.compactMap { container -> String? in
             guard ContainerCopies.stackName(container) == nil, ContainerCopies.isContainerName(container.name) else { return nil }
             return folded(container.name)
@@ -463,7 +459,7 @@ package nonisolated enum CopyWriter {
 
     /// Moves a container's folder from the engine's folder into its project, when an older layout left it there.
     private static func bringDown(_ container: ContainerInfo, from engineFD: Int32, to stackFD: Int32, stack: URL, engineFolder: URL,
-                                  copies: ContainerCopyStore = ContainerCopies.store) {
+                                  copies: ContainerCopyStore) {
         var info = stat()
         guard fstatat(stackFD, container.name, &info, AT_SYMLINK_NOFOLLOW) != 0 else { return }
         guard fstatat(engineFD, container.name, &info, AT_SYMLINK_NOFOLLOW) == 0,
@@ -485,6 +481,7 @@ package nonisolated enum CopyWriter {
             var opened = stat()
             guard fstat(fd, &opened) == 0, FileIdentity.from(opened) == expected else { close(fd); throw POSIXError(.ESTALE) }
         }
+        let folded = folding(in: fd)
         defer {
             // Writing in it changed its date; the container's comes back.
             restoreTimes(fd)
@@ -690,6 +687,7 @@ package nonisolated enum CopyWriter {
         let rootFD: Int32
         let containerPath: String
         let base: String
+        private let folded: @Sendable (String) -> String
         /// The folders open along the current entry's path (a tar stream goes depth first).
         private var stack: [(name: String, fd: Int32)] = []
         /// Every item written, by its folded path (see `folded`), with its spelling.
@@ -706,6 +704,7 @@ package nonisolated enum CopyWriter {
             self.rootFD = rootFD
             self.containerPath = containerPath
             base = containerPath == "/" ? "" : containerPath
+            folded = folding(in: rootFD)
         }
 
         /// A file being written is dropped, then every folder open is closed, the copy's own last.
@@ -892,7 +891,7 @@ package nonisolated enum CopyWriter {
         }
 
         func removeWhatsGoneAndDateFolders() {
-            sweep(rootFD, prefix: "", keeping: seen)
+            sweep(rootFD, prefix: "", keeping: seen, folded: folded)
             for folder in folderDates.reversed() {
                 guard let fd = openPath(rootFD, folder.parts[...]) else { continue }
                 remember(folder.date, onFolder: fd)
@@ -904,7 +903,7 @@ package nonisolated enum CopyWriter {
 
     /// Removes what's in the folder open at `fd` but not in `keeping` (folded paths), recursively and without following
     /// links.
-    private static func sweep(_ fd: Int32, prefix: String, keeping: [String: String]) {
+    private static func sweep(_ fd: Int32, prefix: String, keeping: [String: String], folded: (String) -> String) {
         for name in names(in: fd) where !name.hasPrefix(tempPrefix) {
             let key = prefix + folded(name)
             guard keeping[key] != nil else {
@@ -915,7 +914,7 @@ package nonisolated enum CopyWriter {
             guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFDIR else { continue }
             let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard child >= 0 else { continue }
-            sweep(child, prefix: key + "/", keeping: keeping)
+            sweep(child, prefix: key + "/", keeping: keeping, folded: folded)
             close(child)
         }
     }

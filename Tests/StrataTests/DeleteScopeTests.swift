@@ -112,7 +112,7 @@ struct DeleteScopeTests {
         // The app's caches hold the copies it has open (archives, servers, containers): tests never prune, sweep or
         // set aside those.
         let own = SecureStorage.directory.standardizedFileURL.path + "/"
-        for root in [ArchiveCache.root, RemoteCopies.root, ContainerCopies.root, LazyCopies.clipboardRoot] {
+        for root in [ArchiveCache.root, RemoteCopyStore.shared.root, ContainerCopyStore.shared.root, CopyProviders.live.clipboardRoot] {
             #expect(root.standardizedFileURL.path.hasPrefix(own), "\(root.path)")
         }
     }

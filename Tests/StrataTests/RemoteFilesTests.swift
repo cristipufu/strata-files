@@ -11,12 +11,13 @@ import Testing
 
 /// A server's copy, end to end, against macOS's own `sftp-server` over a pipe (no network, no login): listing into the
 /// copy, fetching, and changes made on the "server" (a temporary folder) and shown in the copy.
-// One at a time: they share the saved servers (`RemoteRegistry`) and the copies' folder.
-@Suite(.serialized)
 struct RemoteFilesTests {
     let sandbox: TestTree
     let server: URL
     let remote: RemoteServer
+    /// The copies' folder, and which server each copy there is of: the suite's own.
+    let cache: TestTree
+    let copies: RemoteCopyStore
     let files: RemoteFiles
     let client: SFTPClient
     let folder: URL
@@ -35,19 +36,21 @@ struct RemoteFilesTests {
         try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)], ofItemAtPath: server.appending(path: "big.bin").path)
         try fm.createSymbolicLink(atPath: server.appending(path: "shortcut").path, withDestinationPath: "docs")
 
-        remote = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Test", host: "localhost")
-        RemoteRegistry.update([remote])
+        let remote = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Test", host: "localhost")
+        self.remote = remote
+        cache = try TestTree()
+        copies = RemoteCopyStore(root: cache.url("Servers"), server: { $0 == remote.id ? remote : nil })
         let sftp = try SFTPClient(executable: URL(fileURLWithPath: "/usr/libexec/sftp-server"), arguments: ["-d", server.path])
         client = sftp
         let backend = SFTPBackend(client: sftp)
-        files = RemoteFiles(backends: { _ in backend })
+        files = RemoteFiles(copies: copies, backends: { _ in backend })
         // The server's folder, as it is in the copy (the "server" is this Mac: its `/` is the copy's top).
-        folder = RemoteCopies.url(forRemotePath: server.path, top: RemoteCopies.top(of: remote.id))
+        folder = RemoteCopies.url(forRemotePath: server.path, top: copies.top(of: remote.id))
     }
 
     func cleanUp() {
         client.close()
-        RemoteCopies.remove(remote.id)
+        copies.remove(remote.id)
         try? FileManager.default.removeItem(at: server)
     }
 
@@ -58,7 +61,7 @@ struct RemoteFilesTests {
     @Test func theProviderInterfaceUsesItsInjectedServerAndPreservesFetchedFiles() async throws {
         defer { cleanUp() }
         let original = sandbox.snapshot()
-        let providers = CopyProviders(servers: files, containers: ContainerFiles())
+        let providers = CopyProviders(servers: files, containers: ContainerFiles(copies: ContainerCopyStore(root: cache.url("Containers"))))
         await providers.refresh(folder)
         let big = folder.appending(path: "big.bin")
         #expect(providers.contains(big) && providers.isPlaceholder(big))
@@ -91,7 +94,7 @@ struct RemoteFilesTests {
             let unrelated = RemoteSessions(server: { $0 == definition.id ? definition : nil },
                 connect: { _ in other }, changed: { _, _ in })
             _ = try await unrelated.backend(for: definition.id)
-            let files = RemoteFiles(sessions: sessions)
+            let files = RemoteFiles(sessions: sessions, copies: copies)
             let before = TestTree.listing(of: folder)
             let reading = Task { await files.refresh(folder) }
             await backend.waitUntilStarted()
@@ -112,7 +115,7 @@ struct RemoteFilesTests {
     @Test func failedBackendAcquisitionHasNoConnectionToRetire() async throws {
         defer { cleanUp() }
         let original = sandbox.snapshot(), before = TestTree.listing(of: folder), retired = Counter()
-        let files = RemoteFiles(backends: { _ in throw SFTPError.stoppedAnswering }, retire: { _, _ in retired.add(1) })
+        let files = RemoteFiles(copies: copies, backends: { _ in throw SFTPError.stoppedAnswering }, retire: { _, _ in retired.add(1) })
         await files.refresh(folder)
         #expect(retired.value == 0)
         #expect(TestTree.listing(of: folder) == before)
@@ -127,7 +130,7 @@ struct RemoteFilesTests {
             let definition = remote
             let sessions = RemoteSessions(server: { $0 == definition.id ? definition : nil },
                 connect: { _ in previous }, changed: { _, _ in })
-            let files = RemoteFiles(sessions: sessions)
+            let files = RemoteFiles(sessions: sessions, copies: copies)
             let before = TestTree.listing(of: folder)
             let reading = Task { await files.refresh(folder) }
             await previous.waitUntilStarted()
@@ -156,7 +159,7 @@ struct RemoteFilesTests {
         let backend = HeldListingBackend(next: [after])
         defer { Task { await backend.finishFirst([]) } }
         let clock = TestClock()
-        let files = RemoteFiles(now: clock.now, backends: { _ in backend })
+        let files = RemoteFiles(copies: copies, now: clock.now, backends: { _ in backend })
         let reading = Task { await files.refresh(folder) }
         await backend.waitUntilStarted()
         await files.invalidate(folder)
@@ -189,7 +192,7 @@ struct RemoteFilesTests {
         let item = ListedEntry(name: "late.txt", kind: .file, size: 10, mode: 0o600, modified: nil, linkTarget: "")
         let backend = HeldListingBackend(next: [item])
         defer { Task { await backend.finishFirst([]) } }
-        let files = RemoteFiles(backends: { _ in backend })
+        let files = RemoteFiles(copies: copies, backends: { _ in backend })
         let reading = Task { await files.refresh(folder) }
         await backend.waitUntilStarted()
         await files.invalidate(folder)
@@ -202,7 +205,7 @@ struct RemoteFilesTests {
         await reading.value
         await removing.value
         #expect(await backend.calls == 1)
-        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        #expect(!FileManager.default.fileExists(atPath: copies.top(of: remote.id).path))
         #expect(sandbox.snapshot() == original)
     }
 
@@ -212,9 +215,9 @@ struct RemoteFilesTests {
         let backend = HeldDownloadBackend()
         defer { Task { await backend.finish() } }
         let removals = Counter()
-        let files = RemoteFiles(backends: { _ in backend }, removeCopy: { id in
+        let files = RemoteFiles(copies: copies, backends: { _ in backend }, removeCopy: { id in
             removals.add(1)
-            RemoteCopies.remove(id)
+            copies.remove(id)
         })
         await files.refresh(folder)
         let item = folder.appending(path: "held.txt")
@@ -231,7 +234,7 @@ struct RemoteFilesTests {
         await removing.value
         await secondRemoval.value
         #expect(removals.value == 1)
-        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        #expect(!FileManager.default.fileExists(atPath: copies.top(of: remote.id).path))
         await files.refresh(folder)
         try await files.fetch([item])
         #expect(await backend.downloads == 2)
@@ -244,7 +247,7 @@ struct RemoteFilesTests {
         let original = sandbox.snapshot()
         let backend = HeldDownloadBackend()
         defer { Task { await backend.finish() } }
-        let files = RemoteFiles(backends: { _ in backend })
+        let files = RemoteFiles(copies: copies, backends: { _ in backend })
         await files.refresh(folder)
         let item = folder.appending(path: "held.txt")
         let first = Task { try await files.fetch([item]) }
@@ -272,9 +275,9 @@ struct RemoteFilesTests {
         let original = sandbox.snapshot()
         let backend = HeldDownloadBackend(mode: 0o644)
         defer { Task { await backend.finish() } }
-        let files = RemoteFiles(backends: { _ in backend }, removeCopy: { id in
+        let files = RemoteFiles(copies: copies, backends: { _ in backend }, removeCopy: { id in
             #expect(backend.completions.value == 1)
-            RemoteCopies.remove(id)
+            copies.remove(id)
         })
         await files.refresh(folder)
         // No explicit fetch: the listing's world-readable file starts a background download.
@@ -284,7 +287,7 @@ struct RemoteFilesTests {
         await removing.value
         #expect(await backend.downloads == 1)
         #expect(backend.completions.value == 1)
-        #expect(!FileManager.default.fileExists(atPath: RemoteCopies.top(of: remote.id).path))
+        #expect(!FileManager.default.fileExists(atPath: copies.top(of: remote.id).path))
         #expect(await files.fetches.tasks(under: folder.standardizedFileURL.path).isEmpty)
         #expect(sandbox.snapshot() == original)
     }
@@ -305,14 +308,14 @@ struct RemoteFilesTests {
         #expect(names == ["docs", "sub", "note.txt", "big.bin", "shortcut"])
         // Not fetched yet: the right size and date, unreadable.
         let big = folder.appending(path: "big.bin")
-        #expect(RemoteCopies.isPlaceholder(big))
+        #expect(copies.isPlaceholder(big))
         let values = try big.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         #expect(values.fileSize == 2_000_000)
         #expect(values.contentModificationDate == Date(timeIntervalSince1970: 1_600_000_000))
         // A link stays inside the copy.
         #expect(folder.appending(path: "shortcut").resolvingSymlinksInPath().path == folder.appending(path: "docs").resolvingSymlinksInPath().path)
         // Small files come with the listing.
-        await waitUntil { !RemoteCopies.isPlaceholder(folder.appending(path: "note.txt")) }
+        await waitUntil { !copies.isPlaceholder(folder.appending(path: "note.txt")) }
         #expect(try String(contentsOf: folder.appending(path: "note.txt"), encoding: .utf8) == "hello")
     }
 
@@ -321,7 +324,7 @@ struct RemoteFilesTests {
         await files.refresh(folder)
         let big = folder.appending(path: "big.bin")
         try await files.fetch([big])
-        #expect(!RemoteCopies.isPlaceholder(big))
+        #expect(!copies.isPlaceholder(big))
         #expect(try Data(contentsOf: big) == Data(repeating: 7, count: 2_000_000))
         let attributes = try FileManager.default.attributesOfItem(atPath: big.path)
         #expect((attributes[.posixPermissions] as? NSNumber).map { $0.intValue & 0o222 } == 0)
@@ -393,7 +396,7 @@ struct RemoteFilesTests {
         await files.refresh(folder)
         try await files.prepareForCopying([folder.appending(path: "sub")])
         let file = folder.appending(path: "sub/deep/file.txt")
-        #expect(!RemoteCopies.isPlaceholder(file))
+        #expect(!copies.isPlaceholder(file))
         #expect(try String(contentsOf: file, encoding: .utf8) == "deep")
     }
 
@@ -404,7 +407,7 @@ struct RemoteFilesTests {
         try fm.createSymbolicLink(atPath: server.appending(path: "way-up").path, withDestinationPath: "../../../../../../../../..")
         try Data("odd".utf8).write(to: server.appending(path: "new\nline \\ name.txt"))
         await files.refresh(folder)
-        let top = RemoteCopies.top(of: remote.id).resolvingSymlinksInPath().path
+        let top = copies.top(of: remote.id).resolvingSymlinksInPath().path
         for name in ["to-etc", "way-up"] {
             let resolved = folder.appending(path: name).resolvingSymlinksInPath().path
             #expect(resolved == top || resolved.hasPrefix(top + "/"), "\(name) → \(resolved)")
@@ -458,7 +461,7 @@ struct RemoteFilesTests {
         try Data(repeating: 1, count: 3_000_000).write(to: server.appending(path: "big.bin"))
         let big = folder.appending(path: "big.bin")
         await #expect(throws: SFTPError.tooLarge) { try await files.fetch([big]) }
-        #expect(RemoteCopies.isPlaceholder(big))
+        #expect(copies.isPlaceholder(big))
     }
 
     @Test func copiedOutLinksLeadingOutsideAreDropped() throws {
@@ -483,20 +486,21 @@ struct RemoteFilesTests {
         let picked = [folder.appending(path: "docs"), folder.appending(path: "note.txt"), folder.appending(path: "shortcut")]
         try await files.prepareForCopying(picked)
         let elsewhere = server.appending(path: "note.txt")
-        let staged = LazyCopies.stageForClipboard(picked + [elsewhere], copies: .live)
+        let providers = CopyProviders(servers: files, containers: ContainerFiles(copies: ContainerCopyStore(root: cache.url("Containers"))))
+        let staged = LazyCopies.stageForClipboard(picked + [elsewhere], copies: providers)
         defer { if let first = staged.first { try? FileManager.default.removeItem(at: first.deletingLastPathComponent()) } }
         // The link chosen on its own is left out; what isn't in a copy is itself.
         #expect(staged.map(\.lastPathComponent) == ["docs", "note.txt", "note.txt"])
         #expect(staged.last == elsewhere)
         let docs = staged[0], note = staged[1]
-        #expect(docs.path.hasPrefix(LazyCopies.clipboardRoot.path) && note.path.hasPrefix(LazyCopies.clipboardRoot.path))
-        #expect(!CopyProviders.live.contains(docs) && !RemoteCopies.contains(note))
+        #expect(docs.path.hasPrefix(providers.clipboardRoot.path) && note.path.hasPrefix(providers.clipboardRoot.path))
+        #expect(!providers.contains(docs) && !copies.contains(note))
         #expect(try String(contentsOf: note, encoding: .utf8) == "hello")
         #expect(try String(contentsOf: docs.appending(path: "inside.txt"), encoding: .utf8) == "inside")
         // Ordinary files: writable, unlike in the copy.
         #expect(FileManager.default.isWritableFile(atPath: docs.appending(path: "inside.txt").path))
         // Nothing to stage: the same items back.
-        #expect(LazyCopies.stageForClipboard([elsewhere], copies: .live) == [elsewhere])
+        #expect(LazyCopies.stageForClipboard([elsewhere], copies: providers) == [elsewhere])
     }
 
     @Test func mergingOutLeavesWhatWasThereAlone() throws {
@@ -541,12 +545,12 @@ struct RemoteFilesTests {
     }
 
     @Test func pathsMapBothWays() {
-        let top = RemoteCopies.top(of: remote.id)
+        let top = copies.top(of: remote.id)
         #expect(RemoteCopies.remotePath(of: top, top: top) == "/")
         #expect(RemoteCopies.remotePath(of: top.appending(path: "srv/app"), top: top) == "/srv/app")
         #expect(RemoteCopies.url(forRemotePath: "/srv/../srv/app/", top: top) == top.appending(path: "srv/app"))
-        #expect(RemoteCopies.server(containing: top.appending(path: "x"))?.server.id == remote.id)
-        #expect(RemoteCopies.server(containing: RemoteCopies.root.appending(path: ".fetching/x")) == nil)
+        #expect(copies.server(containing: top.appending(path: "x"))?.server.id == remote.id)
+        #expect(copies.server(containing: copies.root.appending(path: ".fetching/x")) == nil)
         #expect(RemotePath.join("/", "a") == "/a")
         #expect(RemotePath.join("/a", "b") == "/a/b")
         #expect(RemotePath.parent("/a/b") == "/a")

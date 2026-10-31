@@ -65,7 +65,8 @@ struct RemoteCopyOwnershipTests {
         let ap = RemoteSessions(server: { $0 == id ? a : nil }, connect: { _ in ab }, changed: { _, _ in })
         let bp = RemoteSessions(server: { $0 == id ? b : nil }, connect: { _ in bb }, changed: { _, _ in })
         let af = RemoteFiles(sessions: ap, copies: first), bf = RemoteFiles(sessions: bp, copies: second)
-        let ar = CopyProviders(servers: af, containers: ContainerFiles()), br = CopyProviders(servers: bf, containers: ContainerFiles())
+        let ar = CopyProviders(servers: af, containers: ContainerFiles(copies: ContainerCopyStore(root: tree.url("first-containers"))))
+        let br = CopyProviders(servers: bf, containers: ContainerFiles(copies: ContainerCopyStore(root: tree.url("second-containers"))))
         let at = first.top(of: id), bt = second.top(of: id)
         let au = at.appending(path: "item.txt"), bu = bt.appending(path: "item.txt")
         await ar.refresh(at)
@@ -160,7 +161,7 @@ struct RemoteCopyOwnershipTests {
             #expect(tree.snapshot() == before)
         }
         let server = RemoteServer(id: id, kind: .sftp, name: "Fixture", host: "fixture.invalid")
-        if !CopyWriter.isCaseSensitive {
+        if !tellsCaseApart(tree.root) {
             let lowerFolder = copies.root.appending(path: id.lowercased(), directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: lowerFolder, withIntermediateDirectories: false)
             try Data("keep".utf8).write(to: lowerFolder.appending(path: "keep.txt"))
@@ -280,7 +281,7 @@ struct RemoteCopyOwnershipTests {
         await #expect(throws: CancellationError.self) {
             _ = try await browsing.open(original)
         }
-        let copyProviders = CopyProviders(servers: files, containers: ContainerFiles())
+        let copyProviders = CopyProviders(servers: files, containers: ContainerFiles(copies: ContainerCopyStore(root: tree.url("containers"))))
         let upload = RemoteUploadJob([tree.url("local/sub")], into: destination, expected: original,
                                      files: files, copies: copyProviders)
         let queue = TransferQueue(preferences: .shared, history: .shared, copies: copyProviders)

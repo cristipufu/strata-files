@@ -85,14 +85,14 @@ import UniformTypeIdentifiers
         let page = try self.page("one"), packagePage = try self.page("onepkg")
         #expect(page !== packagePage)
         let notes = try #require(FileEntry(url: tree.url("Notes.one")))
-        #expect(icons.icon(for: notes, containerStore: .shared) === page)
+        #expect(icons.icon(for: notes, containerCopies: .shared, containerStore: .shared) === page)
         #expect(await loaded(tree.url("Notes.one")) === page)
         #expect(icons.currentIcon(forPath: tree.url("Notes.one").path) === page)
         #expect(icons.icon(forType: try #require(UTType(filenameExtension: "ONEPKG"))) === packagePage)
         // A folder named so isn't one, and a link or an alias keeps its own icon.
         for name in ["folder.one", "link.one", "alias.one"] {
             let entry = try #require(FileEntry(url: tree.url(name)))
-            #expect(icons.icon(for: entry, containerStore: .shared) !== page, "\(name)")
+            #expect(icons.icon(for: entry, containerCopies: .shared, containerStore: .shared) !== page, "\(name)")
             #expect(await loaded(tree.url(name)) !== page, "\(name)")
             #expect(icons.currentIcon(forPath: tree.url(name).path) !== page, "\(name)")
         }

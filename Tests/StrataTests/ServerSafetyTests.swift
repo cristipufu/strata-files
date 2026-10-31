@@ -62,8 +62,8 @@ extension RemoteFilesTests {
     @Test func theServersTopIsNeverDeletedOrMoved() async throws {
         defer { cleanUp() }
         let recorder = RecordingBackend()
-        let recorded = RemoteFiles(backends: { _ in recorder })
-        let top = RemoteCopies.top(of: remote.id)
+        let recorded = RemoteFiles(copies: copies, backends: { _ in recorder })
+        let top = copies.top(of: remote.id)
         try await recorded.delete([top, top.appending(path: "chosen.txt")])
         _ = try await recorded.move([top], into: top.appending(path: "inside"))
         _ = try? await recorded.rename(top, to: "renamed")
@@ -81,7 +81,7 @@ extension RemoteFilesTests {
     @Test func somethingOnNoServerIsRefused() async throws {
         defer { cleanUp() }
         let recorder = RecordingBackend()
-        let recorded = RemoteFiles(backends: { _ in recorder })
+        let recorded = RemoteFiles(copies: copies, backends: { _ in recorder })
         let tree = try TestTree("local.txt")
         await #expect(throws: RemoteError.unknownServer) { try await recorded.delete([tree.url("local.txt")]) }
         #expect(recorder.changes.isEmpty)

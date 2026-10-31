@@ -47,12 +47,25 @@ struct IndexWorkerTests {
     }
 
     @Test func appConfigurationExcludesItsOwnPrivateState() throws {
-        let config = FileIndex.currentConfig()
+        let config = FileIndex(copies: .live).currentConfig()
         let resolved = try #require(realpath(SecureStorage.directory.path, nil))
         defer { free(resolved) }
         let directory = String(cString: resolved)
         #expect(config.excluded.contains(directory))
         #expect(config.file.deletingLastPathComponent().path == SecureStorage.directory.path)
+    }
+
+    @Test func anIndexLeavesOutItsOwnEnvironmentsCopies() throws {
+        let tree = try TestTree("Servers/", "Containers/", "Clipboard/", "elsewhere/")
+        let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
+                                   containerCopies: ContainerCopyStore(root: tree.url("Containers")),
+                                   clipboardRoot: tree.url("Clipboard"))
+        let excluded = FileIndex(copies: copies).currentConfig().excluded
+        for name in ["Servers", "Containers", "Clipboard"] {
+            #expect(excluded.contains(tree.url(name).path), "\(name)")
+        }
+        #expect(!excluded.contains(tree.url("elsewhere").path))
+        #expect(tree.snapshot() == ["Clipboard/", "Containers/", "Servers/", "elsewhere/"])
     }
 
     @Test func stateFolderEventsDoNotNotifyOrRewriteTheIndex() async throws {

@@ -247,6 +247,7 @@ struct BrowserCopyProviderTests {
             copies = CopyProviders(
                 [ServerCopyProvider(files: remote.files)] + extraProviders,
                 remoteCopies: remote.copies,
+                containerCopies: .shared,
                 clipboardRoot: tree.url(folder + "/clipboard")
             )
             pasteboard = NSPasteboard(name: .init("StrataBrowserCopyProviderTests.pasteboard.\(UUID().uuidString)"))

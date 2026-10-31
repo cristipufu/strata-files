@@ -111,7 +111,7 @@ enum ContainerControl {
 
 /// The folder on this Mac a Compose project was launched from.
 enum StackProjects {
-    static func workingDirectory(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
+    static func workingDirectory(of url: URL, copies: ContainerCopyStore,
                                  store: ContainerStore) -> URL? {
         guard copies.isStack(url) else { return nil }
         let name = url.lastPathComponent
@@ -125,7 +125,7 @@ enum StackProjects {
     }
 
     /// `workingDirectory` when that folder is still on this Mac.
-    static func existingFolder(of url: URL, copies: ContainerCopyStore = ContainerCopies.store,
+    static func existingFolder(of url: URL, copies: ContainerCopyStore,
                                store: ContainerStore) -> URL? {
         workingDirectory(of: url, copies: copies, store: store).flatMap(existing)
     }

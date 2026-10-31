@@ -94,7 +94,9 @@ struct InspectorProviderTests {
             )
             let copies = extraProviders.isEmpty
                 ? CopyProviders(servers: remote.files, containers: .shared)
-                : CopyProviders(extraProviders, remoteCopies: remote.copies)
+                : CopyProviders(extraProviders, remoteCopies: remote.copies,
+                                containerCopies: ContainerCopyStore(root: tree.url(folder + "/containers")),
+                                clipboardRoot: tree.url(folder + "/clipboard"))
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),

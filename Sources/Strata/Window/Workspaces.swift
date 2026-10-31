@@ -287,12 +287,6 @@ final class Workspaces {
         })
     }
 
-    /// The saved server whose files `path` is in (a folder in Strata's copy of them), if any.
-    nonisolated static func server(of path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        return RemoteCopies.server(containing: URL(fileURLWithPath: path))?.server.id
-    }
-
     /// Connects to the shares and servers that `controllers`' panes wait for, one at a time (macOS or ssh may ask for a
     /// name and password), with a sheet that can stop it; then shows each waiting pane's folder and says what didn't
     /// work out.

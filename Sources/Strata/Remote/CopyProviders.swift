@@ -31,22 +31,21 @@ package nonisolated struct CopyProviders: Sendable {
     package let containerCopies: ContainerCopyStore
     package let clipboardRoot: URL
 
-    package init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore = RemoteCopies.store,
-         containerCopies: ContainerCopyStore = ContainerCopies.store,
-         clipboardRoot: URL = LazyCopies.clipboardRoot) {
+    package init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore, containerCopies: ContainerCopyStore,
+                 clipboardRoot: URL) {
         self.providers = providers
         self.remoteCopies = remoteCopies
         self.containerCopies = containerCopies
         self.clipboardRoot = clipboardRoot
     }
 
+    /// Items copied to the clipboard from a copy are staged beside the server copies unless `clipboardRoot` says where.
     package init(servers: RemoteFiles, containers: ContainerFiles, clipboardRoot: URL? = nil) {
-        let defaultRoot = servers.copies.root == RemoteCopies.root
-            ? LazyCopies.clipboardRoot
-            : servers.copies.root.deletingLastPathComponent().appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
+        let besideServers = servers.copies.root.deletingLastPathComponent()
+            .appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
         self.init([ServerCopyProvider(files: servers), ContainerCopyProvider(files: containers)],
                   remoteCopies: servers.copies, containerCopies: containers.copies,
-                  clipboardRoot: clipboardRoot ?? defaultRoot)
+                  clipboardRoot: clipboardRoot ?? besideServers)
     }
 
     private func provider(for url: URL) -> (any CopyProvider)? { providers.first { $0.contains(url) } }
@@ -84,7 +83,13 @@ package nonisolated struct CopyProviders: Sendable {
         return urls.contains(where: check)
     }
     package func stageForClipboard(_ urls: [URL]) -> [URL] {
-        LazyCopies.stageForClipboard(urls, copies: self, root: clipboardRoot)
+        LazyCopies.stageForClipboard(urls, copies: self)
+    }
+
+    /// Clipboard staging left from before (at launch).
+    package func removeClipboardStaging() {
+        guard FileManager.default.fileExists(atPath: clipboardRoot.path) else { return }
+        Archiver.removeTree(clipboardRoot)
     }
     package func previewFolder(_ folder: URL) async throws { try await provider(for: folder)?.previewFolder(folder) }
     package func refresh(_ folder: URL) async { await provider(for: folder)?.refresh(folder) }

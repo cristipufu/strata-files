@@ -3,18 +3,14 @@ import Foundation
 /// Copies filled in as you browse: containers' files (`ContainerCopies`) and servers' (`RemoteCopies`). Reading them
 /// goes through a window's `CopyProviders`; what's here is the clipboard staging they all share.
 package nonisolated enum LazyCopies {
-    /// Where items copied to the clipboard from a copy are staged (see `stageForClipboard`), next to the copies.
-    package static let clipboardRoot: URL = RemoteCopies.root.deletingLastPathComponent()
-        .appending(path: "Clipboard.noindex", directoryHint: .isDirectory)
-
     /// What goes on the clipboard for `urls`: items from a container's or a server's copy as a staged copy of their own
     /// (an APFS clone, so it's instant), finished like anything copied out (links that would lead outside dropped,
     /// writable, still marked as downloaded). Pasting them anywhere, Finder included, gets ordinary files. Anything else
     /// is itself; a link chosen on its own is left out (from wherever it's pasted it would lead into this Mac's own
     /// folders). Staged items are removed at the next launch.
-    package static func stageForClipboard(_ urls: [URL], copies: CopyProviders, root: URL? = nil) -> [URL] {
+    package static func stageForClipboard(_ urls: [URL], copies: CopyProviders) -> [URL] {
         guard urls.contains(where: copies.contains) else { return urls }
-        let clipboardRoot = root ?? copies.clipboardRoot
+        let clipboardRoot = copies.clipboardRoot
         let fm = FileManager.default
         func newFolder() -> URL? {
             let folder = clipboardRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -39,11 +35,5 @@ package nonisolated enum LazyCopies {
             guard (try? TransferEngine.copyForExport(url, to: staged)) != nil else { return nil }
             return lstat(staged.path, &info) == 0 ? staged : nil
         }
-    }
-
-    /// Clipboard staging left from before (at launch).
-    package static func removeClipboardStaging() {
-        guard FileManager.default.fileExists(atPath: clipboardRoot.path) else { return }
-        Archiver.removeTree(clipboardRoot)
     }
 }

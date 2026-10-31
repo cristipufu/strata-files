@@ -3,7 +3,7 @@ import Foundation
 /// A window's saved servers, sessions and cached files share one owner. Native windows use the application's
 /// existing services; independent environments keep the same server IDs in separate registries and copy roots.
 package final class RemoteServices {
-    package static let shared = RemoteServices(servers: RemoteServers.store, status: .shared, sessions: .shared,
+    package static let shared = RemoteServices(servers: .shared, status: .shared, sessions: .shared,
                                        files: .shared, connections: .shared, notifications: .default)
 
     package let servers: RemoteServerStore

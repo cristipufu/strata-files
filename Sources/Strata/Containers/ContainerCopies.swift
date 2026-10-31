@@ -41,11 +41,14 @@ package nonisolated struct EngineRecord: Codable, Sendable, Equatable {
 /// in that container, never one on this Mac. Everything is removed when Strata quits.
 package nonisolated final class ContainerCopyStore: Sendable {
     package let root: URL
-    fileprivate let rootPath: String
-    fileprivate let sources = Mutex<[String: ContainerSource]>([:])
-    fileprivate let engines = Mutex<[String: EngineRecord]>([:])
+    private let rootPath: String
+    private let sources = Mutex<[String: ContainerSource]>([:])
+    private let engines = Mutex<[String: EngineRecord]>([:])
 
-    package init(root: URL = ContainerCopies.root) {
+    package static let shared = ContainerCopyStore(
+        root: SecureStorage.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory))
+
+    package init(root: URL) {
         let resolved = Self.rootURL(root)
         self.root = resolved
         self.rootPath = resolved.path
@@ -64,100 +67,29 @@ package nonisolated final class ContainerCopyStore: Sendable {
         return missing.reversed().reduce(parent.standardizedFileURL) { $0.appending(path: $1, directoryHint: .isDirectory) }
     }
 
-    package func prepare(_ engine: ContainerEngine) throws -> URL {
-        try ContainerCopies.prepare(engine, in: self)
-    }
-
-    package func prepare(_ container: ContainerInfo, on engine: ContainerEngine) throws -> URL {
-        try ContainerCopies.prepare(container, on: engine, in: self)
-    }
-
-    package func stackFolder(for container: ContainerInfo, in engineFolder: URL) throws -> URL {
-        try ContainerCopies.stackFolder(for: container, in: engineFolder, store: self)
-    }
-
-    package func record(_ container: ContainerInfo, on engine: ContainerEngine, in fd: Int32, folder: URL) throws {
-        try ContainerCopies.record(container, on: engine, in: fd, folder: folder, store: self)
-    }
-
-    package func contains(_ url: URL) -> Bool {
-        ContainerCopies.contains(url, in: self)
-    }
-
-    package func engineFolder(_ url: URL) -> ContainerEngine? {
-        ContainerCopies.engineFolder(url, in: self)
-    }
-
-    package func containersFolder(of url: URL) -> URL? {
-        ContainerCopies.containersFolder(of: url, in: self)
-    }
-
-    package func copy(containing url: URL) -> (source: ContainerSource, top: URL)? {
-        ContainerCopies.copy(containing: url, in: self)
-    }
-
-    package func isContainerTop(_ url: URL) -> Bool {
-        ContainerCopies.isContainerTop(url, in: self)
-    }
-
-    package func isStack(_ url: URL) -> Bool {
-        ContainerCopies.isStack(url, in: self)
-    }
-
-    package func forget(_ path: String) {
-        ContainerCopies.forget(path, in: self)
-    }
-
-    package func apparentPath(_ url: URL) -> String? {
-        ContainerCopies.apparentPath(url, in: self)
-    }
-
-    package func isPlaceholder(_ url: URL) -> Bool {
-        ContainerCopies.isPlaceholder(url, in: self)
-    }
-
-    package func remove(_ folder: URL) {
-        ContainerCopies.remove(folder, in: self)
-    }
-}
-
-package nonisolated enum ContainerCopies {
-    package static let root: URL = {
-        SecureStorage.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory).standardizedFileURL
-    }()
-
-    package static let store = ContainerCopyStore(root: root)
-    private static let sourceAttribute = "dev.strata.container"
-    private static let engineAttribute = "dev.strata.engine"
-
-    /// An engine's folder name: the same engine always gets the same one.
-    package static func engineKey(_ socket: String) -> String {
-        SHA256.hash(data: Data(socket.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
-    }
-
     /// The engine's Containers folder, made if needed.
-    package static func prepare(_ engine: ContainerEngine, in store: ContainerCopyStore = store) throws -> URL {
+    package func prepare(_ engine: ContainerEngine) throws -> URL {
         let fm = FileManager.default
-        if !fm.fileExists(atPath: store.rootPath) {
+        if !fm.fileExists(atPath: rootPath) {
             // Spotlight has no business indexing other machines' files (`.noindex` keeps it out).
-            try fm.createDirectory(at: store.root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
-        let folder = store.root.appending(path: engineKey(engine.socket), directoryHint: .isDirectory)
+        let folder = root.appending(path: ContainerCopies.engineKey(engine.socket), directoryHint: .isDirectory)
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let record = EngineRecord(engine)
-        try setAttribute(engineAttribute, record, on: folder)
-        store.engines.withLock { $0[folder.path] = record }
+        try ContainerCopies.setAttribute(ContainerCopies.engineAttribute, record, on: folder)
+        engines.withLock { $0[folder.path] = record }
         return folder
     }
 
     /// A container's folder (its `/`), made if needed. One from a Compose project is made inside that project's folder.
-    package static func prepare(_ container: ContainerInfo, on engine: ContainerEngine, in store: ContainerCopyStore = store) throws -> URL {
-        guard isContainerName(container.name) else { throw CocoaError(.fileWriteInvalidFileName) }
-        let parent = try stackFolder(for: container, in: prepare(engine, in: store), store: store)
+    package func prepare(_ container: ContainerInfo, on engine: ContainerEngine) throws -> URL {
+        guard ContainerCopies.isContainerName(container.name) else { throw CocoaError(.fileWriteInvalidFileName) }
+        let parent = try stackFolder(for: container, in: prepare(engine))
         let fd = open(parent.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(fd) }
-        try record(container, on: engine, in: fd, folder: parent, store: store)
+        try record(container, on: engine, in: fd, folder: parent)
         return parent.appending(path: container.name, directoryHint: .isDirectory)
     }
 
@@ -165,11 +97,11 @@ package nonisolated enum ContainerCopies {
     /// The project folder is made if needed. When a container's folder already has the project's name (a container on
     /// its own, called that), it stays beside the stacks, as `CopyWriter.syncContainers` places it: never inside that
     /// container's files.
-    package static func stackFolder(for container: ContainerInfo, in engineFolder: URL, store: ContainerCopyStore = store) throws -> URL {
-        guard let name = stackName(container) else { return engineFolder }
+    package func stackFolder(for container: ContainerInfo, in engineFolder: URL) throws -> URL {
+        guard let name = ContainerCopies.stackName(container) else { return engineFolder }
         let fd = open(engineFolder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
-        let taken = recordedSource(name, in: fd) != nil
+        let taken = ContainerCopies.recordedSource(name, in: fd) != nil
         close(fd)
         if taken { return engineFolder }
         let stack = engineFolder.appending(path: name, directoryHint: .isDirectory)
@@ -177,18 +109,11 @@ package nonisolated enum ContainerCopies {
         return stack
     }
 
-    /// The Compose project a container is grouped under, when that name can be a folder. Nil leaves it beside the stacks.
-    package static func stackName(_ container: ContainerInfo) -> String? {
-        guard let project = container.compose?.project, isContainerName(project) else { return nil }
-        return project
-    }
-
     /// Makes (or keeps) the folder for `container` in the Containers folder open at `fd`, recording its source and
     /// giving it the container's date.
-    package static func record(_ container: ContainerInfo, on engine: ContainerEngine, in fd: Int32, folder: URL,
-                       store: ContainerCopyStore = store) throws {
+    package func record(_ container: ContainerInfo, on engine: ContainerEngine, in fd: Int32, folder: URL) throws {
         let name = container.name
-        guard isContainerName(name) else { throw CocoaError(.fileWriteInvalidFileName) }
+        guard ContainerCopies.isContainerName(name) else { throw CocoaError(.fileWriteInvalidFileName) }
         var info = stat()
         if fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT != S_IFDIR { CopyWriter.removeAt(fd, name) }
         mkdirat(fd, name, 0o755)
@@ -201,11 +126,155 @@ package nonisolated enum ContainerCopies {
         let source = ContainerSource(socket: engine.socket, apiVersion: engine.apiVersion, engineName: engine.name,
                                      id: container.id, name: name)
         let data = try JSONEncoder().encode(source)
-        guard data.withUnsafeBytes({ fsetxattr(child, sourceAttribute, $0.baseAddress, $0.count, 0, 0) }) == 0 else {
+        let attribute = ContainerCopies.sourceAttribute
+        guard data.withUnsafeBytes({ fsetxattr(child, attribute, $0.baseAddress, $0.count, 0, 0) }) == 0 else {
             throw CocoaError(.fileWriteUnknown)
         }
         CopyWriter.remember(container.created, onFolder: child)
-        store.sources.withLock { $0[folder.appending(path: name).standardizedFileURL.path] = source }
+        sources.withLock { $0[folder.appending(path: name).standardizedFileURL.path] = source }
+    }
+
+    /// Whether `url` is the cache or inside it.
+    package func contains(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return path == rootPath || path.hasPrefix(rootPath + "/")
+    }
+
+    /// For an engine's Containers folder itself: the engine.
+    package func engineFolder(_ url: URL) -> ContainerEngine? {
+        guard let parts = components(url), parts.count == 1 else { return nil }
+        return engineRecord(root.appending(path: parts[0], directoryHint: .isDirectory))?.engine
+    }
+
+    /// The Containers folder `url` is in or is (nil outside them).
+    package func containersFolder(of url: URL) -> URL? {
+        guard let first = components(url)?.first else { return nil }
+        return root.appending(path: first, directoryHint: .isDirectory)
+    }
+
+    /// For a path inside a container's folder: which container it's of, and its top folder (the container's `/`).
+    /// A container sits in the engine's folder, or one level down inside its Compose project.
+    package func copy(containing url: URL) -> (source: ContainerSource, top: URL)? {
+        guard let parts = components(url), parts.count >= 2 else { return nil }
+        for depth in [2, 3] where depth <= parts.count {
+            let top = parts.prefix(depth).reduce(root) { $0.appending(path: $1, directoryHint: .isDirectory) }
+            if let source = source(of: top) { return (source, top) }
+        }
+        return nil
+    }
+
+    /// Whether `url` is a container's top folder.
+    package func isContainerTop(_ url: URL) -> Bool {
+        guard let parts = components(url), (2...3).contains(parts.count) else { return false }
+        return source(of: url) != nil
+    }
+
+    /// A Compose project's folder: directly in the engine's folder, and not a container itself.
+    package func isStack(_ url: URL) -> Bool {
+        guard components(url)?.count == 2, engineFolder(url.deletingLastPathComponent()) != nil else { return false }
+        return source(of: url) == nil
+    }
+
+    private func components(_ url: URL) -> [String]? {
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(rootPath + "/") else { return nil }
+        let parts = path.dropFirst(rootPath.count + 1).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard let first = parts.first, !first.hasPrefix(".") else { return nil }
+        return parts
+    }
+
+    private func source(of top: URL) -> ContainerSource? {
+        let path = top.standardizedFileURL.path
+        if let known = sources.withLock({ $0[path] }) { return known }
+        let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        let attribute = ContainerCopies.sourceAttribute
+        guard let source = ContainerCopies.readAttribute(attribute, ContainerSource.self, from: fd),
+              ContainerAPI.isContainerID(source.id), source.socket.hasPrefix("/"),
+              source.name == URL(fileURLWithPath: path).lastPathComponent else { return nil }
+        sources.withLock { $0[path] = source }
+        return source
+    }
+
+    private func engineRecord(_ folder: URL) -> EngineRecord? {
+        let path = folder.standardizedFileURL.path
+        if let known = engines.withLock({ $0[path] }) { return known }
+        let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        guard let record = ContainerCopies.readAttribute(ContainerCopies.engineAttribute, EngineRecord.self, from: fd),
+              record.socket.hasPrefix("/"), EngineDiscovery.isAPIVersion(record.apiVersion) else { return nil }
+        engines.withLock { $0[path] = record }
+        return record
+    }
+
+    /// Forgets what's known about the folder at `path` (it was removed).
+    package func forget(_ path: String) {
+        sources.withLock { cache in cache = cache.filter { $0.key != path && !$0.key.hasPrefix(path + "/") } }
+        engines.withLock { cache in cache = cache.filter { $0.key != path && !$0.key.hasPrefix(path + "/") } }
+    }
+
+    /// How an item in a copy is shown: "web:/etc/hosts". Nil outside copies.
+    package func apparentPath(_ url: URL) -> String? {
+        guard let (source, top) = copy(containing: url),
+              let path = ContainerCopies.containerPath(of: url, top: top) else { return nil }
+        return "\(source.name):\(path)"
+    }
+
+    /// A file in a copy that hasn't been fetched from its container yet (a regular file with no permissions).
+    package func isPlaceholder(_ url: URL) -> Bool {
+        guard contains(url) else { return false }
+        var info = stat()
+        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
+            && ContainerCopies.isPlaceholderMode(info.st_mode)
+    }
+
+    /// Removes an engine's folder, a Compose project's folder, or a container's folder. Never the cache itself, and
+    /// never a folder inside a container (its files aren't Strata's to delete).
+    package func remove(_ folder: URL) {
+        let path = folder.standardizedFileURL.path
+        guard path.hasPrefix(rootPath + "/") else { return }
+        let depth = path.dropFirst(rootPath.count + 1).split(separator: "/").count
+        guard (1...3).contains(depth) else { return }
+        // Three deep is a container in a project's folder, never a folder in a container's own files.
+        if depth == 3, source(of: folder.deletingLastPathComponent()) != nil { return }
+        forget(path)
+        Archiver.removeTree(folder)
+    }
+
+    /// At quit (and at launch, for anything a crash left): containers' files don't outlive Strata (a container's files
+    /// can be secrets). Moved aside at once and removed in the background (`removeSetAside`), so it never holds things up.
+    package func setAsideForRemoval() {
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        let aside = root.deletingLastPathComponent().appending(path: "Containers-removed-\(UUID().uuidString).noindex")
+        try? FileManager.default.moveItem(at: root, to: aside)
+        sources.withLock { $0.removeAll() }
+        engines.withLock { $0.removeAll() }
+    }
+
+    /// Removes what was set aside (beside the copies' folder).
+    package func removeSetAside() {
+        let parent = root.deletingLastPathComponent()
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [] where name.hasPrefix("Containers-removed-") {
+            Archiver.removeTree(parent.appending(path: name))
+        }
+    }
+}
+
+package nonisolated enum ContainerCopies {
+    fileprivate static let sourceAttribute = "dev.strata.container"
+    fileprivate static let engineAttribute = "dev.strata.engine"
+
+    /// An engine's folder name: the same engine always gets the same one.
+    package static func engineKey(_ socket: String) -> String {
+        SHA256.hash(data: Data(socket.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The Compose project a container is grouped under, when that name can be a folder. Nil leaves it beside the stacks.
+    package static func stackName(_ container: ContainerInfo) -> String? {
+        guard let project = container.compose?.project, isContainerName(project) else { return nil }
+        return project
     }
 
     /// The container recorded on the folder named `name` in the folder open at `fd`, if any.
@@ -221,86 +290,7 @@ package nonisolated enum ContainerCopies {
         isSafeName(name) && !name.hasPrefix(".") && name.utf8.count <= 128
     }
 
-    /// Whether `url` is the cache or inside it.
-    package static func contains(_ url: URL, in store: ContainerCopyStore = store) -> Bool {
-        let path = url.standardizedFileURL.path
-        return path == store.rootPath || path.hasPrefix(store.rootPath + "/")
-    }
-
-    /// For an engine's Containers folder itself: the engine.
-    package static func engineFolder(_ url: URL, in store: ContainerCopyStore = store) -> ContainerEngine? {
-        guard let parts = components(url, in: store), parts.count == 1 else { return nil }
-        return engineRecord(store.root.appending(path: parts[0], directoryHint: .isDirectory), in: store)?.engine
-    }
-
-    /// The Containers folder `url` is in or is (nil outside them).
-    package static func containersFolder(of url: URL, in store: ContainerCopyStore = store) -> URL? {
-        guard let first = components(url, in: store)?.first else { return nil }
-        return store.root.appending(path: first, directoryHint: .isDirectory)
-    }
-
-    /// For a path inside a container's folder: which container it's of, and its top folder (the container's `/`).
-    /// A container sits in the engine's folder, or one level down inside its Compose project.
-    package static func copy(containing url: URL, in store: ContainerCopyStore = store) -> (source: ContainerSource, top: URL)? {
-        guard let parts = components(url, in: store), parts.count >= 2 else { return nil }
-        for depth in [2, 3] where depth <= parts.count {
-            let top = parts.prefix(depth).reduce(store.root) { $0.appending(path: $1, directoryHint: .isDirectory) }
-            if let source = source(of: top, in: store) { return (source, top) }
-        }
-        return nil
-    }
-
-    /// Whether `url` is a container's top folder.
-    package static func isContainerTop(_ url: URL, in store: ContainerCopyStore = store) -> Bool {
-        guard let parts = components(url, in: store), (2...3).contains(parts.count) else { return false }
-        return source(of: url, in: store) != nil
-    }
-
-    /// A Compose project's folder: directly in the engine's folder, and not a container itself.
-    package static func isStack(_ url: URL, in store: ContainerCopyStore = store) -> Bool {
-        guard components(url, in: store)?.count == 2, engineFolder(url.deletingLastPathComponent(), in: store) != nil else { return false }
-        return source(of: url, in: store) == nil
-    }
-
-    private static func components(_ url: URL, in store: ContainerCopyStore) -> [String]? {
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(store.rootPath + "/") else { return nil }
-        let parts = path.dropFirst(store.rootPath.count + 1).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        guard let first = parts.first, !first.hasPrefix(".") else { return nil }
-        return parts
-    }
-
-    private static func source(of top: URL, in store: ContainerCopyStore) -> ContainerSource? {
-        let path = top.standardizedFileURL.path
-        if let known = store.sources.withLock({ $0[path] }) { return known }
-        let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-        guard let source = readAttribute(sourceAttribute, ContainerSource.self, from: fd), ContainerAPI.isContainerID(source.id),
-              source.socket.hasPrefix("/"), source.name == URL(fileURLWithPath: path).lastPathComponent else { return nil }
-        store.sources.withLock { $0[path] = source }
-        return source
-    }
-
-    private static func engineRecord(_ folder: URL, in store: ContainerCopyStore) -> EngineRecord? {
-        let path = folder.standardizedFileURL.path
-        if let known = store.engines.withLock({ $0[path] }) { return known }
-        let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-        guard let record = readAttribute(engineAttribute, EngineRecord.self, from: fd), record.socket.hasPrefix("/"),
-              EngineDiscovery.isAPIVersion(record.apiVersion) else { return nil }
-        store.engines.withLock { $0[path] = record }
-        return record
-    }
-
-    /// Forgets what's known about the folder at `path` (it was removed).
-    package static func forget(_ path: String, in store: ContainerCopyStore = store) {
-        store.sources.withLock { cache in cache = cache.filter { $0.key != path && !$0.key.hasPrefix(path + "/") } }
-        store.engines.withLock { cache in cache = cache.filter { $0.key != path && !$0.key.hasPrefix(path + "/") } }
-    }
-
-    private static func setAttribute(_ name: String, _ value: some Encodable, on folder: URL) throws {
+    fileprivate static func setAttribute(_ name: String, _ value: some Encodable, on folder: URL) throws {
         let data = try JSONEncoder().encode(value)
         let fd = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
@@ -308,7 +298,7 @@ package nonisolated enum ContainerCopies {
         guard data.withUnsafeBytes({ fsetxattr(fd, name, $0.baseAddress, $0.count, 0, 0) }) == 0 else { throw CocoaError(.fileWriteUnknown) }
     }
 
-    private static func readAttribute<T: Decodable>(_ name: String, _ type: T.Type, from fd: Int32) -> T? {
+    fileprivate static func readAttribute<T: Decodable>(_ name: String, _ type: T.Type, from fd: Int32) -> T? {
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
         let count = fgetxattr(fd, name, &buffer, buffer.count, 0, 0)
         guard count > 0 else { return nil }
@@ -326,12 +316,6 @@ package nonisolated enum ContainerCopies {
     /// Where the container's `path` is in the copy.
     package static func url(forContainerPath path: String, top: URL) -> URL {
         normalized(path).reduce(top) { $0.appending(path: $1) }
-    }
-
-    /// How an item in a copy is shown: "web:/etc/hosts". Nil outside copies.
-    package static func apparentPath(_ url: URL, in store: ContainerCopyStore = store) -> String? {
-        guard let (source, top) = copy(containing: url, in: store), let path = containerPath(of: url, top: top) else { return nil }
-        return "\(source.name):\(path)"
     }
 
     /// The components of `path` with `.` and empty parts gone and `..` taken back, stopping at `/` the way the
@@ -368,29 +352,9 @@ package nonisolated enum ContainerCopies {
         !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains("\0") && name.utf8.count <= 255
     }
 
-    /// A file in a copy that hasn't been fetched from its container yet (a regular file with no permissions).
-    package static func isPlaceholder(_ url: URL, in store: ContainerCopyStore = store) -> Bool {
-        guard contains(url, in: store) else { return false }
-        var info = stat()
-        return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && isPlaceholderMode(info.st_mode)
-    }
-
     /// A placeholder can't be read or written; it keeps only the container's execute bits, so a program shows as a
     /// Unix executable before it's fetched. A fetched file is always readable.
     package static func isPlaceholderMode(_ mode: mode_t) -> Bool { mode & 0o666 == 0 }
-
-    /// Removes an engine's folder, a Compose project's folder, or a container's folder. Never the cache itself, and
-    /// never a folder inside a container (its files aren't Strata's to delete).
-    package static func remove(_ folder: URL, in store: ContainerCopyStore = store) {
-        let path = folder.standardizedFileURL.path
-        guard path.hasPrefix(store.rootPath + "/") else { return }
-        let depth = path.dropFirst(store.rootPath.count + 1).split(separator: "/").count
-        guard (1...3).contains(depth) else { return }
-        // Three deep is a container in a project's folder, never a folder in a container's own files.
-        if depth == 3, source(of: folder.deletingLastPathComponent(), in: store) != nil { return }
-        forget(path, in: store)
-        Archiver.removeTree(folder)
-    }
 
     /// Only entries recorded by the transfer worker are changed. The source can disappear after a copy; its
     /// continued existence is neither proof of destination ownership nor a condition for dropping unsafe links.
@@ -426,23 +390,6 @@ package nonisolated enum ContainerCopies {
         }
     }
 
-    /// At quit (and at launch, for anything a crash left): containers' files don't outlive Strata (a container's files
-    /// can be secrets). Moved aside at once and removed in the background (`removeSetAside`), so it never holds things up.
-    /// `folder`: the copies' folder (another one in tests).
-    package static func setAsideForRemoval(_ folder: URL = root, in store: ContainerCopyStore = store) {
-        guard FileManager.default.fileExists(atPath: folder.path) else { return }
-        let aside = folder.deletingLastPathComponent().appending(path: "Containers-removed-\(UUID().uuidString).noindex")
-        try? FileManager.default.moveItem(at: folder, to: aside)
-        store.sources.withLock { $0.removeAll() }
-        store.engines.withLock { $0.removeAll() }
-    }
-
-    /// Removes what was set aside (beside the copies' folder, `parent`).
-    package static func removeSetAside(in parent: URL = root.deletingLastPathComponent()) {
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [] where name.hasPrefix("Containers-removed-") {
-            Archiver.removeTree(parent.appending(path: name))
-        }
-    }
 }
 
 /// Strata's read-only copies: archives opened as folders and container files. Nothing inside one is changed from
@@ -450,7 +397,7 @@ package nonisolated enum ContainerCopies {
 /// refusing a change inside a copy Strata keeps is never wrong.
 package nonisolated enum ReadOnlyCopies {
     package static func contains(_ url: URL, copies: CopyProviders) -> Bool {
-        ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
+        ArchiveCache.contains(url) || ContainerCopyStore.shared.contains(url) || RemoteCopyStore.shared.contains(url)
             || copies.isClipboardStaging(url)
             || copies.contains(url) || copies.remoteCopies.contains(url) || copies.containerCopies.contains(url)
     }

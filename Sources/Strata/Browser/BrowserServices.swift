@@ -120,6 +120,6 @@ final class BrowserServices {
         self.tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
         self.cloud = cloud ?? CloudStore()
         self.git = git ?? GitStatusStore()
-        self.index = index ?? FileIndex()
+        self.index = index ?? FileIndex(copies: transfers.copies)
     }
 }

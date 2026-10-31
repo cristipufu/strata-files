@@ -435,7 +435,7 @@ final class FileThumbnails {
 }
 
 extension IconCache {
-    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore = ContainerCopies.store, containerStore: ContainerStore) -> NSImage {
+    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore, containerStore: ContainerStore) -> NSImage {
         // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
         // grey while it's stopped, orange while it's paused or only partly running.
         if entry.isDirectory, let (source, top) = containerCopies.copy(containing: entry.url),

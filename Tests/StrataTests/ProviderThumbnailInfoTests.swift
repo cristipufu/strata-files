@@ -381,7 +381,7 @@ struct ProviderThumbnailInfoTests {
         let nodeA = try #require(a.allRows.first { $0.url == item })
         let nameCol = try #require(a.outlineView.tableColumn(withIdentifier: .init("name")))
         let listCellBefore = try #require(a.outlineView(a.outlineView, viewFor: nameCol, item: nodeA) as? NameCellView)
-        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry, containerStore: .shared)
+        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry, containerCopies: .shared, containerStore: .shared)
         #expect(listCellBefore.imageView?.image === fallbackIcon)
         #expect((a.previewPanel(nil, transitionImageFor: item as NSURL, contentRect: nil) as? NSImage) === fallbackIcon)
 

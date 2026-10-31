@@ -33,7 +33,7 @@ final class ContainerInspectorView: NSView {
     }
 
     init(frame: NSRect = .zero, preferences: Prefs,
-         copies: ContainerCopyStore = ContainerCopies.store, store: ContainerStore) {
+         copies: ContainerCopyStore, store: ContainerStore) {
         self.preferences = preferences
         self.copies = copies
         self.store = store

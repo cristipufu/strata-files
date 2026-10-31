@@ -7,6 +7,10 @@ package nonisolated struct RemoteCopyStore: Sendable {
     private let rootPath: String
     private let lookup: @Sendable (String) -> RemoteServer?
 
+    package static let shared = RemoteCopyStore(
+        root: SecureStorage.caches.appending(path: "Servers.noindex", directoryHint: .isDirectory),
+        server: { RemoteRegistry.shared.server(id: $0) })
+
     package init(root: URL, server: @escaping @Sendable (String) -> RemoteServer?) {
         self.root = Self.rootURL(root)
         rootPath = self.root.path
@@ -42,6 +46,7 @@ package nonisolated struct RemoteCopyStore: Sendable {
 
     package func top(of id: String) -> URL { root.appending(path: id, directoryHint: .isDirectory) }
 
+    /// A server's copy, made if needed (0700, like the rest of Strata's caches).
     package func prepare(_ server: RemoteServer) throws -> URL {
         guard RemoteServer.isValidID(server.id) else { throw RemoteError.unknownServer }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -72,11 +77,27 @@ package nonisolated struct RemoteCopyStore: Sendable {
         return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && ContainerCopies.isPlaceholderMode(info.st_mode)
     }
 
+    /// One server's copy, gone (disconnecting, removing the server).
     package func remove(_ id: String) {
         guard RemoteServer.isValidID(id) else { return }
         let parent = open(rootPath, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard parent >= 0 else { return }
         defer { close(parent) }
         Archiver.removeTree(id, in: parent)
+    }
+
+    /// Moves every copy aside (instantly) for `removeSetAside` to delete: at quit, and at launch for what a crash left.
+    package func setAsideForRemoval() {
+        guard FileManager.default.fileExists(atPath: rootPath) else { return }
+        let aside = root.deletingLastPathComponent().appending(path: "Servers-removed-\(UUID().uuidString).noindex")
+        try? FileManager.default.moveItem(at: root, to: aside)
+    }
+
+    /// Removes what was set aside (beside the copies' folder).
+    package func removeSetAside() {
+        let parent = root.deletingLastPathComponent()
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [] where name.hasPrefix("Servers-removed-") {
+            Archiver.removeTree(parent.appending(path: name))
+        }
     }
 }

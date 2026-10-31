@@ -55,8 +55,8 @@ struct DropTests {
         #expect(FileDrop.operation([tree.url("a.txt")], into: copy, mask: every, option: false, copies: .live) == [])
         #expect(FileDrop.operation([copy.appending(path: "x.txt")], into: tree.url("to"), mask: every, option: false, copies: .live) == .copy)
         // Strata's Servers folder, or a server that's gone: nothing goes there.
-        #expect(FileDrop.operation([tree.url("a.txt")], into: RemoteCopies.root, mask: every, option: false, copies: .live) == [])
-        let gone = RemoteCopies.root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        #expect(FileDrop.operation([tree.url("a.txt")], into: RemoteCopyStore.shared.root, mask: every, option: false, copies: .live) == [])
+        let gone = RemoteCopyStore.shared.root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         #expect(FileDrop.operation([tree.url("a.txt")], into: gone, mask: every, option: false, copies: .live) == [])
         #expect(tree.snapshot() == ["a.txt", "to/"])
     }

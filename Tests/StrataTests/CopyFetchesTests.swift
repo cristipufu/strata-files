@@ -110,7 +110,7 @@ struct CopyFetchesTests {
             defer { fixture.remove() }
             let gate = HeldRead()
             defer { Task { await gate.finish() } }
-            let files = ContainerFiles(readListing: { _, _ in
+            let files = ContainerFiles(copies: fixture.copies, readListing: { _, _ in
                 ContainerListingResult(entries: [ListedEntry(name: "held.txt", kind: .file, size: 4, mode: 0o600,
                                                             modified: nil, linkTarget: "")], contents: [:], freshFor: 15)
             }, readFile: { _, _, url, _ in
@@ -146,7 +146,7 @@ struct CopyFetchesTests {
             try await second.value
             #expect(await gate.calls == 1)
             #expect(try Data(contentsOf: fixture.top.appending(path: "held.txt")) == Data("data".utf8))
-            #expect(!ContainerCopies.isPlaceholder(fixture.top.appending(path: "held.txt")))
+            #expect(!fixture.copies.isPlaceholder(fixture.top.appending(path: "held.txt")))
             #expect(await files.fetches.tasks(under: fixture.top.standardizedFileURL.path).isEmpty)
             #expect(fixture.tree.snapshot() == ["untouched.txt"])
         }
@@ -159,7 +159,7 @@ struct CopyFetchesTests {
             let gate = HeldRead()
             defer { Task { await gate.finish() } }
             let removals = Counter()
-            let files = ContainerFiles(readListing: { _, _ in
+            let files = ContainerFiles(copies: fixture.copies, readListing: { _, _ in
                 ContainerListingResult(entries: [ListedEntry(name: "held.txt", kind: .file, size: 4, mode: 0o600,
                                                             modified: nil, linkTarget: "")], contents: [:], freshFor: 15)
             }, readFile: { _, _, _, stop in
@@ -168,7 +168,7 @@ struct CopyFetchesTests {
                 do { try await gate.read() } catch { #expect(stop.isSet); throw error }
             }, removeCopy: { top in
                 removals.add(1)
-                ContainerCopies.remove(top)
+                fixture.copies.remove(top)
             })
             await files.refresh(fixture.top)
             let fetching = Task {
@@ -201,16 +201,21 @@ struct CopyFetchesTests {
 
     private struct ContainerFixture {
         let tree: TestTree
+        /// The copies' folder: the fixture's own, apart from the tree it checks.
+        let cache: TestTree
+        let copies: ContainerCopyStore
         let top: URL
         init() throws {
             tree = try TestTree("untouched.txt")
+            cache = try TestTree()
+            copies = ContainerCopyStore(root: cache.url("Containers"))
             let engine = ContainerEngine(socket: tree.url("absent-engine.sock").path, name: "Fixture", apiVersion: "1.41")
             let container = ContainerInfo(id: String(repeating: "c", count: 64), name: "fixture", image: "fixture", state: .running,
                                           status: "Up", created: nil, mounts: [], ports: [], compose: nil)
-            top = try ContainerCopies.prepare(container, on: engine)
+            top = try copies.prepare(container, on: engine)
         }
         func remove() {
-            ContainerCopies.remove(top)
+            copies.remove(top)
             try? FileManager.default.removeItem(at: top.deletingLastPathComponent())
         }
     }

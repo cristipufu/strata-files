@@ -8,23 +8,12 @@ extension Notification.Name {
     package static let remoteServerDisconnected = Notification.Name("StrataRemoteServerDisconnected")
 }
 
-/// The live application's saved servers. Independent environments own their store, registry and credentials together.
-package enum RemoteServers {
-    package static let store = RemoteServerStore(preferences: .shared, credentials: .shared, registry: RemoteRegistry.shared,
-                                        notifications: .default)
-    package static var all: [RemoteServer] { store.all }
-    package static func server(id: String) -> RemoteServer? { store.server(id: id) }
-
-    /// Forgets this confirmed definition, its credentials and its cached files, without affecting a later edit.
-    package static func remove(_ server: RemoteServer) {
-        RemoteConnections.shared.remove(server) { store.forget(server) }
-    }
-
-    package static func load() { store.load() }
-}
-
 /// The servers you've connected to, in their saved order. Credentials stay in the owning keychain, never preferences.
+/// Independent environments own their store, registry and credentials together.
 package final class RemoteServerStore {
+    package static let shared = RemoteServerStore(preferences: .shared, credentials: .shared,
+                                                  registry: RemoteRegistry.shared, notifications: .default)
+
     private let preferences: Prefs
     package let credentials: RemoteKeychain
     package let registry: RemoteServerRegistry
@@ -94,6 +83,4 @@ package nonisolated final class RemoteServerRegistry: Sendable {
 
 package nonisolated enum RemoteRegistry {
     package static let shared = RemoteServerRegistry()
-    package static func update(_ list: [RemoteServer]) { shared.update(list) }
-    package static func server(id: String) -> RemoteServer? { shared.server(id: id) }
 }

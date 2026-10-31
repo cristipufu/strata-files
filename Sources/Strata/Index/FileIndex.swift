@@ -9,9 +9,14 @@ extension Notification.Name {
 
 /// The app's view of the file index: instant folder sizes and search across the home folder and Applications.
 package final class FileIndex {
-    package static let shared = FileIndex()
+    package static let shared = FileIndex(copies: .live)
 
-    package init() {}
+    /// Its environment's server and container copies and clipboard staging, which it leaves out.
+    private let copies: CopyProviders
+
+    package init(copies: CopyProviders) {
+        self.copies = copies
+    }
 
     package private(set) var phase: IndexWorker.Phase = .loading
     private var store: IndexStore?
@@ -27,7 +32,7 @@ package final class FileIndex {
         worker.onStore = { [weak self] store in Task { @MainActor in self?.store = store } }
         worker.onPhase = { [weak self] phase in Task { @MainActor in self?.setPhase(phase) } }
         worker.onChange = { [weak self] in Task { @MainActor in self?.changed() } }
-        let config = Self.currentConfig()
+        let config = currentConfig()
         excludedPaths = config.excluded
         worker.start(config)
     }
@@ -35,7 +40,7 @@ package final class FileIndex {
     /// Re-evaluates what may be indexed (after Full Disk Access changes or a protected folder was opened).
     package func refreshConfig() {
         guard started else { return }
-        let config = Self.currentConfig()
+        let config = currentConfig()
         excludedPaths = config.excluded
         worker.update(config)
     }
@@ -197,8 +202,8 @@ package final class FileIndex {
 
     private var excludedPaths: Set<String> = []
 
-    package static func currentConfig() -> IndexConfig {
-        let home = realPath(Places.home.path)
+    package func currentConfig() -> IndexConfig {
+        let home = Self.realPath(Places.home.path)
         var excluded: Set<String> = []
         if !Privacy.hasFullDiskAccess {
             // Reading these without Full Disk Access pops a consent prompt (or reads other apps' data);
@@ -210,15 +215,15 @@ package final class FileIndex {
             }
         }
         // Saving the index must not index that save and trigger another full rewrite of the index.
-        excluded.insert(realPath(SecureStorage.directory.path))
+        excluded.insert(Self.realPath(SecureStorage.directory.path))
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
-        excluded.insert(realPath(ContainerCopies.root.path))
+        excluded.insert(Self.realPath(copies.containerCopies.root.path))
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.
-        excluded.insert(realPath(RemoteCopies.root.path))
-        excluded.insert(realPath(LazyCopies.clipboardRoot.path))
+        excluded.insert(Self.realPath(copies.remoteCopies.root.path))
+        excluded.insert(Self.realPath(copies.clipboardRoot.path))
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(SecureStorage.url("index.bin"))
-        let config = IndexConfig(roots: rootPaths, excluded: excluded,
+        let config = IndexConfig(roots: Self.rootPaths, excluded: excluded,
                                  noise: [home + "/Library"], file: SecureStorage.url("index.sealed"))
         return config
     }

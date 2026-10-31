@@ -126,14 +126,15 @@ struct CopyListingsTests {
     }
 
     @Test func containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness() async throws {
-        let tree = try TestTree("untouched.txt")
+        let tree = try TestTree("untouched.txt"), cache = try TestTree()
+        let copies = ContainerCopyStore(root: cache.url("Containers"))
         let engine = ContainerEngine(socket: tree.url("absent-engine.sock").path, name: "Fixture", apiVersion: "1.41")
         let container = ContainerInfo(id: String(repeating: "a", count: 64), name: "fixture", image: "fixture", state: .running,
                                       status: "Up", created: nil, mounts: [], ports: [], compose: nil)
-        let top = try ContainerCopies.prepare(container, on: engine)
+        let top = try copies.prepare(container, on: engine)
         let engineFolder = top.deletingLastPathComponent()
         defer {
-            ContainerCopies.remove(top)
+            copies.remove(top)
             try? FileManager.default.removeItem(at: engineFolder)
         }
         let before = ListedEntry(name: "before.txt", kind: .file, size: 10, mode: 0o600, modified: nil, linkTarget: "")
@@ -141,7 +142,7 @@ struct CopyListingsTests {
         let replies = ListingReplies(next: [after])
         defer { Task { await replies.finish([]) } }
         let clock = TestClock()
-        let files = ContainerFiles(now: clock.now, readListing: { source, path in
+        let files = ContainerFiles(copies: copies, now: clock.now, readListing: { source, path in
             #expect(source.id == container.id && path == "/")
             return ContainerListingResult(entries: await replies.list(), contents: [:], freshFor: 15)
         })
@@ -153,7 +154,7 @@ struct CopyListingsTests {
         await reading.value
         #expect(await replies.calls == 2)
         #expect(TestTree.listing(of: top) == ["after.txt"])
-        #expect(ContainerCopies.isPlaceholder(top.appending(path: "after.txt")))
+        #expect(copies.isPlaceholder(top.appending(path: "after.txt")))
         clock.advance(by: 14)
         await files.refresh(top)
         #expect(await replies.calls == 2)
@@ -165,7 +166,7 @@ struct CopyListingsTests {
         #expect(await replies.calls == 4)
         await files.discard(top)
         #expect(!FileManager.default.fileExists(atPath: top.path))
-        let reopened = try ContainerCopies.prepare(container, on: engine)
+        let reopened = try copies.prepare(container, on: engine)
         await files.refresh(reopened)
         #expect(await replies.calls == 5)
         #expect(TestTree.listing(of: reopened) == ["after.txt"])
@@ -173,19 +174,20 @@ struct CopyListingsTests {
     }
 
     @Test func discardingAContainerCopyDrainsItsListingBeforeRemovingIt() async throws {
-        let tree = try TestTree("untouched.txt")
+        let tree = try TestTree("untouched.txt"), cache = try TestTree()
+        let copies = ContainerCopyStore(root: cache.url("Containers"))
         let engine = ContainerEngine(socket: tree.url("absent-engine.sock").path, name: "Fixture", apiVersion: "1.41")
         let container = ContainerInfo(id: String(repeating: "b", count: 64), name: "fixture", image: "fixture", state: .running,
                                       status: "Up", created: nil, mounts: [], ports: [], compose: nil)
-        let top = try ContainerCopies.prepare(container, on: engine)
+        let top = try copies.prepare(container, on: engine)
         defer {
-            ContainerCopies.remove(top)
+            copies.remove(top)
             try? FileManager.default.removeItem(at: top.deletingLastPathComponent())
         }
         let item = ListedEntry(name: "late.txt", kind: .file, size: 10, mode: 0o600, modified: nil, linkTarget: "")
         let replies = ListingReplies(next: [item])
         defer { Task { await replies.finish([]) } }
-        let files = ContainerFiles(readListing: { _, _ in
+        let files = ContainerFiles(copies: copies, readListing: { _, _ in
             ContainerListingResult(entries: await replies.list(), contents: [:], freshFor: 15)
         })
         let reading = Task { await files.refresh(top) }

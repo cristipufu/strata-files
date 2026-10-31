@@ -18,12 +18,12 @@ extension BrowserViewController {
     }
 
     /// Whether `url` is a server's own top folder (its `/`), which can't be renamed or deleted.
-    static func isServerTop(_ url: URL, copies: RemoteCopyStore = RemoteCopies.store) -> Bool {
+    static func isServerTop(_ url: URL, copies: RemoteCopyStore) -> Bool {
         guard let (_, top) = copies.server(containing: url) else { return false }
         return top.standardizedFileURL == url.standardizedFileURL
     }
 
-    static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {
+    static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {
         outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }
     }
 

@@ -387,7 +387,7 @@ package actor RemoteSessions {
     package typealias Connector = @Sendable (RemoteServer) async throws -> any RemoteBackend
     package typealias StatusChange = @Sendable (String, Bool) async -> Void
 
-    package static let shared = RemoteSessions(server: { RemoteRegistry.server(id: $0) }, connect: makeBackend,
+    package static let shared = RemoteSessions(server: { RemoteRegistry.shared.server(id: $0) }, connect: makeBackend,
                                        changed: { await announce($0, connected: $1) })
 
     private let server: ServerLookup

@@ -16,8 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Before anything opens (a strata:// link or `strata -w` arrives before launching finishes): saved servers are
         // known, and copies a crash left are set aside (removed once launched).
-        RemoteServers.load()
-        RemoteCopies.setAsideForRemoval()
+        RemoteServerStore.shared.load()
+        RemoteCopyStore.shared.setAsideForRemoval()
         Self.raiseFileLimit()
         registerRevealHandler()
         let preferences = browserServices.preferences
@@ -75,12 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
         // Archives opened as folders and not looked at for a day; containers' and servers' files left by a crash.
-        ContainerCopies.setAsideForRemoval()
+        ContainerCopyStore.shared.setAsideForRemoval()
         DispatchQueue.global(qos: .utility).async {
             ArchiveCache.prune()
-            ContainerCopies.removeSetAside()
-            RemoteCopies.removeSetAside()
-            LazyCopies.removeClipboardStaging()
+            ContainerCopyStore.shared.removeSetAside()
+            RemoteCopyStore.shared.removeSetAside()
+            CopyProviders.live.removeClipboardStaging()
         }
         if windowControllers.isEmpty, !restoreSession() { openWindow(at: startLocation) }
         DockSearch.shared.apply(atLaunch: true)
@@ -247,12 +247,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OperationLog.waitForWrites()
         // Containers' and servers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at
         // next launch). An SFTP connection's ssh ends by itself when Strata does (its input closes).
-        ContainerCopies.setAsideForRemoval()
-        RemoteCopies.setAsideForRemoval()
+        ContainerCopyStore.shared.setAsideForRemoval()
+        RemoteCopyStore.shared.setAsideForRemoval()
         let removed = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
-            ContainerCopies.removeSetAside()
-            RemoteCopies.removeSetAside()
+            ContainerCopyStore.shared.removeSetAside()
+            RemoteCopyStore.shared.removeSetAside()
             removed.signal()
         }
         _ = removed.wait(timeout: .now() + 2)

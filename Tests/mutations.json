@@ -627,10 +627,17 @@
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
-    "find": "        if depth == 3, source(of: folder.deletingLastPathComponent(), in: store) != nil { return }\n",
+    "find": "        if depth == 3, source(of: folder.deletingLastPathComponent()) != nil { return }\n",
     "replace": "",
     "rule": "A folder inside a container's own files is removed",
     "tests": "CacheRemovalTests/aContainers"
+  },
+  {
+    "file": "Strata/Containers/ContainerFiles.swift",
+    "find": "        if fpathconf(fd, _PC_CASE_SENSITIVE) == 1 { return { $0 } }",
+    "replace": "        if pathconf(NSTemporaryDirectory(), _PC_CASE_SENSITIVE) == 1 { return { $0 } }",
+    "rule": "A copy's names fold by another disk's case rule than its own",
+    "tests": "ContainerTests/aCopyOnADiskThatTellsCaseApartKeepsBothNames"
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
@@ -747,15 +754,15 @@
   },
   {
     "file": "Strata/Containers/ContainerCopies.swift",
-    "find": "        try? FileManager.default.moveItem(at: folder, to: aside)",
-    "replace": "        try? FileManager.default.moveItem(at: folder.deletingLastPathComponent(), to: aside)",
+    "find": "        try? FileManager.default.moveItem(at: root, to: aside)",
+    "replace": "        try? FileManager.default.moveItem(at: root.deletingLastPathComponent(), to: aside)",
     "rule": "Quitting sets aside the whole caches folder, not the containers' copies",
     "tests": "CacheRemovalTests/settingCopies"
   },
   {
-    "file": "Strata/Remote/RemoteCopies.swift",
-    "find": "        try? FileManager.default.moveItem(at: folder, to: aside)",
-    "replace": "        try? FileManager.default.moveItem(at: folder.deletingLastPathComponent(), to: aside)",
+    "file": "Strata/Remote/RemoteCopyStore.swift",
+    "find": "        try? FileManager.default.moveItem(at: root, to: aside)",
+    "replace": "        try? FileManager.default.moveItem(at: root.deletingLastPathComponent(), to: aside)",
     "rule": "Quitting sets aside the whole caches folder, not the servers' copies",
     "tests": "CacheRemovalTests/settingCopies"
   },
@@ -939,7 +946,7 @@
   },
   {
     "file": "Strata/Index/FileIndex.swift",
-    "find": "        excluded.insert(realPath(SecureStorage.directory.path))\n",
+    "find": "        excluded.insert(Self.realPath(SecureStorage.directory.path))\n",
     "replace": "",
     "rule": "Index performance: private state stays out of its own index",
     "tests": "IndexWorkerTests/appConfigurationExcludesItsOwnPrivateState"
@@ -2756,28 +2763,28 @@
   {
     "file": "Strata/Remote/RemoteFiles.swift",
     "find": "        self.copies = copies",
-    "replace": "        self.copies = RemoteCopies.store",
+    "replace": "        self.copies = RemoteCopyStore.shared",
     "rule": "Remote copy ownership an injected file service uses the application cache",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
   {
     "file": "Strata/Remote/RemoteFiles.swift",
     "find": "temporary: copies.root.appending(path: \".fetching\", directoryHint: .isDirectory)",
-    "replace": "temporary: RemoteCopies.root.appending(path: \".fetching\", directoryHint: .isDirectory)",
+    "replace": "temporary: RemoteCopyStore.shared.root.appending(path: \".fetching\", directoryHint: .isDirectory)",
     "rule": "Remote copy ownership downloads stage into another environments cache",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
   {
     "file": "Strata/Remote/RemoteFiles.swift",
     "find": "self.removeCopy = removeCopy ?? { copies.remove($0) }",
-    "replace": "self.removeCopy = removeCopy ?? { RemoteCopies.remove($0) }",
+    "replace": "self.removeCopy = removeCopy ?? { RemoteCopyStore.shared.remove($0) }",
     "rule": "Remote copy ownership discard removes from the application cache instead of its owner",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
   {
     "file": "Strata/Remote/CopyProviders.swift",
     "find": "    package let files: RemoteFiles\n    package func contains(_ url: URL) -> Bool { files.copies.contains(url) }",
-    "replace": "    package let files: RemoteFiles\n    package func contains(_ url: URL) -> Bool { RemoteCopies.contains(url) }",
+    "replace": "    package let files: RemoteFiles\n    package func contains(_ url: URL) -> Bool { RemoteCopyStore.shared.contains(url) }",
     "rule": "Remote copy ownership the server provider classifies paths using another environment",
     "tests": "RemoteCopyOwnershipTests/matchingServerIDsKeepListingsDownloadsAndCleanupInTheirOwnEnvironment"
   },
@@ -3557,7 +3564,7 @@
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
     "find": "let server = services.remote.copies.server(containing: entry.url)",
-    "replace": "let server = RemoteCopies.server(containing: entry.url)",
+    "replace": "let server = RemoteCopyStore.shared.server(containing: entry.url)",
     "rule": "Inspector provider ownership server lookup uses the global remote copy store",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
   },
@@ -3710,8 +3717,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {\n        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
-    "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore = RemoteCopies.store) -> [URL] {\n        outermost(urls).filter { RemoteCopies.store.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopies.store) }",
+    "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
+    "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        outermost(urls).filter { RemoteCopyStore.shared.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopyStore.shared) }",
     "rule": "Browser copy provider ownership server deletion targets check the global server store",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
@@ -3952,7 +3959,7 @@
   {
     "file": "Strata/Views/FileThumbnails.swift",
     "find": "if entry.isDirectory, let (source, top) = copies.containerCopies.copy(containing: entry.url),",
-    "replace": "if entry.isDirectory, let (source, top) = ContainerCopies.store.copy(containing: entry.url),",
+    "replace": "if entry.isDirectory, let (source, top) = ContainerCopyStore.shared.copy(containing: entry.url),",
     "rule": "Module and provider boundaries container status text reads the global container copy store",
     "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
   },
@@ -3966,7 +3973,7 @@
   {
     "file": "Strata/Window/ShelfPanel.swift",
     "find": "if controller.services.remote.copies.contains(target) {",
-    "replace": "if RemoteCopies.contains(target) {",
+    "replace": "if RemoteCopyStore.shared.contains(target) {",
     "rule": "Module and provider boundaries Shelf transfers check the global remote copy store",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },

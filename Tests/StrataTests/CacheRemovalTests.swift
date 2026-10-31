@@ -101,10 +101,10 @@ struct CacheRemovalTests {
     // MARK: - Containers' and servers' copies
 
     @Test func aContainersOwnFilesAreNeverRemovedAsAFolder() throws {
-        let tree = try TestTree("outside/", "outside/keep.txt")
-        let engineFolder = ContainerCopies.root.appending(path: "test-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let tree = try TestTree("outside/", "outside/keep.txt"), cache = try TestTree("Containers/")
+        let copies = ContainerCopyStore(root: cache.url("Containers"))
+        let engineFolder = copies.root.appending(path: "test-\(UUID().uuidString)", directoryHint: .isDirectory)
         try fm.createDirectory(at: engineFolder, withIntermediateDirectories: true)
-        defer { ContainerCopies.remove(engineFolder) }
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
@@ -112,20 +112,20 @@ struct CacheRemovalTests {
         }
         _ = try CopyWriter.syncContainers([container("web", String(repeating: "a", count: 64)),
                                            container("db", String(repeating: "b", count: 64), project: "shop")],
-                                          engine: engine, in: engineFolder)
+                                          engine: engine, in: engineFolder, copies: copies)
         // A folder in a container's own files, and a link in them leading out.
         try fm.createDirectory(at: engineFolder.appending(path: "web/etc"), withIntermediateDirectories: false)
         try fm.createSymbolicLink(at: engineFolder.appending(path: "web/etc/out"), withDestinationURL: tree.url("outside"))
-        ContainerCopies.remove(engineFolder.appending(path: "web/etc"))
+        copies.remove(engineFolder.appending(path: "web/etc"))
         #expect(fm.fileExists(atPath: engineFolder.appending(path: "web/etc").path))
         // Too deep, the cache itself, outside it: refused.
-        for url in [engineFolder.appending(path: "web/etc/out"), ContainerCopies.root, tree.url("outside")] {
-            ContainerCopies.remove(url)
+        for url in [engineFolder.appending(path: "web/etc/out"), copies.root, tree.url("outside")] {
+            copies.remove(url)
             #expect((try? fm.destinationOfSymbolicLink(atPath: url.path)) != nil || fm.fileExists(atPath: url.path), "\(url.path)")
         }
         // A container, in a project's folder or not, goes with its files; the link's target stays.
-        ContainerCopies.remove(engineFolder.appending(path: "shop/db"))
-        ContainerCopies.remove(engineFolder.appending(path: "web"))
+        copies.remove(engineFolder.appending(path: "shop/db"))
+        copies.remove(engineFolder.appending(path: "web"))
         #expect(try fm.contentsOfDirectory(atPath: engineFolder.path) == ["shop"])
         #expect(try fm.contentsOfDirectory(atPath: engineFolder.appending(path: "shop").path).isEmpty)
         #expect(tree.snapshot() == ["outside/", "outside/keep.txt"])
@@ -179,12 +179,14 @@ struct CacheRemovalTests {
         let tree = try TestTree("Caches/", "Caches/Containers.noindex/", "Caches/Containers.noindex/web/", "Caches/Containers.noindex/web/out -> ../../../outside",
                                 "Caches/Servers.noindex/", "Caches/Servers.noindex/file.txt", "Caches/Archives/", "Caches/Archives/keep.txt",
                                 "Caches/Containers-removedish/", "Caches/Servers.noindex-old/", "outside/", "outside/keep.txt")
-        ContainerCopies.setAsideForRemoval(tree.url("Caches/Containers.noindex"))
-        RemoteCopies.setAsideForRemoval(tree.url("Caches/Servers.noindex"))
+        let containers = ContainerCopyStore(root: tree.url("Caches/Containers.noindex"))
+        let servers = RemoteCopyStore(root: tree.url("Caches/Servers.noindex"), server: { _ in nil })
+        containers.setAsideForRemoval()
+        servers.setAsideForRemoval()
         let aside = try fm.contentsOfDirectory(atPath: tree.url("Caches").path)
         #expect(aside.filter { $0.hasPrefix("Containers-removed-") || $0.hasPrefix("Servers-removed-") }.count == 2)
-        ContainerCopies.removeSetAside(in: tree.url("Caches"))
-        RemoteCopies.removeSetAside(in: tree.url("Caches"))
+        containers.removeSetAside()
+        servers.removeSetAside()
         // Only what was set aside goes: not the other caches, not folders only named alike, not what a copy linked to.
         #expect(tree.snapshot() == ["Caches/", "Caches/Archives/", "Caches/Archives/keep.txt", "Caches/Containers-removedish/",
                                     "Caches/Servers.noindex-old/", "outside/", "outside/keep.txt"])
