@@ -471,8 +471,8 @@ struct AsyncActionContextTests {
         #expect(StackProjects.workingDirectory(of: stackFolderA, copies: first.containerCopies, store: first.containerStore)?.standardizedFileURL.path
             == tree.url("shared").standardizedFileURL.path)
         #expect(StackProjects.workingDirectory(of: stackFolderA, copies: second.containerCopies, store: second.containerStore) == nil)
-        #expect(Places.displayName(engineFolderA, copies: first.copies) == "Containers")
-        #expect(Places.displayName(engineFolderA, copies: second.copies) != "Containers")
+        #expect(Places.displayName(engineFolderA, copies: first.copies, names: first.services.folderNames) == "Containers")
+        #expect(Places.displayName(engineFolderA, copies: second.copies, names: second.services.folderNames) != "Containers")
 
         // `.containerCopyProblem` from first's copy store never shows an error bar in second's window, even at the same folder path.
         let windowA = BrowserWindowController(location: webFolderA, services: first.services)

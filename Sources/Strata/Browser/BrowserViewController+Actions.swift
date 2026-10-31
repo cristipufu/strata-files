@@ -282,8 +282,9 @@ extension BrowserViewController {
     @objc func addToSidebar(_ sender: Any?) {
         let folders = selectedEntries.filter(\.isFolder).map(\.url)
         // A temporary copy of an archive's contents doesn't belong in the sidebar.
-        Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },
-                            preferences: preferences)
+        let chosen = (folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) }
+        let preferences = preferences, places = services.places
+        Task { await Places.addFavorites(chosen, preferences: preferences, checks: places) }
     }
 
     @objc func addToShelf(_ sender: Any?) {

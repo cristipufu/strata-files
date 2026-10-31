@@ -23,11 +23,11 @@ package enum Places {
 
     /// Unmounts (and for disks, ejects) the volume at `url` off the main thread; reports a failure in `window`.
     package static func eject(_ url: URL, from window: NSWindow?) {
-        let name = FileManager.default.displayName(atPath: url.path)
         Task.detached {
             do {
                 try NSWorkspace.shared.unmountAndEjectDevice(at: url)
             } catch {
+                let name = FileManager.default.displayName(atPath: url.path)
                 await MainActor.run {
                     let alert = NSAlert()
                     alert.messageText = String(localized: "“\(name)” couldn’t be ejected")
@@ -45,14 +45,6 @@ package enum Places {
         favorites(preferences: preferences, isFolder: { checks.isFolder($0) }, name: checks.name)
     }
 
-    /// The favorites read from disk now, for changing them.
-    package static func favorites(preferences: Prefs) -> [Place] {
-        favorites(preferences: preferences, isFolder: { path in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-        }, name: { FileManager.default.displayName(atPath: $0.path) })
-    }
-
     /// A favorite not yet read counts as there; one of the default places only once it's been found.
     private static func favorites(preferences: Prefs, isFolder: (String) -> Bool?, name: (URL) -> String) -> [Place] {
         let defaults = defaultFavorites(isFolder: isFolder, name: name)
@@ -65,15 +57,13 @@ package enum Places {
         }
     }
 
-    /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead.
-    package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs) {
-        let folders = urls.map(\.standardizedFileURL).filter { url in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
-        }
+    /// Adds folders to the favorites (at `index`, else at the end); ones already there move instead. Which of `urls`
+    /// are folders is read away from the main thread; the other favorites are as `checks` last read them.
+    package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs, checks: PlaceChecks) async {
+        let folders = await folders(among: urls.map(\.standardizedFileURL))
         guard !folders.isEmpty else { return }
         let paths = Set(folders.map(\.path))
-        var current = favorites(preferences: preferences).map(\.url.standardizedFileURL)
+        var current = favorites(preferences: preferences, checks: checks).map(\.url.standardizedFileURL)
         let before = current.prefix(min(index ?? current.count, current.count)).filter { paths.contains($0.path) }.count
         current.removeAll { paths.contains($0.path) }
         let at = min(max(0, (index ?? current.count + before) - before), current.count)
@@ -81,9 +71,16 @@ package enum Places {
         preferences.favoritePaths = current.map(\.path)
     }
 
-    package static func removeFavorite(_ url: URL, preferences: Prefs) {
+    package static func removeFavorite(_ url: URL, preferences: Prefs, checks: PlaceChecks) {
         let path = url.standardizedFileURL.path
-        preferences.favoritePaths = favorites(preferences: preferences).map(\.url.standardizedFileURL.path).filter { $0 != path }
+        preferences.favoritePaths = favorites(preferences: preferences, checks: checks).map(\.url.standardizedFileURL.path).filter { $0 != path }
+    }
+
+    @concurrent private static func folders(among urls: [URL]) async -> [URL] {
+        urls.filter { url in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
     }
 
     private static let standardPlaces: [(path: String, symbol: String)] = [
@@ -118,12 +115,8 @@ package enum Places {
         return places
     }
 
-    /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name).
-    package static func displayName(_ url: URL, copies: CopyProviders) -> String {
-        ownName(url, copies: copies) ?? FileManager.default.displayName(atPath: url.path)
-    }
-
-    /// The same, with Finder's names as `names` last read them, for the folder on show, which mustn't wait on a disk.
+    /// A folder's name as Finder shows it ("Trash" for `~/.Trash`; an archive opened as a folder goes by its file name),
+    /// with Finder's names as `names` last read them: the folder on show mustn't wait on a disk.
     package static func displayName(_ url: URL, copies: CopyProviders, names: FolderNames) -> String {
         ownName(url, copies: copies) ?? names.name(url)
     }

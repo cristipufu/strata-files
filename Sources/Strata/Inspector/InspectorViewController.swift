@@ -376,8 +376,8 @@ final class InspectorViewController: NSViewController {
         let isCopy = services.copies.contains(entry.url)
         titleLabel.stringValue = serverPath == "/" ? server?.server.name ?? entry.displayName
             : containerPath == "/" ? container?.source.name ?? entry.displayName
-            : containerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url, copies: services.copies)
-            : apparent.map { Places.displayName($0, copies: services.copies) } ?? entry.displayName
+            : containerCopies.engineFolder(entry.url) != nil ? Places.displayName(entry.url, copies: services.copies, names: services.folderNames)
+            : apparent.map { Places.displayName($0, copies: services.copies, names: services.folderNames) } ?? entry.displayName
         let directorySize = entry.isDirectory && !isCopy ? folderSize(entry.url) : nil
         let size = entry.isDirectory ? directorySize.map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
         subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")

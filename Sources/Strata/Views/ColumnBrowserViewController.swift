@@ -12,6 +12,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     let copies: CopyProviders
     let clipboard: Clipboard
     let statuses: FileStatuses
+    /// Finder's names for the columns' folders, as the window last read them.
+    let names: FolderNames
     /// The folder the user is "in": the selected folder, or the folder of the focused column. Drive the path bar
     /// and window title from it (without reloading the browser).
     var onLocationChange: ((URL) -> Void)?
@@ -42,9 +44,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     init(scrollView: NSScrollView = NSScrollView(), directoryReader: DirectoryReader, preferences: Prefs,
          thumbnails: FileThumbnails, itemInfo: ItemInfoLoader, copies: CopyProviders,
-         clipboard: Clipboard, statuses: FileStatuses) {
+         clipboard: Clipboard, statuses: FileStatuses, names: FolderNames) {
         self.directoryReader = directoryReader
         self.statuses = statuses
+        self.names = names
         self.preferences = preferences
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
@@ -627,7 +630,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         tableView.draggingDestinationFeedbackStyle = .regular
         tableView.pane = self
-        tableView.setAccessibilityLabel(FileManager.default.displayName(atPath: folder.path))
+        tableView.setAccessibilityLabel(controller.names.name(folder))
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true

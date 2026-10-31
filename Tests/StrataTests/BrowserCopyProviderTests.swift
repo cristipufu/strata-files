@@ -352,9 +352,9 @@ struct BrowserCopyProviderTests {
         let localPlan = await BrowserViewController.deletionPlan([localFile], copies: first.copies)
         #expect(localPlan.candidates == [localFile] && localPlan.refused.isEmpty)
         #expect(!FileOps.canTrash(createdFolder, copies: first.copies))
-        #expect(!SidebarViewController.canTrash([createdFolder], copies: first.copies))
+        #expect(!SidebarViewController.canTrash([createdFolder], copies: first.copies, mounts: MountPoints.current()))
         #expect(FileOps.canTrash(localFile, copies: first.copies))
-        #expect(SidebarViewController.canTrash([localFile], copies: first.copies))
+        #expect(SidebarViewController.canTrash([localFile], copies: first.copies, mounts: MountPoints.current()))
         #expect(throws: FileOps.insideArchiveError) {
             _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies, history: .shared)
         }

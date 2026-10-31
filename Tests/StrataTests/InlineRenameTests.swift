@@ -87,7 +87,7 @@ struct InlineRenameTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("sub/", "sub/a.txt", "sub/b.txt", "top.txt")
         let rootEntries = try ["sub", "top.txt"].map { try #require(FileEntry(url: tree.url($0))) }
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
         let metadata = FileCollectionMetadata(ordered: { $0.name < $1.name }, canMeasure: { _ in false }, size: { _ in nil })
         columns.apply(FileCollectionContent(directory: tree.root, entries: rootEntries, matches: [:]),

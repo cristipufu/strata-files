@@ -108,12 +108,6 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Model/CloudStatus.swift",
-  "call": "lstat(",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Model/CreatedFolders.swift",
   "call": "FileManager.default.createDirectory",
   "count": 1,
@@ -129,18 +123,6 @@
   "file": "Sources/Strata/Model/FileOps.swift",
   "call": "FileManager.default.trashItem",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Model/Places.swift",
-  "call": "FileManager.default.displayName",
-  "count": 3,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Model/Places.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 2,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
@@ -192,18 +174,6 @@
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  },
  {
-  "file": "Sources/Strata/Sidebar/FolderTreeController.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Queue/ArchiveJob.swift",
   "call": ".resourceValues(forKeys",
   "count": 1,
@@ -213,12 +183,6 @@
   "file": "Sources/Strata/Queue/TransferJob.swift",
   "call": ".resourceValues(forKeys",
   "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
   "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
  }
 ]

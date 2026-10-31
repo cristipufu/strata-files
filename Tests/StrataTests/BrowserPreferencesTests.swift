@@ -169,7 +169,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
+        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false
@@ -267,10 +267,12 @@ struct BrowserPreferencesTests {
         aOutline.collapseItem(aFavorites)
         #expect(first.preferences.collapsedSidebarSections.contains("favorites"))
         #expect(!second.preferences.collapsedSidebarSections.contains("favorites") && bOutline.isItemExpanded(bFavorites))
-        Places.addFavorites([tree.url("third")], preferences: first.preferences)
-        Places.removeFavorite(tree.url("left"), preferences: first.preferences)
-        #expect(Places.favorites(preferences: first.preferences).map(\.url.standardizedFileURL.path) == [tree.url("third").standardizedFileURL.path])
-        #expect(Places.favorites(preferences: second.preferences).map(\.url.standardizedFileURL.path) == [tree.url("right").standardizedFileURL.path])
+        await Places.addFavorites([tree.url("third")], preferences: first.preferences, checks: first.services.places)
+        Places.removeFavorite(tree.url("left"), preferences: first.preferences, checks: first.services.places)
+        #expect(Places.favorites(preferences: first.preferences, checks: first.services.places).map(\.url.standardizedFileURL.path)
+            == [tree.url("third").standardizedFileURL.path])
+        #expect(Places.favorites(preferences: second.preferences, checks: second.services.places).map(\.url.standardizedFileURL.path)
+            == [tree.url("right").standardizedFileURL.path])
         a.toggleFolderTree(nil)
         #expect(first.preferences.sidebarShowsTree && !second.preferences.sidebarShowsTree)
         #expect(views(a.split.sidebar.view, of: SidebarOutlineView.self).contains { !$0.isHidden && ($0.dataSource is FolderTreeController) })
@@ -313,12 +315,17 @@ struct BrowserPreferencesTests {
         first.preferences.favoritePaths = []
         second.preferences.favoritePaths = []
         let browser = await browser(first, at: tree.url(unique))
+        // Added once the chosen folders have been read; added favorites stay.
+        func added(_ preferences: Prefs, _ paths: [String]) async throws -> Bool {
+            for _ in 0..<500 where preferences.favoritePaths != paths { try await Task.sleep(for: .milliseconds(10)) }
+            return preferences.favoritePaths == paths
+        }
         browser.addToSidebar(nil)
-        #expect(first.preferences.favoritePaths == [tree.url(unique).standardizedFileURL.path])
+        #expect(try await added(first.preferences, [tree.url(unique).standardizedFileURL.path]))
         #expect(second.preferences.favoritePaths == [])
         browser.select([tree.url("\(unique)/child")], scroll: false)
         browser.addToSidebar(nil)
-        #expect(first.preferences.favoritePaths == [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path))
+        #expect(try await added(first.preferences, [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path)))
 
         let folderTree = FolderTreeController(places: second.services.places, transfers: second.services.transfers,
                                               preferences: second.preferences, remote: second.services.remote,
@@ -327,7 +334,7 @@ struct BrowserPreferencesTests {
         let item = NSMenuItem()
         item.representedObject = tree.url("another")
         folderTree.perform(NSSelectorFromString("addFavorite:"), with: item)
-        #expect(second.preferences.favoritePaths == [tree.url("another").standardizedFileURL.path])
+        #expect(try await added(second.preferences, [tree.url("another").standardizedFileURL.path]))
         #expect(first.preferences.favoritePaths?.count == 2)
 
         let a = PathSuggestions(preferences: first.preferences, places: first.services.places, index: first.services.index)

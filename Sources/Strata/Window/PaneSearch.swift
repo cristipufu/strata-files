@@ -95,7 +95,7 @@ import AppKit
             }
             if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
                 // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
-                let name = Places.displayName(scope, copies: services.copies)
+                let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
                 p.browser.showMessage(symbol: "lock", title: String(localized: "Open “\(name)” to search it"),
                                       message: String(localized: "macOS asks before apps read this folder. Open it in Strata once, then search it."))
                 show(summary: "")
@@ -135,7 +135,7 @@ import AppKit
         p.browser.showResults(entries, total: total)
         var parts: [String]
         if let scope {
-            let name = Places.displayName(scope, copies: services.copies)
+            let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
             parts = [total == 0 ? String(localized: "No results in “\(name)”")
                 : String(localized: "\(total) results in “\(name)”", comment: "plural")]
         } else {
@@ -182,7 +182,7 @@ import AppKit
         p.browser.showResults(entries, total: result.total)
         var parts: [String]
         if let scope {
-            let name = Places.displayName(scope, copies: services.copies)
+            let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
             parts = [result.total == 0 ? String(localized: "No results in “\(name)”")
                 : String(localized: "\(result.total) results in “\(name)”", comment: "plural")]
         } else {
@@ -217,7 +217,7 @@ import AppKit
             folderScan = search
             search.start()
         }
-        let name = Places.displayName(scope, copies: services.copies)
+        let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
         let isCurrent = { generation == self.latest && p.destination == target }
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }

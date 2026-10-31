@@ -153,7 +153,7 @@ final class SidebarViewController: NSViewController {
         ThemeStyle.bind(outline, to: .sidebar)
         tree.onSelect = { [weak self] target in self?.onSelect?(target) }
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
-        tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies) }
+        tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
         addChild(tree)
         let container = ThemeSurfaceView()
@@ -507,7 +507,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
         if Trash.isTrash(target) {
             if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
-            let operation: NSDragOperation = Self.canTrash(urls, copies: copies) ? .delete : []
+            let operation: NSDragOperation = Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) ? .delete : []
             trashVerdict = (info.draggingSequenceNumber, operation)
             return operation
         }
@@ -519,16 +519,16 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
-                Places.addFavorites([URL(fileURLWithPath: path)], at: at, preferences: preferences)
+                addFavorites([URL(fileURLWithPath: path)], at: at)
             } else {
-                Places.addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at, preferences: preferences)
+                addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at)
             }
             return true
         }
         guard let target = (item as? SidebarItem)?.url else { return false }
         let urls = FileDrop.urls(info, copies: copies)
         if Trash.isTrash(target) {
-            guard Self.canTrash(urls, copies: copies) else { return false }
+            guard Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) else { return false }
             moveToTrash(urls)
             return true
         }
@@ -790,10 +790,18 @@ extension SidebarViewController: NSMenuDelegate {
     }
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
-    /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
-    static func canTrash(_ urls: [URL], copies: CopyProviders) -> Bool {
+    /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk (`mounts`: where disks are
+    /// mounted, which the kernel says without asking any of them).
+    static func canTrash(_ urls: [URL], copies: CopyProviders, mounts: Set<String>) -> Bool {
         !urls.isEmpty && !urls.contains { url in
-            !FileOps.canTrash(url, copies: copies) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)
+        }
+    }
+
+    /// As spelled and standardized: standardizing drops a leading /private that a mount point keeps.
+    private static func isMountPoint(_ url: URL, in mounts: Set<String>) -> Bool {
+        [url.path, url.standardizedFileURL.path].contains { path in
+            mounts.contains(path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path)
         }
     }
 
@@ -831,12 +839,17 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func removeFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.removeFavorite(url, preferences: preferences)
+        Places.removeFavorite(url, preferences: preferences, checks: services.places)
     }
 
     @objc private func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.addFavorites([url], preferences: preferences)
+        addFavorites([url], at: nil)
+    }
+
+    private func addFavorites(_ urls: [URL], at index: Int?) {
+        let preferences = preferences, places = services.places
+        Task { await Places.addFavorites(urls, at: index, preferences: preferences, checks: places) }
     }
 
     @objc private func ejectItem(_ sender: NSMenuItem) {

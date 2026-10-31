@@ -141,8 +141,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "            !FileOps.canTrash(url, copies: copies) || (try?",
-    "replace": "            (try?",
+    "find": "            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)",
+    "replace": "            isMountPoint(url, in: mounts)",
     "rule": "The sidebar's Trash takes anything dropped",
     "tests": "DropTests"
   },
@@ -1795,15 +1795,15 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: preferences)",
-    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: .shared)",
+    "find": "        let preferences = preferences, places = services.places\n        Task { await Places.addFavorites(chosen, preferences: preferences, checks: places) }",
+    "replace": "        let preferences = Prefs.shared, places = services.places\n        Task { await Places.addFavorites(chosen, preferences: preferences, checks: places) }",
     "rule": "Browser preferences Add to Sidebar writes to another store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
   {
     "file": "Strata/Sidebar/FolderTreeController.swift",
-    "find": "Places.addFavorites([url], at: nil, preferences: preferences)",
-    "replace": "Places.addFavorites([url], at: nil, preferences: .shared)",
+    "find": "        let preferences = preferences, places = places\n        Task { await Places.addFavorites([url], preferences: preferences, checks: places) }",
+    "replace": "        let preferences = Prefs.shared, places = places\n        Task { await Places.addFavorites([url], preferences: preferences, checks: places) }",
     "rule": "Browser preferences folder tree favorites write to another store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
@@ -7418,5 +7418,26 @@
     "replace": "            guard let volume = inside.min(by: { $0.url.path.count < $1.url.path.count }),",
     "rule": "A workspace folder is remembered on the outer share, not the innermost one it's on",
     "tests": "WorkspaceOwnershipTests/aWorkspaceRemembersTheSharesItsFoldersAreOnAsTheDisksWereLastRead"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "        let chosen = removable(urls) { known[$0] }",
+    "replace": "        let chosen = urls",
+    "rule": "Remove Download asks to free a link the listing showed",
+    "tests": "DeleteScopeTests/removeDownloadChoosesFromTheListingAndFreesOnlyWhatsInTheCloudNow"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "            !FileOps.canTrash(url, copies: copies) || isMountPoint(url, in: mounts)",
+    "replace": "            !FileOps.canTrash(url, copies: copies)",
+    "rule": "The sidebar's Trash takes a whole disk",
+    "tests": "DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        [url.path, url.standardizedFileURL.path].contains { path in",
+    "replace": "        [url.standardizedFileURL.path].contains { path in",
+    "rule": "The sidebar's Trash takes a disk mounted under /private",
+    "tests": "DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed"
   }
 ]

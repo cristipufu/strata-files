@@ -498,7 +498,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             }
             window?.title = Self.searchTitle(text)
             window?.representedURL = nil
-            split.scopeBar.configure(folderName: Places.displayName((scope ?? location), copies: services.copies),
+            split.scopeBar.configure(folderName: Places.displayName((scope ?? location), copies: services.copies, names: services.folderNames),
                                      everywhere: scope == nil, matchCase: IndexQuery.isCaseSensitive(text),
                                      caseApplies: Self.caseApplies(text))
             split.scopeBar.setSummary(pane.search.summary)

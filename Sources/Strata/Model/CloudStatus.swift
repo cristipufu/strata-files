@@ -150,7 +150,7 @@ package enum CloudActions {
 
     /// What Remove Download frees: only items that are both here and in the cloud (one still uploading, or waiting to,
     /// exists only here), never through a link (that would free what it points to), each once.
-    package static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
+    package nonisolated static func removable(_ urls: [URL], status: (URL) -> CloudStatus?) -> [URL] {
         var seen = Set<String>()
         return urls.filter { url in
             var info = stat()
@@ -159,8 +159,16 @@ package enum CloudActions {
         }
     }
 
+    /// Remove Download for `urls` away from the main thread, where each item's state is read and its space freed: those
+    /// it chose (`known`: their states as the folder's listing last read them) and what failed.
+    @concurrent package static func removeDownloads(_ urls: [URL], known: [URL: CloudStatus]) async
+        -> (chosen: [URL], failures: [(URL, Error)]) {
+        let chosen = removable(urls) { known[$0] }
+        return (chosen, chosen.isEmpty ? [] : removeDownload(chosen))
+    }
+
     /// Asks for each item's space to be freed, going on past failures. `evict` is the system's (a test's records).
-    package static func removeDownload(_ urls: [URL], status: (URL) -> CloudStatus? = { CloudStatus.read($0) },
+    package nonisolated static func removeDownload(_ urls: [URL], status: (URL) -> CloudStatus? = { CloudStatus.read($0) },
                                evict: (URL) throws -> Void = { try FileManager.default.evictUbiquitousItem(at: $0) }) -> [(URL, Error)] {
         let choices = urls.map { url in (url, Result { try ChosenFile(url, resolveParent: false) }) }
         return choices.compactMap { url, choice in

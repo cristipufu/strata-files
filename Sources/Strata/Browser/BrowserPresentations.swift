@@ -70,7 +70,7 @@ final class BrowserPresentations {
         let controller = ColumnBrowserViewController(directoryReader: browser.services.directories, preferences: browser.preferences,
                                                      thumbnails: browser.services.thumbnails, itemInfo: browser.services.itemInfo,
                                                      copies: browser.services.copies, clipboard: browser.services.clipboard,
-                                                     statuses: browser.services.statuses)
+                                                     statuses: browser.services.statuses, names: browser.services.folderNames)
         controller.applicationFolders = browser.applicationFolders
         controller.fileDelegate = browser
         controller.onLocationChange = { [weak browser] url in

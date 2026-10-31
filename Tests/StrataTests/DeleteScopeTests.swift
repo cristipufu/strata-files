@@ -89,6 +89,18 @@ struct DeleteScopeTests {
         #expect(tree.snapshot().contains("link -> plain.txt"))
     }
 
+    @Test func removeDownloadChoosesFromTheListingAndFreesOnlyWhatsInTheCloudNow() async throws {
+        let tree = try TestTree("a.txt", "ab.txt", "link -> a.txt")
+        // The listing last read all three as downloaded; the link is never chosen, and outside a cloud folder the
+        // state read now refuses the rest, which stay.
+        let known: [URL: CloudStatus] = [tree.url("a.txt"): .downloaded, tree.url("ab.txt"): .downloaded, tree.url("link"): .downloaded]
+        let (chosen, failures) = await CloudActions.removeDownloads([tree.url("a.txt"), tree.url("link"), tree.url("ab.txt")], known: known)
+        #expect(chosen == [tree.url("a.txt"), tree.url("ab.txt")])
+        #expect(failures.map(\.0) == chosen)
+        #expect(await CloudActions.removeDownloads([tree.url("a.txt")], known: [:]).chosen.isEmpty)
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "link -> a.txt"])
+    }
+
     @Test func nothingInAReadOnlyCopyIsEverTrashed() async throws {
         // An archive opened as a folder is a temporary copy: Move to Trash on something inside it changes nothing.
         let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)

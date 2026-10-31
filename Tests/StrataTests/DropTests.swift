@@ -62,15 +62,21 @@ struct DropTests {
     }
 
     @Test func theSidebarsTrashTakesOnlyWhatCanBeTrashed() throws {
-        let tree = try TestTree("a.txt", "trash link -> \(Trash.home.path)")
-        #expect(SidebarViewController.canTrash([tree.url("a.txt")], copies: .live))
+        let tree = try TestTree("a.txt", "disk/", "disk two/", "trash link -> \(Trash.home.path)")
+        let mounts = MountPoints.current()
+        try #require(mounts.contains("/"))
+        #expect(SidebarViewController.canTrash([tree.url("a.txt")], copies: .live, mounts: mounts))
         // A link to the Trash is only a link.
-        #expect(SidebarViewController.canTrash([tree.url("trash link")], copies: .live))
+        #expect(SidebarViewController.canTrash([tree.url("trash link")], copies: .live, mounts: mounts))
         for urls in [[], [Trash.home], [tree.url("a.txt"), Trash.home], [Trash.home.appending(path: "x.txt")],
                      [URL(fileURLWithPath: "/")], [ArchiveCache.root.appending(path: "x/contents/a.txt")]] {
-            #expect(!SidebarViewController.canTrash(urls, copies: .live), "\(urls.map(\.path))")
+            #expect(!SidebarViewController.canTrash(urls, copies: .live, mounts: mounts), "\(urls.map(\.path))")
         }
-        #expect(tree.snapshot() == ["a.txt", "trash link -> \(Trash.home.path)"])
+        // A disk is refused where it's mounted, however its URL is spelled, never a folder named like it beside it.
+        let disk = mounts.union([tree.url("disk").path])
+        #expect(!SidebarViewController.canTrash([tree.url("a.txt"), URL(fileURLWithPath: tree.url("disk").path + "/")], copies: .live, mounts: disk))
+        #expect(SidebarViewController.canTrash([tree.url("disk two"), tree.url("a.txt")], copies: .live, mounts: disk))
+        #expect(tree.snapshot() == ["a.txt", "disk two/", "disk/", "trash link -> \(Trash.home.path)"])
     }
 
     /// While a drag moves, its checks go by what the paths say until the disk's answers arrive, read away from the main

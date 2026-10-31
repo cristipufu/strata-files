@@ -40,10 +40,14 @@ extension BrowserViewController {
     }
 
     @objc func removeDownload(_ sender: Any?) {
-        let urls = CloudActions.removable(selectedURLs) { services.cloud.status(for: $0) }
-        guard !urls.isEmpty else { return }
-        let failures = CloudActions.removeDownload(urls)
-        if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: view.window) }
-        services.cloud.refresh(Set(urls.map { $0.deletingLastPathComponent() }))
+        let selection = selectedURLs, cloud = services.cloud, window = view.window
+        var known: [URL: CloudStatus] = [:]
+        for url in selection { known[url] = cloud.status(for: url) }
+        Task { [weak window] in
+            let (urls, failures) = await CloudActions.removeDownloads(selection, known: known)
+            guard !urls.isEmpty else { return }
+            if !failures.isEmpty { Self.report(failures.map { (url: $0.0, error: $0.1) }, .removeDownload, in: window) }
+            cloud.refresh(Set(urls.map { $0.deletingLastPathComponent() }))
+        }
     }
 }
