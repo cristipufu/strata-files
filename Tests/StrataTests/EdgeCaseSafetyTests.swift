@@ -288,7 +288,7 @@ struct EdgeCaseSafetyTests {
         #expect(chainPlan.steps.count == 2)
         let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil, files: FileCommands(transfers: .shared))
         _ = sheet.view
-        sheet.phase = .review(chainPlan)
+        #expect(await sheet.review(chainPlan))
         sheet.toggle(chainPlan.steps[0].id, on: false)
         guard case let .review(updatedPlan) = sheet.phase else {
             Issue.record("Expected review phase")

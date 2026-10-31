@@ -425,10 +425,7 @@ final class PlanSheetController: NSViewController {
         planTask = Task { [weak self] in
             do {
                 let plan = try await PlanGenerator.generate(request)
-                let facts = await Self.facts(of: plan)
-                guard !Task.isCancelled else { return }
-                self?.facts = facts
-                self?.phase = .review(plan)
+                guard await self?.review(plan) == true else { return }
                 self?.view.window?.makeFirstResponder(self?.table)
             } catch {
                 guard !Task.isCancelled else { return }
@@ -483,6 +480,16 @@ final class PlanSheetController: NSViewController {
         if let sheet = view.window, let parent = sheet.sheetParent { parent.endSheet(sheet) }
         completion?(outcome)
         completion = nil
+    }
+
+    /// Shows `plan` for review once what its steps' places are has been read (toggling decides from that); false
+    /// when the request was replaced or cancelled meanwhile.
+    func review(_ plan: Plan) async -> Bool {
+        let facts = await Self.facts(of: plan)
+        guard !Task.isCancelled else { return false }
+        self.facts = facts
+        phase = .review(plan)
+        return true
     }
 
     nonisolated struct Facts: Sendable {

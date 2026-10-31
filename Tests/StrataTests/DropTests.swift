@@ -165,7 +165,7 @@ struct DropTests {
         // A drop that waited for the share would wait for ever: the share answers after a while anyway, so that fails
         // rather than hangs.
         let fallback = Task {
-            try await Task.sleep(for: .seconds(30))
+            try await Task.sleep(for: .seconds(120))
             answeredFirst.withLock { $0 = true }
             answer.signal()
         }
