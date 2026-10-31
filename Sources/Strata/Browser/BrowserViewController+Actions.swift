@@ -174,7 +174,7 @@ extension BrowserViewController {
 
     func stopBackgroundWork() {
         cancelPendingActions()
-        cancelFiltering()
+        filtering.cancel()
         resorting.cancel()
         watching.stop()
         loading.invalidate()

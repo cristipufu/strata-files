@@ -4870,6 +4870,20 @@
     "tests": "FinderNavigationTests"
   },
   {
+    "file": "Strata/Browser/BrowserFiltering.swift",
+    "find": "    func cancel() {\n        matching?.task.cancel()\n        matching = nil\n    }",
+    "replace": "    func cancel() {\n        matching = nil\n    }",
+    "rule": "Type-to-filter: a big folder's match still being worked out applies after the pane moved on",
+    "tests": "BrowserListingTests/aBigFolderIsFilteredAsTypedAwayFromTheMainThread"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        case .escape:\n            guard !typed.isEmpty else { return false }\n",
+    "replace": "        case .escape:\n",
+    "rule": "Type-to-filter: Esc with nothing typed is taken from the window",
+    "tests": "BrowserListingTests/everyViewTypesDeletesAndClearsTheFilterAlike"
+  },
+  {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "        services.previews.invalidate(owner: self)",
     "replace": "        // Keep a preview after its pane navigates.",

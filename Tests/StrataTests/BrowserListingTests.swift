@@ -214,7 +214,7 @@ struct BrowserListingTests {
     /// another folder drops a match still being worked out.
     @Test func aBigFolderIsFilteredAsTypedAwayFromTheMainThread() async throws {
         let tree = try TestTree("other/")
-        let count = BrowserViewController.filteredAwayAbove + 50
+        let count = BrowserFiltering.matchedAwayAbove + 50
         let entries = (0..<count).map { entry(String(format: "item %05d.txt", $0)) }
             + [entry("zebra.txt"), entry("zebu.txt")]
         let root = tree.root
@@ -228,16 +228,42 @@ struct BrowserListingTests {
         #expect(browser.topLevelEntries.count == count + 2)
         browser.outlineView.onType?("z")
         browser.outlineView.onType?("e")
-        #expect(browser.typedFilter == "ze" && browser.filter.isEmpty)
-        await browser.filtering?.task.value
+        #expect(browser.filtering.typed == "ze" && browser.filter.isEmpty)
+        await browser.filtering.matching?.task.value
         #expect(browser.filter == "ze")
         #expect(browser.visibleRows.map(\.entry.name).sorted() == ["zebra.txt", "zebu.txt"])
         browser.outlineView.onType?("b")
-        let pending = browser.filtering?.task
+        let pending = browser.filtering.matching?.task
         browser.load(tree.url("other"))
         await pending?.value
         await browser.directoryReads.task?.value
-        #expect(browser.filter.isEmpty && browser.typedFilter.isEmpty)
+        #expect(browser.filter.isEmpty && browser.filtering.typed.isEmpty)
         #expect(tree.snapshot() == ["other/"])
+    }
+
+    @Test func everyViewTypesDeletesAndClearsTheFilterAlike() async throws {
+        let tree = try TestTree("alpha.txt", "beta.txt", "gamma.txt")
+        let environment = try IndependentEnvironment()
+        let browser = BrowserViewController(services: environment.services)
+        defer { browser.stopBackgroundWork() }
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        // The list: the outline's own key callbacks.
+        browser.outlineView.onType?("b")
+        browser.outlineView.onType?("e")
+        #expect(browser.filter == "be" && browser.visibleRows.map(\.entry.name) == ["beta.txt"])
+        #expect(browser.outlineView.onBackspace?() == true && browser.filter == "b")
+        #expect(browser.outlineView.onEscape?() == true && browser.filter.isEmpty)
+        // With nothing typed, Backspace and Esc aren't the filter's.
+        #expect(browser.outlineView.onEscape?() == false && browser.outlineView.onBackspace?() == false)
+        // Icons: the same keys through the view's handler.
+        browser.setMode(.grid, remember: false)
+        #expect(browser.handle(.type("g")) && browser.filter == "g")
+        #expect(browser.handle(.space) && browser.filtering.typed == "g ")
+        #expect(browser.handle(.backspace) && browser.filter == "g")
+        #expect(browser.handle(.escape) && browser.filter.isEmpty)
+        #expect(!browser.handle(.escape) && !browser.handle(.backspace))
+        #expect(tree.snapshot() == ["alpha.txt", "beta.txt", "gamma.txt"])
     }
 }

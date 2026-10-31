@@ -97,12 +97,7 @@ final class BrowserViewController: NSViewController {
     /// Date and Kind widths from before showing results (they make room for "Where").
     private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     var filter: String { listing.filter }
-    /// A big folder's rows being matched against what was typed, away from the main thread, and that text.
-    private(set) var filtering: (text: String, task: Task<Void, Never>)?
-    /// What was typed to filter the rows by: they show it once it's matched, in a big folder a moment later.
-    var typedFilter: String { filtering?.text ?? filter }
-    /// Folders with more items are matched away from the main thread.
-    static let filteredAwayAbove = 2_000
+    lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
     /// Items' own icons arrived while the Columns view was hidden.
     var columnsMissedIcons = false
     var availableCapacity: Int64? { loading.availableCapacity }
@@ -288,30 +283,15 @@ final class BrowserViewController: NSViewController {
         applyColumnVisibility(fitName: false)
         syncSortDescriptor()
 
-        ov.onType = { [weak self] text in self?.setFilter((self?.typedFilter ?? "") + text) }
-        ov.onBackspace = { [weak self] in
-            guard let self, !typedFilter.isEmpty else { return false }
-            setFilter(String(typedFilter.dropLast()))
-            return true
-        }
-        ov.onEscape = { [weak self] in
-            guard let self, !typedFilter.isEmpty else { return false }
-            setFilter("")
-            return true
-        }
-        ov.onReturn = { [weak self] in
-            guard let self else { return }
-            finishFiltering()
-            if filter.isEmpty && !preferences.returnOpens { renameSelection(nil) } else { openSelection(nil) }
-        }
+        ov.onType = { [weak self] text in _ = self?.handle(.type(text)) }
+        ov.onBackspace = { [weak self] in self?.handle(.backspace) ?? false }
+        ov.onEscape = { [weak self] in self?.handle(.escape) ?? false }
+        ov.onReturn = { [weak self] in _ = self?.handle(.returnKey) }
         ov.onNameClick = { [weak self] row in
             guard let self, let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return }
             renameClicked(node.url)
         }
-        ov.onSpace = { [weak self] in
-            guard let self else { return }
-            if typedFilter.isEmpty { toggleQuickLook(nil) } else { setFilter(typedFilter + " ") }
-        }
+        ov.onSpace = { [weak self] in _ = self?.handle(.space) }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
         ov.onDragEnd = { [weak self] in
             self?.springLoader.cancel()
@@ -364,10 +344,8 @@ final class BrowserViewController: NSViewController {
         if isNewDirectory {
             cancelPendingActions()
             deferredApply = nil
-            cancelFiltering()
+            clearFilter()
             resorting.cancel()
-            listing.setFilter("")
-            filterPill.update(query: "", matches: 0)
             sizer.cancelPending()
             mediaInfo.cancelPending()
             let revision = navigationRevision
@@ -688,9 +666,7 @@ final class BrowserViewController: NSViewController {
             outlineView.tableColumn(withIdentifier: .kind)?.width = 120
             outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
             fitNameColumn()
-            cancelFiltering()
-            listing.setFilter("")
-            filterPill.update(query: "", matches: 0)
+            clearFilter()
         }
     }
 
@@ -732,34 +708,12 @@ final class BrowserViewController: NSViewController {
     }
 
     func setFilter(_ text: String) {
-        cancelFiltering()
-        guard text != filter else { return }
-        guard !text.isEmpty, listing.nodes.count > Self.filteredAwayAbove else {
-            listing.setFilter(text)
-            return showFilter(text)
-        }
-        let listing = listing
-        let task = Task { [weak self] in
-            guard let matches = await listing.matches(for: text), !Task.isCancelled, let self else { return }
-            filtering = nil
-            // The rows changed meanwhile (a refresh): matched again against them.
-            guard listing.show(matches) else { return setFilter(text) }
-            showFilter(text)
-        }
-        filtering = (text, task)
+        filtering.set(text)
     }
 
-    func cancelFiltering() {
-        filtering?.task.cancel()
-        filtering = nil
-    }
-
-    /// Return acts on the rows for what was typed: a match still being worked out is made now, once.
-    func finishFiltering() {
-        guard let text = filtering?.text else { return }
-        cancelFiltering()
-        listing.setFilter(text)
-        showFilter(text)
+    private func clearFilter() {
+        filtering.clear()
+        filterPill.update(query: "", matches: 0)
     }
 
     private func showFilter(_ text: String) {
@@ -784,7 +738,7 @@ final class BrowserViewController: NSViewController {
     }
 
     func resortAfterMetadata() {
-        guard ordering.choice != nil, typedFilter.isEmpty else { return }
+        guard ordering.choice != nil, filtering.typed.isEmpty else { return }
         if isRenamingInPlace { return resorting.holdForEditing() }
         if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs

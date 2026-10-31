@@ -145,23 +145,29 @@ extension BrowserViewController: FileCollectionViewDelegate {
         return true
     }
 
-    /// Same keys as the list: typing filters, Return renames (or opens), Space previews, Esc clears the filter.
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool {
+        handle(key)
+    }
+
+    /// The same keys in every view: typing filters, Return renames (or opens), Space previews, Esc clears the filter.
+    /// False when the key isn't the pane's to handle.
+    func handle(_ key: FileViewKey) -> Bool {
+        let typed = filtering.typed
         switch key {
         case .type(let text):
-            setFilter(typedFilter + text)
+            setFilter(typed + text)
         case .backspace:
-            guard !typedFilter.isEmpty else { return false }
-            setFilter(String(typedFilter.dropLast()))
+            guard !typed.isEmpty else { return false }
+            setFilter(String(typed.dropLast()))
         case .escape:
-            guard !typedFilter.isEmpty else { return false }
+            guard !typed.isEmpty else { return false }
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
-            finishFiltering()
+            filtering.finish()
             if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
-            if typedFilter.isEmpty { toggleQuickLook(nil) } else { setFilter(typedFilter + " ") }
+            if typed.isEmpty { toggleQuickLook(nil) } else { setFilter(typed + " ") }
         case .tab:
             return onTab?() ?? false
         }
