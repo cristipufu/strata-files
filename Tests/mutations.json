@@ -1915,15 +1915,15 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "identities[path] = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"",
-    "replace": "identities[path] = fileIdentities?[path] ?? OperationLog.identity(path) ?? \"\"",
+    "find": "identities[path] = fileIdentities[path] ?? \"\"",
+    "replace": "identities[path] = fileIdentities[path] ?? OperationLog.identity(path) ?? \"\"",
     "rule": "Missing supplied History ownership never falls back to current files",
     "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "identities[path] = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"",
-    "replace": "let recorded = fileIdentities.map { $0[path] ?? \"\" } ?? OperationLog.identity(path) ?? \"\"; identities[path] = recorded.isEmpty ? nil : recorded",
+    "find": "identities[path] = fileIdentities[path] ?? \"\"",
+    "replace": "let recorded = fileIdentities[path] ?? \"\"; identities[path] = recorded.isEmpty ? nil : recorded",
     "rule": "Refused History ownership never becomes an untracked legacy record",
     "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration|HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
   },

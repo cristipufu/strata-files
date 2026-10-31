@@ -33,14 +33,15 @@ struct TrashUndoTests {
         let trashed = try #require(result) as URL
         let moved = [(from: first.url(name), to: trashed)]
         if replacement {
-            OperationLog.shared.recordTransfer("Copy", created: [first.url("kept.txt")], moved: [], replaced: moved)
+            OperationLog.shared.recordTransfer("Copy", created: [first.url("kept.txt")], moved: [], replaced: moved,
+                                               containerIdentities: [:], landed: LandedFiles([first.url("kept.txt"), trashed]))
         } else {
-            OperationLog.shared.recordMove("Move to Trash", moved)
+            OperationLog.shared.recordMove("Move to Trash", moved, landed: LandedFiles([trashed]))
         }
         // Reuse only this test's unique Trash slot. moveItem refuses if something else took it meanwhile.
         try FileManager.default.moveItem(at: trashed, to: first.url(name))
         try FileManager.default.moveItem(at: second.url(name), to: trashed)
-        OperationLog.shared.recordMove("Move to Trash", [(from: second.url(name), to: trashed)])
+        OperationLog.shared.recordMove("Move to Trash", [(from: second.url(name), to: trashed)], landed: LandedFiles([trashed]))
 
         first.removeFromTrash()
         TestTree.removeFromTrash(trashed, matching: nil)

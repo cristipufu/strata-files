@@ -24,8 +24,8 @@ struct StorageContextTests {
         let second = context(tree, "second", key: SymmetricKey(data: Data(repeating: 8, count: 32)))
         let a = OperationLog(storage: first, copies: .live)
         let b = OperationLog(storage: second, copies: .live)
-        let firstID = try #require(a.recordCreate("Copy", [tree.url("a.txt")]))
-        let secondID = try #require(b.recordCreate("Copy", [tree.url("b.txt")]))
+        let firstID = try #require(a.recordCreate("Copy", [tree.url("a.txt")], landed: LandedFiles([tree.url("a.txt")])))
+        let secondID = try #require(b.recordCreate("Copy", [tree.url("b.txt")], landed: LandedFiles([tree.url("b.txt")])))
         #expect(a.entries.map(\.id) == [firstID])
         #expect(b.entries.map(\.id) == [secondID])
         #expect(OperationLog(storage: first, copies: .live).entries.map(\.id) == [firstID])
@@ -136,7 +136,7 @@ struct StorageContextTests {
         let history = OperationLog(storage: storage, copies: .live)
         let moves = [(from: tree.url("a.txt"), to: tree.url("b.txt"))]
         try await FileOps.moveAsPart(moves, copies: .live)
-        let id = try #require(history.recordMove("Rename", moves))
+        let id = try #require(history.recordMove("Rename", moves, landed: LandedFiles(moves.map(\.to))))
         let entry = try #require(history.entries.first)
         let undo = UndoManager()
         undo.groupsByEvent = false

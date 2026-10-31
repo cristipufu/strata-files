@@ -237,7 +237,7 @@ extension TransferTests {
             let env = try HistoryEnvironment(tree)
             let source = tree.url("a.txt"), target = tree.url("b.txt")
             try FileManager.default.moveItem(at: source, to: target)
-            env.history.recordMove("Rename", [(from: source, to: target)])
+            env.history.recordMove("Rename", [(from: source, to: target)], landed: LandedFiles([target]))
             let row = try #require(env.history.entries.first)
             #expect(env.history.canUndo(row))
             if retirement == "clear" { env.history.clear() }
@@ -867,7 +867,7 @@ struct HistoryOwnershipTests {
                     env.history.recordTransfer("Move", created: [tree.url("copy.txt")],
                                                moved: [(from: tree.url("source.txt"), to: tree.url("moved.txt")),
                                                        (from: tree.url("other.txt"), to: tree.url("good.txt"))],
-                                               replaced: [], landed: ownership)
+                                               replaced: [], containerIdentities: [:], landed: ownership)
                 }
                 if !beforeRegistration { record() }
                 try FileManager.default.moveItem(at: tree.url("moved.txt"), to: tree.url("saved.txt"))
