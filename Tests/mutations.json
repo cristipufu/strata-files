@@ -960,14 +960,14 @@
   {
     "file": "Strata/Model/OperationLog.swift",
     "find": "containers: .make(containers), history: self)",
-    "replace": "containers: .make(containers))",
+    "replace": "containers: .make(containers), history: .shared)",
     "rule": "Storage isolation sends History redo to the global journal",
     "tests": "StorageContextTests/historyUndo"
   },
   {
     "file": "Strata/Model/FileOps.swift",
     "find": "marksUndone: !marksUndone, containers: containers.inverse, landed: returned, history: history)",
-    "replace": "marksUndone: !marksUndone, containers: containers.inverse, landed: returned)",
+    "replace": "marksUndone: !marksUndone, containers: containers.inverse, landed: returned, history: .shared)",
     "rule": "Storage isolation loses the History owner on the next Undo cycle",
     "tests": "StorageContextTests/historyUndo"
   },
@@ -1079,7 +1079,7 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "find": "registerLogMark(id, undone: !undone, undo, history: history)",
-    "replace": "registerLogMark(id, undone: !undone, undo)",
+    "replace": "registerLogMark(id, undone: !undone, undo, history: .shared)",
     "rule": "Transfer ownership Redo marks the global History",
     "tests": "TransferContextTests/transferHistoryAndRepeatedUndoStayWithTheirOwner"
   },
@@ -1093,7 +1093,7 @@
   {
     "file": "Strata/Window/Pane.swift",
     "find": "browser = BrowserViewController(services: services)",
-    "replace": "browser = BrowserViewController()",
+    "replace": "browser = BrowserViewController(services: .shared)",
     "rule": "Browser service ownership a new pane loses its window services",
     "tests": "TransferContextTests/replacementPanesAndBrowserCommandsKeepTheWindowServices"
   },
@@ -1128,7 +1128,7 @@
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
     "find": "                                    transfers: services.transfers, preferences: services.preferences,",
-    "replace": "                                    preferences: services.preferences,",
+    "replace": "                                    transfers: .shared, preferences: services.preferences,",
     "rule": "Browser service ownership folder tree drops use the global queue",
     "tests": "TransferContextTests/bothSidebarDropModesUseTheWindowQueue"
   },
@@ -1690,14 +1690,14 @@
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
     "find": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: preferences)",
-    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) })",
+    "replace": "Places.addFavorites((folders.isEmpty ? [directory].compactMap { $0 } : folders).filter { !isReadOnlyCopy($0) },\n                            preferences: .shared)",
     "rule": "Browser preferences Add to Sidebar writes to another store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
   {
     "file": "Strata/Sidebar/FolderTreeController.swift",
     "find": "Places.addFavorites([url], at: nil, preferences: preferences)",
-    "replace": "Places.addFavorites([url], at: nil)",
+    "replace": "Places.addFavorites([url], at: nil, preferences: .shared)",
     "rule": "Browser preferences folder tree favorites write to another store",
     "tests": "BrowserPreferencesTests/favoriteCommandsAndPathSuggestionsUseTheirOwningStore"
   },
@@ -1824,7 +1824,7 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "find": "registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)",
-    "replace": "registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed)",
+    "replace": "registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: .shared)",
     "rule": "Move History ownership retains its injected journal through Undo",
     "tests": "HistoryOwnershipTests/ownedMoveHistoryAndLiveUndoKeepTheInjectedJournal"
   },
@@ -3140,7 +3140,7 @@
   {
     "file": "Strata/Browser/BrowserViewController+Fetching.swift",
     "find": "CopyFetchJob(pending, copies: copies, then: action)",
-    "replace": "CopyFetchJob(pending, then: action)",
+    "replace": "CopyFetchJob(pending, copies: .live, then: action)",
     "rule": "Provider fetch ownership large reads ignore their provider",
     "tests": "ProviderFetchTests/largeBrowserReadsUseTheirOwnQueueAndTheExistingSizeBoundary"
   },
@@ -3261,7 +3261,7 @@
   {
     "file": "Strata/Browser/BrowserViewController.swift",
     "find": "MediaInfoLoader(copies: services.copies, reader: services.mediaReader)",
-    "replace": "MediaInfoLoader(reader: services.mediaReader)",
+    "replace": "MediaInfoLoader(copies: .live, reader: services.mediaReader)",
     "rule": "Provider media ownership browser columns ignore their provider",
     "tests": "ProviderMediaInfoTests/mediaColumnsRecognizeTheirOwnProvidersPlaceholders"
   },
@@ -3605,7 +3605,7 @@
   {
     "file": "Strata/Browser/BrowserViewController+Servers.swift",
     "find": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, expected: expected,\n                                      files: services.remote.files, copies: services.copies)",
-    "replace": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping)",
+    "replace": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: .shared, copies: .live)",
     "rule": "Browser copy provider ownership upload job uses the global remote files and copy provider",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
@@ -3867,7 +3867,7 @@
   {
     "file": "Strata/Views/FileThumbnails.swift",
     "find": "IconCache.shared.icon(for: entry, containerCopies: copies.containerCopies, containerStore: containerStore)",
-    "replace": "IconCache.shared.icon(for: entry)",
+    "replace": "IconCache.shared.icon(for: entry, containerCopies: CopyProviders.live.containerCopies, containerStore: .shared)",
     "rule": "Module and provider boundaries container icon marks read the global container store",
     "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
   },
@@ -3902,14 +3902,14 @@
   {
     "file": "Strata/Browser/BrowserFileCommands.swift",
     "find": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: history)",
-    "replace": "try await FileOps.rename(url, to: name, undo: undo, copies: copies)",
+    "replace": "try await FileOps.rename(url, to: name, undo: undo, copies: copies, history: .shared)",
     "rule": "File command ownership rename records in the application History",
     "tests": "FileCommandOwnershipTests/renameKeepsHistoryAndRepeatedUndoWithItsOwner"
   },
   {
     "file": "Strata/Model/FileOps.swift",
     "find": "actionName: \"Rename\", undo: undo, history: history, copies: copies",
-    "replace": "actionName: \"Rename\", undo: undo, copies: copies",
+    "replace": "actionName: \"Rename\", undo: undo, history: .shared, copies: copies",
     "rule": "File command ownership rename discards its supplied History",
     "tests": "FileCommandOwnershipTests/renameKeepsHistoryAndRepeatedUndoWithItsOwner"
   },
@@ -3993,14 +3993,14 @@
   {
     "file": "Strata/Browser/BrowserFileCommands.swift",
     "find": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: history)",
-    "replace": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies)",
+    "replace": "try await FileOps.trashInBackground(urls, undo: undo, copies: copies, history: .shared)",
     "rule": "File command Trash records in another History",
     "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
   },
   {
     "file": "Strata/Browser/BrowserFileCommands.swift",
     "find": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: history)",
-    "replace": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies)",
+    "replace": "await PlanExecutor.apply(plan, actionName: actionName, undo: undo, copies: copies, history: .shared)",
     "rule": "File command plan records in another History",
     "tests": "FileCommandOwnershipTests/trashAndPlansUseTheSameCommandHistoryAsCreationAndRename"
   },
