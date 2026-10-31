@@ -99,6 +99,20 @@ import Testing
         #expect(tree.text("to/box/older.txt") == "to/box/older.txt")
     }
 
+    @Test func mergeAppliedToAllSettlesTwoFilesByWhichIsNewer() async throws {
+        let tree = try TestTree("from/", "from/newer.txt", "from/older.txt", "to/", "to/newer.txt", "to/older.txt")
+        defer { tree.removeFromTrash() }
+        let past = Date(timeIntervalSinceNow: -3600)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("to/newer.txt").path)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("from/older.txt").path)
+        let merge = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
+        let job = await run([tree.url("from/newer.txt"), tree.url("from/older.txt")], to: tree.url("to"), .copy, conflicts: merge)
+        #expect(job.failures.isEmpty)
+        // The newer incoming file replaces the older one there; an older incoming one leaves the newer one alone.
+        #expect(tree.text("to/newer.txt") == "from/newer.txt" && tree.text("to/older.txt") == "to/older.txt")
+        #expect(tree.text("from/newer.txt") == "from/newer.txt" && tree.text("from/older.txt") == "from/older.txt")
+    }
+
     @Test func twoItemsWithTheSameNameAreBothKept() async throws {
         for (mode, resolver, label) in [(TransferMode.copy, ConflictResolver.keepBoth, "keep both"), (.move, .keepBoth, "keep both"),
                                         (.move, .replace, "replace"), (.copy, .replace, "replace")] {

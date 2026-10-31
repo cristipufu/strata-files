@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Synchronization
 import UniformTypeIdentifiers
 
 /// Settings ▸ General ▸ Search box in the Dock (off unless you turn it on). Apple's Dock takes no plug-ins, so Strata
@@ -92,6 +93,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
                 restartDock()
             }
         }
+        DockSearchItems.readApps()
         guard follower == nil else { return }
         follower = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.follow() }
@@ -119,7 +121,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     /// Puts the box over the gap, sized and rounded like the icons beside it; hides it while the gap isn't shown (the
     /// Dock hidden, on the left or right, or not open to Accessibility yet).
     private func follow() {
-        guard let layout = reader.layout(anchor: Self.bundleID) else {
+        reader.layout(anchor: Self.bundleID) { [weak self] layout in self?.place(at: layout) }
+    }
+
+    /// Not once it's been turned off meanwhile.
+    private func place(at layout: DockLayout?) {
+        guard follower != nil else { return }
+        guard let layout else {
             if placed != nil {
                 placed = nil
                 clear()
@@ -425,8 +433,11 @@ enum DockSearchItems {
 
     /// Shows a folder in Strata; anything else, selected in its folder.
     static func show(_ url: URL) {
-        guard let delegate = NSApp.delegate as? AppDelegate else { return }
-        if FileEntry.isNavigableFolder(url) { delegate.showFolder(url) } else { delegate.revealInStrata([url]) }
+        Task {
+            let opening = await FileEntry.opening(url)
+            guard let delegate = NSApp.delegate as? AppDelegate else { return }
+            if opening == .folder { delegate.showFolder(url) } else { delegate.revealInStrata([url]) }
+        }
     }
 
     private static func folders() -> [PaletteItem] {
@@ -448,11 +459,12 @@ enum DockSearchItems {
     }
 
     private static func workspaces() -> [PaletteItem] {
-        Workspaces.shared.all.map { workspace in
+        let names = BrowserServices.shared.folderNames
+        return Workspaces.shared.all.map { workspace in
             let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
-                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) {
+                               keywords: workspace.tabs.joined().map { names.name(URL(fileURLWithPath: $0)) }, boost: 10) {
                 NSApp.activate()
                 Workspaces.shared.open(workspace)
             }
@@ -460,10 +472,10 @@ enum DockSearchItems {
     }
 
     private static func apps() -> [PaletteItem] {
-        installedApps.map { url in
-            PaletteItem(title: FileManager.default.displayName(atPath: url.path), subtitle: "", icon: IconCache.shared.icon(forPath: url.path, folder: true),
-                        kind: .app, boost: 6, url: url) {
-                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        installedApps().map { app in
+            PaletteItem(title: app.name, subtitle: "", icon: IconCache.shared.icon(forPath: app.url.path, folder: true),
+                        kind: .app, boost: 6, url: app.url) {
+                NSWorkspace.shared.openApplication(at: app.url, configuration: NSWorkspace.OpenConfiguration())
             }
         }
     }
@@ -535,26 +547,38 @@ enum DockSearchItems {
         return items
     }
 
-    private static var cachedApps: (apps: [URL], until: Date)?
+    private static var cachedApps: (apps: [(url: URL, name: String)], until: Date)?
+    private static var readingApps: Task<Void, Never>?
 
-    /// Apps in Applications and the system's, read again at most once a minute.
-    private static var installedApps: [URL] {
-        if let cachedApps, Date() < cachedApps.until { return cachedApps.apps }
+    /// Apps in Applications and the system's, with their names, as last read: read again away from the main thread
+    /// once that's over a minute old, and first when the Dock's box is turned on.
+    private static func installedApps() -> [(url: URL, name: String)] {
+        if cachedApps.map({ Date() >= $0.until }) ?? true { readApps() }
+        return cachedApps?.apps ?? []
+    }
+
+    static func readApps() {
+        guard readingApps == nil else { return }
+        readingApps = Task {
+            cachedApps = (await appsOnDisk(), Date().addingTimeInterval(60))
+            readingApps = nil
+        }
+    }
+
+    @concurrent private static func appsOnDisk() async -> [(url: URL, name: String)] {
         let roots = ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities",
                      NSHomeDirectory() + "/Applications"]
-        let apps = roots.flatMap { root in
+        return roots.flatMap { root in
             ((try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []).filter { $0.hasSuffix(".app") }
                 .map { URL(fileURLWithPath: root).appending(path: $0) }
-        }
-        cachedApps = (apps, Date().addingTimeInterval(60))
-        return apps
+        }.map { ($0, FileManager.default.displayName(atPath: $0.path)) }
     }
 }
 
 // MARK: - Where the Dock draws the gap
 
 /// The gap's place on screen, and the box shaped from the icon tile beside it.
-struct DockLayout: Equatable {
+nonisolated struct DockLayout: Equatable, Sendable {
     /// The spacer tiles, in screen coordinates.
     let gap: NSRect
     /// An app's tile next to them, in screen coordinates: icons sit in the upper part of a tile, the rest is room for
@@ -577,81 +601,113 @@ struct DockLayout: Equatable {
 
 /// Reads the Dock through Accessibility: which of its items are Strata's spacer tiles, and where they are now. The
 /// list of items (and which of them are the gap) is read again every second or so; their frames every time, so the box
-/// keeps up with the Dock sliding in, magnifying or moving to another display.
-final class DockReader {
-    private var pid: pid_t = 0
-    private var list: AXUIElement?
-    private var items: [AXUIElement] = []
-    /// Positions in `items`: the gap, and an app tile beside it to take the icon size from.
-    private var gapItems: Range<Int>?
-    private var tileItem: Int?
-    private var refreshed = Date.distantPast
-    /// How long a question to the Dock may take: the system's default is six seconds, and these are asked on the main
-    /// thread, several times a second while the box shows. Set on the Dock and on this app's Accessibility as a whole,
-    /// since what each covers isn't documented.
+/// keeps up with the Dock sliding in, magnifying or moving to another display. Every question to the Dock is asked on
+/// a queue of the reader's own, one at a time: each may take up to `timeout`, and the box asks several times a second.
+nonisolated final class DockReader: Sendable {
+    private struct State {
+        var pid: pid_t = 0
+        var list: AXUIElement?
+        var items: [AXUIElement] = []
+        /// Positions in `items`: the gap, and an app tile beside it to take the icon size from.
+        var gapItems: Range<Int>?
+        var tileItem: Int?
+        var refreshed = Date.distantPast
+        var asking = false
+    }
+
+    private let state = Mutex(State())
+    private let queue = DispatchQueue(label: "dev.strata.dock-reader", qos: .userInitiated)
+    /// How long a question to the Dock may take: the system's default is six seconds. Set on the Dock and on this app's
+    /// Accessibility as a whole, since what each covers isn't documented.
     private static let timeout: Float = 0.25
 
     init() {
-        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.timeout)
+        queue.async { AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.timeout) }
     }
 
-    /// Nil when the gap isn't on screen: no Accessibility access, no gap in the Dock, the Dock hidden, or on the left or
-    /// right (a text box doesn't fit a column of icons).
-    func layout(anchor bundleID: String) -> DockLayout? {
+    /// Reads where the gap is and hands it to `found` on the main thread: nil when it isn't on screen (no
+    /// Accessibility access, no gap in the Dock, the Dock hidden, or on the left or right, where a text box doesn't fit
+    /// a column of icons). Nothing is asked while a question is still out.
+    @MainActor
+    func layout(anchor bundleID: String, then found: @escaping @MainActor (DockLayout?) -> Void) {
         guard AXIsProcessTrusted(),
-              let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return nil }
-        // A Dock started again (Strata changed its tiles, or it crashed) has new items; so does one rearranged.
-        if dock.processIdentifier != pid || Date().timeIntervalSince(refreshed) > 1 {
-            refresh(dock.processIdentifier, anchor: bundleID)
+              let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first,
+              let primary = NSScreen.screens.first else { return found(nil) }
+        let pid = dock.processIdentifier, screens = NSScreen.screens.map(\.frame), top = primary.frame.maxY
+        guard startAsking() else { return }
+        queue.async { [self] in
+            let layout = state.withLock { state in
+                defer { state.asking = false }
+                return Self.read(&state, dock: pid, anchor: bundleID, screens: screens, top: top)
+            }
+            Task { @MainActor in found(layout) }
         }
-        guard let list, let listFrame = Self.frame(of: list), listFrame.width > listFrame.height,
-              let gapItems, let tileItem,
-              let first = Self.frame(of: items[gapItems.lowerBound]), let last = Self.frame(of: items[gapItems.upperBound - 1]),
-              let tile = Self.frame(of: items[tileItem]), let primary = NSScreen.screens.first else { return nil }
+    }
+
+    /// True when no question was out; it is now.
+    private func startAsking() -> Bool {
+        state.withLock { state in
+            defer { state.asking = true }
+            return !state.asking
+        }
+    }
+
+    private static func read(_ state: inout State, dock pid: pid_t, anchor bundleID: String, screens: [NSRect],
+                             top: CGFloat) -> DockLayout? {
+        // A Dock started again (Strata changed its tiles, or it crashed) has new items; so does one rearranged.
+        if pid != state.pid || Date().timeIntervalSince(state.refreshed) > 1 {
+            refresh(&state, pid, anchor: bundleID)
+        }
+        guard let list = state.list, let listFrame = frame(of: list), listFrame.width > listFrame.height,
+              let gapItems = state.gapItems, let tileItem = state.tileItem,
+              let first = frame(of: state.items[gapItems.lowerBound]), let last = frame(of: state.items[gapItems.upperBound - 1]),
+              let tile = frame(of: state.items[tileItem]) else { return nil }
         // Accessibility measures down from the top of the main screen, AppKit up from its bottom.
         func flipped(_ rect: CGRect) -> NSRect {
-            NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+            NSRect(x: rect.minX, y: top - rect.maxY, width: rect.width, height: rect.height)
         }
         let gap = flipped(first.union(last))
         // A hidden Dock keeps its tiles just off the edge of the screen.
-        guard NSScreen.screens.contains(where: { $0.frame.contains(NSPoint(x: gap.midX, y: gap.midY)) }) else { return nil }
+        guard screens.contains(where: { $0.contains(NSPoint(x: gap.midX, y: gap.midY)) }) else { return nil }
         return DockLayout(gap: gap, tile: flipped(tile))
     }
 
-    private func refresh(_ dockPID: pid_t, anchor bundleID: String) {
-        refreshed = Date()
-        if dockPID != pid {
-            pid = dockPID
+    private static func refresh(_ state: inout State, _ dockPID: pid_t, anchor bundleID: String) {
+        state.refreshed = Date()
+        if dockPID != state.pid {
+            state.pid = dockPID
             let app = AXUIElementCreateApplication(dockPID)
-            AXUIElementSetMessagingTimeout(app, Self.timeout)
-            list = (Self.attribute(app, kAXChildrenAttribute) as? [AXUIElement])?
-                .first { Self.attribute($0, kAXRoleAttribute) as? String == "AXList" }
+            AXUIElementSetMessagingTimeout(app, timeout)
+            state.list = (attribute(app, kAXChildrenAttribute) as? [AXUIElement])?
+                .first { attribute($0, kAXRoleAttribute) as? String == "AXList" }
         }
-        items = list.flatMap { Self.attribute($0, kAXChildrenAttribute) as? [AXUIElement] } ?? []
+        let items = state.list.flatMap { attribute($0, kAXChildrenAttribute) as? [AXUIElement] } ?? []
+        state.items = items
         // If the Dock just started again, its list isn't there yet: look again next time.
-        if items.isEmpty { pid = 0 }
-        let subroles = items.map { Self.attribute($0, kAXSubroleAttribute) as? String }
+        if items.isEmpty { state.pid = 0 }
+        let subroles = items.map { attribute($0, kAXSubroleAttribute) as? String }
         let isSpacer = { (index: Int) in subroles[index] == "AXSpacerDockItem" }
         let isApp = { (index: Int) in subroles[index] == "AXApplicationDockItem" }
-        gapItems = nil
+        var gapItems: Range<Int>?
         // The Dock lists Finder, then its kept apps in the order of its settings: Strata's tiles are found by their
         // place there, wherever they've been dragged.
         if let run = DockGapTiles.run(in: DockGapTiles.read() ?? []),
            run.upperBound + 1 <= items.count, (run.lowerBound + 1..<run.upperBound + 1).allSatisfy(isSpacer) {
             gapItems = run.lowerBound + 1..<run.upperBound + 1
-        } else if let anchor = items.firstIndex(where: { Self.bundleID(of: $0) == bundleID }) ?? (items.isEmpty ? nil : 0) {
+        } else if let anchor = items.firstIndex(where: { bundleIDOf($0) == bundleID }) ?? (items.isEmpty ? nil : 0) {
             // Not settled yet (the Dock still starting, or its settings not written yet): the spacers after Strata's
             // tile, where they were put.
             let run = (anchor + 1..<items.count).prefix { isSpacer($0) }
             if let lower = run.first, let upper = run.last { gapItems = lower..<upper + 1 }
         }
-        tileItem = gapItems.flatMap { gap in
+        state.gapItems = gapItems
+        state.tileItem = gapItems.flatMap { gap in
             [gap.lowerBound - 1, gap.upperBound].first { items.indices.contains($0) && isApp($0) }
                 ?? items.indices.first(where: isApp)
         }
     }
 
-    private static func bundleID(of item: AXUIElement) -> String? {
+    private static func bundleIDOf(_ item: AXUIElement) -> String? {
         (attribute(item, kAXURLAttribute) as? URL).flatMap { Bundle(url: $0)?.bundleIdentifier }
     }
 

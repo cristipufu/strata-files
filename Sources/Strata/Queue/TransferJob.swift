@@ -441,13 +441,13 @@ package final class TransferJob {
     /// applied to all that meets two files settles them the same way: the newer wins.
     private func merge(_ index: Int) async {
         let item = items[index]
-        guard TransferEngine.isPlainFolder(item.source), TransferEngine.isPlainFolder(item.destination) else {
+        let (folders, newer) = await worker.run { () -> (Bool, Bool) in
+            if TransferEngine.isPlainFolder(item.source), TransferEngine.isPlainFolder(item.destination) { return (true, false) }
             let incoming = try? item.source.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             let existing = try? item.destination.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-            let newer = (incoming ?? .distantPast) > (existing ?? .distantPast)
-            apply(newer ? .replace : .skip, to: index)
-            return
+            return (false, (incoming ?? .distantPast) > (existing ?? .distantPast))
         }
+        guard folders else { return apply(newer ? .replace : .skip, to: index) }
         let control = control
         let steps = await worker.run { TransferEngine.mergePlan(item.source, into: item.destination) }
         let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }

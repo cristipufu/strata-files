@@ -526,7 +526,7 @@ package enum FileOps {
                     guard !back.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
                         throw insideArchiveError
                     }
-                    try containers.prepare()
+                    try await containers.prepare()
                     if let entry { history.updateContainerIdentities(entry, containers.historyIdentities) }
                     let (done, error) = await moveAll(back)
                     done.forEach { returned.arrived($0.to) }

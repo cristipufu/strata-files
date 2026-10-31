@@ -10,6 +10,9 @@ nonisolated package final class ChosenFile: Sendable {
     private let parentIdentity: FileIdentity
     private let parent: Int32
 
+    /// The same, opened away from the main thread.
+    @concurrent package static func choose(_ url: URL) async throws -> ChosenFile { try ChosenFile(url) }
+
     package init(_ url: URL, resolveParent: Bool = true) throws {
         self.url = url
         guard !url.lastPathComponent.isEmpty, ![".", "..", "/"].contains(url.lastPathComponent) else { throw POSIXError(.EINVAL) }

@@ -236,12 +236,15 @@ extension BrowserViewController {
     /// Opens those project folders in the terminal. True when this was a stack, even if the folder is gone.
     func openStackInTerminal() -> Bool {
         guard isStackContext else { return false }
-        let directories = stackProjectDirectories()
-        guard let terminal = preferences.terminalURL, !directories.isEmpty else { Sounds.beep(); return true }
-        StackProjects.open(directories) { folders in
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
+        let directories = stackProjectDirectories(), preferences = preferences
+        guard !directories.isEmpty else { Sounds.beep(); return true }
+        Task {
+            guard let terminal = await preferences.terminalApp() else { return Sounds.beep() }
+            StackProjects.open(directories) { folders in
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = true
+                NSWorkspace.shared.open(folders, withApplicationAt: terminal, configuration: configuration)
+            }
         }
         return true
     }

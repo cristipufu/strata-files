@@ -326,9 +326,19 @@ package final class Prefs {
         ("Terminal", "com.apple.Terminal"),
     ]
 
-    package var terminalURL: URL? {
-        let ids = (terminal.map { [$0] } ?? []) + terminals.map(\.bundleID)
-        return ids.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+    /// The terminal Open in Terminal uses: the one chosen in Settings, else the first installed of `terminals`.
+    package func terminalApp() async -> URL? {
+        await Self.firstInstalled((terminal.map { [$0] } ?? []) + terminals.map(\.bundleID))
+    }
+
+    /// The first of `bundleIDs` installed, asked of LaunchServices away from the main thread.
+    @concurrent package nonisolated static func firstInstalled(_ bundleIDs: [String]) async -> URL? {
+        bundleIDs.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+    }
+
+    /// Those of `bundleIDs` installed, asked the same way.
+    @concurrent package nonisolated static func installed(_ bundleIDs: [String]) async -> Set<String> {
+        Set(bundleIDs.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil })
     }
 
     /// Native toolbar layouts use this environment rather than AppKit's process-wide defaults.

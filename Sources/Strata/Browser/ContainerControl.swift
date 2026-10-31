@@ -76,9 +76,15 @@ enum ContainerControl {
 
     /// Opens a shell in a running container, in its folder `path`, in your terminal (as `docker exec -it` would).
     @discardableResult
-    static func openTerminal(in container: ContainerInfo, at path: String, engine: ContainerEngine) -> Bool {
+    static func openTerminal(in container: ContainerInfo, at path: String, engine: ContainerEngine) async -> Bool {
         guard container.isRunning, ContainerAPI.isContainerID(container.id) else { return false }
-        return ProjectActions.openCommandFile(named: "\(container.name) — Terminal", body: terminalScript(id: container.id, path: path, socket: engine.socket))
+        return await ProjectActions.openCommandFile(named: "\(container.name) — Terminal",
+                                                    body: terminalScript(id: container.id, path: path, socket: engine.socket))
+    }
+
+    /// The same, beeping when it can't.
+    static func openTerminalOrBeep(in container: ContainerInfo, at path: String, engine: ContainerEngine) {
+        Task { if !(await openTerminal(in: container, at: path, engine: engine)) { Sounds.beep() } }
     }
 
     /// The `.command` file's script, run by `/bin/sh`: it deletes itself, takes the PATH your login shell sets up (so

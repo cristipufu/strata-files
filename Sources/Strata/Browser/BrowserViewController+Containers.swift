@@ -28,7 +28,7 @@ extension BrowserViewController {
             return true
         }
         if let container = selectedContainers.first {
-            if !ContainerControl.openTerminal(in: container, at: "/", engine: engine) { Sounds.beep() }
+            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine)
             return true
         }
         let selected = selectedEntries
@@ -40,9 +40,9 @@ extension BrowserViewController {
             return true
         }
         Task {
-            let path = ContainerCopies.containerPath(of: await Self.realURL(folder), top: top) ?? "/"
+            let path = ContainerCopies.containerPath(of: await RealPath.of(folder), top: top) ?? "/"
             guard let container = store.container(id: source.id),
-                  ContainerControl.openTerminal(in: container, at: path, engine: engine) else { return Sounds.beep() }
+                  await ContainerControl.openTerminal(in: container, at: path, engine: engine) else { return Sounds.beep() }
         }
         return true
     }

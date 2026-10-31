@@ -14,6 +14,8 @@ package final class ArchiveJob {
     package private(set) var state: TransferState = .queued
     /// What the job made: the zip, the extracted item or the browsable folder.
     package private(set) var result: URL?
+    /// The zip's size, read where it was made.
+    private var resultBytes: Int64?
     package private(set) var errorMessage: String?
     /// Entries the extraction will report, from the archive's listing; 0 while unknown.
     private var totalEntries = 0
@@ -101,7 +103,9 @@ package final class ArchiveJob {
             switch operation {
             case .compress(let items):
                 let control = control, copies = queue.copies
-                url = try await Self.onWorkerThread { try Archiver.compress(items, copies: copies, control: control) }
+                let made = try await Self.onWorkerThread { try Self.compress(items, copies: copies, control: control) }
+                url = made.0
+                resultBytes = made.1
                 register(url, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 try Self.requireArchive(archive)
@@ -159,6 +163,12 @@ package final class ArchiveJob {
     }
 
     /// Runs blocking work on a thread of its own rather than tying up one of the task pool's few threads.
+    /// The zip, and its size read where it was made.
+    nonisolated private static func compress(_ items: [URL], copies: CopyProviders, control: Archiver.Control) throws -> (URL, Int64?) {
+        let zip = try Archiver.compress(items, copies: copies, control: control)
+        return (zip, (try? zip.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init))
+    }
+
     private static func onWorkerThread<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -202,9 +212,8 @@ extension ArchiveJob {
                 : String(localized: "Working…", comment: "Transfers list: a job in progress")
         case .paused: return String(localized: "Paused", comment: "Transfers list: job status")
         case .finished:
-            if case .compress = operation, let result,
-               let size = (try? result.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
-                return String(localized: "Done · \(result.lastPathComponent), \(Format.bytes(Int64(size)))",
+            if case .compress = operation, let result, let size = resultBytes {
+                return String(localized: "Done · \(result.lastPathComponent), \(Format.bytes(size))",
                               comment: "Transfers list: a finished Compress, with the zip’s name and size")
             }
             return result.map { String(localized: "Done · \($0.lastPathComponent)", comment: "Transfers list: a finished job, with what it made") }

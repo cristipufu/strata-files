@@ -464,7 +464,7 @@ package enum TransferUndo {
         let moves = moves.filter { expected[$0.from.path] != nil }
         guard !moves.isEmpty else { return .nothing }
         // Made first, so the destination's disk can be told (a missing folder has none).
-        try? containers.prepare(continueAfterFailure: true)
+        try? await containers.prepare(continueAfterFailure: true)
         if let historyEntry { queue.history.updateContainerIdentities(historyEntry, containers.historyIdentities) }
         guard let (done, identities) = await renameOnOneDisk(moves, expected: expected) else {
             // Part of an undo or redo: History already has the operation. Each item is checked as the job reaches it.

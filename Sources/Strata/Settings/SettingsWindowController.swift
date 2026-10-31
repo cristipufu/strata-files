@@ -262,12 +262,14 @@ private struct IndexSettings: View {
 
 private struct TerminalSettings: View {
     @State private var selection = Prefs.shared.terminal ?? ""
+    /// The terminals found installed; the one chosen is offered until that's read.
+    @State private var installed: Set<String> = []
 
     var body: some View {
         Form {
             Picker("Open in Terminal uses", selection: Binding(get: { selection }, set: { selection = $0; Prefs.shared.terminal = $0.isEmpty ? nil : $0 })) {
                 Text("Automatic").tag("")
-                ForEach(Prefs.shared.terminals.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil },
+                ForEach(Prefs.shared.terminals.filter { installed.contains($0.bundleID) || $0.bundleID == selection },
                         id: \.bundleID) { terminal in
                     Text(terminal.name).tag(terminal.bundleID)
                 }
@@ -278,6 +280,7 @@ private struct TerminalSettings: View {
         }
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())
+        .task { installed = await Prefs.installed(Prefs.shared.terminals.map(\.bundleID)) }
     }
 }
 

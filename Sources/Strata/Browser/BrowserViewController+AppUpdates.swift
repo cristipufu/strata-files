@@ -19,10 +19,14 @@ extension BrowserViewController {
     @objc func checkAppsForUpdates(_ sender: Any?) {
         let apps = selectedApps
         guard !apps.isEmpty, let window = view.window, window.attachedSheet == nil else { return Sounds.beep() }
-        // This Strata alone: its own updater shows what's new and installs it.
-        if apps.count == 1, AppUpdatesController.isThisCopyOfStrata(apps[0]), Updates.shared.canCheck {
-            return Updates.shared.checkNow(sender)
+        Task { [weak self, weak window] in
+            // This Strata alone: its own updater shows what's new and installs it.
+            if apps.count == 1, await AppUpdatesController.isRunningCopy(apps[0]), Updates.shared.canCheck {
+                return Updates.shared.checkNow(sender)
+            }
+            // Not once its window closed, or took another sheet, meanwhile.
+            guard let self, let window, self.view.window === window, window.attachedSheet == nil else { return }
+            presentAsSheet(AppUpdatesController(urls: apps))
         }
-        presentAsSheet(AppUpdatesController(urls: apps))
     }
 }

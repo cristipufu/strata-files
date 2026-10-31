@@ -144,11 +144,23 @@ package enum Places {
         return nil
     }
 
+    /// The addresses network shares at `volumes` mount from. Each is asked of a system service that a share which
+    /// stopped answering can hold up, so only shares are asked, and on a thread of their own.
+    package nonisolated static func remountAddresses(_ volumes: [URL]) async -> [URL: URL] {
+        await OwnThread.run {
+            var found: [URL: URL] = [:]
+            for url in volumes {
+                found[url] = (try? url.resourceValues(forKeys: [.volumeURLForRemountingKey]))?.volumeURLForRemounting
+            }
+            return found
+        }
+    }
+
     /// The volumes mounted, read now: lists use `PlaceChecks`' last read.
     package nonisolated static func volumes() -> [Place] {
         let keys: [URLResourceKey] = [
             .volumeLocalizedNameKey, .volumeIsRemovableKey, .volumeIsEjectableKey, .volumeIsLocalKey,
-            .volumeIsBrowsableKey, .volumeIsRootFileSystemKey, .volumeURLForRemountingKey,
+            .volumeIsBrowsableKey, .volumeIsRootFileSystemKey,
         ]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         return urls.compactMap { url in
@@ -163,8 +175,7 @@ package enum Places {
             }
             return Place(title: v.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol,
                          isEjectable: v.volumeIsRootFileSystem != true
-                             && (v.volumeIsLocal == false || v.volumeIsRemovable == true || v.volumeIsEjectable == true),
-                         remountAddress: v.volumeURLForRemounting)
+                             && (v.volumeIsLocal == false || v.volumeIsRemovable == true || v.volumeIsEjectable == true))
         }
     }
 }

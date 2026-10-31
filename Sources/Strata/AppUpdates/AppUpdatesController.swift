@@ -23,10 +23,13 @@ final class AppUpdatesController: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Whether `url` is the Strata that's running, which its own updater installs.
-    static func isThisCopyOfStrata(_ url: URL) -> Bool {
+    /// Whether `url` is the Strata that's running, which its own updater installs: its links followed, so read away from
+    /// the main thread.
+    nonisolated static func isThisCopyOfStrata(_ url: URL) -> Bool {
         url.resolvingSymlinksInPath().standardizedFileURL == Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL
     }
+
+    @concurrent static func isRunningCopy(_ url: URL) async -> Bool { isThisCopyOfStrata(url) }
 
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "App Updates", comment: "Title of the sheet that checks the selected apps for updates"))
@@ -149,7 +152,7 @@ final class AppUpdatesController: NSViewController {
     private func show(_ result: AppUpdateResult, at index: Int) {
         results[index] = result
         guard let app = apps[index] else { return }
-        rows[index].show(result, of: app, isThisStrata: Self.isThisCopyOfStrata(app.url) && Updates.shared.canCheck) { [weak self] in
+        rows[index].show(result, of: app, isThisStrata: app.isThisStrata && Updates.shared.canCheck) { [weak self] in
             // Strata's own updater takes over from here.
             self?.close(nil)
             Updates.shared.checkNow(nil)
@@ -194,7 +197,12 @@ final class AppUpdatesController: NSViewController {
 /// One app: icon, name, what the check found, and a button for what to do about it.
 private final class AppUpdateRow: NSView {
     private let url: URL
-    private let name: String
+    /// As it's stored until the app's been read.
+    private var name: String
+    private let icon = NSImageView(image: NSWorkspace.shared.icon(for: .application))
+    private let nameLabel = NSTextField(labelWithString: "")
+    /// Reading the app's icon as it is now.
+    private(set) var reading: Task<Void, Never>?
     private let version = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let symbol = NSImageView()
@@ -206,12 +214,11 @@ private final class AppUpdateRow: NSView {
 
     init(_ url: URL) {
         self.url = url
-        name = FileManager.default.displayName(atPath: url.path)
+        name = url.deletingPathExtension().lastPathComponent
         super.init(frame: .zero)
-        let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: url.path))
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.setAccessibilityElement(false)
-        let nameLabel = NSTextField(labelWithString: name)
+        nameLabel.stringValue = name
         nameLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -275,12 +282,22 @@ private final class AppUpdateRow: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         updateAccessibility()
+        reading = Task { [weak self, url] in
+            let image = await IconCache.shared.currentIcon(forPath: url.path)
+            guard let self, !Task.isCancelled else { return }
+            icon.image = image
+        }
     }
+
+    isolated deinit { reading?.cancel() }
+
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func showDetails(_ app: InstalledApp) {
+        name = app.name
+        nameLabel.stringValue = app.name
         version.stringValue = app.version ?? ""
         version.toolTip = app.build.map { String(localized: "Build \($0)", comment: "Tooltip: an app's build number") }
     }

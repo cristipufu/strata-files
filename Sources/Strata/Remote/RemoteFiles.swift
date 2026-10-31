@@ -628,11 +628,11 @@ extension RemoteFiles {
     /// Metadata only: no eager files, recursive reads or swallowed listing errors in a Space preview.
     package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        let real = await RealPath.of(folder).standardizedFileURL
         if real == copies.root.standardizedFileURL { return }
         guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { throw CancellationError() }
-        let chosen = try ChosenFile(real)
+        let chosen = try await ChosenFile.choose(real)
         let key = real.path
         let request = previews.request(key) {
             Task {

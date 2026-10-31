@@ -135,7 +135,14 @@ package final class HTMLPreviewView: WebPreviewView {
     }
 
     private static func openInBrowser(_ url: URL) {
-        guard let browser = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.invalid")!) else { return }
-        NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration())
+        Task {
+            guard let browser = await defaultBrowser() else { return }
+            NSWorkspace.shared.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        }
+    }
+
+    /// The app that opens web addresses, asked of LaunchServices away from the main thread.
+    @concurrent private static func defaultBrowser() async -> URL? {
+        URL(string: "https://example.invalid").flatMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
     }
 }

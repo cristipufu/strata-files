@@ -472,9 +472,6 @@ final class BrowserViewController: NSViewController {
         entries.filter { !$0.isDirectory || $0.isSymlink }.map(\.url)
     }
 
-    /// Where `url` really is, its links followed (each one looked up on its disk).
-    @concurrent static func realURL(_ url: URL) async -> URL { url.resolvingSymlinksInPath() }
-
     private func showLoadError() {
         cancelPendingActions()
         sizer.cancelPending()

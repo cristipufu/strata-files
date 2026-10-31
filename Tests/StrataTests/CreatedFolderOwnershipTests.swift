@@ -158,21 +158,21 @@ struct CreatedFolderOwnershipTests {
         #expect(tree.snapshot() == ["a.txt", "made/", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
     }
 
-    @Test func recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested() throws {
+    @Test func recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested() async throws {
         let tree = try TestTree("made/", "bad", "neighbor/keep")
         let owned = CreatedFolders([tree.url("made"), tree.url("made")])
         #expect(owned.urls == [tree.url("made")])
         owned.removeEmpty()
         try tree.add(["made/"])
         let replacement = FileIdentity.read(tree.url("made").path)
-        try owned.makeMissing()
+        try await owned.makeMissing()
         owned.removeEmpty()
         #expect(FileIdentity.read(tree.url("made").path) == replacement)
 
         let pending = CreatedFolders([tree.url("bad/inner"), tree.url("longer-created-folder")])
-        #expect(throws: (any Error).self) { try pending.makeMissing() }
+        await #expect(throws: (any Error).self) { try await pending.makeMissing() }
         #expect(!FileManager.default.fileExists(atPath: tree.url("longer-created-folder").path))
-        #expect(throws: (any Error).self) { try pending.makeMissing(continueAfterFailure: true) }
+        await #expect(throws: (any Error).self) { try await pending.makeMissing(continueAfterFailure: true) }
         #expect(FileManager.default.fileExists(atPath: tree.url("longer-created-folder").path))
         pending.removeEmpty()
         #expect(tree.text("bad") == "bad" && tree.text("neighbor/keep") == "neighbor/keep")

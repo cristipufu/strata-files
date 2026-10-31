@@ -90,6 +90,9 @@ package final class PlanTransaction {
                            containerIdentities: createdFolders.historyIdentities, landed: applied)
     }
 
+    /// A folder the plan makes is there already when anything is at its path, a link's target included.
+    nonisolated private static func isThere(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
     package func perform() async -> PlanExecutor.Outcome {
         var outcome = PlanExecutor.Outcome()
         var displacedCount = 0
@@ -103,15 +106,11 @@ package final class PlanTransaction {
         let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
             ?? self.trashItems
         let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
-        let fm = FileManager.default
-        for folder in folders where !fm.fileExists(atPath: folder.path) {
-            do {
-                try fm.createDirectory(at: folder, withIntermediateDirectories: false)
-                created.append(folder)
-                createdFolders.record([folder])
-            } catch {
-                outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
-            }
+        let (made, failures) = await CreatedFolders.make(folders, intermediates: false, stopAtFailure: false, isThere: Self.isThere)
+        created = made.map(\.url)
+        createdFolders.record(made)
+        for (folder, error) in failures {
+            outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
         }
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
         for url in trashItems {

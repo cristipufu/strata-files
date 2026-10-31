@@ -48,18 +48,29 @@ package final class CreatedFolders {
         }
     }
 
-    package func makeMissing(continueAfterFailure: Bool = false) throws {
-        var firstError: Error?
-        for url in urls.sorted(by: { $0.path.count < $1.path.count }) where !TransferEngine.exists(url) {
+    package func makeMissing(continueAfterFailure: Bool = false) async throws {
+        let sorted = urls.sorted { $0.path.count < $1.path.count }
+        let (made, failures) = await Self.make(sorted, intermediates: true, stopAtFailure: !continueAfterFailure,
+                                               isThere: TransferEngine.exists)
+        record(made)
+        if let first = failures.first { throw first.error }
+    }
+
+    /// Makes those of `urls` that aren't there yet (`isThere`), in order, away from the main thread, each read as it's
+    /// made so a replacement can't take its ownership; with `stopAtFailure` the first failure ends it.
+    @concurrent package static func make(_ urls: [URL], intermediates: Bool, stopAtFailure: Bool,
+                                         isThere: @Sendable (URL) -> Bool) async -> (made: [Made], failures: [(url: URL, error: Error)]) {
+        var made: [Made] = [], failures: [(url: URL, error: Error)] = []
+        for url in urls where !isThere(url) {
             do {
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-                record([url])
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: intermediates)
+                made.append(Made(url))
             } catch {
-                if !continueAfterFailure { throw error }
-                if firstError == nil { firstError = error }
+                failures.append((url, error))
+                if stopAtFailure { break }
             }
         }
-        if let firstError { throw firstError }
+        return (made, failures)
     }
 
     package func removeEmpty() { FileOps.removeEmptyFolders(urls, identities: identities) }
@@ -78,8 +89,8 @@ package final class CreatedFolders {
             }
         }
 
-        package func prepare(continueAfterFailure: Bool = false) throws {
-            if case .make(let folders) = self { try folders.makeMissing(continueAfterFailure: continueAfterFailure) }
+        package func prepare(continueAfterFailure: Bool = false) async throws {
+            if case .make(let folders) = self { try await folders.makeMissing(continueAfterFailure: continueAfterFailure) }
         }
         package func finish() { if case .remove(let folders) = self { folders.removeEmpty() } }
 

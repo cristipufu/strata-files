@@ -283,8 +283,10 @@ final class ContainerInspectorView: NSView {
             let row = FlowView(spacing: 6, lineSpacing: 6)
             let preferences = self.preferences
             let terminal = ActionButton(String(localized: "Open in Terminal", comment: "Menu command: open a shell in the selected folder"), symbol: "terminal") {
-                guard let app = preferences.terminalURL else { return Sounds.beep() }
-                StackProjects.open([folder]) { ProjectEditors.open($0[0], with: app) }
+                Task {
+                    guard let app = await preferences.terminalApp() else { return Sounds.beep() }
+                    StackProjects.open([folder]) { ProjectEditors.open($0[0], with: app) }
+                }
             }
             terminal.toolTip = String(localized: "Open the project folder in your terminal", comment: "Inspector, a Compose project: tooltip on Open in Terminal")
             row.add(terminal)
@@ -337,7 +339,8 @@ final class ContainerInspectorView: NSView {
             }
         }
         let terminal = ActionButton(String(localized: "Terminal", comment: "Inspector button: a shell in the container"), symbol: "terminal") {
-            guard let engine = store.engine, ContainerControl.openTerminal(in: container, at: "/", engine: engine) else { return Sounds.beep() }
+            guard let engine = store.engine else { return Sounds.beep() }
+            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine)
         }
         terminal.isEnabled = container.isRunning
         terminal.toolTip = String(localized: "Open a shell in the container, in your terminal", comment: "Inspector: tooltip on Terminal")

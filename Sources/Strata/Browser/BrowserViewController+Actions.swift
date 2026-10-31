@@ -353,8 +353,11 @@ extension BrowserViewController {
         let selected = selectedEntries
         let folder = selected.count == 1 && selected[0].isFolder ? selected[0].url : targetDirectory
         guard let folder else { return }
-        guard let terminal = preferences.terminalURL else { return }
-        NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
+        let preferences = preferences
+        Task {
+            guard let terminal = await preferences.terminalApp() else { return }
+            NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        }
     }
 
     @objc func toggleHiddenFiles(_ sender: Any?) {

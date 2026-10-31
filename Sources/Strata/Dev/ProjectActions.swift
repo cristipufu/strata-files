@@ -160,15 +160,25 @@ package enum ProjectActions {
     /// window title shows the temporary file's name; the command runs through `$SHELL -lic` so it sees the same PATH
     /// as your interactive shell (nvm, Homebrew), which costs one rc-file load.
     @discardableResult
-    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) -> Bool {
+    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) async -> Bool {
         let project = projectName ?? script.directory.lastPathComponent
-        return openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
+        return await openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
     }
 
     /// Writes `body` (a `/bin/sh` script that deletes itself first) to a `.command` file and opens it in the preferred
     /// terminal. `name` is the file's name, which the terminal shows as the window's title.
     @discardableResult
-    package static func openCommandFile(named name: String, body: String) -> Bool {
+    package static func openCommandFile(named name: String, body: String) async -> Bool {
+        guard let (file, terminal) = await writeCommandFile(named: name, body: body) else { return false }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: configuration, completionHandler: nil)
+        return true
+    }
+
+    /// The file, in Strata's own scratch folder, and the terminal to open it in: written and looked up away from the
+    /// main thread.
+    @concurrent private static func writeCommandFile(named name: String, body: String) async -> (file: URL, terminal: URL)? {
         let folder = FileManager.default.temporaryDirectory.appending(path: "Strata Scripts", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
@@ -181,13 +191,9 @@ package enum ProjectActions {
             try body.write(to: file, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         } catch {
-            return false
+            return nil
         }
-        guard let terminal = preferredTerminal(for: file) else { return false }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: configuration)
-        return true
+        return preferredTerminal(for: file).map { (file, $0) }
     }
 
     /// The `.command` file body: cd, echo the command, run it in a login+interactive shell, then stay in a shell.
@@ -206,10 +212,10 @@ package enum ProjectActions {
         """
     }
 
-    package static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
+    package nonisolated static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
 
     /// First installed terminal from `terminalBundleIDs` that declares it can open `file`; Terminal as the fallback.
-    package static func preferredTerminal(for file: URL) -> URL? {
+    package nonisolated static func preferredTerminal(for file: URL) -> URL? {
         let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.standardizedFileURL))
         for id in terminalBundleIDs {
             if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.standardizedFileURL) {
@@ -222,7 +228,7 @@ package enum ProjectActions {
     /// A `.command` file name every terminal can open: plain ASCII letters, digits, spaces, dots, dashes and
     /// underscores. (Ghostty garbles other characters in the path it runs, an em dash included, and then can't find the
     /// file.)
-    package static func sanitize(_ name: String) -> String {
+    package nonisolated static func sanitize(_ name: String) -> String {
         let folded = name.folding(options: [.diacriticInsensitive, .widthInsensitive], locale: nil)
         let kept = folded.unicodeScalars.map { scalar -> Character in
             scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || " ._-".unicodeScalars.contains(scalar)) ? Character(scalar) : "-"
@@ -235,7 +241,7 @@ package enum ProjectActions {
 
     /// The files delete themselves when they run; this catches any that never ran (each in a folder of its own, left
     /// for an hour). Anything else in `folder` is removed as itself, never through a link.
-    package static func removeStaleCommandFiles(in folder: URL) {
+    package nonisolated static func removeStaleCommandFiles(in folder: URL) {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-3600)
         for url in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {

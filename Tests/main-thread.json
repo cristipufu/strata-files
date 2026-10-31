@@ -1,188 +1,44 @@
 [
  {
-  "file": "Sources/Strata/AI/PlanExecutor.swift",
-  "call": "fm.createDirectory",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/AI/PlanExecutor.swift",
-  "call": "fm.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Model/Prefs.swift",
-  "call": "NSWorkspace.shared.urlForApplication",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/AppUpdates/AppUpdatesController.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/AppUpdates/AppUpdatesController.swift",
-  "call": "FileManager.default.displayName",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/AppUpdates/AppUpdatesController.swift",
-  "call": "NSWorkspace.shared.icon(forFile",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Browser/BrowserRename.swift",
   "call": ".resourceValues(forKeys",
   "count": 1,
   "reason": "Renaming the one item you chose (a change asked for on one item may stay synchronous): whether it's a folder decides the extension confirmation."
  },
  {
-  "file": "Sources/Strata/Containers/ContainerFiles.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "FileManager.default.createDirectory",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "FileManager.default.setAttributes",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "NSWorkspace.shared.urlForApplication",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "NSWorkspace.shared.urlsForApplications",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "fm.contentsOfDirectory",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dev/ProjectActions.swift",
-  "call": "fm.removeItem",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dock/DockSearch.swift",
-  "call": "AXUIElementCopyAttributeValue(",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dock/DockSearch.swift",
-  "call": "FileManager.default.contentsOfDirectory",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Dock/DockSearch.swift",
-  "call": "FileManager.default.displayName",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Model/CreatedFolders.swift",
-  "call": "FileManager.default.createDirectory",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Model/FileOps.swift",
   "call": "FileManager.default.createDirectory",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "New Folder: a change asked for on one item, which AGENTS.md lets stay synchronous."
  },
  {
   "file": "Sources/Strata/Model/FileOps.swift",
   "call": "FileManager.default.trashItem",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Previews/HTMLPreviewView.swift",
-  "call": "NSWorkspace.shared.urlForApplication",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Previews/MarkdownPreviewView.swift",
-  "call": "FileManager.default.fileExists",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Remote/RemoteFiles.swift",
-  "call": ".resolvingSymlinksInPath()",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "Only the undo of New Folder and New File, with the one item it made: it runs inside the UndoManager callback, where its redo must be registered."
  },
  {
   "file": "Sources/Strata/Settings/SettingsWindowController.swift",
   "call": "FileManager.default.createSymbolicLink",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
  },
  {
   "file": "Sources/Strata/Settings/SettingsWindowController.swift",
   "call": "FileManager.default.destinationOfSymbolicLink",
   "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Settings/SettingsWindowController.swift",
-  "call": "NSWorkspace.shared.urlForApplication",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
  },
  {
   "file": "Sources/Strata/Settings/SettingsWindowController.swift",
   "call": "lstat(",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
  },
  {
   "file": "Sources/Strata/Settings/SettingsWindowController.swift",
   "call": "unlink(",
   "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Queue/ArchiveJob.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
-  "file": "Sources/Strata/Queue/TransferJob.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 2,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
  }
 ]

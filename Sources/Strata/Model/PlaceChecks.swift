@@ -86,6 +86,11 @@ package final class PlaceChecks {
 
     @concurrent package static func read(_ paths: [String]) async -> Snapshot {
         var snapshot = Snapshot(volumes: Places.volumes())
+        let shares = snapshot.volumes.filter { $0.symbol == "network" }.map(\.url)
+        if !shares.isEmpty {
+            let addresses = await Places.remountAddresses(shares)
+            for index in snapshot.volumes.indices { snapshot.volumes[index].remountAddress = addresses[snapshot.volumes[index].url] }
+        }
         for path in Set(paths) {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {

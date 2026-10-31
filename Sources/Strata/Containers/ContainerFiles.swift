@@ -1072,12 +1072,12 @@ package nonisolated enum CopyWriter {
 extension ContainerFiles {
     package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        let real = await RealPath.of(folder).standardizedFileURL
         // Engine and stack roots contain only container metadata; their normal refresh never fetches file contents.
         if copies.engineFolder(real) != nil || copies.isStack(real) { await refresh(real); try Task.checkCancellation(); return }
         guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
               !closing.contains(top.standardizedFileURL.path) else { throw CancellationError() }
-        let chosen = try ChosenFile(real)
+        let chosen = try await ChosenFile.choose(real)
         let request = previews.request(real.path) {
             Task {
                 let listing = try await self.readPreviewListing(source, path)

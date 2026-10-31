@@ -214,8 +214,8 @@ extension BrowserViewController {
             return true
         }
         Task {
-            guard let path = RemoteCopies.remotePath(of: await Self.realURL(folder), top: top),
-                  ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path))
+            guard let path = RemoteCopies.remotePath(of: await RealPath.of(folder), top: top),
+                  await ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path))
             else { return Sounds.beep() }
         }
         return true

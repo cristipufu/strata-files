@@ -1598,7 +1598,7 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                createdFolders.record([folder])\n",
+    "find": "        createdFolders.record(made)\n",
     "replace": "",
     "rule": "Plan folder cleanup records ownership when each folder is created",
     "tests": "PlanSafetyTests/runningAPlanDoesOnlyItsCheckedSteps|PlanSafetyTests/undoKeepsAFolderThePlanMadeOnceSomethingElseIsInIt|PlanSafetyTests/nestedFolderCleanupWorksAfterCompleteAndFailedMoves"
@@ -1837,7 +1837,7 @@
   },
   {
     "file": "Strata/Model/CreatedFolders.swift",
-    "find": "                record([url])\n",
+    "find": "        record(made)\n",
     "replace": "",
     "rule": "Created folder ownership follows directories made again by Redo",
     "tests": "CreatedFolderOwnershipTests/redoUpdatesOwnershipForLiveAndSavedHistory"
@@ -1851,8 +1851,8 @@
   },
   {
     "file": "Strata/Model/CreatedFolders.swift",
-    "find": "if !continueAfterFailure { throw error }",
-    "replace": "throw error",
+    "find": "        let (made, failures) = await Self.make(sorted, intermediates: true, stopAtFailure: !continueAfterFailure,",
+    "replace": "        let (made, failures) = await Self.make(sorted, intermediates: true, stopAtFailure: true,",
     "rule": "Created folder ownership recreation can continue after one failure",
     "tests": "CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested"
   },
@@ -7439,5 +7439,33 @@
     "replace": "        [url.standardizedFileURL.path].contains { path in",
     "rule": "The sidebar's Trash takes a disk mounted under /private",
     "tests": "DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "        await Self.firstInstalled((terminal.map { [$0] } ?? []) + terminals.map(\\.bundleID))",
+    "replace": "        await Self.firstInstalled(terminals.map(\\.bundleID) + (terminal.map { [$0] } ?? []))",
+    "rule": "Open in Terminal skips the terminal chosen in Settings",
+    "tests": "TerminalLookupTests/theChosenTerminalComesFirstAndMissingOnesAreSkipped"
+  },
+  {
+    "file": "Strata/Model/CreatedFolders.swift",
+    "find": "        for url in urls where !isThere(url) {",
+    "replace": "        for url in urls {",
+    "rule": "Created folder ownership takes a folder that was there already",
+    "tests": "CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "            return (false, (incoming ?? .distantPast) > (existing ?? .distantPast))",
+    "replace": "            return (false, true)",
+    "rule": "Merge applied to all replaces a newer file with an older one",
+    "tests": "TransferJobTests/mergeAppliedToAllSettlesTwoFilesByWhichIsNewer"
+  },
+  {
+    "file": "Strata/Queue/ArchiveJob.swift",
+    "find": "                resultBytes = made.1\n",
+    "replace": "",
+    "rule": "A finished Compress leaves out the zip's size",
+    "tests": "ArchiveStatusTests/aFinishedCompressSaysTheZipsNameAndSize"
   }
 ]
