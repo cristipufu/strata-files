@@ -24,7 +24,7 @@ API = re.compile(
     r"|O_TRUNC|\bf?truncate\(|\bl?chmod\(|fchmod|fchmodat|\bl?chflags\(|fchflags|\bl?chown\(|fchown|\bf?setxattr|\bf?removexattr"
     r"|acl_set|setResourceValue|setResourceValues|setAttributes\(|\butimes\(|\blutimes|futimes|utimensat|futimens|setTimes"
     r"|evictUbiquitous|setUbiquitous|unmount|eject|Process\(\)|executableURL|NSAppleScript|osascript|performFileOperation"
-    r"|mkdirat\(|createDirectory\("
+    r"|\bmkdir(?:at)?\(|createDirectory\("
 )
 FUNCTION = re.compile(r"\b(?:func\s+(\w+)|(init)\s*[(<?])")
 

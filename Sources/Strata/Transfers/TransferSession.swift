@@ -374,7 +374,6 @@ nonisolated extension TransferEngine {
             return CopyOutcome(fatal: TransferEngine.changedSince,
                                destinationExisted: true)
         }
-        var outcome = CopyOutcome()
         guard let cpath = strdup(source.path) else { return CopyOutcome(fatal: describe(ENOMEM)) }
         defer { free(cpath) }
         var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
@@ -382,81 +381,113 @@ nonisolated extension TransferEngine {
             return CopyOutcome(fatal: describe(errno))
         }
         defer { fts_close(fts) }
-        let hooks = hooks
-        var directories: [String: CopySession.DirectoryDescriptor] = [:]
+        var repair = DirectoryRepair(owned: owned, destination: destination, clone: clone, control: control,
+                                     progress: progress, hooks: hooks)
         while let entry = fts_read(fts) {
-            guard control.checkpoint() else { outcome.cancelled = true; break }
-            let info = Int32(entry.pointee.fts_info)
+            guard control.checkpoint() else { repair.outcome.cancelled = true; break }
             let srcPath = String(cString: entry.pointee.fts_path)
             let relative = srcPath.count > source.path.count ? String(srcPath.dropFirst(source.path.count)) : ""
             let dstPath = destination.path + relative
-            let srcURL = URL(fileURLWithPath: srcPath), dstURL = URL(fileURLWithPath: dstPath)
-            switch info {
+            switch Int32(entry.pointee.fts_info) {
             case FTS_D:
-                if let id = FileIdentity.read(srcPath) { outcome.sourceIdentities[srcPath] = id }
-                if exists(dstURL) {
-                    guard let expected = owned[dstPath], FileIdentity.read(dstPath) == expected,
-                          let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath),
-                          descriptor.identity == expected else {
-                        outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                         message: TransferEngine.changedSince,
-                                                         identity: owned[dstPath]))
-                        fts_set(fts, entry, FTS_SKIP)
-                        continue
-                    }
-                    directories[dstPath] = descriptor
-                    var dirInfo = stat()
-                    if fstat(descriptor.fd, &dirInfo) == 0, (dirInfo.st_mode & S_IRWXU) != S_IRWXU {
-                        _ = fchmod(descriptor.fd, (dirInfo.st_mode & 0o7777) | S_IRWXU)
-                    }
-                    outcome.created[dstPath] = expected
-                } else {
-                    guard mkdir(dstPath, 0o700) == 0 else {
-                        outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                         message: describe(errno), identity: nil))
-                        fts_set(fts, entry, FTS_SKIP)
-                        continue
-                    }
-                    let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath)
-                    directories[dstPath] = descriptor
-                    if let id = descriptor?.identity ?? FileIdentity.read(dstPath) { outcome.created[dstPath] = id }
-                }
+                if !repair.enter(srcPath, dstPath) { fts_set(fts, entry, FTS_SKIP) }
             case FTS_DP:
-                let descriptor = directories.removeValue(forKey: dstPath)
-                if let expected = descriptor?.identity, FileIdentity.read(dstPath) == expected {
-                    _ = Darwin.copyfile(srcPath, dstPath, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW))
-                }
-                if let id = descriptor?.identity { outcome.created[dstPath] = id }
-                if let code = hooks.copyFailure?(dstURL) {
-                    outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                     message: describe(code), identity: outcome.created[dstPath]))
-                }
+                repair.leave(srcPath, dstPath)
             case FTS_F, FTS_SL, FTS_SLNONE:
-                if exists(dstURL) {
-                    removeIfPresent(dstURL, in: destination, created: owned.merging(outcome.created) { _, new in new })
-                    if exists(dstURL) {
-                        outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                         message: TransferEngine.changedSince,
-                                                         identity: owned[dstPath]))
-                        continue
-                    }
-                }
-                let single = copyfile(srcURL, to: dstURL, clone: clone, control: control, progress: progress)
-                for (path, id) in single.created { outcome.created[path] = id }
-                for (path, id) in single.sourceIdentities { outcome.sourceIdentities[path] = id }
-                outcome.errors += single.errors
-                if single.cancelled { outcome.cancelled = true; return outcome }
-                if let fatal = single.fatal {
-                    outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                     message: fatal, identity: single.created[dstPath]))
-                }
+                guard repair.copyItem(srcPath, dstPath) else { return repair.outcome }
             case FTS_DNR, FTS_ERR, FTS_NS:
-                outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
-                                                 message: describe(entry.pointee.fts_errno), identity: owned[dstPath]))
+                repair.failed(srcPath, dstPath, code: entry.pointee.fts_errno)
             default:
                 break
             }
         }
-        return outcome
+        return repair.outcome
+    }
+
+    /// One walk repairing an owned partial tree: what it made and found, and the folders it holds open until it
+    /// leaves them.
+    private struct DirectoryRepair {
+        let owned: [String: FileIdentity]
+        let destination: URL
+        let clone: Bool
+        let control: TransferControl
+        let progress: TransferProgress
+        let hooks: Hooks
+        var outcome = CopyOutcome()
+        var directories: [String: CopySession.DirectoryDescriptor] = [:]
+
+        /// A folder the failed attempt made is kept only while it's still the one it made, and opened to its owner;
+        /// a missing one is made. Whether what's in it is walked.
+        mutating func enter(_ srcPath: String, _ dstPath: String) -> Bool {
+            if let id = FileIdentity.read(srcPath) { outcome.sourceIdentities[srcPath] = id }
+            guard exists(URL(fileURLWithPath: dstPath)) else { return make(srcPath, dstPath) }
+            guard let expected = owned[dstPath], FileIdentity.read(dstPath) == expected,
+                  let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath),
+                  descriptor.identity == expected else {
+                outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                 message: TransferEngine.changedSince, identity: owned[dstPath]))
+                return false
+            }
+            directories[dstPath] = descriptor
+            var dirInfo = stat()
+            if fstat(descriptor.fd, &dirInfo) == 0, (dirInfo.st_mode & S_IRWXU) != S_IRWXU {
+                _ = fchmod(descriptor.fd, (dirInfo.st_mode & 0o7777) | S_IRWXU)
+            }
+            outcome.created[dstPath] = expected
+            return true
+        }
+
+        private mutating func make(_ srcPath: String, _ dstPath: String) -> Bool {
+            guard mkdir(dstPath, 0o700) == 0 else {
+                outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                 message: describe(errno), identity: nil))
+                return false
+            }
+            let descriptor = CopySession.DirectoryDescriptor.openDirectory(dstPath)
+            directories[dstPath] = descriptor
+            if let id = descriptor?.identity ?? FileIdentity.read(dstPath) { outcome.created[dstPath] = id }
+            return true
+        }
+
+        /// A folder whose contents are done takes its source's metadata, while it's still the one entered.
+        mutating func leave(_ srcPath: String, _ dstPath: String) {
+            let descriptor = directories.removeValue(forKey: dstPath)
+            if let expected = descriptor?.identity, FileIdentity.read(dstPath) == expected {
+                _ = Darwin.copyfile(srcPath, dstPath, nil, copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW))
+            }
+            if let id = descriptor?.identity { outcome.created[dstPath] = id }
+            if let code = hooks.copyFailure?(URL(fileURLWithPath: dstPath)) {
+                outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                 message: describe(code), identity: outcome.created[dstPath]))
+            }
+        }
+
+        /// A file or link copied again, after removing what's there only if this job made it. False when stopped.
+        mutating func copyItem(_ srcPath: String, _ dstPath: String) -> Bool {
+            let srcURL = URL(fileURLWithPath: srcPath), dstURL = URL(fileURLWithPath: dstPath)
+            if exists(dstURL) {
+                removeIfPresent(dstURL, in: destination, created: owned.merging(outcome.created) { _, new in new })
+                if exists(dstURL) {
+                    outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                     message: TransferEngine.changedSince, identity: owned[dstPath]))
+                    return true
+                }
+            }
+            let single = copyfile(srcURL, to: dstURL, clone: clone, control: control, progress: progress)
+            for (path, id) in single.created { outcome.created[path] = id }
+            for (path, id) in single.sourceIdentities { outcome.sourceIdentities[path] = id }
+            outcome.errors += single.errors
+            if single.cancelled { outcome.cancelled = true; return false }
+            if let fatal = single.fatal {
+                outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                                 message: fatal, identity: single.created[dstPath]))
+            }
+            return true
+        }
+
+        mutating func failed(_ srcPath: String, _ dstPath: String, code: Int32) {
+            outcome.errors.append(EntryError(source: srcPath, destination: dstPath,
+                                             message: describe(code), identity: owned[dstPath]))
+        }
     }
 }

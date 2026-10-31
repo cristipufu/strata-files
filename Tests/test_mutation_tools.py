@@ -312,6 +312,22 @@ class MutationAuditTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_making_a_folder_is_found_however_it_is_spelled(self):
+        with tempfile.TemporaryDirectory(prefix="strata-mutation-audit-") as folder:
+            root = Path(folder)
+            (root / "Sources").mkdir()
+            (root / "Sources" / "Folders.swift").write_text(
+                "func plain() {\n    _ = mkdir(path, 0o700)\n}\n"
+                "func relative() {\n    _ = mkdirat(fd, name, 0o700)\n}\n"
+                "func foundation() {\n    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)\n}\n"
+                "func lookalike() {\n    _ = makemkdir(path)\n    // mkdir(path) in a comment\n}\n")
+            previous = os.getcwd()
+            try:
+                os.chdir(folder)
+                self.assertEqual(set(audit.audit()), {("Folders", "plain"), ("Folders", "relative"), ("Folders", "foundation")})
+            finally:
+                os.chdir(previous)
+
     def test_the_changed_function_is_covered_instead_of_its_context(self):
         with tempfile.TemporaryDirectory(prefix="strata-mutation-audit-") as folder:
             root = Path(folder)
