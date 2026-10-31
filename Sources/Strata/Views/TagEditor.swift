@@ -17,6 +17,8 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
     var onCommand: ((Selector) -> Bool)?
     private var shown: [String] = []
     private let tags: TagStore
+    /// The last change being written: each waits for the one before, so none reads tags another hasn't written yet.
+    private var writing: Task<Void, Never>?
 
     init(tags: TagStore) {
         self.tags = tags
@@ -124,32 +126,43 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         invalidateIntrinsicContentSize()
     }
 
-    /// Writes what changed since the field was last in step with the items.
-    func commit(includingTyped: Bool = true) {
+    /// Writes what changed since the field was last in step with the items, away from the main thread, after any
+    /// change still being written.
+    @discardableResult
+    func commit(includingTyped: Bool = true) -> Task<Void, Never>? {
         let tokens = tokens(includingTyped: includingTyped)
         let before = Set(shown.map { $0.lowercased() })
         let after = Set(tokens.map { $0.lowercased() })
         let added = tokens.filter { !before.contains($0.lowercased()) }
         let removed = before.subtracting(after)
-        guard !added.isEmpty || !removed.isEmpty else { return }
-        do {
-            try tags.update(urls, adding: added, removing: removed, undo: undo)
-        } catch {
-            let alert = NSAlert(error: error)
-            if let host = errorWindow ?? NSApp.mainWindow, host.attachedSheet == nil {
-                alert.beginSheetModal(for: host, completionHandler: nil)
-            } else {
-                alert.runModal()
+        guard !added.isEmpty || !removed.isEmpty else { return nil }
+        // In step with the items from now on; a failure reads them again.
+        var seen = Set<String>()
+        shown = tokens.filter { seen.insert($0.lowercased()).inserted }
+        let tags = tags, urls = urls, undo = undo, previous = writing
+        let write = Task { [weak self] in
+            await previous?.value
+            do {
+                try await tags.update(urls, adding: added, removing: removed, undo: undo)
+            } catch {
+                self?.show(error)
+                self?.reload()
+                return
             }
-            reload()
-            return
-        }
-        if currentEditor() == nil {
-            reload()
-        } else {
             // Mid-edit the field already shows them; resetting it would lose the caret.
-            var seen = Set<String>()
-            shown = tokens.filter { seen.insert($0.lowercased()).inserted }
+            guard let self, currentEditor() == nil else { return }
+            reload()
+        }
+        writing = write
+        return write
+    }
+
+    private func show(_ error: Error) {
+        let alert = NSAlert(error: error)
+        if let host = errorWindow ?? NSApp.mainWindow, host.attachedSheet == nil {
+            alert.beginSheetModal(for: host, completionHandler: nil)
+        } else {
+            alert.runModal()
         }
     }
 

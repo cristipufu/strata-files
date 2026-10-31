@@ -385,12 +385,12 @@
     "tests": "FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies",
     "edits": [
       {
-        "find": "try apply(urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { url in",
-        "replace": "try apply(urls.filter { Self.canTag(onDisk: $0, copies: .live) }.map { url in"
+        "find": "        var applied = write(urls.filter { canTag(onDisk: $0, copies: copies) }.map { url in",
+        "replace": "        var applied = write(urls.filter { canTag(onDisk: $0, copies: .live) }.map { url in"
       },
       {
-        "find": "            guard Self.canTag(onDisk: url, copies: copies) else { continue }",
-        "replace": "            guard Self.canTag(onDisk: url, copies: .live) else { continue }"
+        "find": "            guard canTag(onDisk: url, copies: copies) else { continue }",
+        "replace": "            guard canTag(onDisk: url, copies: .live) else { continue }"
       }
     ]
   },
@@ -7866,5 +7866,12 @@
     "replace": "                    continue\n",
     "rule": "A swap or chain that fails partway leaves what moved where it went",
     "tests": "RenameTests/aChainThatFailsAfterItsFirstStepPutsThatOneBack"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "                self.registerUndo(changes.map(\\.reversed), undo: undo)\n",
+    "replace": "",
+    "rule": "Undoing a tag change can't be redone",
+    "tests": "MetadataEditTests/tagsGoOnTheChosenFilesOnly"
   }
 ]

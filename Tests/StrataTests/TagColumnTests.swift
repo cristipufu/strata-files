@@ -48,7 +48,7 @@ struct TagColumnTests {
         let entry = try #require(FileEntry(url: tree.url("folder/a"))), store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         try write(["Red"], to: entry.url)
         let reading = store.load([entry])
-        try store.update([entry.url], adding: ["Blue"], removing: [], undo: nil)
+        try await store.update([entry.url], adding: ["Blue"], removing: [], undo: nil)
         await reading.value
         #expect(store.cachedTags(for: entry.url).isEmpty)
         _ = store.tags(for: entry.url)
@@ -77,7 +77,7 @@ struct TagColumnTests {
         await withCheckedContinuation { continuation in
             DispatchQueue.global().async { started.wait(); continuation.resume() }
         }
-        try store.update([item], adding: ["Blue"], removing: [], undo: nil)
+        try await store.update([item], adding: ["Blue"], removing: [], undo: nil)
         release.signal()
         await store.settled()
         #expect(!store.cachedTags(for: item).contains { $0.name == "From Before" })

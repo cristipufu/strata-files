@@ -325,7 +325,7 @@ struct EdgeCaseSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        try store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
+        try await store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
         undo.endUndoGrouping()
         #expect(await current(doc) == ["Strata Edge Test"])
 
@@ -335,6 +335,7 @@ struct EdgeCaseSafetyTests {
         #expect(await current(doc).isEmpty)
 
         undo.undo()
+        await FileOps.undoWork?.value
         store.invalidate(tree.root)
         #expect(await current(doc).isEmpty)
         #expect(tree.snapshot() == ["doc.txt"])

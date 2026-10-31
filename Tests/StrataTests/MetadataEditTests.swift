@@ -158,7 +158,7 @@ struct MetadataEditTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        try store.update([tree.url("a.txt"), tree.url("link")], adding: ["Strata Test"], removing: [], undo: undo)
+        try await store.update([tree.url("a.txt"), tree.url("link")], adding: ["Strata Test"], removing: [], undo: undo)
         undo.endUndoGrouping()
         func tags(_ path: String) -> [String] {
             (try? tree.url(path).resourceValues(forKeys: [.tagNamesKey]).tagNames) ?? []
@@ -169,7 +169,11 @@ struct MetadataEditTests {
         #expect(getxattr(tree.url("link").path, "com.apple.metadata:_kMDItemUserTags", nil, 0, 0, XATTR_NOFOLLOW) < 0)
         #expect(hasKeep(tree.url("a.txt").path))
         undo.undo()
-        for _ in 0..<40 where !tags("a.txt").isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
+        await FileOps.undoWork?.value
         #expect(tags("a.txt").isEmpty && hasKeep(tree.url("a.txt").path))
+        // Its redo was registered as it undid, and puts the tag back.
+        undo.redo()
+        await FileOps.undoWork?.value
+        #expect(tags("a.txt") == ["Strata Test"])
     }
 }

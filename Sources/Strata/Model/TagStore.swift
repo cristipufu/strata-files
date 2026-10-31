@@ -8,10 +8,12 @@ package nonisolated struct FinderTag: Hashable, Sendable {
     package let color: Int
 
     /// The seven colored tags, in Finder's menu order (red to gray), named as the system names them.
-    @MainActor package static var standard: [FinderTag] {
-        let names = NSWorkspace.shared.fileLabels
-        return [6, 7, 5, 2, 4, 3, 1].compactMap { color in
-            color < names.count ? FinderTag(name: names[color], color: color) : nil
+    @MainActor package static var standard: [FinderTag] { standard(labels: NSWorkspace.shared.fileLabels) }
+
+    /// `standard`, named by `labels` (the system's label names, `NSWorkspace.fileLabels`).
+    package static func standard(labels: [String]) -> [FinderTag] {
+        [6, 7, 5, 2, 4, 3, 1].compactMap { color in
+            color < labels.count ? FinderTag(name: labels[color], color: color) : nil
         }
     }
 
@@ -67,11 +69,11 @@ package final class TagStore {
     private static let recentKey = "recentTags"
 
     package struct Failure: LocalizedError {
-        package let failures: [(url: URL, error: Error)]
+        package let failed: [URL]
         package var errorDescription: String? {
-            failures.count == 1
-                ? String(localized: "The tags of “\(failures[0].url.lastPathComponent)” couldn’t be changed.")
-                : String(localized: "The tags of \(failures.count) items couldn’t be changed.", comment: "plural")
+            failed.count == 1
+                ? String(localized: "The tags of “\(failed[0].lastPathComponent)” couldn’t be changed.")
+                : String(localized: "The tags of \(failed.count) items couldn’t be changed.", comment: "plural")
         }
         package var failureReason: String? {
             String(localized: "They’re locked, or you don’t have permission to change them.", comment: "Why tags couldn’t be changed")
@@ -191,26 +193,18 @@ package final class TagStore {
     }
 
     /// Adds `tag` to every item, or removes it from all of them when they all have it already (Finder's colored circles).
-    package func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) throws {
-        let current = urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { (url: $0, tags: onDisk($0)) }
-        let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
-        try apply(current.map { item in
-            var tags = item.tags.filter { $0.name.caseInsensitiveCompare(tag.name) != .orderedSame }
-            if !everyHas { tags.append(tag) }
-            return (item.url, tags)
-        }, undo: undo, added: everyHas ? [] : [tag.name])
+    /// The items are read and written away from the main thread.
+    package func toggle(_ tag: FinderTag, on urls: [URL], undo: UndoManager?) async throws {
+        let copies = copies, labels = NSWorkspace.shared.fileLabels
+        let applied = await Self.toggling(tag, on: urls, copies: copies, labels: labels)
+        try finish(applied, undo: undo)
     }
 
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
-    package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) throws {
-        let added = adding.map(Self.clean).filter { !$0.isEmpty }
-        try apply(urls.filter { Self.canTag(onDisk: $0, copies: copies) }.map { url in
-            var tags = onDisk(url).filter { !removing.contains($0.name.lowercased()) }
-            for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-                tags.append(FinderTag(name: name, color: Self.color(forNew: name)))
-            }
-            return (url, tags)
-        }, undo: undo, added: added)
+    package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) async throws {
+        let copies = copies, labels = NSWorkspace.shared.fileLabels
+        let applied = await Self.updating(urls, adding: adding, removing: removing, copies: copies, labels: labels)
+        try finish(applied, undo: undo)
     }
 
     /// Tags to suggest: the seven colored ones, then others you've added here, most recent first.
@@ -233,67 +227,125 @@ package final class TagStore {
 
     // MARK: - Private
 
-    /// The item's tags as they are on disk now (bypassing the cache: Finder may have changed them).
-    private func onDisk(_ url: URL) -> [FinderTag] {
-        Self.read(url.standardizedFileURL.path, labels: NSWorkspace.shared.fileLabels)
+    /// One item's tags changed: what it is, and its tags before and after.
+    private nonisolated struct Change: Sendable {
+        let url: URL
+        let path: String
+        let identity: FileIdentity?
+        let before: [FinderTag]
+        let after: [FinderTag]
+
+        var reversed: Change { Change(url: url, path: path, identity: identity, before: after, after: before) }
     }
 
-    /// Writes each item's tags, going on past failures (reported together at the end). Links are skipped.
-    private func apply(_ changes: [(URL, [FinderTag])], undo: UndoManager?, added: [String]) throws {
-        var previous: [(url: URL, identity: FileIdentity?, tags: [FinderTag])] = []
-        var changed: [URL] = []
-        var failures: [(url: URL, error: Error)] = []
-        let labels = NSWorkspace.shared.fileLabels
+    /// What a worker did to the items' tags, and the names you added.
+    private nonisolated struct Applied: Sendable {
+        var changes: [Change] = []
+        var failed: [URL] = []
+        var added: [String] = []
+    }
+
+    @concurrent private static func toggling(_ tag: FinderTag, on urls: [URL], copies: CopyProviders,
+                                             labels: [String]) async -> Applied {
+        let current = urls.filter { canTag(onDisk: $0, copies: copies) }
+            .map { (url: $0, tags: read($0.standardizedFileURL.path, labels: labels)) }
+        let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
+        var applied = write(current.map { item in
+            var tags = item.tags.filter { $0.name.caseInsensitiveCompare(tag.name) != .orderedSame }
+            if !everyHas { tags.append(tag) }
+            return (item.url, tags)
+        }, copies: copies, labels: labels)
+        applied.added = everyHas ? [] : [tag.name]
+        return applied
+    }
+
+    @concurrent private static func updating(_ urls: [URL], adding: [String], removing: Set<String>, copies: CopyProviders,
+                                             labels: [String]) async -> Applied {
+        let added = adding.map(clean).filter { !$0.isEmpty }
+        var applied = write(urls.filter { canTag(onDisk: $0, copies: copies) }.map { url in
+            var tags = read(url.standardizedFileURL.path, labels: labels).filter { !removing.contains($0.name.lowercased()) }
+            for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                tags.append(FinderTag(name: name, color: color(forNew: name, labels: labels)))
+            }
+            return (url, tags)
+        }, copies: copies, labels: labels)
+        applied.added = added
+        return applied
+    }
+
+    /// Puts back each item's tags from `changes` (their `after`), only while it's still the item that changed.
+    @concurrent private static func restoring(_ changes: [Change], copies: CopyProviders, labels: [String]) async -> Applied {
+        write(changes.filter { $0.identity != nil && FileIdentity.read($0.path) == $0.identity }.map { ($0.url, $0.after) },
+              copies: copies, labels: labels)
+    }
+
+    /// Writes each item's tags, going on past failures. Links are skipped.
+    nonisolated private static func write(_ changes: [(URL, [FinderTag])], copies: CopyProviders, labels: [String]) -> Applied {
+        var applied = Applied()
         for (url, tags) in changes {
-            let path = url.standardizedFileURL.path
-            guard Self.canTag(onDisk: url, copies: copies) else { continue }
+            guard canTag(onDisk: url, copies: copies) else { continue }
             guard let chosen = try? ChosenFile(url) else {
-                failures.append((url, POSIXError(.ESTALE)))
+                applied.failed.append(url)
                 continue
             }
             // Duplicates and empty names are dropped; the first spelling wins.
             var seen = Set<String>()
             let wanted = tags.compactMap { tag -> FinderTag? in
-                let name = Self.clean(tag.name)
+                let name = clean(tag.name)
                 guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { return nil }
                 return FinderTag(name: name, color: tag.color)
             }
             do {
-                let previousTags = try chosen.withDescriptor { fd, info -> [FinderTag]? in
+                let before = try chosen.withDescriptor { fd, info -> [FinderTag]? in
                     guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
-                    let before = Self.read(fd, labels: labels)
+                    let before = read(fd, labels: labels)
                     guard wanted != before else { return nil }
-                    try Self.write(wanted, to: fd)
+                    try write(wanted, to: fd)
                     return before
                 }
-                guard let previousTags else { continue }
-                cache[path] = nil
-                stale.remove(path)
-                tagChanges[path, default: 0] += 1
-                previous.append((url, chosen.identity, previousTags))
-                changed.append(url)
+                guard let before else { continue }
+                applied.changes.append(Change(url: url, path: url.standardizedFileURL.path, identity: chosen.identity,
+                                              before: before, after: wanted))
             } catch {
-                failures.append((url, error))
+                applied.failed.append(url)
             }
         }
-        if !changed.isEmpty {
-            registerUndo(previous, undo: undo)
-            remember(added)
-            NotificationCenter.default.post(name: .tagsChanged, object: self, userInfo: ["urls": changed])
-        }
-        if !failures.isEmpty { throw Failure(failures: failures) }
+        return applied
     }
 
-    private func registerUndo(_ previous: [(url: URL, identity: FileIdentity?, tags: [FinderTag])], undo: UndoManager?) {
+    /// Takes what a worker did: its items are read afresh, what they were goes into ⌘Z, and failures are reported.
+    private func finish(_ applied: Applied, undo: UndoManager?) throws {
+        if !applied.changes.isEmpty {
+            took(applied)
+            registerUndo(applied.changes, undo: undo)
+            remember(applied.added)
+        }
+        if !applied.failed.isEmpty { throw Failure(failed: applied.failed) }
+    }
+
+    private func took(_ applied: Applied) {
+        for change in applied.changes {
+            cache[change.path] = nil
+            stale.remove(change.path)
+            tagChanges[change.path, default: 0] += 1
+        }
+        guard !applied.changes.isEmpty else { return }
+        NotificationCenter.default.post(name: .tagsChanged, object: self, userInfo: ["urls": applied.changes.map(\.url)])
+    }
+
+    /// ⌘Z puts back what each item had, and its redo is registered at once (it puts back what's set now); the tags
+    /// themselves are written as undo work, away from the main thread.
+    private func registerUndo(_ changes: [Change], undo: UndoManager?) {
         guard let undo else { return }
         undo.registerUndo(withTarget: undo) { [weak self] undo in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                let valid = previous.compactMap { item -> (URL, [FinderTag])? in
-                    guard let identity = item.identity, FileIdentity.read(item.url.standardizedFileURL.path) == identity else { return nil }
-                    return (item.url, item.tags)
+                self.registerUndo(changes.map(\.reversed), undo: undo)
+                let copies = self.copies, labels = NSWorkspace.shared.fileLabels
+                _ = FileOps.afterUndoWork { [weak self] in
+                    let applied = await Self.restoring(changes.map(\.reversed), copies: copies, labels: labels)
+                    self?.took(applied)
                 }
-                try? self.apply(valid, undo: undo, added: [])
             }
         }
         undo.setActionName(String(localized: "Tags", comment: "Undo action name: changing Finder tags"))
@@ -311,8 +363,8 @@ package final class TagStore {
     }
 
     /// A new tag's color: one of the colored tags by name, else none.
-    private static func color(forNew name: String) -> Int {
-        FinderTag.standard.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.color ?? 0
+    nonisolated private static func color(forNew name: String, labels: [String]) -> Int {
+        FinderTag.standard(labels: labels).first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.color ?? 0
     }
 
     /// One line, trimmed: a tag name can't hold line breaks (they'd be read back as a color).

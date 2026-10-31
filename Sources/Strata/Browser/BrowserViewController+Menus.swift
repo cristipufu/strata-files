@@ -212,7 +212,8 @@ extension BrowserViewController {
         let row = NSMenuItem()
         row.view = TagMenuView(applied: applied) { [weak self] tag in
             guard let self else { return }
-            do { try services.tags.toggle(tag, on: urls, undo: undoManager) } catch { presentFileError(error) }
+            let tags = services.tags, undo = undoManager
+            performAsync { try await tags.toggle(tag, on: urls, undo: undo) }
         }
         menu.addItem(row)
         addMenuCommand(.editTags, to: menu)
