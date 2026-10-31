@@ -4,7 +4,7 @@ import Quartz
 /// Gallery view, like Finder's: a large preview of the selected item over a strip of thumbnails. ←/→ step through the
 /// folder, Space opens Quick Look, Return renames (or opens, per Settings); typing filters, as everywhere else. Like
 /// Finder's, something is always selected, so the preview always has something to show.
-final class GalleryViewController: NSViewController, FileCollectionController {
+final class GalleryViewController: NSViewController, FileCollectionController, FileCollectionHost {
     let thumbnails: FileThumbnails
     let copies: CopyProviders
     let clipboard: Clipboard
@@ -59,8 +59,10 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         preview.clear()
         previewed = nil
     }
-    private var selectionReportPending = false
-    private var lastReportedSelection: [URL] = []
+    private lazy var selectionReports = SelectionReports(selection: { [weak self] in self?.selectedURLs ?? [] }) { [weak self] urls in
+        guard let self else { return }
+        fileDelegate?.fileView(self, selectionDidChange: urls)
+    }
     private var renameField: InlineRenameField?
     private var deferredEntries: [FileEntry]?
     /// Opens the folder a drag rests on.
@@ -113,7 +115,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         strip.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         strip.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         strip.setAccessibilityLabel(String(localized: "Gallery", comment: "View mode: items in a gallery"))
-        strip.controller = self
+        strip.host = self
 
         stripScroll.documentView = strip
         stripScroll.hasHorizontalScroller = true
@@ -436,18 +438,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     fileprivate func reportSelection() {
         schedulePreview()
-        guard !selectionReportPending else { return }
-        selectionReportPending = true
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.selectionReportPending = false
-                let urls = self.selectedURLs
-                guard urls != self.lastReportedSelection else { return }
-                self.lastReportedSelection = urls
-                self.fileDelegate?.fileView(self, selectionDidChange: urls)
-            }
-        }
+        selectionReports.soon()
     }
 
     private func scrollToItem(_ index: Int) {
@@ -486,7 +477,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         fileDelegate?.fileView(self, open: selected)
     }
 
-    fileprivate func handleKey(_ key: FileViewKey) -> Bool {
+    func handleKey(_ key: FileViewKey) -> Bool {
         if fileDelegate?.fileView(self, handle: key) == true { return true }
         if key == .returnKey { openSelection(); return true }
         return false
@@ -500,8 +491,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             anchor = index
         }
         reportSelection()
-        lastReportedSelection = selectedURLs
-        fileDelegate?.fileView(self, selectionDidChange: lastReportedSelection)
+        selectionReports.now()
         return fileDelegate?.fileView(self, menuFor: selectedEntries)
     }
 
@@ -513,7 +503,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         schedulePreview()
     }
 
-    fileprivate func focusChanged() { refreshVisibleItems() }
+    func focusChanged() { refreshVisibleItems() }
 
     // MARK: - Drops
 
@@ -665,45 +655,20 @@ final class GalleryRootView: NSView {
 }
 
 /// The thumbnail strip: keys go where the list sends them (typing filters, Space previews, Return renames or opens).
-final class GalleryStripView: NSCollectionView {
-    fileprivate weak var controller: GalleryViewController?
-    private var windowObservers: [NSObjectProtocol] = []
-    private let copies: CopyProviders
+final class GalleryStripView: FileCollectionView {
+    fileprivate var controller: GalleryViewController? { host as? GalleryViewController }
 
-    init(copies: CopyProviders) {
-        self.copies = copies
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    var isEmphasized: Bool {
-        guard let window else { return false }
-        return window.isKeyWindow && window.firstResponder === self
-    }
-
-    override func keyDown(with event: NSEvent) {
-        guard let controller else { return super.keyDown(with: event) }
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let plain = mods.isDisjoint(with: [.command, .control])
-        let extend = mods.contains(.shift)
-        switch event.keyCode {
-        case KeyCode.leftArrow where plain, KeyCode.upArrow where plain: controller.move(by: -1, extend: extend); return
-        case KeyCode.rightArrow where plain, KeyCode.downArrow where plain: controller.move(by: 1, extend: extend); return
-        case KeyCode.home: controller.move(by: Int.min, extend: extend); return
-        case KeyCode.end: controller.move(by: Int.max, extend: extend); return
-        default: break
+    override func move(for keyCode: UInt16, plain: Bool, extend: Bool) -> Bool {
+        let step: Int? = switch keyCode {
+        case KeyCode.leftArrow where plain, KeyCode.upArrow where plain: -1
+        case KeyCode.rightArrow where plain, KeyCode.downArrow where plain: 1
+        case KeyCode.home: Int.min
+        case KeyCode.end: Int.max
+        default: nil
         }
-        if let key = FileViewKey.from(event) {
-            if case .type = key {
-                if controller.handleKey(key) { return }
-            } else {
-                if !controller.handleKey(key) { super.keyDown(with: event) }
-                return
-            }
-        }
-        super.keyDown(with: event)
+        guard let step, let controller else { return false }
+        controller.move(by: step, extend: extend)
+        return true
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -728,30 +693,6 @@ final class GalleryStripView: NSCollectionView {
     override func menu(for event: NSEvent) -> NSMenu? {
         window?.makeFirstResponder(self)
         return controller?.contextMenu(at: indexPathForItem(at: convert(event.locationInWindow, from: nil))?.item)
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let result = super.becomeFirstResponder()
-        controller?.focusChanged()
-        return result
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let result = super.resignFirstResponder()
-        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.controller?.focusChanged() } }
-        return result
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
-        windowObservers = []
-        guard let window else { return }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.controller?.focusChanged() }
-            })
-        }
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {

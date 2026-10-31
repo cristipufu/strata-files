@@ -1,7 +1,7 @@
 import AppKit
 
 /// The icon view: a justified grid of large icons and Quick Look thumbnails, fed by the browser.
-final class GridViewController: NSViewController, FileCollectionController {
+final class GridViewController: NSViewController, FileCollectionController, FileCollectionHost {
     let preferences: Prefs
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
@@ -63,8 +63,10 @@ final class GridViewController: NSViewController, FileCollectionController {
     })
     private var lead: Int?
     private var anchor: Int?
-    private var selectionReportPending = false
-    private var lastReportedSelection: [URL] = []
+    private lazy var selectionReports = SelectionReports(selection: { [weak self] in self?.selectedURLs ?? [] }) { [weak self] urls in
+        guard let self else { return }
+        fileDelegate?.fileView(self, selectionDidChange: urls)
+    }
     private var renameField: InlineRenameField?
     private var deferredEntries: ([FileEntry], [URL: [Int]])?
     private var thumbnailRefresh: DispatchWorkItem?
@@ -86,7 +88,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         cv.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
-        cv.controller = self
+        cv.host = self
 
         scrollView.documentView = cv
         scrollView.hasVerticalScroller = true
@@ -299,18 +301,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     // MARK: - Selection
 
     fileprivate func reportSelection() {
-        guard !selectionReportPending else { return }
-        selectionReportPending = true
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.selectionReportPending = false
-                let urls = self.selectedURLs
-                guard urls != self.lastReportedSelection else { return }
-                self.lastReportedSelection = urls
-                self.fileDelegate?.fileView(self, selectionDidChange: urls)
-            }
-        }
+        selectionReports.soon()
     }
 
     private func scrollToItem(_ index: Int) {
@@ -378,12 +369,11 @@ final class GridViewController: NSViewController, FileCollectionController {
         }
         reportSelection()
         // Report synchronously too, so the browser builds the menu for the new selection.
-        lastReportedSelection = selectedURLs
-        fileDelegate?.fileView(self, selectionDidChange: lastReportedSelection)
+        selectionReports.now()
         return fileDelegate?.fileView(self, menuFor: selectedEntries)
     }
 
-    fileprivate func handleKey(_ key: FileViewKey) -> Bool {
+    func handleKey(_ key: FileViewKey) -> Bool {
         if fileDelegate?.fileView(self, handle: key) == true { return true }
         if key == .returnKey { openSelection(); return true }
         return false
@@ -410,7 +400,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         fileDelegate?.fileView(self, renameClicked: url)
     }
 
-    fileprivate func focusChanged() { refreshVisibleItems() }
+    func focusChanged() { refreshVisibleItems() }
 
     fileprivate func noteClickSelection() {
         // Mouse selection moves the keyboard lead to the clicked item.
@@ -563,49 +553,29 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
 
 /// Routes keys like the list does (typing filters, Space previews, Return renames) and adds double-click,
 /// context-menu selection and focus-aware highlighting.
-final class GridCollectionView: NSCollectionView {
+final class GridCollectionView: FileCollectionView {
     enum Direction { case left, right, up, down, home, end }
 
-    fileprivate weak var controller: GridViewController?
+    fileprivate var controller: GridViewController? { host as? GridViewController }
     fileprivate var lastMouseDownPoint: NSPoint?
     private let clickToRename = ClickToRename()
-    private let copies: CopyProviders
-
-    init(copies: CopyProviders) {
-        self.copies = copies
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    var isEmphasized: Bool {
-        guard let window else { return false }
-        return window.isKeyWindow && window.firstResponder === self
-    }
 
     override func keyDown(with event: NSEvent) {
         clickToRename.cancel()
-        guard let controller else { return super.keyDown(with: event) }
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let plain = mods.isDisjoint(with: [.command, .control])
-        let extend = mods.contains(.shift)
-        switch event.keyCode {
-        case KeyCode.leftArrow where plain: controller.move(.left, extend: extend); return
-        case KeyCode.rightArrow where plain: controller.move(.right, extend: extend); return
-        case KeyCode.downArrow where plain: controller.move(.down, extend: extend); return
-        case KeyCode.upArrow where plain: controller.move(.up, extend: extend); return
-        default: break
-        }
-        if let key = FileViewKey.from(event) {
-            if case .type = key {
-                if controller.handleKey(key) { return }
-            } else {
-                if !controller.handleKey(key) { super.keyDown(with: event) }
-                return
-            }
-        }
         super.keyDown(with: event)
+    }
+
+    override func move(for keyCode: UInt16, plain: Bool, extend: Bool) -> Bool {
+        let direction: Direction? = switch keyCode {
+        case KeyCode.leftArrow where plain: .left
+        case KeyCode.rightArrow where plain: .right
+        case KeyCode.downArrow where plain: .down
+        case KeyCode.upArrow where plain: .up
+        default: nil
+        }
+        guard let direction, let controller else { return false }
+        controller.move(direction, extend: extend)
+        return true
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -624,32 +594,6 @@ final class GridCollectionView: NSCollectionView {
         clickToRename.cancel()
         window?.makeFirstResponder(self)
         return controller?.contextMenu(at: convert(event.locationInWindow, from: nil))
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let result = super.becomeFirstResponder()
-        controller?.focusChanged()
-        return result
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let result = super.resignFirstResponder()
-        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.controller?.focusChanged() } }
-        return result
-    }
-
-    private var windowObservers: [NSObjectProtocol] = []
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
-        windowObservers = []
-        guard let window else { return }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.controller?.focusChanged() }
-            })
-        }
     }
 
     override func viewDidChangeEffectiveAppearance() {
