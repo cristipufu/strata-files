@@ -3957,7 +3957,7 @@
     "tests": "AsyncActionContextTests/containerStoresAndProblemNoticesStayScopedToTheirOwningBrowserServices"
   },
   {
-    "file": "Strata/Containers/ContainerDrag.swift",
+    "file": "Strata/Views/FileDrop+Containers.swift",
     "find": ".map { URL(fileURLWithPath: $0) }.filter { copies.contains($0) }",
     "replace": ".map { URL(fileURLWithPath: $0) }",
     "rule": "Module and provider boundaries dragged container items bypass the active copy provider",
@@ -4104,7 +4104,7 @@
     "tests": "FileCommandOwnershipTests/missingTrashHasALocalizedAlertAndLeavesTheSelectionAlone"
   },
   {
-    "file": "Strata/Dev/ProjectInspectorView.swift",
+    "file": "Strata/Inspector/ProjectInspectorView.swift",
     "find": "self.preferences = files.transfers.preferences",
     "replace": "self.preferences = .shared",
     "rule": "Project inspector uses preferences outside its command owner",

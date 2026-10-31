@@ -1,30 +1,30 @@
 [
   {
-    "file": "Sources/Strata/AI/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetController.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.5).setFill()",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
   },
   {
-    "file": "Sources/Strata/AI/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetController.swift",
     "code": "layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "dot.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.85).cgColor",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "for bar in bars { bar.backgroundColor = NSColor.quaternaryLabelColor.cgColor }",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "piece.backgroundColor = NSColor.black.cgColor",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."

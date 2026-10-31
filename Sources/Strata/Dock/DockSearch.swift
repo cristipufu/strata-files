@@ -520,7 +520,7 @@ enum DockSearchItems {
             let hits = await StrataAI.index.search(contentQuery, limit: 8).filter { hit in
                 !known.contains(hit.url.path) && (structural.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
             }
-            items += StrataAI.paletteItems(for: hits) { NSWorkspace.shared.open($0) }
+            items += PaletteItem.contentMatches(hits) { NSWorkspace.shared.open($0) }
         }
         let summary = found.interpretation?.summary
         let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
