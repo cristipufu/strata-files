@@ -138,88 +138,121 @@ extension BrowserWindowController {
     }
 
     func commandItems() -> [PaletteItem] {
-        var commands: [PaletteItem] = []
-        let selection = browser.selectedURLs
-        func add(_ command: StrataCommand, title: String? = nil, shortcut: String? = nil, keywords: [String] = []) {
-            if let item = paletteCommand(command, title: title, shortcut: shortcut, keywords: keywords, selection: selection) { commands.append(item) }
+        var commands = PaletteCommands(window: self, selection: browser.selectedURLs)
+        addSelectionCommands(to: &commands)
+        addCreateAndViewCommands(to: &commands)
+        addGoCommands(to: &commands)
+        addAppCommands(to: &commands)
+        addFolderCommands(to: &commands)
+        commands.append(aiPaletteItems())
+        if !Privacy.hasFullDiskAccess {
+            commands.custom("privacy.fullDiskAccess", String(localized: "Grant Full Disk Access…"), "lock.open") { NSWorkspace.shared.open(Privacy.settingsURL) }
         }
-        func custom(_ id: String, _ title: String, _ symbol: String, _ shortcut: String? = nil,
-                    keywords: [String] = [], run: @escaping () -> Void) {
+        return commands.items
+    }
+
+    /// The palette's items in the order they're listed: the window's commands it can run now, and its own actions.
+    private struct PaletteCommands {
+        let window: BrowserWindowController
+        let selection: [URL]
+        private(set) var items: [PaletteItem] = []
+
+        mutating func add(_ command: StrataCommand, title: String? = nil, shortcut: String? = nil, keywords: [String] = []) {
+            if let item = window.paletteCommand(command, title: title, shortcut: shortcut, keywords: keywords, selection: selection) { items.append(item) }
+        }
+
+        mutating func custom(_ id: String, _ title: String, _ symbol: String, _ shortcut: String? = nil,
+                             keywords: [String] = [], run: @escaping () -> Void) {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
-            commands.append(PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut,
-                                        keywords: keywords, commandID: id, run: run))
+            items.append(PaletteItem(title: title, subtitle: "", icon: image, kind: .action, shortcut: shortcut,
+                                     keywords: keywords, commandID: id, run: run))
         }
-        if !selection.isEmpty {
-            add(.toggleQuickLook, shortcut: ShortcutStore.shared.live("Space"))
-            add(.addToShelf)
-            add(.editTags, keywords: ["Label", "Color"])
-            add(.share, keywords: ["AirDrop", "Send", "Mail", "Messages"])
-            add(.duplicate)
-            add(.renameSelection, shortcut: selection.count > 1 ? nil : "↩", keywords: ["Batch", "Replace", "Number"])
-            add(.deleteImmediately, keywords: ["Remove", "Erase"])
-            add(.compress, keywords: ["Zip", "Archive"])
-            add(.checkAppsForUpdates, keywords: ["Update", "Upgrade", "Version", "App Store"])
-            add(.extract, keywords: ["Unzip", "Expand", "Decompress"])
-            add(.moveToTrash, keywords: ["Remove", "Erase", "Trash"])
-        }
-        add(.newFolder)
-        add(.newFile, keywords: ["Text", "Empty", "Document"])
-        add(.newWindowForTab)
-        add(.newWindow)
-        add(.openInTerminal)
-        add(.copyPath)
-        add(.toggleHiddenFiles, title: services.preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
-        add(.toggleFoldersFirst, title: services.preferences.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
-        add(.toggleInspector, title: splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector") : String(localized: "Hide Inspector"))
-        add(.toggleSidebar, title: splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"))
-        add(.toggleFolderTree, title: services.preferences.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
-            keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
-        add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
+
+        mutating func append(_ more: [PaletteItem]) { items += more }
+    }
+
+    private func addSelectionCommands(to commands: inout PaletteCommands) {
+        guard !commands.selection.isEmpty else { return }
+        commands.add(.toggleQuickLook, shortcut: ShortcutStore.shared.live("Space"))
+        commands.add(.addToShelf)
+        commands.add(.editTags, keywords: ["Label", "Color"])
+        commands.add(.share, keywords: ["AirDrop", "Send", "Mail", "Messages"])
+        commands.add(.duplicate)
+        commands.add(.renameSelection, shortcut: commands.selection.count > 1 ? nil : "↩", keywords: ["Batch", "Replace", "Number"])
+        commands.add(.deleteImmediately, keywords: ["Remove", "Erase"])
+        commands.add(.compress, keywords: ["Zip", "Archive"])
+        commands.add(.checkAppsForUpdates, keywords: ["Update", "Upgrade", "Version", "App Store"])
+        commands.add(.extract, keywords: ["Unzip", "Expand", "Decompress"])
+        commands.add(.moveToTrash, keywords: ["Remove", "Erase", "Trash"])
+    }
+
+    /// New items and windows, and what the window shows: hidden files, folder order, its panels and view.
+    private func addCreateAndViewCommands(to commands: inout PaletteCommands) {
+        commands.add(.newFolder)
+        commands.add(.newFile, keywords: ["Text", "Empty", "Document"])
+        commands.add(.newWindowForTab)
+        commands.add(.newWindow)
+        commands.add(.openInTerminal)
+        commands.add(.copyPath)
+        commands.add(.toggleHiddenFiles, title: services.preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files"))
+        commands.add(.toggleFoldersFirst, title: services.preferences.foldersFirst ? String(localized: "Mix Folders with Files") : String(localized: "Keep Folders on Top"))
+        commands.add(.toggleInspector, title: splitController.splitViewItems.last?.isCollapsed == true ? String(localized: "Show Inspector") : String(localized: "Hide Inspector"))
+        commands.add(.toggleSidebar, title: splitController.splitViewItems.first?.isCollapsed == true ? String(localized: "Show Sidebar") : String(localized: "Hide Sidebar"))
+        commands.add(.toggleFolderTree, title: services.preferences.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
+                     keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
+        commands.add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
         if !browser.isShowingResults {
-            for mode in BrowserViewMode.ordered { add(.view(mode), title: mode.paletteTitle) }
+            for mode in BrowserViewMode.ordered { commands.add(.view(mode), title: mode.paletteTitle) }
         }
-        add(.goBack)
-        add(.goForward)
-        add(.goRecents)
-        add(.goTrash)
-        add(.emptyTrash, keywords: ["Delete", "Erase"])
-        add(.goToFolder)
-        custom("workspace.save", String(localized: "Save Workspace…"), "rectangle.stack.badge.plus",
-               keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
+    }
+
+    private func addGoCommands(to commands: inout PaletteCommands) {
+        commands.add(.goBack)
+        commands.add(.goForward)
+        commands.add(.goRecents)
+        commands.add(.goTrash)
+        commands.add(.emptyTrash, keywords: ["Delete", "Erase"])
+        commands.add(.goToFolder)
+    }
+
+    /// Workspaces, servers, Undo and the app's own windows.
+    private func addAppCommands(to commands: inout PaletteCommands) {
+        commands.custom("workspace.save", String(localized: "Save Workspace…"), "rectangle.stack.badge.plus",
+                        keywords: ["New Workspace", "Create Workspace", "Add Workspace", "Layout", "Setup", "Session", "Tabs"]) { [weak self] in
             guard let window = self?.window else { return }
             self?.services.workspaces.saveCurrent(from: window)
         }
-        add(.connectToServer, keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"])
+        commands.add(.connectToServer, keywords: ["SMB", "Network", "Share", "Mount", "NAS", "WebDAV"])
         if window?.undoManager?.canUndo == true {
-            custom("undo:", String(localized: "Undo"), "arrow.uturn.backward", ShortcutStore.shared.live("⌘Z")) { [weak self] in
+            commands.custom("undo:", String(localized: "Undo"), "arrow.uturn.backward", ShortcutStore.shared.live("⌘Z")) { [weak self] in
                 self?.window?.undoManager?.undo()
             }
         }
-        add(.showHistory)
-        add(.toggleShelf)
-        add(.showSettings)
-        add(.showShortcuts)
-        add(.editLocation)
-        add(.goToEnclosingFolder)
-        add(.reloadFolder)
-        add(.showInFinder)
-        custom("duplicates", String(localized: "Duplicates"), "square.on.square") { [weak self] in self?.showDuplicates() }
+        commands.add(.showHistory)
+        commands.add(.toggleShelf)
+        commands.add(.showSettings)
+        commands.add(.showShortcuts)
+    }
+
+    /// The folder shown: its location, reloading and revealing it, its duplicates, the workspace it came from,
+    /// comparing it, and its containers.
+    private func addFolderCommands(to commands: inout PaletteCommands) {
+        commands.add(.editLocation)
+        commands.add(.goToEnclosingFolder)
+        commands.add(.reloadFolder)
+        commands.add(.showInFinder)
+        commands.custom("duplicates", String(localized: "Duplicates"), "square.on.square") { [weak self] in self?.showDuplicates() }
         if let name = groupWorkspaceName, let workspace = services.workspaces.named(name) {
-            custom("workspace.update", String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
-                   "arrow.triangle.2.circlepath", keywords: ["Workspace", "Save"]) { [weak self] in
+            commands.custom("workspace.update", String(localized: "Update “\(workspace.name)”", comment: "Window ▸ Workspaces: save this window into the workspace it was opened from"),
+                            "arrow.triangle.2.circlepath", keywords: ["Workspace", "Save"]) { [weak self] in
                 guard let self, self.groupWorkspaceName == workspace.name, let window = self.window else { return }
                 services.workspaces.update(workspace.name, from: window)
             }
         }
-        add(.compareWithOtherPane, keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"])
+        commands.add(.compareWithOtherPane, keywords: ["Sync", "Diff", "Mirror", "Synchronize", "Folders"])
         for action in ContainerControl.actions(for: browser.selectedContainers) {
-            add(.container(action), keywords: ["Container", "Docker", action.rawValue.capitalized])
+            commands.add(.container(action), keywords: ["Container", "Docker", action.rawValue.capitalized])
         }
-        commands.append(contentsOf: aiPaletteItems())
-        if !Privacy.hasFullDiskAccess {
-            custom("privacy.fullDiskAccess", String(localized: "Grant Full Disk Access…"), "lock.open") { NSWorkspace.shared.open(Privacy.settingsURL) }
-        }
-        return commands
     }
 }
