@@ -457,12 +457,7 @@ final class Workspaces {
     /// work out.
     private func connect(_ controllers: [BrowserWindowController], of workspace: Workspace, missing: [String], offline: [String]) {
         guard let browsing = services?.remoteBrowsing else { return }
-        var shares: [String: String] = [:]
-        var servers: [String] = []
-        for controller in controllers {
-            shares.merge(controller.waitingShares) { current, _ in current }
-            for (_, folder) in controller.waitingPanes { if let id = folder.server, !servers.contains(id) { servers.append(id) } }
-        }
+        let (shares, servers) = Self.awaited(by: controllers)
         // On the tab being looked at.
         let shown = controllers.first?.window.map { $0.tabGroup?.selectedWindow ?? $0 }
         guard !shares.isEmpty || !servers.isEmpty, let window = shown, let content = window.contentViewController else {
@@ -473,82 +468,125 @@ final class Workspaces {
         controllers.forEach(busy.add)
         Task { [self] in
             defer { controllers.forEach(busy.remove) }
-            var mounted: [String: String] = [:], mountedNow: Set<String> = []
-            var problems: [String] = []
-            for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {
-                guard !sheet.isCancelled else { break }
-                // Kept by Strata, but checked like a typed address: only the kinds of server Connect to Server allows.
-                guard case .success(let url) = ServerConnection.url(from: address) else {
-                    problems.append(address)
-                    continue
-                }
-                sheet.show(ServerConnection.displayString(url))
-                if let already = await ServerConnection.mounted(url) {
-                    mounted[mountPoint] = already.path
-                    continue
-                }
-                let request = ServerConnection.Request()
-                sheet.onCancel = { request.cancel() }
-                switch await ServerConnection.mount(url, request: request) {
-                case .success(let at):
-                    mounted[mountPoint] = at.path
-                    mountedNow.insert(mountPoint)
-                case .failure(let problem):
-                    problems.append(String(localized: "\(ServerConnection.displayString(url)): \(problem.message)",
-                                           comment: "A server address, then why it didn't connect"))
-                case nil: break
-                }
-            }
-            // SFTP servers and buckets: connected (ssh may ask for a password), then their folders listed down to each.
-            var connected: Set<String> = []
-            for id in servers {
-                guard !sheet.isCancelled, let server = remote.servers.server(id: id) else { continue }
-                sheet.show(server.name)
-                do {
-                    try await sheet.connect(server, using: browsing)
-                    connected.insert(id)
-                } catch {
-                    if !sheet.isCancelled {
-                        problems.append(String(localized: "\(server.name): \(RemoteFiles.message(for: error))", comment: "A server's name, then why it didn't connect"))
-                    }
-                }
-            }
+            let mounting = await mountShares(shares, showing: sheet)
+            let connecting = await connectServers(servers, using: browsing, showing: sheet)
             let cancelled = sheet.isCancelled
             if content.presentedViewControllers?.contains(sheet) == true { content.dismiss(sheet) }
-            for controller in controllers where !controller.isClosed {
-                for (index, folder) in controller.waitingPanes {
-                    guard let id = folder.server, connected.contains(id) else { continue }
-                    let url = URL(filePath: folder.path, directoryHint: .isDirectory)
-                    let found = await browsing.reveal(url)
-                    // Moved elsewhere (or closed) while that was read: left where it is now.
-                    guard !controller.isClosed, controller.waitingPanes.contains(where: { $0.index == index && $0.folder == folder }) else { continue }
-                    if found {
-                        controller.navigatePane(index, to: url, mode: folder.mode)
-                    } else {
-                        // Not on the server anymore: the pane keeps waiting (so the workspace keeps it) and it's said.
-                        problems.append(String(localized: "\(remote.servers.server(id: id)?.name ?? ""): “\(url.lastPathComponent)” isn’t there.",
-                                               comment: "A server's name, then a folder that wasn't found on it"))
-                    }
-                }
-            }
-            var gone = missing
-            // Tabs closed meanwhile are left alone.
-            let panes = controllers.filter { !$0.isClosed }.flatMap { controller in
-                controller.waitingPanes.compactMap { index, folder -> WaitingPane? in
-                    guard let mountPoint = folder.mountPoint, let at = mounted[mountPoint] else { return nil }
-                    return WaitingPane(controller: controller, index: index, folder: folder,
-                                       path: WorkspacePlan.path(folder.path, from: mountPoint, to: at))
-                }
-            }
-            // All at once, each pane shown as its folder answers. Reads begun before a share was mounted now don't
-            // count; one already mounted is read as it is, so a share that stopped holds one read. One that doesn't
-            // answer in time keeps waiting.
-            let fresh = Set(panes.filter { $0.folder.mountPoint.map(mountedNow.contains) == true }.map(\.path))
-            await answers(Set(panes.map(\.path)), fresh: fresh, arrived: { path, there in
-                gone += Self.settle(panes, path, there: there).map(\.folder.path)
-            })
-            report(missing: gone, offline: offline, problems: cancelled ? [] : problems, of: workspace, controllers: controllers)
+            let notFound = await showServerFolders(of: controllers, connected: connecting.connected, using: browsing)
+            let gone = await showShareFolders(of: controllers, mounted: mounting.mounted, mountedNow: mounting.mountedNow)
+            let problems = mounting.problems + connecting.problems + notFound
+            report(missing: missing + gone, offline: offline, problems: cancelled ? [] : problems, of: workspace,
+                   controllers: controllers)
         }
+    }
+
+    /// The shares (by mount point) and servers `controllers`' panes wait for.
+    private static func awaited(by controllers: [BrowserWindowController]) -> (shares: [String: String], servers: [String]) {
+        var shares: [String: String] = [:]
+        var servers: [String] = []
+        for controller in controllers {
+            shares.merge(controller.waitingShares) { current, _ in current }
+            for (_, folder) in controller.waitingPanes { if let id = folder.server, !servers.contains(id) { servers.append(id) } }
+        }
+        return (shares, servers)
+    }
+
+    /// Mounts `shares` one at a time, until the sheet is stopped: where each mount point is now, which were mounted
+    /// just now, and what didn't connect.
+    private func mountShares(_ shares: [String: String], showing sheet: WorkspaceConnectController) async
+        -> (mounted: [String: String], mountedNow: Set<String>, problems: [String]) {
+        var mounted: [String: String] = [:], mountedNow: Set<String> = []
+        var problems: [String] = []
+        for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {
+            guard !sheet.isCancelled else { break }
+            // Kept by Strata, but checked like a typed address: only the kinds of server Connect to Server allows.
+            guard case .success(let url) = ServerConnection.url(from: address) else {
+                problems.append(address)
+                continue
+            }
+            sheet.show(ServerConnection.displayString(url))
+            if let already = await ServerConnection.mounted(url) {
+                mounted[mountPoint] = already.path
+                continue
+            }
+            let request = ServerConnection.Request()
+            sheet.onCancel = { request.cancel() }
+            switch await ServerConnection.mount(url, request: request) {
+            case .success(let at):
+                mounted[mountPoint] = at.path
+                mountedNow.insert(mountPoint)
+            case .failure(let problem):
+                problems.append(String(localized: "\(ServerConnection.displayString(url)): \(problem.message)",
+                                       comment: "A server address, then why it didn't connect"))
+            case nil: break
+            }
+        }
+        return (mounted, mountedNow, problems)
+    }
+
+    /// SFTP servers and buckets, connected one at a time (ssh may ask for a password) until the sheet is stopped.
+    private func connectServers(_ servers: [String], using browsing: RemoteBrowsing, showing sheet: WorkspaceConnectController) async
+        -> (connected: Set<String>, problems: [String]) {
+        var connected: Set<String> = []
+        var problems: [String] = []
+        for id in servers {
+            guard !sheet.isCancelled, let server = remote.servers.server(id: id) else { continue }
+            sheet.show(server.name)
+            do {
+                try await sheet.connect(server, using: browsing)
+                connected.insert(id)
+            } catch {
+                if !sheet.isCancelled {
+                    problems.append(String(localized: "\(server.name): \(RemoteFiles.message(for: error))", comment: "A server's name, then why it didn't connect"))
+                }
+            }
+        }
+        return (connected, problems)
+    }
+
+    /// Each pane waiting for a `connected` server shows its folder there, listed down to it; what isn't there anymore
+    /// is said (the problems returned), and its pane keeps waiting, so the workspace keeps it.
+    private func showServerFolders(of controllers: [BrowserWindowController], connected: Set<String>,
+                                   using browsing: RemoteBrowsing) async -> [String] {
+        var problems: [String] = []
+        for controller in controllers where !controller.isClosed {
+            for (index, folder) in controller.waitingPanes {
+                guard let id = folder.server, connected.contains(id) else { continue }
+                let url = URL(filePath: folder.path, directoryHint: .isDirectory)
+                let found = await browsing.reveal(url)
+                // Moved elsewhere (or closed) while that was read: left where it is now.
+                guard !controller.isClosed, controller.waitingPanes.contains(where: { $0.index == index && $0.folder == folder }) else { continue }
+                if found {
+                    controller.navigatePane(index, to: url, mode: folder.mode)
+                } else {
+                    problems.append(String(localized: "\(remote.servers.server(id: id)?.name ?? ""): “\(url.lastPathComponent)” isn’t there.",
+                                           comment: "A server's name, then a folder that wasn't found on it"))
+                }
+            }
+        }
+        return problems
+    }
+
+    /// Each pane waiting for a share `mounted` now shows its folder there: all at once, each pane shown as its folder
+    /// answers. Reads begun before a share was mounted now don't count; one already mounted is read as it is, so a
+    /// share that stopped holds one read. One that doesn't answer in time keeps waiting. Returns the folders that
+    /// weren't there.
+    private func showShareFolders(of controllers: [BrowserWindowController], mounted: [String: String],
+                                  mountedNow: Set<String>) async -> [String] {
+        // Tabs closed meanwhile are left alone.
+        let panes = controllers.filter { !$0.isClosed }.flatMap { controller in
+            controller.waitingPanes.compactMap { index, folder -> WaitingPane? in
+                guard let mountPoint = folder.mountPoint, let at = mounted[mountPoint] else { return nil }
+                return WaitingPane(controller: controller, index: index, folder: folder,
+                                   path: WorkspacePlan.path(folder.path, from: mountPoint, to: at))
+            }
+        }
+        var gone: [String] = []
+        let fresh = Set(panes.filter { $0.folder.mountPoint.map(mountedNow.contains) == true }.map(\.path))
+        await answers(Set(panes.map(\.path)), fresh: fresh, arrived: { path, there in
+            gone += Self.settle(panes, path, there: there).map(\.folder.path)
+        })
+        return gone
     }
 
     /// Says which folders weren't there (offering to take them out of the workspace), which are on disks that aren't
