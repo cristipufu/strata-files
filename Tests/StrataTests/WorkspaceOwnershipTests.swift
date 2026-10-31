@@ -400,6 +400,47 @@ struct WorkspaceOwnershipTests {
         #expect(tree.snapshot() == before)
     }
 
+    @Test func aFolderWhoseDiskDoesntAnswerCountsAsThere() async throws {
+        let tree = try TestTree("here/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let stuck = tree.url("stuck").path, gone = tree.url("gone").path, before = tree.snapshot()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let saved = Workspace(name: "Work", tabs: [[tree.url("here").path], [stuck], [gone]])
+        // The stuck folder's disk never answers in time: it opens like the others, and its pane shows its read.
+        let plan = await env.services.workspaces.plan(saved, patience: .milliseconds(50)) { path in
+            if path == stuck { release.wait() }
+            return FileManager.default.fileExists(atPath: path)
+        }
+        #expect(plan.tabs.map { $0.map(\.path) } == [[tree.url("here").path], [stuck]] && plan.missing == [gone])
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func aWindowBusyWithItsWorkspaceIsOnlyShownWhenChosenAgainAndANewOneIsnt() async throws {
+        let tree = try TestTree("files/")
+        let env = try Environment(tree)
+        defer { env.windows.detach(); withExtendedLifetime(env) {} }
+        let later = tree.url("later").path
+        let saved = Workspace(name: "Work", tabs: [[later]])
+        var plan = WorkspacePlan(saved, exists: { _ in true })
+        plan.tabs[0][0].waiting = WaitingFolder(path: later)
+        let first = try #require(env.services.workspaces.openWindows(plan, name: saved.name).first)
+        env.windows.visible = [first]
+        let before = tree.snapshot()
+        let forward = try #require(env.services.workspaces.open(saved))
+        // Chosen again while it's brought forward: only shown.
+        #expect(env.services.workspaces.open(saved) == nil)
+        // Closed meanwhile, and the workspace opened in a new window: that one is brought forward when chosen again.
+        first.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: first.window))
+        let second = try #require(env.services.workspaces.openWindows(plan, name: saved.name).last)
+        env.windows.visible = [second]
+        let again = try #require(env.services.workspaces.open(saved))
+        await forward.value
+        await again.value
+        #expect(tree.snapshot() == before)
+    }
+
     @Test func workspaceStoreDoesNotKeepItsEnvironmentAlive() throws {
         let tree = try TestTree("keep")
         var env: Environment? = try Environment(tree)

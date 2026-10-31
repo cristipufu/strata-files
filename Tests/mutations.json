@@ -7512,8 +7512,8 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "        bringingForward.insert(marked)\n",
-    "replace": "        bringingForward.insert(marked)\n        planning.insert(workspace.name)\n",
+    "find": "        for tab in waiting { tab.controller.map(busy.add) }\n",
+    "replace": "        for tab in waiting { tab.controller.map(busy.add) }\n        planning.insert(workspace.name)\n",
     "rule": "A workspace whose window closed while it was brought forward can't be opened again",
     "tests": "WorkspaceOwnershipTests/aWorkspaceWhoseWindowClosedWhileBroughtForwardOpensAgain"
   },
@@ -7544,5 +7544,33 @@
     "replace": "        let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }\n",
     "rule": "A merge stopped while its folder is read still marks it done and adds its steps",
     "tests": "TransferJobTests/aMergeStoppedWhileItsFolderIsReadDecidesNothing"
+  },
+  {
+    "file": "Strata/Support/OwnThread.swift",
+    "find": "                waiting.withLock { $0.take() }?.resume(returning: fallback)",
+    "replace": "                _ = fallback",
+    "rule": "A read past its deadline holds up the decision waiting for it",
+    "tests": "OwnThreadTests/aReadPastItsDeadlineGivesWayAndOneOnTimeAnswers"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "                group.addTask { (path, await OwnThread.run(within: patience, otherwise: true) { exists(path) }) }",
+    "replace": "                group.addTask { (path, await OwnThread.run(within: patience, otherwise: false) { exists(path) }) }",
+    "rule": "A workspace leaves out a folder whose disk is only slow to answer",
+    "tests": "WorkspaceOwnershipTests/aFolderWhoseDiskDoesntAnswerCountsAsThere"
+  },
+  {
+    "file": "Strata/Window/Workspaces.swift",
+    "find": "        for tab in waiting { tab.controller.map(busy.add) }\n",
+    "replace": "",
+    "rule": "A workspace chosen again while its window is brought forward is brought forward twice",
+    "tests": "WorkspaceOwnershipTests/aWindowBusyWithItsWorkspaceIsOnlyShownWhenChosenAgainAndANewOneIsnt"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "        await OwnThread.run { urls.first(where: FileOps.isWholeDisk) }",
+    "replace": "        await OwnThread.run { urls.first { $0.path == \"/\" } }",
+    "rule": "Ask Strata runs a plan holding a disk reached through a link",
+    "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
   }
 ]

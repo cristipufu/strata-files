@@ -69,17 +69,18 @@ extension BrowserViewController {
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
         let copies = services.copies
         guard urls.allSatisfy({ FileOps.canTrash($0, copies: copies) }) else { return Sounds.beep() }
-        // Keep the cursor where it was: select the row that slides into the first removed one's place.
+        // Keep the cursor where it was: once they've gone, select the row that slides into the first removed one's place.
         let removed = Set(urls.map(Self.key))
         let survivors = rows.filter { !removed.contains(Self.key($0.url)) }
-        if let first = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }), !survivors.isEmpty {
-            pending.selection = [survivors[min(first, survivors.count - 1)].url]
+        let next = rows.firstIndex(where: { removed.contains(Self.key($0.url)) }).flatMap { first in
+            survivors.isEmpty ? nil : survivors[min(first, survivors.count - 1)].url
         }
-        let undo = undoManager
+        let undo = undoManager, revision = navigationRevision
         let files = services.files
         Task { [weak self] in
             do {
                 try await files.trash(urls, undo: undo)
+                if let self, let next, navigationRevision == revision { pending.selection = [next] }
             } catch let noTrash as FileOps.NoTrash {
                 guard let self else { return }
                 Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }

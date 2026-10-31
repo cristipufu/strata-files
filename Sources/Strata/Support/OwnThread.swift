@@ -32,6 +32,24 @@ package nonisolated enum OwnThread {
         }
     }
 
+    /// The same, but `otherwise` once `deadline` passes without an answer: for a decision that can't wait on a disk
+    /// that may never answer. The read keeps its own thread until it returns; what it finds then is dropped.
+    package static func run<T: Sendable>(within deadline: Duration, otherwise fallback: T,
+                                         _ work: @escaping @Sendable () -> T) async -> T {
+        let waiting = Mutex<CheckedContinuation<T, Never>?>(nil)
+        return await withCheckedContinuation { continuation in
+            waiting.withLock { $0 = continuation }
+            start {
+                let value = work()
+                waiting.withLock { $0.take() }?.resume(returning: value)
+            }
+            let (seconds, attoseconds) = deadline.components
+            DispatchQueue.global().asyncAfter(deadline: .now() + Double(seconds) + Double(attoseconds) / 1e18) {
+                waiting.withLock { $0.take() }?.resume(returning: fallback)
+            }
+        }
+    }
+
     private static func start(_ body: @escaping @Sendable () -> Void) {
         let thread = Thread(block: body)
         thread.name = "dev.strata.read"

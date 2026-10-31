@@ -115,13 +115,14 @@ import Testing
 
     @Test func aMergeStoppedWhileItsFolderIsReadDecidesNothing() async throws {
         let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/older.txt", "to/", "to/box/", "to/box/older.txt")
-        defer { tree.removeFromTrash(); TransferEngine.hooks = .init() }
+        let release = DispatchSemaphore(value: 0)
+        // Only its own hook: other suites keep theirs. A held read is always let go.
+        defer { TransferEngine.hooks.beforeMergePlan = nil; release.signal(); tree.removeFromTrash() }
         // The destination's copy is newer, so the merge would leave it out and the job's count would change.
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)],
                                               ofItemAtPath: tree.url("from/box/older.txt").path)
         let before = tree.snapshot(), box = tree.url("from/box").standardizedFileURL.path
         let (reached, arrive) = AsyncStream<Void>.makeStream()
-        let release = DispatchSemaphore(value: 0)
         TransferEngine.hooks.beforeMergePlan = { source in
             guard source.standardizedFileURL.path == box else { return }
             arrive.yield()
@@ -130,7 +131,15 @@ import Testing
         let merge = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
         let job = TransferQueue.shared.enqueue([tree.url("from/box")], to: tree.url("to"), mode: .copy,
                                                options: .init(verify: false, clone: false), undo: nil, conflicts: merge)
-        for await _ in reached { break }
+        // Bounded: if another suite reset the hooks meanwhile, the merge runs without stopping here and this fails.
+        let arrived = await withTaskGroup(of: Bool.self) { group in
+            group.addTask { for await _ in reached { return true }; return false }
+            group.addTask { try? await Task.sleep(for: .seconds(30)); return false }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        try #require(arrived, "the merge never reached its folder's read")
         let files = job.totalFiles
         job.cancel()
         release.signal()

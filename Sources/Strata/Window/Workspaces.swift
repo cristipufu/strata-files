@@ -15,8 +15,6 @@ final class Workspaces {
     private let key = "workspaces"
     /// Workspaces whose folders are being looked at before they open.
     private var planning: Set<String> = []
-    /// Open windows brought forward while their waiting panes' folders are looked at.
-    private var bringingForward: Set<ObjectIdentifier> = []
 
     init(services: BrowserServices) {
         self.services = services
@@ -214,8 +212,9 @@ final class Workspaces {
 
     /// Opens `workspace` as one window with a tab per saved tab, or brings its window to the front when it's open.
     /// Folders on a network share connect to it again; folders that are gone are left out, and said so.
-    /// Workspaces connecting to their shares or servers right now: opening one again meanwhile only brings it forward.
-    private var connecting: Set<String> = []
+    /// Windows brought forward, or connecting to their shares or servers, right now: choosing their workspace again
+    /// meanwhile only shows them. Held weakly, so a closed window's read that never ends holds nothing up.
+    private let busy = NSHashTable<BrowserWindowController>.weakObjects()
 
     /// Whether a folder is there for opening a workspace. Only one that doesn't exist is gone: one Strata may not read
     /// (access not granted yet, a folder above it locked) is still opened, and says why.
@@ -236,7 +235,7 @@ final class Workspaces {
            let window = open.window {
             let front = window.tabGroup?.selectedWindow ?? window
             // Connecting, or brought forward with its panes still being looked at: once is enough.
-            if connecting.contains(workspace.name) || bringingForward.contains(ObjectIdentifier(front)) {
+            if ownedControllers(of: window).contains(where: busy.contains) {
                 windows.show(front)
                 return nil
             }
@@ -288,8 +287,7 @@ final class Workspaces {
         let waiting = ownedControllers(of: window).map { controller in
             WaitingTab(controller: controller, panes: controller.waitingPanes.filter { $0.folder.mountPoint == nil })
         }
-        let marked = ObjectIdentifier(window)
-        bringingForward.insert(marked)
+        for tab in waiting { tab.controller.map(busy.add) }
         return Task {
             for tab in waiting {
                 for (index, folder) in tab.panes {
@@ -298,7 +296,7 @@ final class Workspaces {
                     controller.navigatePane(index, to: URL(filePath: folder.path, directoryHint: .isDirectory), mode: folder.mode)
                 }
             }
-            bringingForward.remove(marked)
+            for tab in waiting { tab.controller.map(busy.remove) }
             let open = waiting.compactMap(\.controller).filter { !$0.isClosed }
             if open.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
                 connect(open, of: workspace, missing: [], offline: [])
@@ -352,18 +350,40 @@ final class Workspaces {
 
     /// Resolve saved server paths against this workspace's owner, including copies not created yet; which folders are
     /// there is read away from the main thread, since a share that stopped answering holds each look for seconds.
-    func plan(_ workspace: Workspace) async -> WorkspacePlan {
+    /// Each folder, and the share or disk it's on, is looked at on a thread of its own and given `patience`: one whose
+    /// disk doesn't answer by then (a share that stopped) counts as there, so nothing waits on it, and its pane shows
+    /// what its read finds.
+    func plan(_ workspace: Workspace, patience: Duration = .seconds(2),
+              exists: @escaping @Sendable (String) -> Bool = Workspaces.isThere) async -> WorkspacePlan {
         let copies = remote.copies
         var servers: [String: String] = [:]
         for path in workspace.tabs.joined() where !path.isEmpty {
             servers[path] = copies.server(containing: URL(filePath: path, directoryHint: .isDirectory))?.server.id
         }
-        return await Self.plan(workspace, servers: servers)
+        let answers = await Self.answers(Self.asked(by: workspace), patience: patience, exists: exists)
+        return WorkspacePlan(workspace, exists: { answers[$0] ?? true }, server: { servers[$0] })
     }
 
-    nonisolated private static func plan(_ workspace: Workspace, servers: [String: String]) async -> WorkspacePlan {
-        await OwnThread.run {
-            WorkspacePlan(workspace, exists: isThere, server: { servers[$0] })
+    /// What planning `workspace` looks at: each folder, the share it was on and the disk it's on.
+    nonisolated static func asked(by workspace: Workspace) -> Set<String> {
+        var paths: Set<String> = []
+        for path in workspace.tabs.joined() where !path.isEmpty {
+            paths.insert(path)
+            if let share = workspace.share(for: path) { paths.insert(share.mountPoint) }
+            if let volume = DiskOfPath.volume(of: path) { paths.insert(volume) }
+        }
+        return paths
+    }
+
+    nonisolated private static func answers(_ paths: Set<String>, patience: Duration,
+                                            exists: @escaping @Sendable (String) -> Bool) async -> [String: Bool] {
+        await withTaskGroup(of: (String, Bool).self) { group in
+            for path in paths {
+                group.addTask { (path, await OwnThread.run(within: patience, otherwise: true) { exists(path) }) }
+            }
+            var found: [String: Bool] = [:]
+            for await (path, there) in group { found[path] = there }
+            return found
         }
     }
 
@@ -385,9 +405,9 @@ final class Workspaces {
         }
         let sheet = WorkspaceConnectController()
         content.presentAsSheet(sheet)
-        if !workspace.name.isEmpty { connecting.insert(workspace.name) }
+        controllers.forEach(busy.add)
         Task { [self] in
-            defer { connecting.remove(workspace.name) }
+            defer { controllers.forEach(busy.remove) }
             var mounted: [String: String] = [:]
             var problems: [String] = []
             for (mountPoint, address) in shares.sorted(by: { $0.key < $1.key }) {

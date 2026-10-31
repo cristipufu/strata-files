@@ -375,9 +375,9 @@ package enum FileOps {
 
     /// A selection holding a whole disk: refused as a whole, before anything moves. Said as the system says an
     /// operation isn't permitted.
-    package struct HoldsADisk: LocalizedError {
+    package nonisolated struct HoldsADisk: LocalizedError {
         package init() {}
-        package var errorDescription: String? { POSIXError(.EPERM).localizedDescription }
+        package nonisolated var errorDescription: String? { POSIXError(.EPERM).localizedDescription }
     }
 
     /// What Move to Trash takes of `urls`: each once, outermost, those `canTrash` allows; nil when one is a whole disk,

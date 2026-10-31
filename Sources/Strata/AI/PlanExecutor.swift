@@ -90,6 +90,11 @@ package final class PlanTransaction {
                            containerIdentities: createdFolders.historyIdentities, landed: applied)
     }
 
+    /// The first of `urls` that's a whole disk, asked of each away from the main thread.
+    package static func firstDisk(in urls: [URL]) async -> URL? {
+        await OwnThread.run { urls.first(where: FileOps.isWholeDisk) }
+    }
+
     /// A folder the plan makes is there already when anything is at its path, a link's target included.
     nonisolated private static func isThere(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
 
@@ -106,6 +111,11 @@ package final class PlanTransaction {
         let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
             ?? self.trashItems
         let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
+        // A whole disk among what goes to the Trash refuses the plan up front, before any step changes anything.
+        if let disk = await Self.firstDisk(in: trashItems) {
+            outcome.failures.append(String(localized: "“\(disk.lastPathComponent)” couldn’t be moved to the Trash: \(FileOps.HoldsADisk().localizedDescription)"))
+            return outcome
+        }
         let (made, failures) = await CreatedFolders.make(folders, intermediates: false, stopAtFailure: false, isThere: Self.isThere)
         created = made.map(\.url)
         createdFolders.record(made)
@@ -212,7 +222,6 @@ package final class PlanTransaction {
     @concurrent package static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
         if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
         if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
-        guard !FileOps.isWholeDisk(url) else { throw FileOps.HoldsADisk() }
         var result: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &result)
         guard let landed = result as URL? else { return .gone }

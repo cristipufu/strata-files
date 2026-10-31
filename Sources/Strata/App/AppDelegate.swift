@@ -56,13 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var welcome: WelcomeSheetController?
-    /// Until the first windows are decided: files and folders opened meanwhile (AppKit hands them over before launch is
-    /// done) are what's shown, so the last session isn't reopened over them.
+    /// Until the first windows are decided: files, folders and workspaces opened meanwhile (AppKit hands them over
+    /// before launch is done) are what's shown, so the last session isn't reopened over them.
     private var launching = true
     private var openedAtLaunch = false
-    /// The start window opened while launch's reads were slow, until what they bring replaces it.
-    private weak var standIn: BrowserWindowController?
-    private var standInTimer: Task<Void, Never>?
 
     /// Strata ▸ Check for Updates….
     @objc func checkForUpdates(_ sender: Any?) {
@@ -97,50 +94,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (a disk spinning up, a share that stopped) don't leave Strata without a window: after a few seconds the start
     /// window opens, and the session's windows take its place when they're read, if it hasn't been used meanwhile.
     private func openFirstWindows() async {
-        armStandIn()
         guard !openedAtLaunch, windowControllers.isEmpty else {
             launching = false
             return presentWelcome()
         }
+        // Each read has a deadline (`Workspaces.plan`): a disk that doesn't answer doesn't hold up the first window.
         let plans = await sessionPlans()
         launching = false
-        // Opened meanwhile (a file, a folder, a link): that's what's shown; the stand-in stays armed for it.
-        guard !openedAtLaunch else { return presentWelcome() }
-        standInTimer?.cancel()
-        if !plans.isEmpty { retireStandIn() }
-        if windowControllers.isEmpty, !openSession(plans) { openWindow(at: startLocation) }
+        // Opened meanwhile (a file, a folder, a workspace): that's what's shown.
+        guard !openedAtLaunch, windowControllers.isEmpty else { return presentWelcome() }
+        if !openSession(plans) { openWindow(at: startLocation) }
         presentWelcome()
-    }
-
-    /// After a few seconds without a window, the start window opens in the meantime.
-    private func armStandIn() {
-        standInTimer = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled, let self, windowControllers.isEmpty else { return }
-            standIn = openWindow(at: startLocation)
-            presentWelcome()
-        }
-    }
-
-    /// Closes the stand-in when what launch was waiting for takes its place, if nobody has used it; the welcome on it
-    /// moves to the next window.
-    private func retireStandIn() {
-        guard let standIn, !standIn.isClosed, Self.isUnused(standIn, at: startLocation) else { return }
-        if let welcome, welcome.window?.sheetParent === standIn.window {
-            welcome.withdraw()
-            self.welcome = nil
-        }
-        standIn.window?.close()
-        self.standIn = nil
-    }
-
-    /// A window that's still where it opened, with nothing to go back to, nothing selected and no sheet but the
-    /// welcome: one the user hasn't used yet.
-    private static func isUnused(_ controller: BrowserWindowController, at location: URL) -> Bool {
-        let sheet = controller.window?.attachedSheet
-        return controller.panes.count == 1 && controller.pane.history == PaneHistory()
-            && controller.location.standardizedFileURL == location.standardizedFileURL
-            && controller.browser.selectedURLs.isEmpty && (sheet == nil || sheet?.windowController is WelcomeSheetController)
     }
 
     /// The Full Disk Access welcome, once, on the first window.
@@ -214,28 +178,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// strata://search?q=…&in=…, strata://open?path=…, strata://workspace?name=…, strata://recents, strata://duplicates
     private func handle(_ url: URL) {
-        // A link opened at launch (a workspace, a search) is what's shown, not the last session.
-        if launching { openedAtLaunch = true }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let value = { (name: String) in items.first { $0.name == name }?.value }
-        // A workspace opens its own window.
+        // A workspace opens its own window, once its folders are looked at: at launch it's what's shown, not the last
+        // session. (The other links open a window right away, which does the same.)
         if url.host == "workspace" {
             guard let name = value("name") else { return }
             NSApp.activate()
-            if let workspace = browserServices.workspaces.named(name) { browserServices.workspaces.open(workspace) } else { noSuchWorkspace() }
+            guard let workspace = browserServices.workspaces.named(name) else { return noSuchWorkspace() }
+            if launching { openedAtLaunch = true }
+            let opening = browserServices.workspaces.open(workspace)
+            Task { [weak self] in
+                await opening?.value
+                self?.presentWelcome()
+            }
             return
         }
         let controller = (NSApp.keyWindow?.windowController as? BrowserWindowController) ?? windowControllers.first ?? openWindow(at: Places.home)
         switch url.host {
         case "search":
             guard let query = value("q") else { return }
-            controller.search(query, in: value("in").flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) })
+            controller.search(query, in: value("in").flatMap { $0.isEmpty ? nil : URL(filePath: $0, directoryHint: .isDirectory) })
         case "open":
             guard let path = value("path") else { return }
             let expanded = (path as NSString).expandingTildeInPath
             guard !expanded.isEmpty else { return }
             // A folder opens; a file (or package) is shown selected in its folder.
-            let target = URL(fileURLWithPath: expanded)
+            let target = URL(filePath: expanded, directoryHint: .inferFromPath)
             Task { [weak controller] in
                 let opening = await FileEntry.opening(target)
                 guard let controller, !controller.isClosed else { return }
@@ -275,17 +244,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls where url.scheme == "strata" { handle(url) }
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
-        // In the order given, each once what it is has been read.
+        // In the order given, each once what it is has been read: one whose disk doesn't answer soon opens as a folder,
+        // and its pane shows what its read finds.
         if launching { openedAtLaunch = true }
         Task {
             for url in files {
-                if await FileEntry.opening(url) == .folder {
+                let opening = await OwnThread.run(within: .seconds(2), otherwise: .folder) { FileEntry.readOpening(url) }
+                if opening == .folder {
                     openWindow(at: url)
                 } else {
                     openWindow(at: url.deletingLastPathComponent(), select: url)
                 }
             }
-            retireStandIn()
             presentWelcome()
         }
     }

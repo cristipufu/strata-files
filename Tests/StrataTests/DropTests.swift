@@ -82,7 +82,7 @@ struct DropTests {
     /// A disk reached through a link in its path isn't in the mount table by that spelling: Move to Trash, from
     /// anywhere, asks the item itself and leaves it alone. (Only the decision is tested: a disk is never handed to the
     /// Trash in a test.)
-    @Test func trashingRefusesADiskHoweverItsReached() throws {
+    @Test func trashingRefusesADiskHoweverItsReached() async throws {
         let tree = try TestTree("a.txt", "volumes -> /System/Volumes")
         let data = tree.url("volumes/Data")
         #expect(SidebarViewController.canTrash([data], copies: .live, mounts: MountPoints.current()))
@@ -91,6 +91,9 @@ struct DropTests {
         // A selection holding one is refused as a whole, before anything moves; without one, each item goes once.
         #expect(FileOps.trashable([tree.url("a.txt"), data], copies: .live) == nil)
         #expect(FileOps.trashable([tree.url("a.txt"), tree.url("a.txt"), Trash.home], copies: .live) == [tree.url("a.txt")])
+        // Ask Strata's plans: one holding a disk among its Trash steps is refused before any step runs.
+        #expect(await PlanTransaction.firstDisk(in: [tree.url("a.txt"), data]) == data)
+        #expect(await PlanTransaction.firstDisk(in: [tree.url("a.txt")]) == nil)
         #expect(tree.snapshot() == ["a.txt", "volumes -> /System/Volumes"])
     }
 
