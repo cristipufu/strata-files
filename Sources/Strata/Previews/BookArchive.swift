@@ -61,68 +61,131 @@ nonisolated package struct EPUBBook: Sendable {
     @concurrent package static func open(_ source: PreviewArchiveSource, records existing: [PreviewArchiveRecord]? = nil) async throws -> EPUBBook {
         let records: [PreviewArchiveRecord]
         if let existing { records = existing } else { records = try await PreviewArchiveReader.read(source) }
+        let package = try await packagePath(source, records: records)
+        let folder = Array(package.dropLast())
+        let opf = try BookXML.parse(try await bytes(source, records: records, path: package, limit: TextFile.limit))
+        guard opf.name == "package", let listed = opf.children.first(where: { $0.name == "manifest" }),
+              let spine = opf.children.first(where: { $0.name == "spine" }) else { throw PreviewError.unsupported }
+        let manifest = try Manifest(listed, folder: folder)
+        let cover = coverID(opf, manifest).flatMap { manifest.items[$0]?.path }
+        var coverPages = guideCoverPages(opf, folder: folder)
+        var titles: [String: String] = [:]
+        let navigationID = manifest.first(withProperty: "nav") ?? spine.attributes["toc"]
+        if let navigation = navigationID.flatMap({ manifest.items[$0] }),
+           let contents = try? BookXML.parse(try await bytes(source, records: records, path: navigation.path, limit: TextFile.limit)) {
+            coverPages.formUnion(Self.coverPages(in: contents, at: navigation.path))
+            titles = Self.titles(in: contents, of: navigation)
+        }
+        let chapters = try await readingOrder(spine, manifest, titles: titles, coverPages: coverPages, cover: cover,
+                                              source: source, records: records)
+        let metadata = opf.children.first(where: { $0.name == "metadata" })
+        func text(_ key: String) -> String {
+            let values = metadata?.children.filter { $0.name == key }
+                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            return DisplayText.label(values?.joined(separator: ", ") ?? "")
+        }
+        return EPUBBook(source: source, records: records, title: text("title"), authors: text("creator"),
+                        publisher: text("publisher"), language: text("language"), cover: cover,
+                        chapters: chapters, assets: Set(manifest.items.values.filter { $0.mime == "text/css" || $0.mime.hasPrefix("image/") }.map { $0.path.joined(separator: "/") }))
+    }
+
+    /// Where the package document is, as `META-INF/container.xml` says.
+    private static func packagePath(_ source: PreviewArchiveSource, records: [PreviewArchiveRecord]) async throws -> [String] {
         let container = try await bytes(source, records: records, path: ["META-INF", "container.xml"], limit: TextFile.limit)
         let root = try BookXML.parse(container)
         guard root.name == "container", let reference = root.descendants("rootfile").first(where: {
             $0.attributes["media-type"] == "application/oebps-package+xml"
         })?.attributes["full-path"] else { throw PreviewError.unsupported }
-        let package = try path(reference, relativeTo: [])
-        let data = try await bytes(source, records: records, path: package, limit: TextFile.limit)
-        let opf = try BookXML.parse(data)
-        guard opf.name == "package", let manifest = opf.children.first(where: { $0.name == "manifest" }),
-              let spine = opf.children.first(where: { $0.name == "spine" }) else { throw PreviewError.unsupported }
-        var items: [String: (path: [String], mime: String, properties: [Substring])] = [:]
-        var ordered: [String] = []
-        for item in manifest.children where item.name == "item" {
-            guard let id = item.attributes["id"], !id.isEmpty, items[id] == nil, items.count < 2000,
-                  let href = item.attributes["href"], let mime = item.attributes["media-type"] else { throw PreviewError.unsupported }
-            let resolved = try path(href, relativeTo: Array(package.dropLast()))
-            items[id] = (resolved, mime, (item.attributes["properties"] ?? "").split(whereSeparator: \.isWhitespace))
-            ordered.append(id)
+        return try path(reference, relativeTo: [])
+    }
+
+    /// The package's files by ID, in the order it lists them.
+    private struct Manifest {
+        struct Item {
+            let path: [String]
+            let mime: String
+            let properties: [Substring]
         }
-        let imageIDs = ordered.filter { id in
-            guard let item = items[id] else { return false }
+
+        private(set) var items: [String: Item] = [:]
+        private(set) var ordered: [String] = []
+
+        init(_ manifest: BookXML.Element, folder: [String]) throws {
+            for item in manifest.children where item.name == "item" {
+                guard let id = item.attributes["id"], !id.isEmpty, items[id] == nil, items.count < 2000,
+                      let href = item.attributes["href"], let mime = item.attributes["media-type"] else { throw PreviewError.unsupported }
+                let resolved = try path(href, relativeTo: folder)
+                items[id] = Item(path: resolved, mime: mime, properties: (item.attributes["properties"] ?? "").split(whereSeparator: \.isWhitespace))
+                ordered.append(id)
+            }
+        }
+
+        func first(withProperty property: String) -> String? {
+            ordered.first(where: { items[$0]!.properties.contains(Substring(property)) })
+        }
+    }
+
+    /// The cover image: the one marked as such, else the one the metadata names, else the first image.
+    private static func coverID(_ opf: BookXML.Element, _ manifest: Manifest) -> String? {
+        let imageIDs = manifest.ordered.filter { id in
+            guard let item = manifest.items[id] else { return false }
             return item.mime.hasPrefix("image/") && BookFormat.images.contains((item.path.last! as NSString).pathExtension.lowercased())
         }
         let declared = opf.descendants("meta").first(where: { $0.attributes["name"] == "cover" })?.attributes["content"]
-        let coverID = imageIDs.first(where: { items[$0]!.properties.contains("cover-image") })
+        return imageIDs.first(where: { manifest.items[$0]!.properties.contains("cover-image") })
             ?? imageIDs.first(where: { $0 == declared }) ?? imageIDs.first
-        var titles: [String: String] = [:]
-        var coverPages = Set(opf.children.filter { $0.name == "guide" }.flatMap { $0.children }.compactMap { reference -> String? in
+    }
+
+    /// The pages the package's guide calls the cover.
+    private static func guideCoverPages(_ opf: BookXML.Element, folder: [String]) -> Set<String> {
+        Set(opf.children.filter { $0.name == "guide" }.flatMap { $0.children }.compactMap { reference -> String? in
             guard reference.name == "reference", reference.attributes["type"] == "cover", let href = reference.attributes["href"],
-                  let target = try? path(href, relativeTo: Array(package.dropLast())) else { return nil }
+                  let target = try? path(href, relativeTo: folder) else { return nil }
             return target.joined(separator: "/")
         })
-        let navigationID = ordered.first(where: { items[$0]!.properties.contains("nav") }) ?? spine.attributes["toc"]
-        if let id = navigationID, let navigation = items[id],
-           let data = try? await bytes(source, records: records, path: navigation.path, limit: TextFile.limit),
-           let contents = try? BookXML.parse(data) {
-            for link in contents.descendants("a") where (link.attributes["epub:type"] ?? "").split(whereSeparator: \.isWhitespace).contains("cover") {
-                if let href = link.attributes["href"], let target = try? path(href, relativeTo: Array(navigation.path.dropLast())) {
-                    coverPages.insert(target.joined(separator: "/"))
-                }
-            }
-            let references: [(String, String)]
-            if navigation.mime == "application/x-dtbncx+xml" {
-                references = contents.descendants("navPoint").compactMap { point in
-                    guard let href = point.children.first(where: { $0.name == "content" })?.attributes["src"],
-                          let label = point.children.first(where: { $0.name == "navLabel" }) else { return nil }
-                    return (href, label.allText)
-                }
-            } else {
-                references = contents.descendants("a").compactMap { link in link.attributes["href"].map { ($0, link.allText) } }
-            }
-            for (href, label) in references {
-                if let target = try? path(href, relativeTo: Array(navigation.path.dropLast())) {
-                    let key = target.joined(separator: "/"), title = label.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if titles[key] == nil, !title.isEmpty { titles[key] = title }
-                }
+    }
+
+    /// The pages the contents link to as the cover.
+    private static func coverPages(in contents: BookXML.Element, at navigation: [String]) -> Set<String> {
+        var pages: Set<String> = []
+        for link in contents.descendants("a") where (link.attributes["epub:type"] ?? "").split(whereSeparator: \.isWhitespace).contains("cover") {
+            if let href = link.attributes["href"], let target = try? path(href, relativeTo: Array(navigation.dropLast())) {
+                pages.insert(target.joined(separator: "/"))
             }
         }
-        let cover = coverID.flatMap { items[$0]?.path }
+        return pages
+    }
+
+    /// Each page's title in the contents (an EPUB 2 NCX or an EPUB 3 navigation document): the first one given.
+    private static func titles(in contents: BookXML.Element, of navigation: Manifest.Item) -> [String: String] {
+        let references: [(String, String)]
+        if navigation.mime == "application/x-dtbncx+xml" {
+            references = contents.descendants("navPoint").compactMap { point in
+                guard let href = point.children.first(where: { $0.name == "content" })?.attributes["src"],
+                      let label = point.children.first(where: { $0.name == "navLabel" }) else { return nil }
+                return (href, label.allText)
+            }
+        } else {
+            references = contents.descendants("a").compactMap { link in link.attributes["href"].map { ($0, link.allText) } }
+        }
+        var titles: [String: String] = [:]
+        for (href, label) in references {
+            if let target = try? path(href, relativeTo: Array(navigation.path.dropLast())) {
+                let key = target.joined(separator: "/"), title = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                if titles[key] == nil, !title.isEmpty { titles[key] = title }
+            }
+        }
+        return titles
+    }
+
+    /// The spine's pages read in order, each titled by the contents, else as the cover or a numbered section.
+    private static func readingOrder(_ spine: BookXML.Element, _ manifest: Manifest, titles: [String: String],
+                                     coverPages: Set<String>, cover: [String]?, source: PreviewArchiveSource,
+                                     records: [PreviewArchiveRecord]) async throws -> [Chapter] {
+        var coverPages = coverPages
         var chapters: [Chapter] = []
         for ref in spine.children where ref.name == "itemref" && ref.attributes["linear"] != "no" {
-            guard chapters.count < 1000, let id = ref.attributes["idref"], let item = items[id],
+            guard chapters.count < 1000, let id = ref.attributes["idref"], let item = manifest.items[id],
                   ["application/xhtml+xml", "text/html"].contains(item.mime) else { throw PreviewError.unsupported }
             let key = item.path.joined(separator: "/")
             if chapters.isEmpty, titles[key] == nil, !coverPages.contains(key), let cover,
@@ -133,15 +196,7 @@ nonisolated package struct EPUBBook: Sendable {
                 : String(localized: "Section \(chapters.count + 1)", comment: "Book preview: a reading section without a contents title.")
             chapters.append(Chapter(path: item.path, title: titles[key] ?? fallback))
         }
-        let metadata = opf.children.first(where: { $0.name == "metadata" })
-        func text(_ key: String) -> String {
-            let values = metadata?.children.filter { $0.name == key }
-                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-            return DisplayText.label(values?.joined(separator: ", ") ?? "")
-        }
-        return EPUBBook(source: source, records: records, title: text("title"), authors: text("creator"),
-                        publisher: text("publisher"), language: text("language"), cover: cover,
-                        chapters: chapters, assets: Set(items.values.filter { $0.mime == "text/css" || $0.mime.hasPrefix("image/") }.map { $0.path.joined(separator: "/") }))
+        return chapters
     }
 
     /// Some books leave their opening image wrapper out of the contents. Match its sole image to the cover, never its filename.
