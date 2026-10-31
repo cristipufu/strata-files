@@ -229,12 +229,7 @@ package actor RemoteFiles {
     }
 
     private func join(_ request: CopyFetches.Request) async throws {
-        defer { fetches.finish(request) }
-        try await withTaskCancellationHandler {
-            try await request.task.value
-        } onCancel: {
-            Task { await self.cancel(request) }
-        }
+        try await CopyFetches.wait(for: request, finish: { fetches.finish(request) }, cancel: { await self.cancel(request) })
     }
 
     private func cancel(_ request: CopyFetches.Request) { fetches.cancel(request) }
@@ -242,16 +237,7 @@ package actor RemoteFiles {
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they
     /// hold (listed afresh, not just what's been browsed). Throws the first problem.
     package func prepareForCopying(_ urls: [URL]) async throws {
-        for url in urls where copies.contains(url) {
-            try Task.checkCancellation()
-            var info = stat()
-            guard lstat(url.path, &info) == 0 else { continue }
-            if info.st_mode & S_IFMT == S_IFDIR {
-                try await fetchTree(url)
-            } else {
-                try await fetch([url])
-            }
-        }
+        try await CopyFetches.prepare(urls, holds: copies.contains, file: fetch, folder: { try await self.fetchTree($0) })
     }
 
     private func fetchTree(_ folder: URL, depth: Int = 0) async throws {

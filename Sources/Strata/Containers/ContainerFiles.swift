@@ -241,16 +241,7 @@ package actor ContainerFiles {
     /// Makes everything at `urls` complete before it's copied out: placeholders fetched, and folders with all they hold
     /// (not just what's been browsed), matching the container. Throws the first problem.
     package func prepareForCopying(_ urls: [URL]) async throws {
-        for url in urls where copies.contains(url) {
-            try Task.checkCancellation()
-            var info = stat()
-            guard lstat(url.path, &info) == 0 else { continue }
-            if info.st_mode & S_IFMT == S_IFDIR {
-                try await fetchTree(url)
-            } else {
-                try await fetch([url])
-            }
-        }
+        try await CopyFetches.prepare(urls, holds: copies.contains, file: fetch, folder: { try await self.fetchTree($0) })
     }
 
     /// A folder with everything in it, from one archive stream (once: a second request waits for the first).
@@ -330,14 +321,8 @@ package actor ContainerFiles {
         return true
     }
 
-    /// Keep cancellation with its own wait; another preview or copy may still need the same download.
     private func join(_ request: CopyFetches.Request) async throws {
-        defer { fetches.finish(request) }
-        try await withTaskCancellationHandler {
-            try await request.task.value
-        } onCancel: {
-            Task { await self.cancel(request) }
-        }
+        try await CopyFetches.wait(for: request, finish: { fetches.finish(request) }, cancel: { await self.cancel(request) })
     }
 
     private func cancel(_ request: CopyFetches.Request) { fetches.cancel(request) }

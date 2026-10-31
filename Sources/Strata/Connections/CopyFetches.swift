@@ -26,6 +26,30 @@ package nonisolated struct CopyFetches: Sendable {
 
     package init() {}
 
+    /// Waits for `request` as one of its callers: `finish` runs as the wait ends, and cancelling the wait runs
+    /// `cancel`, so another preview or copy still waiting for the same download keeps it.
+    package static func wait(for request: Request, finish: () -> Void,
+                             cancel: @escaping @Sendable () async -> Void) async throws {
+        defer { finish() }
+        try await withTaskCancellationHandler {
+            try await request.task.value
+        } onCancel: {
+            Task { await cancel() }
+        }
+    }
+
+    /// Makes everything at `urls` its owner holds (`holds`) complete before it's copied out: files fetched, folders
+    /// with all they hold. Throws the first problem.
+    package static func prepare(_ urls: [URL], holds: (URL) -> Bool, file: ([URL]) async throws -> Void,
+                                folder: (URL) async throws -> Void) async throws {
+        for url in urls where holds(url) {
+            try Task.checkCancellation()
+            var info = stat()
+            guard lstat(url.path, &info) == 0 else { continue }
+            if info.st_mode & S_IFMT == S_IFDIR { try await folder(url) } else { try await file([url]) }
+        }
+    }
+
     package mutating func join(_ path: String, kind: Kind = .file) -> Request? {
         let key = Key(path: path, kind: kind)
         guard let current = running[key] else { return nil }
