@@ -60,12 +60,6 @@
   "reason": "Renaming the one item you chose (a change asked for on one item may stay synchronous): whether it's a folder decides the extension confirmation."
  },
  {
-  "file": "Sources/Strata/Browser/BrowserViewController+Trash.swift",
-  "call": ".resourceValues(forKeys",
-  "count": 1,
-  "reason": "On the main thread before the rule in AGENTS.md (2026-10-30), reviewed in that sweep and not moved yet; move it off when this code changes."
- },
- {
   "file": "Sources/Strata/Containers/ContainerFiles.swift",
   "call": ".resolvingSymlinksInPath()",
   "count": 1,

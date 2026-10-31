@@ -12,7 +12,7 @@ import Testing
 /// Delete Immediately (⌥⌘⌫) and Empty Trash: only what was chosen goes, never anything beside, above or behind it.
 struct DeleteTests {
     private func delete(_ urls: [URL]) async -> (refused: [URL], failures: [(url: URL, error: Error)]) {
-        let plan = BrowserViewController.deletionPlan(urls, copies: .live)
+        let plan = await BrowserViewController.deletionPlan(urls, copies: .live)
         return (plan.refused, await BrowserViewController.deleteAll(plan.choices))
     }
 
@@ -26,7 +26,7 @@ struct DeleteTests {
 
     @Test func itemsInsideSelectedFoldersAreLeftToTheirFolder() async throws {
         let tree = try TestTree("a/", "a/b/", "a/b/c.txt", "a/d.txt", "e.txt")
-        let plan = BrowserViewController.deletionPlan([tree.url("a/b/c.txt"), tree.url("a"), tree.url("a/b")], copies: .live)
+        let plan = await BrowserViewController.deletionPlan([tree.url("a/b/c.txt"), tree.url("a"), tree.url("a/b")], copies: .live)
         #expect(plan.candidates.map(\.lastPathComponent) == ["a"])
         let failures = await BrowserViewController.deleteAll(plan.choices)
         #expect(failures.isEmpty)
@@ -56,8 +56,8 @@ struct DeleteTests {
         #expect(tree.snapshot() == ["-rf", "..dots", "a", "b", "uber.txt", "x"])
     }
 
-    @Test func disksAreRefused() {
-        let plan = BrowserViewController.deletionPlan([URL(fileURLWithPath: "/")], copies: .live)
+    @Test func disksAreRefused() async {
+        let plan = await BrowserViewController.deletionPlan([URL(fileURLWithPath: "/")], copies: .live)
         #expect(plan.candidates.isEmpty)
         #expect(plan.refused.map(\.path) == ["/"])
     }

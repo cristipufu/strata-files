@@ -346,10 +346,10 @@ struct BrowserCopyProviderTests {
         #expect(BrowserViewController.serverDeletionTargets([tree.url("local/file.txt")], copies: first.remote.copies).isEmpty)
 
         // Local deletionPlan and FileOps.canTrash refuse items in injected copies while accepting ordinary local files.
-        let refusedPlan = BrowserViewController.deletionPlan([createdFolder], copies: first.copies)
+        let refusedPlan = await BrowserViewController.deletionPlan([createdFolder], copies: first.copies)
         #expect(refusedPlan.candidates.isEmpty && refusedPlan.refused == [createdFolder.standardizedFileURL])
         let localFile = tree.url("local/file.txt").standardizedFileURL
-        let localPlan = BrowserViewController.deletionPlan([localFile], copies: first.copies)
+        let localPlan = await BrowserViewController.deletionPlan([localFile], copies: first.copies)
         #expect(localPlan.candidates == [localFile] && localPlan.refused.isEmpty)
         #expect(!FileOps.canTrash(createdFolder, copies: first.copies))
         #expect(!SidebarViewController.canTrash([createdFolder], copies: first.copies))

@@ -83,7 +83,16 @@ extension BrowserViewController {
     /// be deleted is listed. `noTrash`: they were headed for the Trash, but their disk has none.
     static func confirmDelete(_ urls: [URL], in window: NSWindow?, noTrash: Bool = false,
                               copies: CopyProviders, then done: @escaping () -> Void) {
-        let plan = deletionPlan(urls, copies: copies)
+        let asked = window != nil
+        Task { [weak window] in
+            let plan = await deletionPlan(urls, copies: copies)
+            // The window to ask in closed while the plan was read: nothing changes.
+            guard !asked || window?.isVisible == true else { return }
+            confirm(plan, in: window, noTrash: noTrash, then: done)
+        }
+    }
+
+    private static func confirm(_ plan: DeletionPlan, in window: NSWindow?, noTrash: Bool, then done: @escaping () -> Void) {
         let (candidates, refused) = (plan.candidates, plan.refused)
         guard let first = candidates.first else {
             if let item = refused.first {
@@ -136,7 +145,7 @@ extension BrowserViewController {
         let choices: [DeletionRequest]
     }
 
-    static func deletionPlan(_ urls: [URL], copies: CopyProviders) -> DeletionPlan {
+    @concurrent static func deletionPlan(_ urls: [URL], copies: CopyProviders) async -> DeletionPlan {
         var refused: [URL] = []
         let candidates = outermost(urls).filter { url in
             // A Trash is emptied, never deleted itself.

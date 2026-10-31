@@ -35,7 +35,7 @@ struct DeleteScopeTests {
         }
     }
 
-    @Test func aTrashIsNeverTrashedOrDeletedItself() throws {
+    @Test func aTrashIsNeverTrashedOrDeletedItself() async throws {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let tree = try TestTree("a.txt", ".Trash/", "trash link -> \(Trash.home.path)", "home link -> \(home.path)")
         // The Trash however it's spelled (through a link to the home folder too), and anything in it.
@@ -46,7 +46,7 @@ struct DeleteScopeTests {
         // A folder only named like one, and a link to it, are ordinary items.
         for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path), copies: .live), "\(path)") }
         // Delete Immediately refuses it up front, and goes on with the rest.
-        let plan = BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
+        let plan = await BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
         #expect(plan.refused.map(\.standardizedFileURL.path) == [Trash.home, tree.url("home link/.Trash")].map(\.standardizedFileURL.path))
         #expect(plan.candidates.map(\.path) == [tree.url("a.txt").standardizedFileURL.path])
         #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
