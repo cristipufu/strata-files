@@ -55,26 +55,12 @@ nonisolated package enum MarkdownParser {
             if trimmed.isEmpty { flush(); i += 1; continue }
 
             if indent >= 4, paragraph.isEmpty {
-                var code: [String] = []
-                while i < lines.count, indentation(lines[i]) >= 4 || isBlank(lines[i]) {
-                    code.append(String(lines[i].dropFirst(min(4, lines[i].count))))
-                    i += 1
-                }
-                while code.last?.isEmpty == true { code.removeLast() }
-                blocks.append(.code(language: "", text: code.joined(separator: "\n")))
+                blocks.append(indentedCode(lines, from: &i))
                 continue
             }
             if let fence = fence(trimmed) {
                 flush()
-                var code: [String] = []
-                i += 1
-                while i < lines.count {
-                    let candidate = lines[i].trimmingCharacters(in: .whitespaces)
-                    if candidate.hasPrefix(fence.marker), candidate.allSatisfy({ $0 == fence.marker.first }) { i += 1; break }
-                    code.append(String(lines[i].dropFirst(min(indent, indentation(lines[i])))))
-                    i += 1
-                }
-                blocks.append(.code(language: fence.info, text: code.joined(separator: "\n")))
+                blocks.append(fencedCode(lines, from: &i, fence: fence, indent: indent))
                 continue
             }
             if let (level, text) = atxHeading(trimmed) {
@@ -94,21 +80,7 @@ nonisolated package enum MarkdownParser {
             }
             if trimmed.hasPrefix(">") {
                 flush()
-                var quoted: [String] = []
-                while i < lines.count {
-                    let current = lines[i].trimmingCharacters(in: .whitespaces)
-                    if current.hasPrefix(">") {
-                        var content = current.dropFirst()
-                        if content.first == " " { content = content.dropFirst() }
-                        quoted.append(String(content))
-                    } else if !current.isEmpty, !startsBlock(lines[i]), quoted.last?.isEmpty == false {
-                        quoted.append(current)
-                    } else {
-                        break
-                    }
-                    i += 1
-                }
-                blocks.append(.quote(parse(lines: quoted, depth: depth + 1)))
+                blocks.append(quote(lines, from: &i, depth: depth))
                 continue
             }
             if let marker = listMarker(line), paragraph.isEmpty || marker.canInterruptParagraph {
@@ -116,32 +88,13 @@ nonisolated package enum MarkdownParser {
                 blocks.append(parseList(lines, from: &i, depth: depth))
                 continue
             }
-            if trimmed.contains("|"), i + 1 < lines.count, let alignments = tableAlignments(lines[i + 1]) {
-                let allHeaders = cells(trimmed)
-                if allHeaders.count == alignments.count {
-                    flush()
-                    let header = Array(allHeaders.prefix(maxTableColumns))
-                    var rows: [[String]] = []
-                    i += 2
-                    while i < lines.count, !isBlank(lines[i]), lines[i].contains("|") {
-                        if rows.count < maxTableRows {
-                            var row = cells(lines[i].trimmingCharacters(in: .whitespaces))
-                            row = Array(row.prefix(header.count)) + Array(repeating: "", count: max(0, header.count - row.count))
-                            rows.append(row)
-                        }
-                        i += 1
-                    }
-                    blocks.append(.table(header: header, alignments: Array(alignments.prefix(header.count)), rows: rows))
-                    continue
-                }
+            if trimmed.contains("|"), let table = table(lines, from: &i) {
+                flush()
+                blocks.append(table)
+                continue
             }
             if paragraph.isEmpty, isHTMLBlockStart(trimmed) {
-                var html: [String] = []
-                while i < lines.count, !isBlank(lines[i]) {
-                    html.append(lines[i])
-                    i += 1
-                }
-                blocks.append(.html(html.joined(separator: "\n")))
+                blocks.append(htmlBlock(lines, from: &i))
                 continue
             }
             paragraph.append(trimmed + (line.hasSuffix("  ") ? "  " : ""))
@@ -149,6 +102,82 @@ nonisolated package enum MarkdownParser {
         }
         flush()
         return blocks
+    }
+
+    // MARK: - Blocks
+
+    /// Lines indented four spaces or more, blank ones between them included, as code.
+    private static func indentedCode(_ lines: [String], from i: inout Int) -> MarkdownBlock {
+        var code: [String] = []
+        while i < lines.count, indentation(lines[i]) >= 4 || isBlank(lines[i]) {
+            code.append(String(lines[i].dropFirst(min(4, lines[i].count))))
+            i += 1
+        }
+        while code.last?.isEmpty == true { code.removeLast() }
+        return .code(language: "", text: code.joined(separator: "\n"))
+    }
+
+    /// From the opening fence (at line `i`) to the closing one, or the end.
+    private static func fencedCode(_ lines: [String], from i: inout Int, fence: (marker: String, info: String),
+                                   indent: Int) -> MarkdownBlock {
+        var code: [String] = []
+        i += 1
+        while i < lines.count {
+            let candidate = lines[i].trimmingCharacters(in: .whitespaces)
+            if candidate.hasPrefix(fence.marker), candidate.allSatisfy({ $0 == fence.marker.first }) { i += 1; break }
+            code.append(String(lines[i].dropFirst(min(indent, indentation(lines[i])))))
+            i += 1
+        }
+        return .code(language: fence.info, text: code.joined(separator: "\n"))
+    }
+
+    /// `>` lines, and the lines that continue their paragraph, parsed as blocks of their own one level down.
+    private static func quote(_ lines: [String], from i: inout Int, depth: Int) -> MarkdownBlock {
+        var quoted: [String] = []
+        while i < lines.count {
+            let current = lines[i].trimmingCharacters(in: .whitespaces)
+            if current.hasPrefix(">") {
+                var content = current.dropFirst()
+                if content.first == " " { content = content.dropFirst() }
+                quoted.append(String(content))
+            } else if !current.isEmpty, !startsBlock(lines[i]), quoted.last?.isEmpty == false {
+                quoted.append(current)
+            } else {
+                break
+            }
+            i += 1
+        }
+        return .quote(parse(lines: quoted, depth: depth + 1))
+    }
+
+    /// A GitHub table: a header row, then its alignment row, then rows until a blank or pipeless line. nil, with `i`
+    /// left alone, when line `i` doesn't start one.
+    private static func table(_ lines: [String], from i: inout Int) -> MarkdownBlock? {
+        guard i + 1 < lines.count, let alignments = tableAlignments(lines[i + 1]) else { return nil }
+        let allHeaders = cells(lines[i].trimmingCharacters(in: .whitespaces))
+        guard allHeaders.count == alignments.count else { return nil }
+        let header = Array(allHeaders.prefix(maxTableColumns))
+        var rows: [[String]] = []
+        i += 2
+        while i < lines.count, !isBlank(lines[i]), lines[i].contains("|") {
+            if rows.count < maxTableRows {
+                var row = cells(lines[i].trimmingCharacters(in: .whitespaces))
+                row = Array(row.prefix(header.count)) + Array(repeating: "", count: max(0, header.count - row.count))
+                rows.append(row)
+            }
+            i += 1
+        }
+        return .table(header: header, alignments: Array(alignments.prefix(header.count)), rows: rows)
+    }
+
+    /// Raw HTML up to the next blank line.
+    private static func htmlBlock(_ lines: [String], from i: inout Int) -> MarkdownBlock {
+        var html: [String] = []
+        while i < lines.count, !isBlank(lines[i]) {
+            html.append(lines[i])
+            i += 1
+        }
+        return .html(html.joined(separator: "\n"))
     }
 
     // MARK: - Lists
