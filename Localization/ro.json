@@ -1555,6 +1555,7 @@
     "Some pages couldn’t be read.": "Unele pagini nu au putut fi citite.",
     "Some servers in “%@” didn’t connect": "Unele servere din „%@” nu s-au conectat",
     "Something else is already mounted there.": "Altceva este deja montat acolo.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Între timp, altceva a luat numele, așa că acum se numește „%@”.",
     "Sort By": "Sortează după",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sortează după nume (2 tip, 5 data modificării, 7 dimensiune)",
     "Source": "Sursă",

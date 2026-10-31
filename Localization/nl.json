@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Sommige pagina’s konden niet worden gelezen.",
     "Some servers in “%@” didn’t connect": "Met sommige servers in “%@” kon geen verbinding worden gemaakt",
     "Something else is already mounted there.": "Daar is al iets anders gekoppeld.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Intussen heeft iets anders de naam gekregen, dus het heet nu “%@”.",
     "Sort By": "Sorteer op",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sorteer op naam (2 soort, 5 wijzigingsdatum, 7 grootte)",
     "Source": "Bronbestand",

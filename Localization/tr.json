@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Bazı sayfalar okunamadı.",
     "Some servers in “%@” didn’t connect": "“%@” içindeki bazı sunuculara bağlanılamadı",
     "Something else is already mounted there.": "Orada zaten başka bir şey bağlı.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Bu arada adı başka bir öge aldı, bu yüzden artık adı “%@”.",
     "Sort By": "Şuna Göre Sırala",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Ada göre sırala (2 tür, 5 değişiklik tarihi, 7 büyüklük)",
     "Source": "Kaynak kodu",

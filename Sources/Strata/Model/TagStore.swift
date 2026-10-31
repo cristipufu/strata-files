@@ -100,6 +100,8 @@ final class TagStore {
     private var tagChanges: [String: Int] = [:]
     /// Each item asked about and not read yet, with how many changes it had when asked.
     private var requestedSince: [String: Int] = [:]
+    /// Items invalidated while their read was under way, read again once it's in.
+    private var readAgain: Set<String> = []
     /// Folder loads under way: with none, and nothing asked about, no read can be from before a change, so the
     /// counts go.
     private var loadsUnderWay = 0
@@ -127,8 +129,12 @@ final class TagStore {
         if cache.count > 20_000 { cache.removeAll(keepingCapacity: true); stale.removeAll(keepingCapacity: true) }
         var before: [String: Int] = [:]
         for path in read.keys { before[path] = requestedSince.removeValue(forKey: path) }
+        let again = readAgain.intersection(read.keys)
+        readAgain.subtract(again)
         // Only a change redraws: every list redraws its rows, and rows drawn ask again.
         if keep(read, unchangedSince: before) { NotificationCenter.default.post(name: .tagsLoaded, object: self) }
+        stale.formUnion(again)
+        again.forEach(request)
     }
 
     /// Keeps `read`, of tags read since `before` was taken, for each path not changed meanwhile. Returns whether any
@@ -155,15 +161,24 @@ final class TagStore {
         let labels = NSWorkspace.shared.fileLabels
         let before = tagChanges
         loadsUnderWay += 1
-        return Task {
-            // Its own thread: a folder on a server that stopped answering mustn't hold a shared one.
+        let disk = DiskOfPath.of(folders.first ?? paths.first ?? "/")
+        let previous = diskLoads[disk]
+        let load = Task {
+            // One load at a time on each disk, on a thread of its own: a server that stopped answering holds one
+            // thread, not one per refresh, and never a shared one.
+            await previous?.value
             let tags = await OwnThread.run { Self.readAll(paths, labels: labels) }
             loadsUnderWay -= 1
             keep(tags, unchangedSince: before)
             loading.subtract(folders)
             NotificationCenter.default.post(name: .tagsLoaded, object: self)
         }
+        diskLoads[disk] = load
+        return load
     }
+
+    /// Each disk's latest folder load, which the next one on it waits for.
+    private var diskLoads: [String: Task<Void, Never>] = [:]
 
     nonisolated static func readAll(_ paths: [String], labels: [String]) -> [String: [FinderTag]] {
         var result: [String: [FinderTag]] = [:]
@@ -175,10 +190,16 @@ final class TagStore {
     /// Marks a folder's tags for rereading. Keep their last known values for sorting and background reads: browsing
     /// an ancestor in another window must not temporarily turn every descendant into an untagged item.
     func invalidate(_ folder: URL?) {
-        guard let folder else { cache.removeAll(); stale.removeAll(); return }
+        guard let folder else {
+            cache.removeAll(); stale.removeAll()
+            readAgain.formUnion(requestedSince.keys)
+            return
+        }
         let path = folder.standardizedFileURL.path
         let prefix = path == "/" ? "/" : path + "/"
         stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })
+        // A read under way may be from before: read again once it's in.
+        readAgain.formUnion(requestedSince.keys.filter { $0.hasPrefix(prefix) })
     }
 
     /// Whether a listed item can carry tags from Strata, by what its listing says: for showing tag controls without

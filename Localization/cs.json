@@ -1555,6 +1555,7 @@
     "Some pages couldn’t be read.": "Některé stránky se nepodařilo přečíst.",
     "Some servers in “%@” didn’t connect": "K některým serverům v „%@“ se nepodařilo připojit",
     "Something else is already mounted there.": "Tam už je připojeno něco jiného.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Mezitím jeho název zabralo něco jiného, takže se teď jmenuje „%@“.",
     "Sort By": "Seřadit podle",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Seřadit podle názvu (2 druh, 5 datum změny, 7 velikost)",
     "Source": "Zdrojový kód",

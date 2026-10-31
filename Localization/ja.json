@@ -1327,6 +1327,7 @@
     "Some pages couldn’t be read.": "一部のページを読み込めませんでした。",
     "Some servers in “%@” didn’t connect": "「%@」の一部のサーバに接続できませんでした",
     "Something else is already mounted there.": "その場所にはすでに別のものがマウントされています。",
+    "Something else took its name meanwhile, so it’s now “%@”.": "その間に別の項目がその名前を使ったため、「%@」になりました。",
     "Sort By": "表示順序",
     "Sort by name (2 kind, 5 date modified, 7 size)": "名前順に並べ替え（2: 種類、5: 変更日、7: サイズ）",
     "Source": "ソース",

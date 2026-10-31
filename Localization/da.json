@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Nogle sider kunne ikke læses.",
     "Some servers in “%@” didn’t connect": "Der kunne ikke oprettes forbindelse til nogle servere i »%@«",
     "Something else is already mounted there.": "Der er allerede noget andet monteret der.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Noget andet har fået navnet i mellemtiden, så det hedder nu »%@«.",
     "Sort By": "Sorter efter",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sorter efter navn (2 type, 5 ændringsdato, 7 størrelse)",
     "Source": "Kildefil",

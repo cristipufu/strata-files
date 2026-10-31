@@ -78,6 +78,30 @@ struct TagColumnTests {
         #expect(tree.snapshot() == ["a.txt"])
     }
 
+    /// A row's read under way when its folder is invalidated is read again once it's in: it may be from before.
+    @Test func aRowInvalidatedWhileBeingReadIsReadAgain() async throws {
+        let tree = try TestTree("folder/a.txt")
+        let item = tree.url("folder/a.txt")
+        let started = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live) { paths, _ in
+            let count = reads.withLock { reads in reads += 1; return reads }
+            let name = count == 1 ? "Before" : "After"
+            if count == 1 { started.signal(); release.wait() }
+            return Dictionary(uniqueKeysWithValues: paths.map { ($0, [FinderTag(name: name, color: 0)]) })
+        }
+        #expect(store.tags(for: item).isEmpty)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { started.wait(); continuation.resume() }
+        }
+        store.invalidate(tree.url("folder"))
+        release.signal()
+        await store.settled()
+        #expect(store.cachedTags(for: item).map(\.name) == ["After"])
+        #expect(reads.withLock { $0 } == 2)
+        #expect(tree.snapshot() == ["folder/", "folder/a.txt"])
+    }
+
     /// A file's tags not read yet show in the tag field once the background read brings them.
     @Test func theTagFieldShowsTagsOnceTheyreRead() async throws {
         let tree = try TestTree("unread")

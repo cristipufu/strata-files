@@ -1669,6 +1669,7 @@
     "Some pages couldn’t be read.": "Nie udało się odczytać niektórych stron.",
     "Some servers in “%@” didn’t connect": "Nie udało się połączyć z niektórymi serwerami z „%@”",
     "Something else is already mounted there.": "Coś innego jest już tam zamontowane.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "W międzyczasie coś innego zajęło tę nazwę, więc teraz nazywa się „%@”.",
     "Sort By": "Sortuj wg",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sortuj wg nazwy (2 rodzaj, 5 data zmian, 7 wielkość)",
     "Source": "Kod źródłowy",

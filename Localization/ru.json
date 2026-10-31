@@ -1671,6 +1671,7 @@
     "Some pages couldn’t be read.": "Не удалось прочитать некоторые страницы.",
     "Some servers in “%@” didn’t connect": "Не удалось подключиться к некоторым серверам из «%@»",
     "Something else is already mounted there.": "Там уже смонтировано что-то другое.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Тем временем это имя занял другой объект, поэтому теперь он называется «%@».",
     "Sort By": "Сортировка",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Сортировать по имени (2 тип, 5 дата изменения, 7 размер)",
     "Source": "Исходный код",

@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Det gick inte att läsa vissa sidor.",
     "Some servers in “%@” didn’t connect": "Det gick inte att ansluta till vissa servrar i ”%@”",
     "Something else is already mounted there.": "Något annat är redan monterat där.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Något annat fick namnet under tiden, så nu heter det ”%@”.",
     "Sort By": "Sortera efter",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sortera efter namn (2 typ, 5 ändringsdatum, 7 storlek)",
     "Source": "Källkod",

@@ -253,8 +253,8 @@
   },
   {
     "file": "Strata/Transfers/TransferEngine.swift",
-    "find": "            for mismatch in check.mismatches {\n                // A bad copy is worse than none: drop it so a retry starts clean.",
-    "replace": "            for mismatch in check.mismatches where false {\n                // A bad copy is worse than none: drop it so a retry starts clean.",
+    "find": "            failures += dropMismatches(check.mismatches, item: index, root: target,",
+    "replace": "            failures += dropMismatches([], item: index, root: target,",
     "rule": "A replace swaps in a copy that failed to verify",
     "tests": "TransferTests/aCopyThatFailsToVerify"
   },
@@ -7147,9 +7147,16 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "                if (try? await move(temporary, to: pair.from)) == nil {\n                    try? await move(temporary, to: FileOps.available(pair.from, copyStyle: false))\n                }",
-    "replace": "                try? await move(temporary, to: pair.from)",
+    "find": "        for n in 2...999 {",
+    "replace": "        for n in 2..<2 {",
     "rule": "A case-only rename that can't finish leaves the item under its hidden name",
+    "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
+  },
+  {
+    "file": "Strata/AI/PlanExecutor.swift",
+    "find": "                if now != pair.from { throw Displaced(now: now, reason: error) }\n",
+    "replace": "",
+    "rule": "A case-only rename that can't finish moves the item without saying where",
     "tests": "TransferTests/aCaseOnlyRenameThatCantFinishNeverLeavesTheItemHidden"
   },
   {

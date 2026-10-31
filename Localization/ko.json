@@ -1327,6 +1327,7 @@
     "Some pages couldn’t be read.": "일부 페이지를 읽을 수 없습니다.",
     "Some servers in “%@” didn’t connect": "‘%@’의 일부 서버에 연결되지 않음",
     "Something else is already mounted there.": "해당 위치에 이미 다른 항목이 마운트되어 있습니다.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "그 사이에 다른 항목이 이름을 사용해서 이제 ‘%@’(으)로 바뀌었습니다.",
     "Sort By": "다음으로 정렬",
     "Sort by name (2 kind, 5 date modified, 7 size)": "이름순 정렬(2: 종류, 5: 수정일, 7: 크기)",
     "Source": "소스",

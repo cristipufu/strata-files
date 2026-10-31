@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Néhány oldalt nem sikerült beolvasni.",
     "Some servers in “%@” didn’t connect": "„%@” egyes szervereihez nem sikerült kapcsolódni",
     "Something else is already mounted there.": "Ott már valami más van csatolva.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Közben valami más kapta meg a nevét, ezért most „%@” a neve.",
     "Sort By": "Rendezés",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Rendezés név szerint (2 típus, 5 módosítás dátuma, 7 méret)",
     "Source": "Forráskód",

@@ -39,9 +39,10 @@ extension BrowserViewController {
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
                 job.onFinish = { _ in made.removeEmpty() }
             }
+            // Notes go to the pane's window: with it closed meanwhile, there's no one to tell.
             let unknown = items.filter { locations[$0] == nil }
             if !unknown.isEmpty { self?.explainUnknownOrigin(unknown) }
-            if !ready.failures.isEmpty { Self.report(ready.failures, .putBack, in: window) }
+            if !ready.failures.isEmpty, let window { Self.report(ready.failures, .putBack, in: window) }
         }
     }
 
@@ -200,7 +201,6 @@ extension BrowserViewController {
 
     // MARK: - Private
 
-    /// A note in the pane's window: with no window (closed meanwhile), there's no one to tell.
     private func explainUnknownOrigin(_ items: [URL]) {
         guard let first = items.first, let window = view.window else { return }
         let alert = NSAlert()

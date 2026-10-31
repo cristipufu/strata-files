@@ -1327,6 +1327,7 @@
     "Some pages couldn’t be read.": "無法讀取部分頁面。",
     "Some servers in “%@” didn’t connect": "「%@」中的部分伺服器未能連線",
     "Something else is already mounted there.": "該位置已裝載了其他內容。",
+    "Something else took its name meanwhile, so it’s now “%@”.": "在此期間，另一個項目使用了這個名稱，因此它現在名為「%@」。",
     "Sort By": "排序方式",
     "Sort by name (2 kind, 5 date modified, 7 size)": "依名稱排序（2：種類，5：修改日期，7：大小）",
     "Source": "原始碼",

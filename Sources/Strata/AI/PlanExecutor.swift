@@ -153,7 +153,15 @@ final class PlanTransaction {
                     done.append(pair)
                     outcome.results.append(pair.to)
                 } catch {
+                    let expected = applied.identity(at: pair.to)
                     applied.set(nil, at: pair.to)
+                    if let displaced = error as? Displaced {
+                        // It moved, just not where it was meant to: recorded there, so History and Undo follow it.
+                        applied.set(expected, at: displaced.now)
+                        applied.arrived(displaced.now)
+                        done.append((pair.from, displaced.now))
+                        outcome.results.append(displaced.now)
+                    }
                     outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
                                                    comment: "An item’s name, then why it couldn’t be renamed or moved"))
                 }
@@ -207,27 +215,56 @@ final class PlanTransaction {
         return .trashed(landed, FileIdentity.read(landed.path))
     }
 
-    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
+    /// An item a case-only rename couldn't finish, and something else took its old name meanwhile: it's at `now`,
+    /// beside that name (or, failing even that, still under the hidden name that says what it was).
+    struct Displaced: LocalizedError {
+        let now: URL
+        let reason: Error
+
+        var errorDescription: String? {
+            reason.localizedDescription + " "
+                + String(localized: "Something else took its name meanwhile, so it’s now “\(now.lastPathComponent)”.")
+        }
+    }
+
+    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes; one that
+    /// can't finish puts the item back, or throws `Displaced` saying where it is.
     private static func move(_ pair: Pair, copies: CopyProviders) async throws {
         func move(_ from: URL, to: URL) async throws {
             try await FileOps.moveAsPart([(from: from, to: to)], copies: copies)
         }
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
-            let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")
+            let temporary = FileOps.parkingName(for: pair.from)
             try await move(pair.from, to: temporary)
             do {
                 try await move(temporary, to: pair.to)
             } catch {
-                // Never leave the item under its hidden temporary name: back where it was, or beside it when something
-                // has taken that place meanwhile.
-                if (try? await move(temporary, to: pair.from)) == nil {
-                    try? await move(temporary, to: FileOps.available(pair.from, copyStyle: false))
-                }
+                let now = await putBack(temporary, as: pair.from)
+                if now != pair.from { throw Displaced(now: now, reason: error) }
                 throw error
             }
         } else {
             try await move(pair.from, to: pair.to)
         }
+    }
+
+    /// Where an item parked at `temporary` goes back to: its old name, or the first free one beside it ("photo 2.jpg",
+    /// keeping its own extension), each taken with an exclusive rename so nothing in the way is replaced. Off the main
+    /// thread: it reads the disk.
+    @concurrent
+    private static func putBack(_ temporary: URL, as original: URL) async -> URL {
+        if TransferEngine.rename(temporary, to: original) == 0 { return original }
+        let folder = (try? temporary.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])).map {
+            $0.isDirectory == true && $0.isPackage != true
+        } ?? false
+        for n in 2...999 {
+            let name = FileOps.name(original.lastPathComponent, adding: " \(n)", keepingExtension: !folder)
+            let candidate = original.deletingLastPathComponent().appending(path: name)
+            let code = TransferEngine.rename(temporary, to: candidate)
+            if code == 0 { return candidate }
+            guard code == EEXIST else { break }
+        }
+        return temporary
     }
 
     // MARK: - Undo

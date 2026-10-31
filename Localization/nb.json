@@ -1441,6 +1441,7 @@
     "Some pages couldn’t be read.": "Kunne ikke lese noen av sidene.",
     "Some servers in “%@” didn’t connect": "Kunne ikke koble til noen av tjenerne i «%@»",
     "Something else is already mounted there.": "Noe annet er allerede tilkoblet der.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Noe annet har fått navnet i mellomtiden, så det heter nå «%@».",
     "Sort By": "Sorter etter",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Sorter etter navn (2 type, 5 dato endret, 7 størrelse)",
     "Source": "Kildekode",

@@ -1669,6 +1669,7 @@
     "Some pages couldn’t be read.": "Не вдалося прочитати деякі сторінки.",
     "Some servers in “%@” didn’t connect": "Не вдалося підʼєднатися до деяких серверів із «%@»",
     "Something else is already mounted there.": "Там уже змонтовано щось інше.",
+    "Something else took its name meanwhile, so it’s now “%@”.": "Тим часом це ім’я зайняв інший об’єкт, тому тепер він називається «%@».",
     "Sort By": "Сортування",
     "Sort by name (2 kind, 5 date modified, 7 size)": "Сортувати за назвою (2 тип, 5 дата змінення, 7 розмір)",
     "Source": "Вихідний код",

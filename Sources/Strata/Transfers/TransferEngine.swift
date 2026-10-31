@@ -191,18 +191,9 @@ nonisolated enum TransferEngine {
                 removeIfPresent(target, in: target, created: copy.created)
                 return finish(.cancelled)
             }
-            for mismatch in check.mismatches {
-                // A bad copy is worse than none: drop it so a retry starts clean.
-                let mismatchURL = URL(fileURLWithPath: mismatch.destination)
-                removeIfPresent(mismatchURL, in: target, created: copy.created)
-                let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
-                failures.append(TransferFailure(item: index, stage: .verify, source: URL(fileURLWithPath: mismatch.source),
-                                                destination: replacing ? nil : mismatchURL,
-                                                message: mismatch.message,
-                                                retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
-                                                                                 root: target, created: copy.created,
-                                                                                 source: item.source, sourceIdentities: copy.sourceIdentities)))
-            }
+            failures += dropMismatches(check.mismatches, item: index, root: target, created: copy.created,
+                                       source: item.source, sourceIdentities: copy.sourceIdentities,
+                                       showsDestination: !replacing)
             return nil
         }
 
@@ -230,7 +221,7 @@ nonisolated enum TransferEngine {
                     TransferFailure(item: index, stage: .item, source: item.source, destination: item.destination,
                                     message: "\($0.displayName): \($0.message)")
                 }
-                return result
+                return finish(.failed)
             }
             let trashed: URL
             result.replacedIdentity = FileIdentity.read(item.destination.path)
@@ -417,18 +408,9 @@ nonisolated enum TransferEngine {
                 removeIfPresent(destination, in: item.destination, created: mergedCreated, keepRootDirectory: keepingDirectory)
                 return finish(.cancelled)
             }
-            for mismatch in check.mismatches {
-                let mismatchURL = URL(fileURLWithPath: mismatch.destination)
-                removeIfPresent(mismatchURL, in: item.destination, created: mergedCreated)
-                let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
-                result.failures.append(TransferFailure(item: index, stage: .verify,
-                                                       source: URL(fileURLWithPath: mismatch.source),
-                                                       destination: mismatchURL,
-                                                       message: mismatch.message,
-                                                       retryTarget: TransferRetryTarget(mismatchURL, identity: remaining,
-                                                                                        root: item.destination, created: mergedCreated,
-                                                                                        source: item.source, sourceIdentities: latestSourceIdentities)))
-            }
+            result.failures += dropMismatches(check.mismatches, item: index, root: item.destination, created: mergedCreated,
+                                              source: item.source, sourceIdentities: latestSourceIdentities,
+                                              showsDestination: true)
             return nil
         }
 
@@ -460,6 +442,22 @@ nonisolated enum TransferEngine {
             }
             result.sourceRemoved = true
             return nil
+        }
+    }
+
+    /// A bad copy is worse than none: each part that failed to verify goes, so a retry starts clean, and becomes a
+    /// failure that retry can repair. `showsDestination` is off while a replacement is still under its temporary name.
+    private static func dropMismatches(_ mismatches: [EntryError], item index: Int, root: URL, created: [String: FileIdentity],
+                                       source: URL, sourceIdentities: [String: FileIdentity],
+                                       showsDestination: Bool) -> [TransferFailure] {
+        mismatches.map { mismatch in
+            let mismatchURL = URL(fileURLWithPath: mismatch.destination)
+            removeIfPresent(mismatchURL, in: root, created: created)
+            let remaining = FileIdentity.read(mismatch.destination) == mismatch.identity ? mismatch.identity : nil
+            return TransferFailure(item: index, stage: .verify, source: URL(fileURLWithPath: mismatch.source),
+                                   destination: showsDestination ? mismatchURL : nil, message: mismatch.message,
+                                   retryTarget: TransferRetryTarget(mismatchURL, identity: remaining, root: root, created: created,
+                                                                    source: source, sourceIdentities: sourceIdentities))
         }
     }
 

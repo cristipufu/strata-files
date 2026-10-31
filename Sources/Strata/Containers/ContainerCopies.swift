@@ -446,7 +446,8 @@ nonisolated enum ContainerCopies {
 }
 
 /// Strata's read-only copies: archives opened as folders and container files. Nothing inside one is changed from
-/// Strata, and nothing is moved or saved into one.
+/// Strata, and nothing is moved or saved into one. The app's own copies count for every window, not only `copies`:
+/// refusing a change inside a copy Strata keeps is never wrong.
 nonisolated enum ReadOnlyCopies {
     static func contains(_ url: URL, copies: CopyProviders) -> Bool {
         ArchiveCache.contains(url) || ContainerCopies.contains(url) || RemoteCopies.contains(url)
