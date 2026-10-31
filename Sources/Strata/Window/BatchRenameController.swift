@@ -52,7 +52,20 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "Rename \(urls.count) Items", comment: "plural"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
+        configureRuleControls()
+        let list = makeList()
+        let footer = makeFooter()
+        let container = layOut(title: title, list: list, footer: footer)
+        view = container
+        ThemeStyle.refresh(container)
+        showRuleControls()
+        summary.stringValue = String(localized: "Reading \(urls.count) items…", comment: "plural")
+        labelControls()
+        readItems()
+    }
 
+    /// The rule menu and every rule's fields, popups and checkboxes, each reporting its changes.
+    private func configureRuleControls() {
         for m in RenameRules.Mode.allCases { mode.addItem(withTitle: m.title) }
         mode.target = self
         mode.action = #selector(changed(_:))
@@ -80,7 +93,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         rulesStack.orientation = .vertical
         rulesStack.alignment = .leading
         rulesStack.spacing = 8
+    }
 
+    /// The list of old and new names.
+    private func makeList() -> NSScrollView {
         let column = NSTableColumn(identifier: .init("step"))
         table.addTableColumn(column)
         table.headerView = nil
@@ -97,7 +113,11 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         scroll.autohidesScrollers = true
         scroll.borderType = .bezelBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        return scroll
+    }
 
+    /// The summary, Cancel and Rename.
+    private func makeFooter() -> NSStackView {
         summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
@@ -115,7 +135,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [summary, spacer, cancel, renameButton])
         footer.spacing = 8
+        return footer
+    }
 
+    private func layOut(title: NSTextField, list scroll: NSScrollView, footer: NSStackView) -> NSView {
         let stack = NSStackView(views: [title, mode, rulesStack, includeExtension, scroll, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -137,10 +160,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             rulesStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
-        view = container
-        ThemeStyle.refresh(container)
-        showRuleControls()
-        summary.stringValue = String(localized: "Reading \(urls.count) items…", comment: "plural")
+        return container
+    }
+
+    private func labelControls() {
         for (field, label) in [(find, String(localized: "Find", comment: "Batch rename field: the text to replace in names")),
                                (replacement, String(localized: "Replace with", comment: "Batch rename field: the text that replaces it")),
                                (addition, String(localized: "Text to add")), (template, String(localized: "Name format")),
@@ -150,6 +173,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         mode.setAccessibilityLabel(String(localized: "Rename rule"))
         position.setAccessibilityLabel(String(localized: "Where to add the text"))
         caseMenu.setAccessibilityLabel(String(localized: "Change case to"))
+    }
+
+    /// The items' names and dates, read off the main thread, then the first preview.
+    private func readItems() {
         Task { [weak self] in
             guard let self else { return }
             items = await PlanItem.load(urls)

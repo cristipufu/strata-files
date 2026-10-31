@@ -165,7 +165,7 @@ on any function that is in neither this table nor a mutation.
 | Functions | Why no mutation |
 |---|---|
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `add`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call, and `add` hands each step to the check for its kind (mutated). The steps are carried out by `PlanExecutor` (mutated). |
-| `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
+| `App/StrataCommand :: init`; `App/MainMenu :: fileMenu`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
 | `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
 | `Model/Places :: eject`; `Sidebar/SidebarViewController :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
@@ -230,7 +230,7 @@ belong to.
 | `AI/PlanGenerator :: (top level)`, `recipe`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `add`, `rename`, `needFolder`, `strandChains`; `AI/RenameRules :: plan` (`rename` here is a plan step's name, not a file call) | `PlanSafetyTests/*`, `RenameTests/*` |
 | `AI/SemanticIndex :: reset` | `CacheRemovalTests/resettingTheContentIndexRemovesOnlyItsStore` |
 | `Model/Prefs :: registerTestCleanup` (a test run's own settings suite, at exit) | `PreferencesTests/processPreferencesAreIsolatedFromTheAppInEveryConfiguration` checks the suite's place; the exit itself is untested |
-| `App/StrataCommand :: init`; `App/MainMenu :: build`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
+| `App/StrataCommand :: init`; `App/MainMenu :: fileMenu`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
 | `Queue/FileCommands :: rename` | `FileCommandOwnershipTests/*` |
 | `Browser/BrowserViewController+ArchiveBrowsing :: prepareCopy` (makes the copy's folder) | `ArchiveSafetyTests/*` |
 | `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |

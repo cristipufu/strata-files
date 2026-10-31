@@ -65,7 +65,12 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "Compare Folders"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        // The folders by name (both always visible); where they are, on hover.
+        view = layOut(title: title, sides: makeSides(), options: makeOptions(), list: makeList(), footer: makeFooter())
+        runComparison()
+    }
+
+    /// The folders by name (both always visible); where they are, on hover.
+    private func makeSides() -> NSTextField {
         let sides = NSTextField(labelWithString: String(localized: "“\(left.lastPathComponent)” (left)   ⇄   “\(right.lastPathComponent)” (right)",
                                                          comment: "The two folders being compared, by name"))
         sides.font = .systemFont(ofSize: 12)
@@ -74,7 +79,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         sides.toolTip = String(localized: "Left: \(Format.tildePath(left))\nRight: \(Format.tildePath(right))",
                                comment: "Tooltip: where the two compared folders are")
         sides.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return sides
+    }
 
+    /// What's listed, whether contents are compared, and which way a sync goes.
+    private func makeOptions() -> NSStackView {
         contents.target = self
         contents.action = #selector(rescan(_:))
         contents.toolTip = String(localized: "Read files of the same size to find ones whose contents differ (slower)")
@@ -96,7 +105,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let options = NSStackView(views: [showLabel, filter, contents, spacer, syncLabel, direction, mirror])
         options.spacing = 8
+        return options
+    }
 
+    /// The differences, one row each, with a menu setting what the selected rows do.
+    private func makeList() -> NSScrollView {
         for (id, title, width) in [("status", "", 26.0),
                                    ("path", String(localized: "Item", comment: "Compare column: the item's path"), 280.0),
                                    ("left", String(localized: "Left: \(left.lastPathComponent)", comment: "Compare column: the left folder"), 150.0),
@@ -125,7 +138,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .bezelBorder
+        return scroll
+    }
 
+    /// The summary, Close and Sync.
+    private func makeFooter() -> NSStackView {
         summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
@@ -144,7 +161,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         footerSpacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [spinner, summary, footerSpacer, closeButton, syncButton])
         footer.spacing = 8
+        return footer
+    }
 
+    private func layOut(title: NSTextField, sides: NSTextField, options: NSStackView, list scroll: NSScrollView,
+                        footer: NSStackView) -> NSView {
         let stack = NSStackView(views: [title, sides, options, scroll, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -166,8 +187,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 320),
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
-        view = container
-        runComparison()
+        return container
     }
 
     override func viewDidDisappear() {

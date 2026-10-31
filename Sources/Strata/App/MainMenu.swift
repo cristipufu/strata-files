@@ -3,7 +3,19 @@ import AppKit
 enum MainMenu {
     static func build() -> NSMenu {
         let main = NSMenu()
-        main.addItem(submenu("Strata", [
+        for menu in [appMenu(), fileMenu(), editMenu(), viewMenu(), goMenu()] { main.addItem(menu) }
+        let window = windowMenu()
+        main.addItem(window)
+        NSApp.windowsMenu = window.submenu
+        let help = helpMenu()
+        main.addItem(help)
+        NSApp.helpMenu = help.submenu
+        MenuImages.show(in: main)
+        return main
+    }
+
+    private static func appMenu() -> NSMenuItem {
+        submenu("Strata", [
             item("About Strata", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             StrataCommand.checkForUpdates.menuItem(),
             .separator(),
@@ -18,8 +30,11 @@ enum MainMenu {
             item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
             .separator(),
             item("Quit Strata", #selector(NSApplication.terminate(_:)), "q"),
-        ]))
-        main.addItem(submenu("File", [
+        ])
+    }
+
+    private static func fileMenu() -> NSMenuItem {
+        submenu("File", [
             StrataCommand.newWindow.menuItem(),
             StrataCommand.newWindowForTab.menuItem(),
             StrataCommand.newFolder.menuItem(),
@@ -47,8 +62,11 @@ enum MainMenu {
             StrataCommand.ejectVolume.menuItem(),
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
-        ]))
-        main.addItem(submenu("Edit", [
+        ])
+    }
+
+    private static func editMenu() -> NSMenuItem {
+        submenu("Edit", [
             item("Undo", Selector(("undo:")), "z"),
             item("Redo", Selector(("redo:")), "z", [.command, .shift]),
             StrataCommand.showHistory.menuItem(),
@@ -60,8 +78,11 @@ enum MainMenu {
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
             .separator(),
             StrataCommand.copyPath.menuItem(),
-        ]))
-        main.addItem(submenu("View", BrowserViewMode.menuItems(action: #selector(BrowserWindowController.syncViewMode(_:))) + [
+        ])
+    }
+
+    private static func viewMenu() -> NSMenuItem {
+        submenu("View", BrowserViewMode.menuItems(action: #selector(BrowserWindowController.syncViewMode(_:))) + [
             .separator(),
             StrataCommand.biggerIcons.menuItem(),
             hidden(StrataCommand.biggerIconsAlias.menuItem()),
@@ -87,8 +108,11 @@ enum MainMenu {
             .separator(),
             item("Customize Toolbar…", #selector(BrowserWindowController.customizeToolbar(_:))),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control], symbol: "arrow.up.left.and.arrow.down.right"),
-        ]))
-        main.addItem(submenu("Go", [
+        ])
+    }
+
+    private static func goMenu() -> NSMenuItem {
+        submenu("Go", [
             StrataCommand.goBack.menuItem(),
             StrataCommand.goForward.menuItem(),
             StrataCommand.goToEnclosingFolder.menuItem(),
@@ -105,14 +129,17 @@ enum MainMenu {
             StrataCommand.goToFolder.menuItem(),
             StrataCommand.editLocation.menuItem(),
             StrataCommand.connectToServer.menuItem(),
-        ]))
+        ])
+    }
+
+    private static func windowMenu() -> NSMenuItem {
         let workspacesTitle = String(localized: "Workspaces", comment: "Window menu: submenu of saved sets of tabs")
         let workspaces = NSMenuItem(title: workspacesTitle, action: nil, keyEquivalent: "")
         workspaces.image = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: nil)
         let workspacesMenu = NSMenu(title: workspacesTitle)
         workspacesMenu.delegate = WorkspaceMenu.shared
         workspaces.submenu = workspacesMenu
-        let window = submenu("Window", [
+        return submenu("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
             item("Zoom", #selector(NSWindow.performZoom(_:))),
             .separator(),
@@ -121,15 +148,12 @@ enum MainMenu {
             .separator(),
             item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
         ])
-        main.addItem(window)
-        NSApp.windowsMenu = window.submenu
-        let help = submenu("Help", [
+    }
+
+    private static func helpMenu() -> NSMenuItem {
+        submenu("Help", [
             StrataCommand.showShortcuts.menuItem(),
         ])
-        main.addItem(help)
-        NSApp.helpMenu = help.submenu
-        MenuImages.show(in: main)
-        return main
     }
 
     /// `id`: a name for Settings ▸ Shortcuts when another command shares the action (otherwise the action names it).

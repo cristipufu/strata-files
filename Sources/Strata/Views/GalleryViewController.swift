@@ -78,6 +78,23 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     var focusView: NSView { strip }
 
     override func loadView() {
+        configureStrip()
+        configurePreview()
+        configureLabels()
+        let root = GalleryRootView()
+        root.controller = self
+        root.wantsLayer = true
+        layOut(in: root)
+        updateStripHeight()
+        view = root
+        root.registerForDraggedTypes(FileDrop.types)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
+                                               object: nil)
+    }
+
+    /// The strip of thumbnails along the bottom, horizontal, selectable and a drag source.
+    private func configureStrip() {
         layout.scrollDirection = .horizontal
         layout.itemSize = NSSize(width: Self.itemSide, height: Self.itemSide)
         layout.minimumInteritemSpacing = 6
@@ -104,7 +121,10 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         stripScroll.drawsBackground = false
         stripScroll.verticalScrollElasticity = .none
         stripScroll.translatesAutoresizingMaskIntoConstraints = false
+    }
 
+    /// The box the chosen item's preview or icon fills.
+    private func configurePreview() {
         previewBox.translatesAutoresizingMaskIntoConstraints = false
         preview.translatesAutoresizingMaskIntoConstraints = false
         preview.isHidden = true
@@ -113,7 +133,10 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         iconView.setAccessibilityElement(false)
         previewBox.addSubview(preview)
         previewBox.addSubview(iconView)
+    }
 
+    /// The chosen item's name and details below its preview.
+    private func configureLabels() {
         nameLabel.font = Self.nameFont
         nameLabel.alignment = .center
         nameLabel.lineBreakMode = .byTruncatingMiddle
@@ -132,16 +155,16 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
             label.setContentHuggingPriority(.init(200), for: .horizontal)
         }
+    }
 
+    /// Preview, labels, a separator and the strip from top to bottom, and the drop highlight over them all.
+    private func layOut(in root: GalleryRootView) {
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
         dropHighlight.translatesAutoresizingMaskIntoConstraints = false
         dropHighlight.isHidden = true
 
-        let root = GalleryRootView()
-        root.controller = self
-        root.wantsLayer = true
         for subview in [previewBox, nameLabel, detailLabel, separator, stripScroll, dropHighlight] as [NSView] { root.addSubview(subview) }
         let guide = root.safeAreaLayoutGuide
         // The icon fills what it can of the box, square, up to 256 points (above the image's own small size, which
@@ -153,8 +176,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         iconView.setContentHuggingPriority(.init(1), for: .vertical)
         iconView.setContentCompressionResistancePriority(.init(1), for: .horizontal)
         iconView.setContentCompressionResistancePriority(.init(1), for: .vertical)
-        let strip = stripScroll.heightAnchor.constraint(equalToConstant: 0)
-        stripHeight = strip
+        let height = stripScroll.heightAnchor.constraint(equalToConstant: 0)
+        stripHeight = height
         NSLayoutConstraint.activate([
             previewBox.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
             previewBox.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
@@ -183,18 +206,12 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             stripScroll.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
             stripScroll.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
             stripScroll.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-            strip,
+            height,
             dropHighlight.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 3),
             dropHighlight.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -3),
             dropHighlight.topAnchor.constraint(equalTo: guide.topAnchor, constant: 3),
             dropHighlight.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -3),
         ])
-        updateStripHeight()
-        view = root
-        root.registerForDraggedTypes(FileDrop.types)
-        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
-                                               object: nil)
     }
 
     /// Room for a row of thumbnails, plus a scroller when they're always shown.

@@ -105,7 +105,19 @@ final class PlanSheetController: NSViewController {
     override func loadView() {
         let root = NSView(frame: NSRect(origin: .zero, size: Self.size))
         ThemeStyle.bind(root, to: .content)
+        let header = makeHeader()
+        let ask = makeRequestRow()
+        configureUnderstood()
+        configureWell()
+        let footer = makeFooter()
+        layOut(header: header, ask: ask, footer: footer, in: root)
+        view = root
+        ThemeStyle.refresh(root)
+        render()
+    }
 
+    /// Strata's icon, the title and the selection, and the badge saying how the plan was made.
+    private func makeHeader() -> NSStackView {
         let icon = AppIconBadge()
         let title = NSTextField(labelWithString: String(localized: "Ask Strata", comment: "Title of the sheet where you describe a change for the selected files"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -119,7 +131,11 @@ final class PlanSheetController: NSViewController {
         let header = NSStackView(views: [icon, titles, NSView(), badge])
         header.alignment = .centerY
         header.spacing = 10
+        return header
+    }
 
+    /// Where you describe the change, and Plan.
+    private func makeRequestRow() -> NSStackView {
         field.placeholderString = String(localized: "Describe what to do — e.g. “rename these photos by date taken”")
         field.font = .systemFont(ofSize: 14)
         field.bezelStyle = .roundedBezel
@@ -141,12 +157,19 @@ final class PlanSheetController: NSViewController {
         ask.spacing = 8
         ask.alignment = .centerY
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return ask
+    }
 
+    /// What the request was understood to mean, under it.
+    private func configureUnderstood() {
         understood.font = .systemFont(ofSize: 11.5)
         understood.textColor = .secondaryLabelColor
         understood.lineBreakMode = .byTruncatingTail
         understood.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
 
+    /// The planned steps, with an overlay for what's happening when there are none to show.
+    private func configureWell() {
         let column = NSTableColumn(identifier: .init("step"))
         table.addTableColumn(column)
         table.headerView = nil
@@ -174,7 +197,10 @@ final class PlanSheetController: NSViewController {
         overlay.spacing = 10
         overlay.translatesAutoresizingMaskIntoConstraints = false
         well.addSubview(overlay)
+    }
 
+    /// Progress, the summary, Cancel and Apply.
+    private func makeFooter() -> NSStackView {
         summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
@@ -196,7 +222,10 @@ final class PlanSheetController: NSViewController {
         footer.alignment = .centerY
         footer.spacing = 8
         footer.setCustomSpacing(12, after: summary)
+        return footer
+    }
 
+    private func layOut(header: NSStackView, ask: NSStackView, footer: NSStackView, in root: NSView) {
         let stack = NSStackView(views: [header, ask, understood, well, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -227,9 +256,6 @@ final class PlanSheetController: NSViewController {
             field.heightAnchor.constraint(greaterThanOrEqualToConstant: 30),
         ])
         well.setContentHuggingPriority(.defaultLow, for: .vertical)
-        view = root
-        ThemeStyle.refresh(root)
-        render()
     }
 
     override func viewDidAppear() {

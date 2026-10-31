@@ -83,6 +83,15 @@ final class InspectorViewController: NSViewController {
     required init?(coder: NSCoder) { return nil }
 
     override func loadView() {
+        configurePreview()
+        configureTitles()
+        let cards = makeCards()
+        observeChanges()
+        view = layOut(cards)
+    }
+
+    /// The rounded box the preview, a rich preview's backdrop or the icon fills.
+    private func configurePreview() {
         previewBox.translatesAutoresizingMaskIntoConstraints = false
         previewBox.wantsLayer = true
         previewBox.layer?.cornerRadius = 14
@@ -104,7 +113,9 @@ final class InspectorViewController: NSViewController {
         previewBox.addSubview(richBackdrop)
         previewBox.addSubview(preview)
         previewBox.addSubview(iconView)
+    }
 
+    private func configureTitles() {
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         titleLabel.textColor = InspectorColors.primary
         titleLabel.alignment = .center
@@ -115,11 +126,12 @@ final class InspectorViewController: NSViewController {
         subtitleLabel.textColor = InspectorColors.secondary
         subtitleLabel.alignment = .center
         subtitleLabel.lineBreakMode = .byTruncatingTail
+    }
 
+    /// The sections below the titles, in order.
+    private func makeCards() -> [NSView] {
         projectView.isHidden = true
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: services.tags)
-        NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         // Every section is a card of the same kind, in Finder's Get Info order.
         let preferences = services.preferences
         infoCard = InspectorCard(id: "info", title: String(localized: "Information", comment: "Inspector section: size, dates, location"),
@@ -137,11 +149,20 @@ final class InspectorViewController: NSViewController {
         containerView.onOpen = { [weak self] url in self?.onOpenFolder?(url) }
         composeView.isHidden = true
         composeView.onOpenContainer = { [weak self] id in self?.onOpenContainer?(id) }
+        for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
+        return [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
+    }
+
+    private func observeChanges() {
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: services.tags)
+        NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged,
                                                object: services.containerStore)
         NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
-        let cards: [NSView] = [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
-        for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
+    }
+
+    /// The preview, titles and cards in one scrolling column.
+    private func layOut(_ cards: [NSView]) -> NSScrollView {
         let stack = NSStackView(views: [previewBox, titleLabel, subtitleLabel] + cards)
         stack.orientation = .vertical
         stack.alignment = .centerX
@@ -188,7 +209,7 @@ final class InspectorViewController: NSViewController {
         ] + cards.map { $0.widthAnchor.constraint(equalTo: previewBox.widthAnchor) })
         previewHeight = previewBox.heightAnchor.constraint(equalToConstant: 230)
         previewHeight?.isActive = true
-        view = scroll
+        return scroll
     }
 
     /// The file shown arrived from its container: preview it now.
