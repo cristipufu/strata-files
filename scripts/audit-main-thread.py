@@ -268,9 +268,9 @@ def sources_in(root):
     return [Source(path, path.read_text()) for path in sorted((root / "Sources/Strata").rglob("*.swift"))]
 
 
-def inventory(root, reviewed=frozenset(), sources=None, derived=True):
+def inventory(root, reviewed=frozenset(), sources=None):
     sources = sources or sources_in(root)
-    blocking = blocking_functions(sources, reviewed) if derived else {}
+    blocking = blocking_functions(sources, reviewed)
     return [(str(source.path.relative_to(root)), line, call, text)
             for source in sources for line, call, text in findings(source, blocking)]
 
@@ -280,12 +280,12 @@ def through_helper(call):
     return re.fullmatch(r"[A-Z]\w*(?:\.\w+)?\((?:\w+:)?\)", call) is not None
 
 
-def check(root, entries, derived=False):
+def check(root, entries):
     helpers = [entry for entry in entries if "helper" in entry]
-    entries = [entry for entry in entries if "helper" not in entry and (derived or not through_helper(entry["call"]))]
+    entries = [entry for entry in entries if "helper" not in entry]
     sources = sources_in(root)
     reviewed = frozenset(entry["helper"] for entry in helpers)
-    uses = inventory(root, reviewed, sources, derived)
+    uses = inventory(root, reviewed, sources)
     found = Counter((path, call) for path, _, call, _ in uses)
     expected = Counter()
     problems = []
@@ -315,14 +315,13 @@ def check(root, entries, derived=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true", help="List blocking calls in main-thread code")
-    parser.add_argument("--derived", action="store_true", help="Also check calls through helpers that block")
     args = parser.parse_args()
     entries = json.loads((ROOT / "Tests/main-thread.json").read_text())
     if args.list:
         for path, line, call, text in inventory(ROOT, frozenset(entry["helper"] for entry in entries if "helper" in entry)):
             print(f"{path}:{line}: {call}: {text}")
         return 0
-    problems = check(ROOT, entries, derived=args.derived)
+    problems = check(ROOT, entries)
     if problems:
         print("\n".join(problems))
         return 1

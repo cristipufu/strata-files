@@ -172,5 +172,29 @@
   "call": "InfoEditor.status(of:)",
   "count": 1,
   "reason": "Get Info, after a change you made to the one item shown (or one refused): its lock and permissions as they are now."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewSession.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "Space on the one item you chose: what it is, pinned as you choose it, so preview commands act only while it's still that item (an identity read later could be a replacement's)."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewSession.swift",
+  "call": "PreviewArchiveSource(_:)",
+  "count": 1,
+  "reason": "Space on the one archive you chose: its file opened (pinned) as you choose it, so what's listed is that very file, never one swapped in before the listing starts."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewMeasurement.swift",
+  "call": "FootprintSource(_:)",
+  "count": 1,
+  "reason": "Measuring the one item shown in Space: opened (pinned) as it's chosen and checked against the preview's root, so the size shown is that item's."
+ },
+ {
+  "file": "Sources/Strata/Views/FileThumbnails.swift",
+  "call": "PreviewArchiveSource(_:)",
+  "count": 1,
+  "reason": "A book's thumbnail: its file is pinned the moment the thumbnail is asked for, so a file swapped in before Quick Look answers is never read for its cover. Off the main thread this needs the listing to carry each item's identity to check the pin against (a stat per entry)."
  }
 ]

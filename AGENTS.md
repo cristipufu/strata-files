@@ -187,9 +187,10 @@ These apply everywhere below; the sections that follow add only what is specific
   was last read and update when a read arrives (`PlaceChecks`, `TagStore.tags`, `GitStatusStore.repository`,
   `InfoEditor.Facts`); a hidden view reads nothing. A change you ask for on one item may stay synchronous, as may an
   undo step that must register its redo inside the `UndoManager` callback. `scripts/audit-main-thread.py` lists
-  blocking calls in main-actor code, and CI and `swift test` fail on one not in `Tests/main-thread.json` with a
-  reviewed reason; the entries dated 2026-10-30 predate the rule, so move them off when their code changes. It can't
-  see what a synchronous helper does, so check helpers you call too.
+  blocking calls in main-actor code, and calls there to synchronous `nonisolated` functions and initializers that
+  block (themselves, or through another), by type, `Self.` or name within their type; CI and `swift test` fail on one
+  not in `Tests/main-thread.json` with a reviewed reason (or its helper reviewed as a whole). It can't see methods
+  called on a value (`url.method()`), so check those too.
 - **Cancel only your own work.** A Cancel action ends only its own request or ticket, and shared work stops when its
   last caller leaves. Only an explicit Disconnect or server removal ends a server's sessions.
 - **Pending work holds windows, panes, sheets and browsers weakly**, and one-shot actions release their captures on

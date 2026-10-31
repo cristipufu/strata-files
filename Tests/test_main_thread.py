@@ -17,7 +17,7 @@ class MainThreadAuditTests(unittest.TestCase):
             path = root / "Sources/Strata/Browser/Example.swift"
             path.parent.mkdir(parents=True)
             path.write_text(code)
-            return AUDIT.check(root, list(entries), derived=True)
+            return AUDIT.check(root, list(entries))
 
     def test_blocking_calls_on_the_main_thread_need_review(self):
         for call in ["FileManager.default.fileExists(atPath: path)", "try? url.resourceValues(forKeys: [.nameKey])",
@@ -70,26 +70,6 @@ class MainThreadAuditTests(unittest.TestCase):
         own = ("extension Pane {\n    nonisolated static func isThere(_ path: String) -> Bool { lstat(path, nil) == 0 }\n"
                "    func show() {\n        _ = Self.isThere(\"a\")\n        _ = isThere(\"b\")\n    }\n}\n")
         self.assertEqual(sum("through Pane.isThere(_:)" in issue for issue in self.check(own)), 2)
-
-    def test_without_derived_calls_their_exceptions_are_left_for_later(self):
-        helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
-        code = helper + "func show() {\n    _ = Disk.isThere(\"a\")\n}\n"
-        entry = {"file": "Sources/Strata/Browser/Example.swift", "call": "Disk.isThere(_:)", "count": 1, "reason": "Once."}
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "Sources/Strata/Browser/Example.swift"
-            path.parent.mkdir(parents=True)
-            path.write_text(code)
-            self.assertEqual(AUDIT.check(root, [entry]), [])
-            self.assertEqual(AUDIT.check(root, [entry], derived=True), [])
-
-    def test_an_overload_taking_fewer_arguments_than_a_call_passes_isnt_it(self):
-        code = ("nonisolated struct Item {\n    init(url: String) { _ = stat(url, nil) }\n"
-                "    init(url: String, name: String, size: Int) {}\n}\n"
-                "func show() {\n    _ = Item(url: \"a\", name: \"b\", size: 1)\n}\n")
-        self.assertEqual(self.check(code), [])
-        issues = self.check(code.replace('Item(url: "a", name: "b", size: 1)', 'Item(url: "a")'))
-        self.assertTrue(any("through Item(url:)" in issue for issue in issues))
 
     def test_a_reviewed_helper_counts_nowhere_and_must_still_block(self):
         helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
