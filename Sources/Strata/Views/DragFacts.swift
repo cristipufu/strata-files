@@ -2,9 +2,9 @@ import AppKit
 
 /// What drop checks ask the disk while a drag moves (where items really are, which disk, whether a folder opens or is
 /// a package), read away from the main thread once per drag: views ask on every move of the pointer, and on a server
-/// each answer is a round trip. Until a fact is read, the checks go by what the paths say; the drop itself is
-/// decided from the disk (`FileDrop.dropOperation`).
-final class DragFacts: DropDisk {
+/// each answer is a round trip. Until a fact is read, the checks go by what the paths say; the drop itself waits for
+/// what it asks (`FileDrop.decided`).
+final class DragFacts {
     nonisolated struct Fact: Sendable {
         let realPath: String
         let device: dev_t?
@@ -25,6 +25,8 @@ final class DragFacts: DropDisk {
     private let sequence: Int
     private var facts: [String: Fact] = [:]
     private var reads: BatchedReads<Fact>!
+    /// Asked about and not yet known, since `answer` began.
+    private var unknown: Set<String> = []
 
     init(sequence: Int, read: @escaping @Sendable ([String]) -> [String: Fact]) {
         self.sequence = sequence
@@ -34,12 +36,25 @@ final class DragFacts: DropDisk {
     /// What's known of `path`; nil until it's been read (it's asked for).
     func fact(_ path: String) -> Fact? {
         if let fact = facts[path] { return fact }
+        unknown.insert(path)
         reads.request(path)
         return nil
     }
 
     func settled() async {
         await reads.settled()
+    }
+
+    /// `body`'s answer from what's known, and the paths it asked about that aren't (they're being read).
+    func answer<T>(_ body: (DragFacts) -> T) -> (value: T, unknown: Set<String>) {
+        unknown = []
+        let value = body(self)
+        return (value, unknown)
+    }
+
+    /// Returns once `paths` have been read; the drag's other reads may still be going.
+    func read(_ paths: Set<String>) async {
+        await reads.settled(paths)
     }
 
     func isInside(_ urls: [URL], _ target: URL) -> Bool {

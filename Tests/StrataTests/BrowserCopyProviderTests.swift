@@ -532,12 +532,12 @@ struct BrowserCopyProviderTests {
         #expect(!(ContainerDragItem.writer(for: escapingLink, copies: second.copies) is ContainerDragItem))
 
         // FileDrop.operation refuses non-remote read-only targets, allows remote targets (move within same SFTP server, copy otherwise), and forces .copy from read-only sources.
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: first.copies) == [])
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: second.copies) == .move)
-        #expect(FileDrop.operation([doc], into: tree.url("local/target"), mask: [.copy, .move], option: false, copies: first.copies) == .copy)
-        #expect(FileDrop.operation([remoteFile], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .move)
-        #expect(FileDrop.operation([remoteFile], into: remoteFolder, mask: [.copy, .move], option: true, copies: first.copies) == .copy)
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: first.copies) == [])
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: second.copies) == .move)
+        #expect(await FileDrop.dropped([doc], into: tree.url("local/target"), mask: [.copy, .move], option: false, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([remoteFile], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .move)
+        #expect(await FileDrop.dropped([remoteFile], into: remoteFolder, mask: [.copy, .move], option: true, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .copy)
 
         // Views created by BrowserPresentations receive the browser's CopyProviders.
         for mode in [BrowserViewMode.grid, .columns, .gallery, .treemap] {

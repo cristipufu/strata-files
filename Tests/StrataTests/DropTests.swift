@@ -17,47 +17,47 @@ import os
 struct DropTests {
     private let every = NSDragOperation.every
 
-    @Test func aDropMovesOnTheSameDiskAndCopiesWithOption() throws {
+    @Test func aDropMovesOnTheSameDiskAndCopiesWithOption() async throws {
         let tree = try TestTree("a.txt", "to/")
         let urls = [tree.url("a.txt")]
-        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: every, option: false, copies: .live) == .move)
-        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: every, option: true, copies: .live) == .copy)
+        #expect(await FileDrop.dropped(urls, into: tree.url("to"), mask: every, option: false, copies: .live) == .move)
+        #expect(await FileDrop.dropped(urls, into: tree.url("to"), mask: every, option: true, copies: .live) == .copy)
         // What the source allows decides too: a copy when it can't be moved, nothing when neither.
-        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .copy, option: false, copies: .live) == .copy)
-        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .move, option: true, copies: .live) == [])
-        #expect(FileDrop.operation(urls, into: tree.url("to"), mask: .link, option: false, copies: .live) == [])
-        #expect(FileDrop.operation([], into: tree.url("to"), mask: every, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped(urls, into: tree.url("to"), mask: .copy, option: false, copies: .live) == .copy)
+        #expect(await FileDrop.dropped(urls, into: tree.url("to"), mask: .move, option: true, copies: .live) == [])
+        #expect(await FileDrop.dropped(urls, into: tree.url("to"), mask: .link, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped([], into: tree.url("to"), mask: every, option: false, copies: .live) == [])
         #expect(tree.snapshot() == ["a.txt", "to/"])
     }
 
-    @Test func nothingGoesIntoItselfOrBackWhereItIs() throws {
+    @Test func nothingGoesIntoItselfOrBackWhereItIs() async throws {
         let tree = try TestTree("dir/", "dir/sub/", "dir/f.txt", "other/")
         // However the target is spelled (/var is /private/var), and when it's one of several items.
         let spelled = URL(fileURLWithPath: tree.url("dir/sub").path.replacingOccurrences(of: "/private/var/", with: "/var/"))
         for option in [false, true] {
-            #expect(FileDrop.operation([tree.url("dir")], into: tree.url("dir"), mask: every, option: option, copies: .live) == [])
-            #expect(FileDrop.operation([tree.url("dir")], into: tree.url("dir/sub"), mask: every, option: option, copies: .live) == [])
-            #expect(FileDrop.operation([tree.url("other"), tree.url("dir")], into: spelled, mask: every, option: option, copies: .live) == [])
+            #expect(await FileDrop.dropped([tree.url("dir")], into: tree.url("dir"), mask: every, option: option, copies: .live) == [])
+            #expect(await FileDrop.dropped([tree.url("dir")], into: tree.url("dir/sub"), mask: every, option: option, copies: .live) == [])
+            #expect(await FileDrop.dropped([tree.url("other"), tree.url("dir")], into: spelled, mask: every, option: option, copies: .live) == [])
         }
         // Moved back into its own folder, nothing happens; Option there makes a copy beside it, as in Finder.
-        #expect(FileDrop.operation([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: false, copies: .live) == [])
-        #expect(FileDrop.operation([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: true, copies: .live) == .copy)
+        #expect(await FileDrop.dropped([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped([tree.url("dir/f.txt")], into: tree.url("dir"), mask: every, option: true, copies: .live) == .copy)
         #expect(tree.snapshot() == ["dir/", "dir/f.txt", "dir/sub/", "other/"])
     }
 
-    @Test func aReadOnlyCopyTakesNothingAndGivesOnlyCopies() throws {
+    @Test func aReadOnlyCopyTakesNothingAndGivesOnlyCopies() async throws {
         let tree = try TestTree("a.txt", "to/")
         // A real archive copy (on the same disk as the tree, so only being read-only makes it a copy).
         let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
         try Data("x".utf8).write(to: copy.appending(path: "x.txt"))
-        #expect(FileDrop.operation([tree.url("a.txt")], into: copy, mask: every, option: false, copies: .live) == [])
-        #expect(FileDrop.operation([copy.appending(path: "x.txt")], into: tree.url("to"), mask: every, option: false, copies: .live) == .copy)
+        #expect(await FileDrop.dropped([tree.url("a.txt")], into: copy, mask: every, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped([copy.appending(path: "x.txt")], into: tree.url("to"), mask: every, option: false, copies: .live) == .copy)
         // Strata's Servers folder, or a server that's gone: nothing goes there.
-        #expect(FileDrop.operation([tree.url("a.txt")], into: RemoteCopyStore.shared.root, mask: every, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped([tree.url("a.txt")], into: RemoteCopyStore.shared.root, mask: every, option: false, copies: .live) == [])
         let gone = RemoteCopyStore.shared.root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        #expect(FileDrop.operation([tree.url("a.txt")], into: gone, mask: every, option: false, copies: .live) == [])
+        #expect(await FileDrop.dropped([tree.url("a.txt")], into: gone, mask: every, option: false, copies: .live) == [])
         #expect(tree.snapshot() == ["a.txt", "to/"])
     }
 
@@ -135,5 +135,46 @@ struct DropTests {
         #expect(facts.opens(link))
         await facts.settled()
         #expect(asked.withLock { $0.count } == 2)
+    }
+
+    /// A drop is decided from what the disk says of every path it asks about, never from what the paths say: two
+    /// folders spelled on one share can be on different disks, and a copy taken for a move would remove the originals.
+    @Test func aDropGoesByWhatTheDiskSaysNeverByThePaths() async {
+        let facts = DragFacts(sequence: 8) { paths in
+            Dictionary(uniqueKeysWithValues: paths.map { path in
+                (path, DragFacts.Fact(realPath: path, device: path.hasPrefix("/Volumes/Share/b") ? 2 : 1, opens: true, isPackage: false))
+            })
+        }
+        let dragged = [URL(fileURLWithPath: "/Volumes/Share/a/x.txt")], target = URL(fileURLWithPath: "/Volumes/Share/b")
+        #expect(FileDrop.operation(dragged, into: target, mask: [.copy, .move], option: false, copies: .live, disk: facts) == .move)
+        #expect(await FileDrop.decided(dragged, into: target, mask: [.copy, .move], option: false, copies: .live, facts: facts) == .copy)
+    }
+
+    /// A share that doesn't answer holds up only the drops that ask it something: one between folders elsewhere is
+    /// decided at once, and the share's own once it answers.
+    @Test func aDiskThatDoesntAnswerHoldsUpOnlyItsOwnDrops() async {
+        let answer = DispatchSemaphore(value: 0), answeredFirst = OSAllocatedUnfairLock(initialState: false)
+        let facts = DragFacts(sequence: 9) { paths in
+            if paths.contains(where: { $0.hasPrefix("/Volumes/Stuck") }) { answer.wait() }
+            return Dictionary(uniqueKeysWithValues: paths.map { ($0, DragFacts.Fact(realPath: $0, device: 1, opens: true, isPackage: false)) })
+        }
+        let stuck = Task {
+            await FileDrop.decided([URL(fileURLWithPath: "/Volumes/Stuck/a/x.txt")], into: URL(fileURLWithPath: "/Volumes/Stuck/b"),
+                                   mask: [.copy, .move], option: false, copies: .live, facts: facts)
+        }
+        // A drop that waited for the share would wait for ever: the share answers after a while anyway, so that fails
+        // rather than hangs.
+        let fallback = Task {
+            try await Task.sleep(for: .seconds(30))
+            answeredFirst.withLock { $0 = true }
+            answer.signal()
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        #expect(await FileDrop.decided([home.appending(path: "a.txt")], into: home.appending(path: "b", directoryHint: .isDirectory),
+                                       mask: [.copy, .move], option: false, copies: .live, facts: facts) == .move)
+        #expect(!answeredFirst.withLock { $0 })
+        fallback.cancel()
+        answer.signal()
+        #expect(await stuck.value == .move)
     }
 }

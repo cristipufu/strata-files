@@ -350,11 +350,74 @@ struct TransferContextTests {
         #expect(sidebar.outlineView(outline, acceptDrop: drag, item: place, childIndex: NSOutlineViewDropOnItemIndex))
         let node = FolderNode(url: tree.url("folders"), title: "folders")
         #expect(folderTree.outlineView(outline, acceptDrop: drag, item: node, childIndex: NSOutlineViewDropOnItemIndex))
+        // Each drop is decided once what it asks of the disk is read, away from the main thread.
+        for _ in 0..<500 where env.queue.jobs.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
         await finishRelatedJobs(env.queue, tree: tree)
         #expect(env.queue.jobs.count == 2 && env.history.entries.count == 2)
         #expect(env.queue.jobs.allSatisfy { $0.state == .finished && $0.failureCount == 0 })
         #expect(tree.text("places/a.txt") == "a.txt" && tree.text("folders/a.txt") == "a.txt")
         #expect(tree.snapshot() == ["a.txt", "ab.txt", "folders/", "folders/a.txt", "places/", "places/a.txt", "state/", "state/Caches/", "state/history.sealed"])
+    }
+
+    /// Every view hands a drop to its window's queue for exactly the folder it landed on: a folder item, or the
+    /// background of the folder shown, never the look-alike folder beside it.
+    @Test func everyViewDropsIntoExactlyTheFolderItLandedOn() async throws {
+        for mode in [BrowserViewMode.list, .grid, .columns, .gallery] {
+            let tree = try TestTree("a.txt", "shown/", "shown/inner/", "shown/inner b/", "state/")
+            let env = try Environment(tree)
+            let services = BrowserServices.configured(
+                transfers: env.queue, visits: Frecency(preferences: env.defaults), windows: .headless, remote: .shared,
+                containers: .shared, containerStore: .shared, clipboard: .shared)
+            let browser = BrowserViewController(services: services)
+            browser.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+            browser.setMode(mode, remember: false)
+            browser.load(tree.url("shown"))
+            try await waitForBrowser(browser)
+            let drag = FileDrag(tree.url("a.txt"))
+            defer { drag.draggingPasteboard.releaseGlobally() }
+            // Each drop lands before the next is made: one in the wrong folder would meet the next as a conflict, which
+            // asks in a window of its own.
+            for (onto, landed, file) in [("inner", 1, "shown/inner/a.txt"), (nil, 2, "shown/a.txt")] as [(String?, Int, String)] {
+                #expect(try drop(drag, onto: onto, in: browser, mode: mode), "\(mode)")
+                for _ in 0..<500 where env.queue.jobs.count < landed { try await Task.sleep(for: .milliseconds(20)) }
+                await finishRelatedJobs(env.queue, tree: tree)
+                try #require(tree.text(file) == "a.txt", "\(mode): \(file)")
+            }
+            #expect(env.queue.jobs.count == 2 && env.queue.jobs.allSatisfy { $0.state == .finished }, "\(mode)")
+            #expect(tree.snapshot() == ["a.txt", "shown/", "shown/a.txt", "shown/inner b/", "shown/inner/", "shown/inner/a.txt",
+                                        "state/", "state/Caches/", "state/history.sealed"], "\(mode)")
+            withExtendedLifetime(env) {}
+        }
+    }
+
+    /// Drops `drag` through `mode`'s own handler: on the folder named `onto`, or on the background of the folder shown.
+    private func drop(_ drag: FileDrag, onto name: String?, in browser: BrowserViewController, mode: BrowserViewMode) throws -> Bool {
+        switch mode {
+        case .list:
+            let node = try name.map { name in try #require(browser.allRows.first { $0.url.lastPathComponent == name }) }
+            return browser.outlineView(browser.outlineView, acceptDrop: drag, item: node, childIndex: NSOutlineViewDropOnItemIndex)
+        case .grid:
+            let grid = try #require(browser.presentations.gridController)
+            let index = try name.map { name in try #require(grid.entries.firstIndex { $0.name == name }) }
+            return grid.collectionView(grid.collectionView, acceptDrop: drag, indexPath: IndexPath(item: index ?? 0, section: 0),
+                                       dropOperation: index == nil ? .before : .on)
+        case .columns:
+            let columns = try #require(browser.presentations.columnController)
+            let pane = try #require(Self.views(of: ColumnPane.self, in: columns.view).first { $0.isRoot })
+            let row = try name.map { name in try #require(pane.entries.firstIndex { $0.name == name }) }
+            return pane.tableView(pane.tableView, acceptDrop: drag, row: row ?? -1, dropOperation: .on)
+        case .gallery:
+            let gallery = try #require(browser.presentations.galleryController)
+            guard let name else { return try #require(gallery.view as? GalleryRootView).performDragOperation(drag) }
+            let index = try #require(gallery.entries.firstIndex { $0.name == name })
+            return gallery.collectionView(gallery.strip, acceptDrop: drag, indexPath: IndexPath(item: index, section: 0), dropOperation: .on)
+        default:
+            return false
+        }
+    }
+
+    private static func views<View: NSView>(of type: View.Type, in root: NSView) -> [View] {
+        root.subviews.flatMap { ([$0 as? View].compactMap { $0 }) + views(of: type, in: $0) }
     }
 
     /// A private pasteboard and a copy-only source exercise the native drop delegates without posting a drag or

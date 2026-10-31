@@ -417,10 +417,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         return fileDelegate?.fileView(self, menuFor: pane.selectedEntries)
     }
 
-    fileprivate func drop(_ urls: [URL], onto folder: URL, from pane: ColumnPane, copy: Bool) -> Bool {
+    fileprivate func drop(_ urls: [URL], onto folder: URL, from pane: ColumnPane, info: NSDraggingInfo) -> Bool {
         // A drop on the first column's background is a drop on the browser's folder.
         let target: URL? = pane.isRoot && folder.fileViewKey == pane.folder.fileViewKey ? nil : folder
-        return fileDelegate?.fileView(self, drop: urls, onto: target, copy: copy) ?? false
+        return fileDelegate?.fileView(self, drop: urls, onto: target, info: info) ?? false
     }
 
     fileprivate func resize(_ pane: ColumnPane, to width: CGFloat, all: Bool) {
@@ -911,9 +911,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         springLoader.cancel()
         let urls = FileDrop.urls(info, copies: copies)
         let target = row >= 0 && row < entries.count && dropOperation == .on && entries[row].isFolder ? entries[row].url : folder
-        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: copies)
-        guard !operation.isEmpty, let controller else { return false }
-        return controller.drop(urls, onto: target, from: self, copy: operation != .move)
+        return controller?.drop(urls, onto: target, from: self, info: info) ?? false
     }
 
     // Keyboard and mouse, from the table

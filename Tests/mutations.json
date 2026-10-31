@@ -7817,5 +7817,26 @@
     "replace": "",
     "rule": "An archive's copy, once made, isn't recorded, so opening it again unpacks it again",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "            if unknown.isEmpty { return operation }\n            await facts.read(unknown)\n",
+    "replace": "            return operation\n",
+    "rule": "A drop is decided by what the paths say before the disk has answered",
+    "tests": "DropTests/aDropGoesByWhatTheDiskSaysNeverByThePaths"
+  },
+  {
+    "file": "Strata/Views/DragFacts.swift",
+    "find": "        await reads.settled(paths)\n",
+    "replace": "        await reads.settled()\n",
+    "rule": "A drop waits for every disk the drag asked about, not only its own",
+    "tests": "DropTests/aDiskThatDoesntAnswerHoldsUpOnlyItsOwnDrops"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        guard !urls.isEmpty, let target = folder ?? targetDirectory else { return false }\n",
+    "replace": "        guard !urls.isEmpty, let target = targetDirectory else { return false }\n",
+    "rule": "A drop on a folder in Icons, Columns or Gallery goes into the folder shown instead",
+    "tests": "TransferContextTests/everyViewDropsIntoExactlyTheFolderItLandedOn"
   }
 ]

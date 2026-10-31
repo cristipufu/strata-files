@@ -550,10 +550,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
         let index = indexPath.count == 2 ? indexPath.item : -1
         let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
             ? entries[index].url : nil
-        guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.dropOperation(urls, into: target, info: draggingInfo, copies: copies)
-        guard !operation.isEmpty else { return false }
-        return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
+        return fileDelegate?.fileView(self, drop: urls, onto: folder, info: draggingInfo) ?? false
     }
 
     fileprivate func dragExited() {

@@ -283,10 +283,10 @@ extension BrowserViewController {
         } else {
             dropTarget = isShowingResults ? nil : directory
         }
-        guard let urls = draggedURLs(info), let target = dropTarget else { return false }
-        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: services.copies)
-        guard !operation.isEmpty else { return false }
-        transfer(urls, into: target, move: operation == .move)
+        guard let urls = draggedURLs(info), !urls.isEmpty, let target = dropTarget else { return false }
+        FileDrop.drop(urls, into: target, info: info, copies: services.copies) { [weak self] move in
+            self?.transfer(urls, into: target, move: move)
+        }
         return true
     }
 

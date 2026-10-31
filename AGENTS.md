@@ -109,9 +109,9 @@ isn't done. The tests must show that:
 ### Decisions are plain functions
 
 Keep the decision separate from the alert or UI so tests call it directly: `BrowserViewController.deletionPlan`,
-`FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:copies:)`, `PlanValidator.validate`,
-`TransferEngine.mergePlan`, `FolderCompare.defaultAction` and `syncPlan`. Prove a new test guards its rule: break the
-rule once, watch the test fail, restore it.
+`FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:copies:disk:)` and `FileDrop.decided` (what a drop waits
+for), `PlanValidator.validate`, `TransferEngine.mergePlan`, `FolderCompare.defaultAction` and `syncPlan`. Prove a new
+test guards its rule: break the rule once, watch the test fail, restore it.
 
 ### Safety idioms
 

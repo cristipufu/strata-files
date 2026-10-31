@@ -64,7 +64,7 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, selectionDidChange urls: [URL])
     func fileView(_ view: NSViewController, menuFor entries: [FileEntry]) -> NSMenu?
     /// `folder` is nil for a drop on the background of the browser's current folder.
-    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, copy: Bool) -> Bool
+    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, info: NSDraggingInfo) -> Bool
     /// Return true when handled; unhandled keys fall through to the view's default behaviour.
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool
     /// Inline rename finished with a new, non-empty name that differs from the old one.
@@ -216,18 +216,6 @@ enum BrowserViewMode: Int, CaseIterable {
 
 // MARK: - Drag and drop rules
 
-/// What a drop decision asks the disk.
-protocol DropDisk {
-    func isInside(_ urls: [URL], _ target: URL) -> Bool
-    func sameVolume(_ a: URL, _ b: URL) -> Bool
-}
-
-/// The disk as it is now: for the drop itself.
-struct DiskNow: DropDisk {
-    func isInside(_ urls: [URL], _ target: URL) -> Bool { FileDrop.isInside(urls, target) }
-    func sameVolume(_ a: URL, _ b: URL) -> Bool { FileDrop.sameVolume(a, b) }
-}
-
 /// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
 /// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
 enum FileDrop {
@@ -259,20 +247,8 @@ enum FileDrop {
     /// What file views accept dropped on them.
     static let types: [NSPasteboard.PasteboardType] = [.fileURL, .strataContainerItem]
 
-    /// Whether `target` is one of `urls` or inside one of them, however either is spelled (`/tmp` is `/private/tmp`).
-    static func isInside(_ urls: [URL], _ target: URL) -> Bool {
-        let resolvedTarget = TransferJob.realPath(target.standardizedFileURL.path)
-        var parents: [String: String] = [:]
-        let items = urls.map { url in
-            let parent = url.deletingLastPathComponent().path
-            let real = parents[parent] ?? TransferJob.realPath(parent)
-            parents[parent] = real
-            return (real as NSString).appendingPathComponent(url.lastPathComponent)
-        }
-        return isInside(items, resolvedTarget)
-    }
-
-    /// `isInside` while a drag moves, from what `DragFacts` has read of the disk.
+    /// Whether `target` is one of `urls` or inside one of them while a drag moves, however either is spelled (`/tmp` is
+    /// `/private/tmp`), from what `DragFacts` has read of the disk.
     static func isInside(_ urls: [URL], _ target: URL, during info: NSDraggingInfo) -> Bool {
         DragFacts.of(info).isInside(urls, target)
     }
@@ -290,17 +266,39 @@ enum FileDrop {
                          disk: DragFacts.of(info))
     }
 
-    /// What dropping `urls` on `target` does, decided from the disk as they're dropped.
-    static func dropOperation(_ urls: [URL], into target: URL, info: NSDraggingInfo,
-                              copies: CopyProviders) -> NSDragOperation {
-        let option = NSEvent.modifierFlags.contains(.option)
-        return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies)
+    /// Takes the drop of `urls` on `target` and hands `act` its move (true) or copy once that's decided (`decided`):
+    /// AppKit wants an answer at once, and the disk may not give one. A drop that does nothing calls nothing.
+    static func drop(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders,
+                     then act: @escaping (_ move: Bool) -> Void) {
+        let option = NSEvent.modifierFlags.contains(.option), mask = info.draggingSourceOperationMask
+        let facts = DragFacts.of(info)
+        Task {
+            let operation = await decided(urls, into: target, mask: mask, option: option, copies: copies, facts: facts)
+            if !operation.isEmpty { act(operation == .move) }
+        }
     }
 
-    /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
-    /// or nothing (into itself, back where it is, into a copy that can't change).
+    /// What dropping `urls` on `target` does, from what the disk says of everything it asks about (read away from the
+    /// main thread by `facts`), never from what the paths say: a copy onto another disk taken for a move would remove
+    /// the originals. It waits for those disks alone, as the transfer would: nothing else waits on it.
+    static func decided(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool, copies: CopyProviders,
+                        facts: DragFacts) async -> NSDragOperation {
+        // Each pass asks only about what the last one's answers led to (where the items really are, then which disk
+        // the first is on): the third has nothing left to ask.
+        for _ in 0..<3 {
+            let (operation, unknown) = facts.answer {
+                Self.operation(urls, into: target, mask: mask, option: option, copies: copies, disk: $0)
+            }
+            if unknown.isEmpty { return operation }
+            await facts.read(unknown)
+        }
+        return []
+    }
+
+    /// What dropping `urls` on `target` does, given what the source allows, whether Option is held and what's known of
+    /// the disk: a move, a copy, or nothing (into itself, back where it is, into a copy that can't change).
     static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool,
-                          copies: CopyProviders, disk: DropDisk = DiskNow()) -> NSDragOperation {
+                          copies: CopyProviders, disk: DragFacts) -> NSDragOperation {
         guard let first = urls.first else { return [] }
         let targetPath = target.standardizedFileURL.path
         if disk.isInside(urls, target) { return [] }
@@ -330,11 +328,6 @@ enum FileDrop {
             return []
         }
         return operation
-    }
-
-    static func sameVolume(_ a: URL, _ b: URL) -> Bool {
-        guard let first = TransferEngine.device(a) else { return false }
-        return first == TransferEngine.device(b)
     }
 }
 

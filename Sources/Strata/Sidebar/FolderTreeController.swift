@@ -605,10 +605,12 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             onTrash?(urls)
             return true
         }
-        let operation = FileDrop.dropOperation(urls, into: node.url, info: info, copies: copies)
-        guard !urls.isEmpty, !operation.isEmpty else { return false }
-        transfers.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
-                                     undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        guard !urls.isEmpty else { return false }
+        FileDrop.drop(urls, into: node.url, info: info, copies: copies) { [weak self] move in
+            guard let self else { return }
+            transfers.enqueue(urls, to: node.url, mode: move ? .move : .copy,
+                              undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        }
         return true
     }
 }

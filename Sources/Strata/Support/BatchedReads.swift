@@ -48,6 +48,20 @@ package final class BatchedReads<Value: Sendable> {
         }
     }
 
+    /// Returns once `paths` (those asked for) have been read, whatever else is still being read: a disk that doesn't
+    /// answer holds up only its own paths.
+    package func settled(_ paths: Set<String>) async {
+        while let path = paths.first(where: reading.contains) {
+            if let collecting {
+                await collecting.value
+            } else if let batch = batches[DiskOfPath.of(path)] {
+                await batch.value
+            } else {
+                return
+            }
+        }
+    }
+
     private func readWaiting(on disk: String) {
         guard let paths = waiting.removeValue(forKey: disk) else { return }
         underWay.formUnion(paths)

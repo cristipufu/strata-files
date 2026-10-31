@@ -532,10 +532,12 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             moveToTrash(urls)
             return true
         }
-        let operation = FileDrop.dropOperation(urls, into: target, info: info, copies: copies)
-        guard !urls.isEmpty, !operation.isEmpty else { return false }
-        services.transfers.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
-                                     undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        guard !urls.isEmpty else { return false }
+        FileDrop.drop(urls, into: target, info: info, copies: copies) { [weak self] move in
+            guard let self else { return }
+            services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
+                                       undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        }
         return true
     }
 }
