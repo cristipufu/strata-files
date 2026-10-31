@@ -140,16 +140,16 @@ package enum Places {
     /// The names Strata gives places itself.
     private static func ownName(_ url: URL, copies: CopyProviders) -> String? {
         if Trash.isTrash(url) { return String(localized: "Trash", comment: "The Trash folder") }
-        if let (archive, top) = ArchiveCache.archive(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+        if let (archive, top) = ArchiveCache.archive(containing: url), PathSpelling.short(top) == PathSpelling.short(url) {
             return archive.lastPathComponent
         }
         // The Containers folder; a container's `/` goes by the container's name.
         if copies.containerCopies.engineFolder(url) != nil { return String(localized: "Containers", comment: "Sidebar section title: Docker containers") }
-        if let (source, top) = copies.containerCopies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+        if let (source, top) = copies.containerCopies.copy(containing: url), PathSpelling.short(top) == PathSpelling.short(url) {
             return source.name
         }
         // A server's `/` (a bucket's top) goes by the server's name.
-        if let (server, top) = copies.remoteCopies.server(containing: url), top.standardizedFileURL == url.standardizedFileURL {
+        if let (server, top) = copies.remoteCopies.server(containing: url), PathSpelling.short(top) == PathSpelling.short(url) {
             return server.name
         }
         return nil

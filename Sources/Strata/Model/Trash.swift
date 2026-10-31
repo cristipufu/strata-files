@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 import Synchronization
 
 extension Notification.Name {
@@ -11,15 +12,22 @@ package enum Trash {
     /// The startup disk's Trash, in your home folder.
     package nonisolated static let home = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".Trash", directoryHint: .isDirectory).standardizedFileURL
-    nonisolated private static let homePath = home.path
-    /// Lowercased, for comparing paths the way the (case-insensitive) startup disk does.
-    nonisolated private static let homePathLower = home.path.lowercased()
+    nonisolated private static let homePath = PathSpelling.short(home)
+    nonisolated private static let homePathLower = homePath.lowercased()
     nonisolated private static let uid = String(getuid())
-    /// The home Trash's identity, so another spelling of its path (`~/.trash`, a link to it) is still the Trash.
-    nonisolated private static let homeIdentity: (dev: dev_t, ino: ino_t)? = {
-        var info = stat()
-        return stat(homePath, &info) == 0 ? (info.st_dev, info.st_ino) : nil
+    /// Whether the home folder's disk ignores case in names, so any spelling of the home Trash is it: read once, the
+    /// first time a Trash is asked about, never per question.
+    nonisolated private static let homeIgnoresCase: Bool = {
+        let values = try? home.deletingLastPathComponent().resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+        return values?.volumeSupportsCaseSensitiveNames != true
     }()
+
+    /// Whether `path` (spelled short) is the home Trash, or in it when `within`.
+    nonisolated private static func namesHomeTrash(_ path: String, within: Bool = false) -> Bool {
+        let spelled = homeIgnoresCase ? path.lowercased() : path
+        let trash = homeIgnoresCase ? homePathLower : homePath
+        return within ? spelled.hasPrefix(trash + "/") : spelled == trash
+    }
 
     /// One disk's Trash and what's in it.
     package struct Contents: Sendable {
@@ -46,20 +54,19 @@ package enum Trash {
         return result
     }
 
-    /// Whether `folder` is one of your Trash folders (judged by where it is, without listing the disks). Spellings
-    /// differ only in case on most Mac disks, so names compare without it; a folder named like the home Trash is
-    /// checked by identity.
+    /// Whether `folder` is one of your Trash folders, judged by where it is, without asking the disk: fit for the main
+    /// thread. The home Trash is any spelling of its path where the home disk ignores case; another disk's is
+    /// `.Trashes/<your user id>` at the top of a disk the kernel lists.
     package nonisolated static func isTrash(_ folder: URL) -> Bool {
-        let folder = folder.standardizedFileURL
-        let lower = folder.path.lowercased()
-        if lower == homePathLower {
-            var info = stat()
-            return stat(folder.path, &info) == 0 && homeIdentity.map { $0.dev == info.st_dev && $0.ino == info.st_ino } ?? true
+        let path = PathSpelling.short(folder)
+        if namesHomeTrash(path) { return true }
+        let trashes = (path as NSString).deletingLastPathComponent
+        guard (path as NSString).lastPathComponent == uid, (trashes as NSString).lastPathComponent.lowercased() == ".trashes" else {
+            return false
         }
-        let trashes = folder.deletingLastPathComponent()
-        guard folder.lastPathComponent == uid, trashes.lastPathComponent.lowercased() == ".trashes" else { return false }
-        let volume = trashes.deletingLastPathComponent()
-        return (try? volume.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+        // A disk's own Trash: the folder above is where the kernel says a disk is mounted (in its spelling), asked at
+        // once, never of the disk (on a share that stopped answering, the disk can't say).
+        return MountPoints.current().contains(PathSpelling.system((trashes as NSString).deletingLastPathComponent))
     }
 
     /// Whether `url` is a Trash however its path is spelled: through a link to a folder on the way, say. A link to a
@@ -75,14 +82,14 @@ package enum Trash {
 
     /// Whether `url` is in a Trash at any depth (any spelling of its path's case).
     package nonisolated static func isInTrash(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path.lowercased()
-        if path.hasPrefix(homePathLower + "/") { return true }
+        let path = PathSpelling.short(url)
+        if namesHomeTrash(path, within: true) { return true }
         // Other disks' Trashes: `/Volumes/<disk>/.Trashes/<uid>/…`.
-        guard path.contains("/.trashes/") else { return false }
-        var folder = url.standardizedFileURL.deletingLastPathComponent()
-        while folder.path != "/" {
-            if isTrash(folder) { return true }
-            folder.deleteLastPathComponent()
+        guard path.lowercased().contains("/.trashes/") else { return false }
+        var folder = (path as NSString).deletingLastPathComponent
+        while folder != "/" {
+            if isTrash(URL(filePath: folder, directoryHint: .isDirectory)) { return true }
+            folder = (folder as NSString).deletingLastPathComponent
         }
         return false
     }

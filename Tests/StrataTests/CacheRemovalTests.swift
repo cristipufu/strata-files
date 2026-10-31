@@ -71,6 +71,21 @@ struct CacheRemovalTests {
         #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
     }
 
+    /// Which archive a copy came from is kept as it was made: views asking as they draw read no file for it, and a
+    /// copy set aside is forgotten.
+    @Test func aCopysArchiveIsKeptAsItWasMadeAndForgottenOnceSetAside() async throws {
+        let tree = try TestTree("Trip.zip", "outside/", "outside/keep.txt")
+        let entry = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))
+        let top = entry.appending(path: "contents", directoryHint: .isDirectory)
+        try fm.removeItem(at: entry.appending(path: "source"))
+        let archive = tree.url("Trip.zip").resolvingSymlinksInPath().standardizedFileURL
+        #expect(ArchiveCache.archive(containing: top.appending(path: "out"))?.archive == archive)
+        let aside = try #require(ArchiveCache.setAside(entry))
+        #expect(ArchiveCache.archive(containing: top) == nil)
+        for _ in 0..<500 where fm.fileExists(atPath: aside.path) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
+    }
+
     @Test func aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive() throws {
         let tree = try TestTree("Trip.zip", "Trip 2.zip", "outside/", "outside/keep.txt")
         let older = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))

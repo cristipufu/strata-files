@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import StrataSupport
+import Synchronization
 
 /// Archives opened as folders. Each is extracted once (safely, see `Archiver`) into Strata's caches:
 /// `Archives/<hash>/contents/…`, where the hash covers the archive's real path, identity, size and change times, so a
@@ -17,6 +19,9 @@ package nonisolated enum ArchiveCache {
 
     private static let rootPath = root.path
     private static let copyName = "contents"
+    /// Which archive each copy came from, by its top folder's path: asked for as views draw, so it's kept as this run
+    /// made it, or as its bookkeeping file said the first time it was asked (once a launch, for copies left before).
+    private static let sources = Mutex<[String: URL]>([:])
     /// Past this, the least recently opened copies go.
     package static let sizeLimit: Int64 = 10 << 30
 
@@ -34,7 +39,7 @@ package nonisolated enum ArchiveCache {
 
     /// The finished copy of `archive`, if there is one.
     package static func existing(for archive: URL) -> URL? {
-        guard let folder = folder(for: archive), source(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,
+        guard let folder = folder(for: archive), learnSource(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,
               FileManager.default.fileExists(atPath: folder.path) else { return nil }
         return folder
     }
@@ -43,6 +48,7 @@ package nonisolated enum ArchiveCache {
     package static func finish(_ folder: URL, from archive: URL) throws {
         let source = archive.resolvingSymlinksInPath().standardizedFileURL
         try Data(source.path.utf8).write(to: sourceFile(folder))
+        sources.withLock { $0[folder.path] = source }
         for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {
             setAside(other.entry)
         }
@@ -50,18 +56,18 @@ package nonisolated enum ArchiveCache {
 
     /// Whether `url` is the cache or inside it (an archive's copy).
     package static func contains(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+        let path = PathSpelling.short(url)
         return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     /// For a folder inside an archive's copy: the archive, and the copy's top folder.
     package static func archive(containing url: URL) -> (archive: URL, top: URL)? {
-        let path = url.standardizedFileURL.path
+        let path = PathSpelling.short(url)
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let parts = path.dropFirst(rootPath.count + 1).split(separator: "/")
         guard parts.count >= 2, parts[1] == copyName else { return nil }
         let top = root.appending(path: String(parts[0]), directoryHint: .isDirectory).appending(path: copyName, directoryHint: .isDirectory)
-        guard let archive = source(of: top) else { return nil }
+        guard let archive = sources.withLock({ $0[top.path] }) ?? learnSource(of: top) else { return nil }
         return (archive, top)
     }
 
@@ -69,7 +75,7 @@ package nonisolated enum ArchiveCache {
     /// the copy's top folder is the archive itself. Nil outside copies.
     package static func apparentURL(_ url: URL) -> URL? {
         guard let (archive, top) = archive(containing: url) else { return nil }
-        let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+        let inner = PathSpelling.short(url).dropFirst(PathSpelling.short(top).count).split(separator: "/")
         return inner.reduce(archive) { $0.appending(path: String($1)) }
     }
 
@@ -108,6 +114,7 @@ package nonisolated enum ArchiveCache {
     package static func remove(_ entry: URL) {
         let path = entry.standardizedFileURL.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return }
+        forget(entry)
         Archiver.removeTree(entry)
     }
 
@@ -120,6 +127,7 @@ package nonisolated enum ArchiveCache {
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return nil }
         let aside = root.appending(path: "removing-" + UUID().uuidString, directoryHint: .isDirectory)
         guard renamex_np(path, aside.path, UInt32(RENAME_EXCL)) == 0 else { return nil }
+        forget(entry)
         DispatchQueue.global(qos: .utility).async { remove(aside) }
         return aside
     }
@@ -128,6 +136,18 @@ package nonisolated enum ArchiveCache {
 
     private static func sourceFile(_ folder: URL) -> URL {
         folder.deletingLastPathComponent().appending(path: "source")
+    }
+
+    /// What `folder`'s bookkeeping file says it came from, kept for the next time it's asked.
+    private static func learnSource(of folder: URL) -> URL? {
+        let source = source(of: folder)
+        if let source { sources.withLock { $0[folder.path] = source } }
+        return source
+    }
+
+    private static func forget(_ entry: URL) {
+        let top = entry.appending(path: copyName, directoryHint: .isDirectory).path
+        sources.withLock { $0[top] = nil }
     }
 
     private static func source(of folder: URL) -> URL? {
@@ -143,7 +163,7 @@ package nonisolated enum ArchiveCache {
         let entries = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
         return entries.map { entry in
             let top = entry.appending(path: copyName, directoryHint: .isDirectory)
-            return (entry, top, source(of: top))
+            return (entry, top, learnSource(of: top))
         }
     }
 

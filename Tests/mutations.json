@@ -7754,5 +7754,33 @@
     "replace": "",
     "rule": "A browser keeps reading a link after it has led to its folder",
     "tests": "LinkNavigationTests/aLinkToAFolderShowsThatFolderAndBackAndForwardStepBetweenRealPlaces"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "        guard let archive = sources.withLock({ $0[top.path] }) ?? learnSource(of: top) else { return nil }\n",
+    "replace": "        guard let archive = learnSource(of: top) else { return nil }\n",
+    "rule": "Which archive a copy came from is read from its bookkeeping file each time it's asked",
+    "tests": "CacheRemovalTests/aCopysArchiveIsKeptAsItWasMadeAndForgottenOnceSetAside"
+  },
+  {
+    "file": "Strata/Model/ArchiveCache.swift",
+    "find": "        guard renamex_np(path, aside.path, UInt32(RENAME_EXCL)) == 0 else { return nil }\n        forget(entry)\n",
+    "replace": "        guard renamex_np(path, aside.path, UInt32(RENAME_EXCL)) == 0 else { return nil }\n",
+    "rule": "A copy set aside is still taken for its archive",
+    "tests": "CacheRemovalTests/aCopysArchiveIsKeptAsItWasMadeAndForgottenOnceSetAside"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "        return MountPoints.current().contains(PathSpelling.system((trashes as NSString).deletingLastPathComponent))\n",
+    "replace": "        return true\n",
+    "rule": "A .Trashes folder on a disk that isn't mounted is taken for a Trash",
+    "tests": "TrashPlacesTests/aDisksTrashIsKnownByTheDisksTheKernelLists"
+  },
+  {
+    "file": "Strata/Model/Trash.swift",
+    "find": "        let spelled = homeIgnoresCase ? path.lowercased() : path\n",
+    "replace": "        let spelled = path\n",
+    "rule": "The home Trash spelled in another case isn't known where its disk ignores case",
+    "tests": "TrashPlacesTests/theHomeTrashIsKnownInEachSpellingItsDiskTreatsAsTheSame"
   }
 ]
