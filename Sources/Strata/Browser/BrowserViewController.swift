@@ -147,17 +147,7 @@ final class BrowserViewController: NSViewController {
     var isDragOver = false
     /// Renamed (inline) once the folder shows it: a new folder.
     var pendingRename: URL?
-    var renaming: FileNode?
-    weak var renamingField: NSTextField?
-    struct DeferredListing {
-        let entries: [FileEntry]
-        let preservingState: Bool
-        let fromTop: Bool
-        let sortedBy: BrowserOrdering.Snapshot?
-        let generation: Int
-    }
-    /// The folder read again while a name was being edited in place: shown once the edit ends.
-    var deferredApply: DeferredListing?
+    let inlineRename = BrowserRenaming()
     lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
@@ -343,7 +333,7 @@ final class BrowserViewController: NSViewController {
         loading.navigate(to: url, newFolder: isNewDirectory)
         if isNewDirectory {
             cancelPendingActions()
-            deferredApply = nil
+            inlineRename.dropHeldListing()
             clearFilter()
             resorting.cancel()
             sizer.cancelPending()
@@ -416,12 +406,12 @@ final class BrowserViewController: NSViewController {
     func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false,
                sortedBy: BrowserOrdering.Snapshot? = nil) {
         // Reloading the list would end a rename in progress, half typed.
-        if isRenamingInPlace {
-            deferredApply = DeferredListing(entries: entries, preservingState: preservingState, fromTop: fromTop,
-                                            sortedBy: sortedBy, generation: generation)
+        if inlineRename.isEditing {
+            inlineRename.hold(.init(entries: entries, preservingState: preservingState, fromTop: fromTop,
+                                    sortedBy: sortedBy, generation: generation))
             return
         }
-        deferredApply = nil
+        inlineRename.dropHeldListing()
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
         let selection = pendingSelection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
@@ -485,7 +475,7 @@ final class BrowserViewController: NSViewController {
         cancelPendingActions()
         sizer.cancelPending()
         mediaInfo.cancelPending()
-        deferredApply = nil
+        inlineRename.dropHeldListing()
         listing.clear()
         outlineView.reloadData()
         // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
@@ -580,7 +570,7 @@ final class BrowserViewController: NSViewController {
             let row = outlineView.row(forItem: node)
             if row >= 0 { rowsToReload.insert(row) }
         }
-        outlineView.reloadData(forRowIndexes: exceptRenaming(rowsToReload), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+        outlineView.reloadData(forRowIndexes: inlineRename.except(rowsToReload, in: outlineView), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
         delegate?.browserContentDidChange(self)
         if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0)) }) {
             delegate?.browserSelectionDidChange(self)
@@ -619,7 +609,7 @@ final class BrowserViewController: NSViewController {
         let entries = targets.map(\.entry)
         Task { [weak self] in
             let localized = await FileEntry.localizedNames(entries)
-            guard let self, isShowingResults, gen == generation, !isRenamingInPlace else { return }
+            guard let self, isShowingResults, gen == generation, !inlineRename.isEditing else { return }
             let selection = selectedURLs
             let expanded = nodes.filter { outlineView.isItemExpanded($0) }
             var changed = false
@@ -655,7 +645,7 @@ final class BrowserViewController: NSViewController {
     private func enterResults() {
         if !isShowingResults {
             cancelPendingActions()
-            deferredApply = nil
+            inlineRename.dropHeldListing()
             ordering.enterResults()
             installActiveView()
             syncSortDescriptor()
@@ -739,7 +729,7 @@ final class BrowserViewController: NSViewController {
 
     func resortAfterMetadata() {
         guard ordering.choice != nil, filtering.typed.isEmpty else { return }
-        if isRenamingInPlace { return resorting.holdForEditing() }
+        if inlineRename.isEditing { return resorting.holdForEditing() }
         if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs
         var sorted = nodes
@@ -775,7 +765,7 @@ final class BrowserViewController: NSViewController {
         guard let node = node(for: url) else { return }
         let row = outlineView.row(forItem: node)
         let column = outlineView.column(withIdentifier: .size)
-        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: [column]) }
+        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column]) }
         treemapController?.updateSize(folderSize(url)?.bytes, for: url)
         if mode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
@@ -789,7 +779,7 @@ final class BrowserViewController: NSViewController {
             let column = outlineView.tableColumns[$0]
             return !column.isHidden && ListColumn(rawValue: column.identifier.rawValue)?.isMedia == true
         })
-        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: columns) }
+        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: columns) }
         if ordering.choice?.key.isMedia == true { scheduleResort() }
     }
 
@@ -861,7 +851,7 @@ final class BrowserViewController: NSViewController {
     // MARK: - Quick Look
 
     @objc func toggleQuickLook(_ sender: Any?) {
-        guard !isRenamingInPlace else { return }
+        guard !inlineRename.isEditing else { return }
         if services.previews.isOpen {
             services.previews.close()
             return

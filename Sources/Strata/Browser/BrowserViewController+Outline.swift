@@ -159,18 +159,11 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
 extension BrowserViewController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField, let node = renaming else { return }
-        let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        renaming = nil
-        renamingField = nil
-        field.isEditable = false
-        field.isSelectable = false
-        field.drawsBackground = false
-        if let deferred = deferredApply, deferred.generation == generation {
-            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop,
-                  sortedBy: deferred.sortedBy)
+        guard let field = notification.object as? NSTextField, let ended = inlineRename.end(field) else { return }
+        let node = ended.node, newName = ended.name
+        if let held = inlineRename.takeHeldListing(generation: generation) {
+            apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy)
         } else {
-            deferredApply = nil
             let row = outlineView.row(forItem: node)
             if row >= 0 {
                 outlineView.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
@@ -183,7 +176,7 @@ extension BrowserViewController: NSTextFieldDelegate {
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let node = renaming {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let node = inlineRename.node {
             (control as? NSTextField)?.stringValue = node.entry.name
             view.window?.makeFirstResponder(outlineView)
             return true
@@ -205,7 +198,7 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        guard let event, event.type == .keyDown, !isRenamingInPlace, view.window?.attachedSheet == nil,
+        guard let event, event.type == .keyDown, !inlineRename.isEditing, view.window?.attachedSheet == nil,
               !(view.window?.firstResponder is NSText) else { return false }
         focusView.keyDown(with: event)
         return true

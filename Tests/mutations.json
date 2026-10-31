@@ -1345,11 +1345,18 @@
     "tests": "DirectoryReadSessionTests/deferredColumnRenamesStopAfterNavigationSelectionModeChangesAndErrors"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "if let deferred = deferredApply, deferred.generation == generation {",
-    "replace": "if let deferred = deferredApply {",
+    "file": "Strata/Browser/BrowserRenaming.swift",
+    "find": "return held?.generation == generation ? held : nil",
+    "replace": "return held",
     "rule": "Applied browser actions ending a native edit applies a superseded listing",
     "tests": "DirectoryReadSessionTests/endingAnInlineEditCannotApplyAListingSupersededByAnotherRead"
+  },
+  {
+    "file": "Strata/Browser/BrowserRenaming.swift",
+    "find": "            let base = node.entry.isFolder ? name : name.deletingPathExtension as NSString\n",
+    "replace": "            let base = name\n",
+    "rule": "Inline rename selects a file's extension along with its name",
+    "tests": "BrowserRenamingTests/anEditSelectsTheNameWithoutItsExtension"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
@@ -2650,7 +2657,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "if isRenamingInPlace { return resorting.holdForEditing() }",
+    "find": "if inlineRename.isEditing { return resorting.holdForEditing() }",
     "replace": "// Reorder during native editing.",
     "rule": "Browser ordering metadata waits for the native inline edit to end",
     "tests": "BrowserOrderingTests/metadataResortWaitsForTheNativeInlineEditorToFinish"
@@ -3315,7 +3322,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        cancelOutlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        selectionFetch?.cancel()\n        selectionFetch = nil",
+    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.cancel()\n        presentations.cached.forEach { $0.cancelRename() }\n        selectionFetch?.cancel()\n        selectionFetch = nil",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
@@ -4815,21 +4822,21 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: [column])",
+    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column])",
     "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column])",
     "rule": "Inline rename metadata: folder size updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming(folders), columnIndexes: [column])",
+    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except(folders, in: outlineView), columnIndexes: [column])",
     "replace": "outlineView.reloadData(forRowIndexes: folders, columnIndexes: [column])",
     "rule": "Inline rename metadata: index updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: columns)",
+    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: columns)",
     "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: columns)",
     "rule": "Inline rename metadata: media updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"

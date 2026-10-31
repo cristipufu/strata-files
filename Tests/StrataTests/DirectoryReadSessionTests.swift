@@ -550,7 +550,7 @@ struct DirectoryReadSessionTests {
         browser.outlineView.tableColumn(withIdentifier: .init("duration"))?.isHidden = false
         browser.select([entry.url])
         browser.renameSelection(nil)
-        let field = try #require(browser.renamingField)
+        let field = try #require(browser.inlineRename.field)
         let editor = try #require(field.currentEditor() as? NSTextView)
         field.stringValue = "partially typed"
         editor.string = "partially typed"
@@ -560,7 +560,7 @@ struct DirectoryReadSessionTests {
         default: browser.sizer.onUpdate?(entry.url)
         }
         #expect(field.currentEditor() === editor)
-        #expect(browser.renamingField === field)
+        #expect(browser.inlineRename.field === field)
         #expect(editor.string == "partially typed")
         field.stringValue = entry.name
         editor.string = entry.name
@@ -597,7 +597,7 @@ struct DirectoryReadSessionTests {
         let oldText = cell.textField?.stringValue
         browser.select([entries[0].url])
         browser.renameSelection(nil)
-        let field = try #require(browser.renamingField)
+        let field = try #require(browser.inlineRename.field)
         let editor = try #require(field.currentEditor() as? NSTextView)
         let expected: String
         if update == "media" {
@@ -625,7 +625,7 @@ struct DirectoryReadSessionTests {
         browser.outlineView.layoutSubtreeIfNeeded()
         let refreshed = try #require(browser.outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? TextCellView)
         #expect(refreshed.textField?.stringValue == expected)
-        #expect(browser.renamingField == nil)
+        #expect(browser.inlineRename.field == nil)
         await browser.commandWork?.value
         #expect(controller.window?.isVisible == false)
         #expect(tree.snapshot() == before)

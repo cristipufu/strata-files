@@ -78,7 +78,7 @@
     "reason": "Leaving or canceling a full-screen transition restores the auxiliary window's exact captured native background, including when AppKit returns to a departing host."
   },
   {
-    "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
+    "file": "Sources/Strata/Browser/BrowserRenaming.swift",
     "code": "field.backgroundColor = .textBackgroundColor",
     "count": 1,
     "reason": "The active inline rename editor keeps the native text-field editing background and text colors."

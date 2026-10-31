@@ -284,7 +284,7 @@ struct TagColumnTests {
         browser.ordering.choose(.init(key: .tags, ascending: true))
         browser.select([tree.url("a")], scroll: false)
         browser.renameSelection(nil)
-        let field = try #require(browser.renamingField)
+        let field = try #require(browser.inlineRename.field)
         let editor = try #require(field.currentEditor())
         try write(["Zulu"], to: tree.url("a"))
         try write(["Alpha"], to: tree.url("z"))

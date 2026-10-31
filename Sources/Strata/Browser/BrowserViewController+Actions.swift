@@ -152,24 +152,13 @@ extension BrowserViewController {
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
         noteNavigationContextChanged()
-        cancelOutlineRename()
+        inlineRename.cancel()
         presentations.cached.forEach { $0.cancelRename() }
         selectionFetch?.cancel()
         selectionFetch = nil
         pendingSelection = nil
         pendingRename = nil
         columnController?.cancelPendingRename()
-    }
-
-    func cancelOutlineRename() {
-        guard let field = renamingField, let node = renaming else { return }
-        field.stringValue = node.entry.name
-        renaming = nil
-        renamingField = nil
-        field.abortEditing()
-        field.isEditable = false
-        field.isSelectable = false
-        field.drawsBackground = false
     }
 
     func stopBackgroundWork() {
@@ -414,7 +403,7 @@ extension BrowserViewController {
             (outlineView.item(atRow: row) as? FileNode)?.entry.isDirectory == true
         })
         if column >= 0, !folders.isEmpty {
-            outlineView.reloadData(forRowIndexes: exceptRenaming(folders), columnIndexes: [column])
+            outlineView.reloadData(forRowIndexes: inlineRename.except(folders, in: outlineView), columnIndexes: [column])
         }
         if ordering.choice?.key == .size { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }
@@ -466,22 +455,11 @@ extension BrowserViewController {
     @objc func clipboardChanged() {
         let visible = outlineView.rows(in: outlineView.visibleRect)
         guard visible.length > 0 else { return }
-        outlineView.reloadData(forRowIndexes: exceptRenaming(IndexSet(integersIn: visible.location..<NSMaxRange(visible))),
+        let rows = IndexSet(integersIn: visible.location..<NSMaxRange(visible))
+        outlineView.reloadData(forRowIndexes: inlineRename.except(rows, in: outlineView),
                                columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
     }
 
-    /// Whether a name in the list is being edited right now.
-    var isRenamingInPlace: Bool { renaming != nil && renamingField?.currentEditor() != nil }
-
-    /// `rows` without the one whose name is being edited: reloading a row gives it a new cell, which ends the edit.
-    func exceptRenaming(_ rows: IndexSet) -> IndexSet {
-        guard isRenamingInPlace, let renaming else { return rows }
-        let row = outlineView.row(forItem: renaming)
-        guard row >= 0 else { return rows }
-        var rows = rows
-        rows.remove(row)
-        return rows
-    }
 
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     func transfer(_ urls: [URL], into target: URL, move: Bool) {
@@ -549,20 +527,6 @@ extension BrowserViewController {
         outlineView.scrollRowToVisible(row)
         guard let cell = outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? NSTableCellView,
               let field = cell.textField else { return }
-        renaming = node
-        renamingField = field
-        field.isEditable = true
-        field.isSelectable = true
-        field.drawsBackground = true
-        field.backgroundColor = .textBackgroundColor
-        field.textColor = .textColor
-        field.stringValue = node.entry.name
-        field.delegate = self
-        view.window?.makeFirstResponder(field)
-        if let editor = field.currentEditor() {
-            let name = node.entry.name as NSString
-            let base = node.entry.isFolder ? name : name.deletingPathExtension as NSString
-            editor.selectedRange = NSRange(location: 0, length: base.length)
-        }
+        inlineRename.begin(node, in: field, delegate: self, window: view.window)
     }
 }
