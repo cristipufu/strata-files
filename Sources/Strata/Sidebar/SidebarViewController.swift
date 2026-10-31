@@ -519,7 +519,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
-                addFavorites([URL(fileURLWithPath: path)], at: at)
+                addFavorites([URL(filePath: path, directoryHint: .isDirectory)], at: at)
             } else {
                 addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at)
             }

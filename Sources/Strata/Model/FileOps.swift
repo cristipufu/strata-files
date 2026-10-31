@@ -367,15 +367,30 @@ package enum FileOps {
         return (moved, identities, nil)
     }
 
-    /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
-    /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
-    /// (a temporary copy). A link to a Trash is only a link.
-    /// A whole disk is never trashed, however it's reached (a link in its path included): asked of the item itself, so
-    /// read where trashing happens, away from the main thread.
+    /// Whether `url` is a whole disk, however it's reached (a link in its path included): asked of the item itself, so
+    /// read where the decision is made, away from the main thread.
     package nonisolated static func isWholeDisk(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
     }
 
+    /// A selection holding a whole disk: refused as a whole, before anything moves. Said as the system says an
+    /// operation isn't permitted.
+    package struct HoldsADisk: LocalizedError {
+        package init() {}
+        package var errorDescription: String? { POSIXError(.EPERM).localizedDescription }
+    }
+
+    /// What Move to Trash takes of `urls`: each once, outermost, those `canTrash` allows; nil when one is a whole disk,
+    /// which refuses them all up front.
+    package nonisolated static func trashable(_ urls: [URL], copies: CopyProviders) -> [URL]? {
+        let chosen = outermost(urls)
+        guard !chosen.contains(where: isWholeDisk) else { return nil }
+        return chosen.filter { canTrash($0, copies: copies) }
+    }
+
+    /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
+    /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
+    /// (a temporary copy). A link to a Trash is only a link.
     package nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
         !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
             && !ReadOnlyCopies.contains(url, copies: copies)
@@ -398,8 +413,8 @@ package enum FileOps {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
-        let urls = Self.outermost(urls)
-        for url in urls where canTrash(url, copies: copies) && !isWholeDisk(url) {
+        guard let urls = trashable(urls, copies: copies) else { return ([], [], [], HoldsADisk()) }
+        for url in urls {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)

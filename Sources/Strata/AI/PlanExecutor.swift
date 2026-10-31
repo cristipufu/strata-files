@@ -212,6 +212,7 @@ package final class PlanTransaction {
     @concurrent package static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
         if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
         if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
+        guard !FileOps.isWholeDisk(url) else { throw FileOps.HoldsADisk() }
         var result: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &result)
         guard let landed = result as URL? else { return .gone }

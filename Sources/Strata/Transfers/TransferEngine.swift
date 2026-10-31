@@ -29,6 +29,8 @@ package nonisolated enum TransferEngine {
         package var afterLanding: (@Sendable (URL) -> Void)?
         /// The worker has finished, before its result is applied on the main actor.
         package var afterResult: (@Sendable (TransferItemResult) -> Void)?
+        /// A folder's merge is about to be read: a test holds it there and stops the job meanwhile.
+        package var beforeMergePlan: (@Sendable (URL) -> Void)?
     }
 
     private static let hooksLock = NSLock()
@@ -986,6 +988,7 @@ package nonisolated enum TransferEngine {
     /// What merging folder `source` into folder `destination` copies: everything missing, subfolders merged in turn,
     /// and same-named items only where the incoming one is newer.
     package static func mergePlan(_ source: URL, into destination: URL) -> [MergeStep] {
+        hooks.beforeMergePlan?(source)
         var steps: [MergeStep] = []
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: source.path)) ?? []).sorted()
         for name in names where name != ".DS_Store" {

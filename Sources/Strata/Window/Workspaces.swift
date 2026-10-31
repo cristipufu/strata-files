@@ -15,8 +15,8 @@ final class Workspaces {
     private let key = "workspaces"
     /// Workspaces whose folders are being looked at before they open.
     private var planning: Set<String> = []
-    /// Workspaces whose open window was brought forward while its waiting panes' folders are looked at.
-    private var bringingForward: Set<String> = []
+    /// Open windows brought forward while their waiting panes' folders are looked at.
+    private var bringingForward: Set<ObjectIdentifier> = []
 
     init(services: BrowserServices) {
         self.services = services
@@ -236,7 +236,7 @@ final class Workspaces {
            let window = open.window {
             let front = window.tabGroup?.selectedWindow ?? window
             // Connecting, or brought forward with its panes still being looked at: once is enough.
-            if connecting.contains(workspace.name) || bringingForward.contains(workspace.name) {
+            if connecting.contains(workspace.name) || bringingForward.contains(ObjectIdentifier(front)) {
                 windows.show(front)
                 return nil
             }
@@ -288,16 +288,17 @@ final class Workspaces {
         let waiting = ownedControllers(of: window).map { controller in
             WaitingTab(controller: controller, panes: controller.waitingPanes.filter { $0.folder.mountPoint == nil })
         }
-        bringingForward.insert(workspace.name)
+        let marked = ObjectIdentifier(window)
+        bringingForward.insert(marked)
         return Task {
             for tab in waiting {
                 for (index, folder) in tab.panes {
                     guard await Self.there(folder.path), let controller = tab.controller,
                           Self.isWaiting(controller, index, for: folder) else { continue }
-                    controller.navigatePane(index, to: URL(fileURLWithPath: folder.path), mode: folder.mode)
+                    controller.navigatePane(index, to: URL(filePath: folder.path, directoryHint: .isDirectory), mode: folder.mode)
                 }
             }
-            bringingForward.remove(workspace.name)
+            bringingForward.remove(marked)
             let open = waiting.compactMap(\.controller).filter { !$0.isClosed }
             if open.contains(where: { !$0.waitingShares.isEmpty || $0.waitingPanes.contains { $0.folder.server != nil } }) {
                 connect(open, of: workspace, missing: [], offline: [])
@@ -328,8 +329,8 @@ final class Workspaces {
         guard let services else { return [] }
         var controllers: [BrowserWindowController] = []
         for tab in plan.tabs where !tab.isEmpty {
-            let location = tab[0].waiting == nil && !tab[0].path.isEmpty ? URL(fileURLWithPath: tab[0].path) : Places.home
-            let second = tab.count > 1 ? (tab[1].waiting == nil && !tab[1].path.isEmpty ? URL(fileURLWithPath: tab[1].path) : Places.home) : nil
+            let location = tab[0].waiting == nil && !tab[0].path.isEmpty ? URL(filePath: tab[0].path, directoryHint: .isDirectory) : Places.home
+            let second = tab.count > 1 ? (tab[1].waiting == nil && !tab[1].path.isEmpty ? URL(filePath: tab[1].path, directoryHint: .isDirectory) : Places.home) : nil
             // Each tab goes after the one before, so they keep their order.
             guard let controller = services.windows.open(location, second, controllers.last?.window, services) else {
                 controllers.forEach { $0.window?.close() }
@@ -355,7 +356,7 @@ final class Workspaces {
         let copies = remote.copies
         var servers: [String: String] = [:]
         for path in workspace.tabs.joined() where !path.isEmpty {
-            servers[path] = copies.server(containing: URL(fileURLWithPath: path))?.server.id
+            servers[path] = copies.server(containing: URL(filePath: path, directoryHint: .isDirectory))?.server.id
         }
         return await Self.plan(workspace, servers: servers)
     }
@@ -430,7 +431,7 @@ final class Workspaces {
             for controller in controllers where !controller.isClosed {
                 for (index, folder) in controller.waitingPanes {
                     guard let id = folder.server, connected.contains(id) else { continue }
-                    let url = URL(fileURLWithPath: folder.path)
+                    let url = URL(filePath: folder.path, directoryHint: .isDirectory)
                     let found = await browsing.reveal(url)
                     // Moved elsewhere (or closed) while that was read: left where it is now.
                     guard !controller.isClosed, controller.waitingPanes.contains(where: { $0.index == index && $0.folder == folder }) else { continue }
@@ -452,7 +453,7 @@ final class Workspaces {
                     let there = await Self.there(path)
                     guard Self.isWaiting(controller, index, for: folder) else { continue }
                     if there {
-                        controller.navigatePane(index, to: URL(fileURLWithPath: path), mode: folder.mode)
+                        controller.navigatePane(index, to: URL(filePath: path, directoryHint: .isDirectory), mode: folder.mode)
                     } else {
                         gone.append(folder.path)
                     }
@@ -506,7 +507,7 @@ final class Workspaces {
     /// Folders as a short list: a few, then how many more.
     private static func list(_ paths: [String]) -> String {
         let nonEmpty = paths.filter { !$0.isEmpty }
-        let shown = nonEmpty.prefix(5).map { Format.tildePath(URL(fileURLWithPath: $0)) }
+        let shown = nonEmpty.prefix(5).map { Format.tildePath(URL(filePath: $0, directoryHint: .isDirectory)) }
         var lines = shown
         if nonEmpty.count > shown.count { lines.append(String(localized: "and \(nonEmpty.count - shown.count) more", comment: "plural")) }
         return lines.joined(separator: "\n")
@@ -530,7 +531,7 @@ final class Workspaces {
         var lines = workspace.tabs.map { tab in
             tab.compactMap { path -> String? in
                 guard !path.isEmpty else { return nil }
-                let url = URL(fileURLWithPath: path)
+                let url = URL(filePath: path, directoryHint: .isDirectory)
                 if let (server, top) = remote.copies.server(containing: url), top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }
                 return url.lastPathComponent.isEmpty ? path : url.lastPathComponent
             }.joined(separator: "  |  ")

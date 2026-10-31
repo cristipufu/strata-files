@@ -88,6 +88,9 @@ struct DropTests {
         #expect(SidebarViewController.canTrash([data], copies: .live, mounts: MountPoints.current()))
         #expect(FileOps.isWholeDisk(data) && FileOps.isWholeDisk(URL(fileURLWithPath: "/")))
         #expect(!FileOps.isWholeDisk(tree.url("a.txt")) && !FileOps.isWholeDisk(tree.url("volumes")))
+        // A selection holding one is refused as a whole, before anything moves; without one, each item goes once.
+        #expect(FileOps.trashable([tree.url("a.txt"), data], copies: .live) == nil)
+        #expect(FileOps.trashable([tree.url("a.txt"), tree.url("a.txt"), Trash.home], copies: .live) == [tree.url("a.txt")])
         #expect(tree.snapshot() == ["a.txt", "volumes -> /System/Volumes"])
     }
 

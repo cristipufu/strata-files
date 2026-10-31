@@ -847,10 +847,10 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        for url in urls where canTrash(url, copies: copies) && !isWholeDisk(url) {",
-    "replace": "        for url in urls where !isWholeDisk(url) {",
+    "find": "        return chosen.filter { canTrash($0, copies: copies) }",
+    "replace": "        return chosen",
     "rule": "Move to Trash takes items inside a read-only copy",
-    "tests": "DeleteScopeTests/nothingInAReadOnlyCopy"
+    "tests": "DeleteScopeTests/nothingInAReadOnlyCopy|DropTests/trashingRefusesADiskHoweverItsReached"
   },
   {
     "file": "Strata/Dev/GitRepository.swift",
@@ -3035,7 +3035,7 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "copies.server(containing: URL(fileURLWithPath: path))?.server.id",
+    "find": "copies.server(containing: URL(filePath: path, directoryHint: .isDirectory))?.server.id",
     "replace": "nil",
     "rule": "Remote environment workspace restoration recognizes its own uncreated server copies",
     "tests": "RemoteEnvironmentTests/workspacePlansAndTooltipsUseTheirOwnServerPaths"
@@ -7491,8 +7491,8 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n    }\n\n    package nonisolated static func canTrash",
-    "replace": "        url.path == \"/\"\n    }\n\n    package nonisolated static func canTrash",
+    "find": "        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true\n    }\n\n    /// A selection holding a whole disk",
+    "replace": "        url.path == \"/\"\n    }\n\n    /// A selection holding a whole disk",
     "rule": "Move to Trash takes a disk reached through a link",
     "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
   },
@@ -7512,8 +7512,8 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "        bringingForward.insert(workspace.name)\n",
-    "replace": "        planning.insert(workspace.name)\n",
+    "find": "        bringingForward.insert(marked)\n",
+    "replace": "        bringingForward.insert(marked)\n        planning.insert(workspace.name)\n",
     "rule": "A workspace whose window closed while it was brought forward can't be opened again",
     "tests": "WorkspaceOwnershipTests/aWorkspaceWhoseWindowClosedWhileBroughtForwardOpensAgain"
   },
@@ -7530,5 +7530,19 @@
     "replace": "        if window.windowController is BrowserWindowController { return window.isVisible }",
     "rule": "Delete Immediately silently drops its question when its window is in another tab or hidden",
     "tests": "DeleteTests/deleteImmediatelyAsksOnlyInAWindowStillOpen"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "        guard !chosen.contains(where: isWholeDisk) else { return nil }",
+    "replace": "        let _ = chosen.contains(where: isWholeDisk)",
+    "rule": "Move to Trash goes ahead with the rest of a selection holding a whole disk",
+    "tests": "DropTests/trashingRefusesADiskHoweverItsReached"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "        let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }\n        guard !control.isCancelled else { return }\n",
+    "replace": "        let sizes = await worker.run { steps.map { TransferEngine.scan($0.source, control: control) } }\n",
+    "rule": "A merge stopped while its folder is read still marks it done and adds its steps",
+    "tests": "TransferJobTests/aMergeStoppedWhileItsFolderIsReadDecidesNothing"
   }
 ]

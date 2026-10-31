@@ -260,7 +260,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         // Each step is a folder: spelled as one, so making it never asks the disk.
         var current = URL(filePath: root, directoryHint: .isDirectory)
         for component in path.dropFirst(root.count).split(separator: "/") {
-            current = current.appending(path: String(component))
+            current = current.appending(path: String(component), directoryHint: .isDirectory)
             // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
             if component == ".Trashes", Trash.isTrash(current.appending(path: String(getuid()))) { continue }
             if Trash.isTrash(current) {

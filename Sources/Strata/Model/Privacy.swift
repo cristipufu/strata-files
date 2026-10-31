@@ -159,9 +159,14 @@ package final class WelcomeSheetController: NSWindowController {
     }
 
     @objc private func dismiss() {
+        withdraw()
+        Prefs.shared.defaults.set(true, forKey: "welcomeShown")
+    }
+
+    /// Taken off its window without being answered (the window is closing): it's shown again elsewhere.
+    package func withdraw() {
         timer?.invalidate()
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
-        Prefs.shared.defaults.set(true, forKey: "welcomeShown")
     }
 }
 

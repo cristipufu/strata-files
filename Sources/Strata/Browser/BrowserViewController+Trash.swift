@@ -158,7 +158,7 @@ extension BrowserViewController {
             var refused: [URL] = []
             let candidates = outermost(urls).filter { url in
                 // A Trash is emptied, never deleted itself.
-                let fixed = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true || Trash.isTrash(anySpelling: url)
+                let fixed = FileOps.isWholeDisk(url) || Trash.isTrash(anySpelling: url)
                 // An archive opened as a folder isn't changed either.
                 let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)
                 if fixed || !changeable { refused.append(url) }

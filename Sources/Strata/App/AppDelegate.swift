@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// done) are what's shown, so the last session isn't reopened over them.
     private var launching = true
     private var openedAtLaunch = false
+    /// The start window opened while launch's reads were slow, until what they bring replaces it.
+    private weak var standIn: BrowserWindowController?
+    private var standInTimer: Task<Void, Never>?
 
     /// Strata ▸ Check for Updates….
     @objc func checkForUpdates(_ sender: Any?) {
@@ -94,30 +97,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (a disk spinning up, a share that stopped) don't leave Strata without a window: after a few seconds the start
     /// window opens, and the session's windows take its place when they're read, if it hasn't been used meanwhile.
     private func openFirstWindows() async {
+        armStandIn()
+        guard !openedAtLaunch, windowControllers.isEmpty else {
+            launching = false
+            return presentWelcome()
+        }
+        let plans = await sessionPlans()
         launching = false
-        guard !openedAtLaunch, windowControllers.isEmpty else { return presentWelcome() }
-        var standIn: BrowserWindowController?
-        let fallback = Task { [weak self] in
+        // Opened meanwhile (a file, a folder, a link): that's what's shown; the stand-in stays armed for it.
+        guard !openedAtLaunch else { return presentWelcome() }
+        standInTimer?.cancel()
+        if !plans.isEmpty { retireStandIn() }
+        if windowControllers.isEmpty, !openSession(plans) { openWindow(at: startLocation) }
+        presentWelcome()
+    }
+
+    /// After a few seconds without a window, the start window opens in the meantime.
+    private func armStandIn() {
+        standInTimer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled, let self, windowControllers.isEmpty else { return }
             standIn = openWindow(at: startLocation)
             presentWelcome()
         }
-        let plans = await sessionPlans()
-        fallback.cancel()
-        if let standIn, !standIn.isClosed, Self.isUnused(standIn, at: startLocation), windowControllers.count == 1, !plans.isEmpty {
-            standIn.window?.close()
-        }
-        if windowControllers.isEmpty {
-            if !openSession(plans) { openWindow(at: startLocation) }
-        }
-        presentWelcome()
     }
 
-    /// A window that's still where it opened, with nothing to go back to: one the user hasn't used yet.
+    /// Closes the stand-in when what launch was waiting for takes its place, if nobody has used it; the welcome on it
+    /// moves to the next window.
+    private func retireStandIn() {
+        guard let standIn, !standIn.isClosed, Self.isUnused(standIn, at: startLocation) else { return }
+        if let welcome, welcome.window?.sheetParent === standIn.window {
+            welcome.withdraw()
+            self.welcome = nil
+        }
+        standIn.window?.close()
+        self.standIn = nil
+    }
+
+    /// A window that's still where it opened, with nothing to go back to, nothing selected and no sheet but the
+    /// welcome: one the user hasn't used yet.
     private static func isUnused(_ controller: BrowserWindowController, at location: URL) -> Bool {
-        controller.panes.count == 1 && controller.pane.history == PaneHistory()
+        let sheet = controller.window?.attachedSheet
+        return controller.panes.count == 1 && controller.pane.history == PaneHistory()
             && controller.location.standardizedFileURL == location.standardizedFileURL
+            && controller.browser.selectedURLs.isEmpty && (sheet == nil || sheet?.windowController is WelcomeSheetController)
     }
 
     /// The Full Disk Access welcome, once, on the first window.
@@ -191,6 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// strata://search?q=…&in=…, strata://open?path=…, strata://workspace?name=…, strata://recents, strata://duplicates
     private func handle(_ url: URL) {
+        // A link opened at launch (a workspace, a search) is what's shown, not the last session.
+        if launching { openedAtLaunch = true }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let value = { (name: String) in items.first { $0.name == name }?.value }
         // A workspace opens its own window.
@@ -260,6 +285,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     openWindow(at: url.deletingLastPathComponent(), select: url)
                 }
             }
+            retireStandIn()
+            presentWelcome()
         }
     }
 

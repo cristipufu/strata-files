@@ -113,7 +113,33 @@ import Testing
         #expect(tree.text("from/newer.txt") == "from/newer.txt" && tree.text("from/older.txt") == "from/older.txt")
     }
 
-    @Test func stoppingAMergeChangesNothing() async throws {
+    @Test func aMergeStoppedWhileItsFolderIsReadDecidesNothing() async throws {
+        let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/older.txt", "to/", "to/box/", "to/box/older.txt")
+        defer { tree.removeFromTrash(); TransferEngine.hooks = .init() }
+        // The destination's copy is newer, so the merge would leave it out and the job's count would change.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)],
+                                              ofItemAtPath: tree.url("from/box/older.txt").path)
+        let before = tree.snapshot(), box = tree.url("from/box").standardizedFileURL.path
+        let (reached, arrive) = AsyncStream<Void>.makeStream()
+        let release = DispatchSemaphore(value: 0)
+        TransferEngine.hooks.beforeMergePlan = { source in
+            guard source.standardizedFileURL.path == box else { return }
+            arrive.yield()
+            release.wait()
+        }
+        let merge = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
+        let job = TransferQueue.shared.enqueue([tree.url("from/box")], to: tree.url("to"), mode: .copy,
+                                               options: .init(verify: false, clone: false), undo: nil, conflicts: merge)
+        for await _ in reached { break }
+        let files = job.totalFiles
+        job.cancel()
+        release.signal()
+        await job.finished()
+        #expect(job.state == .cancelled && job.totalFiles == files)
+        #expect(tree.snapshot() == before)
+    }
+
+    @Test func stoppingAsMergeIsChosenChangesNothing() async throws {
         let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/same.txt", "from/newer.txt",
                                 "to/", "to/box/", "to/box/same.txt", "to/newer.txt")
         defer { tree.removeFromTrash() }
@@ -122,7 +148,7 @@ import Testing
             try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url(path).path)
         }
         let before = tree.snapshot()
-        // Stop pressed as Merge is chosen: what the merge reads after that decides nothing.
+        // Stop pressed while Merge is being chosen: the job stops there and nothing changes.
         final class Box { var job: TransferJob? }
         let box = Box()
         let stopping = ConflictResolver { _ in
