@@ -119,6 +119,27 @@
     "tests": "PutBackTests"
   },
   {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "        let undo = undoManager, history = services.transfers.history.entries",
+    "replace": "        let undo = undoManager, history = OperationLog.shared.entries",
+    "rule": "Put Back asks the app's History where an item came from, not its window's",
+    "tests": "FileCommandOwnershipTests/putBackFindsWhereAnItemCameFromInItsWindowsHistory"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "find": "                    made += missing.map(CreatedFolders.Made.init)",
+    "replace": "                    _ = missing",
+    "rule": "Put Back forgets the folders it made again, so undoing it leaves them",
+    "tests": "FileCommandOwnershipTests/putBackFindsWhereAnItemCameFromInItsWindowsHistory"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "                guard same else { continue }",
+    "replace": "",
+    "rule": "Put Back takes History's word for a file that took the trashed item's place",
+    "tests": "PutBackTests/historyKnowsOnlyTheFileItPutThere"
+  },
+  {
     "file": "Strata/Sidebar/SidebarViewController.swift",
     "find": "            !FileOps.canTrash(url, copies: copies) || (try?",
     "replace": "            (try?",

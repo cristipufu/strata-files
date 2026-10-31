@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 
 extension Notification.Name {
     /// Posted after Strata empties the Trash or deletes something for good.
@@ -110,13 +111,14 @@ enum Trash {
 
     // MARK: - Put Back
 
-    /// Where each of `items` (directly in a Trash) was before it went there. History knows what Strata trashed; the
-    /// Trash's records know what Finder and other apps trashed (Finder writes its records a little later). Items whose
-    /// origin isn't known, or would be unsafe to restore to, are left out.
-    static func originalLocations(of items: [URL]) async -> [URL: URL] {
+    /// Where each of `items` (directly in a Trash) was before it went there. `history` (the window's History) knows
+    /// what Strata trashed; the Trash's records know what Finder and other apps trashed (Finder writes its records a
+    /// little later). Items whose origin isn't known, or would be unsafe to restore to, are left out.
+    @concurrent
+    static func originalLocations(of items: [URL], history: [OperationLog.Entry]) async -> [URL: URL] {
         let items = items.filter(contains)
         guard !items.isEmpty else { return [:] }
-        let moved = OperationLog.shared.movedFrom(items)
+        let moved = OperationLog.movedFrom(items, in: history)
         var result: [URL: URL] = [:]
         var needRecords: [URL] = []
         for item in items {
@@ -129,7 +131,7 @@ enum Trash {
             }
         }
         for (trash, inTrash) in Dictionary(grouping: needRecords, by: { $0.deletingLastPathComponent().standardizedFileURL }) {
-            let (records, written) = await finderRecords(trash)
+            let (records, written) = finderRecords(trash)
             for item in inTrash {
                 // A record older than the item is about something else that once had its name. (Disks that keep no
                 // such dates, like most USB sticks, can't tell: the record is taken.)
@@ -295,20 +297,15 @@ enum Trash {
     }
 
     /// Put Back records for one Trash and when they were written, read again only when the records file changes.
-    private static var recordCache: [String: (modified: Date, records: [String: DSStore.PutBack])] = [:]
+    nonisolated private static let recordCache = Mutex<[String: (modified: Date, records: [String: DSStore.PutBack])]>([:])
 
-    private static func finderRecords(_ trash: URL) async -> (records: [String: DSStore.PutBack], written: Date) {
+    nonisolated private static func finderRecords(_ trash: URL) -> (records: [String: DSStore.PutBack], written: Date) {
         let file = trash.appending(path: ".DS_Store")
         guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         else { return ([:], .distantPast) }
-        if let cached = recordCache[trash.path], cached.modified == modified { return (cached.records, modified) }
-        let records = await parse(file)
-        recordCache[trash.path] = (modified, records)
+        if let cached = recordCache.withLock({ $0[trash.path] }), cached.modified == modified { return (cached.records, modified) }
+        let records = DSStore.putBackRecords(at: file)
+        recordCache.withLock { $0[trash.path] = (modified, records) }
         return (records, modified)
-    }
-
-    @concurrent
-    private static func parse(_ file: URL) async -> [String: DSStore.PutBack] {
-        DSStore.putBackRecords(at: file)
     }
 }

@@ -257,11 +257,12 @@ final class OperationLog {
     /// History's volume UUID/inode key, with compatibility for volumes without UUIDs.
     nonisolated static func identity(_ path: String) -> String? { FileIdentity.historyKey(at: path) }
 
-    /// For each of `urls`: where it was before Strata last put it where it is, and when that happened. Two kinds of
-    /// event put an item somewhere: an operation that moved it there (or its redo), and the undo of one that had moved
-    /// it away (undoing a Put Back returns the item to the Trash). The latest wins, and only while the file there is
-    /// still the one that was moved. Keyed by standardized path; one pass over History.
-    func movedFrom(_ urls: [URL]) -> [String: (from: URL, date: Date)] {
+    /// For each of `urls`: where it was before Strata last put it where it is, according to `entries` (a History's),
+    /// and when that happened. Two kinds of event put an item somewhere: an operation that moved it there (or its
+    /// redo), and the undo of one that had moved it away (undoing a Put Back returns the item to the Trash). The latest
+    /// wins, and only while the file there is still the one that was moved. Keyed by standardized path; one pass over
+    /// the entries, reading the disk, so off the main thread.
+    nonisolated static func movedFrom(_ urls: [URL], in entries: [Entry]) -> [String: (from: URL, date: Date)] {
         let wanted = Set(urls.map { $0.standardizedFileURL.path })
         var found: [String: (from: URL, date: Date)] = [:]
         for entry in entries {

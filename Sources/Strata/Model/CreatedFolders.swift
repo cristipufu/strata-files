@@ -21,15 +21,30 @@ final class CreatedFolders {
         }
     }
 
-    func record(_ made: [URL]) {
-        for url in made {
-            if paths.insert(url.path).inserted { urls.append(url) }
+    /// A folder just made and what makes it that folder, read where it was made (off the main thread, say).
+    nonisolated struct Made: Sendable {
+        let url: URL
+        let identity: FileIdentity?
+        let historyIdentity: String?
+
+        init(_ url: URL) {
             let identity = FileIdentity.read(url.path)
             let saved = FileIdentity.historyKey(at: url.path)
             // A replacement during metadata lookup must not acquire either live or persistent ownership.
             let unchanged = identity != nil && FileIdentity.read(url.path) == identity
-            identities[url.path] = unchanged ? identity : nil
-            historyIdentities[url.path] = unchanged ? saved : nil
+            self.url = url
+            self.identity = unchanged ? identity : nil
+            historyIdentity = unchanged ? saved : nil
+        }
+    }
+
+    func record(_ made: [URL]) { record(made.map(Made.init)) }
+
+    func record(_ made: [Made]) {
+        for folder in made {
+            if paths.insert(folder.url.path).inserted { urls.append(folder.url) }
+            identities[folder.url.path] = folder.identity
+            historyIdentities[folder.url.path] = folder.historyIdentity
         }
     }
 

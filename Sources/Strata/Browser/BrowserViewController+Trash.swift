@@ -20,37 +20,55 @@ extension BrowserViewController {
         guard !isLoadingFolder else { return }
         let items = selectedTrashItems
         guard !items.isEmpty else { return }
-        let undo = undoManager, window = view.window
-        Task { [weak self, services] in
-            let locations = await Trash.originalLocations(of: items)
-            var moves: [TransferMove] = []
-            let made = CreatedFolders()
-            var failures: [(url: URL, error: Error)] = []
-            for item in items {
-                guard let original = locations[item] else { continue }
-                let folder = original.deletingLastPathComponent().standardizedFileURL
-                if !TransferEngine.exists(folder) {
-                    let missing = Self.missingFolders(down: folder)
-                    do {
-                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        made.record(missing)
-                    } catch {
-                        failures.append((item, error))
-                        continue
-                    }
-                }
-                moves.append(TransferMove(from: item, to: original))
-            }
-            if !moves.isEmpty {
-                let job = services.transfers.enqueue(moves: moves, mode: .move, undo: undo, conflicts: .sheet(for: window),
-                                                       actionName: "Put Back", containerOwnership: made)
+        putBack(items: items)
+    }
+
+    /// Put Back of `items`, which sit directly in a Trash, through this window's History and queue.
+    @discardableResult
+    func putBack(items: [URL]) -> Task<Void, Never> {
+        let undo = undoManager, history = services.transfers.history.entries
+        return Task { [weak self, weak window = view.window, services] in
+            let locations = await Trash.originalLocations(of: items, history: history)
+            let ready = await Self.makeFolders(for: items, at: locations)
+            if !ready.moves.isEmpty {
+                let made = CreatedFolders()
+                made.record(ready.made)
+                let job = services.transfers.enqueue(moves: ready.moves, mode: .move, undo: undo,
+                                                     conflicts: .sheet(for: window), actionName: "Put Back",
+                                                     containerOwnership: made)
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
                 job.onFinish = { _ in made.removeEmpty() }
             }
             let unknown = items.filter { locations[$0] == nil }
             if !unknown.isEmpty { self?.explainUnknownOrigin(unknown) }
-            if !failures.isEmpty { Self.report(failures, .putBack, in: window) }
+            if !ready.failures.isEmpty { Self.report(ready.failures, .putBack, in: window) }
         }
+    }
+
+    /// The moves back to each item's original location, after making the folders gone since on the way there (each
+    /// read as it's made, so a replacement isn't taken for one Put Back made).
+    @concurrent
+    private static func makeFolders(for items: [URL], at locations: [URL: URL]) async
+        -> (moves: [TransferMove], made: [CreatedFolders.Made], failures: [(url: URL, error: Error)]) {
+        var moves: [TransferMove] = []
+        var made: [CreatedFolders.Made] = []
+        var failures: [(url: URL, error: Error)] = []
+        for item in items {
+            guard let original = locations[item] else { continue }
+            let folder = original.deletingLastPathComponent().standardizedFileURL
+            if !TransferEngine.exists(folder) {
+                let missing = missingFolders(down: folder)
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    made += missing.map(CreatedFolders.Made.init)
+                } catch {
+                    failures.append((item, error))
+                    continue
+                }
+            }
+            moves.append(TransferMove(from: item, to: original))
+        }
+        return (moves, made, failures)
     }
 
     /// Deletes the selection for good, skipping the Trash, after asking (Finder's ⌥⌘⌫).
@@ -182,8 +200,9 @@ extension BrowserViewController {
 
     // MARK: - Private
 
+    /// A note in the pane's window: with no window (closed meanwhile), there's no one to tell.
     private func explainUnknownOrigin(_ items: [URL]) {
-        guard let first = items.first else { return }
+        guard let first = items.first, let window = view.window else { return }
         let alert = NSAlert()
         // Finder notes where things came from only a while later, so anything it trashed moments ago isn't known yet.
         if items.count == 1 {
@@ -193,7 +212,7 @@ extension BrowserViewController {
             alert.messageText = String(localized: "Strata doesn’t know where \(items.count) of these items came from.", comment: "plural")
             alert.informativeText = String(localized: "Where they were isn’t recorded. If Finder moved them to the Trash moments ago, use Put Back in Finder, or try again in a few minutes. You can also drag them where you want.")
         }
-        Self.present(alert, in: view.window) { _ in }
+        Self.present(alert, in: window) { _ in }
     }
 
     /// `urls` without those inside another of them.
@@ -207,7 +226,7 @@ extension BrowserViewController {
     }
 
     /// The folders that don't exist yet on the way down to `folder`, outermost first.
-    private static func missingFolders(down folder: URL) -> [URL] {
+    nonisolated private static func missingFolders(down folder: URL) -> [URL] {
         var missing: [URL] = []
         var current = folder
         while current.path != "/", !TransferEngine.exists(current) {

@@ -160,6 +160,30 @@ struct FileCommandOwnershipTests {
         #expect(tree.snapshot() == ["a/", "a/inner.txt", "link -> a", "other/", "other/a.txt", "renamed.txt"])
     }
 
+    @Test func putBackFindsWhereAnItemCameFromInItsWindowsHistory() async throws {
+        let tree = try TestTree("Gone/a.txt", "keep/ab.txt")
+        let env = try Environment(), peer = try Environment()
+        let history = env.services.transfers.history
+        defer {
+            for entry in history.entries {
+                for pair in entry.pairs + entry.replaced {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                }
+            }
+        }
+        try await env.services.files.trash([tree.url("Gone/a.txt")], undo: nil)
+        let trashed = URL(fileURLWithPath: try #require(history.entries.first?.pairs.first?[1]))
+        // The folder it was in goes too: Put Back makes it again.
+        try FileManager.default.removeItem(at: tree.url("Gone"))
+        await BrowserViewController(services: env.services).putBack(items: [trashed]).value
+        let job = try #require(env.services.transfers.jobs.compactMap { $0 as? TransferJob }.last)
+        await job.finished()
+        #expect(tree.snapshot() == ["Gone/", "Gone/a.txt", "keep/", "keep/ab.txt"])
+        #expect(history.entries.map(\.name) == ["Move to Trash", "Put Back"])
+        #expect(history.entries.last?.containers == [tree.url("Gone").path])
+        #expect(peer.services.transfers.history.entries.isEmpty)
+    }
+
     @Test func creationUndoNeverAdoptsAReplacementFromHistoryNotification() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt")
