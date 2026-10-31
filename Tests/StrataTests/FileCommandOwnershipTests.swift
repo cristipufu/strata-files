@@ -217,7 +217,7 @@ struct FileCommandOwnershipTests {
             let before = tree.snapshot()
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(!history.canUndo(try #require(history.entries.first)))
+            #expect(await !history.canUndo(try #require(history.entries.first)))
             #expect(tree.snapshot() == before)
             #expect(tree.snapshot() == ["keep.txt", "original" + (folder ? "/" : ""), url.lastPathComponent + (folder ? "/" : "")].sorted())
         }

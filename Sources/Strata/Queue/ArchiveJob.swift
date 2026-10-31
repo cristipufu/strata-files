@@ -104,17 +104,19 @@ package final class ArchiveJob {
             case .compress(let items):
                 let control = control, copies = queue.copies
                 let made = try await Self.onWorkerThread { try Self.compress(items, copies: copies, control: control) }
-                url = made.0
-                resultBytes = made.1
-                register(url, actionName: "Compress", queue: queue)
+                url = made.zip
+                resultBytes = made.bytes
+                register(url, made.identity, actionName: "Compress", queue: queue)
             case .extract(let archive, let folder):
                 try Self.requireArchive(archive)
                 let inspection = try await inspect(archive)
                 let control = control, copies = queue.copies
-                url = try await Self.onWorkerThread {
-                    try Archiver.extract(archive, inspection: inspection, into: folder, copies: copies, control: control)
+                let made = try await Self.onWorkerThread {
+                    let url = try Archiver.extract(archive, inspection: inspection, into: folder, copies: copies, control: control)
+                    return (url, FileIdentity.read(url.path))
                 }
-                register(url, actionName: "Extract", queue: queue)
+                url = made.0
+                register(url, made.1, actionName: "Extract", queue: queue)
             case .browse(let archive, let folder):
                 url = try await browse(archive, into: folder)
             }
@@ -162,9 +164,12 @@ package final class ArchiveJob {
         return inspection
     }
 
-    /// History and ⌘Z for what the job made: undo moves it to the Trash.
-    private func register(_ url: URL, actionName: String, queue: TransferQueue) {
-        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)
+    /// History and ⌘Z for what the job made (`identity`, read where it was made): undo moves it to the Trash.
+    private func register(_ url: URL, _ identity: FileIdentity?, actionName: String, queue: TransferQueue) {
+        let landed = LandedFiles()
+        landed.set(identity, at: url)
+        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager,
+                              landed: landed, queue: queue)
         FolderSizer.invalidate(url.deletingLastPathComponent())
     }
 
@@ -175,10 +180,11 @@ package final class ArchiveJob {
     }
 
     /// Runs blocking work on a thread of its own rather than tying up one of the task pool's few threads.
-    /// The zip, and its size read where it was made.
-    nonisolated private static func compress(_ items: [URL], copies: CopyProviders, control: Archiver.Control) throws -> (URL, Int64?) {
+    /// The zip, and its size and what it is, read where it was made.
+    nonisolated private static func compress(_ items: [URL], copies: CopyProviders, control: Archiver.Control) throws
+        -> (zip: URL, bytes: Int64?, identity: FileIdentity?) {
         let zip = try Archiver.compress(items, copies: copies, control: control)
-        return (zip, (try? zip.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init))
+        return (zip, (try? zip.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init), FileIdentity.read(zip.path))
     }
 
     private static func onWorkerThread<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {

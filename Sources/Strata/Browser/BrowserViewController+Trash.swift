@@ -37,7 +37,7 @@ extension BrowserViewController {
                                                      conflicts: .sheet(for: window), actionName: "Put Back",
                                                      containerOwnership: made)
                 // Stopped or skipped at the conflict sheet: folders made for nothing go again.
-                job.onFinish = { _ in made.removeEmpty() }
+                job.onFinish = { _ in Task { await made.removeEmpty() } }
             }
             // Notes go to the pane's window: with it closed meanwhile (shown no more), there's no one to tell.
             let unknown = items.filter { locations[$0] == nil }

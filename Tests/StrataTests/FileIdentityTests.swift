@@ -43,7 +43,7 @@ struct FileIdentityTests {
         // A file swapped in on the same disk is never taken for it.
         let swapped = LandedFiles()
         swapped.set(await FileOps.identity(of: before, movedTo: destination), at: destination)
-        #expect(!swapped.holds(destination))
+        #expect(await !swapped.holds(destination))
         // Moved across disks, it's a new file, read where it went (AcrossDisksTests also cover real transfers to a
         // scratch volume); and one not known before it moved is read where it went too.
         let now = try #require(FileIdentity.read(destination.path))
@@ -70,7 +70,7 @@ struct FileIdentityTests {
         #expect(first.historyKey(volumeID: "volume-id") == reused.historyKey(volumeID: "volume-id"))
     }
 
-    @Test func decodedHistoryRecognizesBothFormatsAndRefusesReplacements() throws {
+    @Test func decodedHistoryRecognizesBothFormatsAndRefusesReplacements() async throws {
         let tree = try TestTree("state/", "cache/", "destination", "keep")
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("cache"), key: nil)
         let history = OperationLog(storage: storage, copies: .live)
@@ -85,14 +85,14 @@ struct FileIdentityTests {
             entry.identities[path] = key
             let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(entry))
             #expect(decoded.identities[path] == key)
-            #expect(history.canUndo(decoded))
+            #expect(await history.canUndo(decoded))
             #expect(!FileIdentity.matchesHistory(key, at: tree.url("missing").path))
             #expect(!FileIdentity.matchesHistory(key, at: tree.url("keep").path))
             entries.append(decoded)
         }
         try FileManager.default.moveItem(at: tree.url("destination"), to: tree.url("saved"))
         try Data("replacement".utf8).write(to: tree.url("destination"))
-        for entry in entries { #expect(!history.canUndo(entry)) }
+        for entry in entries { #expect(await !history.canUndo(entry)) }
         for invalid in ["", "no-identity", "0:0", "volume/0", "7:12:100.200"] {
             #expect(!FileIdentity.matchesHistory(invalid, at: path))
         }

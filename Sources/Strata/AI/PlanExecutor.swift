@@ -107,7 +107,7 @@ package final class PlanTransaction {
         applied = LandedFiles()
         createdFolders = CreatedFolders()
         // Redone: only what undo put back, still there.
-        let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
+        let moves = await Self.stillPutBack(self.moves, by: restored)
         let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
             ?? self.trashItems
         let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
@@ -140,7 +140,7 @@ package final class PlanTransaction {
             }
         }
         // Redone, the Trash steps above waited: what undo put back is checked again before it moves.
-        let movable = restored.map { restored in moves.filter { restored.holds($0.from) } } ?? moves
+        let movable = await Self.stillPutBack(moves, by: restored)
         if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
             // Swaps and chains move together, through temporary names, so they're checked before they start.
             let (moved, error, identities) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
@@ -199,7 +199,7 @@ package final class PlanTransaction {
         await moveBack(await held(done).reversed().map { (from: $0.to, to: $0.from) })
         await moveBack(await held(trashed.reversed()).map { (from: $0.to, to: $0.from) })
         // A name alone does not belong to the plan: the user may have replaced its folder while it was applied.
-        createdFolders.removeEmpty()
+        await createdFolders.removeEmpty()
     }
 
     package nonisolated enum Trashed: Sendable {
@@ -234,6 +234,14 @@ package final class PlanTransaction {
             reason.localizedDescription + " "
                 + String(localized: "Something else took its name meanwhile, so it’s now “\(now.lastPathComponent)”.")
         }
+    }
+
+    /// Those of `moves` whose items are where undo put them back, when this is a redo (`restored`): read away from the
+    /// main thread.
+    private static func stillPutBack(_ moves: [Pair], by restored: LandedFiles?) async -> [Pair] {
+        guard let restored else { return moves }
+        let held = Set(await restored.holding(moves.map(\.from)).map(\.path))
+        return moves.filter { held.contains($0.from.path) }
     }
 
     /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes; one that

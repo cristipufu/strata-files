@@ -67,7 +67,7 @@ extension TransferTests {
         let entry = try #require(env.history.entries.last)
         try FileManager.default.removeItem(at: tree.url("to/b.txt"))
         try Data("replacement".utf8).write(to: tree.url("to/b.txt"))
-        #expect(env.history.canUndo(entry))
+        #expect(await env.history.canUndo(entry))
         try await env.history.undo(entry, undoManager: nil)
         #expect(tree.text("to/b.txt") == "replacement")
         #expect(tree.snapshot() == ["from/", "from/a.txt", "from/b.txt", "state/", "state/Caches/", "state/history.sealed",
@@ -101,12 +101,12 @@ extension TransferTests {
                 await job.finished()
                 TransferEngine.hooks = .init()
                 #expect(job.failures.isEmpty && job.completedItems == 1)
-                #expect(!job.landed.holds(target))
+                #expect(await !job.landed.holds(target))
                 let reopened = OperationLog(storage: env.storage, copies: .live)
                 let entry = try #require(reopened.entries.first)
-                #expect(!reopened.canUndo(entry), "\(mode), \(replacement): History must agree with live ownership")
+                #expect(await !reopened.canUndo(entry), "\(mode), \(replacement): History must agree with live ownership")
                 // Only exercise the refusal once the decision is safe; a failing baseline must never trash a replacement.
-                if !reopened.canUndo(entry) {
+                if await !reopened.canUndo(entry) {
                     await #expect(throws: (any Error).self) { try await reopened.undo(entry, undoManager: nil) }
                 }
                 #expect(tree.text("original") == "from/a.txt")
@@ -122,7 +122,7 @@ extension TransferTests {
                 #expect(tree.snapshot() == expected.sorted())
                 if replacement == "missing" {
                     try tree.add(["to/a.txt"])
-                    #expect(!OperationLog(storage: env.storage, copies: .live).canUndo(entry))
+                    #expect(await !OperationLog(storage: env.storage, copies: .live).canUndo(entry))
                     expected.append("to/a.txt")
                 }
                 #expect(tree.snapshot() == expected.sorted())
@@ -147,7 +147,7 @@ extension TransferTests {
         try await FileOps.move([(from: tree.url("a.txt"), to: target)], actionName: "Rename", undo: nil, history: env.history, copies: .live)
         let reopened = OperationLog(storage: env.storage, copies: .live)
         let entry = try #require(reopened.entries.first)
-        #expect(!reopened.canUndo(entry))
+        #expect(await !reopened.canUndo(entry))
         #expect(tree.text("saved.txt") == "a.txt" && tree.text("b.txt") == "replacement")
         #expect(tree.snapshot() == ["ab.txt", "b.txt", "saved.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
@@ -239,7 +239,7 @@ extension TransferTests {
             try FileManager.default.moveItem(at: source, to: target)
             env.history.recordMove("Rename", [(from: source, to: target)], landed: LandedFiles([target]))
             let row = try #require(env.history.entries.first)
-            #expect(env.history.canUndo(row))
+            #expect(await env.history.canUndo(row))
             if retirement == "clear" { env.history.clear() }
             else { env.history.setUndone(row.id, true) }
             await #expect(throws: (any Error).self) { try await env.history.undo(row, undoManager: nil) }
@@ -303,12 +303,13 @@ extension TransferTests {
             journal.finish(actionName: "Move", undo: undo, logHistory: true, containers: CreatedFolders(), queue: env.queue)
             undo.endUndoGrouping()
             let first = try #require(env.history.entries.first)
-            #expect(env.history.canUndo(first))
+            #expect(await env.history.canUndo(first))
             // The retry kept the source. A previous partial-copy action must no longer offer to trash this copy.
             journal.append(partial, source: source, originalKept: true)
             journal.finish(actionName: "Move", undo: undo, logHistory: true, containers: CreatedFolders(), queue: env.queue)
             let kept = try #require(env.history.entries.first)
-            #expect(kept.id == first.id && !env.history.canUndo(kept))
+            let keptUndoable = await env.history.canUndo(kept)
+            #expect(kept.id == first.id && !keptUndoable)
             let copied = ["from/", "from/a.txt", "from/ab.txt", "state/", "state/Caches/", "state/history.sealed", "to/", "to/a.txt", "to/ab.txt"]
             #expect(tree.snapshot() == copied)
             if finishMove {
@@ -328,7 +329,7 @@ extension TransferTests {
                     await FileOps.undoWork?.value
                 }
                 #expect(tree.snapshot() == copied.filter { $0 != "from/a.txt" })
-            } else if !env.history.canUndo(kept) {
+            } else if await !env.history.canUndo(kept) {
                 undo.undo()
                 await FileOps.undoWork?.value
                 #expect(tree.snapshot() == copied)
@@ -381,7 +382,8 @@ extension TransferTests {
         #expect(Set(after.created) == Set([target.path, healthy.path]))
         #expect(after.identities[target.path] == OperationLog.identity(target.path))
         #expect(after.identities[healthy.path] == before.identities[healthy.path])
-        #expect(job.landed.holds(target) && job.landed.holds(healthy))
+        let targetHeld = await job.landed.holds(target), healthyHeld = await job.landed.holds(healthy)
+        #expect(targetHeld && healthyHeld)
         #expect(tree.text("to/a.txt") == "from/a.txt")
         #expect(tree.text("to/b.txt") == "from/b.txt")
         #expect(tree.snapshot() == (initial + ["to/a.txt", "to/b.txt", "state/history.sealed"]).sorted())
@@ -444,7 +446,8 @@ extension TransferTests {
                 TransferEngine.hooks = .init()
                 let reopened = OperationLog(storage: env.storage, copies: .live)
                 let after = try #require(reopened.entries.last)
-                #expect(after.id != before.id && !after.undone && reopened.canUndo(after))
+                let afterUndoable = await reopened.canUndo(after)
+                #expect(after.id != before.id && !after.undone && afterUndoable)
                 #expect(reopened.entries.count == (retirement == "clear" ? 1 : 2))
                 if retirement != "clear" {
                     #expect(reopened.entries.first?.undone == (retirement == "undo"))
@@ -490,7 +493,7 @@ extension TransferTests {
             }
             #expect(gate.arrived)
             if gate.arrived {
-                #expect(!env.history.canUndo(before))
+                #expect(await !env.history.canUndo(before))
                 job.retryFailed()
                 await job.finished()
                 #expect(job.failures.isEmpty)
@@ -504,7 +507,7 @@ extension TransferTests {
             #expect(reopened.entries.first?.undone == true)
             #expect(repaired.kind == .move && repaired.created.isEmpty && repaired.pairs.count == 1)
             #expect(repaired.pairs.first?.first == job.sources.first?.path)
-            #expect(reopened.canUndo(repaired))
+            #expect(await reopened.canUndo(repaired))
             #expect(tree.snapshot() == ["from/", "from/ab.txt", "from/b.txt", "state/", "state/Caches/", "state/history.sealed"])
             #expect(TestTree.listing(of: destination) == ["a.txt"])
             if repaired.id != before.id && repaired.kind == .move && repaired.created.isEmpty {
@@ -558,7 +561,7 @@ extension TransferTests {
                 let after = try #require(reopened.entries.first)
                 #expect(reopened.entries.count == 1 && after.id == before.id)
                 #expect(after.created.isEmpty && after.kind == .move && after.pairs.count == 2)
-                #expect(reopened.canUndo(after))
+                #expect(await reopened.canUndo(after))
                 let finished = ["from/", "from/ab.txt", "state/", "state/Caches/", "state/history.sealed"]
                 let restored = ["from/", "from/a.txt", "from/ab.txt", "from/b.txt", "state/", "state/Caches/", "state/history.sealed"]
                 #expect(tree.snapshot() == finished)
@@ -656,7 +659,7 @@ extension TransferTests {
                 let owned = replacement == "none" ? target : parked
                 #expect(receipt.withLock { $0 } == FileIdentity.read(owned.path))
                 if folder { #expect(receipt.withLock { $0 } == previous) }
-                #expect(job.landed.holds(landedAt) == (replacement == "none"))
+                #expect(await job.landed.holds(landedAt) == (replacement == "none"))
                 var expected = initial + ["state/history.sealed"]
                 let copyRoot = replacement == "none" ? "to/" + name : "original"
                 expected += folder ? [copyRoot + "/", copyRoot + "/inner.txt"] : [copyRoot]
@@ -668,7 +671,7 @@ extension TransferTests {
                 }
                 let beforeUndo = expected.sorted()
                 #expect(tree.snapshot() == beforeUndo)
-                if replacement != "none", !job.landed.holds(landedAt) {
+                if replacement != "none", await !job.landed.holds(landedAt) {
                     undo.undo()
                     await FileOps.undoWork?.value
                     #expect(tree.snapshot() == beforeUndo)
@@ -731,7 +734,7 @@ extension TransferTests {
                 let record = try #require(env.history.entries.first)
                 let trashPath = try #require(record.replaced.first?.last)
                 let trashed = URL(fileURLWithPath: trashPath)
-                #expect(job.landed.holds(trashed) == (replacement == "none"))
+                #expect(await job.landed.holds(trashed) == (replacement == "none"))
                 let reopened = OperationLog(storage: env.storage, copies: .live)
                 let persisted = try #require(reopened.entries.first)
                 #expect(persisted.identities[trashPath] == (replacement == "none" ? OperationLog.identity(trashPath) : ""))
@@ -790,7 +793,7 @@ struct HistoryOwnershipTests {
             try #require(transaction.record("AI Rename", history: env.history) != nil)
             let reopened = OperationLog(storage: env.storage, copies: .live)
             let entry = try #require(reopened.entries.first)
-            #expect(reopened.canUndo(entry) == !replaced)
+            #expect(await reopened.canUndo(entry) == !replaced)
             if !replaced {
                 try await reopened.undo(entry, undoManager: nil)
                 #expect(tree.text("a.txt") == "a.txt")
@@ -802,7 +805,7 @@ struct HistoryOwnershipTests {
         }
     }
 
-    @Test func absentOwnershipIsExplicitAndNeverBecomesLegacyHistory() throws {
+    @Test func absentOwnershipIsExplicitAndNeverBecomesLegacyHistory() async throws {
         let tree = try TestTree("mine", "other", "link -> mine", "dangling -> absent", "state/")
         let env = try HistoryEnvironment(tree)
         let urls = ["mine", "link", "dangling", "missing"].map(tree.url)
@@ -819,12 +822,12 @@ struct HistoryOwnershipTests {
             let entry = OperationLog.Entry(name: "Copy", kind: .create, created: [tree.url("mine").path], fileIdentities: supplied)
             let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(entry))
             #expect(decoded.identities[tree.url("mine").path] == "")
-            #expect(!env.history.canUndo(decoded))
+            #expect(await !env.history.canUndo(decoded))
         }
         // Preserve the existing behavior of genuine old entries that never had an identities field.
         var old = OperationLog.Entry(name: "Copy", kind: .create, created: [tree.url("mine").path])
         old.identities = [:]
-        #expect(env.history.canUndo(try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(old))))
+        #expect(await env.history.canUndo(try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(old))))
         #expect(tree.text("saved") == "mine" && tree.text("mine") == "other")
         #expect(tree.snapshot() == ["dangling -> absent", "link -> mine", "mine", "saved", "state/", "state/Caches/"])
     }
@@ -838,7 +841,7 @@ struct HistoryOwnershipTests {
         try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: undo, history: env.history, copies: .live)
         undo.endUndoGrouping()
         let entry = try #require(env.history.entries.first)
-        #expect(env.history.canUndo(entry))
+        #expect(await env.history.canUndo(entry))
         for _ in 0..<2 {
             undo.undo()
             await FileOps.undoWork?.value
@@ -848,7 +851,7 @@ struct HistoryOwnershipTests {
             await FileOps.undoWork?.value
             let reopened = OperationLog(storage: env.storage, copies: .live)
             #expect(reopened.entries.first?.undone == false)
-            #expect(reopened.canUndo(try #require(reopened.entries.first)))
+            #expect(await reopened.canUndo(try #require(reopened.entries.first)))
             #expect(tree.text("b.txt") == "a.txt")
             #expect(tree.snapshot() == ["ab.txt", "b.txt", "state/", "state/Caches/", "state/history.sealed"])
         }
@@ -880,7 +883,7 @@ struct HistoryOwnershipTests {
                 if beforeRegistration { record() }
                 let history = OperationLog(storage: env.storage, copies: .live)
                 let entry = try #require(history.entries.first)
-                try #require(history.canUndo(entry), "The original copy can still be undone.")
+                try #require(await history.canUndo(entry), "The original copy can still be undone.")
                 let before = tree.snapshot()
                 let undo = UndoManager()
                 undo.groupsByEvent = false

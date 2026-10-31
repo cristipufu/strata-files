@@ -48,5 +48,27 @@
  {
   "helper": "ContainerDragItem(source:)",
   "reason": "As a drag of a server's or container's item begins: the content type of Strata's own copy of it, in its caches on the startup disk (never on the server or a share), once per item dragged."
+ },
+ {
+  "helper": "SecureStorage.removeLegacy(_:)",
+  "reason": "Strata's own store left over from before encryption, in its own storage folder on the startup disk: removed once, when the store opens."
+ },
+ {
+  "file": "Sources/Strata/Model/OperationLog.swift",
+  "call": "OperationLog.holdsOriginal(_:)",
+  "count": 1,
+  "reason": "In the `owns` closure handed to FileOps.trashForUndo, which calls it on its worker, item by item as each is about to go: never on the main thread."
+ },
+ {
+  "file": "Sources/Strata/Model/LandedFiles.swift",
+  "call": "LandedFiles.holds(_:)",
+  "count": 2,
+  "reason": "In `owns`, the closure made for workers (transfers, Undo's Trash steps), which call it item by item as each is about to change; and in `holdsNow`, for the one item New Folder's or New File's undo trashes inside the UndoManager callback, where its redo must be registered."
+ },
+ {
+  "file": "Sources/Strata/Model/LandedFiles.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "`record`, only for New Folder and New File: the one item made, read as it lands (a change asked for on one item), and where the undo of either put it in the Trash."
  }
 ]

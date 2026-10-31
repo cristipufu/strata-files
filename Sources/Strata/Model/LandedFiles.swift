@@ -33,8 +33,14 @@ package final class LandedFiles {
         return saved
     }
 
-    package func holds(_ url: URL) -> Bool {
-        Self.holds(url, identities)
+    /// `holds`, read at once: only for the one item an undo inside the UndoManager callback acts on, where its redo
+    /// must be registered.
+    package func holdsNow(_ url: URL) -> Bool { Self.holds(url, identities) }
+
+    /// Whether `url` is still what landed there, read away from the main thread.
+    package func holds(_ url: URL) async -> Bool {
+        let held = await holding([url])
+        return !held.isEmpty
     }
 
     /// What each item was when it landed, by its path.

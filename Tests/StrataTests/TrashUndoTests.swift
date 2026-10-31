@@ -85,7 +85,7 @@ struct TrashUndoTests {
         defer { tree.removeFromTrash() }
         try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil, copies: .live, history: .shared)
         let trashed = try #require(entry(for: tree))
-        let canUndo = OperationLog.shared.canUndo(trashed)
+        let canUndo = await OperationLog.shared.canUndo(trashed)
         let details = canUndo ? "" : trashed.pairs.map { pair in
             "Recorded: \(trashed.identities[pair[1]] ?? "missing"); current: \(OperationLog.identity(pair[1]) ?? "missing"); original: \(OperationLog.identity(pair[0]) ?? "absent"); path: \(pair[1])"
         }.joined(separator: "\n")
@@ -103,7 +103,7 @@ struct TrashUndoTests {
         let renamed = try #require(entry(for: tree))
         // Something new is saved where the item was: undoing must not move the item over it.
         try Data("new".utf8).write(to: tree.url("a.txt"))
-        #expect(!OperationLog.shared.canUndo(renamed))
+        #expect(await !OperationLog.shared.canUndo(renamed))
         await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
         #expect(tree.snapshot() == ["a.txt", "b.txt"])
         #expect(tree.text("a.txt") == "new" && tree.text("b.txt") == "a.txt")
@@ -116,7 +116,7 @@ struct TrashUndoTests {
         // "b.txt" is now a different file: it isn't what the rename left there, so it stays where it is.
         try FileManager.default.removeItem(at: tree.url("b.txt"))
         try Data("someone else's".utf8).write(to: tree.url("b.txt"))
-        #expect(!OperationLog.shared.canUndo(renamed))
+        #expect(await !OperationLog.shared.canUndo(renamed))
         await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
         #expect(tree.snapshot() == ["b.txt"])
         #expect(tree.text("b.txt") == "someone else's")
@@ -130,11 +130,11 @@ struct TrashUndoTests {
         var info = stat()
         #expect(lstat(tree.url("b.txt").path, &info) == 0)
         renamed.identities[tree.url("b.txt").path] = "\(info.st_dev):\(info.st_ino)"
-        #expect(OperationLog.shared.canUndo(renamed))
+        #expect(await OperationLog.shared.canUndo(renamed))
         // Swapped for another file, it's no longer the one the rename left: undo refuses and moves nothing.
         try FileManager.default.removeItem(at: tree.url("b.txt"))
         try Data("someone else's".utf8).write(to: tree.url("b.txt"))
-        #expect(!OperationLog.shared.canUndo(renamed))
+        #expect(await !OperationLog.shared.canUndo(renamed))
         await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
         #expect(tree.snapshot() == ["b.txt"] && tree.text("b.txt") == "someone else's")
     }
@@ -151,11 +151,11 @@ struct TrashUndoTests {
 
     // MARK: - Folders made for items put back
 
-    @Test func onlyEmptyFoldersGoWhenTheirItemsDo() throws {
+    @Test func onlyEmptyFoldersGoWhenTheirItemsDo() async throws {
         let tree = try TestTree("empty/", "records/", "records/.DS_Store", "mine/", "mine/.DS_Store", "mine/keep.txt",
                                 "deep/", "deep/inner/", "door -> mine")
-        CreatedFolders([tree.url("empty"), tree.url("records"), tree.url("mine"), tree.url("deep"),
-                        tree.url("deep/inner"), tree.url("door")]).removeEmpty()
+        await CreatedFolders([tree.url("empty"), tree.url("records"), tree.url("mine"), tree.url("deep"),
+                              tree.url("deep/inner"), tree.url("door")]).removeEmpty()
         // Empty (Finder's records aside): gone, innermost first. Anything else in one, or a link: stays as it was.
         #expect(tree.snapshot() == ["door -> mine", "mine/", "mine/.DS_Store", "mine/keep.txt"])
     }

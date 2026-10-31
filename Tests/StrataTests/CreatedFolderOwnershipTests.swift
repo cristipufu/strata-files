@@ -25,9 +25,9 @@ struct CreatedFolderOwnershipTests {
         }
     }
 
-    @Test func emptyFolderCleanupNeverFollowsALinkForFinderRecords() throws {
+    @Test func emptyFolderCleanupNeverFollowsALinkForFinderRecords() async throws {
         let tree = try TestTree("outside/.DS_Store", "link -> outside", "empty/", "mine/keep")
-        CreatedFolders([tree.url("link"), tree.url("empty"), tree.url("mine")]).removeEmpty()
+        await CreatedFolders([tree.url("link"), tree.url("empty"), tree.url("mine")]).removeEmpty()
         #expect(tree.text("outside/.DS_Store") == "outside/.DS_Store")
         #expect(tree.snapshot() == ["link -> outside", "mine/", "mine/keep", "outside/", "outside/.DS_Store"])
     }
@@ -84,13 +84,13 @@ struct CreatedFolderOwnershipTests {
         try await replacementIsKept(history: true, duringJob: true)
     }
 
-    @Test func cleanupKeepsUnreadableFoldersAndAnythingBeyondFinderRecords() throws {
+    @Test func cleanupKeepsUnreadableFoldersAndAnythingBeyondFinderRecords() async throws {
         let tree = try TestTree("unreadable/", "records/.DS_Store", "directory/.DS_Store/keep", "mine/.DS_Store", "mine/keep",
                                 "link/.DS_Store -> ../mine/keep", "nested/inner/", "sibling/")
         let folders = CreatedFolders(["unreadable", "records", "directory", "mine", "link", "nested", "nested/inner"].map(tree.url))
         #expect(chmod(tree.url("unreadable").path, 0) == 0)
         defer { chmod(tree.url("unreadable").path, 0o700) }
-        folders.removeEmpty()
+        await folders.removeEmpty()
         #expect(chmod(tree.url("unreadable").path, 0o700) == 0)
         #expect(tree.text("mine/keep") == "mine/keep")
         #expect(tree.snapshot() == ["directory/", "directory/.DS_Store/", "directory/.DS_Store/keep", "mine/",
@@ -162,11 +162,11 @@ struct CreatedFolderOwnershipTests {
         let tree = try TestTree("made/", "bad", "neighbor/keep")
         let owned = CreatedFolders([tree.url("made"), tree.url("made")])
         #expect(owned.urls == [tree.url("made")])
-        owned.removeEmpty()
+        await owned.removeEmpty()
         try tree.add(["made/"])
         let replacement = FileIdentity.read(tree.url("made").path)
         try await owned.makeMissing()
-        owned.removeEmpty()
+        await owned.removeEmpty()
         #expect(FileIdentity.read(tree.url("made").path) == replacement)
 
         let pending = CreatedFolders([tree.url("bad/inner"), tree.url("longer-created-folder")])
@@ -174,7 +174,7 @@ struct CreatedFolderOwnershipTests {
         #expect(!FileManager.default.fileExists(atPath: tree.url("longer-created-folder").path))
         await #expect(throws: (any Error).self) { try await pending.makeMissing(continueAfterFailure: true) }
         #expect(FileManager.default.fileExists(atPath: tree.url("longer-created-folder").path))
-        pending.removeEmpty()
+        await pending.removeEmpty()
         #expect(tree.text("bad") == "bad" && tree.text("neighbor/keep") == "neighbor/keep")
         #expect(tree.snapshot() == ["bad", "made/", "neighbor/", "neighbor/keep"])
     }
@@ -198,6 +198,8 @@ struct CreatedFolderOwnershipTests {
                 undo.undo()
                 await FileOps.undoWork?.value
                 for case let transfer as TransferJob in env.queue.jobs { await transfer.finished() }
+                // The folders' cleanup is undo work too, queued once the move across disks has finished.
+                await FileOps.undoWork?.value
                 #expect(!FileManager.default.fileExists(atPath: volume.url("made").path))
                 #expect(tree.snapshot() == ["a.txt", "neighbor/", "neighbor/keep", "state/", "state/Caches/", "state/history.sealed"])
                 undo.redo()
@@ -226,8 +228,10 @@ struct CreatedFolderOwnershipTests {
         let job = env.queue.enqueue(moves: [.init(from: tree.url("source/a.txt"), to: tree.url("target/a.txt"))],
                                     mode: .move, undo: nil, conflicts: resolver, containerOwnership: made)
         #expect(job.containers === made)
-        job.onFinish = { job in job.containers.removeEmpty() }
+        var cleanup: Task<Void, Never>?
+        job.onFinish = { job in cleanup = Task { await job.containers.removeEmpty() } }
         await job.finished()
+        await cleanup?.value
         #expect(job.state == .cancelled && env.history.entries.isEmpty)
         #expect(tree.text("source/a.txt") == "source/a.txt" && tree.text("target/a.txt") == "target/a.txt")
         #expect(tree.text("outside/.DS_Store") == "outside/.DS_Store")

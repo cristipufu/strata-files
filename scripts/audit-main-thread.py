@@ -245,9 +245,14 @@ def inventory(root, reviewed=frozenset(), sources=None, derived=True):
             for source in sources for line, call, text in findings(source, blocking)]
 
 
+def through_helper(call):
+    """Whether an exception's `call` is a helper's (`Trash.isTrash(_:)`, `FileEntry(url:)`), not a blocking call."""
+    return re.fullmatch(r"[A-Z]\w*(?:\.\w+)?\((?:\w+:)?\)", call) is not None
+
+
 def check(root, entries, derived=False):
     helpers = [entry for entry in entries if "helper" in entry]
-    entries = [entry for entry in entries if "helper" not in entry]
+    entries = [entry for entry in entries if "helper" not in entry and (derived or not through_helper(entry["call"]))]
     sources = sources_in(root)
     reviewed = frozenset(entry["helper"] for entry in helpers)
     uses = inventory(root, reviewed, sources, derived)

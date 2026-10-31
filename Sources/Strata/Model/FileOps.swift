@@ -505,7 +505,7 @@ package enum FileOps {
         guard !created.isEmpty else { return }
         register(actionName, undo) { undo in
             do {
-                let made = created.filter(landed.holds)
+                let made = created.filter(landed.holdsNow)
                 guard !made.isEmpty else { return }
                 try trash(made, undo: undo, record: false, entry: entry, marksUndone: false, copies: copies, history: history)
                 if let entry { history.setUndone(entry, true) }
@@ -584,7 +584,7 @@ package enum FileOps {
                     if let entry { history.updateContainerIdentities(entry, containers.historyIdentities) }
                     let (done, error, identities) = await moveAll(back)
                     done.forEach { returned.set(identities[$0.to.path], at: $0.to) }
-                    containers.finish()
+                    await containers.finish()
                     if let error { throw error }
                     if let entry { history.setUndone(entry, marksUndone) }
                 } catch {

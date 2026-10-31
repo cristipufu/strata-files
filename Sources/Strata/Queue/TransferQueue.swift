@@ -322,11 +322,10 @@ package enum TransferUndo {
     package typealias Containers = CreatedFolders.Change
 
     /// `containers`: folders made for the moved items; undo removes them once they're empty again, redo makes them.
-    /// `landed`: what the items are where they went, recorded as each landed (else read now).
+    /// `landed`: what the items are where they went, recorded as each landed.
     package static func register(created: [URL], moved: [TransferMove], replaced: [TransferMove], actionName: String,
-                         undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles? = nil,
+                         undo: UndoManager?, logHistory: Bool = true, containers: CreatedFolders = CreatedFolders(), landed: LandedFiles,
                          queue: TransferQueue) {
-        let landed = landed ?? LandedFiles(created + moved.map(\.to) + replaced.map(\.to))
         register(receipt: TransferJournal.Receipt(created: created, moved: moved, replaced: replaced, landed: landed),
                  actionName: actionName, undo: undo, logHistory: logHistory, containers: containers, queue: queue)
     }
@@ -470,12 +469,13 @@ package enum TransferUndo {
             // Part of an undo or redo: History already has the operation. Each item is checked as the job reaches it.
             let job = queue.enqueue(moves: moves, mode: .move, undo: nil, conflicts: .keepBoth,
                                     logHistory: false, expected: expected)
-            job.onFinish = { _ in containers.finish() }
+            // Undo work, in its order: what waits for ⌘Z to finish waits for this too.
+            job.onFinish = { _ in _ = FileOps.afterUndoWork { await containers.finish() } }
             return .moving(job)
         }
         let landed = LandedFiles()
         for (move, identity) in zip(done, identities) { landed.set(identity, at: move.to) }
-        containers.finish()
+        await containers.finish()
         for folder in Set(done.flatMap { [$0.from, $0.to] }.map { $0.deletingLastPathComponent() }) {
             FolderSizer.invalidate(folder)
         }

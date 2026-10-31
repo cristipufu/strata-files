@@ -52,6 +52,12 @@ package final class OperationLog {
             }
         }
 
+        /// Whether `other` records the same items, as they were recorded.
+        package func sameItems(as other: Entry) -> Bool {
+            pairs == other.pairs && created == other.created && replaced == other.replaced
+                && containers == other.containers && identities == other.identities
+        }
+
         // History saved by earlier versions lacks the newer fields.
         package init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -290,8 +296,26 @@ package final class OperationLog {
 
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
     /// nothing else occupies the places they'd go back to (a case-only rename's old spelling is the item itself).
-    package func canUndo(_ entry: Entry) -> Bool {
-        mayUndo(entry) && Self.itemsAllowUndo(entry)
+    /// Its items are read away from the main thread.
+    package func canUndo(_ entry: Entry) async -> Bool {
+        guard mayUndo(entry) else { return false }
+        return await Self.itemsAllowUndo([entry])[entry.id] == true && mayUndo(entry)
+    }
+
+    /// What goes back: each moved or replaced item still the one the operation left, to a place that's free (nothing
+    /// there, the item itself, or a place another of its moves vacates first). Read away from the main thread.
+    @concurrent private static func movesBack(_ entry: Entry) async -> [FileOps.Move] {
+        (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {
+            (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
+        }.filter { move in
+            identity(move.to.path) == nil || identity(move.to.path) == identity(move.from.path)
+                || entry.pairs.contains { $0[1] == move.to.path && holdsOriginal(entry, $0[1]) }
+        }
+    }
+
+    /// Those of `moves` that did go back, after a failure partway: read away from the main thread.
+    @concurrent private static func wentBack(_ moves: [FileOps.Move]) async -> [FileOps.Move] {
+        moves.filter { !TransferEngine.exists($0.from) && TransferEngine.exists($0.to) }
     }
 
     /// Whether `entry` is neither undone nor being undone: what `canUndo` knows without looking at its items.
@@ -331,7 +355,9 @@ package final class OperationLog {
     package func undo(_ entry: Entry, undoManager: UndoManager?) async throws {
         // A retry may have repaired a copy or finished a move since this button was built. Undo the current saved
         // operation, and never revive an entry removed by Clear History.
-        guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {
+        // Checked as saved now, and still saved so (unchanged, and not being undone) once its items have been read.
+        guard let checked = entries.first(where: { $0.id == entry.id }), await canUndo(checked),
+              let current = entries.first(where: { $0.id == entry.id }), current.sameItems(as: checked), mayUndo(current) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [
                 NSLocalizedDescriptionKey: String(localized: "“\(entry.displayName)” can’t be undone: its items have moved or changed since."),
             ])
@@ -340,7 +366,7 @@ package final class OperationLog {
         undoing.insert(entry.id)
         retiredTransfers.insert(entry.id)
         defer { undoing.remove(entry.id) }
-        let containers = CreatedFolders(paths: entry.containers, recorded: entry.identities)
+        let containers = await CreatedFolders.recorded(paths: entry.containers, recorded: entry.identities)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
         // Each copy only while it's still the one the copy made, checked as it goes.
@@ -355,25 +381,19 @@ package final class OperationLog {
         }
         // A mixed transfer can still undo its own copies after a moved item is replaced. Check every move too;
         // canUndo accepting part of an entry never gives ownership of the rest.
-        let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {
-            (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
-        }.filter { move in
-            Self.identity(move.to.path) == nil || Self.identity(move.to.path) == Self.identity(move.from.path)
-                || entry.pairs.contains { $0[1] == move.to.path && Self.holdsOriginal(entry, $0[1]) }
-        }
+        let back = await Self.movesBack(entry)
         if !back.isEmpty {
             do {
                 try await moveItems(back, "Undo \(entry.name)")
                 done += back
             } catch {
                 // Part of it may have moved: keep ⌘Z able to put back what did.
-                registerRedo(entry, done + back.filter { !TransferEngine.exists($0.from) && TransferEngine.exists($0.to) },
-                             undoManager, containers: containers)
+                registerRedo(entry, done + (await Self.wentBack(back)), undoManager, containers: containers)
                 throw error
             }
         }
         // Only what is (still) empty: never remove something put there since.
-        containers.removeEmpty()
+        await containers.removeEmpty()
         setUndone(entry.id, true)
         registerRedo(entry, done, undoManager, containers: containers)
     }

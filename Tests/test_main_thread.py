@@ -69,6 +69,18 @@ class MainThreadAuditTests(unittest.TestCase):
                "    func show() {\n        _ = Self.isThere(\"a\")\n        _ = isThere(\"b\")\n    }\n}\n")
         self.assertEqual(sum("through Pane.isThere(_:)" in issue for issue in self.check(own)), 2)
 
+    def test_without_derived_calls_their_exceptions_are_left_for_later(self):
+        helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
+        code = helper + "func show() {\n    _ = Disk.isThere(\"a\")\n}\n"
+        entry = {"file": "Sources/Strata/Browser/Example.swift", "call": "Disk.isThere(_:)", "count": 1, "reason": "Once."}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "Sources/Strata/Browser/Example.swift"
+            path.parent.mkdir(parents=True)
+            path.write_text(code)
+            self.assertEqual(AUDIT.check(root, [entry]), [])
+            self.assertEqual(AUDIT.check(root, [entry], derived=True), [])
+
     def test_a_reviewed_helper_counts_nowhere_and_must_still_block(self):
         helper = "nonisolated enum Disk {\n    static func isThere(_ path: String) -> Bool { stat(path, nil) == 0 }\n}\n"
         code = helper + "func show() {\n    _ = Disk.isThere(\"a\")\n}\n"

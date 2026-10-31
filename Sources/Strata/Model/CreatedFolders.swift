@@ -10,15 +10,29 @@ package final class CreatedFolders {
 
     package init(_ urls: [URL] = []) { record(urls) }
 
-    /// Old History may lack folder identities. Restore its files, but leave unidentifiable folders alone.
-    package init(paths: [String], recorded: [String: String]) {
-        for path in paths where self.paths.insert(path).inserted { urls.append(URL(fileURLWithPath: path)) }
-        for url in urls {
-            guard let saved = recorded[url.path], let identity = FileIdentity.read(url.path),
-                  FileIdentity.matchesHistory(saved, at: url.path), FileIdentity.read(url.path) == identity else { continue }
-            identities[url.path] = identity
-            historyIdentities[url.path] = saved
+    /// The folders History recorded at `paths` that are still the ones it made, read away from the main thread. Old
+    /// History may lack folder identities: its files are restored, but unidentifiable folders are left alone.
+    package static func recorded(paths: [String], recorded: [String: String]) async -> CreatedFolders {
+        let unique = paths.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        return CreatedFolders(paths: unique, matched: await matching(unique, recorded))
+    }
+
+    private init(paths: [String], matched: [String: (identity: FileIdentity, saved: String)]) {
+        urls = paths.map { URL(fileURLWithPath: $0) }
+        self.paths = Set(paths)
+        identities = matched.mapValues(\.identity)
+        historyIdentities = matched.mapValues(\.saved)
+    }
+
+    @concurrent private static func matching(_ paths: [String], _ recorded: [String: String]) async
+        -> [String: (identity: FileIdentity, saved: String)] {
+        var matched: [String: (identity: FileIdentity, saved: String)] = [:]
+        for path in paths {
+            guard let saved = recorded[path], let identity = FileIdentity.read(path),
+                  FileIdentity.matchesHistory(saved, at: path), FileIdentity.read(path) == identity else { continue }
+            matched[path] = (identity, saved)
         }
+        return matched
     }
 
     /// A folder just made and what makes it that folder, read where it was made (off the main thread, say).
@@ -73,7 +87,15 @@ package final class CreatedFolders {
         return (made, failures)
     }
 
-    package func removeEmpty() { FileOps.removeEmptyFolders(urls, identities: identities) }
+    /// Removes those still empty, away from the main thread.
+    package func removeEmpty() async {
+        let urls = urls, identities = identities
+        await Self.removeEmpty(urls, identities)
+    }
+
+    @concurrent private static func removeEmpty(_ urls: [URL], _ identities: [String: FileIdentity]) async {
+        FileOps.removeEmptyFolders(urls, identities: identities)
+    }
 
     /// Kept by both sides of an Undo/Redo pair, so folders recreated by Redo have fresh ownership before Undo runs.
     package enum Change {
@@ -92,7 +114,7 @@ package final class CreatedFolders {
         package func prepare(continueAfterFailure: Bool = false) async throws {
             if case .make(let folders) = self { try await folders.makeMissing(continueAfterFailure: continueAfterFailure) }
         }
-        package func finish() { if case .remove(let folders) = self { folders.removeEmpty() } }
+        package func finish() async { if case .remove(let folders) = self { await folders.removeEmpty() } }
 
         package var historyIdentities: [String: String] {
             if case .make(let folders) = self { folders.historyIdentities } else { [:] }

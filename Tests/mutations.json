@@ -169,7 +169,7 @@
   },
   {
     "file": "Strata/Model/FileOps.swift",
-    "find": "                let made = created.filter(landed.holds)",
+    "find": "                let made = created.filter(landed.holdsNow)",
     "replace": "                let made = created",
     "rule": "Undo of New Folder trashes a folder made in its place",
     "tests": "TrashUndoTests"
@@ -515,7 +515,7 @@
   },
   {
     "file": "Strata/AI/PlanExecutor.swift",
-    "find": "        createdFolders.removeEmpty()",
+    "find": "        await createdFolders.removeEmpty()",
     "replace": "        for folder in created { try? FileManager.default.removeItem(at: folder) }",
     "rule": "Undo of a plan removes a folder something was put in",
     "tests": "PlanSafetyTests"
@@ -1163,8 +1163,8 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "undo: undoManager, queue: queue)",
-    "replace": "undo: undoManager, queue: .shared)",
+    "find": "                              landed: landed, queue: queue)",
+    "replace": "                              landed: landed, queue: .shared)",
     "rule": "Transfer ownership archive records in the global History",
     "tests": "TransferContextTests/queuedArchivesRecordInTheirOwnersHistory"
   },
@@ -1830,8 +1830,8 @@
   },
   {
     "file": "Strata/Model/CreatedFolders.swift",
-    "find": "recorded[url.path], let identity",
-    "replace": "recorded[url.path] ?? FileIdentity.historyKey(at: url.path), let identity",
+    "find": "guard let saved = recorded[path], let identity",
+    "replace": "guard let saved = recorded[path] ?? FileIdentity.historyKey(at: path), let identity",
     "rule": "Created folder ownership missing in old History is not guessed",
     "tests": "CreatedFolderOwnershipTests/olderHistoryRestoresFilesWithoutRemovingUnidentifiedContainers"
   },
@@ -1858,7 +1858,7 @@
   },
   {
     "file": "Strata/Queue/TransferQueue.swift",
-    "find": "            job.onFinish = { _ in containers.finish() }\n",
+    "find": "            job.onFinish = { _ in _ = FileOps.afterUndoWork { await containers.finish() } }\n",
     "replace": "",
     "rule": "Created folder ownership cleanup waits for cross-disk completion",
     "tests": "CreatedFolderOwnershipTests/crossDiskUndoFinishesBeforeRemovingItsCreatedFolders"
@@ -1936,8 +1936,8 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "let back = (entry.pairs.reversed() + entry.replaced.reversed()).filter { Self.holdsOriginal(entry, $0[1]) }.map {",
-    "replace": "let back = (entry.pairs.reversed() + entry.replaced.reversed().filter { Self.holdsOriginal(entry, $0[1]) }).map {",
+    "find": "        (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {",
+    "replace": "        (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {",
     "rule": "Mixed History Undo checks ownership of moved items even when an owned copy remains",
     "tests": "HistoryOwnershipTests/mixedHistoryUndoSkipsReplacedMovesWhileUndoingItsOwnCopy"
   },
@@ -2174,8 +2174,8 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {",
-    "replace": "guard let current = Optional(entry), canUndo(current) else {",
+    "find": "        guard let checked = entries.first(where: { $0.id == entry.id }), await canUndo(checked),\n              let current = entries.first(where: { $0.id == entry.id }), current.sameItems(as: checked), mayUndo(current) else {",
+    "replace": "        guard let checked = Optional(entry), await canUndo(checked),\n              let current = Optional(entry), mayUndo(current) else {",
     "rule": "Retry journal History Undo resolves the latest saved record",
     "tests": "TransferTests/repairedCrossVolumeMovesUpdateBothNativeUndoAndHistory|TransferTests/staleHistoryRowsCannotUndoClearedOrAlreadyUndoneRecords"
   },
@@ -2251,8 +2251,8 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "guard let current = entries.first(where: { $0.id == entry.id }), canUndo(current) else {",
-    "replace": "guard let current = Optional(entry), canUndo(current) else {",
+    "find": "        guard let checked = entries.first(where: { $0.id == entry.id }), await canUndo(checked),\n              let current = entries.first(where: { $0.id == entry.id }), current.sameItems(as: checked), mayUndo(current) else {",
+    "replace": "        guard let checked = Optional(entry), await canUndo(checked),\n              let current = Optional(entry), mayUndo(current) else {",
     "rule": "History window stale actions still resolve saved entries",
     "tests": "HistoryWindowOwnershipTests/aCapturedHistoryActionCannotReviveAClearedEntry"
   },
@@ -4731,8 +4731,8 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
-    "replace": "TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager, queue: queue)",
+    "find": "        TransferUndo.register(created: [url], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, queue: queue)",
+    "replace": "        TransferUndo.register(created: [], moved: [], replaced: [], actionName: actionName, undo: undoManager,\n                              landed: landed, queue: queue)",
     "rule": "Extract: Undo leaves what Extract made in place",
     "tests": "TransferContextTests/undoingAnExtractTrashesOnlyWhatItMade"
   },
@@ -7463,7 +7463,7 @@
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",
-    "find": "                resultBytes = made.1\n",
+    "find": "                resultBytes = made.bytes\n",
     "replace": "",
     "rule": "A finished Compress leaves out the zip's size",
     "tests": "ArchiveStatusTests/aFinishedCompressSaysTheZipsNameAndSize"
