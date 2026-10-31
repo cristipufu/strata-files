@@ -584,42 +584,42 @@
     "tests": "S3Tests/theBucketItself|S3Tests/uploadsAndFolders"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "guard !parts.isEmpty, entry.kind != .other,\n                  parts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) })",
     "replace": "guard !parts.isEmpty, entry.kind != .other,\n                  parts.allSatisfy({ !$0.hasPrefix(tempPrefix) })",
     "rule": "A container's tar entry with dot-dot parts is written",
     "tests": "ContainerTests/aContainersFolder"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "                guard !targetParts.isEmpty, targetParts.allSatisfy({ ContainerCopies.isSafeName($0) && !$0.hasPrefix(tempPrefix) }) else { return }",
     "replace": "                guard !targetParts.isEmpty else { return }",
     "rule": "A container's hard link leads out of the copy",
     "tests": "ContainerTests/aContainersFolder"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        let writer",
     "replace": "        let rootFD = open(folder.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)\n        guard rootFD >= 0 else { throw CocoaError(.fileReadNoPermission) }\n        let writer",
     "rule": "A container copy that is a link is written through",
     "tests": "ContainerTests/aCopyThat"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "                if fstatat(parent, part, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT != S_IFDIR {\n                    removeAt(parent, part)\n                }\n                mkdirat(parent, part, 0o755)\n                let fd = openat(parent, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
     "replace": "                mkdirat(parent, part, 0o755)\n                let fd = openat(parent, part, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
     "rule": "A container's folder is entered through a link in its place",
     "tests": "ContainerTests/aContainersFolderIsWrittenOnlyIntoItsCopy"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "                    guard out >= 0, !done else { return }",
     "replace": "                    guard out >= 0 else { return }",
     "rule": "A fetched file holds data from later entries",
     "tests": "ContainerTests/aFetched"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "        guard let expectedPlaceholder,\n              fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT == S_IFREG,\n              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == expectedPlaceholder,\n              renameat(fd, temp, fd, name) == 0 else {",
     "replace": "        guard renameat(fd, temp, fd, name) == 0 else {",
     "rule": "A fetched file replaces a folder or link now at its place",
@@ -633,7 +633,7 @@
     "tests": "CacheRemovalTests/aContainers"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "        if fpathconf(fd, _PC_CASE_SENSITIVE) == 1 { return { $0 } }",
     "replace": "        if pathconf(NSTemporaryDirectory(), _PC_CASE_SENSITIVE) == 1 { return { $0 } }",
     "rule": "A copy's names fold by another disk's case rule than its own",
@@ -795,14 +795,14 @@
     "tests": "DeleteScopeTests/removeDownloadAsks"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "        guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return }\n        if info.st_mode & S_IFMT == S_IFDIR {\n            fchmodat(fd, name, 0o755, 0)\n            let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)",
     "replace": "        guard fstatat(fd, name, &info, 0) == 0 else { return }\n        if info.st_mode & S_IFMT == S_IFDIR {\n            fchmodat(fd, name, 0o755, 0)\n            let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_CLOEXEC)",
     "rule": "Sweeping a container's copy follows links out of it",
     "tests": "ContainerTests/aContainersFolder"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "        for entry in entries where ContainerCopies.isSafeName(entry.name) && !entry.name.hasPrefix(tempPrefix) {",
     "replace": "        for entry in entries where !entry.name.hasPrefix(tempPrefix) {",
     "rule": "A container's listing writes a name that escapes the folder",
@@ -3913,7 +3913,7 @@
     "tests": "RemoteCopyOwnershipTests/placeholderPlacementChecksIdentityModeParentAndServerContinuity"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "              ContainerCopies.isPlaceholderMode(info.st_mode), FileIdentity.from(info) == expectedPlaceholder,",
     "replace": "              true,",
     "rule": "Shared operation safety container fetch overwrites a replaced placeholder or already-fetched file",
@@ -4266,14 +4266,14 @@
     "replace": "do { try remove(backup) }"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "rule": "Security review: absolute hardlink targets remain container absolute paths",
     "tests": "ContainerTests",
     "find": "hardlinks.append((parts, entry.linkTarget))",
     "replace": "hardlinks.append((parts, streamName(entry.linkTarget)))"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "rule": "Security review: unfetched hardlink placeholders never supply completed bytes",
     "tests": "ContainerTests",
     "edits": [
@@ -5284,7 +5284,7 @@
     "tests": "PreviewMeasurementTests"
   },
   {
-    "file": "Strata/Containers/ContainerFiles.swift",
+    "file": "Strata/Containers/CopyWriter.swift",
     "find": "FileIdentity.from(opened) == expected",
     "replace": "true",
     "rule": "Space preview providers: metadata refuses a replaced cache folder before changing anything",
