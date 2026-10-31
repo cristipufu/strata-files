@@ -164,7 +164,9 @@ These apply everywhere below; the sections that follow add only what is specific
   out, and keep what a view or job needs from when it's made rather than reading it through a weak owner. A
   parameter or property defaulting to `.shared` or `.live`, a fallback like `owner?.copies ?? .live`, and, outside
   the application's own code (App, Settings, Dock, AppUpdates, `main.swift`), any use of an app-wide instance such as
-  `TagStore.shared` fail `scripts/audit-app-wide.py` unless `Tests/app-wide.json` lists it with a reviewed reason.
+  `TagStore.shared` fail `scripts/audit-app-wide.py` unless `Tests/app-wide.json` lists it with a reviewed reason. So
+  does observing with `object: nil` a notification its owner posts (`object: self`): name the window's, as panes
+  observe `.tagsLoaded` from `services.tags`.
 - **One owner per asynchronous request**: a pane, sheet, session or provider actor. Replacing the request, navigating,
   or closing the owner cancels it; focus changes alone don't.
 - **Late results never win.** An old success, failure or notice cannot replace a newer request, clear it, publish over

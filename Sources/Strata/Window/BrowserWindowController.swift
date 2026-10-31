@@ -98,15 +98,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             guard let self, case .search(let text, _) = self.destination else { return }
             SearchFiltersController(query: text, context: SearchFilterContext(self)).show(from: anchor)
         }
-        NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange,
+                                               object: services.index)
+        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
+        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
         NotificationCenter.default.addObserver(self, selector: #selector(folderNamesRead), name: .folderNamesRead,
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
         // The Inspector's Cloud row follows downloads and uploads.
-        NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
+                                               object: services.cloud)
         NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
         // Clicking into a pane gives it focus.
         responderObservation = window.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in

@@ -169,6 +169,35 @@ struct TagColumnTests {
         withExtendedLifetime((environment, state)) {}
     }
 
+    /// A pane resorts for its own window's tag and iCloud stores, never another window's.
+    @Test func onlyItsOwnWindowsTagAndCloudStoresResortAPane() async throws {
+        let tree = try TestTree("a", "z")
+        let state = try TestTree(), otherState = try TestTree()
+        let environment = try PreviewEnvironment(state), other = try PreviewEnvironment(otherState)
+        let browser = BrowserViewController(services: environment.services)
+        defer { browser.stopBackgroundWork() }
+        browser.loadViewIfNeeded()
+        browser.setMode(.list, remember: false)
+        let entries = try ["a", "z"].map { try #require(FileEntry(url: tree.url($0))) }
+        browser.showResults(entries, total: entries.count)
+        browser.ordering.choose(.init(key: .tags, ascending: true))
+        browser.resortWork?.cancel()
+        browser.resortWork = nil
+        let changes: [(Notification.Name, AnyObject)] = [(.tagsLoaded, other.services.tags), (.tagsChanged, other.services.tags),
+                                                         (.cloudStatusChanged, other.services.cloud)]
+        for (name, store) in changes { NotificationCenter.default.post(name: name, object: store, userInfo: ["urls": [tree.url("a")]]) }
+        #expect(browser.resortWork == nil)
+        for (name, store) in [(Notification.Name.tagsLoaded, environment.services.tags as AnyObject),
+                              (.tagsChanged, environment.services.tags), (.cloudStatusChanged, environment.services.cloud)] {
+            NotificationCenter.default.post(name: name, object: store, userInfo: ["urls": [tree.url("a")]])
+            #expect(browser.resortWork != nil, "\(name.rawValue)")
+            browser.resortWork?.cancel()
+            browser.resortWork = nil
+        }
+        #expect(tree.snapshot() == ["a", "z"])
+        withExtendedLifetime((environment, other, state, otherState)) {}
+    }
+
     @Test func lateTagsPreserveSelectionAndWaitForInlineRename() async throws {
         let tree = try TestTree("a", "z")
         let state = try TestTree()

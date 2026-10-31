@@ -29,9 +29,9 @@ nonisolated struct FinderTag: Hashable, Sendable {
 }
 
 extension Notification.Name {
-    /// Posted (object: the URLs whose tags changed) after Strata changes tags.
+    /// Posted (object: the store; userInfo "urls": those whose tags changed) after Strata changes tags.
     static let tagsChanged = Notification.Name("StrataTagsChanged")
-    /// Posted when a folder's tags have been read, for cells to show them.
+    /// Posted (object: the store) when a folder's tags have been read, for cells to show them.
     static let tagsLoaded = Notification.Name("StrataTagsLoaded")
 }
 
@@ -219,7 +219,7 @@ final class TagStore {
         var recent = preferences.defaults.stringArray(forKey: Self.recentKey) ?? []
         recent.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
         preferences.defaults.set(recent, forKey: Self.recentKey)
-        NotificationCenter.default.post(name: .tagsChanged, object: [URL]())
+        NotificationCenter.default.post(name: .tagsChanged, object: self, userInfo: ["urls": [URL]()])
     }
 
     // MARK: - Private
@@ -270,7 +270,7 @@ final class TagStore {
         if !changed.isEmpty {
             registerUndo(previous, undo: undo)
             remember(added)
-            NotificationCenter.default.post(name: .tagsChanged, object: changed)
+            NotificationCenter.default.post(name: .tagsChanged, object: self, userInfo: ["urls": changed])
         }
         if !failures.isEmpty { throw Failure(failures: failures) }
     }

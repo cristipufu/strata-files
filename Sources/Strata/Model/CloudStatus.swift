@@ -179,7 +179,8 @@ enum CloudActions {
 }
 
 extension Notification.Name {
-    /// Cloud states were read (or changed) for items in a shown folder; visible cells redraw their badges.
+    /// Cloud states were read (or changed) for items in a shown folder (object: the store); visible cells redraw their
+    /// badges.
     static let cloudStatusChanged = Notification.Name("StrataCloudStatusChanged")
 }
 
@@ -238,7 +239,7 @@ final class CloudStore {
         folders.removeAll { $0 == key }
         folders.append(key)
         trim()
-        if changed { NotificationCenter.default.post(name: .cloudStatusChanged, object: nil) }
+        if changed { NotificationCenter.default.post(name: .cloudStatusChanged, object: self) }
         schedulePoll()
     }
 

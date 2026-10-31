@@ -182,7 +182,7 @@ final class SidebarViewController: NSViewController {
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: services.remote.servers)
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: services.remote.status)
         // A tag used for the first time joins the Tags section.
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: services.tags)
         preferences.notifications.addObserver(self, selector: #selector(favoritesChanged), name: .favoritesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: services.places)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)

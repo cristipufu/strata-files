@@ -29,7 +29,7 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         cell?.isScrollable = false
         setAccessibilityLabel(String(localized: "Tags", comment: "Finder tags (accessibility label or caption)"))
         // Tags not known yet are read in the background: shown once they arrive, unless you're typing.
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsLoaded), name: .tagsLoaded, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsLoaded), name: .tagsLoaded, object: tags)
     }
 
     @available(*, unavailable)

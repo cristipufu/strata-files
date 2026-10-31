@@ -52,6 +52,17 @@ class AppWideAuditTests(unittest.TestCase):
         issues = self.check("init(history: OperationLog = OperationLog.shared) {}")
         self.assertEqual(len(issues), 1, issues)
 
+    def test_observers_of_an_owners_notification_name_the_owner(self):
+        poster = "func f() { NotificationCenter.default.post(name: .tagsLoaded, object: self) }"
+        for observer in ["addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsLoaded, object: nil)",
+                         "addObserver(forName: .tagsLoaded, object: nil, queue: nil) { _ in }"]:
+            issues = self.check(f"{poster}\n    func g() {{ NotificationCenter.default.{observer} }}")
+            self.assertTrue(any("Observes .tagsLoaded from every poster" in issue for issue in issues), observer)
+        scoped = "func g() { NotificationCenter.default.addObserver(self, selector: #selector(f), name: .tagsLoaded, object: tags) }"
+        self.assertEqual(self.check(f"{poster}\n    {scoped}"), [])
+        unowned = "func g() { NotificationCenter.default.addObserver(self, selector: #selector(f), name: .trashChanged, object: nil) }"
+        self.assertEqual(self.check(unowned), [])
+
     def test_reviewed_exceptions_must_match_exactly(self):
         code = "init(preferences: Prefs = .shared) {}"
         entry = {"file": "Sources/Strata/Browser/Example.swift", "instance": "Prefs.shared", "count": 1,

@@ -235,15 +235,15 @@ final class BrowserViewController: NSViewController {
         preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
         services.clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
+        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: services.tags)
         NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: services.tags)
         NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
         // Cloud badges redraw the same way.
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: services.cloud)
     }
 
     private func configureOutline() {

@@ -118,7 +118,7 @@ final class InspectorViewController: NSViewController {
 
         projectView.isHidden = true
         projectView.onDidClean = { [weak self] _ in self?.reloadProject() }
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged(_:)), name: .tagsChanged, object: services.tags)
         NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
         // Every section is a card of the same kind, in Finder's Get Info order.
         let preferences = services.preferences
@@ -137,7 +137,8 @@ final class InspectorViewController: NSViewController {
         containerView.onOpen = { [weak self] url in self?.onOpenFolder?(url) }
         composeView.isHidden = true
         composeView.onOpenContainer = { [weak self] id in self?.onOpenContainer?(id) }
-        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged,
+                                               object: services.containerStore)
         NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
         let cards: [NSView] = [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
         for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
@@ -241,7 +242,7 @@ final class InspectorViewController: NSViewController {
 
     @objc private func tagsChanged(_ notification: Notification) {
         guard tagField.currentEditor() == nil,
-              let changed = notification.object as? [URL], changed.contains(where: shownURLs.contains) else { return }
+              let changed = notification.userInfo?["urls"] as? [URL], changed.contains(where: shownURLs.contains) else { return }
         tagField.reload()
     }
 

@@ -8,6 +8,16 @@
   "reason": "Keyboard shortcuts are the app's: every window's menus, palette and Shortcuts window show the same ones."
  },
  {
+  "instance": ".iconsLoaded",
+  "reason": "Posted by the app's IconCache: macOS's icons are the same in every window."
+ },
+ {
+  "file": "Sources/Strata/Sidebar/SidebarViewController.swift",
+  "instance": ".sidebarSectionsCollapsed",
+  "count": 1,
+  "reason": "Posted on the sidebar's preferences' own center: sidebars sharing those preferences follow each other's collapsed sections."
+ },
+ {
   "file": "Sources/Strata/App/MainMenu.swift",
   "instance": "Workspaces.shared",
   "count": 1,

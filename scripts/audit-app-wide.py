@@ -10,6 +10,8 @@ a caller forget the owner's, and nothing notices: the code then reads or changes
 - A direct use: `TagStore.shared.tags(for:)` in a pane. The application's own code (App, Settings, Dock, AppUpdates
   and main.swift) is where the app's instances are made and used for the app as a whole, so direct uses there count
   only as defaults or fallbacks; so is the line defining an instance (`static let shared = …`).
+- An observer of every poster: `addObserver(…, name: .tagsLoaded, object: nil)` for a notification its owner posts
+  (`post(name: .tagsLoaded, object: self)`) hears every environment's store, not its window's.
 
 Each must be listed in Tests/app-wide.json with a count and a reason; new ones and stale exceptions fail CI. An entry
 without a file covers every use of an instance that is the same for every window (macOS's icons, say). Pass the
@@ -32,6 +34,9 @@ DEFAULT = re.compile(r":\s*([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\??\s*=\s*
 FALLBACK = re.compile(r"\?\?\s*" + INSTANCE)
 DIRECT = re.compile(r"\b([A-Z][A-Za-z0-9]*)\.(shared|live)\b((?:\.[a-z][A-Za-z0-9]*)*)")
 DEFINITION = re.compile(r"\bstatic\s+(?:let|var)\s+(?:shared|live)\b")
+OWNED_POST = re.compile(r"\bpost\(name:\s*\.([A-Za-z0-9]+),\s*object:\s*self\b")
+ANY_POSTER = re.compile(r"\baddObserver\((?:self,\s*selector:\s*#selector\((?:[^()]|\([^()]*\))*\),\s*)?"
+                        r"(?:forName|name):\s*\.([A-Za-z0-9]+),\s*object:\s*nil\b")
 APPLICATION = {"App", "Settings", "Dock", "AppUpdates"}
 # The system's own (NSWorkspace, QLThumbnailGenerator…) aren't an environment's to pass.
 SYSTEM = re.compile(r"^(?:NS|QL|UN|CG|CF|AV|SC|Sec)[A-Z]")
@@ -40,6 +45,21 @@ SYSTEM = re.compile(r"^(?:NS|QL|UN|CG|CF|AV|SC|Sec)[A-Z]")
 def is_application(relative):
     parts = Path(relative).parts
     return parts[-1] == "main.swift" or len(parts) > 3 and parts[2] in APPLICATION
+
+
+def owned_notifications(root):
+    return {name for path in (root / "Sources").rglob("*.swift") for name in OWNED_POST.findall(code_only(path.read_text()))}
+
+
+def observers(source, owned):
+    code = code_only(source)
+    original = source.splitlines()
+    found = []
+    for match in ANY_POSTER.finditer(code):
+        if match.group(1) in owned:
+            line = code.count("\n", 0, match.start()) + 1
+            found.append((line, f".{match.group(1)}", "observer", original[line - 1].strip()))
+    return found
 
 
 def findings(source, application=False):
@@ -71,10 +91,11 @@ def findings(source, application=False):
 
 
 def inventory(root):
+    owned = owned_notifications(root)
     uses = []
     for path in sorted((root / "Sources/Strata").rglob("*.swift")):
-        relative = str(path.relative_to(root))
-        for line, instance, kind, text in findings(path.read_text(), is_application(relative)):
+        relative, source = str(path.relative_to(root)), path.read_text()
+        for line, instance, kind, text in findings(source, is_application(relative)) + observers(source, owned):
             uses.append((relative, line, instance, kind, text))
     return uses
 
@@ -83,6 +104,7 @@ MESSAGES = {
     "default": "Defaults to {}; pass the owner's instance (see AGENTS.md)",
     "fallback": "Falls back to {}; keep the owner's instance from when it's made (see AGENTS.md)",
     "direct": "Names the app's {}; use the window's (its BrowserServices) or pass it in (see AGENTS.md)",
+    "observer": "Observes {} from every poster; it's posted by its owner, so name the window's (see AGENTS.md)",
 }
 
 
