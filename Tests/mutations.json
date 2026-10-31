@@ -7292,5 +7292,12 @@
     "replace": "        back.append(current)\n",
     "rule": "Back and Forward: going somewhere new keeps the old Forward steps",
     "tests": "PaneHistoryTests/goingSomewhereNewRecordsWhereThePaneWasAndClearsForward"
+  },
+  {
+    "file": "Strata/Toolbar/PathBar.swift",
+    "find": "            let kind = await Self.kind(of: path)\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
+    "replace": "            let kind = await Self.kind(of: path)\n            guard let self, !Task.isCancelled, isEditing else { return }",
+    "rule": "Path bar: Return acts on an answer for text that was typed over",
+    "tests": "PathBarDiskTests/returnOpensAFolderOrShowsAFileAndANewerTextWins"
   }
 ]

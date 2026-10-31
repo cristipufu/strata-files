@@ -33,7 +33,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private(set) var isEditing = false
     private let suggestions: PathSuggestions
     private let suggestionList: PathSuggestionList
-    private var suggesting: Task<Void, Never>?
+    /// The field's lookup in progress: suggestions, or what Return or Tab finds on disk.
+    private(set) var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
     private let names: FolderNames
     private let embedded: Bool
@@ -253,8 +254,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
             parts.append((String(name), URL(fileURLWithPath: root), "externaldrive.fill"))
         } else {
             root = "/"
-            let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeLocalizedNameKey])
-            parts.append((values?.volumeLocalizedName ?? "Macintosh HD", URL(fileURLWithPath: "/"), "internaldrive.fill"))
+            let startup = URL(fileURLWithPath: "/"), name = names.name(startup)
+            parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill"))
         }
         var current = URL(fileURLWithPath: root)
         for component in path.dropFirst(root.count).split(separator: "/") {
@@ -373,8 +374,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if found.count == 1, found[0].url.standardizedFileURL.path == URL(fileURLWithPath: typed).standardizedFileURL.path {
                 return closeSuggestions()
             }
-            var isFolder: ObjCBool = false
-            let typedIsThere = FileManager.default.fileExists(atPath: typed, isDirectory: &isFolder)
+            let typedIsThere = await Self.kind(of: typed) != nil
+            guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             suggestionList.show(found, for: text, highlightFirst: !typedIsThere, below: self)
         }
     }
@@ -413,46 +414,66 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// typed now (looked up first if the list is for older text).
     private func commit() {
         if suggestionList.hasChosen, let chosen = suggestionList.selected { return go(to: chosen) }
-        let path = resolvedPath()
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            let text = field.stringValue
-            if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
-            suggesting?.cancel()
-            let current = url
-            suggesting = Task { [weak self] in
-                guard let self else { return }
+        let path = resolvedPath(), text = field.stringValue, current = url
+        suggesting?.cancel()
+        suggesting = Task { [weak self] in
+            let kind = await Self.kind(of: path)
+            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
+            guard let kind else {
+                if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
                 let found = await suggestions.suggestions(for: text, in: current)
                 guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
                 if let best = found.first { go(to: best) } else { shake() }
+                return
             }
-            return
+            let target = URL(fileURLWithPath: path).standardizedFileURL
+            endEditing(restoreFocus: true)
+            if kind == .folder {
+                onNavigate?(target, nil)
+            } else {
+                onNavigate?(target.deletingLastPathComponent(), target)
+            }
         }
-        let target = URL(fileURLWithPath: path).standardizedFileURL
-        let isFolder = isDirectory.boolValue && !NSWorkspace.shared.isFilePackage(atPath: path)
-        endEditing(restoreFocus: true)
-        if isFolder {
-            onNavigate?(target, nil)
-        } else {
-            onNavigate?(target.deletingLastPathComponent(), target)
+    }
+
+    enum Kind { case folder, item }
+
+    /// What's at `path`: a folder to open, another item (a file, a package) to show in its folder, or nothing.
+    @concurrent static func kind(of path: String) async -> Kind? {
+        guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
+            return nil
         }
+        return values.isDirectory == true && values.isPackage != true ? .folder : .item
     }
 
     /// Completes the last path component against the folders on disk, as far as it's unambiguous.
     private func complete() {
-        let path = resolvedPath()
+        let path = resolvedPath(), text = field.stringValue
         let directory = path.hasSuffix("/") ? path : (path as NSString).deletingLastPathComponent
         let prefix = path.hasSuffix("/") ? "" : (path as NSString).lastPathComponent
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: directory) else {
-            shake()
-            return
+        suggesting?.cancel()
+        suggesting = Task { [weak self] in
+            let matches = await Self.folders(in: directory, startingWith: prefix)
+            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
+            guard let matches else { return shake() }
+            complete(prefix, in: directory, from: matches)
         }
-        let matches = names.filter { name in
+    }
+
+    /// The folders in `directory` whose names start with `prefix` (any case; hidden ones only for a hidden prefix), in
+    /// Finder's order; nil when `directory` can't be read.
+    @concurrent static func folders(in directory: String, startingWith prefix: String) async -> [String]? {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: directory) else { return nil }
+        return names.filter { name in
             guard name.lowercased().hasPrefix(prefix.lowercased()), !name.hasPrefix(".") || prefix.hasPrefix(".") else { return false }
             var isDir: ObjCBool = false
             return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
         }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Completes `prefix` as far as `matches` (the folders of `directory` starting with it) agree.
+    private func complete(_ prefix: String, in directory: String, from matches: [String]) {
         guard let first = matches.first else {
             Sounds.beep()
             return
@@ -548,6 +569,8 @@ final class ChevronButton: NSButton {
     private let folder: URL
     private let navigate: (URL) -> Void
     private var tracking: NSTrackingArea?
+    /// Its subfolders being read for the menu.
+    private var reading: Task<Void, Never>?
 
     init(folder: URL, name: String, navigate: @escaping (URL) -> Void) {
         self.folder = folder
@@ -589,13 +612,25 @@ final class ChevronButton: NSButton {
     override func mouseExited(with event: NSEvent) { layer?.backgroundColor = nil }
 
     @objc private func showMenu() {
+        reading?.cancel()
+        reading = Task { [weak self, folder] in
+            let folders = await Self.subfolders(of: folder)
+            guard let self, !Task.isCancelled, window != nil else { return }
+            popUpMenu(listing: folders)
+        }
+    }
+
+    /// The folders in `folder` a click on the chevron lists: visible ones, not packages, in Finder's order.
+    @concurrent static func subfolders(of folder: URL) async -> [URL] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
         let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-        let folders = urls.filter {
+        return urls.filter {
             let values = try? $0.resourceValues(forKeys: Set(keys))
             return values?.isDirectory == true && values?.isPackage != true
         }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
 
+    private func popUpMenu(listing folders: [URL]) {
         let menu = NSMenu()
         for url in folders.prefix(400) {
             let item = NSMenuItem(title: url.lastPathComponent, action: #selector(pick(_:)), keyEquivalent: "")

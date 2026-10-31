@@ -429,6 +429,8 @@ struct BrowserPreferencesTests {
         rightPane.host.pathBar.editorField.stringValue = tree.url("elsewhere").path
         _ = rightPane.host.pathBar.control(rightPane.host.pathBar.editorField, textView: NSTextView(),
                                            doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        // Return asks the disk what was typed first, away from the main thread.
+        await rightPane.host.pathBar.suggesting?.value
         await rightPane.browser.directoryReads.task?.value
         #expect(!rightPane.host.pathBar.isEditing)
         #expect(rightPane.location.standardizedFileURL.path == tree.url("elsewhere").standardizedFileURL.path)
