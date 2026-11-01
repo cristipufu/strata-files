@@ -560,9 +560,28 @@ nonisolated package enum IndexSearch {
             guard let last = parts.last, let position = locate(last) else { return nil }
             guard parts.count == 1 || Int(progress[index][parent]) >= parts.count - 1 else { return nil }
             score += positionScore(min(position, name.count - 1), last.count, name) + 20
+            let length = query.caseSensitive ? (composedName?.count ?? name.count) : (foldedName?.count ?? name.count)
+            score += pathScore(parts, parent: parent, columns: c, exactName: position == 0 && last.count == length)
         }
         for index in query.scopeNames.indices where progress[query.pathTerms.count + index][parent] < 1 { return nil }
         return score
+    }
+
+    /// A contiguous path outranks scattered ancestors; whole components outrank substrings.
+    private static func pathScore(_ parts: [[UInt8]], parent: Int, columns: IndexStore.Columns, exactName: Bool) -> Int {
+        var ancestor = parent
+        var exact = exactName
+        for part in parts.dropLast().reversed() {
+            guard ancestor >= 0 else { return 0 }
+            let name = columns.name(ancestor)
+            let normalized = columns.flags[ancestor] & IndexStore.Flag.unicodeName != 0 ? folded(name) : nil
+            let position = normalized?.withUnsafeBufferPointer { find(part, in: $0) } ?? find(part, in: name)
+            guard let position else { return 0 }
+            exact = exact && position == 0 && part.count == (normalized?.count ?? name.count)
+            ancestor = Int(columns.parent[ancestor])
+        }
+        // Path quality takes priority over recency and ordinary depth bonuses.
+        return exact ? 4096 : 1024
     }
 
     /// How deep the item is, or nil when it isn't inside `scopeID`: one walk to the root does both.
