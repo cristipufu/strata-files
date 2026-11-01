@@ -96,8 +96,6 @@ final class BrowserViewController: NSViewController {
         name.width = max(name.minWidth, available)
     }
 
-    /// Date and Kind widths from before showing results (they make room for "Where").
-    var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     var filter: String { listing.filter }
     lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
     /// Items' own icons arrived while the Columns view was hidden.
@@ -151,8 +149,7 @@ final class BrowserViewController: NSViewController {
     lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
-    var resultsTotal = 0
-    var resultsSummary: String?
+    let results = PaneResults()
     /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
     private(set) var mode: BrowserViewMode
     let presentations = BrowserPresentations()
@@ -733,12 +730,8 @@ final class BrowserViewController: NSViewController {
     var statusText: String {
         guard isLoaded, loadError == nil else { return "" }
         var parts: [String]
-        if let resultsSummary, isShowingResults {
-            parts = resultsSummary.isEmpty ? [] : [resultsSummary]
-        } else if isShowingResults {
-            let shown = filter.isEmpty ? nodes.count : rows.count
-            parts = [resultsTotal > shown ? String(localized: "Top \(shown.formatted()) of \(resultsTotal) results", comment: "plural")
-                                          : String(localized: "\(shown) results", comment: "plural")]
+        if isShowingResults {
+            parts = results.status(shown: filter.isEmpty ? nodes.count : rows.count)
         } else {
             parts = [filter.isEmpty
                 ? String(localized: "\(nodes.count) items", comment: "plural")

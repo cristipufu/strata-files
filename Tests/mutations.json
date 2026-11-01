@@ -1304,8 +1304,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Results.swift",
-    "find": "isShowingResults, pending.selection == nil, resultsSummary == nil",
-    "replace": "isShowingResults, resultsSummary == nil",
+    "find": "isShowingResults, pending.selection == nil, case .matched = results.tally",
+    "replace": "isShowingResults, case .matched = results.tally",
     "rule": "Applied browser actions unchanged search results ignore the requested selection",
     "tests": "DirectoryReadSessionTests/pendingSelectionsApplyToRefreshedResultsAndGroups"
   },
@@ -8079,5 +8079,19 @@
     "replace": "folder.appending(path: path))",
     "rule": "The strata command hands a folder typed relative to the shell's folder over without its slash",
     "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
+  },
+  {
+    "file": "Strata/Browser/PaneResults.swift",
+    "find": "        widthsBefore = []\n",
+    "replace": "",
+    "rule": "Leaving results twice gives the list's columns their old widths back again, over ones chosen since",
+    "tests": "PaneResultsTests/whereBorrowsDateAndKindsWidthAndGivesItBackOnce"
+  },
+  {
+    "file": "Strata/Browser/PaneResults.swift",
+    "find": "            [total > shown ? String(",
+    "replace": "            [false ? String(",
+    "rule": "A capped search's status says only how many are shown, not how many matched",
+    "tests": "PaneResultsTests/aCappedSearchSaysSoAndASummaryIsSaidInsteadOfACount"
   }
 ]

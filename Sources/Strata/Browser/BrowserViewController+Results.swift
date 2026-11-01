@@ -7,10 +7,10 @@ extension BrowserViewController {
     func showResults(_ entries: [FileEntry], total: Int) {
         // A search refreshed because the index changed nearly always finds the same files: the list, its selection
         // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
-        if isShowingResults, pending.selection == nil, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
+        if isShowingResults, pending.selection == nil, case .matched = results.tally, loadError == nil, updateResultsInPlace(entries) {
             localizeResultNames()
-            if resultsTotal != total {
-                resultsTotal = total
+            if results.tally != .matched(total) {
+                results.tally = .matched(total)
                 delegate?.browserContentDidChange(self)
             }
             return
@@ -22,8 +22,7 @@ extension BrowserViewController {
         loading.showResults()
         sizer.cancelPending()
         mediaInfo.cancelPending()
-        resultsTotal = total
-        resultsSummary = nil
+        results.tally = .matched(total)
         listing.replace(entries, preservingNodes: false, sort: sort)
         localizeResultNames()
         outlineView.reloadData()
@@ -58,8 +57,7 @@ extension BrowserViewController {
         loading.showResults()
         sizer.cancelPending()
         mediaInfo.cancelPending()
-        resultsTotal = groups.count
-        resultsSummary = summary
+        results.tally = .summary(summary)
         listing.replaceGroups(groups)
         localizeResultNames()
         outlineView.reloadData()
@@ -92,7 +90,7 @@ extension BrowserViewController {
             }
             guard changed else { return }
             listing.sort { nodes in
-                if resultsSummary == nil { sort(&nodes) }
+                if case .matched = results.tally { sort(&nodes) }
             }
             outlineView.reloadData()
             for node in expanded { outlineView.expandItem(node) }
@@ -109,7 +107,7 @@ extension BrowserViewController {
         sizer.cancelPending()
         mediaInfo.cancelPending()
         listing.clear()
-        resultsSummary = ""
+        results.tally = .summary("")
         outlineView.reloadData()
         emptyState.show(symbol: symbol, title: title, message: message)
         delegate?.browserContentDidChange(self)
@@ -122,12 +120,7 @@ extension BrowserViewController {
             ordering.enterResults()
             installActiveView()
             syncSortDescriptor()
-            // Make room for "Where" from Date and Kind, not from Name (the only column that gives up width on its own).
-            columnWidthsBeforeResults = [.modified, .created, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
-            outlineView.tableColumn(withIdentifier: .modified)?.width = 130
-            outlineView.tableColumn(withIdentifier: .created)?.width = 130
-            outlineView.tableColumn(withIdentifier: .kind)?.width = 120
-            outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
+            results.makeRoomForWhere(in: outlineView)
             fitNameColumn()
             clearFilter()
         }
@@ -139,9 +132,7 @@ extension BrowserViewController {
             preferences.sortAscending = remembered.ascending
         }
         installActiveView()
-        outlineView.tableColumn(withIdentifier: .location)?.isHidden = true
-        for (id, width) in columnWidthsBeforeResults { outlineView.tableColumn(withIdentifier: id)?.width = width }
-        columnWidthsBeforeResults = []
+        results.restoreColumns(in: outlineView)
         fitNameColumn()
         syncSortDescriptor()
     }
