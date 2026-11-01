@@ -104,7 +104,6 @@ package final class PlanTransaction {
 
     package func perform() async -> PlanExecutor.Outcome {
         var outcome = PlanExecutor.Outcome()
-        var displacedCount = 0
         created = []
         done = []
         trashed = []
@@ -120,13 +119,31 @@ package final class PlanTransaction {
             outcome.failures.append(String(localized: "“\(disk.lastPathComponent)” couldn’t be moved to the Trash: \(FileOps.HoldsADisk().localizedDescription)"))
             return outcome
         }
+        await makeFolders(folders, into: &outcome)
+        // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
+        await trashAll(trashItems, into: &outcome)
+        // Redone, the Trash steps above waited: what undo put back is checked again before it moves.
+        let movable = await Self.stillPutBack(moves, by: restored)
+        var displacedCount = 0
+        if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
+            await moveTogether(movable, into: &outcome)
+        } else {
+            displacedCount = await moveEach(movable, into: &outcome)
+        }
+        outcome.applied = done.count - displacedCount + trashed.count
+        return outcome
+    }
+
+    private func makeFolders(_ folders: [URL], into outcome: inout PlanExecutor.Outcome) async {
         let (made, failures) = await CreatedFolders.make(folders, intermediates: false, stopAtFailure: false, isThere: Self.isThere)
         created = made.map(\.url)
         createdFolders.record(made)
         for (folder, error) in failures {
             outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
         }
-        // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
+    }
+
+    private func trashAll(_ trashItems: [URL], into outcome: inout PlanExecutor.Outcome) async {
         for url in trashItems {
             do {
                 // Redone: only the very item undo put back, checked as it goes.
@@ -143,40 +160,42 @@ package final class PlanTransaction {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
-        // Redone, the Trash steps above waited: what undo put back is checked again before it moves.
-        let movable = await Self.stillPutBack(moves, by: restored)
-        if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
-            // Swaps and chains move together, through temporary names, so they're checked before they start.
-            let (moved, error, identities) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
-            for pair in movable { applied.set(identities[pair.to.path], at: pair.to) }
-            done = moved.map { ($0.from, $0.to) }
-            outcome.results += moved.map(\.to)
-            if let error { outcome.failures.append(error.localizedDescription) }
-        } else {
-            for pair in movable {
-                // Each one waits for the one before: checked again as it goes.
-                if let restored, await restored.holding([pair.from]).isEmpty { continue }
-                do {
-                    applied.set(try await Self.move(pair, copies: copies), at: pair.to)
-                    done.append(pair)
-                    outcome.results.append(pair.to)
-                } catch {
-                    applied.set(nil, at: pair.to)
-                    if let displaced = error as? Displaced {
-                        // It moved, just not where it was meant to: recorded there (a rename keeps what it is), so
-                        // History and Undo follow it. It isn't counted as applied.
-                        applied.set(displaced.identity, at: displaced.now)
-                        done.append((pair.from, displaced.now))
-                        displacedCount += 1
-                        outcome.results.append(displaced.now)
-                    }
-                    outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
-                                                   comment: "An item’s name, then why it couldn’t be renamed or moved"))
+    }
+
+    /// Swaps and chains move together, through temporary names, so they're checked before they start.
+    private func moveTogether(_ movable: [Pair], into outcome: inout PlanExecutor.Outcome) async {
+        let (moved, error, identities) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
+        for pair in movable { applied.set(identities[pair.to.path], at: pair.to) }
+        done = moved.map { ($0.from, $0.to) }
+        outcome.results += moved.map(\.to)
+        if let error { outcome.failures.append(error.localizedDescription) }
+    }
+
+    /// Each one waits for the one before, and is checked again as it goes. How many moved, just not where they were
+    /// meant to.
+    private func moveEach(_ movable: [Pair], into outcome: inout PlanExecutor.Outcome) async -> Int {
+        var displacedCount = 0
+        for pair in movable {
+            if let restored, await restored.holding([pair.from]).isEmpty { continue }
+            do {
+                applied.set(try await Self.move(pair, copies: copies), at: pair.to)
+                done.append(pair)
+                outcome.results.append(pair.to)
+            } catch {
+                applied.set(nil, at: pair.to)
+                if let displaced = error as? Displaced {
+                    // It moved, just not where it was meant to: recorded there (a rename keeps what it is), so
+                    // History and Undo follow it. It isn't counted as applied.
+                    applied.set(displaced.identity, at: displaced.now)
+                    done.append((pair.from, displaced.now))
+                    displacedCount += 1
+                    outcome.results.append(displaced.now)
                 }
+                outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
+                                               comment: "An item’s name, then why it couldn’t be renamed or moved"))
             }
         }
-        outcome.applied = done.count - displacedCount + trashed.count
-        return outcome
+        return displacedCount
     }
 
     package func revert() async {
