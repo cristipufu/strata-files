@@ -66,7 +66,13 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         typography = FileViewTypography(preferences: controller.preferences)
         directoryReads = DirectoryReadSession(reader: controller.directoryReader)
         super.init(frame: .zero)
+        setUpTable(label: controller.names.name(folder))
+        setUpScrollView()
+        setUpStatus()
+        setUpDivider()
+    }
 
+    private func setUpTable(label: String) {
         let column = NSTableColumn(identifier: .init("name"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
@@ -90,8 +96,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         tableView.draggingDestinationFeedbackStyle = .regular
         tableView.pane = self
-        tableView.setAccessibilityLabel(controller.names.name(folder))
+        tableView.setAccessibilityLabel(label)
+    }
 
+    private func setUpScrollView() {
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -100,7 +108,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
         addSubview(scrollView)
+    }
 
+    /// A spinner while the folder is read, and a message when it can't be or is empty.
+    private func setUpStatus() {
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -110,7 +121,10 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         message.alignment = .center
         message.isHidden = true
         addSubview(message)
+    }
 
+    /// The handle on the column's edge: dragged, it resizes this column (or all of them); double-clicked, it fits it.
+    private func setUpDivider() {
         divider.onDrag = { [weak self] delta, all, start in
             guard let self else { return }
             self.controller?.resize(self, to: start + delta, all: all)
