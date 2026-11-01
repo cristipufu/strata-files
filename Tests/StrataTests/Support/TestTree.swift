@@ -148,6 +148,19 @@ final class TestTree {
         }
     }
 
+    /// Native Undo does not record where it trashes a created item. Clean only captured runtime identities, keeping
+    /// parked originals alive until cleanup so another fixture cannot reuse their identities.
+    static func removeFromTrash(matching identities: [FileIdentity]) {
+        for folder in Trash.folders() {
+            let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for url in entries {
+                guard let identity = FileIdentity.read(url.path), identities.contains(identity),
+                      let saved = identity.historyKey(at: url.path) else { continue }
+                removeFromTrash(url, matching: saved)
+            }
+        }
+    }
+
     /// Restoring an item frees its old Trash name for another test. Cleanup must still identify our own file.
     static func removeFromTrash(_ url: URL, matching identity: String?) {
         guard Trash.isInTrash(url), let identity, OperationLog.identity(url.path) == identity else { return }

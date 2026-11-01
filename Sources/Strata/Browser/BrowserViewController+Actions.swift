@@ -63,43 +63,14 @@ extension BrowserViewController {
         // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
         // where it came from.
         if urls.allSatisfy(Trash.contains) { return putBack(sender) }
-        let copies = services.copies
-        guard urls.allSatisfy({ FileOps.canTrash(spelled: $0, copies: copies) }) else { return Sounds.beep() }
-        // Keep the cursor where it was: once they've gone, select the row that slides into the first removed one's place.
-        let removed = Set(urls.map(\.path))
-        let next = TrashedSelection.next(after: removed, in: rows.map(\.url))
-        let undo = undoManager, revision = navigationRevision
-        let files = services.files
-        commandWork = Task { [weak self] in
-            do {
-                try await files.trash(urls, undo: undo)
-                // Unless another place or selection was chosen meanwhile, or the selection was emptied while the items
-                // were still shown (a reload that drops them empties it too).
-                if let self, let next, navigationRevision == revision, TrashedSelection.stillTrashed(selectedURLs, removed, listed: rows.map(\.url)) {
-                    pending.selection = [next]
-                }
-            } catch let noTrash as FileOps.NoTrash {
-                guard let self else { return }
-                Deletion.confirm(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }
-            } catch {
-                self?.presentFileError(error)
-            }
-            self?.refresh()
-        }
+        localCommands.trash(urls)
     }
 
     @objc func duplicate(_ sender: Any?) {
         let urls = selectedURLs
         // The menus are off in the Trash and in archives opened as folders; this also covers ⌘K.
         guard !urls.isEmpty, !isShowingTrash, !isInsideArchive else { return }
-        let revision = navigationRevision
-        // Copying onto itself with "keep both" gives Finder's "name copy" naming, with progress for big items.
-        let job = services.files.duplicate(urls, undo: undoManager)
-        job.onFinish = { [weak self] job in
-            guard let self else { return }
-            if navigationRevision == revision, !job.createdItems.isEmpty { pending.selection = job.createdItems }
-            refresh()
-        }
+        localCommands.duplicate(urls)
     }
 
     /// Selects `urls` once the folder shows them (after the reload a change brings).
@@ -111,20 +82,14 @@ extension BrowserViewController {
     @objc func newFolder(_ sender: Any?) {
         if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return serverCommands.newFolder(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
-        perform {
-            let url = try services.files.newFolder(in: directory, undo: undoManager)
-            self.renameWhenShown(url, in: directory)
-        }
+        localCommands.newFolder(in: directory)
     }
 
     /// File ▸ New File: an empty "untitled.txt" (the extension is in Settings ▸ General), selected and being renamed.
     @objc func newFile(_ sender: Any?) {
         if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return serverCommands.newFile(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
-        perform {
-            let url = try services.files.newFile(in: directory, undo: undoManager)
-            self.renameWhenShown(url, in: directory)
-        }
+        localCommands.newFile(in: directory)
     }
 
     /// An item just made in `directory`: selected, and renamed once it's shown.
@@ -421,15 +386,7 @@ extension BrowserViewController {
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     func transfer(_ urls: [URL], into target: URL, move: Bool) {
         if services.remote.copies.contains(target) { return serverCommands.copy(urls, into: target, move: move) }
-        let job = services.files.transfer(urls, into: target, move: move, undo: undoManager,
-                                          conflicts: .sheet(for: view.window))
-        job.onFinish = { [weak self] job in
-            guard let self else { return }
-            if target.lexicallyStandardized == targetDirectory?.lexicallyStandardized, !job.createdItems.isEmpty {
-                pending.selection = job.createdItems
-            }
-            refresh()
-        }
+        localCommands.transfer(urls, into: target, move: move)
     }
 
     func perform(_ body: () throws -> Void) {
@@ -442,7 +399,7 @@ extension BrowserViewController {
         }
     }
 
-    private func presentFileError(_ error: Error) {
+    func presentFileError(_ error: Error) {
         guard let window = view.window else { return }
         NSAlert(error: error).beginSheetModal(for: window)
         refresh()

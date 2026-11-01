@@ -119,6 +119,7 @@ final class BrowserViewController: NSViewController {
     var commandWork: Task<Void, Never>?
     private(set) lazy var serverCommands = ServerCommands(context: self)
     private(set) lazy var clipboardCommands = ClipboardCommands(context: self)
+    private(set) lazy var localCommands = LocalFileCommands(context: self, files: services.files)
 
     let watching = BrowserWatching()
     private(set) lazy var ordering = BrowserOrdering(

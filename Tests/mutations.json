@@ -4099,16 +4099,16 @@
     "tests": "FileCommandOwnershipTests/extensionChangesNeedAWindowAndOrdinaryRenameKeepsItsCapturedItem"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "try services.files.newFolder(in: directory, undo: undoManager)",
-    "replace": "try FileOps.newFolder(in: directory, undo: undoManager, copies: .live, history: .shared)",
+    "file": "Strata/Browser/LocalFileCommands.swift",
+    "find": "create(in: directory, using: files.newFolder)",
+    "replace": "create(in: directory, using: FileCommands(transfers: .shared).newFolder)",
     "rule": "Browser new folder bypasses its command owner",
     "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "try services.files.newFile(in: directory, undo: undoManager)",
-    "replace": "try FileOps.newFile(in: directory, extension: preferences.newFileExtension, undo: undoManager, copies: .live, history: .shared)",
+    "file": "Strata/Browser/LocalFileCommands.swift",
+    "find": "create(in: directory, using: files.newFile)",
+    "replace": "create(in: directory, using: FileCommands(transfers: .shared).newFile)",
     "rule": "Browser new file bypasses its command owner",
     "tests": "FileCommandOwnershipTests/everyBrowserViewUsesItsCommandOwner"
   },
@@ -8240,5 +8240,26 @@
     "replace": "",
     "rule": "Transfer lifecycle a cancelled job can acquire a new disk lease",
     "tests": "TransferTests/aCancelledUnstartedTransferCannotBeStartedAgain"
+  },
+  {
+    "file": "Strata/Browser/LocalFileCommands.swift",
+    "find": "guard let context, context.navigationRevision == revision else { return }\n            let shown",
+    "replace": "guard let context else { return }\n            let shown",
+    "rule": "Local command visits reject completed transfers from a prior visit",
+    "tests": "LocalFileCommandsTests/completedTransfersKeepTheirSelectionWithTheirOriginalVisit"
+  },
+  {
+    "file": "Strata/Browser/LocalFileCommands.swift",
+    "find": "guard context.navigationRevision == revision else { return url }",
+    "replace": "// Mutated: rename after navigation too.",
+    "rule": "Local command visits reject creation rename after navigation from History",
+    "tests": "LocalFileCommandsTests/creationDoesNotRenameInANewerVisit"
+  },
+  {
+    "file": "Strata/Browser/LocalFileCommands.swift",
+    "find": "let work = Task { [weak context, weak window] in",
+    "replace": "let work = Task { [context = Optional(context), weak window] in",
+    "rule": "Local command visits do not keep a closed Trash pane alive",
+    "tests": "LocalFileCommandsTests/pendingTrashDoesNotKeepItsClosedPaneAlive"
   }
 ]

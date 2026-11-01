@@ -29,19 +29,6 @@ struct FileCommandOwnershipTests {
         return undo
     }
 
-    /// Undo paths need cleanup even when a mutation moves an unexpected fixture item. Match captured identities,
-    /// never names or a before/after listing of the shared Trash, and keep parked originals alive through cleanup.
-    private func removeOwnedTrash(_ identities: [FileIdentity]) {
-        for folder in Trash.folders() {
-            let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-            for url in entries {
-                guard let identity = FileIdentity.read(url.path), identities.contains(identity),
-                      let saved = identity.historyKey(at: url.path) else { continue }
-                TestTree.removeFromTrash(url, matching: saved)
-            }
-        }
-    }
-
     @Test func renameKeepsHistoryAndRepeatedUndoWithItsOwner() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "other/a.txt", "link -> a.txt")
         let first = try IndependentEnvironment(), second = try IndependentEnvironment()
@@ -81,7 +68,7 @@ struct FileCommandOwnershipTests {
                                  : env.services.files.newFile(in: tree.root, undo: undo)
             undo.endUndoGrouping()
             let identity = try #require(FileIdentity.read(url.path))
-            defer { withExtendedLifetime(tree) { removeOwnedTrash([identity]) } }
+            defer { withExtendedLifetime(tree) { TestTree.removeFromTrash(matching: [identity]) } }
             let entry = try #require(env.services.transfers.history.entries.first)
             let made = (["keep.txt", "peer/", "peer/keep.txt"] + [url.lastPathComponent + (folder ? "/" : "")]).sorted()
             #expect(entry.created == [url.path])
@@ -214,7 +201,7 @@ struct FileCommandOwnershipTests {
             undo.endUndoGrouping()
             #expect(replaced)
             let identities = [url, tree.url("original")].compactMap { FileIdentity.read($0.path) }
-            defer { withExtendedLifetime(tree) { removeOwnedTrash(identities) } }
+            defer { withExtendedLifetime(tree) { TestTree.removeFromTrash(matching: identities) } }
             let before = tree.snapshot()
             undo.undo()
             await FileOps.undoWork?.value

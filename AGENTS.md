@@ -245,6 +245,9 @@ These apply everywhere below; the sections that follow add only what is specific
   responder routing; the palette uses the same validator and revalidates before dispatch. Never use a translated title
   as identity. A captured file command stays bound to its pane, folder and selection. Test menu and palette
   availability, and stale actions across view, result and location changes.
+- **Local file workflows** live in `LocalFileCommands`, with an explicit `FileCommands` owner and a weak pane context.
+  The controller keeps native responder actions, server routing and rename confirmation. Completion selection and
+  creation's inline rename belong to the captured navigation revision, including a leave and return to the same folder.
 - Compare reads the owning window's current hidden-files setting each time it scans.
 
 ### The file browser
