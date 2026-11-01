@@ -315,8 +315,8 @@
     "tests": "ClipboardTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "        if isCut { clipboard.clearCut() }\n",
+    "file": "Strata/Browser/ClipboardCommands.swift",
+    "find": "        if isCut, !onServer { clipboard.clearCut() }\n",
     "replace": "",
     "rule": "A Cut isn't used up by the paste",
     "tests": "ClipboardTests"
@@ -3773,9 +3773,9 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value",
-    "replace": "return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls, copies: .live) }.value",
+    "file": "Strata/Browser/ClipboardCommands.swift",
+    "find": "return context.services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak context] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value",
+    "replace": "return context.services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak context] in\n                let task = Task {\n                    let staged = await Task.detached(priority: .userInitiated) { LazyCopies.stageForClipboard(urls, copies: .live) }.value",
     "rule": "Browser copy provider ownership Copy command stages clipboard items with the global provider",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
@@ -3801,8 +3801,8 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "let clipboard = services.clipboard\n        // A container's or a server's items are read first",
+    "file": "Strata/Browser/ClipboardCommands.swift",
+    "find": "let clipboard = context.services.clipboard\n        // A container's or a server's items are read first",
     "replace": "let clipboard = Clipboard.shared\n        // A container's or a server's items are read first",
     "rule": "Browser copy provider ownership Copy command writes to the global clipboard",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"

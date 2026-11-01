@@ -230,61 +230,26 @@ extension BrowserViewController {
     }
 
     @objc func copy(_ sender: Any?) {
-        let urls = selectedURLs
-        let copies = services.copies
-        let clipboard = services.clipboard
-        // A container's or a server's items are read first (folders with all they hold, shown in Transfers), then go on
-        // the clipboard as a staged copy: pasting anywhere (Finder too) gets all of them as ordinary files, never a
-        // half-read copy or a link written by another machine.
-        let fromContainers = urls.filter(copies.contains)
-        guard fromContainers.isEmpty else {
-            return services.transfers.add(CopyFetchJob(fromContainers, copies: copies) { [weak self] in
-                let task = Task {
-                    let staged = await Task.detached(priority: .userInitiated) { copies.stageForClipboard(urls) }.value
-                    if !staged.isEmpty { clipboard.write(staged, cut: false) }
-                }
-                self?.commandWork = task
-            })
-        }
-        clipboard.write(urls, cut: false)
+        clipboardCommands.copy(selectedURLs)
     }
 
     @objc func cut(_ sender: Any?) {
-        services.clipboard.write(selectedURLs, cut: true)
+        clipboardCommands.cut(selectedURLs)
     }
 
     @objc func paste(_ sender: Any?) {
-        guard !isInsideArchive || isOnServer else { return }
-        pasteItems(forceMove: false)
+        guard !isInsideArchive || isOnServer, let directory = targetDirectory else { return }
+        clipboardCommands.paste(into: directory, forceMove: false)
     }
 
     @objc func pasteAndMove(_ sender: Any?) {
-        guard !isInsideArchive || isOnServer else { return }
-        pasteItems(forceMove: true)
-    }
-
-    private func pasteItems(forceMove: Bool) {
-        guard let directory = targetDirectory else { return }
-        let clipboard = services.clipboard
-        let (urls, isCut) = clipboard.read()
-        guard !urls.isEmpty else { return }
-        // Onto a server: copied there (what's on this Mac stays, even after Cut; a Cut on that server moves it there).
-        if services.remote.copies.contains(directory) { return serverCommands.copy(urls, into: directory, move: forceMove || isCut) }
-        transfer(urls, into: directory, move: forceMove || isCut)
-        if isCut { clipboard.clearCut() }
+        guard !isInsideArchive || isOnServer, let directory = targetDirectory else { return }
+        clipboardCommands.paste(into: directory, forceMove: true)
     }
 
     @objc func copyPath(_ sender: Any?) {
         let here = (effectiveMode == .columns ? columns.activeDirectory : nil) ?? directory
-        let urls = selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs
-        let copies = services.copies
-        // In a container's files, the path in the container ("/etc/hosts"); a container itself, its name. On a server,
-        // the server's address and path ("deploy@web-1:/srv/app"). Never the path of Strata's copy, which is gone when
-        // it quits.
-        let paths = urls.compactMap(copies.clipboardPath)
-        guard !paths.isEmpty else { return Sounds.beep() }
-        services.clipboard.pasteboard.clearContents()
-        services.clipboard.pasteboard.setString(paths.joined(separator: "\n"), forType: .string)
+        clipboardCommands.copyPaths(selectedURLs.isEmpty ? [here].compactMap { $0 } : selectedURLs)
     }
 
     /// Adds the selected folders (or, with nothing selected, this folder) to the sidebar's favorites.
