@@ -126,6 +126,32 @@ final class SidebarViewController: NSViewController {
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        setUpOutline()
+        scroll.documentView = outline
+        ThemeStyle.bind(scroll, to: .sidebar)
+        ThemeStyle.bind(outline, to: .sidebar)
+        setUpTree()
+        let container = ThemeSurfaceView()
+        for child in [scroll, tree.view] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                child.topAnchor.constraint(equalTo: container.topAnchor),
+                child.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+        view = container
+        reload()
+        refreshCloudFolders()
+        showMode()
+        observeChanges()
+        trashMayHaveChanged()
+    }
+
+    /// Places as a source list: rows open, take drops and are dragged to reorder favorites.
+    private func setUpOutline() {
         let column = NSTableColumn(identifier: .init("main"))
         outline.addTableColumn(column)
         outline.outlineTableColumn = column
@@ -151,31 +177,20 @@ final class SidebarViewController: NSViewController {
         let menu = NSMenu()
         menu.delegate = self
         outline.menu = menu
-        scroll.documentView = outline
-        ThemeStyle.bind(scroll, to: .sidebar)
-        ThemeStyle.bind(outline, to: .sidebar)
+    }
+
+    /// The folder tree, shown instead of Places when chosen.
+    private func setUpTree() {
         tree.onSelect = { [weak self] target in self?.onSelect?(target) }
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
         tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
         addChild(tree)
-        let container = ThemeSurfaceView()
-        for child in [scroll, tree.view] {
-            child.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(child)
-            NSLayoutConstraint.activate([
-                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                child.topAnchor.constraint(equalTo: container.topAnchor),
-                child.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            ])
-        }
-        view = container
-        reload()
-        refreshCloudFolders()
-        showMode()
-        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+    }
 
+    /// What changes the sidebar's sections: settings, disks, servers, tags, places, containers and the Trash.
+    private func observeChanges() {
+        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         let center = NSWorkspace.shared.notificationCenter
         NotificationCenter.default.addObserver(self, selector: #selector(refreshCloudFolders), name: NSApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
@@ -193,7 +208,6 @@ final class SidebarViewController: NSViewController {
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
-        trashMayHaveChanged()
     }
 
     func reload() {
