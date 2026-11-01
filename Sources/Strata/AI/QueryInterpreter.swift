@@ -484,6 +484,28 @@ private nonisolated final class Parser {
     ]
 
     private func kindsPass() {
+        screenKinds()
+        for (pattern, extensions) in Self.extensionGroups {
+            consume(pattern) { _ in
+                self.filter.extensions.formUnion(extensions)
+                return true
+            }
+        }
+        consume("(?:^|\\s)\\.?(png|heic|gif|svg|webp|mp4|mov|m4v|mkv|avi|mp3|wav|m4a|aac|flac|csv|tsv|json|xml|xlsx|xls|docx|pptx|txt|rtf|epub|psd|sketch|zip|rar|7z|tar|gz|dmg|iso|pkg|ics|vcf|srt)s?(?:\\s+files?)?\\b") { m in
+            self.filter.extensions.insert(m[1] ?? "")
+            return true
+        }
+        for (pattern, kind) in Self.kindWords {
+            consume(pattern) { _ in
+                self.filter.kinds.insert(kind)
+                return true
+            }
+        }
+        dropBroaderDocumentKind()
+    }
+
+    /// Screenshots and screen recordings: images or movies named the way macOS names them.
+    private func screenKinds() {
         consume("\\bscreen\\s*shots?\\b") { _ in
             self.filter.kinds.insert(.image)
             self.addName("Screenshot")
@@ -494,62 +516,53 @@ private nonisolated final class Parser {
             self.addName("Screen Recording")
             return true
         }
-        let extensionGroups: [(String, [String])] = [
-            ("\\bword\\s+(?:documents?|docs?|files?)\\b", ["doc", "docx"]),
-            ("\\bexcel(?:\\s+(?:files?|sheets?|spreadsheets?|workbooks?))?\\b", ["xls", "xlsx"]),
-            ("\\b(?:power\\s*points?|ppts?)\\b", ["ppt", "pptx"]),
-            ("\\bkeynotes?\\b", ["key"]),
-            ("\\b(?:pages)\\s+(?:files?|documents?|docs?)\\b", ["pages"]),
-            ("\\b(?:numbers)\\s+(?:files?|spreadsheets?|sheets?)\\b", ["numbers"]),
-            ("\\b(?:swift)\\s+(?:files?|code|sources?)\\b", ["swift"]),
-            ("\\b(?:python)\\s+(?:files?|code|scripts?|sources?)\\b", ["py"]),
-            ("\\b(?:javascript|js)\\s+(?:files?|code|sources?)\\b", ["js", "mjs"]),
-            ("\\b(?:typescript|ts)\\s+(?:files?|code|sources?)\\b", ["ts", "tsx"]),
-            ("\\b(?:markdown)(?:\\s+(?:files?|notes?|docs?))?\\b", ["md", "markdown"]),
-            ("\\b(?:jpe?gs?)\\b", ["jpg", "jpeg"]),
-            ("\\b(?:tiffs?|tifs?)\\b", ["tif", "tiff"]),
-            ("\\b(?:ya?mls?)\\b", ["yaml", "yml"]),
-            ("\\b(?:html?)(?:\\s+files?)?\\b", ["html", "htm"]),
-        ]
-        for (pattern, extensions) in extensionGroups {
-            consume(pattern) { _ in
-                self.filter.extensions.formUnion(extensions)
-                return true
-            }
-        }
-        consume("(?:^|\\s)\\.?(png|heic|gif|svg|webp|mp4|mov|m4v|mkv|avi|mp3|wav|m4a|aac|flac|csv|tsv|json|xml|xlsx|xls|docx|pptx|txt|rtf|epub|psd|sketch|zip|rar|7z|tar|gz|dmg|iso|pkg|ics|vcf|srt)s?(?:\\s+files?)?\\b") { m in
-            self.filter.extensions.insert(m[1] ?? "")
-            return true
-        }
-        let kindWords: [(String, SearchFilter.Kind)] = [
-            ("\\b(?:comic\\s+books?|comics?)\\b", .comic),
-            ("\\b(?:books?|ebooks?)\\b", .book),
-            ("\\b(?:disk\\s+images?|installers?)\\b", .diskImage),
-            ("\\b(?:source\\s+code|source\\s+files?|code\\s+files?|code|scripts?)\\b", .code),
-            ("\\b(?:text\\s+files?|plain\\s+text|txt\\s+files?)\\b", .text),
-            ("\\bpdfs?\\b", .pdf),
-            ("\\b(?:images?|photos?|pictures?|pics|imgs?|graphics|wallpapers?)\\b", .image),
-            ("\\b(?:videos?|movies?|films?|clips?|footage)\\b", .movie),
-            ("\\b(?:audio|music|songs?|tracks?|podcasts?|sounds?|voice\\s+memos?|recordings?)\\b", .audio),
-            ("\\b(?:spreadsheets?|sheets|workbooks?)\\b", .spreadsheet),
-            ("\\b(?:presentations?|slides?|slide\\s+decks?|decks?)\\b", .presentation),
-            ("\\b(?:archives?|zips?|zip\\s+files?|compressed\\s+files?|tarballs?)\\b", .archive),
-            ("\\b(?:folders?|directories|directory|dirs?)\\b", .folder),
-            ("\\b(?:apps?|applications?|programs?)\\b", .application),
-            ("\\b(?:documents?|docs?|paperwork|notes)\\b", .document),
-        ]
-        for (pattern, kind) in kindWords {
-            consume(pattern) { _ in
-                self.filter.kinds.insert(kind)
-                return true
-            }
-        }
-        // "PDFs" plus "documents" means PDFs: the broader kind adds nothing.
+    }
+
+    /// "PDFs" plus "documents" means PDFs: the broader kind adds nothing.
+    private func dropBroaderDocumentKind() {
         if filter.kinds.contains(.document), filter.kinds.count > 1 || !filter.extensions.isEmpty,
            filter.kinds.subtracting([.document]).allSatisfy({ [.pdf, .text, .spreadsheet, .presentation].contains($0) }) {
             filter.kinds.remove(.document)
         }
     }
+
+    /// Apps' and formats' names, as the extensions they mean.
+    private static let extensionGroups: [(String, [String])] = [
+        ("\\bword\\s+(?:documents?|docs?|files?)\\b", ["doc", "docx"]),
+        ("\\bexcel(?:\\s+(?:files?|sheets?|spreadsheets?|workbooks?))?\\b", ["xls", "xlsx"]),
+        ("\\b(?:power\\s*points?|ppts?)\\b", ["ppt", "pptx"]),
+        ("\\bkeynotes?\\b", ["key"]),
+        ("\\b(?:pages)\\s+(?:files?|documents?|docs?)\\b", ["pages"]),
+        ("\\b(?:numbers)\\s+(?:files?|spreadsheets?|sheets?)\\b", ["numbers"]),
+        ("\\b(?:swift)\\s+(?:files?|code|sources?)\\b", ["swift"]),
+        ("\\b(?:python)\\s+(?:files?|code|scripts?|sources?)\\b", ["py"]),
+        ("\\b(?:javascript|js)\\s+(?:files?|code|sources?)\\b", ["js", "mjs"]),
+        ("\\b(?:typescript|ts)\\s+(?:files?|code|sources?)\\b", ["ts", "tsx"]),
+        ("\\b(?:markdown)(?:\\s+(?:files?|notes?|docs?))?\\b", ["md", "markdown"]),
+        ("\\b(?:jpe?gs?)\\b", ["jpg", "jpeg"]),
+        ("\\b(?:tiffs?|tifs?)\\b", ["tif", "tiff"]),
+        ("\\b(?:ya?mls?)\\b", ["yaml", "yml"]),
+        ("\\b(?:html?)(?:\\s+files?)?\\b", ["html", "htm"]),
+    ]
+
+    /// Everyday words for a kind of file, the more specific first.
+    private static let kindWords: [(String, SearchFilter.Kind)] = [
+        ("\\b(?:comic\\s+books?|comics?)\\b", .comic),
+        ("\\b(?:books?|ebooks?)\\b", .book),
+        ("\\b(?:disk\\s+images?|installers?)\\b", .diskImage),
+        ("\\b(?:source\\s+code|source\\s+files?|code\\s+files?|code|scripts?)\\b", .code),
+        ("\\b(?:text\\s+files?|plain\\s+text|txt\\s+files?)\\b", .text),
+        ("\\bpdfs?\\b", .pdf),
+        ("\\b(?:images?|photos?|pictures?|pics|imgs?|graphics|wallpapers?)\\b", .image),
+        ("\\b(?:videos?|movies?|films?|clips?|footage)\\b", .movie),
+        ("\\b(?:audio|music|songs?|tracks?|podcasts?|sounds?|voice\\s+memos?|recordings?)\\b", .audio),
+        ("\\b(?:spreadsheets?|sheets|workbooks?)\\b", .spreadsheet),
+        ("\\b(?:presentations?|slides?|slide\\s+decks?|decks?)\\b", .presentation),
+        ("\\b(?:archives?|zips?|zip\\s+files?|compressed\\s+files?|tarballs?)\\b", .archive),
+        ("\\b(?:folders?|directories|directory|dirs?)\\b", .folder),
+        ("\\b(?:apps?|applications?|programs?)\\b", .application),
+        ("\\b(?:documents?|docs?|paperwork|notes)\\b", .document),
+    ]
 
     // MARK: Names and content
 

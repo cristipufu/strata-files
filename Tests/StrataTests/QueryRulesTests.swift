@@ -65,6 +65,18 @@ struct QueryRulesTests {
         #expect(Self.filter("recently").modifiedAfter == Self.ago(7, .day))
     }
 
+    @Test func kindsByWordFormatOrApp() {
+        #expect(Self.filter("word documents").extensions == ["doc", "docx"])
+        #expect(Self.filter("word documents").kinds.isEmpty)
+        #expect(Self.filter("screenshots").kinds == [.image])
+        #expect(Self.filter("comic books").kinds == [.comic])
+        #expect(Self.filter("photos and videos").kinds == [.image, .movie])
+        #expect(Self.filter(".png files").extensions == ["png"])
+        // The broader kind adds nothing to a narrower one.
+        #expect(Self.filter("pdf documents").kinds == [.pdf])
+        #expect(Self.filter("documents").kinds == [.document])
+    }
+
     /// A counted span is read before a period by name, and both before calendar dates: "the last 3 weeks" is a span,
     /// not "last week" with a stray number.
     @Test func spansComeBeforePeriodsAndCalendarDates() {
