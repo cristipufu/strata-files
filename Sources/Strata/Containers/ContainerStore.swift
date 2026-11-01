@@ -22,6 +22,8 @@ package final class ContainerStore {
     private var refreshScheduled = false
     private var retry: Timer?
     private var started = false
+    /// Strata coming to the front looks again; the store stops listening when it goes.
+    private var activation: NSObjectProtocol?
 
     package init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
         self.engine = engine
@@ -29,11 +31,15 @@ package final class ContainerStore {
         self.busy = busy
     }
 
+    isolated deinit {
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+    }
+
     package func start() {
         guard !started else { return }
         started = true
         discover()
-        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+        activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
     }
