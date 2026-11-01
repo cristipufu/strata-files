@@ -19,9 +19,9 @@ package final class TransferJournal {
 
     /// What History will keep of every item the job's record may hold (the receipt's and what its passes landed),
     /// converted away from the main thread before the job finishes: `finish` then decides, at once, which record they
-    /// go in.
-    package func prepareHistory() async {
-        guard !pending.isEmpty else { return }
+    /// go in. Only when the job records History: Undo works from the receipt's identities alone.
+    package func prepareHistory(logging: Bool) async {
+        guard logging, !pending.isEmpty else { return }
         var identities = receipt.landed.recorded
         for update in pending {
             identities[update.result.destination.path] = update.originalKept ? nil : update.result.landed

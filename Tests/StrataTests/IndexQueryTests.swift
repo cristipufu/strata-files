@@ -5,7 +5,9 @@ import Testing
 
 /// What the index's search language finds in a small tree: filters, scopes, exclusions, paths, case and ranking.
 struct IndexQueryTests {
-    nonisolated static let now = UInt32(Date().timeIntervalSince1970)
+    /// Noon today: the tree's dates and the queries' "today" fall on one day, whenever the tests run.
+    nonisolated static let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
+    nonisolated static let now = UInt32(noon.timeIntervalSince1970)
 
     nonisolated static func store() -> IndexStore {
         let store = IndexStore()
@@ -39,7 +41,7 @@ struct IndexQueryTests {
 
     /// The names `text` finds, best first.
     private static func found(_ text: String) -> [String] {
-        IndexSearch.run(IndexQuery.parse(text), in: store(), limit: 50).hits.map { ($0.path as NSString).lastPathComponent }
+        IndexSearch.run(IndexQuery.parse(text, now: noon), in: store(), limit: 50).hits.map { ($0.path as NSString).lastPathComponent }
     }
 
     @Test func wordsMatchNamesWithoutCaseOrAccentsAndTheBestFirst() {

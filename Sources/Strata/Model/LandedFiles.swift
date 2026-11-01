@@ -34,15 +34,19 @@ package final class LandedFiles {
     /// History's keys for `identities` (each read where it is now), and an empty one for each of `paths` without one.
     @concurrent package static func historyKeys(_ identities: [String: FileIdentity], paths: [String] = []) async
         -> [String: String] {
+        keys(identities, paths: paths)
+    }
+
+    /// `historyKeys`, converted at once: only for the one item New Folder or New File makes.
+    package func historyKeysNow(for urls: [URL]) -> [String: String] {
+        let wanted = Set(urls.map(\.path))
+        return Self.keys(identities.filter { wanted.contains($0.key) }, paths: urls.map(\.path))
+    }
+
+    private nonisolated static func keys(_ identities: [String: FileIdentity], paths: [String]) -> [String: String] {
         var saved = Dictionary(paths.map { ($0, "") }) { first, _ in first }
         for (path, identity) in identities { saved[path] = identity.historyKey(at: path) ?? "" }
         return saved
-    }
-
-    /// `historyKeys`, converted at once: only for the one item New Folder or New File makes, or New Folder's undo
-    /// trashes inside the UndoManager callback.
-    package func historyKeysNow(for urls: [URL]) -> [String: String] {
-        Dictionary(urls.map { ($0.path, identities[$0.path]?.historyKey(at: $0.path) ?? "") }) { first, _ in first }
     }
 
     /// `holds`, read at once: only for the one item an undo inside the UndoManager callback acts on, where its redo

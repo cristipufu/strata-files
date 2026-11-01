@@ -629,7 +629,7 @@ package final class TransferJob {
 
     /// `finish`, once what History keeps of the items is read away from the main thread.
     private func finishing() async {
-        await journal.prepareHistory()
+        await journal.prepareHistory(logging: logsHistory)
         finish()
     }
 
