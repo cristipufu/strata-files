@@ -274,7 +274,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (or moved within it), through the server.
-        if services.remote.copies.contains(target) { return other.browser.copyToServer(urls, into: target, move: move) }
+        if services.remote.copies.contains(target) { return other.browser.serverCommands.copy(urls, into: target, move: move) }
         guard !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return }
         let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))

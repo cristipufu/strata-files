@@ -65,7 +65,7 @@ extension BrowserViewController {
     @objc func moveToTrash(_ sender: Any?) {
         let urls = selectedURLs
         // A server has no Trash: deleting there asks first.
-        if !urls.isEmpty, isOnServer { return deleteOnServer(urls) }
+        if !urls.isEmpty, isOnServer { return serverCommands.delete(urls) }
         guard !urls.isEmpty, !isInsideArchive else { return }
         // In the Trash, ⌘⌫ puts things back (Finder does the same). Trashing what's already in a Trash again would lose
         // where it came from.
@@ -120,7 +120,7 @@ extension BrowserViewController {
     }
 
     @objc func newFolder(_ sender: Any?) {
-        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFolderOnServer(in: directory) }
+        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return serverCommands.newFolder(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
             let url = try services.files.newFolder(in: directory, undo: undoManager)
@@ -130,7 +130,7 @@ extension BrowserViewController {
 
     /// File ▸ New File: an empty "untitled.txt" (the extension is in Settings ▸ General), selected and being renamed.
     @objc func newFile(_ sender: Any?) {
-        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return newFileOnServer(in: directory) }
+        if let directory = targetDirectory, services.remote.copies.server(containing: directory) != nil, !isShowingResults { return serverCommands.newFile(in: directory) }
         guard let directory = targetDirectory, !isShowingTrash, !isInsideArchive else { return }
         perform {
             let url = try services.files.newFile(in: directory, undo: undoManager)
@@ -269,7 +269,7 @@ extension BrowserViewController {
         let (urls, isCut) = clipboard.read()
         guard !urls.isEmpty else { return }
         // Onto a server: copied there (what's on this Mac stays, even after Cut; a Cut on that server moves it there).
-        if services.remote.copies.contains(directory) { return copyToServer(urls, into: directory, move: forceMove || isCut) }
+        if services.remote.copies.contains(directory) { return serverCommands.copy(urls, into: directory, move: forceMove || isCut) }
         transfer(urls, into: directory, move: forceMove || isCut)
         if isCut { clipboard.clearCut() }
     }
@@ -475,7 +475,7 @@ extension BrowserViewController {
 
     /// Copies and moves go through the transfer queue: progress, pause, conflicts asked up front, undo.
     func transfer(_ urls: [URL], into target: URL, move: Bool) {
-        if services.remote.copies.contains(target) { return copyToServer(urls, into: target, move: move) }
+        if services.remote.copies.contains(target) { return serverCommands.copy(urls, into: target, move: move) }
         let job = services.files.transfer(urls, into: target, move: move, undo: undoManager,
                                           conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
@@ -511,7 +511,7 @@ extension BrowserViewController {
         confirm(url, newName, view.window) { [weak self] name in
             guard let self, navigationRevision == revision, name != url.lastPathComponent else { return }
             guard FileIdentity.read(url.path) == identity else { return }
-            if services.remote.copies.contains(url) { return renameOnServer(url, to: name) }
+            if services.remote.copies.contains(url) { return serverCommands.rename(url, to: name) }
             let files = services.files
             let undo = undoManager
             performAsync { [weak self] in

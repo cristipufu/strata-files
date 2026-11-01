@@ -126,6 +126,7 @@ final class BrowserViewController: NSViewController {
     var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
+    private(set) lazy var serverCommands = ServerCommands(context: self)
 
     let watching = BrowserWatching()
     lazy var ordering = BrowserOrdering(

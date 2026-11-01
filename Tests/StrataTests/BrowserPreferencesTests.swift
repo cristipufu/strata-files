@@ -381,10 +381,10 @@ struct BrowserPreferencesTests {
         let first = try Environment(), second = try Environment()
         first.preferences.newFileExtension = "one"; second.preferences.newFileExtension = "two"
         let a = BrowserViewController(services: first.services), b = BrowserViewController(services: second.services)
-        #expect(await a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
-        #expect(await b.newFileNameOnServer(in: tree.root) == "untitled.two")
+        #expect(await a.serverCommands.newFileName(in: tree.root) == "untitled 3.one")
+        #expect(await b.serverCommands.newFileName(in: tree.root) == "untitled.two")
         first.preferences.newFileExtension = "../escape"
-        #expect(await a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
+        #expect(await a.serverCommands.newFileName(in: tree.root) == "untitled 3.one")
         #expect(tree.snapshot() == ["UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt"])
     }
 

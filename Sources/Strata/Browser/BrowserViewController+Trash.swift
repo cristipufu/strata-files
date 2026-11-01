@@ -33,7 +33,7 @@ extension BrowserViewController {
     /// Deletes the selection for good, skipping the Trash, after asking (Finder's ⌥⌘⌫).
     @objc func deleteImmediately(_ sender: Any?) {
         guard !isLoadingFolder else { return }
-        if isOnServer { return deleteOnServer(selectedURLs) }
+        if isOnServer { return serverCommands.delete(selectedURLs) }
         Deletion.confirm(selectedURLs, in: view.window, copies: services.copies) { [weak self] in self?.refresh() }
     }
 }

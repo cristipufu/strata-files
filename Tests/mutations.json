@@ -549,7 +549,7 @@
     "tests": "RemoteFilesTests/movesOnAServer"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "file": "Strata/Browser/ServerCommands.swift",
     "find": "return canAsk ? .ask : .upload(skipping: Set(clashing))",
     "replace": "return canAsk ? .ask : .upload(skipping: [])",
     "rule": "An upload replaces taken names when there's no window to ask in",
@@ -1731,8 +1731,8 @@
     "tests": "BrowserPreferencesTests/newFileUsesItsOwnExtensionAndTargetInEveryView"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "let ext = preferences.newFileExtension",
+    "file": "Strata/Browser/ServerCommands.swift",
+    "find": "let ext = context?.preferences.newFileExtension ?? \"\"",
     "replace": "let ext = Prefs.shared.newFileExtension",
     "rule": "Browser preferences server New File uses another panes extension",
     "tests": "BrowserPreferencesTests/serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks"
@@ -3724,35 +3724,35 @@
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "file": "Strata/Browser/ServerCommands.swift",
     "find": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, expected: expected,\n                                      files: services.remote.files, copies: services.copies)",
     "replace": "let job = RemoteUploadJob(urls, into: folder, skipping: skipping, files: .shared, copies: .live)",
     "rule": "Browser copy provider ownership upload job uses the global remote files and copy provider",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "file": "Strata/Browser/ServerCommands.swift",
     "find": "services.transfers.add(job)",
     "replace": "TransferQueue.shared.add(job)",
     "rule": "Browser copy provider ownership upload job is added to the global transfer queue",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
-    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
+    "file": "Strata/Browser/ServerCommands.swift",
+    "find": "let files = context.services.remote.files\n        run(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
+    "replace": "let files = RemoteFiles.shared\n        run(in: folder) { [weak self] in\n            let existing = await Self.names(in: folder)",
     "rule": "Browser copy provider ownership New Folder on a server uses the global remote files",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "let files = services.remote.files\n        runOnServer(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
-    "replace": "let files = RemoteFiles.shared\n        runOnServer(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
+    "file": "Strata/Browser/ServerCommands.swift",
+    "find": "let files = context.services.remote.files\n        run(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
+    "replace": "let files = RemoteFiles.shared\n        run(in: folder) { [weak self] in\n            let renamed = try await files.rename(url, to: name)",
     "rule": "Browser copy provider ownership server rename uses the global remote files",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Servers.swift",
+    "file": "Strata/Browser/ServerCommands.swift",
     "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        FileOps.outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
     "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        FileOps.outermost(urls).filter { RemoteCopyStore.shared.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopyStore.shared) }",
     "rule": "Browser copy provider ownership server deletion targets check the global server store",

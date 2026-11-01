@@ -71,11 +71,11 @@ extension RemoteFilesTests {
     }
 
     @Test func copyingOntoTakenNamesAsksOrLeavesThem() {
-        #expect(BrowserViewController.uploadChoice(clashing: [], canAsk: true) == .upload(skipping: []))
-        #expect(BrowserViewController.uploadChoice(clashing: [], canAsk: false) == .upload(skipping: []))
-        #expect(BrowserViewController.uploadChoice(clashing: ["note.txt"], canAsk: true) == .ask)
+        #expect(ServerCommands.uploadChoice(clashing: [], canAsk: true) == .upload(skipping: []))
+        #expect(ServerCommands.uploadChoice(clashing: [], canAsk: false) == .upload(skipping: []))
+        #expect(ServerCommands.uploadChoice(clashing: ["note.txt"], canAsk: true) == .ask)
         // No window to ask in: what's on the server stays.
-        #expect(BrowserViewController.uploadChoice(clashing: ["note.txt", "docs"], canAsk: false) == .upload(skipping: ["note.txt", "docs"]))
+        #expect(ServerCommands.uploadChoice(clashing: ["note.txt", "docs"], canAsk: false) == .upload(skipping: ["note.txt", "docs"]))
     }
 
     @Test func somethingOnNoServerIsRefused() async throws {

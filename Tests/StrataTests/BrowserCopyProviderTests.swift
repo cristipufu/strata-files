@@ -313,7 +313,7 @@ struct BrowserCopyProviderTests {
         #expect(await first.backend.renamedPaths.map(\.to).contains("/notes.md"))
 
         // Same-server SFTP move uses rename on first.remote.files without queuing an upload job.
-        browserA.copyToServer([renamedFile], into: createdFolder, move: true)
+        browserA.serverCommands.copy([renamedFile], into: createdFolder, move: true)
         let movedFile = createdFolder.appending(path: "notes.md")
         await browserA.commandWork?.value
         await first.remote.files.refresh(createdFolder)
@@ -340,10 +340,10 @@ struct BrowserCopyProviderTests {
 
         // Server deletion target filtering deduplicates nested selections, rejects the server root, and excludes other environments.
         let nested = [createdFolder, movedFile, createdFolder]
-        #expect(BrowserViewController.serverDeletionTargets(nested, copies: first.remote.copies) == [createdFolder.standardizedFileURL])
-        #expect(BrowserViewController.serverDeletionTargets([topA], copies: first.remote.copies).isEmpty)
-        #expect(BrowserViewController.serverDeletionTargets([createdFolder, bucketChild], copies: first.remote.copies) == [createdFolder.standardizedFileURL])
-        #expect(BrowserViewController.serverDeletionTargets([tree.url("local/file.txt")], copies: first.remote.copies).isEmpty)
+        #expect(ServerCommands.serverDeletionTargets(nested, copies: first.remote.copies) == [createdFolder.standardizedFileURL])
+        #expect(ServerCommands.serverDeletionTargets([topA], copies: first.remote.copies).isEmpty)
+        #expect(ServerCommands.serverDeletionTargets([createdFolder, bucketChild], copies: first.remote.copies) == [createdFolder.standardizedFileURL])
+        #expect(ServerCommands.serverDeletionTargets([tree.url("local/file.txt")], copies: first.remote.copies).isEmpty)
 
         // Local deletionPlan and FileOps.canTrash refuse items in injected copies while accepting ordinary local files.
         let refusedPlan = await Deletion.plan([createdFolder], copies: first.copies)

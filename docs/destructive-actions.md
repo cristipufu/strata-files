@@ -96,7 +96,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Saved server metadata, registry and credentials share an owner; removal retires the old secret before observers can save its replacement | `RemoteServerStore.save`, `forget`, `persist`, `RemoteServerRegistry` | `RemoteServerStoreTests/*`; mutations: “Server store” |
 | Remote secrets are updated in place and kept on errors; all reads, writes and deletion target only their server and service | `RemoteKeychain`, `KeychainAccess`, `S3Backend.init` | `RemoteKeychainTests/*`; mutations: “Remote credentials” |
 | Delete, move, rename, new items on a server | `RemoteFiles`, `SFTPBackend`, `BrowserViewController.newFileNameOnServer` | `ServerSafetyTests/*`; `RemoteFilesTests/newFilesAreMadeOnTheServerNeverOverAnything`, `deletingALinkLeavesWhatItPointsTo`; `SFTPClientTests/foldersRenamesAndRemoval`; `BrowserPreferencesTests/serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks` |
-| Upload (asks before replacing) | `copyToServer`, `uploadChoice`, `RemoteFiles.upload` | `ServerSafetyTests/copyingOntoTakenNamesAsksOrLeavesThem`; `RemoteFilesTests/uploadsFilesAndFolders`, `uploadingOverALinkReplacesTheLink` |
+| Upload (asks before replacing) | `ServerCommands.copy`, `ServerCommands.uploadChoice`, `RemoteFiles.upload` | `ServerSafetyTests/copyingOntoTakenNamesAsksOrLeavesThem`; `RemoteFilesTests/uploadsFilesAndFolders`, `uploadingOverALinkReplacesTheLink` |
 | S3 delete, rename, upload | `S3Backend` | `DeleteScopeTests` (S3Tests extension): `deletingAFolderTakesOnlyTheKeysInIt`, `deletingAFileTakesOnlyThatKey`, `theBucketItselfIsNeverDeleted`, `renamingAFolderMovesExactlyItsKeys`, `renamingOnS3NeverReplacesAnything`, `aCopyThatFailsLeavesTheOriginal`, `uploadsAndFoldersNeverTakeTheBucketsTop`, `whatsTakenIsSeenBeforeCopyingOntoIt` |
 | Copying out of a server's copy | `ContainerCopies.finishCopyingOut`, `LazyCopies.stageForClipboard` | `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`, `theClipboardGetsAFinishedCopy` |
 
@@ -166,7 +166,7 @@ on any function that is in neither this table nor a mutation.
 |---|---|
 | `AI/PlanGenerator :: (top level)`, `renameAction`, `init`, `expand`; `AI/PlanModel :: init`; `AI/PlanValidator :: validate`, `add`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call, and `add` hands each step to the check for its kind (mutated). The steps are carried out by `PlanExecutor` (mutated). |
 | `App/StrataCommand :: init`; `App/MainMenu :: fileMenu`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
-| `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/BrowserViewController+Servers :: renameOnServer` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
+| `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/ServerCommands :: rename` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
 | `Model/Places :: eject`; `Sidebar/SidebarViewController+Menus :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
 | `Model/Prefs :: registerTestCleanup` | Runs as a test process exits and removes only that run's own `dev.strata.tests.<id>` settings suite and file; a test can't watch its own process exit. |
@@ -234,7 +234,7 @@ belong to.
 | `App/StrataCommand :: init`; `App/MainMenu :: fileMenu`, `menuNeedsUpdate`, `rename` (menu items; `rename` is a workspace's name) | `WorkspaceTests/*` |
 | `Queue/FileCommands :: rename` | `FileCommandOwnershipTests/*` |
 | `Browser/BrowserViewController+ArchiveBrowsing :: prepareCopy` (makes the copy's folder) | `ArchiveSafetyTests/*` |
-| `Browser/BrowserViewController+Servers :: renameOnServer` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
+| `Browser/ServerCommands :: rename` | `ServerSafetyTests/renamingOnAServerStaysInTheFolderAndReplacesNothing` |
 | `Browser/PutBack :: makeFolders` (remakes missing folders for Put Back); `Browser/Deletion :: deleteAll` | `PutBackTests/*`, `TrashUndoTests/undoingAPutBackRemovesOnlyTheFoldersItMadeOnceEmpty`, `FileCommandOwnershipTests/putBackFindsWhereAnItemCameFromInItsWindowsHistory`; `DeleteTests/*` |
 | `Browser/BrowserViewController :: resortAfterMetadata` (rows in a table, not files); `Browser/BrowserViewController+Actions :: renameItem` | `BrowserOrderingTests/*`; `InlineRenameTests/*` |
 | `Containers/ContainerCopies :: prepare`, `stackFolder`, `record`, `setAttribute`, `finishCopyingOut`, `setAsideForRemoval` | `ContainerTests/theContainersFolderFollowsTheEngine` … `aContainerCalledLikeAProjectKeepsItsFiles`; `RemoteFilesTests/copiedOutLinksLeadingOutsideAreDropped`, `mergingOutLeavesWhatWasThereAlone`; `CacheRemovalTests/settingCopiesAsideRemovesOnlyThemAtQuit` |
