@@ -67,47 +67,10 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
             String(localized: "Edit “\($0.name)”", comment: "Sheet title: editing a saved server")
         } ?? String(localized: "Connect to Server"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-
-        kindPicker.segmentCount = 3
-        kindPicker.setLabel(String(localized: "Network Share", comment: "Connect to Server: SMB, AFP, NFS or WebDAV"), forSegment: 0)
-        kindPicker.setLabel("SFTP", forSegment: 1)
-        kindPicker.setLabel(String(localized: "S3 Bucket", comment: "Connect to Server: Amazon S3 or an S3-compatible service"), forSegment: 2)
-        kindPicker.trackingMode = .selectOne
-        kindPicker.selectedSegment = kind.rawValue
-        kindPicker.target = self
-        kindPicker.action = #selector(kindChanged(_:))
-        kindPicker.isHidden = editing != nil
-
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-        address.completes = true
-        address.numberOfVisibleItems = 10
-        address.delegate = self
-        address.setAccessibilityLabel(String(localized: "Server address"))
-
+        setUpKindPicker()
+        setUpAddress()
         buildS3Form()
-
-        message.font = .systemFont(ofSize: 11)
-        message.textColor = .systemRed
-        message.isHidden = true
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        cancelButton.target = self
-        cancelButton.action = #selector(cancel(_:))
-        cancelButton.keyEquivalent = "\u{1b}"
-        connectButton.target = self
-        connectButton.action = #selector(connect(_:))
-        connectButton.keyEquivalent = "\r"
-        if editing != nil { connectButton.title = String(localized: "Save", comment: "Button: save the edited server") }
-        clearRecents.target = self
-        clearRecents.action = #selector(clearRecents(_:))
-        clearRecents.bezelStyle = .accessoryBarAction
-        clearRecents.controlSize = .small
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let footer = NSStackView(views: [clearRecents, spacer, spinner, cancelButton, connectButton])
-        footer.spacing = 8
+        let footer = footer()
 
         let stack = NSStackView(views: [title, kindPicker, address, s3Form, hint, message, footer])
         stack.orientation = .vertical
@@ -136,6 +99,54 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         showKind()
         if let editing { fill(editing) }
         ThemeStyle.refresh(container)
+    }
+
+    /// Network Share, SFTP or S3; not offered while editing a saved server.
+    private func setUpKindPicker() {
+        kindPicker.segmentCount = 3
+        kindPicker.setLabel(String(localized: "Network Share", comment: "Connect to Server: SMB, AFP, NFS or WebDAV"), forSegment: 0)
+        kindPicker.setLabel("SFTP", forSegment: 1)
+        kindPicker.setLabel(String(localized: "S3 Bucket", comment: "Connect to Server: Amazon S3 or an S3-compatible service"), forSegment: 2)
+        kindPicker.trackingMode = .selectOne
+        kindPicker.selectedSegment = kind.rawValue
+        kindPicker.target = self
+        kindPicker.action = #selector(kindChanged(_:))
+        kindPicker.isHidden = editing != nil
+    }
+
+    private func setUpAddress() {
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        address.completes = true
+        address.numberOfVisibleItems = 10
+        address.delegate = self
+        address.setAccessibilityLabel(String(localized: "Server address"))
+    }
+
+    /// The message line's style, then Clear Recents, the spinner, Cancel and Connect (Save while editing).
+    private func footer() -> NSStackView {
+        message.font = .systemFont(ofSize: 11)
+        message.textColor = .systemRed
+        message.isHidden = true
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        cancelButton.target = self
+        cancelButton.action = #selector(cancel(_:))
+        cancelButton.keyEquivalent = "\u{1b}"
+        connectButton.target = self
+        connectButton.action = #selector(connect(_:))
+        connectButton.keyEquivalent = "\r"
+        if editing != nil { connectButton.title = String(localized: "Save", comment: "Button: save the edited server") }
+        clearRecents.target = self
+        clearRecents.action = #selector(clearRecents(_:))
+        clearRecents.bezelStyle = .accessoryBarAction
+        clearRecents.controlSize = .small
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let footer = NSStackView(views: [clearRecents, spacer, spinner, cancelButton, connectButton])
+        footer.spacing = 8
+        return footer
     }
 
     private func buildS3Form() {
