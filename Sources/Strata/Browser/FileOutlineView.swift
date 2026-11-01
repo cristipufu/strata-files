@@ -13,6 +13,8 @@ final class FileOutlineView: NSOutlineView {
     var onTab: (() -> Bool)?
     /// A drag left the list or ended.
     var onDragEnd: (() -> Void)?
+    /// A drag is over the list, from when it enters until it leaves, drops or ends.
+    private(set) var isReceivingDrag = false
     /// A second, slower click on the name of the only selected row (Finder's click to rename).
     var onNameClick: ((Int) -> Void)?
     let copies: CopyProviders
@@ -47,12 +49,24 @@ final class FileOutlineView: NSOutlineView {
         FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isReceivingDrag = true
+        return super.draggingEntered(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isReceivingDrag = false
+        return super.performDragOperation(sender)
+    }
+
     override func draggingExited(_ sender: NSDraggingInfo?) {
+        isReceivingDrag = false
         super.draggingExited(sender)
         onDragEnd?()
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
+        isReceivingDrag = false
         // No super: NSTableView doesn't implement this optional NSDraggingDestination method, and calling it throws
         // inside the drag's completion, which leaves the app unable to start another drag.
         onDragEnd?()

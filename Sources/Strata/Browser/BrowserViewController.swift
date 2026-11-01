@@ -115,8 +115,6 @@ final class BrowserViewController: NSViewController {
     var generation: Int { directoryReads.generation }
     private(set) lazy var fetches = PaneFetches(services: services, revision: { [weak self] in self?.navigationRevision },
                                                 window: { [weak self] in self?.viewIfLoaded?.window })
-    /// The last Move to Trash asked here: its items going, then the next row chosen.
-    var trashing: Task<Void, Never>?
     /// Bumped whenever this pane changes folder, column location or results context.
     private(set) var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
@@ -143,8 +141,6 @@ final class BrowserViewController: NSViewController {
         guard let self, node(for: folder) != nil else { return }
         springLoad(folder, drag: drag)
     })
-    /// A drag is over the list: folders don't expand on hover then (they spring open instead).
-    var isDragOver = false
     let inlineRename = BrowserRenaming()
     lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
@@ -298,10 +294,7 @@ final class BrowserViewController: NSViewController {
         }
         ov.onSpace = { [weak self] in _ = self?.handle(.space) }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
-        ov.onDragEnd = { [weak self] in
-            self?.springLoader.cancel()
-            self?.isDragOver = false
-        }
+        ov.onDragEnd = { [weak self] in self?.springLoader.cancel() }
     }
 
     /// The list columns that can be shown or hidden, in the order of the menu on their titles.

@@ -30,7 +30,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
         // A drag resting on a folder springs it open; the outline's own expand-on-hover would compete.
-        !isDragOver
+        !self.outlineView.isReceivingDrag
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {

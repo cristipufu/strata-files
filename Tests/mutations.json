@@ -8093,5 +8093,19 @@
     "replace": "            [false ? String(",
     "rule": "A capped search's status says only how many are shown, not how many matched",
     "tests": "PaneResultsTests/aCappedSearchSaysSoAndASummaryIsSaidInsteadOfACount"
+  },
+  {
+    "file": "Strata/Browser/FileOutlineView.swift",
+    "find": "        isReceivingDrag = true\n",
+    "replace": "",
+    "rule": "The list doesn't know a drag is over it, so its folders expand on hover instead of springing open",
+    "tests": "FileOutlineViewDragTests/aDragIsOverTheListFromEnteringUntilItLeavesDropsOrEnds"
+  },
+  {
+    "file": "Strata/Browser/FileOutlineView.swift",
+    "find": "    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {\n        isReceivingDrag = false\n",
+    "replace": "    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {\n",
+    "rule": "After a drop on the list its folders still don't expand, as if the drag were still over it",
+    "tests": "FileOutlineViewDragTests/aDragIsOverTheListFromEnteringUntilItLeavesDropsOrEnds"
   }
 ]

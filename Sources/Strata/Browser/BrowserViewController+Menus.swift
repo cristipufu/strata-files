@@ -126,7 +126,6 @@ extension BrowserViewController {
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
                      proposedChildIndex index: Int) -> NSDragOperation {
         let urls = draggedURLs(info) ?? []
-        isDragOver = true
         springLoader.hover(springTarget(item, index, urls, during: info), drag: info.draggingSequenceNumber)
         guard !urls.isEmpty, let target = retargetDrop(outlineView, item) else { return [] }
         // The rules every view shares: never into itself, no moves that change nothing, nothing into an archive opened
@@ -136,7 +135,6 @@ extension BrowserViewController {
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         springLoader.cancel()
-        isDragOver = false
         let dropTarget: URL?
         if let node = item as? FileNode {
             dropTarget = node.groupTitle == nil && node.entry.isFolder ? node.url : nil

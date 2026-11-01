@@ -70,7 +70,7 @@ extension BrowserViewController {
         let next = TrashedSelection.next(after: removed, in: rows.map(\.url))
         let undo = undoManager, revision = navigationRevision
         let files = services.files
-        trashing = Task { [weak self] in
+        commandWork = Task { [weak self] in
             do {
                 try await files.trash(urls, undo: undo)
                 // Unless another place or selection was chosen meanwhile, or the selection was emptied while the items

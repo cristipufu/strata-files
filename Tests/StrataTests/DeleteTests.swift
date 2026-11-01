@@ -32,7 +32,7 @@ struct DeleteTests {
             browser.select([tree.url(name)])
             browser.moveToTrash(nil)
             if let other { browser.select([tree.url(other)]) }
-            await browser.trashing?.value
+            await browser.commandWork?.value
             for _ in 0..<500 where browser.rows.contains(where: { $0.url.lastPathComponent == name }) || browser.isLoadingFolder {
                 await browser.directoryReads.task?.value
                 try await Task.sleep(for: .milliseconds(10))
