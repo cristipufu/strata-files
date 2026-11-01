@@ -389,10 +389,6 @@ extension BrowserViewController {
         localCommands.transfer(urls, into: target, move: move)
     }
 
-    func perform(_ body: () throws -> Void) {
-        do { try body() } catch { presentFileError(error) }
-    }
-
     func performAsync(_ body: @escaping () async throws -> Void) {
         commandWork = Task { [weak self] in
             do { try await body() } catch { self?.presentFileError(error) }
