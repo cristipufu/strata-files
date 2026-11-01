@@ -7470,8 +7470,16 @@
   },
   {
     "file": "Strata/Window/PaneSearch.swift",
-    "find": "        let understood = await services.index.understand(text, in: scope)\n        guard isCurrent(generation, p, target) else { return }\n",
-    "replace": "        let understood = await services.index.understand(text, in: scope)\n",
+    "edits": [
+      {
+        "find": "        // Replaced while the index was asked: the folder scan is a newer search's now.\n        guard isCurrent(generation, p, target) else { return }\n",
+        "replace": ""
+      },
+      {
+        "find": "        let understood = await services.index.understand(text, in: scope)\n        guard isCurrent(generation, p, target) else { return }\n",
+        "replace": "        let understood = await services.index.understand(text, in: scope)\n"
+      }
+    ],
     "rule": "A search the index isn't ready for shows over the folder its pane went to",
     "tests": "PaneSearchTests/aSearchTheIndexIsntReadyForNeverShowsOverTheFolderThePaneWentTo"
   },
