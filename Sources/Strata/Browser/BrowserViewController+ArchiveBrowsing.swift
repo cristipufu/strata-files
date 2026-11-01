@@ -70,10 +70,7 @@ extension BrowserViewController {
             return
         }
         guard let folder = found?.folder, ArchiveKind(fileName: archive.lastPathComponent) != nil else {
-            let alert = NSAlert()
-            alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
-            alert.informativeText = String(localized: "It can’t be read.")
-            return Self.present(alert, in: window) { _ in }
+            return Self.showUnreadable(archive, in: window)
         }
         let key = folder.path
         let startedRevision = navigationRevision
@@ -90,45 +87,67 @@ extension BrowserViewController {
         delegate?.browser(self, openingArchive: archive, stop: nil)
         Task { [weak self] in
             let inspection = await Archiver.inspect(archive)
-            let activeWaiters = (OpeningArchives.waiters[key] ?? []).filter(\.isActive)
             // Keep unpacking while the opening pane or any waiting pane is still alive.
-            guard let activeOwner = (self?.navigationRevision == startedRevision ? self : nil) ?? activeWaiters.first?.browser ?? self else {
+            guard let activeOwner = Self.owner(self, startedRevision, key).browser else {
                 OpeningArchives.waiters[key] = nil
                 return
             }
-            let activeWindow = activeOwner.view.window ?? window
             if Self.asksBeforeOpening(inspection) {
-                let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
-                let alert = NSAlert()
-                alert.messageText = inspection.complete
-                    ? String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
-                    : String(localized: "“\(archive.lastPathComponent)” holds at least \(size).",
-                             comment: "An archive, then the least its unpacked size can be (“5 GB”): counting it didn’t finish")
-                alert.informativeText = String(localized: "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead.")
-                alert.addButton(withTitle: String(localized: "Open", comment: "Alert button: open the archive as a folder"))
-                alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
-                alert.addButton(withTitle: String(localized: "Cancel"))
-                let response = await withCheckedContinuation { continuation in
-                    Self.present(alert, in: activeWindow) { continuation.resume(returning: $0) }
-                }
+                let response = await Self.confirmOpening(archive, inspection, in: activeOwner.view.window ?? window)
                 guard response == .alertFirstButtonReturn else {
-                    let cancelledWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
-                    for w in cancelledWaiters where w.isActive {
-                        if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
-                    }
-                    if response == .alertSecondButtonReturn {
-                        activeOwner.extractArchive(archive)
-                    }
+                    Self.stopOpening(key)
+                    if response == .alertSecondButtonReturn { activeOwner.extractArchive(archive) }
                     return
                 }
             }
-            let postAlertWaiters = (OpeningArchives.waiters[key] ?? []).filter(\.isActive)
-            guard let runner = (self?.navigationRevision == startedRevision ? self : nil) ?? postAlertWaiters.first?.browser ?? self else {
+            let (runner, waiting) = Self.owner(self, startedRevision, key)
+            guard let runner else {
                 OpeningArchives.waiters[key] = nil
                 return
             }
-            let runnerRevision = runner === self ? startedRevision : (postAlertWaiters.first?.revision ?? runner.navigationRevision)
+            let runnerRevision = runner === self ? startedRevision : (waiting?.revision ?? runner.navigationRevision)
             await runner.unpackForBrowsing(archive, into: folder, key: key, startedRevision: runnerRevision)
+        }
+    }
+
+    private static func showUnreadable(_ archive: URL, in window: NSWindow?) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
+        alert.informativeText = String(localized: "It can’t be read.")
+        present(alert, in: window) { _ in }
+    }
+
+    /// Who unpacks the copy: the pane that opened it while it's still where it opened it, else the first pane still
+    /// waiting for it (`waiting`), else the opening pane if it's still there.
+    private static func owner(_ opener: BrowserViewController?, _ startedRevision: Int, _ key: String)
+        -> (browser: BrowserViewController?, waiting: OpeningArchives.Waiter?) {
+        let waiting = (OpeningArchives.waiters[key] ?? []).first(where: \.isActive)
+        return ((opener?.navigationRevision == startedRevision ? opener : nil) ?? waiting?.browser ?? opener, waiting)
+    }
+
+    /// A big archive asks before it's unpacked into Strata's caches: Open, Extract (next to it) or Cancel.
+    private static func confirmOpening(_ archive: URL, _ inspection: Archiver.Inspection,
+                                       in window: NSWindow?) async -> NSApplication.ModalResponse {
+        let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
+        let alert = NSAlert()
+        alert.messageText = inspection.complete
+            ? String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
+            : String(localized: "“\(archive.lastPathComponent)” holds at least \(size).",
+                     comment: "An archive, then the least its unpacked size can be (“5 GB”): counting it didn’t finish")
+        alert.informativeText = String(localized: "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead.")
+        alert.addButton(withTitle: String(localized: "Open", comment: "Alert button: open the archive as a folder"))
+        alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        return await withCheckedContinuation { continuation in
+            present(alert, in: window) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// Every pane still waiting for the copy stops showing that it's opening.
+    private static func stopOpening(_ key: String) {
+        let cancelledWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
+        for w in cancelledWaiters where w.isActive {
+            if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
         }
     }
 
