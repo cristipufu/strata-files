@@ -1,4 +1,5 @@
 import AppKit
+import CPreviewText
 
 nonisolated final class MarkdownTable: NSTextTable {
     var preferredWidths: [CGFloat] = []
@@ -9,11 +10,11 @@ nonisolated final class MarkdownTable: NSTextTable {
     private var cellReferences: [Cell] = []
     var cells: [NSTextTableBlock] { cellReferences.compactMap(\.value) }
     func add(_ cell: NSTextTableBlock) { cellReferences.append(Cell(cell)) }
-    var indent: CGFloat = 0
+    var availableInset: CGFloat = 0
     private var lastWidth: CGFloat = 0
 
     func fit(to width: CGFloat) {
-        let available = max(1, width - indent)
+        let available = max(1, width - availableInset)
         guard available != lastWidth, !preferredWidths.isEmpty else { return }
         lastWidth = available
         let widths = Self.widths(preferred: preferredWidths, available: available)
@@ -42,10 +43,15 @@ nonisolated final class MarkdownTable: NSTextTable {
     }
 }
 
-final class MarkdownTextView: NSTextView {
+final class MarkdownTextView: STPreviewTextView {
     var tables: [MarkdownTable] = []
     var diagrams: [NSTextAttachment] = []
     override func setFrameSize(_ newSize: NSSize) {
+        guard renderingError == nil else { return }
+        guard newSize.width.isFinite, newSize.height.isFinite, newSize.width >= 0, newSize.height >= 0 else {
+            super.setFrameSize(newSize)
+            return
+        }
         if newSize.width != frame.width {
             let width = max(1, newSize.width - textContainerInset.width * 2 - (textContainer?.lineFragmentPadding ?? 0) * 2)
             tables.forEach { $0.fit(to: width) }

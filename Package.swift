@@ -106,6 +106,8 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
+        .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
+                linkerSettings: [.linkedFramework("AppKit")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
         .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
         // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
@@ -154,7 +156,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText"],
             path: "Sources/Strata/Previews",
             resources: [.copy("Mermaid")],
             swiftSettings: strataSwiftSettings
@@ -263,6 +265,7 @@ let package = Package(
                 "StrataTheme",
                 "StrataModel",
                 "StrataPreviews",
+                "CPreviewText",
                 "StrataArchives",
                 "StrataIndex",
                 "StrataConnections",

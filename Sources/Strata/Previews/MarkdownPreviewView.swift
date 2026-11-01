@@ -1,4 +1,5 @@
 import AppKit
+import CPreviewText
 import StrataSupport
 
 /// Rendered Markdown: headings, lists, quotes, highlighted code blocks, tables and clickable links.
@@ -46,14 +47,16 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.linkTextAttributes = [.foregroundColor: NSColor.controlAccentColor, .cursor: NSCursor.pointingHand]
         textView.delegate = self
+        textView.renderingFailed = { [weak self] _ in self?.renderingFailed() }
         scrollView.documentView = textView
     }
 
     private func show(_ document: MarkdownDocument) {
+        guard textView.renderingError == nil else { return }
         textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
         textView.tables = document.tables.value
         textView.tables.forEach { $0.fit(to: max(1, textView.bounds.width - 28)) }
-        layoutManager.replaceTextStorage(document.storage.value)
+        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
         search.find(query)
         renderDiagrams()
         let words = String(localized: "\(document.wordCount) words", comment: "plural")
@@ -63,8 +66,16 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
 
     isolated deinit { diagramTask?.cancel() }
 
-    package func find(_ query: String) { self.query = query; search.find(query) }
-    package func findNext(backwards: Bool) { search.findNext(backwards: backwards) }
+    package func find(_ query: String) {
+        guard textView.renderingError == nil else { return }
+        self.query = query
+        search.find(query)
+    }
+
+    package func findNext(backwards: Bool) {
+        guard textView.renderingError == nil else { return }
+        search.findNext(backwards: backwards)
+    }
 
     package override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -106,8 +117,16 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         diagramTask?.cancel(); diagramRevision += 1
     }
 
+    private func renderingFailed() {
+        stopDiagrams()
+        cancelLoad()
+        scrollView.documentView = nil
+        scrollView.removeFromSuperview()
+        showMessage(symbol: "eye.slash", String(localized: "No Preview Available"))
+    }
+
     private func renderDiagrams() {
-        guard !diagramsStopped, !isHiddenOrHasHiddenAncestor else { return }
+        guard textView.renderingError == nil, !diagramsStopped, !isHiddenOrHasHiddenAncestor else { return }
         diagramTask?.cancel(); diagramRevision += 1
         let revision = diagramRevision
         guard let storage = textView.textStorage else { return }
@@ -129,7 +148,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
             for (range, source) in diagrams.reversed() {
                 guard !Task.isCancelled else { return }
                 guard let image = try? await renderer.render(source, dark: dark), !Task.isCancelled else { continue }
-                guard let self, diagramRevision == revision, let storage = textView.textStorage,
+                guard let self, textView.renderingError == nil, diagramRevision == revision, let storage = textView.textStorage,
                       NSMaxRange(range) <= storage.length else { return }
                 let attachment = NSTextAttachment()
                 image.size = NSSize(width: image.size.width / 2, height: image.size.height / 2)
@@ -196,7 +215,8 @@ nonisolated package enum MarkdownLoader {
         rendered.string.enumerateSubstrings(in: rendered.string.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in
             words += 1
         }
-        return MarkdownDocument(storage: Handoff(value: NSTextStorage(attributedString: rendered)), tables: Handoff(value: renderer.tables), wordCount: words,
+        guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
+        return MarkdownDocument(storage: Handoff(value: storage), tables: Handoff(value: renderer.tables), wordCount: words,
                                 isTruncated: file.isTruncated)
     }
 }

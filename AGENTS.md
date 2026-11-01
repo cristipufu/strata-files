@@ -19,6 +19,7 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   `StrataSearch` for the rest of `Index`) imported by `Strata`, the interface, so the compiler enforces module
   boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
 - `Sources/Strata/Archives/` — archive reading and process infrastructure, shared by transfers and previews.
+- `Sources/CPreviewText/` — the native exception boundary for Markdown and source text previews.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
@@ -510,6 +511,11 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
 - A crash fix needs a headless regression that calls the real affected reader, decoder, layout or process helper,
   fails before the fix and passes after it. Keep it in `Tests/StrataTests` so local runs, pull-request CI and Release
   all run it. Regex checks, source-text assertions or tests of a duplicate implementation don't count.
+- Markdown block decorations are `NSTextTableBlock`s: TextKit sends table messages to enclosing blocks when it draws
+  a nested table. Exercise native drawing, including quoted tables and diagram attachments, across widths and
+  appearances. Text previews use `CPreviewText` for storage creation and native view drawing/layout; after an
+  Objective-C exception the failed renderer is retired and replaced with a message. Never resume it or install an
+  application-wide exception handler that continues unrelated work.
 - Run the complete debug suite under Address Sanitizer when changing unsafe memory, parsing, indexing or callback
   lifetimes, in its own build directory:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --sanitize address --scratch-path .build/sanitizers/address --disable-automatic-resolution --jobs 4`.

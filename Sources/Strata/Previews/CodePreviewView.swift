@@ -1,4 +1,5 @@
 import AppKit
+import CPreviewText
 import StrataSupport
 
 /// Syntax-highlighted source with a line-number gutter. Lines don't wrap; the text scrolls sideways and is selectable.
@@ -15,7 +16,7 @@ package final class CodePreviewView: PreviewView {
     /// The ruler inset the text was last moved clear of.
     private var rulerInset: CGFloat = 0
     // TextKit 1: non-contiguous layout keeps half-megabyte files fast, and line fragments map 1:1 to lines.
-    private let textView = NSTextView(usingTextLayoutManager: false)
+    private let textView = STPreviewTextView(usingTextLayoutManager: false)
 
     package init(url: URL, mode: Mode) {
         super.init(frame: .zero)
@@ -61,15 +62,17 @@ package final class CodePreviewView: PreviewView {
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.layoutManager?.allowsNonContiguousLayout = true
+        textView.renderingFailed = { [weak self] _ in self?.renderingFailed() }
         scrollView.documentView = textView
     }
 
     private func show(_ document: CodeDocument) {
-        textView.layoutManager?.replaceTextStorage(document.storage.value)
+        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
         let font = CodeTheme.font()
         let padding = 2 * (textView.textContainer?.lineFragmentPadding ?? 0) + 12
         textView.minSize = NSSize(width: CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding, height: 0)
         textView.sizeToFit()
+        guard textView.renderingError == nil else { return }
 
         let ruler = LineNumberRuler(textView: textView, lineStarts: document.lineStarts, highlightedLine: document.errorLine)
         scrollView.verticalRulerView = ruler
@@ -90,8 +93,18 @@ package final class CodePreviewView: PreviewView {
         }
     }
 
+    private func renderingFailed() {
+        cancelLoad()
+        pendingScrollLine = nil
+        scrollView.verticalRulerView = nil
+        scrollView.documentView = nil
+        scrollView.removeFromSuperview()
+        showMessage(symbol: "eye.slash", String(localized: "No Preview Available"))
+    }
+
     package override func layout() {
         super.layout()
+        guard textView.renderingError == nil else { return }
         keepTextClearOfRuler()
         // Centering a line needs the final size, so it waits for the first real layout.
         if let line = pendingScrollLine, scrollView.contentSize.height > 0 {
@@ -157,7 +170,8 @@ final class LineNumberRuler: NSRulerView {
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView, let layoutManager = textView.layoutManager, let container = textView.textContainer,
+        guard let textView, (textView as? STPreviewTextView)?.renderingError == nil,
+              let layoutManager = textView.layoutManager, let container = textView.textContainer,
               layoutManager.numberOfGlyphs > 0 else { return }
         let origin = textView.textContainerOrigin
         let visible = textView.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
@@ -251,16 +265,17 @@ nonisolated package enum CodeLoader {
         let tokens = SyntaxHighlighter.tokens(in: text, lexer: language.lexer)
         try Task.checkCancellation()
         let (lineStarts, maxColumns) = measure(text)
-        let storage = NSTextStorage(string: text, attributes: CodeTheme.baseAttributes())
-        storage.beginEditing()
-        CodeTheme.apply(tokens, to: storage)
+        let rendered = NSMutableAttributedString(string: text, attributes: CodeTheme.baseAttributes())
+        rendered.beginEditing()
+        CodeTheme.apply(tokens, to: rendered)
         if let errorLine, lineStarts.indices.contains(errorLine - 1) {
             let start = lineStarts[errorLine - 1]
-            let end = errorLine < lineStarts.count ? lineStarts[errorLine] : storage.length
-            storage.addAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.18),
+            let end = errorLine < lineStarts.count ? lineStarts[errorLine] : rendered.length
+            rendered.addAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.18),
                                  range: NSRange(location: start, length: end - start))
         }
-        storage.endEditing()
+        rendered.endEditing()
+        guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
         return CodeDocument(storage: Handoff(value: storage), lineStarts: lineStarts, maxColumns: maxColumns,
                             languageName: language.name, isTruncated: truncated, note: note, errorLine: errorLine)
     }

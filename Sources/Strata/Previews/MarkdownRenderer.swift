@@ -30,7 +30,7 @@ nonisolated package final class MarkdownRenderer {
     }
 
     private struct Context {
-        var textBlocks: [NSTextBlock] = []
+        var textBlocks: [NSTextTableBlock] = []
         var indent: CGFloat = 0
         var quoted = false
         var listDepth = 0
@@ -67,7 +67,7 @@ nonisolated package final class MarkdownRenderer {
             case .list(let ordered, let start, let items):
                 list(ordered: ordered, start: start, items: items, into: output, context: context)
             case .rule:
-                let line = NSTextBlock()
+                let line = MarkdownTextBlock()
                 line.setValue(100, type: .percentageValueType, for: .width)
                 line.setWidth(1, type: .absoluteValueType, for: .border, edge: .minY)
                 line.setBorderColor(.separatorColor, for: .minY)
@@ -96,7 +96,7 @@ nonisolated package final class MarkdownRenderer {
         let style = paragraphStyle(context, after: clamped <= 2 ? 10 : 6, before: output.length == 0 ? 0 : (clamped <= 2 ? 12 : 8))
         style.lineHeightMultiple = 1.05
         if clamped <= 2 {
-            let rule = NSTextBlock()
+            let rule = MarkdownTextBlock()
             rule.setValue(100, type: .percentageValueType, for: .width)
             rule.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
             rule.setBorderColor(.separatorColor, for: .maxY)
@@ -187,7 +187,11 @@ nonisolated package final class MarkdownRenderer {
                        into output: NSMutableAttributedString, context: Context) {
         guard !header.isEmpty else { return }
         let table = MarkdownTable()
-        table.indent = context.indent
+        table.availableInset = context.indent + context.textBlocks.reduce(0) { inset, block in
+            inset + [NSTextBlock.Layer.margin, .border, .padding].reduce(0) { width, layer in
+                width + block.width(for: layer, edge: .minX) + block.width(for: layer, edge: .maxX)
+            }
+        }
         table.preferredWidths = Array(repeating: 28, count: header.count)
         tables.append(table)
         table.numberOfColumns = header.count
@@ -455,8 +459,20 @@ nonisolated package enum MarkdownColors {
     package static let tableHeader = codeBlock
 }
 
+// TextKit table drawing expects every enclosing block to be a table cell, including decorations.
+nonisolated class MarkdownTextBlock: NSTextTableBlock {
+    init() {
+        let table = NSTextTable()
+        table.numberOfColumns = 1
+        table.setValue(100, type: .percentageValueType, for: .width)
+        super.init(table: table, startingRow: 0, rowSpan: 1, startingColumn: 0, columnSpan: 1)
+    }
+
+    required init?(coder: NSCoder) { return nil }
+}
+
 /// Rounded background behind a fenced code block.
-nonisolated final class CodeBlockBackground: NSTextBlock {
+nonisolated final class CodeBlockBackground: MarkdownTextBlock {
     override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         let rect = contentFrame(frameRect)
@@ -476,7 +492,7 @@ nonisolated final class CodeBlockBackground: NSTextBlock {
 }
 
 /// The rounded bar to the left of a block quote.
-nonisolated final class QuoteBlock: NSTextBlock {
+nonisolated final class QuoteBlock: MarkdownTextBlock {
     override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         let left = frameRect.minX + width(for: .margin, edge: .minX)
