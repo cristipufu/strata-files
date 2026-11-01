@@ -1364,6 +1364,7 @@
       "many": "Inne · %lld rzeczy",
       "other": "Inne · %lld rzeczy"
     },
+    "Other…": "Inny…",
     "Outside “%@” and not named in your request": "Poza „%@” i nie wymieniono w Twojej prośbie",
     "Over %@": "Ponad %@",
     "over %@": "ponad %@",
@@ -1900,6 +1901,7 @@
     "They’re locked, or you don’t have permission to change them.": "Są zablokowane lub nie masz uprawnień do ich zmiany.",
     "They’re rebuilt by the next install or build.": "Zostaną odtworzone przy następnej instalacji lub budowaniu.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Zostaną odtworzone przy następnej instalacji lub budowaniu; środowiska wirtualne trzeba utworzyć ponownie.",
+    "This application couldn’t be selected.": "Nie udało się wybrać tej aplikacji.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "To archiwum zawiera dowiązanie wskazujące poza nie („%@”), więc nie zostało rozpakowane.",
     "This archive contains unsafe or ambiguous paths.": "To archiwum zawiera niebezpieczne lub niejednoznaczne ścieżki.",
     "This archive couldn’t be read.": "Nie udało się odczytać tego archiwum.",

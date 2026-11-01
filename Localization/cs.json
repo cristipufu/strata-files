@@ -1262,6 +1262,7 @@
       "few": "Jiné · %lld položky",
       "other": "Jiné · %lld položek"
     },
+    "Other…": "Jiný…",
     "Outside “%@” and not named in your request": "Mimo „%@“ a není uvedeno ve vašem požadavku",
     "Over %@": "Přes %@",
     "over %@": "přes %@",
@@ -1775,6 +1776,7 @@
     "They’re locked, or you don’t have permission to change them.": "Jsou zamčené nebo nemáte oprávnění je měnit.",
     "They’re rebuilt by the next install or build.": "Znovu se vytvoří při příští instalaci nebo sestavení.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Znovu se vytvoří při příští instalaci nebo sestavení; virtuální prostředí je třeba vytvořit znovu.",
+    "This application couldn’t be selected.": "Tuto aplikaci nelze vybrat.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Tento archiv obsahuje odkaz, který vede mimo něj („%@“), proto nebyl rozbalen.",
     "This archive contains unsafe or ambiguous paths.": "Tento archiv obsahuje nebezpečné nebo nejednoznačné cesty.",
     "This archive couldn’t be read.": "Tento archiv se nepodařilo přečíst.",

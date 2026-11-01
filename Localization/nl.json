@@ -1160,6 +1160,7 @@
       "one": "Overig · %lld onderdeel",
       "other": "Overig · %lld onderdelen"
     },
+    "Other…": "Andere…",
     "Outside “%@” and not named in your request": "Buiten “%@” en niet genoemd in je verzoek",
     "Over %@": "Groter dan %@",
     "over %@": "groter dan %@",
@@ -1650,6 +1651,7 @@
     "They’re locked, or you don’t have permission to change them.": "Ze zijn toegangsbeveiligd of je hebt geen toestemming om ze te wijzigen.",
     "They’re rebuilt by the next install or build.": "Ze worden opnieuw aangemaakt bij de volgende installatie of build.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Ze worden opnieuw aangemaakt bij de volgende installatie of build; virtuele omgevingen moeten opnieuw worden aangemaakt.",
+    "This application couldn’t be selected.": "Deze app kon niet worden geselecteerd.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Dit archief bevat een link die naar buiten het archief verwijst (“%@”), dus het is niet uitgepakt.",
     "This archive contains unsafe or ambiguous paths.": "Dit archief bevat onveilige of dubbelzinnige paden.",
     "This archive couldn’t be read.": "Dit archief kon niet worden gelezen.",

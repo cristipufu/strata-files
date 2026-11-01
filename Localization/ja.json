@@ -1058,6 +1058,7 @@
     "Other · %lld items": {
       "other": "その他 · %lld項目"
     },
+    "Other…": "その他…",
     "Outside “%@” and not named in your request": "「%@」の外にあり、依頼内容にも含まれていません",
     "Over %@": "%@超",
     "over %@": "%@超",
@@ -1525,6 +1526,7 @@
     "They’re locked, or you don’t have permission to change them.": "ロックされているか、変更する権限がありません。",
     "They’re rebuilt by the next install or build.": "次回のインストールまたはビルド時に再作成されます。",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "次回のインストールまたはビルド時に再作成されます。仮想環境は作り直す必要があります。",
+    "This application couldn’t be selected.": "このアプリケーションを選択できませんでした。",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "このアーカイブには外部を指すリンク（「%@」）が含まれているため、展開されませんでした。",
     "This archive contains unsafe or ambiguous paths.": "このアーカイブには安全でないパスまたは曖昧なパスが含まれています。",
     "This archive couldn’t be read.": "このアーカイブを読み込めませんでした。",

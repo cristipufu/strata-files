@@ -1160,6 +1160,7 @@
       "one": "Diğer · %lld öğe",
       "other": "Diğer · %lld öğe"
     },
+    "Other…": "Başka…",
     "Outside “%@” and not named in your request": "“%@” dışında ve isteğinizde adı geçmiyor",
     "Over %@": "%@ üzerinde",
     "over %@": "%@ üzerinde",
@@ -1650,6 +1651,7 @@
     "They’re locked, or you don’t have permission to change them.": "Kilitliler veya onları değiştirme izniniz yok.",
     "They’re rebuilt by the next install or build.": "Bir sonraki yükleme veya derlemede yeniden oluşturulurlar.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Bir sonraki yükleme veya derlemede yeniden oluşturulurlar; sanal ortamların yeniden yaratılması gerekir.",
+    "This application couldn’t be selected.": "Bu uygulama seçilemedi.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Bu arşiv, dışını gösteren bir bağlantı (“%@”) içerdiği için ayıklanmadı.",
     "This archive contains unsafe or ambiguous paths.": "Bu arşiv güvenli olmayan veya belirsiz yollar içeriyor.",
     "This archive couldn’t be read.": "Bu arşiv okunamadı.",

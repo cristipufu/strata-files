@@ -7472,8 +7472,8 @@
   },
   {
     "file": "Strata/Model/Prefs.swift",
-    "find": "        await Self.firstInstalled((terminal.map { [$0] } ?? []) + terminals.map(\\.bundleID))",
-    "replace": "        await Self.firstInstalled(terminals.map(\\.bundleID) + (terminal.map { [$0] } ?? []))",
+    "find": "        (terminal.map { [$0] } ?? []) + terminals.map(\\.bundleID)",
+    "replace": "        terminals.map(\\.bundleID) + (terminal.map { [$0] } ?? [])",
     "rule": "Open in Terminal skips the terminal chosen in Settings",
     "tests": "TerminalLookupTests/theChosenTerminalComesFirstAndMissingOnesAreSkipped"
   },

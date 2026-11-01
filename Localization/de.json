@@ -1160,6 +1160,7 @@
       "one": "Andere · %lld Objekt",
       "other": "Andere · %lld Objekte"
     },
+    "Other…": "Andere…",
     "Outside “%@” and not named in your request": "Außerhalb von „%@“ und nicht in deiner Anfrage genannt",
     "Over %@": "Über %@",
     "over %@": "über %@",
@@ -1650,6 +1651,7 @@
     "They’re locked, or you don’t have permission to change them.": "Sie sind geschützt oder du hast keine Berechtigung, sie zu ändern.",
     "They’re rebuilt by the next install or build.": "Sie werden bei der nächsten Installation oder beim nächsten Build neu erstellt.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Sie werden bei der nächsten Installation oder beim nächsten Build neu erstellt; virtuelle Umgebungen müssen neu angelegt werden.",
+    "This application couldn’t be selected.": "Diese App konnte nicht ausgewählt werden.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Dieses Archiv enthält einen Link, der nach außerhalb verweist („%@“), daher wurde es nicht entpackt.",
     "This archive contains unsafe or ambiguous paths.": "Dieses Archiv enthält unsichere oder mehrdeutige Pfade.",
     "This archive couldn’t be read.": "Dieses Archiv konnte nicht gelesen werden.",

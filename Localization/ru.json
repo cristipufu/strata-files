@@ -1366,6 +1366,7 @@
       "many": "Другое · %lld объектов",
       "other": "Другое · %lld объекта"
     },
+    "Other…": "Другой…",
     "Outside “%@” and not named in your request": "Вне «%@» и не упомянуто в вашем запросе",
     "over %@": "больше %@",
     "Over %@": "Больше %@",
@@ -1902,6 +1903,7 @@
     "They’re locked, or you don’t have permission to change them.": "Они защищены, или у вас нет разрешения на их изменение.",
     "They’re rebuilt by the next install or build.": "Они будут созданы заново при следующей установке или сборке.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Они будут созданы заново при следующей установке или сборке; виртуальные окружения нужно будет пересоздать.",
+    "This application couldn’t be selected.": "Не удалось выбрать это приложение.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Этот архив содержит ссылку, указывающую за его пределы («%@»), поэтому он не распакован.",
     "This archive contains unsafe or ambiguous paths.": "Этот архив содержит небезопасные или неоднозначные пути.",
     "This archive couldn’t be read.": "Не удалось прочитать этот архив.",

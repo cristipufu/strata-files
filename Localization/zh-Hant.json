@@ -1058,6 +1058,7 @@
     "Other · %lld items": {
       "other": "其他 · %lld個項目"
     },
+    "Other…": "其他…",
     "Outside “%@” and not named in your request": "位於「%@」之外，且未在你的要求中提及",
     "Over %@": "大於%@",
     "over %@": "大於%@",
@@ -1525,6 +1526,7 @@
     "They’re locked, or you don’t have permission to change them.": "它們已鎖定，或者你沒有更改它們的權限。",
     "They’re rebuilt by the next install or build.": "下次安裝或建置時會重新產生。",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "下次安裝或建置時會重新產生；虛擬環境需要重新建立。",
+    "This application couldn’t be selected.": "無法選取此應用程式。",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "此封存檔包含指向其外部的連結（「%@」），因此未解壓縮。",
     "This archive contains unsafe or ambiguous paths.": "此封存檔包含不安全或有歧義的路徑。",
     "This archive couldn’t be read.": "無法讀取此封存檔。",

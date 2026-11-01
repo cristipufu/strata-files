@@ -1160,6 +1160,7 @@
       "one": "Annet · %lld objekt",
       "other": "Annet · %lld objekter"
     },
+    "Other…": "Annet…",
     "Outside “%@” and not named in your request": "Utenfor «%@» og ikke nevnt i forespørselen din",
     "Over %@": "Over %@",
     "over %@": "over %@",
@@ -1650,6 +1651,7 @@
     "They’re locked, or you don’t have permission to change them.": "De er låst, eller du har ikke tillatelse til å endre dem.",
     "They’re rebuilt by the next install or build.": "De bygges på nytt ved neste installasjon eller bygg.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "De bygges på nytt ved neste installasjon eller bygg; virtuelle miljøer må opprettes på nytt.",
+    "This application couldn’t be selected.": "Denne appen kunne ikke velges.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Dette arkivet inneholder en lenke som peker utenfor det («%@»), så det ble ikke pakket ut.",
     "This archive contains unsafe or ambiguous paths.": "Dette arkivet inneholder usikre eller tvetydige stier.",
     "This archive couldn’t be read.": "Kunne ikke lese dette arkivet.",

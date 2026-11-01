@@ -323,7 +323,7 @@ final class ContainerInspectorView: NSView {
             row.spacing = 6
             return row
         }
-        let store = self.store
+        let store = self.store, preferences = self.preferences
         var buttons: [NSView] = ContainerAction.allCases.filter { $0.applies(to: container.state) }.map { action in
             ActionButton(ContainerControl.title(action), symbol: ContainerControl.symbol(action)) { [weak self] in
                 guard let self else { return }
@@ -332,7 +332,7 @@ final class ContainerInspectorView: NSView {
         }
         let terminal = ActionButton(String(localized: "Terminal", comment: "Inspector button: a shell in the container"), symbol: "terminal") {
             guard let engine = store.engine else { return Sounds.beep() }
-            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine)
+            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine, preferences: preferences)
         }
         terminal.isEnabled = container.isRunning
         terminal.toolTip = String(localized: "Open a shell in the container, in your terminal", comment: "Inspector: tooltip on Terminal")

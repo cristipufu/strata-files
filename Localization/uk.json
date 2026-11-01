@@ -1364,6 +1364,7 @@
       "many": "Інше · %lld елементів",
       "other": "Інше · %lld елемента"
     },
+    "Other…": "Інший…",
     "Outside “%@” and not named in your request": "Поза «%@» і не згадано у вашому запиті",
     "Over %@": "Понад %@",
     "over %@": "понад %@",
@@ -1900,6 +1901,7 @@
     "They’re locked, or you don’t have permission to change them.": "Вони замкнені, або у вас немає дозволу їх змінювати.",
     "They’re rebuilt by the next install or build.": "Їх буде відтворено під час наступного встановлення або збирання.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Їх буде відтворено під час наступного встановлення або збирання; віртуальні середовища потрібно створити заново.",
+    "This application couldn’t be selected.": "Не вдалося вибрати цю програму.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Цей архів містить посилання, що вказує за його межі («%@»), тому його не розпаковано.",
     "This archive contains unsafe or ambiguous paths.": "Цей архів містить небезпечні або неоднозначні шляхи.",
     "This archive couldn’t be read.": "Не вдалося прочитати цей архів.",

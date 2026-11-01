@@ -269,7 +269,8 @@ final class ProjectInspectorView: NSView {
     private func run(_ script: ProjectScript) {
         if let onRunScript { return onRunScript(script) }
         let project = info?.folder.lastPathComponent
-        Task { if !(await ProjectActions.runInTerminal(script, projectName: project)) { Sounds.beep() } }
+        let preferences = preferences
+        Task { if !(await ProjectActions.runInTerminal(script, projectName: project, preferences: preferences)) { Sounds.beep() } }
     }
 
     @objc private func showMoreScripts() {

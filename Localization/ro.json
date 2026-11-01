@@ -1262,6 +1262,7 @@
       "few": "Altele · %lld articole",
       "other": "Altele · %lld de articole"
     },
+    "Other…": "Altul…",
     "Outside “%@” and not named in your request": "În afara „%@” și nemenționat în cererea ta",
     "Over %@": "Peste %@",
     "over %@": "peste %@",
@@ -1775,6 +1776,7 @@
     "They’re locked, or you don’t have permission to change them.": "Sunt blocate sau nu ai permisiunea să le modifici.",
     "They’re rebuilt by the next install or build.": "Vor fi recreate la următoarea instalare sau compilare.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "Vor fi recreate la următoarea instalare sau compilare; mediile virtuale trebuie recreate manual.",
+    "This application couldn’t be selected.": "Această aplicație nu a putut fi selectată.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Această arhivă conține un link care indică în afara ei („%@”), așa că nu a fost extrasă.",
     "This archive contains unsafe or ambiguous paths.": "Această arhivă conține căi nesigure sau ambigue.",
     "This archive couldn’t be read.": "Această arhivă nu a putut fi citită.",

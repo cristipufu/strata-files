@@ -20,6 +20,7 @@ extension BrowserViewController {
     /// Open in Terminal, in a container's files: a shell in the container, in the folder shown (or at `/` for a
     /// container selected in the Containers folder). False outside containers.
     func openTerminalInContainer() -> Bool {
+        let preferences = preferences
         let copies = services.copies.containerCopies, store = services.containerStore
         guard let engine = store.engine else {
             // Never a shell on this Mac in Strata's copy.
@@ -28,7 +29,7 @@ extension BrowserViewController {
             return true
         }
         if let container = selectedContainers.first {
-            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine)
+            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine, preferences: preferences)
             return true
         }
         let selected = selectedEntries
@@ -42,7 +43,7 @@ extension BrowserViewController {
         Task {
             let path = ContainerCopies.containerPath(of: await RealPath.of(folder), top: top) ?? "/"
             guard let container = store.container(id: source.id),
-                  await ContainerControl.openTerminal(in: container, at: path, engine: engine) else { return Sounds.beep() }
+                  await ContainerControl.openTerminal(in: container, at: path, engine: engine, preferences: preferences) else { return Sounds.beep() }
         }
         return true
     }

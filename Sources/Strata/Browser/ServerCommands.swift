@@ -217,9 +217,10 @@ final class ServerCommands {
             Sounds.beep()
             return true
         }
+        let preferences = context.preferences
         Task {
             guard let path = RemoteCopies.remotePath(of: await RealPath.of(folder), top: top),
-                  await ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path))
+                  await ProjectActions.openCommandFile(named: "\(server.name) — Terminal", body: server.terminalScript(path: path), preferences: preferences)
             else { return Sounds.beep() }
         }
         return true

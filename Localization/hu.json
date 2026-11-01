@@ -1160,6 +1160,7 @@
       "one": "Egyéb · %lld elem",
       "other": "Egyéb · %lld elem"
     },
+    "Other…": "Másik…",
     "Outside “%@” and not named in your request": "„%@” mappán kívül van, és a kérés nem említi",
     "Over %@": "%@ felett",
     "over %@": "%@ felett",
@@ -1650,6 +1651,7 @@
     "They’re locked, or you don’t have permission to change them.": "Zároltak, vagy nincs engedélye a módosításukhoz.",
     "They’re rebuilt by the next install or build.": "A következő telepítéskor vagy buildeléskor újra létrejönnek.",
     "They’re rebuilt by the next install or build; virtual environments need to be recreated.": "A következő telepítéskor vagy buildeléskor újra létrejönnek; a virtuális környezeteket újra létre kell hozni.",
+    "This application couldn’t be selected.": "Ezt az alkalmazást nem sikerült kiválasztani.",
     "This archive contains a link that points outside it (“%@”), so it wasn’t extracted.": "Az archívum olyan hivatkozást tartalmaz, amely kívülre mutat („%@”), ezért nem lett kibontva.",
     "This archive contains unsafe or ambiguous paths.": "Ez az archívum nem biztonságos vagy kétértelmű elérési utakat tartalmaz.",
     "This archive couldn’t be read.": "Az archívumot nem sikerült beolvasni.",

@@ -158,21 +158,21 @@ package enum ProjectActions {
 
     /// Opens a terminal in the script's folder and runs it, leaving an interactive shell open afterwards.
     ///
-    /// Writes a self-deleting `.command` file and opens it with the preferred terminal (Ghostty, iTerm, Warp, then
-    /// Terminal) that can open `.command` files. No AppleScript, so no Automation permission prompt. Trade-offs: the
+    /// Writes a self-deleting `.command` file and opens it with the chosen terminal, or the first automatic choice
+    /// that can open `.command` files. No AppleScript, so no Automation permission prompt. Trade-offs: the
     /// window title shows the temporary file's name; the command runs through `$SHELL -lic` so it sees the same PATH
     /// as your interactive shell (nvm, Homebrew), which costs one rc-file load.
     @discardableResult
-    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) async -> Bool {
+    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil, preferences: Prefs) async -> Bool {
         let project = projectName ?? script.directory.lastPathComponent
-        return await openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
+        return await openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script), preferences: preferences)
     }
 
     /// Writes `body` (a `/bin/sh` script that deletes itself first) to a `.command` file and opens it in the preferred
     /// terminal. `name` is the file's name, which the terminal shows as the window's title.
     @discardableResult
-    package static func openCommandFile(named name: String, body: String) async -> Bool {
-        guard let (file, terminal) = await writeCommandFile(named: name, body: body) else { return false }
+    package static func openCommandFile(named name: String, body: String, preferences: Prefs) async -> Bool {
+        guard let (file, terminal) = await writeCommandFile(named: name, body: body, selected: preferences.terminal, bundleIDs: preferences.terminalBundleIDs) else { return false }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: configuration, completionHandler: nil)
@@ -181,7 +181,7 @@ package enum ProjectActions {
 
     /// The file, in Strata's own scratch folder, and the terminal to open it in: written and looked up away from the
     /// main thread.
-    @concurrent private static func writeCommandFile(named name: String, body: String) async -> (file: URL, terminal: URL)? {
+    @concurrent private static func writeCommandFile(named name: String, body: String, selected: String?, bundleIDs: [String]) async -> (file: URL, terminal: URL)? {
         let folder = FileManager.default.temporaryDirectory.appending(path: "Strata Scripts", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
@@ -196,7 +196,7 @@ package enum ProjectActions {
         } catch {
             return nil
         }
-        return preferredTerminal(for: file).map { (file, $0) }
+        return preferredTerminal(for: file, selected: selected, bundleIDs: bundleIDs).map { (file, $0) }
     }
 
     /// The `.command` file body: cd, echo the command, run it in a login+interactive shell, then stay in a shell.
@@ -215,17 +215,20 @@ package enum ProjectActions {
         """
     }
 
-    package nonisolated static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
-
-    /// First installed terminal from `terminalBundleIDs` that declares it can open `file`; Terminal as the fallback.
-    package nonisolated static func preferredTerminal(for file: URL) -> URL? {
+    private nonisolated static func preferredTerminal(for file: URL, selected: String?, bundleIDs: [String]) -> URL? {
         let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.lexicallyStandardized))
-        for id in terminalBundleIDs {
-            if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.lexicallyStandardized) {
-                return app
-            }
+        return preferredTerminal(bundleIDs: bundleIDs, selected: selected, capable: capable) {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
         }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
+    }
+
+    nonisolated static func preferredTerminal(bundleIDs: [String], selected: String?, capable: Set<URL>,
+                                             lookup: (String) -> URL?) -> URL? {
+        // An explicit choice may handle scripts without declaring their type to LaunchServices.
+        for id in bundleIDs {
+            if let app = lookup(id), id == selected || capable.contains(app.lexicallyStandardized) { return app }
+        }
+        return lookup("com.apple.Terminal")
     }
 
     /// A `.command` file name every terminal can open: plain ASCII letters, digits, spaces, dots, dashes and

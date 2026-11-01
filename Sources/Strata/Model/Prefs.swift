@@ -326,9 +326,13 @@ package final class Prefs {
         ("Terminal", "com.apple.Terminal"),
     ]
 
+    package var terminalBundleIDs: [String] {
+        (terminal.map { [$0] } ?? []) + terminals.map(\.bundleID)
+    }
+
     /// The terminal Open in Terminal uses: the one chosen in Settings, else the first installed of `terminals`.
     package func terminalApp() async -> URL? {
-        await Self.firstInstalled((terminal.map { [$0] } ?? []) + terminals.map(\.bundleID))
+        await Self.firstInstalled(terminalBundleIDs)
     }
 
     /// The first of `bundleIDs` installed, asked of LaunchServices away from the main thread.
