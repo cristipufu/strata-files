@@ -92,18 +92,18 @@ struct ToolbarCustomizationTests {
         defer { owner.window?.contentViewController = nil }
         let toolbar = try #require(owner.window?.toolbar)
         toolbar.itemIdentifiers = BrowserToolbar.defaults
-        let search = try #require(owner.searchItem), mode = try #require(owner.viewModeItem)
+        let search = try #require(owner.toolbarItems.search), mode = try #require(owner.toolbarItems.viewMode)
         let path = try #require(toolbar.items.first { $0.itemIdentifier == .pathBar })
         #expect(path.view === owner.pathBar)
         for id in BrowserToolbar.allowed {
             _ = owner.toolbar(toolbar, itemForItemIdentifier: id, willBeInsertedIntoToolbar: false)
         }
-        #expect(owner.searchItem === search && owner.viewModeItem === mode)
+        #expect(owner.toolbarItems.search === search && owner.toolbarItems.viewMode === mode)
         #expect(path.view === owner.pathBar)
         toolbar.itemIdentifiers = []
-        #expect(owner.searchItem == nil && owner.viewModeItem == nil)
+        #expect(owner.toolbarItems.search == nil && owner.toolbarItems.viewMode == nil)
         owner.focusSearch(nil)
-        #expect(toolbar.itemIdentifiers.contains(.search) && owner.searchItem != nil)
+        #expect(toolbar.itemIdentifiers.contains(.search) && owner.toolbarItems.search != nil)
         owner.goToFolder(nil)
         #expect(toolbar.itemIdentifiers.contains(.pathBar))
         #expect(owner.pathBar.superview != nil)

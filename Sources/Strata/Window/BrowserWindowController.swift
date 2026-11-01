@@ -23,11 +23,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     let split: MainSplitViewController
     let pathBar: PathBar
-    var pathBarItem: NSToolbarItem?
-    var searchItem: NSSearchToolbarItem?
-    var viewModeItem: NSToolbarItemGroup?
-    var sidebarModeItem: NSToolbarItemGroup?
-    var dualPaneItem: NSToolbarItem?
+    let toolbarItems = WindowToolbarItems()
     private var toolbarCustomization: BrowserToolbar?
     private var responderObservation: NSKeyValueObservation?
     private var inspectorObservation: NSKeyValueObservation?
@@ -228,7 +224,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         refreshPanels()
         // Filled symbol while two panes are showing.
-        dualPaneItem?.image = NSImage(systemSymbolName: isDualPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
+        toolbarItems.dualPane?.image = NSImage(systemSymbolName: isDualPane ? "rectangle.split.2x1.fill" : "rectangle.split.2x1",
                                       accessibilityDescription: String(localized: "Dual Pane"))
         updateHeaders()
     }
@@ -306,7 +302,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func updateHeaders() {
         let dualAddressBars = isDualPane && services.preferences.dualPaneAddressBars
         if dualAddressBars, pathBar.isEditing { pathBar.cancelEditing() }
-        pathBarItem?.isHidden = dualAddressBars
+        toolbarItems.pathBar?.isHidden = dualAddressBars
         for p in panes { syncPathBar(p.host.pathBar, for: p) }
         showHeaderTitles()
     }
@@ -519,7 +515,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func setSearchField(_ text: String) {
-        guard let field = searchItem?.searchField, field.stringValue != text else { return }
+        guard let field = toolbarItems.search?.searchField, field.stringValue != text else { return }
         field.stringValue = text
     }
 
@@ -579,7 +575,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func focusSearch(_ sender: Any?) {
         revealToolbarItem(.search)
         if case .search(let text, _) = destination { setSearchField(text) }
-        searchItem?.beginSearchInteraction()
+        toolbarItems.search?.beginSearchInteraction()
     }
 
     /// Ask Strata needs something to work on: a selection, or a folder with items.
@@ -635,7 +631,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Every window's switch follows the setting (it's the same for all of them).
     @objc private func sidebarModePrefChanged() {
-        sidebarModeItem?.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
+        toolbarItems.sidebarMode?.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
         updateHeaders()
     }
 
@@ -646,8 +642,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Points the toolbar's view switcher at the current mode.
     func syncViewModeItem() {
-        viewModeItem?.selectedIndex = browser.effectiveMode.position
-        viewModeItem?.isEnabled = !browser.isShowingResults
+        toolbarItems.viewMode?.selectedIndex = browser.effectiveMode.position
+        toolbarItems.viewMode?.isEnabled = !browser.isShowingResults
     }
 
     /// Keeps the toolbar's view switcher in sync when ⌘1–⌘5 change the mode.

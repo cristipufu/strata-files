@@ -8107,5 +8107,19 @@
     "replace": "    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {\n",
     "rule": "After a drop on the list its folders still don't expand, as if the drag were still over it",
     "tests": "FileOutlineViewDragTests/aDragIsOverTheListFromEnteringUntilItLeavesDropsOrEnds"
+  },
+  {
+    "file": "Strata/Toolbar/WindowToolbarItems.swift",
+    "find": "        if item === search { search = nil }\n",
+    "replace": "",
+    "rule": "A search field removed from the toolbar is still the one the window updates",
+    "tests": "ToolbarCustomizationTests"
+  },
+  {
+    "file": "Strata/Toolbar/WindowToolbarItems.swift",
+    "find": "        case .pathBar: pathBar = item\n",
+    "replace": "",
+    "rule": "The window loses track of its path bar's toolbar item, so it never hides it for dual-pane address bars",
+    "tests": "BrowserPreferencesTests"
   }
 ]

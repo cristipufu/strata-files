@@ -406,12 +406,12 @@ struct BrowserPreferencesTests {
 
         // Default is off: each pane shows its compact title header and the toolbar path bar stays visible.
         #expect(!first.preferences.dualPaneAddressBars && !second.preferences.dualPaneAddressBars)
-        #expect(a.pathBarItem?.isHidden == false && b.pathBarItem?.isHidden == false)
+        #expect(a.toolbarItems.pathBar?.isHidden == false && b.toolbarItems.pathBar?.isHidden == false)
         #expect(leftPane.host.pathBar.isHidden && rightPane.host.pathBar.isHidden)
 
         // Turning the setting on in `first` updates `a` live without affecting `b`.
         first.preferences.dualPaneAddressBars = true
-        #expect(a.pathBarItem?.isHidden == true && b.pathBarItem?.isHidden == false)
+        #expect(a.toolbarItems.pathBar?.isHidden == true && b.toolbarItems.pathBar?.isHidden == false)
         #expect(!leftPane.host.pathBar.isHidden && !rightPane.host.pathBar.isHidden)
         #expect(b.panes.allSatisfy { $0.host.pathBar.isHidden })
         #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
@@ -460,11 +460,11 @@ struct BrowserPreferencesTests {
 
         // Closing dual-pane restores the toolbar path bar; turning the setting off restores compact headers.
         a.toggleDualPane(nil)
-        #expect(!a.isDualPane && a.pathBarItem?.isHidden == false)
+        #expect(!a.isDualPane && a.toolbarItems.pathBar?.isHidden == false)
         a.toggleDualPane(at: tree.url("left/sub"))
-        #expect(a.isDualPane && a.pathBarItem?.isHidden == true)
+        #expect(a.isDualPane && a.toolbarItems.pathBar?.isHidden == true)
         first.preferences.dualPaneAddressBars = false
-        #expect(a.pathBarItem?.isHidden == false && a.panes.allSatisfy { $0.host.pathBar.isHidden })
+        #expect(a.toolbarItems.pathBar?.isHidden == false && a.panes.allSatisfy { $0.host.pathBar.isHidden })
         #expect(tree.snapshot() == ["elsewhere/", "left/", "left/sub/", "left/sub/a.txt", "left/sub/deep/",
                                     "right/", "right/other/", "right/other/b.txt"])
     }

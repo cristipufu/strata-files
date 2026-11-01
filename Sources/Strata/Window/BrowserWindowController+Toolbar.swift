@@ -67,7 +67,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         if flag {
             item.view = pathBar
             item.isHidden = isDualPane && services.preferences.dualPaneAddressBars
-            pathBarItem = item
+            toolbarItems.adopt(item)
         } else {
             item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         }
@@ -90,7 +90,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.subitems[1].toolTip = String(localized: "Every folder, as a tree", comment: "Tooltip of the sidebar's Folders switch")
         item.selectedIndex = services.preferences.sidebarShowsTree ? 1 : 0
         item.visibilityPriority = .low
-        if flag { sidebarModeItem = item }
+        if flag { toolbarItems.adopt(item) }
         return item
     }
 
@@ -99,7 +99,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.selectedIndex = browser.effectiveMode.position
         item.isEnabled = !browser.isShowingResults
         item.visibilityPriority = .high
-        if flag { viewModeItem = item }
+        if flag { toolbarItems.adopt(item) }
         return item
     }
 
@@ -112,7 +112,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.target = self
         item.action = #selector(toggleDualPane(_:))
         item.isBordered = true
-        if flag { dualPaneItem = item }
+        if flag { toolbarItems.adopt(item) }
         return item
     }
 
@@ -137,7 +137,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.searchField.placeholderString = String(localized: "Search", comment: "Placeholder of the toolbar search field")
         item.searchField.delegate = self
         item.preferredWidthForSearchField = 200
-        if flag { searchItem = item }
+        if flag { toolbarItems.adopt(item) }
         return item
     }
 }
