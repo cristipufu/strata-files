@@ -60,12 +60,7 @@ final class ContainerInspectorView: NSView {
         self.copies = copies
         self.store = store
         super.init(frame: frame)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate(stack.fillingConstraints(in: self))
+        addColumn(stack, spacing: 0)
     }
 
     @available(*, unavailable)
@@ -528,11 +523,7 @@ final class ComposeInspectorView: NSView {
         self.preferences = preferences
         self.store = store
         super.init(frame: frame)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate(stack.fillingConstraints(in: self))
+        addColumn(stack)
     }
 
     @available(*, unavailable)

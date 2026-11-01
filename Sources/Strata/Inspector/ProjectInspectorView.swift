@@ -35,13 +35,8 @@ final class ProjectInspectorView: NSView {
         self.git = git
         self.clipboard = clipboard
         super.init(frame: frame)
-        stack.orientation = .vertical
-        stack.alignment = .leading
         // Sections meet at the hairline, same as the Inspector's other cards.
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate(stack.fillingConstraints(in: self))
+        addColumn(stack, spacing: 0)
     }
 
     @available(*, unavailable)
