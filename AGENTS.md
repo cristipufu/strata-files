@@ -251,6 +251,8 @@ These apply everywhere below; the sections that follow add only what is specific
   as identity. A captured file command stays bound to its pane, folder and selection. Test menu and palette
   availability, and stale actions across view, result and location changes.
 - **Local file workflows** live in `LocalFileCommands`, with an explicit `FileCommands` owner and a weak pane context.
+  Command contexts share pane presentation and the work slot through `PaneCommandContext`; service access stays on
+  `BrowserCommandContext`.
   The controller keeps native responder actions, server routing and rename confirmation. Completion selection and
   creation's inline rename belong to the captured navigation revision, including a leave and return to the same folder.
 - Compare reads the owning window's current hidden-files setting each time it scans.

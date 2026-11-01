@@ -1,16 +1,10 @@
 import AppKit
 
-@MainActor protocol LocalFileCommandContext: AnyObject {
+@MainActor protocol LocalFileCommandContext: PaneCommandContext {
     var navigationRevision: Int { get }
-    var targetDirectory: URL? { get }
     var selectedURLs: [URL] { get }
     var rowURLs: [URL] { get }
-    var commandWindow: NSWindow? { get }
     var undoManager: UndoManager? { get }
-    var commandWork: Task<Void, Never>? { get set }
-    func selectWhenShown(_ urls: [URL])
-    func renameWhenShown(_ url: URL, in directory: URL)
-    func refresh()
     func presentFileError(_ error: Error)
 }
 
