@@ -13,6 +13,29 @@ struct SyntaxHighlighterTests {
         }
     }
 
+    @Test func cssReadsSelectorsPropertiesAndValues() throws {
+        #expect(try tokens(".card > #main:hover { color: #fff !important; margin: -2px 1.5em; --gap: calc(100% - 4px); }", as: "a.css")
+            == [".card:type", "#main:type", ":hover:keyword", "color:key", "#fff:number", "!important:keyword", "margin:key",
+                "-2px:number", "1.5em:number", "--gap:attribute", "calc:function", "100%:number", "4px:number"])
+        #expect(try tokens("@media screen { a { content: 'x\\'y'; } } /* note */", as: "a.css")
+            == ["@media:keyword", "screen:tag", "a:tag", "content:key", "'x\\'y':string", "/* note */:comment"])
+        // Sass and Less variables, and line comments outside parentheses only.
+        #expect(try tokens("$base: 10px; // line\n.x { width: $base * 2; }", as: "a.scss")
+            == ["$base:attribute", "10px:number", "// line:comment", ".x:type", "width:key", "$base:attribute", "2:number"])
+    }
+
+    @Test func markupReadsTagsAttributesReferencesAndEmbeddedLanguages() throws {
+        #expect(try tokens("<!DOCTYPE html><!-- c --><div class=\"a\" data-x='b' hidden><br/>&amp; &nope x &#38;</div>", as: "a.html")
+            == ["<!DOCTYPE html>:preprocessor", "<!-- c -->:comment", "<div:tag", "class:attribute", "\"a\":string",
+                "data-x:attribute", "'b':string", "hidden:attribute", ">:tag", "<br:tag", "/>:tag", "&amp;:number",
+                "&#38;:number", "</div:tag", ">:tag"])
+        #expect(try tokens("<?xml v?><![CDATA[ raw ]]>", as: "a.xml") == ["<?xml v?>:preprocessor", "<![CDATA[ raw ]]>:string"])
+        // A style or script body is read as CSS or JavaScript, up to its closing tag in any case.
+        #expect(try tokens("<style>p { color: red }</style><SCRIPT>let a = 1</script>", as: "a.html")
+            == ["<style:tag", ">:tag", "p:tag", "color:key", "</style:tag", ">:tag", "<SCRIPT:tag", ">:tag", "let:keyword",
+                "a:declaration", "1:number", "</script:tag", ">:tag"])
+    }
+
     @Test func commentsNestWhereTheLanguageAllowsAndNeedASpaceWhereItSays() throws {
         #expect(try tokens("let a = 1 // note\n/* a /* nested */ b */ x", as: "a.swift")
             == ["let:keyword", "a:declaration", "1:number", "// note:comment", "/* a /* nested */ b */:comment"])

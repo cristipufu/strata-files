@@ -122,6 +122,12 @@ nonisolated private enum Ch {
 
 // MARK: - Scanner
 
+private nonisolated extension Array where Element == Token {
+    mutating func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
+        if to > from { append(Token(location: from, length: to - from, kind: kind)) }
+    }
+}
+
 nonisolated private struct Scanner {
     let u: UnsafeBufferPointer<UInt16>
 
@@ -223,9 +229,6 @@ nonisolated private struct Scanner {
     func lexMarkup(_ range: Range<Int>, into tokens: inout [Token]) {
         let end = range.upperBound
         var i = range.lowerBound
-        func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
-            if to > from { tokens.append(Token(location: from, length: to - from, kind: kind)) }
-        }
         let commentOpen = Array("<!--".utf16), commentClose = Array("-->".utf16)
         let cdataOpen = Array("<![CDATA[".utf16), cdataClose = Array("]]>".utf16)
         let piClose = Array("?>".utf16)
@@ -234,60 +237,63 @@ nonisolated private struct Scanner {
             if c == Ch.lt {
                 if matches(commentOpen, at: i, end: end) {
                     let j = quotedEnd(from: i + 4, close: commentClose, escapes: false, multiline: true, end: end)
-                    add(i, j, .comment); i = j; continue
+                    tokens.add(i, j, .comment); i = j; continue
                 }
                 if matches(cdataOpen, at: i, end: end) {
                     let j = quotedEnd(from: i + 9, close: cdataClose, escapes: false, multiline: true, end: end)
-                    add(i, j, .string); i = j; continue
+                    tokens.add(i, j, .string); i = j; continue
                 }
                 if at(i + 1, end) == Ch.question {
                     let j = quotedEnd(from: i + 2, close: piClose, escapes: false, multiline: true, end: end)
-                    add(i, j, .preprocessor); i = j; continue
+                    tokens.add(i, j, .preprocessor); i = j; continue
                 }
                 if at(i + 1, end) == Ch.bang {
                     let j = quotedEnd(from: i + 2, close: [Ch.gt], escapes: false, multiline: true, end: end)
-                    add(i, j, .preprocessor); i = j; continue
+                    tokens.add(i, j, .preprocessor); i = j; continue
                 }
-                let closing = at(i + 1, end) == Ch.slash
-                let nameStart = closing ? i + 2 : i + 1
-                guard Ch.isIdentStart(at(nameStart, end)) else { i += 1; continue }
-                let nameEnd = identifierEnd(from: nameStart, end: end, extras: [Ch.colon, Ch.minus, Ch.dot])
-                add(i, nameEnd, .tag)
-                let name = word(nameStart, nameEnd).lowercased()
-                var j = nameEnd
-                var selfClosing = false
-                while j < end {
-                    let d = u[j]
-                    if d == Ch.gt { add(j, j + 1, .tag); j += 1; break }
-                    if d == Ch.slash, at(j + 1, end) == Ch.gt { add(j, j + 2, .tag); j += 2; selfClosing = true; break }
-                    if d == Ch.quote || d == Ch.apostrophe {
-                        let k = quotedEnd(from: j + 1, close: [d], escapes: false, multiline: true, end: end)
-                        add(j, k, .string); j = k; continue
-                    }
-                    if Ch.isIdentStart(d) {
-                        let k = identifierEnd(from: j, end: end, extras: [Ch.colon, Ch.minus, Ch.dot])
-                        add(j, k, .attribute); j = k; continue
-                    }
-                    j += 1
-                }
-                i = j
-                // Script and style bodies get their own language.
-                if !closing, !selfClosing, name == "script" || name == "style" {
-                    var k = i
-                    while k < end, !(u[k] == Ch.lt && at(k + 1, end) == Ch.slash && matchesCaseInsensitive(name, at: k + 2, end: end)) { k += 1 }
-                    let inner: Lexer = name == "script" ? Languages.javaScript.lexer : .css(lineComments: false)
-                    lex(inner, range: i..<k, into: &tokens)
-                    i = k
-                }
+                i = lexTag(at: i, end: end, into: &tokens)
                 continue
             }
             if c == Ch.amp {
                 var j = i + 1
                 while j < end, j - i < 12, Ch.isIdentChar(u[j]) || u[j] == Ch.hash { j += 1 }
-                if at(j, end) == Ch.semicolon, j > i + 1 { add(i, j + 1, .number); i = j + 1; continue }
+                if at(j, end) == Ch.semicolon, j > i + 1 { tokens.add(i, j + 1, .number); i = j + 1; continue }
             }
             i += 1
         }
+    }
+
+    /// The tag at `<` position `i`: its name, attributes and their values; a style or script body after it is read as
+    /// CSS or JavaScript, up to its closing tag in any case. Where reading goes on.
+    private func lexTag(at i: Int, end: Int, into tokens: inout [Token]) -> Int {
+        let closing = at(i + 1, end) == Ch.slash
+        let nameStart = closing ? i + 2 : i + 1
+        guard Ch.isIdentStart(at(nameStart, end)) else { return i + 1 }
+        let nameEnd = identifierEnd(from: nameStart, end: end, extras: [Ch.colon, Ch.minus, Ch.dot])
+        tokens.add(i, nameEnd, .tag)
+        let name = word(nameStart, nameEnd).lowercased()
+        var j = nameEnd
+        var selfClosing = false
+        while j < end {
+            let d = u[j]
+            if d == Ch.gt { tokens.add(j, j + 1, .tag); j += 1; break }
+            if d == Ch.slash, at(j + 1, end) == Ch.gt { tokens.add(j, j + 2, .tag); j += 2; selfClosing = true; break }
+            if d == Ch.quote || d == Ch.apostrophe {
+                let k = quotedEnd(from: j + 1, close: [d], escapes: false, multiline: true, end: end)
+                tokens.add(j, k, .string); j = k; continue
+            }
+            if Ch.isIdentStart(d) {
+                let k = identifierEnd(from: j, end: end, extras: [Ch.colon, Ch.minus, Ch.dot])
+                tokens.add(j, k, .attribute); j = k; continue
+            }
+            j += 1
+        }
+        guard !closing, !selfClosing, name == "script" || name == "style" else { return j }
+        var k = j
+        while k < end, !(u[k] == Ch.lt && at(k + 1, end) == Ch.slash && matchesCaseInsensitive(name, at: k + 2, end: end)) { k += 1 }
+        let inner: Lexer = name == "script" ? Languages.javaScript.lexer : .css(lineComments: false)
+        lex(inner, range: j..<k, into: &tokens)
+        return k
     }
 
     // MARK: CSS
@@ -295,78 +301,109 @@ nonisolated private struct Scanner {
     func lexCSS(_ range: Range<Int>, lineComments: Bool, into tokens: inout [Token]) {
         let end = range.upperBound
         var i = range.lowerBound
-        var depth = 0, parens = 0
-        var inValue = false, afterProperty = false
-        func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
-            if to > from { tokens.append(Token(location: from, length: to - from, kind: kind)) }
-        }
-        let dash: Set<UInt16> = [Ch.minus]
+        var state = CSSState()
         while i < end {
             let c = u[i]
             let next = at(i + 1, end)
             if Ch.isSpace(c) { i += 1; continue }
             if c == Ch.slash, next == Ch.star {
                 let j = quotedEnd(from: i + 2, close: [Ch.star, Ch.slash], escapes: false, multiline: true, end: end)
-                add(i, j, .comment); i = j; continue
+                tokens.add(i, j, .comment); i = j; continue
             }
-            if lineComments, parens == 0, c == Ch.slash, next == Ch.slash {
+            if lineComments, state.parens == 0, c == Ch.slash, next == Ch.slash {
                 let j = endOfLine(from: i, end: end)
-                add(i, j, .comment); i = j; continue
+                tokens.add(i, j, .comment); i = j; continue
             }
             if c == Ch.quote || c == Ch.apostrophe {
                 let j = quotedEnd(from: i + 1, close: [c], escapes: true, multiline: false, end: end)
-                add(i, j, .string); i = j; continue
+                tokens.add(i, j, .string); i = j; continue
             }
-            switch c {
-            case Ch.lbrace: depth += 1; inValue = false; i += 1; continue
-            case Ch.rbrace: depth = max(0, depth - 1); inValue = false; i += 1; continue
-            case Ch.semicolon: inValue = false; i += 1; continue
-            case Ch.lparen: parens += 1; i += 1; continue
-            case Ch.rparen: parens = max(0, parens - 1); i += 1; continue
-            default: break
-            }
-            if c == Ch.at || c == Ch.dollar, Ch.isIdentStart(next) || next == Ch.minus {
-                let j = identifierEnd(from: i + 1, end: end, extras: dash)
-                add(i, j, c == Ch.at ? .keyword : .attribute)
-                if c == Ch.dollar, !inValue, at(skipSpaces(from: j, end: end), end) == Ch.colon { afterProperty = true }
-                i = j; continue
-            }
-            if c == Ch.bang, Ch.isIdentStart(next) {
-                let j = identifierEnd(from: i + 1, end: end)
-                add(i, j, .keyword); i = j; continue
-            }
-            if c == Ch.hash || (c == Ch.dot && !Ch.isDigit(next)) {
-                let j = identifierEnd(from: i + 1, end: end, extras: dash)
-                if j > i + 1 { add(i, j, inValue && c == Ch.hash ? .number : .type) }
-                i = max(j, i + 1); continue
-            }
-            if Ch.isDigit(c) || (c == Ch.dot && Ch.isDigit(next)) || (c == Ch.minus && Ch.isDigit(next) && inValue) {
-                let j = numberEnd(from: c == Ch.minus ? i + 1 : i, end: end)
-                add(i, j, .number); i = j; continue
-            }
-            if c == Ch.colon {
-                if afterProperty { inValue = true; afterProperty = false; i += 1; continue }
-                var j = i + 1
-                if at(j, end) == Ch.colon { j += 1 }
-                let k = identifierEnd(from: j, end: end, extras: dash)
-                if k > j, !inValue { add(i, k, .keyword) }
-                i = max(k, i + 1); continue
-            }
-            if Ch.isIdentStart(c) || c == Ch.minus {
-                let j = identifierEnd(from: i, end: end, extras: dash)
-                guard j > i else { i += 1; continue }
-                if inValue {
-                    if at(j, end) == Ch.lparen { add(i, j, .function) }
-                } else if depth > 0, at(skipSpaces(from: j, end: end), end) == Ch.colon {
-                    add(i, j, word(i, i + min(2, j - i)) == "--" ? .attribute : .key)
-                    afterProperty = true
-                } else {
-                    add(i, j, .tag)
-                }
-                i = j; continue
-            }
+            if state.track(c) { i += 1; continue }
+            if let j = lexCSSMark(at: i, end: end, state: &state, into: &tokens) { i = j; continue }
+            if c == Ch.colon { i = lexCSSColon(at: i, end: end, state: &state, into: &tokens); continue }
+            if Ch.isIdentStart(c) || c == Ch.minus { i = lexCSSWord(at: i, end: end, state: &state, into: &tokens); continue }
             i += 1
         }
+    }
+
+    /// Where the CSS lexer is: inside how many blocks and parentheses, and whether it's reading a property's value.
+    private struct CSSState {
+        var depth = 0
+        var parens = 0
+        var inValue = false
+        var afterProperty = false
+
+        /// Braces, semicolons and parentheses: whether `c` was one.
+        mutating func track(_ c: UInt16) -> Bool {
+            switch c {
+            case Ch.lbrace: depth += 1; inValue = false
+            case Ch.rbrace: depth = max(0, depth - 1); inValue = false
+            case Ch.semicolon: inValue = false
+            case Ch.lparen: parens += 1
+            case Ch.rparen: parens = max(0, parens - 1)
+            default: return false
+            }
+            return true
+        }
+    }
+
+    private static let cssDash: Set<UInt16> = [Ch.minus]
+
+    /// What a mark starts: an at-rule, a variable, `!important`, an ID or class (or a colour in a value), or a
+    /// number. Where reading goes on, or nil when `i` starts none of them.
+    private func lexCSSMark(at i: Int, end: Int, state: inout CSSState, into tokens: inout [Token]) -> Int? {
+        let c = u[i], next = at(i + 1, end)
+        if c == Ch.at || c == Ch.dollar, Ch.isIdentStart(next) || next == Ch.minus {
+            let j = identifierEnd(from: i + 1, end: end, extras: Self.cssDash)
+            tokens.add(i, j, c == Ch.at ? .keyword : .attribute)
+            if c == Ch.dollar, !state.inValue, at(skipSpaces(from: j, end: end), end) == Ch.colon { state.afterProperty = true }
+            return j
+        }
+        if c == Ch.bang, Ch.isIdentStart(next) {
+            let j = identifierEnd(from: i + 1, end: end)
+            tokens.add(i, j, .keyword)
+            return j
+        }
+        if c == Ch.hash || (c == Ch.dot && !Ch.isDigit(next)) {
+            let j = identifierEnd(from: i + 1, end: end, extras: Self.cssDash)
+            if j > i + 1 { tokens.add(i, j, state.inValue && c == Ch.hash ? .number : .type) }
+            return max(j, i + 1)
+        }
+        if Ch.isDigit(c) || (c == Ch.dot && Ch.isDigit(next)) || (c == Ch.minus && Ch.isDigit(next) && state.inValue) {
+            let j = numberEnd(from: c == Ch.minus ? i + 1 : i, end: end)
+            tokens.add(i, j, .number)
+            return j
+        }
+        return nil
+    }
+
+    /// A colon: a property's value starts after it, or it starts a pseudo-class or pseudo-element.
+    private func lexCSSColon(at i: Int, end: Int, state: inout CSSState, into tokens: inout [Token]) -> Int {
+        if state.afterProperty {
+            state.inValue = true
+            state.afterProperty = false
+            return i + 1
+        }
+        var j = i + 1
+        if at(j, end) == Ch.colon { j += 1 }
+        let k = identifierEnd(from: j, end: end, extras: Self.cssDash)
+        if k > j, !state.inValue { tokens.add(i, k, .keyword) }
+        return max(k, i + 1)
+    }
+
+    /// A word: a function in a value, a property (or custom property) in a block, else a selector's element.
+    private func lexCSSWord(at i: Int, end: Int, state: inout CSSState, into tokens: inout [Token]) -> Int {
+        let j = identifierEnd(from: i, end: end, extras: Self.cssDash)
+        guard j > i else { return i + 1 }
+        if state.inValue {
+            if at(j, end) == Ch.lparen { tokens.add(i, j, .function) }
+        } else if state.depth > 0, at(skipSpaces(from: j, end: end), end) == Ch.colon {
+            tokens.add(i, j, word(i, i + min(2, j - i)) == "--" ? .attribute : .key)
+            state.afterProperty = true
+        } else {
+            tokens.add(i, j, .tag)
+        }
+        return j
     }
 
     // MARK: YAML
@@ -376,9 +413,6 @@ nonisolated private struct Scanner {
         var lineStart = range.lowerBound
         var blockIndent: Int? = nil
         let values = GenericLexer(s: self, rules: Languages.yamlValueRules)
-        func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
-            if to > from { tokens.append(Token(location: from, length: to - from, kind: kind)) }
-        }
         while lineStart < end {
             let lineEnd = endOfLine(from: lineStart, end: end)
             defer { lineStart = lineEnd + 1 }
@@ -387,12 +421,12 @@ nonisolated private struct Scanner {
             if i == lineEnd { continue }
             // Lines of a `|` or `>` block scalar are one string.
             if let block = blockIndent {
-                if indent > block { add(i, lineEnd, .string); continue }
+                if indent > block { tokens.add(i, lineEnd, .string); continue }
                 blockIndent = nil
             }
-            if u[i] == Ch.hash { add(i, lineEnd, .comment); continue }
+            if u[i] == Ch.hash { tokens.add(i, lineEnd, .comment); continue }
             if i == lineStart, matches([Ch.minus, Ch.minus, Ch.minus], at: i, end: lineEnd) || matches([Ch.dot, Ch.dot, Ch.dot], at: i, end: lineEnd) {
-                add(i, i + 3, .preprocessor)
+                tokens.add(i, i + 3, .preprocessor)
                 i += 3
             }
             while i < lineEnd, u[i] == Ch.minus, at(i + 1, lineEnd) == Ch.space || i + 1 == lineEnd {
@@ -410,7 +444,7 @@ nonisolated private struct Scanner {
                 if j < lineEnd, u[j] == Ch.colon, j + 1 == lineEnd || u[j + 1] == Ch.space {
                     var keyEnd = j
                     while keyEnd > i, u[keyEnd - 1] == Ch.space { keyEnd -= 1 }
-                    add(i, keyEnd, .key)
+                    tokens.add(i, keyEnd, .key)
                     i = skipSpaces(from: j + 1, end: lineEnd)
                 }
             }
@@ -418,12 +452,12 @@ nonisolated private struct Scanner {
             while i < lineEnd, u[i] == Ch.amp || u[i] == Ch.star || u[i] == Ch.bang {
                 var j = i + 1
                 while j < lineEnd, u[j] != Ch.space { j += 1 }
-                add(i, j, .attribute)
+                tokens.add(i, j, .attribute)
                 i = skipSpaces(from: j, end: lineEnd)
             }
             if i < lineEnd, u[i] == Ch.pipe || u[i] == Ch.gt {
                 let j = endOfLine(from: i, end: lineEnd)
-                add(i, j, .keyword)
+                tokens.add(i, j, .keyword)
                 blockIndent = indent
                 continue
             }
@@ -436,33 +470,30 @@ nonisolated private struct Scanner {
     func lexJSON(_ range: Range<Int>, into tokens: inout [Token]) {
         let end = range.upperBound
         var i = range.lowerBound
-        func add(_ from: Int, _ to: Int, _ kind: TokenKind) {
-            if to > from { tokens.append(Token(location: from, length: to - from, kind: kind)) }
-        }
         while i < end {
             let c = u[i]
             if c == Ch.quote || c == Ch.apostrophe {
                 let j = quotedEnd(from: i + 1, close: [c], escapes: true, multiline: false, end: end)
-                add(i, j, at(skipSpaces(from: j, end: end), end) == Ch.colon ? .key : .string)
+                tokens.add(i, j, at(skipSpaces(from: j, end: end), end) == Ch.colon ? .key : .string)
                 i = j
             } else if Ch.isDigit(c) || c == Ch.minus {
                 var j = i + 1
                 while j < end, Ch.isDigit(u[j]) || [Ch.dot, 0x65, 0x45, Ch.plus, Ch.minus].contains(u[j]) { j += 1 }
-                add(i, j, .number); i = j
+                tokens.add(i, j, .number); i = j
             } else if Ch.isIdentStart(c) {
                 let j = identifierEnd(from: i, end: end)
                 if at(skipSpaces(from: j, end: end), end) == Ch.colon {
-                    add(i, j, .key)
+                    tokens.add(i, j, .key)
                 } else if ["true", "false", "null", "NaN", "Infinity"].contains(word(i, j)) {
-                    add(i, j, .keyword)
+                    tokens.add(i, j, .keyword)
                 }
                 i = j
             } else if c == Ch.slash, at(i + 1, end) == Ch.slash {
                 let j = endOfLine(from: i, end: end)
-                add(i, j, .comment); i = j
+                tokens.add(i, j, .comment); i = j
             } else if c == Ch.slash, at(i + 1, end) == Ch.star {
                 let j = quotedEnd(from: i + 2, close: [Ch.star, Ch.slash], escapes: false, multiline: true, end: end)
-                add(i, j, .comment); i = j
+                tokens.add(i, j, .comment); i = j
             } else {
                 i += 1
             }
