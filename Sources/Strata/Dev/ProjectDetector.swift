@@ -5,36 +5,24 @@ import Foundation
 package nonisolated enum ProjectKind: String, Sendable, CaseIterable {
     case node, rust, swift, dotnet, python, go, ruby, jvm, godot, docker, terraform
 
-    package var title: String {
-        switch self {
-        case .node: return "Node"
-        case .rust: return "Rust"
-        case .swift: return "Swift"
-        case .dotnet: return ".NET"
-        case .python: return "Python"
-        case .go: return "Go"
-        case .ruby: return "Ruby"
-        case .jvm: return "JVM"
-        case .godot: return "Godot"
-        case .docker: return "Docker"
-        case .terraform: return "Terraform"
-        }
-    }
+    package var title: String { names.title }
 
     /// Generic SF Symbols (no brand marks).
-    package var symbolName: String {
+    package var symbolName: String { names.symbol }
+
+    private var names: (title: String, symbol: String) {
         switch self {
-        case .node: return "hexagon"
-        case .rust: return "gearshape"
-        case .swift: return "swift"
-        case .dotnet: return "number"
-        case .python: return "lizard"
-        case .go: return "hare"
-        case .ruby: return "diamond"
-        case .jvm: return "cup.and.saucer"
-        case .godot: return "gamecontroller"
-        case .docker: return "shippingbox"
-        case .terraform: return "square.stack.3d.up"
+        case .node: ("Node", "hexagon")
+        case .rust: ("Rust", "gearshape")
+        case .swift: ("Swift", "swift")
+        case .dotnet: (".NET", "number")
+        case .python: ("Python", "lizard")
+        case .go: ("Go", "hare")
+        case .ruby: ("Ruby", "diamond")
+        case .jvm: ("JVM", "cup.and.saucer")
+        case .godot: ("Godot", "gamecontroller")
+        case .docker: ("Docker", "shippingbox")
+        case .terraform: ("Terraform", "square.stack.3d.up")
         }
     }
 }
