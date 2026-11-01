@@ -1,6 +1,7 @@
 import Foundation
 import Synchronization
 import Testing
+@testable import StrataSupport
 @testable import Strata
 @testable import StrataAI
 @testable import StrataConnections
@@ -100,7 +101,10 @@ struct ScratchVolumeTests {
             let mount = try #require(try FileManager.default.contentsOfDirectory(atPath: folders[1].path).first { $0.hasPrefix("dmg.") })
             try FileManager.default.createSymbolicLink(atPath: root.appending(path: "strata-volume-linked/dmg.link").path,
                                                        withDestinationPath: folders[1].appending(path: mount).path)
-            let problems = ScratchVolume.sweep(in: root)
+            let endedImage = folders[0].appending(path: "disk.sparseimage").path
+            // DiskImages can briefly list a successfully detached image. Let its publication settle before the
+            // sweeper decides an image is attached somewhere else and correctly refuses to remove its folder.
+            let problems = ScratchVolume.sweep(in: root, attached: { try Self.attached(afterDetaching: [endedImage]) })
             let ours = { (paths: [String]) in paths.filter { $0.contains(root.lastPathComponent) } }
             let attached = ours(try ScratchVolume.attachedImagePaths())
             // The running disk detaches by the whole disk its image's path names.
@@ -109,24 +113,61 @@ struct ScratchVolumeTests {
             let listed = ScratchVolume.image(at: image, in: try ScratchVolume.attachedImages()).map { "\($0)" } ?? "not listed"
             try ScratchVolume.detach(image: image)
             // DiskImages can publish the successful detach after hdiutil exits.
-            var left = ours(try ScratchVolume.attachedImagePaths())
-            for _ in 0..<40 {
-                if left.isEmpty { break }
-                Thread.sleep(forTimeInterval: 0.025)
-                left = ours(try ScratchVolume.attachedImagePaths())
-            }
+            let left = ours(try Self.attached(afterDetaching: [endedImage, image]))
             return (problems, attached, mount, device, listed, left)
         }
         // The disk mounted in the ended folder is detached and the folder removed; the running one's disk is never
         // reached through a link, and the folder holding the link is left.
         #expect(cleanup.withLock { $0 }.isEmpty)
-        #expect(problems.count == 1 && problems.allSatisfy { $0.hasSuffix("strata-volume-linked, which holds dmg.link") })
-        #expect(attached.count == 1 && attached.allSatisfy { $0.hasSuffix("strata-volume-running/disk.sparseimage") })
+        #expect(problems.count == 1 && problems.allSatisfy { $0.hasSuffix("strata-volume-linked, which holds dmg.link") }, "\(problems)")
+        #expect(attached.count == 1 && attached.allSatisfy { $0.hasSuffix("strata-volume-running/disk.sparseimage") }, "\(attached)")
         // What hdiutil listed of the image just after looking for its disk, should it ever be missing.
-        #expect(device != nil && left.isEmpty, "\(listed)")
+        #expect(device != nil && left.isEmpty, "\(listed)\nLeft attached: \(left)")
         #expect(tree.snapshot() == ["strata-volume-linked/", "strata-volume-linked/dmg.link -> strata-volume-running/\(mount)",
                                     "strata-volume-linked/owner", "strata-volume-running/",
                                     "strata-volume-running/disk.sparseimage", "strata-volume-running/owner"])
+    }
+
+    private nonisolated static func attached(afterDetaching images: [String], attempts: Int = 40,
+                                              read: () throws -> [String] = ScratchVolume.attachedImagePaths,
+                                              pause: () -> Void = { Thread.sleep(forTimeInterval: 0.025) }) throws -> [String] {
+        let expected = Set(images.map { URL(filePath: $0).lexicallyStandardized.path })
+        var paths: [String] = []
+        for attempt in 0..<max(1, attempts) {
+            paths = try read()
+            if !paths.contains(where: { expected.contains(URL(filePath: $0).lexicallyStandardized.path) }) { break }
+            if attempt + 1 < attempts { pause() }
+        }
+        return paths
+    }
+
+    @Test func detachedImagePublicationIsAwaitedWithoutHidingOneThatStaysAttached() async throws {
+        let image = "/private/var/strata-volume-ended/disk.sparseimage"
+        let other = "/var/strata-volume-running/disk.sparseimage"
+        var snapshots = [[image, other], [image], [other]], pauses = 0
+        let settled = try Self.attached(afterDetaching: [image], read: { snapshots.removeFirst() }, pause: { pauses += 1 })
+        #expect(settled == [other] && snapshots.isEmpty && pauses == 2)
+        pauses = 0
+        let stuck = try Self.attached(afterDetaching: [image], attempts: 3, read: {
+            ["/var/strata-volume-ended/disk.sparseimage", other]
+        }, pause: { pauses += 1 })
+        #expect(stuck.count == 2 && pauses == 2)
+
+        let tree = try TestTree("strata-volume-ended/disk.sparseimage", "strata-volume-running/disk.sparseimage")
+        let current = try #require(RunOwner.current)
+        try RunOwner(pid: current.pid, started: current.started - 1).marker.write(to: tree.url("strata-volume-ended/owner"))
+        try current.marker.write(to: tree.url("strata-volume-running/owner"))
+        let root = tree.root
+        let problems = try await TestWork.run {
+            let ended = root.appending(path: "strata-volume-ended/disk.sparseimage").path
+            let running = root.appending(path: "strata-volume-running/disk.sparseimage").path
+            var snapshots = [[ended, running], [running]]
+            return ScratchVolume.sweep(in: root, attached: {
+                try Self.attached(afterDetaching: [ended], read: { snapshots.removeFirst() }, pause: {})
+            })
+        }
+        #expect(problems.isEmpty)
+        #expect(tree.snapshot() == ["strata-volume-running/", "strata-volume-running/disk.sparseimage", "strata-volume-running/owner"])
     }
 
     @Test func anImagesOwnDiskIsChosenNotItsContainerOrASlice() {
