@@ -77,21 +77,21 @@
     "tests": "DeleteScopeTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/Deletion.swift",
     "find": "|| Trash.isTrash(anySpelling: url)",
     "replace": "",
     "rule": "Delete Immediately deletes a Trash",
     "tests": "DeleteScopeTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
-    "find": "        for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 == \"/\" ? \"/\" : $0 + \"/\") }) {",
-    "replace": "        for path in paths {",
+    "file": "Strata/Model/FileOps.swift",
+    "find": "                other.path != item.path && item.path.hasPrefix(other.path == \"/\" ? \"/\" : other.path + \"/\")",
+    "replace": "                false",
     "rule": "Delete handles an item and something inside it twice",
     "tests": "DeleteTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/Deletion.swift",
     "find": "                if fixed || !changeable { refused.append(url) }\n                return !fixed && changeable",
     "replace": "                if fixed { refused.append(url) }\n                return !fixed",
     "rule": "Delete goes ahead in a folder that can't be changed",
@@ -119,14 +119,14 @@
     "tests": "PutBackTests"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
-    "find": "        let undo = undoManager, history = services.transfers.history.entries",
-    "replace": "        let undo = undoManager, history = OperationLog.shared.entries",
+    "file": "Strata/Browser/PutBack.swift",
+    "find": "        let history = services.transfers.history.entries",
+    "replace": "        let history = OperationLog.shared.entries",
     "rule": "Put Back asks the app's History where an item came from, not its window's",
     "tests": "FileCommandOwnershipTests/putBackFindsWhereAnItemCameFromInItsWindowsHistory"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/PutBack.swift",
     "find": "                    made += missing.map(CreatedFolders.Made.init)",
     "replace": "                    _ = missing",
     "rule": "Put Back forgets the folders it made again, so undoing it leaves them",
@@ -724,7 +724,7 @@
     "tests": "CacheRemovalTests/staleScript"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/Deletion.swift",
     "find": "do { try choice.chosen.get().remove() } catch { failures.append((choice.url, error)) }",
     "replace": "do { try FileManager.default.removeItem(at: choice.url.resolvingSymlinksInPath()) } catch { failures.append((choice.url, error)) }",
     "rule": "Security review: Delete Immediately never follows selected links",
@@ -3753,13 +3753,13 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Servers.swift",
-    "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
-    "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        outermost(urls).filter { RemoteCopyStore.shared.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopyStore.shared) }",
+    "find": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        FileOps.outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }",
+    "replace": "static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {\n        FileOps.outermost(urls).filter { RemoteCopyStore.shared.server(containing: $0) != nil && !isServerTop($0, copies: RemoteCopyStore.shared) }",
     "rule": "Browser copy provider ownership server deletion targets check the global server store",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/Deletion.swift",
     "find": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
     "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: .live)",
     "rule": "Browser copy provider ownership deletionPlan checks the global copy provider",
@@ -7570,7 +7570,7 @@
     "tests": "InspectorLocationTests/aFoldersLookIsKeptWhileShownAndReadAgainAfter"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Trash.swift",
+    "file": "Strata/Browser/FileAlerts.swift",
     "find": "        if let controller = window.windowController as? BrowserWindowController { return !controller.isClosed }",
     "replace": "        if window.windowController is BrowserWindowController { return window.isVisible }",
     "rule": "Delete Immediately silently drops its question when its window is in another tab or hidden",

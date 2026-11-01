@@ -10,7 +10,7 @@ extension AppDelegate {
             alert.informativeText = String(localized: "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.")
             alert.addButton(withTitle: String(localized: "Open Privacy Settings"))
             alert.addButton(withTitle: String(localized: "Cancel"))
-            BrowserViewController.present(alert, in: window) { response in
+            FileAlerts.present(alert, in: window) { response in
                 if response == .alertFirstButtonReturn { NSWorkspace.shared.open(Privacy.settingsURL) }
             }
             return
@@ -21,7 +21,7 @@ extension AppDelegate {
             let alert = NSAlert()
             guard count > 0 else {
                 alert.messageText = String(localized: "The Trash is empty.")
-                BrowserViewController.present(alert, in: window) { _ in }
+                FileAlerts.present(alert, in: window) { _ in }
                 return
             }
             alert.messageText = count == 1
@@ -42,13 +42,13 @@ extension AppDelegate {
             alert.buttons[0].hasDestructiveAction = true
             alert.buttons[0].keyEquivalent = ""
             alert.buttons[1].keyEquivalent = "\r"
-            BrowserViewController.present(alert, in: window) { response in
+            FileAlerts.present(alert, in: window) { response in
                 guard response == .alertFirstButtonReturn else { return }
                 Task {
                     let emptied = await Trash.empty()
                     if emptied.removed > 0 { Sounds.emptiedTrash() }
                     NotificationCenter.default.post(name: .trashChanged, object: nil)
-                    if !emptied.failures.isEmpty { BrowserViewController.report(emptied.failures, .delete, in: window) }
+                    if !emptied.failures.isEmpty { FileAlerts.report(emptied.failures, .delete, in: window) }
                 }
             }
         }

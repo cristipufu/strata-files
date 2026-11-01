@@ -114,7 +114,7 @@ extension BrowserViewController {
         let alert = NSAlert()
         alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
         alert.informativeText = String(localized: "It can’t be read.")
-        present(alert, in: window) { _ in }
+        FileAlerts.present(alert, in: window) { _ in }
     }
 
     /// Who unpacks the copy: the pane that opened it while it's still where it opened it, else the first pane still
@@ -139,7 +139,7 @@ extension BrowserViewController {
         alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         return await withCheckedContinuation { continuation in
-            present(alert, in: window) { continuation.resume(returning: $0) }
+            FileAlerts.present(alert, in: window) { continuation.resume(returning: $0) }
         }
     }
 
@@ -174,7 +174,7 @@ extension BrowserViewController {
             for w in failedWaiters where w.isActive {
                 if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
             }
-            return Self.report([(archive, error)], .open, in: window)
+            return FileAlerts.report([(archive, error)], .open, in: window)
         }
         let job = ArchiveJob(.browse(archive, at: folder), undo: nil)
         for w in OpeningArchives.waiters[key] ?? [] where w.isActive {
@@ -193,7 +193,7 @@ extension BrowserViewController {
                     alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
                     alert.informativeText = message
                     let targetWindow = waiters.first(where: \.isActive)?.browser?.view.window ?? window
-                    Self.present(alert, in: targetWindow) { _ in }
+                    FileAlerts.present(alert, in: targetWindow) { _ in }
                 }
                 return
             }

@@ -59,8 +59,8 @@ struct DeleteTests {
     }
 
     private func delete(_ urls: [URL]) async -> (refused: [URL], failures: [(url: URL, error: Error)]) {
-        let plan = await BrowserViewController.deletionPlan(urls, copies: .live)
-        return (plan.refused, await BrowserViewController.deleteAll(plan.choices))
+        let plan = await Deletion.plan(urls, copies: .live)
+        return (plan.refused, await Deletion.deleteAll(plan.choices))
     }
 
     @Test func onlyTheSelectedItemsGo() async throws {
@@ -73,9 +73,9 @@ struct DeleteTests {
 
     @Test func itemsInsideSelectedFoldersAreLeftToTheirFolder() async throws {
         let tree = try TestTree("a/", "a/b/", "a/b/c.txt", "a/d.txt", "e.txt")
-        let plan = await BrowserViewController.deletionPlan([tree.url("a/b/c.txt"), tree.url("a"), tree.url("a/b")], copies: .live)
+        let plan = await Deletion.plan([tree.url("a/b/c.txt"), tree.url("a"), tree.url("a/b")], copies: .live)
         #expect(plan.candidates.map(\.lastPathComponent) == ["a"])
-        let failures = await BrowserViewController.deleteAll(plan.choices)
+        let failures = await Deletion.deleteAll(plan.choices)
         #expect(failures.isEmpty)
         #expect(tree.snapshot() == ["e.txt"])
     }
@@ -104,7 +104,7 @@ struct DeleteTests {
     }
 
     @Test func disksAreRefused() async {
-        let plan = await BrowserViewController.deletionPlan([URL(fileURLWithPath: "/")], copies: .live)
+        let plan = await Deletion.plan([URL(fileURLWithPath: "/")], copies: .live)
         #expect(plan.candidates.isEmpty)
         #expect(plan.refused.map(\.path) == ["/"])
     }
@@ -232,10 +232,10 @@ struct DeleteTests {
         let environment = try IndependentEnvironment()
         let controller = BrowserWindowController(location: tree.root, services: environment.services)
         let window = try #require(controller.window)
-        #expect(!window.isVisible && BrowserViewController.canStillAsk(in: window))
+        #expect(!window.isVisible && FileAlerts.canStillAsk(in: window))
         controller.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
-        #expect(!BrowserViewController.canStillAsk(in: window))
-        #expect(!BrowserViewController.canStillAsk(in: nil))
+        #expect(!FileAlerts.canStillAsk(in: window))
+        #expect(!FileAlerts.canStillAsk(in: nil))
         withExtendedLifetime(controller) {}
         #expect(tree.snapshot() == ["a.txt"])
     }

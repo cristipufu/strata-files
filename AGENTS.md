@@ -108,7 +108,7 @@ isn't done. The tests must show that:
 
 ### Decisions are plain functions
 
-Keep the decision separate from the alert or UI so tests call it directly: `BrowserViewController.deletionPlan`,
+Keep the decision separate from the alert or UI so tests call it directly: `Deletion.plan`,
 `FileOps.canTrash`, `FileDrop.operation(_:into:mask:option:copies:disk:)` and `FileDrop.decided` (what a drop waits
 for), `PlanValidator.validate`, `TransferEngine.mergePlan`, `FolderCompare.defaultAction` and `syncPlan`. Prove a new
 test guards its rule: break the rule once, watch the test fail, restore it.
@@ -451,7 +451,7 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   identity: a restored item's old Trash path can be reused by another file, so a historical path alone is not
   ownership, and that reuse needs its own coverage. Keep parked originals alive through cleanup so their identities
   can't be reused before the checks. Never empty, trash or delete a real Trash, even to show it's refused: test the
-  decision (`FileOps.canTrash`, `deletionPlan`), and pass `Trash.empty(_:)` a fake folder.
+  decision (`FileOps.canTrash`, `Deletion.plan`), and pass `Trash.empty(_:)` a fake folder.
 - Tests never put a window on screen: bring windows forward through the window boundary (`BrowserWindows.show`), which
   headless environments leave empty, never with `makeKeyAndOrderFront` in code a test reaches.
 - Strata's sounds stay silent until `main.swift` turns them on, so tests that refuse or trash things play none: play

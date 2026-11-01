@@ -146,11 +146,11 @@ struct SecurityReviewTests {
 
     @Test func deletionKeepsReplacementsAcrossTheConfirmation() async throws {
         let tree = try TestTree("chosen/", "chosen/file", "keep")
-        let request = try #require(await BrowserViewController.deletionPlan([tree.url("chosen")], copies: .live).choices.first)
+        let request = try #require(await Deletion.plan([tree.url("chosen")], copies: .live).choices.first)
         _ = try request.chosen.get()
         try FileManager.default.moveItem(at: tree.url("chosen"), to: tree.url("original"))
         try tree.add(["chosen/", "chosen/replacement"])
-        let failures = await BrowserViewController.deleteAll([request])
+        let failures = await Deletion.deleteAll([request])
         #expect(failures.count == 1)
         #expect(tree.snapshot() == ["chosen/", "chosen/replacement", "keep", "original/", "original/file"])
     }
@@ -158,12 +158,12 @@ struct SecurityReviewTests {
     @Test func deletionKeepsAnAncestorReplacedByAnotherDirectoryOrLink() async throws {
         for link in [false, true] {
             let tree = try TestTree("parent/", "parent/file", "outside/", "outside/file")
-            let request = try #require(await BrowserViewController.deletionPlan([tree.url("parent/file")], copies: .live).choices.first)
+            let request = try #require(await Deletion.plan([tree.url("parent/file")], copies: .live).choices.first)
             _ = try request.chosen.get()
             try FileManager.default.moveItem(at: tree.url("parent"), to: tree.url("original"))
             try tree.add(link ? ["parent -> ./outside"] : ["parent/", "parent/file"])
             let before = tree.snapshot()
-            let failures = await BrowserViewController.deleteAll([request])
+            let failures = await Deletion.deleteAll([request])
             #expect(failures.count == 1)
             #expect(tree.snapshot() == before)
         }

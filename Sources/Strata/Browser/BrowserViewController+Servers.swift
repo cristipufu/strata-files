@@ -24,7 +24,7 @@ extension BrowserViewController {
     }
 
     static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {
-        outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }
+        FileOps.outermost(urls).filter { copies.server(containing: $0) != nil && !isServerTop($0, copies: copies) }
     }
 
     private var serverName: String {

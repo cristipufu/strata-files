@@ -642,7 +642,7 @@ extension SidebarViewController {
             do {
                 try await files.trash(urls, undo: window?.undoManager)
             } catch let noTrash as FileOps.NoTrash {
-                BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true, copies: copies) {}
+                Deletion.confirm(noTrash.urls, in: window, noTrash: true, copies: copies) {}
             } catch {
                 if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }

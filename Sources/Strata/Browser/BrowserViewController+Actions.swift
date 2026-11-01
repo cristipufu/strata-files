@@ -91,7 +91,7 @@ extension BrowserViewController {
                 }
             } catch let noTrash as FileOps.NoTrash {
                 guard let self else { return }
-                Self.confirmDelete(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }
+                Deletion.confirm(noTrash.urls, in: view.window, noTrash: true, copies: copies) { [weak self] in self?.refresh() }
             } catch {
                 self?.presentFileError(error)
             }

@@ -57,9 +57,9 @@ struct DeleteScopeTests {
         // A folder only named like one, and a link to it, are ordinary items.
         for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path), copies: .live), "\(path)") }
         // Delete Immediately refuses it up front, and goes on with the rest.
-        let plan = await BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
+        let plan = await Deletion.plan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
         #expect(plan.refused.map(\.standardizedFileURL.path) == [Trash.home, tree.url("home link/.Trash")].map(\.standardizedFileURL.path))
-        #expect(plan.candidates.map(\.path) == [tree.url("a.txt").standardizedFileURL.path])
+        #expect(plan.candidates.map(\.path) == [tree.url("a.txt").path])
         #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
     }
 

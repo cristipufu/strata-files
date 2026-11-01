@@ -65,7 +65,7 @@ extension BrowserViewController {
                                                comment: "A file in a container couldn't be fetched")
                 }
                 alert.informativeText = copies.message(for: error, about: pending[0])
-                Self.present(alert, in: window) { _ in }
+                FileAlerts.present(alert, in: window) { _ in }
             }
         }
         actionFetch = fetch

@@ -19,7 +19,7 @@ enum ContainerControl {
                     ? String(localized: "“\(failures[0].name)” couldn’t be changed.", comment: "A container action (start, stop…) failed")
                     : String(localized: "\(failures.count) containers couldn’t be changed.", comment: "plural")
                 alert.informativeText = failures.map { failures.count == 1 ? $0.message : "\($0.name): \($0.message)" }.joined(separator: "\n")
-                BrowserViewController.present(alert, in: window) { _ in }
+                FileAlerts.present(alert, in: window) { _ in }
             }
         }
         guard targets.count > 1, action == .stop || action == .restart || action == .pause else { return _ = go() }
@@ -33,7 +33,7 @@ enum ContainerControl {
             + (targets.count > 8 ? "…" : "")
         alert.addButton(withTitle: title(action))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        BrowserViewController.present(alert, in: window) { response in
+        FileAlerts.present(alert, in: window) { response in
             if response == .alertFirstButtonReturn { _ = go() }
         }
     }
