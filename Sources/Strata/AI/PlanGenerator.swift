@@ -33,7 +33,7 @@ package nonisolated struct PlanRecipe: Sendable, Hashable {
         var text: String
         switch action {
         case let .rename(template, transforms):
-            let datey = ["{date}", "{time}", "{datetime}", "{year}", "{month}", "{day}"].contains { template.contains($0) }
+            let datey = PlanExpander.usesDate(template)
             let changes = transforms.map(\.title).joined(separator: ", ")
             if template == "{name}" {
                 text = String(localized: "Rename: \(changes)", comment: "Plan description; the changes are like “lowercase, spaces → dashes”")
@@ -52,7 +52,7 @@ package nonisolated struct PlanRecipe: Sendable, Hashable {
                 case .best: String(localized: "Add the date before each name")
                 }
             } else if datey {
-                let withTime = template.contains("{time}") || template.contains("{datetime}")
+                let withTime = PlanExpander.tokens(in: template).contains { $0 == "time" || $0 == "datetime" }
                 text = switch (dateSource, withTime) {
                 case (.taken, false): String(localized: "Rename by date taken")
                 case (.taken, true): String(localized: "Rename by date and time taken")
@@ -561,7 +561,7 @@ package nonisolated enum PlanExpander {
 
         switch recipe.action {
         case let .rename(template, transforms):
-            let needsDate = ["{date}", "{time}", "{datetime}", "{year}", "{month}", "{monthname}", "{day}"].contains { template.contains($0) }
+            let needsDate = usesDate(template)
             var dated: [PlanItem] = []
             for item in matching {
                 if needsDate, item.date(recipe.dateSource) == nil {
@@ -616,6 +616,36 @@ package nonisolated enum PlanExpander {
         }
     }()
 
+    /// Whether `template` names items by one of their dates, however it spells the token (`{Date}` is `{date}`).
+    package static func usesDate(_ template: String) -> Bool {
+        tokens(in: template).contains { dateFormatters[$0] != nil }
+    }
+
+    /// The `{tokens}` in `template`, lowercased, as `render` reads them.
+    package static func tokens(in template: String) -> [String] {
+        parts(of: template).compactMap { part in
+            if case .token(let token) = part { token } else { nil }
+        }
+    }
+
+    private enum Part {
+        case text(Substring)
+        case token(String)
+    }
+
+    /// `template` read once, in order: its text as written, and each `{token}` lowercased.
+    private static func parts(of template: String) -> [Part] {
+        var parts: [Part] = []
+        var rest = Substring(template)
+        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
+            parts.append(.text(rest[..<open]))
+            parts.append(.token(rest[rest.index(after: open)..<close].lowercased()))
+            rest = rest[rest.index(after: close)...]
+        }
+        parts.append(.text(rest))
+        return parts
+    }
+
     package static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
         // Only what the template uses is worked out (a big selection renders on every keystroke).
         func value(_ token: String) -> String {
@@ -631,13 +661,12 @@ package nonisolated enum PlanExpander {
             }
         }
         var result = ""
-        var rest = Substring(template)
-        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
-            result += rest[..<open]
-            result += value(rest[rest.index(after: open)..<close].lowercased())
-            rest = rest[rest.index(after: close)...]
+        for part in parts(of: template) {
+            switch part {
+            case .text(let text): result += text
+            case .token(let token): result += value(token)
+            }
         }
-        result += rest
         // A model may include the extension in the template; it is added back separately.
         if !item.ext.isEmpty,
            let range = result.range(of: "." + item.ext, options: [.caseInsensitive, .backwards, .anchored]) {
@@ -658,8 +687,7 @@ package nonisolated enum PlanExpander {
         // Folder names that come from translations are checked like any name (nothing like "../x" or "~/x"), and
         // fall back to English when they can't be one.
         case .extension:
-            return item.isFolder ? FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
-                : item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
+            return item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
                                                       english: "No Extension")
                 : item.ext.uppercased()
         case .camera:
@@ -668,9 +696,6 @@ package nonisolated enum PlanExpander {
                                             english: "Unknown camera")
             return FileOps.nameText(model.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-"), english: unknown)
         case .kind:
-            if item.isFolder {
-                return FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
-            }
             let order: [SearchFilter.Kind] = [.pdf, .image, .movie, .audio, .archive, .spreadsheet, .presentation, .code, .text, .diskImage, .application, .document]
             let kind = order.first { $0.matches(type: item.contentType, isDirectory: false, isPackage: false, extension: item.ext.lowercased()) }
             return kind.map { FileOps.nameText($0.title, english: $0.englishTitle) }

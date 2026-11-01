@@ -4303,6 +4303,13 @@
     "replace": "return model"
   },
   {
+    "file": "Strata/AI/PlanGenerator.swift",
+    "find": "            let needsDate = usesDate(template)\n",
+    "replace": "            let needsDate = [\"{date}\", \"{time}\", \"{datetime}\", \"{year}\", \"{month}\", \"{monthname}\", \"{day}\"].contains { template.contains($0) }\n",
+    "rule": "A rename by date names an item without that date after another of its dates when the pattern spells the date in capitals",
+    "tests": "PlanExpanderTests/aRenameByDateSkipsAnItemWithoutThatDateHoweverThePatternSpellsIt"
+  },
+  {
     "file": "Strata/Index/IndexStore.swift",
     "rule": "Security review: entry counts are bounded before narrowing",
     "tests": "SecurityReviewTests",
