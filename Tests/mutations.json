@@ -5088,14 +5088,14 @@
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "find": "guard chosen, directory || parts.count == member.count, kind != 3,",
     "replace": "guard true, directory || parts.count == member.count, kind != 3,",
     "rule": "Space preview archives: unselected bytes enter the parent protocol parser",
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "find": "a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec\n                && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec\n                && a.changed.tv_nsec == b.changed.tv_nsec",
     "replace": "a.identity == b.identity",
     "rule": "Space preview archives: changed archive contents are read after the choice was captured",
@@ -5165,14 +5165,14 @@
     "tests": "PreviewArchiveTests/aWarningFromTheParser"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "find": "guard spellings[known].elementsEqual(part.utf8), types[known] == type, !(last && listed[known]) else {",
     "replace": "guard types[known] == type, !(last && listed[known]) else {",
     "rule": "Space preview archives: one name spelled two ways reaches a copy out",
     "tests": "PreviewArchiveTests/theParserRefusesAliases"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "find": "types[known] == type, !(last && listed[known]) else {",
     "replace": "types[known] == type else {",
     "rule": "Space preview archives: a path listed twice reaches a copy out",
@@ -5637,7 +5637,7 @@
     "tests": "QueueOrderingTests/runNextArchiveReallyRunsBeforeAnEarlierQueuedArchive"
   },
   {
-    "file": "Strata/Previews/ArchiveLister.swift",
+    "file": "Strata/Archives/ArchiveKind.swift",
     "find": "[\"cbz\", \"zip\", \"jar\"",
     "replace": "[\"zip\", \"jar\"",
     "rule": "Book previews: comic aliases reach the same read-only selection and Undo pipeline",
@@ -5661,7 +5661,7 @@
   {
     "file": "Strata/Views/FileThumbnails.swift",
     "find": "let source = self.pending[key]?.coverSource",
-    "replace": "let source = try? PreviewArchiveSource(entry.url)",
+    "replace": "let source = try? ArchiveSource(entry.url)",
     "rule": "Book previews: cover extraction keeps the file chosen before a delayed Quick Look callback",
     "tests": "BookPreviewTests/aCoverRequestPinsTheFileBeforeQuickLookReturns"
   },
@@ -5708,7 +5708,7 @@
     "tests": "BookPreviewTests/coverWrappersAndUntitledSectionsNeverExposeInternalFilenames"
   },
   {
-    "file": "Strata/Previews/ArchiveLister.swift",
+    "file": "Strata/Archives/ArchiveKind.swift",
     "find": "\"xar\", \"iso\", \"cab\", \"onepkg\"]",
     "replace": "\"xar\", \"iso\"]",
     "rule": "A cabinet or OneNote package isn't taken for an archive",
@@ -6749,30 +6749,30 @@
     "tests": "PreviewArchiveStreamTests/theHarnessStreamsACopyWithinItsTime"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "rule": "Space preview archives: a streamed copy takes exactly what the worker may send",
-    "find": "        let overhead = PreviewArchiveReader.recordOverhead + path.count\n",
-    "replace": "        let overhead = PreviewArchiveReader.recordOverhead + path.count + 1\n",
+    "find": "        let overhead = ArchiveReader.recordOverhead + path.count\n",
+    "replace": "        let overhead = ArchiveReader.recordOverhead + path.count + 1\n",
     "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "rule": "Space preview archives: a streamed copy is of the file asked for",
-    "find": "        guard name.elementsEqual(path) else { throw PreviewArchiveError.unsafe }\n",
+    "find": "        guard name.elementsEqual(path) else { throw ArchiveReadError.unsafe }\n",
     "replace": "",
     "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "rule": "Space preview archives: a streamed copy holds one file and nothing after it",
-    "find": "        guard try take(1) == nil else { throw PreviewArchiveError.unreadable }\n",
+    "find": "        guard try take(1) == nil else { throw ArchiveReadError.unreadable }\n",
     "replace": "",
     "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
   },
   {
-    "file": "Strata/Previews/PreviewArchiveReader.swift",
+    "file": "Strata/Archives/ArchiveReader.swift",
     "rule": "Space preview archives: a path streamed twice is refused",
-    "find": "        guard mark[0] == PreviewArchiveReader.endMark else {",
+    "find": "        guard mark[0] == ArchiveReader.endMark else {",
     "replace": "        guard true else {",
     "tests": "PreviewArchiveStreamTests/aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor"
   },
@@ -6793,7 +6793,7 @@
   {
     "file": "Strata/Previewing/PreviewArchiveLease.swift",
     "rule": "Space preview archives: a streamed copy never writes past its size",
-    "find": "                guard Int64(bytes.count) <= self.size - written else { throw PreviewArchiveError.unreadable }\n",
+    "find": "                guard Int64(bytes.count) <= self.size - written else { throw ArchiveReadError.unreadable }\n",
     "replace": "",
     "tests": "PreviewArchiveStreamTests/aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing"
   },

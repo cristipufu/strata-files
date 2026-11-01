@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata
@@ -22,7 +23,7 @@ nonisolated struct ArchiveWorkerApp: SuiteTrait, TestTrait, TestScoping {
     }
 
     private static let assembled = Task {
-        try await assemble(PreviewArchiveReader.harnessApp)
+        try await assemble(ArchiveReader.harnessApp)
     }
 
     private static let checkout = URL(fileURLWithPath: #filePath)
@@ -38,7 +39,7 @@ nonisolated struct ArchiveWorkerApp: SuiteTrait, TestTrait, TestScoping {
     /// A new app each time: macOS remembers a binary's signature per file.
     static func assemble(_ app: URL, named name: String = "", service serviceEntitlements: URL? = serviceEntitlements,
                          worker workerEntitlements: URL? = workerEntitlements) async throws {
-        let products = PreviewArchiveReader.harnessApp.deletingLastPathComponent()
+        let products = ArchiveReader.harnessApp.deletingLastPathComponent()
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
             DispatchQueue.global().async { done.resume(with: Result { try lay(app, named: name, from: products) }) }
         }

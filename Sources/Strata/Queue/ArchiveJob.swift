@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// Compressing or extracting, as a job in the Transfers list: progress, Stop, and a History entry (undo moves what it

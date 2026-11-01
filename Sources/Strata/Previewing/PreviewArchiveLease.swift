@@ -1,3 +1,4 @@
+import StrataArchives
 import Foundation
 import StrataSupport
 
@@ -5,8 +6,8 @@ import StrataSupport
 /// Clipboard exports relinquish cleanup after publication, matching the existing next-launch staging lifetime.
 nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     static let cacheLimit: Int64 = 512 << 20
-    typealias Copier = @Sendable (PreviewArchiveSource, [String], String?,
-                                  @escaping @Sendable (Int64) throws -> PreviewArchiveReader.Sink) async throws -> Void
+    typealias Copier = @Sendable (ArchiveSource, [String], String?,
+                                  @escaping @Sendable (Int64) throws -> ArchiveReader.Sink) async throws -> Void
     private static let buildLock = NSLock()
     let url: URL
     let root: URL
@@ -45,20 +46,20 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
 
     func keepForClipboard() { lock.withLock { retainedForClipboard = true } }
 
-    @concurrent static func materialize(_ records: [PreviewArchiveRecord], member: [String], in base: URL,
-                                       source: PreviewArchiveSource) async throws -> PreviewArchiveLease {
+    @concurrent static func materialize(_ records: [ArchiveRecord], member: [String], in base: URL,
+                                       source: ArchiveSource) async throws -> PreviewArchiveLease {
         try buildLock.withLock { try build(records, member: member, in: base, source: source) }
     }
 
     /// One file copied out as it comes, never more of it in memory than a chunk. It's owned from the moment it's made,
     /// so a copy that fails or stops partway leaves nothing. A preview's copy is `cached`: its whole size is taken from
     /// the cache before anything is written. An export's isn't, as before: it outlives the cache until the next launch.
-    @concurrent static func stream(member: [String], in base: URL, source: PreviewArchiveSource, password: String?,
+    @concurrent static func stream(member: [String], in base: URL, source: ArchiveSource, password: String?,
                                    cached: Bool = true,
-                                   copy: Copier = { try await PreviewArchiveReader.stream($0, member: $1, password: $2,
+                                   copy: Copier = { try await ArchiveReader.stream($0, member: $1, password: $2,
                                                                                           open: $3) })
         async throws -> PreviewArchiveLease {
-        guard safe(member), let name = member.last else { throw PreviewArchiveError.unsafe }
+        guard safe(member), let name = member.last else { throw ArchiveReadError.unsafe }
         let file = try source.open()
         defer { try? file.close() }
         let quarantine = try quarantine(file.fileDescriptor)
@@ -90,8 +91,8 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
 
         deinit { if fd >= 0 { close(fd) } }
 
-        func open(size: Int64) throws -> PreviewArchiveReader.Sink {
-            guard lease == nil, size >= 0 else { throw PreviewArchiveError.unreadable }
+        func open(size: Int64) throws -> ArchiveReader.Sink {
+            guard lease == nil, size >= 0 else { throw ArchiveReadError.unreadable }
             self.size = size
             if cached {
                 try buildLock.withLock {
@@ -110,7 +111,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
                 try Self.ours { try make() }
             }
             return { [self] bytes in
-                guard Int64(bytes.count) <= self.size - written else { throw PreviewArchiveError.unreadable }
+                guard Int64(bytes.count) <= self.size - written else { throw ArchiveReadError.unreadable }
                 try Self.ours { try write(bytes, to: fd) }
                 written += Int64(bytes.count)
             }
@@ -131,7 +132,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
         }
 
         func finish(quarantine: Data?) throws -> PreviewArchiveLease {
-            guard let lease, written == size else { throw PreviewArchiveError.unreadable }
+            guard let lease, written == size else { throw ArchiveReadError.unreadable }
             try mark(fd, quarantine: quarantine)
             close(fd)
             fd = -1
@@ -143,13 +144,13 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     private static func reserve(_ size: Int64, in baseFD: Int32) throws {
         var remaining = 100_000
         let existing = try cacheBytes(baseFD, depth: 0, remaining: &remaining)
-        guard existing <= cacheLimit - size else { throw PreviewArchiveError.limit }
+        guard existing <= cacheLimit - size else { throw ArchiveReadError.limit }
     }
 
-    private static func build(_ records: [PreviewArchiveRecord], member: [String], in base: URL,
-                              source: PreviewArchiveSource) throws -> PreviewArchiveLease {
+    private static func build(_ records: [ArchiveRecord], member: [String], in base: URL,
+                              source: ArchiveSource) throws -> PreviewArchiveLease {
         try validate(records, member: member)
-        guard let name = member.last, !records.isEmpty else { throw PreviewArchiveError.unreadable }
+        guard let name = member.last, !records.isEmpty else { throw ArchiveReadError.unreadable }
         let file = try source.open()
         defer { try? file.close() }
         let quarantine = try quarantine(file.fileDescriptor)
@@ -157,10 +158,10 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
         for record in records {
             try Task.checkCancellation()
             let parts = Array(record.path.dropFirst(member.count-1))
-            guard !parts.isEmpty, parts.first?.utf8.elementsEqual(name.utf8) == true else { throw PreviewArchiveError.unsafe }
+            guard !parts.isEmpty, parts.first?.utf8.elementsEqual(name.utf8) == true else { throw ArchiveReadError.unsafe }
             if record.kind == 2 { try lease.makeFolders(parts, quarantine: quarantine) }
             else {
-                guard record.kind == 1, let body = record.body, body.count == record.size else { throw PreviewArchiveError.unreadable }
+                guard record.kind == 1, let body = record.body, body.count == record.size else { throw ArchiveReadError.unreadable }
                 try lease.makeFolders(Array(parts.dropLast()), quarantine: quarantine)
                 try lease.write(body, path: parts, quarantine: quarantine)
             }
@@ -181,18 +182,18 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     }
 
     /// Refuse the entire batch before making anything, including aliases and a later unsafe child.
-    static func validate(_ records: [PreviewArchiveRecord], member: [String]) throws {
-        guard safe(member), !records.isEmpty, records.count <= 50_000 else { throw PreviewArchiveError.unsafe }
+    static func validate(_ records: [ArchiveRecord], member: [String]) throws {
+        guard safe(member), !records.isEmpty, records.count <= 50_000 else { throw ArchiveReadError.unsafe }
         var total = 0, names = ArchivePathNames()
         for record in records {
             guard safe(record.path), record.path.count >= member.count,
                   zip(record.path, member).allSatisfy({ $0.utf8.elementsEqual($1.utf8) }),
                   record.kind == 1 || record.kind == 2,
                   record.kind == 1 ? record.size >= 0 && record.body.map({ Int64($0.count) }) == record.size : record.size == 0 && record.body == nil else {
-                throw PreviewArchiveError.unsafe
+                throw ArchiveReadError.unsafe
             }
             let bytes = record.body?.count ?? 0
-            guard bytes <= PreviewArchiveReader.memberLimit - total else { throw PreviewArchiveError.limit }
+            guard bytes <= ArchiveReader.memberLimit - total else { throw ArchiveReadError.limit }
             total += bytes
             try names.add(record.path, kind: record.kind)
         }
@@ -206,7 +207,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
 
     /// Orphans after a crash count against the same ceiling. Unknown files are counted, never adopted or deleted.
     private static func cacheBytes(_ fd: Int32, depth: Int, remaining: inout Int) throws -> Int64 {
-        guard depth < 128 else { throw PreviewArchiveError.limit }
+        guard depth < 128 else { throw ArchiveReadError.limit }
         let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
         guard copy >= 0, let stream = fdopendir(copy) else {
             if copy >= 0 { close(copy) }; throw POSIXError(.EIO)
@@ -222,7 +223,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
             }
             guard let name = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
             if name == "." || name == ".." { continue }
-            guard remaining > 0 else { throw PreviewArchiveError.limit }
+            guard remaining > 0 else { throw ArchiveReadError.limit }
             remaining -= 1
             var info = stat()
             guard fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { throw POSIXError(.ESTALE) }
@@ -233,7 +234,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
                 defer { close(child) }
                 size = try cacheBytes(child, depth: depth+1, remaining: &remaining)
             }
-            guard size <= cacheLimit - total else { throw PreviewArchiveError.limit }
+            guard size <= cacheLimit - total else { throw ArchiveReadError.limit }
             total += size
         }
     }

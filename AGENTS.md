@@ -14,10 +14,11 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   `Containers`, `Dev` (git, project cleanup), `Inspector`, `Toolbar` (path bar, suggestions), `Palette` (command
   palette), `Previews` (file previews), `Previewing` (Space previews of folders and archives), `Index`, `Sidebar`,
   `Settings`, `Dock`, `AppUpdates`, `App`, `Support`. `Package.swift` compiles the lower layers as library targets
-  (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataPreviews`, `StrataIndex`, `StrataConnections`, `StrataFiles`
+  (`StrataSupport`, `StrataTheme`, `StrataModel`, `StrataArchives`, `StrataPreviews`, `StrataIndex`, `StrataConnections`, `StrataFiles`
   for the rest of `Model`, `Transfers`, `Remote` and `Containers`, `StrataQueue`, then `StrataAI`, `StrataDev` and
   `StrataSearch` for the rest of `Index`) imported by `Strata`, the interface, so the compiler enforces module
   boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
+- `Sources/Strata/Archives/` — archive reading and process infrastructure, shared by transfers and previews.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
@@ -221,7 +222,10 @@ These apply everywhere below; the sections that follow add only what is specific
   `StrataSearch` above it), and none can see the app, where the interface is. Pass what a library needs in, as
   `CloudStore.foldersShown` is set by `main.swift`, move a type down, as `Fuzzy` and `ShellQuote` live in `Support`
   and settings' values in `Model/ViewSettings.swift`, or move interface code up, as the Inspector's cards live in
-  `Inspector`. `FileThumbnails` and `ItemInfoLoader` resolve container and Compose stack icon marks and status text
+  `Inspector`. Archive readers, sources, stream validation and worker allowances live in `StrataArchives`;
+  `StrataFiles` and `StrataQueue` depend on it without importing preview UI or themes. Theme preferences belong to the
+  interface in `Settings/ThemePreferences.swift`. The Python module-boundary check also rejects transitive interface
+  dependencies from the core libraries. `FileThumbnails` and `ItemInfoLoader` resolve container and Compose stack icon marks and status text
   from their injected `CopyProviders` and `ContainerStore`; `FileDrop` and `ShelfWell` use their injected or active
   window's `CopyProviders`; `PathSuggestions` reads `showHidden` from its injected `Prefs`.
 - **Settings.** Windows, panes, sidebars and View Options use the preferences and notification center in

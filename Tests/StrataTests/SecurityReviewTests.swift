@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import CryptoKit
 import SQLite3
@@ -89,8 +90,8 @@ struct SecurityReviewTests {
     }
 
     @Test func archiveParsingObservesCancellationAndProcessTimeoutsLeaveLaterRunsAlone() async throws {
-        let file = PreviewArchiveRecord(path: ["file"], kind: 1, size: 1, modified: .distantPast, body: nil)
-        let task = Task { try ArchiveLister.tree(PreviewArchiveListing(records: [file], end: .complete), compressed: nil, named: "pack.tar") }
+        let file = ArchiveRecord(path: ["file"], kind: 1, size: 1, modified: .distantPast, body: nil)
+        let task = Task { try ArchiveLister.tree(ArchiveReadListing(records: [file], end: .complete), compressed: nil, named: "pack.tar") }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
         let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap '' TERM; while :; do :; done"], timeout: 0.05)

@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 import StrataArchiveClient
@@ -307,13 +308,13 @@ struct ArchiveWriterTests {
         #expect(Archiver.failure(complete: true, status: .success, archive: archive) == nil)
         // One cut short says why, and a worker that said it finished but didn't is unreadable.
         #expect(Archiver.failure(complete: false, status: .success, archive: archive)
-            == Archiver.Failure(message: PreviewArchiveError.unreadable.localizedDescription))
+            == Archiver.Failure(message: ArchiveReadError.unreadable.localizedDescription))
         #expect(Archiver.failure(complete: false, status: .password, archive: archive)
-            == Archiver.Failure(message: ArchiveLister.passwordProtected("photos.zip")))
+            == Archiver.Failure(message: ArchiveReadError.passwordProtected("photos.zip")))
         #expect(Archiver.failure(complete: false, status: .limit, archive: archive)
             == Archiver.Failure(message: "“photos.zip” goes past the limits Strata sets for reading archives, so it wasn’t extracted."))
         #expect(Archiver.failure(complete: false, status: .unsafe, archive: archive)
-            == Archiver.Failure(message: PreviewArchiveError.unsafe.localizedDescription))
+            == Archiver.Failure(message: ArchiveReadError.unsafe.localizedDescription))
     }
 
     @Test func aHardLinkSharesTheLatestItemOfItsNameAndManyOfOneNameAreNumberedInTurn() throws {
@@ -506,7 +507,7 @@ struct ArchiveWriterTests {
     }
 
     @Test func recordsNoWorkerSendsAreRefused() throws {
-        let unreadable = Archiver.Failure(message: PreviewArchiveError.unreadable.localizedDescription)
+        let unreadable = Archiver.Failure(message: ArchiveReadError.unreadable.localizedDescription)
         var cases: [(String, Data)] = []
         func add(_ label: String, _ build: (inout Stream) -> Void) {
             var stream = Stream()

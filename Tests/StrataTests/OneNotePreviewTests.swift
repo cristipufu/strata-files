@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import ImageIO
 import Testing
@@ -268,7 +269,7 @@ import WebKit
     @Test func aPageDocumentServesItsMarkupAndOnlyItsOwnPicturesAsPNGs() async throws {
         let tree = try TestTree("folder/", "outside")
         let url = try section(tree), before = tree.snapshot()
-        let section = try await OneNoteSectionFile.open(PreviewArchiveSource(url))
+        let section = try await OneNoteSectionFile.open(ArchiveSource(url))
         #expect(section.pages.map(\.title) == ["First", "Sub", " \u{200D} "] && section.pages.map(\.level) == [0, 1, 0])
         let document = try await OneNotePageDocument(section: section, page: section.pages[0])
         let page = try await document.read(document.url)
@@ -302,7 +303,7 @@ import WebKit
         }
         try fixture.section([[space]]).write(to: tree.url("folder/Two.one"))
         let before = tree.snapshot()
-        let two = try await OneNoteSectionFile.open(PreviewArchiveSource(tree.url("folder/Two.one")))
+        let two = try await OneNoteSectionFile.open(ArchiveSource(tree.url("folder/Two.one")))
         func pictures(_ budget: OneNotePageDocument.Budget) async throws -> [Bool] {
             let document = try await OneNotePageDocument(section: two, page: two.pages[0], budget: budget)
             let page = try await document.read(document.url)
@@ -393,7 +394,7 @@ import WebKit
             return page.manifest(title: [], elements: [page.outline(items)])
         }
         try fixture.section([[space]]).write(to: tree.url("folder/Kinds.one"))
-        let section = try await OneNoteSectionFile.open(PreviewArchiveSource(tree.url("folder/Kinds.one")))
+        let section = try await OneNoteSectionFile.open(ArchiveSource(tree.url("folder/Kinds.one")))
         let html = try await section.markup(of: section.pages[0], pictureLimit: 63, pictureBytes: 1 << 20).html
         for kind in ["png", "heic", "jpeg2000"] { #expect(html.contains("alt=\"\(kind)\""), "\(kind)") }
         // So is one whose header says it's past what a thumbnail is made of.
@@ -461,7 +462,7 @@ import WebKit
     @Test func aSectionReadsOnlyFromTheFileAsItWasChosen() async throws {
         let tree = try TestTree("folder/", "outside")
         let url = try section(tree)
-        let section = try await OneNoteSectionFile.open(PreviewArchiveSource(url))
+        let section = try await OneNoteSectionFile.open(ArchiveSource(url))
         let document = try await OneNotePageDocument(section: section, page: section.pages[0])
         try FileManager.default.moveItem(at: url, to: tree.url("parked.one"))
         try FileManager.default.copyItem(at: tree.url("parked.one"), to: url)

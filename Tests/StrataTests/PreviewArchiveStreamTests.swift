@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata
@@ -17,7 +18,7 @@ import Testing
 struct PreviewArchiveStreamTests {
     /// The most a copied file named `name` holds: the worker counts its mark and record too.
     private func limit(_ name: String) -> Int {
-        ArchiveService.fileLimit - PreviewArchiveReader.recordOverhead - name.utf8.count
+        ArchiveService.fileLimit - ArchiveReader.recordOverhead - name.utf8.count
     }
 
     /// A file of `size` bytes, mostly a hole, whose first and last bytes say which end they are.
@@ -57,9 +58,9 @@ struct PreviewArchiveStreamTests {
         let archive = try await tar(tree, "contents", named: "pack.tgz")
         let mark = Data("0083;00000000;Strata;".utf8)
         try #require(mark.withUnsafeBytes { setxattr(archive.path, "com.apple.quarantine", $0.baseAddress, mark.count, 0, 0) } == 0)
-        let source = try PreviewArchiveSource(archive)
+        let source = try ArchiveSource(archive)
         // A copy into memory stops at 60 MB; this one goes to a file as it comes.
-        await #expect(throws: PreviewArchiveError.limit) { try await PreviewArchiveReader.read(source, member: ["large.bin"]) }
+        await #expect(throws: ArchiveReadError.limit) { try await ArchiveReader.read(source, member: ["large.bin"]) }
         var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["large.bin"], in: tree.url("cache"),
                                                                                source: source, password: nil)
         let copy = try #require(lease?.url), root = try #require(lease?.root)
@@ -72,15 +73,15 @@ struct PreviewArchiveStreamTests {
     @Test func aFileAsLargeAsACopyMayBeIsLetThroughAndOneByteMoreIsRefusedFromItsHeader() async throws {
         let tree = try TestTree("outside/keep")
         // Only a header each: the worker takes or refuses a file by the size it declares, then finds no contents.
-        func declaring(_ size: Int, in name: String) throws -> PreviewArchiveSource {
+        func declaring(_ size: Int, in name: String) throws -> ArchiveSource {
             try Data(ContainerTests.tarHeader("large.bin", size: size)).write(to: tree.url(name))
-            return try PreviewArchiveSource(tree.url(name))
+            return try ArchiveSource(tree.url(name))
         }
         let at = try declaring(limit("large.bin"), in: "at.tar"), over = try declaring(limit("large.bin") + 1, in: "over.tar")
-        await #expect(throws: PreviewArchiveError.unreadable) {
+        await #expect(throws: ArchiveReadError.unreadable) {
             try await PreviewArchiveLease.stream(member: ["large.bin"], in: tree.url("cache"), source: at, password: nil)
         }
-        await #expect(throws: PreviewArchiveError.limit) {
+        await #expect(throws: ArchiveReadError.limit) {
             try await PreviewArchiveLease.stream(member: ["large.bin"], in: tree.url("cache"), source: over, password: nil)
         }
         #expect((try? FileManager.default.contentsOfDirectory(atPath: tree.url("cache").path))?.isEmpty ?? true)
@@ -90,7 +91,7 @@ struct PreviewArchiveStreamTests {
     @Test func aCopyThatCantBeWrittenSaysSoRatherThanBlameTheArchive() async throws {
         let tree = try TestTree("locked/", "outside/keep")
         try Data(ContainerTests.tarFile("a.txt", "kept") + [UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        let source = try PreviewArchiveSource(tree.url("pack.tar")), locked = tree.url("locked")
+        let source = try ArchiveSource(tree.url("pack.tar")), locked = tree.url("locked")
         try #require(chmod(locked.path, 0o500) == 0)
         defer { chmod(locked.path, 0o700) }
         await #expect(throws: CocoaError.self) {
@@ -103,10 +104,10 @@ struct PreviewArchiveStreamTests {
     @Test func aFolderCopiedOutStillStopsAtWhatMemoryHolds() async throws {
         let tree = try TestTree("contents/folder/", "outside/keep")
         try sparse(tree.url("contents/folder/large.bin"), size: ArchiveService.byteLimit + 1)
-        let source = try PreviewArchiveSource(try await tar(tree, "contents", named: "pack.tgz"))
+        let source = try ArchiveSource(try await tar(tree, "contents", named: "pack.tgz"))
         let before = tree.snapshot()
-        await #expect(throws: PreviewArchiveError.limit) {
-            try await PreviewArchiveReader.read(source, member: ["folder"], directory: true)
+        await #expect(throws: ArchiveReadError.limit) {
+            try await ArchiveReader.read(source, member: ["folder"], directory: true)
         }
         #expect(tree.snapshot() == before && tree.text("outside/keep") == "outside/keep")
     }
@@ -119,8 +120,8 @@ struct PreviewArchiveStreamTests {
         let archive = try await tar(tree, "contents", named: "pack.tgz")
         let packed = try Data(contentsOf: archive)
         try packed.prefix(packed.count / 2).write(to: archive)
-        let source = try PreviewArchiveSource(archive)
-        await #expect(throws: PreviewArchiveError.self) {
+        let source = try ArchiveSource(archive)
+        await #expect(throws: ArchiveReadError.self) {
             try await PreviewArchiveLease.stream(member: ["a.bin"], in: tree.url("cache"), source: source, password: nil)
         }
         #expect((try? FileManager.default.contentsOfDirectory(atPath: tree.url("cache").path))?.isEmpty ?? true)
@@ -129,7 +130,7 @@ struct PreviewArchiveStreamTests {
 
     @Test func aCopyThatStopsFallsShortRunsOverOrOutlivesItsArchiveLeavesNothing() async throws {
         let tree = try TestTree("pack.tar", "outside/keep")
-        let source = try PreviewArchiveSource(tree.url("pack.tar")), cache = tree.url("cache")
+        let source = try ArchiveSource(tree.url("pack.tar")), cache = tree.url("cache")
         let ten = Data(repeating: 0x41, count: 10)
         func copy(_ copier: @escaping PreviewArchiveLease.Copier) async throws -> PreviewArchiveLease {
             try await PreviewArchiveLease.stream(member: ["a"], in: cache, source: source, password: nil, copy: copier)
@@ -143,22 +144,22 @@ struct PreviewArchiveStreamTests {
             }
         }
         // Fewer bytes than the worker said.
-        await #expect(throws: PreviewArchiveError.unreadable) {
+        await #expect(throws: ArchiveReadError.unreadable) {
             try await copy { _, _, _, open in
                 let sink = try open(10)
                 try ten.prefix(4).withUnsafeBytes { try sink($0) }
             }
         }
         // More than it said: refused as they come, never written past what the cache gave it.
-        await #expect(throws: PreviewArchiveError.unreadable) {
+        await #expect(throws: ArchiveReadError.unreadable) {
             try await copy { _, _, _, open in
                 let sink = try open(4)
-                #expect(throws: PreviewArchiveError.unreadable) { try ten.withUnsafeBytes { try sink($0) } }
-                throw PreviewArchiveError.unreadable
+                #expect(throws: ArchiveReadError.unreadable) { try ten.withUnsafeBytes { try sink($0) } }
+                throw ArchiveReadError.unreadable
             }
         }
         // Named twice.
-        await #expect(throws: PreviewArchiveError.unreadable) {
+        await #expect(throws: ArchiveReadError.unreadable) {
             try await copy { _, _, _, open in
                 _ = try open(0)
                 _ = try open(0)
@@ -180,7 +181,7 @@ struct PreviewArchiveStreamTests {
 
     @Test func aCopyTakesItsWholeSizeFromTheCacheBeforeItIsWritten() async throws {
         let tree = try TestTree("pack.tar", "outside/keep")
-        let source = try PreviewArchiveSource(tree.url("pack.tar")), cache = tree.url("cache")
+        let source = try ArchiveSource(tree.url("pack.tar")), cache = tree.url("cache")
         let (opened, signal) = AsyncStream<Void>.makeStream(), (released, release) = AsyncStream<Void>.makeStream()
         let held = Task {
             try await PreviewArchiveLease.stream(member: ["a"], in: cache, source: source, password: nil) { _, _, _, open in
@@ -193,7 +194,7 @@ struct PreviewArchiveStreamTests {
         var iterator = opened.makeAsyncIterator()
         await iterator.next()
         // Nothing of the first is written yet, but all of it counts.
-        await #expect(throws: PreviewArchiveError.limit) {
+        await #expect(throws: ArchiveReadError.limit) {
             try await PreviewArchiveLease.stream(member: ["b"], in: cache, source: source, password: nil) { _, _, _, open in
                 _ = try open(32)
             }
@@ -227,7 +228,7 @@ struct PreviewArchiveStreamTests {
         defer { close(pipe.read) }
         try #require(written == stream.count)
         var data = Data()
-        let complete = try PreviewArchiveReader.copy(pipe.read, reader: try PipeReader(), path: Data(path.utf8)) { _ in
+        let complete = try ArchiveReader.copy(pipe.read, reader: try PipeReader(), path: Data(path.utf8)) { _ in
             { data.append(contentsOf: $0) }
         }
         return (complete, data)
@@ -243,7 +244,7 @@ struct PreviewArchiveStreamTests {
     }
 
     @Test func aStreamIsTakenOnlyAsAWholeCopyOfTheFileAskedFor() throws {
-        let magic = Array("SAP1".utf8), end: [UInt8] = [PreviewArchiveReader.endMark]
+        let magic = Array("SAP1".utf8), end: [UInt8] = [ArchiveReader.endMark]
         let whole = try decode(magic + record() + end)
         #expect(whole.complete && whole.written == Data("body".utf8))
         // A file as large as a copy may be is taken; this one's contents then don't come.
@@ -254,7 +255,7 @@ struct PreviewArchiveStreamTests {
             #expect(try decode(Array((magic + record() + end).prefix(cut))).complete == false)
         }
         // Output that goes on wrong is refused.
-        let refused: [([UInt8], PreviewArchiveError)] = [
+        let refused: [([UInt8], ArchiveReadError)] = [
             (Array("SAP2".utf8) + record() + end, .unreadable),
             (magic + record(kind: 3) + end, .unsafe),
             (magic + record(kind: 2, body: []) + end, .unreadable),
@@ -262,7 +263,7 @@ struct PreviewArchiveStreamTests {
             (magic + record(path: "a.bi") + end, .unsafe),
             (magic + record(seconds: 253_402_300_800) + end, .unreadable),
             (magic + record() + record() + end, .unsafe),
-            (magic + record() + [PreviewArchiveReader.moreMark], .unreadable),
+            (magic + record() + [ArchiveReader.moreMark], .unreadable),
             (magic + record() + end + [0], .unreadable),
             (magic + record(size: limit("a.bin") + 1, body: []) + end, .limit),
         ]
@@ -281,12 +282,12 @@ struct PreviewArchiveStreamTests {
             let request = ArchiveService.Request(mode: .stream, folder: folder, path: Data("a.txt".utf8))
             let input = try #require(try ArchiveService.requestPipe(request.encoded(password: ArchiveService.Secret(""))))
             guard lseek(file.fileDescriptor, 0, SEEK_SET) == 0 else { throw POSIXError(.EIO) }
-            return try await ProcessRunner.run(PreviewArchiveReader.harness.path, ["--streaming"] + arguments, timeout: 60,
+            return try await ProcessRunner.run(ArchiveReader.harness.path, ["--streaming"] + arguments, timeout: 60,
                                                standardInput: input, file: file)
         }
         let streamed = try await run([])
         #expect(streamed.status == 0)
-        #expect(try PreviewArchiveReader.parse(streamed.output, member: ["a.txt"], directory: false).first?.body
+        #expect(try ArchiveReader.parse(streamed.output, member: ["a.txt"], directory: false).first?.body
                 == Data("streamed".utf8))
         // With no time at all, it's stopped as over a limit.
         let stopped = try await run(["--timeout-ms", "0"])

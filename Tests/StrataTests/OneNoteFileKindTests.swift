@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import Testing
 import UniformTypeIdentifiers
@@ -106,7 +107,7 @@ import UniformTypeIdentifiers
     @Test(.enabled(if: undeclared)) func spaceShowsAnArchivesSectionByItsKindAndPage() async throws {
         let tree = try TestTree("pack.tar")
         let environment = try PreviewEnvironment(tree)
-        let record = PreviewArchiveRecord(path: ["Notes.one"], kind: 1, size: 7, modified: .distantPast,
+        let record = ArchiveRecord(path: ["Notes.one"], kind: 1, size: 7, modified: .distantPast,
                                           body: Data("section".utf8))
         let access = PreviewArchiveAccess(copying: { _, _, _, _ in [record] })
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)

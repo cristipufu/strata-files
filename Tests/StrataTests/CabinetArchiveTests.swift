@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import Testing
 @testable import Strata
@@ -66,16 +67,16 @@ struct CabinetArchiveTests {
                                         ("mszip.cab", Self.mszip, all), ("lzx.onepkg", Self.lzx, all)] {
             let tree = try TestTree("outside")
             try write(base64, to: tree.url(name))
-            let source = try PreviewArchiveSource(tree.url(name)), before = tree.snapshot()
-            let listed = try await PreviewArchiveReader.read(source)
+            let source = try ArchiveSource(tree.url(name)), before = tree.snapshot()
+            let listed = try await ArchiveReader.read(source)
             #expect(listed.allSatisfy { $0.body == nil })
             #expect(listed.map { $0.path.joined(separator: "/") }.sorted() == members, "\(name)")
-            let first = try await PreviewArchiveReader.read(source, member: ["dir1", "file1"])
+            let first = try await ArchiveReader.read(source, member: ["dir1", "file1"])
             #expect(first.map(\.path) == [["dir1", "file1"]] && first.first?.body == Data(Self.file1.utf8), "\(name)")
-            let second = try await PreviewArchiveReader.read(source, member: ["dir2", "file2"])
+            let second = try await ArchiveReader.read(source, member: ["dir2", "file2"])
             #expect(second.map(\.path) == [["dir2", "file2"]] && second.first?.body == Data(Self.file2.utf8), "\(name)")
             if members.contains("zero") {
-                let zero = try await PreviewArchiveReader.read(source, member: ["zero"])
+                let zero = try await ArchiveReader.read(source, member: ["zero"])
                 #expect(zero.first?.body == Data(count: 33000), "\(name)")
             }
             #expect(tree.snapshot() == before)
@@ -132,12 +133,12 @@ struct CabinetArchiveTests {
         let listing = try await ArchiveLister.list(tree.url("names.cab"), kind: .tar)
         let listed = listing.root.value.children
         #expect(listed.map(\.name) == ["Group", "café.one"] && listed.first?.children.map(\.name) == ["Section.one"])
-        #expect(listing.note == PreviewArchiveError.unsafe.localizedDescription)
+        #expect(listing.note == ArchiveReadError.unsafe.localizedDescription)
         // The name read back is the one listed, whatever Unicode form the worker gives it.
-        let source = try PreviewArchiveSource(tree.url("names.cab"))
-        let marked = try await PreviewArchiveReader.read(source, member: [try #require(listed.last?.name)])
+        let source = try ArchiveSource(tree.url("names.cab"))
+        let marked = try await ArchiveReader.read(source, member: [try #require(listed.last?.name)])
         #expect(marked.first?.body == Data("marked".utf8))
-        let section = try await PreviewArchiveReader.read(source, member: ["Group", "Section.one"])
+        let section = try await ArchiveReader.read(source, member: ["Group", "Section.one"])
         #expect(section.first?.body == Data("in a folder".utf8))
         #expect(tree.snapshot() == before)
     }
@@ -152,8 +153,8 @@ struct CabinetArchiveTests {
         let before = tree.snapshot()
         let listing = try await ArchiveLister.list(archive, kind: .tar)
         #expect(listing.root.value.children.map(\.name) == ["Section.one"])
-        #expect(listing.note == PreviewArchiveError.unsafe.localizedDescription)
-        await #expect(throws: Archiver.Failure(message: PreviewArchiveError.unsafe.localizedDescription)) {
+        #expect(listing.note == ArchiveReadError.unsafe.localizedDescription)
+        await #expect(throws: Archiver.Failure(message: ArchiveReadError.unsafe.localizedDescription)) {
             _ = try await TestWork.run {
                 try Archiver.extract(archive, inspection: .init(), into: out, copies: .live, control: .init())
             }

@@ -1,23 +1,18 @@
+import StrataArchives
+import StrataModel
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import StrataSupport
 
-/// Comic aliases stay archives. EPUB packages supply a reading order and a declared cover instead.
-nonisolated package enum BookFormat {
-    package static let comics: Set<String> = ["cbz", "cbr", "cb7", "cbt"]
-    package static func hasCover(_ url: URL) -> Bool {
-        comics.contains(url.pathExtension.lowercased()) || url.pathExtension.lowercased() == "epub"
-    }
-    package static let images: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif", "tif", "tiff", "bmp"]
-
+extension BookFormat {
     @concurrent package static func cover(_ url: URL, pixels: Int) async throws -> CGImage {
-        return try await cover(PreviewArchiveSource(url), pixels: pixels)
+        return try await cover(ArchiveSource(url), pixels: pixels)
     }
 
-    @concurrent package static func cover(_ source: PreviewArchiveSource, pixels: Int) async throws -> CGImage {
+    @concurrent package static func cover(_ source: ArchiveSource, pixels: Int) async throws -> CGImage {
         let url = source.chosen.url
-        let records = try await PreviewArchiveReader.read(source)
+        let records = try await ArchiveReader.read(source)
         let path: [String]
         if url.pathExtension.lowercased() == "epub" {
             let book = try await EPUBBook.open(source, records: records)
@@ -48,8 +43,8 @@ nonisolated package struct EPUBBook: Sendable {
         package let path: [String]
         package let title: String
     }
-    package let source: PreviewArchiveSource
-    package let records: [PreviewArchiveRecord]
+    package let source: ArchiveSource
+    package let records: [ArchiveRecord]
     package let title: String
     package let authors: String
     package let publisher: String
@@ -58,9 +53,9 @@ nonisolated package struct EPUBBook: Sendable {
     package let chapters: [Chapter]
     package let assets: Set<String>
 
-    @concurrent package static func open(_ source: PreviewArchiveSource, records existing: [PreviewArchiveRecord]? = nil) async throws -> EPUBBook {
-        let records: [PreviewArchiveRecord]
-        if let existing { records = existing } else { records = try await PreviewArchiveReader.read(source) }
+    @concurrent package static func open(_ source: ArchiveSource, records existing: [ArchiveRecord]? = nil) async throws -> EPUBBook {
+        let records: [ArchiveRecord]
+        if let existing { records = existing } else { records = try await ArchiveReader.read(source) }
         let package = try await packagePath(source, records: records)
         let folder = Array(package.dropLast())
         let opf = try BookXML.parse(try await bytes(source, records: records, path: package, limit: TextFile.limit))
@@ -90,7 +85,7 @@ nonisolated package struct EPUBBook: Sendable {
     }
 
     /// Where the package document is, as `META-INF/container.xml` says.
-    private static func packagePath(_ source: PreviewArchiveSource, records: [PreviewArchiveRecord]) async throws -> [String] {
+    private static func packagePath(_ source: ArchiveSource, records: [ArchiveRecord]) async throws -> [String] {
         let container = try await bytes(source, records: records, path: ["META-INF", "container.xml"], limit: TextFile.limit)
         let root = try BookXML.parse(container)
         guard root.name == "container", let reference = root.descendants("rootfile").first(where: {
@@ -180,8 +175,8 @@ nonisolated package struct EPUBBook: Sendable {
 
     /// The spine's pages read in order, each titled by the contents, else as the cover or a numbered section.
     private static func readingOrder(_ spine: BookXML.Element, _ manifest: Manifest, titles: [String: String],
-                                     coverPages: Set<String>, cover: [String]?, source: PreviewArchiveSource,
-                                     records: [PreviewArchiveRecord]) async throws -> [Chapter] {
+                                     coverPages: Set<String>, cover: [String]?, source: ArchiveSource,
+                                     records: [ArchiveRecord]) async throws -> [Chapter] {
         var coverPages = coverPages
         var chapters: [Chapter] = []
         for ref in spine.children where ref.name == "itemref" && ref.attributes["linear"] != "no" {
@@ -227,10 +222,10 @@ nonisolated package struct EPUBBook: Sendable {
         return parts
     }
 
-    @concurrent package static func bytes(_ source: PreviewArchiveSource, records: [PreviewArchiveRecord], path: [String], limit: Int) async throws -> Data {
+    @concurrent package static func bytes(_ source: ArchiveSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
         guard let record = records.first(where: { $0.path.joined(separator: "/").utf8.elementsEqual(path.joined(separator: "/").utf8) }),
               record.kind == 1, record.size >= 0, record.size <= limit else { throw PreviewError.unsupported }
-        let selected = try await PreviewArchiveReader.read(source, member: path)
+        let selected = try await ArchiveReader.read(source, member: path)
         guard selected.count == 1, let data = selected[0].body, data.count <= limit else { throw PreviewError.unsupported }
         return data
     }

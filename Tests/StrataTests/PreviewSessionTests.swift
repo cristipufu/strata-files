@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import Testing
 @testable import Strata
@@ -141,8 +142,8 @@ struct PreviewSessionTests {
         let before = tree.snapshot()
         let link = try #require(FileEntry(url: tree.url("folder/link")))
         let session = PreviewSession(reader: DirectoryReader { _, _, _ in [link] }, archiveReader: { _, _ in
-            let readme = PreviewArchiveRecord(path: ["nested", "readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
-            return try ArchiveLister.tree(PreviewArchiveListing(records: [readme], end: .complete), compressed: nil, named: "pack.tar")
+            let readme = ArchiveRecord(path: ["nested", "readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+            return try ArchiveLister.tree(ArchiveReadListing(records: [readme], end: .complete), compressed: nil, named: "pack.tar")
         })
         session.show(try #require(FileEntry(url: tree.url("folder"))), showHidden: true, applications: .standard)
         await session.task?.value
@@ -224,8 +225,8 @@ struct PreviewSessionTests {
         let tree = try TestTree("pack.tar")
         let environment = try PreviewEnvironment(tree)
         let before = tree.snapshot()
-        let readme = PreviewArchiveRecord(path: ["readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
-        let listing = try ArchiveLister.tree(PreviewArchiveListing(records: [readme], end: .stopped(.limit)), compressed: nil, named: "pack.tar")
+        let readme = ArchiveRecord(path: ["readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+        let listing = try ArchiveLister.tree(ArchiveReadListing(records: [readme], end: .stopped(.limit)), compressed: nil, named: "pack.tar")
         let session = PreviewSession(reader: environment.services.directories, archiveReader: { _, _ in listing })
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
                                                thumbnails: environment.services.thumbnails, copies: environment.services.copies)

@@ -1,3 +1,4 @@
+import StrataArchives
 import Foundation
 import os
 import StrataArchiveClient
@@ -21,7 +22,7 @@ package nonisolated enum Archiver {
     }
 
     /// What a survey of an archive says before it's extracted; its counts are lower bounds when it didn't finish.
-    package typealias Inspection = PreviewArchiveSurvey
+    package typealias Inspection = ArchiveSurvey
 
     /// Progress and cancellation, shared with the job that runs it.
     package final class Control: @unchecked Sendable {
@@ -115,8 +116,8 @@ package nonisolated enum Archiver {
     /// comes back incomplete, with what it counted so far. Runs off the main thread.
     @concurrent
     package static func inspect(_ archive: URL) async -> Inspection {
-        guard let source = try? PreviewArchiveSource(archive.resolvingSymlinksInPath()),
-              let survey = try? await PreviewArchiveReader.survey(source, timeout: 30) else { return Inspection() }
+        guard let source = try? ArchiveSource(archive.resolvingSymlinksInPath()),
+              let survey = try? await ArchiveReader.survey(source, timeout: 30) else { return Inspection() }
         return survey
     }
 
@@ -202,7 +203,7 @@ package nonisolated enum Archiver {
         let status: ArchiveService.Status
         do {
             // A link to an archive extracts the archive, which mustn't change while it's read.
-            let source = try PreviewArchiveSource(archive.resolvingSymlinksInPath())
+            let source = try ArchiveSource(archive.resolvingSymlinksInPath())
             let file = try source.open()
             defer { try? file.close() }
             let reader = try PipeReader()
@@ -210,7 +211,7 @@ package nonisolated enum Archiver {
             defer { control.attach(reader: nil) }
             // A Stop that came before the reader was attached would have found nothing to stop.
             guard !control.isCancelled else { throw CancellationError() }
-            status = try PreviewArchiveReader.unpack(file, reader: reader) { output in
+            status = try ArchiveReader.unpack(file, reader: reader) { output in
                 complete = try ArchiveWriter.write(into: folder, permissions: info.st_mode, control: control) {
                     try reader.readSome(output, into: $0)
                 }
@@ -218,7 +219,7 @@ package nonisolated enum Archiver {
             try source.verify(file)
         } catch let error as POSIXError {
             log.info("An archive couldn't be extracted: \(error.localizedDescription, privacy: .public)")
-            throw Failure(message: PreviewArchiveError.unreadable.localizedDescription)
+            throw Failure(message: ArchiveReadError.unreadable.localizedDescription)
         }
         if let failure = failure(complete: complete, status: status, archive: archive) { throw failure }
         try checkedPermissions(root.path, 0o700)
@@ -228,11 +229,11 @@ package nonisolated enum Archiver {
     /// service could still say about its worker, which sends that mark only once it has read everything.
     package static func failure(complete: Bool, status: ArchiveService.Status, archive: URL) -> Failure? {
         guard !complete else { return nil }
-        switch PreviewArchiveReader.error(for: status) {
+        switch ArchiveReader.error(for: status) {
         case .password: return passwordProtected(archive)
         case .limit: return pastLimits(archive)
         case let error?: return Failure(message: error.localizedDescription)
-        case nil: return Failure(message: PreviewArchiveError.unreadable.localizedDescription)
+        case nil: return Failure(message: ArchiveReadError.unreadable.localizedDescription)
         }
     }
 
@@ -241,7 +242,7 @@ package nonisolated enum Archiver {
     }
 
     private static func passwordProtected(_ archive: URL) -> Failure {
-        Failure(message: ArchiveLister.passwordProtected(archive.lastPathComponent))
+        Failure(message: ArchiveReadError.passwordProtected(archive.lastPathComponent))
     }
 
     /// Everything in `boundary` (a folder, or a single file) must stay inside it: a link may only point within it,

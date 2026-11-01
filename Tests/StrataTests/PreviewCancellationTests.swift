@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import Synchronization
 import Testing
@@ -44,10 +45,10 @@ struct PreviewCancellationTests {
         return session
     }
 
-    private func records(_ member: [String]?) -> [PreviewArchiveRecord] {
+    private func records(_ member: [String]?) -> [ArchiveRecord] {
         ["a.txt", "ab.txt"].filter { member == nil || member == [$0] }.map {
             let body = Data($0.utf8)
-            return PreviewArchiveRecord(path: [$0], kind: 1, size: Int64(body.count), modified: .distantPast,
+            return ArchiveRecord(path: [$0], kind: 1, size: Int64(body.count), modified: .distantPast,
                                         body: member == nil ? nil : body)
         }
     }
@@ -58,7 +59,7 @@ struct PreviewCancellationTests {
             let environment = try PreviewEnvironment(tree), before = tree.snapshot()
             let prompt = PasswordRequest()
             let session = try await session(tree, environment: environment) { _, member, _, password in
-                if member != nil, password == nil { throw PreviewArchiveError.password }
+                if member != nil, password == nil { throw ArchiveReadError.password }
                 return self.records(member)
             }
             session.archiveAccess.requestPassword = { _ in await prompt.request() }

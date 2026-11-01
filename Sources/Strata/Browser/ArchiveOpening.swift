@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// What opening an archive as a folder needs of the pane it's opened from: which navigation it's on, its window and

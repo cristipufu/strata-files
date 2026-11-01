@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata
@@ -10,15 +11,15 @@ import Testing
 @testable import StrataSearch
 
 struct ArchivePreviewSafetyTests {
-    private func listing(_ records: [PreviewArchiveRecord], end: PreviewArchiveListing.End = .complete) throws -> ArchiveListing {
-        try ArchiveLister.tree(PreviewArchiveListing(records: records, end: end), compressed: nil, named: "pack.zip")
+    private func listing(_ records: [ArchiveRecord], end: ArchiveReadListing.End = .complete) throws -> ArchiveListing {
+        try ArchiveLister.tree(ArchiveReadListing(records: records, end: end), compressed: nil, named: "pack.zip")
     }
 
-    private func file(_ path: String, size: Int64 = 1) -> PreviewArchiveRecord {
-        PreviewArchiveRecord(path: path.components(separatedBy: "/"), kind: 1, size: size, modified: .distantPast, body: nil)
+    private func file(_ path: String, size: Int64 = 1) -> ArchiveRecord {
+        ArchiveRecord(path: path.components(separatedBy: "/"), kind: 1, size: size, modified: .distantPast, body: nil)
     }
 
-    private func message(_ records: [PreviewArchiveRecord], end: PreviewArchiveListing.End) -> String? {
+    private func message(_ records: [ArchiveRecord], end: ArchiveReadListing.End) -> String? {
         do {
             _ = try listing(records, end: end)
             return nil
@@ -61,21 +62,21 @@ struct ArchivePreviewSafetyTests {
         let stopped = try listing(records, end: .stopped(.limit))
         #expect(stopped.files == 2 && stopped.note == more.note)
         let unsafe = try listing(records, end: .stopped(.unsafe))
-        #expect(unsafe.files == 2 && unsafe.note == PreviewArchiveError.unsafe.localizedDescription)
+        #expect(unsafe.files == 2 && unsafe.note == ArchiveReadError.unsafe.localizedDescription)
         // A tree cut at its node budget says so too, before the reason the listing stopped.
         let deep = (0..<1000).map { file("folder\($0)/" + String(repeating: "nested/", count: 126) + "file") }
         let cut = try listing(deep, end: .stopped(.unsafe))
-        #expect(cut.note?.hasSuffix(" · " + PreviewArchiveError.unsafe.localizedDescription) == true)
+        #expect(cut.note?.hasSuffix(" · " + ArchiveReadError.unsafe.localizedDescription) == true)
         #expect(cut.note?.hasPrefix(String(localized: "Showing first \(cut.files.formatted())", comment: "Preview footer note: only the first part is shown (a count or a size)")) == true)
     }
 
     @Test func aListingWithNothingToShowSaysWhy() {
         #expect(message([], end: .complete) == String(localized: "This archive is empty."))
-        #expect(message([], end: .moreEntries) == PreviewArchiveError.limit.localizedDescription)
-        #expect(message([], end: .stopped(.limit)) == PreviewArchiveError.limit.localizedDescription)
-        #expect(message([], end: .stopped(.unsafe)) == PreviewArchiveError.unsafe.localizedDescription)
-        #expect(message([], end: .stopped(.encryption)) == PreviewArchiveError.encryption.localizedDescription)
-        #expect(message([], end: .stopped(.password)) == ArchiveLister.passwordProtected("pack.zip"))
+        #expect(message([], end: .moreEntries) == ArchiveReadError.limit.localizedDescription)
+        #expect(message([], end: .stopped(.limit)) == ArchiveReadError.limit.localizedDescription)
+        #expect(message([], end: .stopped(.unsafe)) == ArchiveReadError.unsafe.localizedDescription)
+        #expect(message([], end: .stopped(.encryption)) == ArchiveReadError.encryption.localizedDescription)
+        #expect(message([], end: .stopped(.password)) == ArchiveReadError.passwordProtected("pack.zip"))
         #expect(message([], end: .stopped(.unreadable)) == String(localized: "This archive couldn’t be read."))
     }
 }

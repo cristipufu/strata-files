@@ -2,6 +2,4 @@
 @_exported import StrataConnections
 @_exported import StrataIndex
 @_exported import StrataModel
-@_exported import StrataPreviews
 @_exported import StrataSupport
-@_exported import StrataTheme

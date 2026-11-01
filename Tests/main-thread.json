@@ -167,7 +167,7 @@
  },
  {
   "file": "Sources/Strata/Previewing/PreviewSession.swift",
-  "call": "PreviewArchiveSource(_:)",
+  "call": "ArchiveSource(_:)",
   "count": 1,
   "reason": "Space on the one archive you chose: its file opened (pinned) as you choose it, so what's listed is that very file, never one swapped in before the listing starts."
  },
@@ -179,7 +179,7 @@
  },
  {
   "file": "Sources/Strata/Views/FileThumbnails.swift",
-  "call": "PreviewArchiveSource(_:)",
+  "call": "ArchiveSource(_:)",
   "count": 1,
   "reason": "A book's thumbnail: its file is pinned the moment the thumbnail is asked for, so a file swapped in before Quick Look answers is never read for its cover. Off the main thread this needs the listing to carry each item's identity to check the pin against (a stat per entry)."
  },

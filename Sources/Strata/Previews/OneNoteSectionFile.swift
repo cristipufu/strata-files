@@ -1,3 +1,4 @@
+import StrataArchives
 import Foundation
 import ImageIO
 
@@ -6,18 +7,18 @@ import ImageIO
 package actor OneNoteSectionFile {
     nonisolated package let pages: [OneNotePage]
     nonisolated package let damaged: Int
-    private let source: PreviewArchiveSource
+    private let source: ArchiveSource
     private let file: FileHandle
     private let reader: OneNoteSectionReader
     /// What `isRaster` found, so a page shown again doesn't read its pictures' first bytes again.
     private var rasters: [OneNoteData: Bool] = [:]
 
-    @concurrent package static func open(_ source: PreviewArchiveSource) async throws -> OneNoteSectionFile {
+    @concurrent package static func open(_ source: ArchiveSource) async throws -> OneNoteSectionFile {
         try Task.checkCancellation()
         return try OneNoteSectionFile(source)
     }
 
-    private init(_ source: PreviewArchiveSource) throws {
+    private init(_ source: ArchiveSource) throws {
         let file = try source.open()
         let reader = try Self.section { try OneNoteSectionReader(file) }
         try source.verify(file)

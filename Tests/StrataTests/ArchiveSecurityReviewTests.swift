@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata

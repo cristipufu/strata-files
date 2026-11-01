@@ -1,9 +1,10 @@
+import StrataArchives
 import Foundation
 import StrataPreviews
 
 /// Owns reads for one Space preview. Its tree is independent of the browser, so exploring it never navigates a pane.
 @MainActor final class PreviewSession {
-    typealias ArchiveReader = @Sendable (URL, ArchiveKind) async throws -> ArchiveListing
+    typealias ArchiveListingReader = @Sendable (URL, ArchiveKind) async throws -> ArchiveListing
 
     enum Change {
         case root
@@ -16,7 +17,7 @@ import StrataPreviews
 
     private let reader: DirectoryReader
     private let isPlaceholder: @Sendable (URL) -> Bool
-    private let archiveReader: ArchiveReader?
+    private let archiveReader: ArchiveListingReader?
     let archiveAccess: PreviewArchiveAccess
     private let rootRead: DirectoryReadSession
     private var childReads: [ObjectIdentifier: DirectoryReadSession] = [:]
@@ -44,7 +45,7 @@ import StrataPreviews
         return root.isFolder || (!root.isDirectory && ArchiveKind(fileName: root.name) != nil)
     }
 
-    init(reader: DirectoryReader, archiveReader: ArchiveReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess(),
+    init(reader: DirectoryReader, archiveReader: ArchiveListingReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess(),
          isPlaceholder: @escaping @Sendable (URL) -> Bool = { _ in false }) {
         let reader = reader.forPreview
         self.isPlaceholder = isPlaceholder
@@ -98,7 +99,7 @@ import StrataPreviews
         isLoading = true
         let read = archiveReader
         let access = archiveAccess
-        do { access.reset(try PreviewArchiveSource(entry.url)) }
+        do { access.reset(try ArchiveSource(entry.url)) }
         catch { self.error = error; isLoading = false; return }
         archiveTask = Task { [weak self] in
             let result: Result<ArchiveListing, Error>
@@ -106,7 +107,7 @@ import StrataPreviews
                 try Task.checkCancellation()
                 if let read { result = .success(try await read(entry.url, kind)) }
                 else {
-                    let listed = PreviewArchiveListing(records: try await access.read(), end: .complete)
+                    let listed = ArchiveReadListing(records: try await access.read(), end: .complete)
                     result = .success(try ArchiveLister.tree(listed, compressed: nil, named: entry.url.lastPathComponent))
                 }
             } catch { result = .failure(error) }
@@ -152,13 +153,13 @@ import StrataPreviews
 
     /// An archive's, as OneNote exports a notebook: copied out no larger than one may be, by the size the worker sends
     /// before its contents, and without asking for a password, so an archive that needs one keeps its order.
-    @concurrent private static func notebook(in files: [(name: String, size: Int64)], source: PreviewArchiveSource)
+    @concurrent private static func notebook(in files: [(name: String, size: Int64)], source: ArchiveSource)
         async throws -> OneNoteContents? {
         guard let index = OneNoteContents.pick(files.map(\.name)), files[index].size <= OneNoteContents.byteLimit else {
             return nil
         }
         let copied = Copied()
-        try await PreviewArchiveReader.stream(source, member: [files[index].name], password: nil) { size in
+        try await ArchiveReader.stream(source, member: [files[index].name], password: nil) { size in
             guard size <= OneNoteContents.byteLimit else { throw OneStoreError.tooLarge }
             return { copied.data.append(contentsOf: $0) }
         }
@@ -177,7 +178,7 @@ import StrataPreviews
         guard let index = OneNoteContents.pick(files.map(\.name)),
               (files[index].size ?? .max) <= OneNoteContents.byteLimit,
               !isPlaceholder(files[index].url) else { return nil }
-        return try await OneNoteContents.open(PreviewArchiveSource(files[index].url))
+        return try await OneNoteContents.open(ArchiveSource(files[index].url))
     }
 
     func close() {

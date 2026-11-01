@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import AppKit
 import ImageIO
 import WebKit
@@ -76,7 +77,7 @@ struct BookPreviewTests {
         for legacy in [false, true] {
             let tree = try TestTree("book.epub", "outside/keep")
             let url = try epub(tree, legacy: legacy), before = tree.snapshot()
-            let book = try await EPUBBook.open(PreviewArchiveSource(url))
+            let book = try await EPUBBook.open(ArchiveSource(url))
             #expect(book.title == "A & B" && book.authors == "Ana, Ion" && book.publisher == "Acme" && book.language == "ro")
             #expect(book.cover == ["Book", "Images", "cover art.png"])
             #expect(book.chapters.map(\.title) == ["First chapter", "Second chapter"])
@@ -123,7 +124,7 @@ struct BookPreviewTests {
             (#"<html><body><img src="../Images/first.png"/></body></html>"#, false, String(localized: "Section \(1)")),
             ("<html><body>Illustrated cover</body></html>", true, String(localized: "Cover")),
         ] {
-            let book = try await EPUBBook.open(PreviewArchiveSource(epub(tree, openingPage: opening, guideCover: guide)))
+            let book = try await EPUBBook.open(ArchiveSource(epub(tree, openingPage: opening, guideCover: guide)))
             #expect(book.chapters.map(\.title) == [expected, "First chapter", "Second chapter"])
         }
         #expect(tree.snapshot() == ["book.epub", "sibling"])
@@ -144,7 +145,7 @@ struct BookPreviewTests {
     @Test func ordinaryNavigationDoctypesPreserveTheBooksChapterTitles() async throws {
         let tree = try TestTree("book.epub", "sibling")
         let url = try epub(tree, navigationHeader: "<!DOCTYPE html>\n")
-        let book = try await EPUBBook.open(PreviewArchiveSource(url))
+        let book = try await EPUBBook.open(ArchiveSource(url))
         #expect(book.chapters.map(\.title) == ["First chapter", "Second chapter"])
         let ncx = #"<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://fixture.invalid/toc.dtd"><ncx><navMap><navPoint><navLabel><text>Part One</text></navLabel></navPoint></navMap></ncx>"#
         #expect(try BookXML.parse(Data(ncx.utf8)).descendants("navLabel").first?.allText == "Part One")
@@ -163,7 +164,7 @@ struct BookPreviewTests {
         let tree = try TestTree("book.epub", "sibling")
         let title = "A" + String(repeating: "\u{301}", count: 2000)
         let url = try epub(tree, chapterTitle: title)
-        let book = try await EPUBBook.open(PreviewArchiveSource(url))
+        let book = try await EPUBBook.open(ArchiveSource(url))
         let header = PreviewContentsHeader(name: "book")
         header.show(book)
         let displayed = try #require(header.contents.itemTitles.first)
@@ -174,7 +175,7 @@ struct BookPreviewTests {
 
     @Test func nativeContentsKeepsDuplicateTitlesAndTheirSpinePositions() async throws {
         let tree = try TestTree("book.epub", "sibling")
-        let book = try await EPUBBook.open(PreviewArchiveSource(epub(tree, chapterTitle: "Notes", secondChapterTitle: "Notes")))
+        let book = try await EPUBBook.open(ArchiveSource(epub(tree, chapterTitle: "Notes", secondChapterTitle: "Notes")))
         let header = PreviewContentsHeader(name: "book")
         header.frame = NSRect(x: 0, y: 0, width: 280, height: 88)
         header.show(book); header.layoutSubtreeIfNeeded()
@@ -210,7 +211,7 @@ struct BookPreviewTests {
 
     @Test func duplicateChapterAssetsShareOneReadAndOneCancellationKeepsTheOtherReader() async throws {
         let tree = try TestTree("book.epub", "sibling")
-        let book = try await EPUBBook.open(PreviewArchiveSource(epub(tree)))
+        let book = try await EPUBBook.open(ArchiveSource(epub(tree)))
         let (events, signal) = AsyncStream<Int>.makeStream()
         let gate = EPUBResourceReadGate(started: signal)
         let document = try EPUBChapterDocument(book: book, chapter: 0, reader: { _, _, _, _ in try await gate.read() })
@@ -234,7 +235,7 @@ struct BookPreviewTests {
 
     @Test func cancellingAllChapterAssetReadersCancelsTheirSharedWork() async throws {
         let tree = try TestTree("book.epub", "sibling")
-        let book = try await EPUBBook.open(PreviewArchiveSource(epub(tree)))
+        let book = try await EPUBBook.open(ArchiveSource(epub(tree)))
         let (events, signal) = AsyncStream<Int>.makeStream()
         let gate = EPUBResourceReadGate(started: signal)
         let document = try EPUBChapterDocument(book: book, chapter: 0, reader: { _, _, _, _ in try await gate.read() })
@@ -258,7 +259,7 @@ struct BookPreviewTests {
 
     @Test func reattachingDuringTheInitialBookReadRestartsItAndRejectsItsOldCompletion() async throws {
         let tree = try TestTree("book.epub", "sibling")
-        let url = try epub(tree), book = try await EPUBBook.open(PreviewArchiveSource(url))
+        let url = try epub(tree), book = try await EPUBBook.open(ArchiveSource(url))
         let (events, signal) = AsyncStream<Int>.makeStream()
         let gate = EPUBBookLoadGate(started: signal)
         let view = EPUBPreviewView(url: url, loader: { _ in try await gate.read() },
@@ -298,9 +299,9 @@ struct BookPreviewTests {
         let environment = try PreviewEnvironment(tree)
         environment.preferences.showIconPreviews = true
         let bytes = try image(), access = PreviewArchiveAccess(reader: { _, member, _, _ in
-            [PreviewArchiveRecord(path: member ?? ["1.png"], kind: 1, size: Int64(bytes.count), modified: .distantPast, body: bytes)]
+            [ArchiveRecord(path: member ?? ["1.png"], kind: 1, size: Int64(bytes.count), modified: .distantPast, body: bytes)]
         })
-        access.reset(try PreviewArchiveSource(tree.url("comic.cbz")))
+        access.reset(try ArchiveSource(tree.url("comic.cbz")))
         let pages = PreviewArchiveThumbnails(access: access), requests = PreviewThumbnails(thumbnails: environment.services.thumbnails)
         let item = PreviewItem(.member(ArchiveNode(name: "1.png", isDirectory: false, size: Int64(bytes.count)), path: ["1.png"]))
         let cell = PreviewGridItem(); _ = cell.view
@@ -326,9 +327,9 @@ struct BookPreviewTests {
 
     @Test func epubSourceReplacementAndOversizedMembersAreRefused() async throws {
         let tree = try TestTree("book.epub", "replacement", "outside/keep")
-        let url = try epub(tree), source = try PreviewArchiveSource(url)
+        let url = try epub(tree), source = try ArchiveSource(url)
         let book = try await EPUBBook.open(source)
-        let oversized = [PreviewArchiveRecord(path: ["big"], kind: 1, size: Int64(TextFile.limit + 1), modified: .distantPast, body: nil)]
+        let oversized = [ArchiveRecord(path: ["big"], kind: 1, size: Int64(TextFile.limit + 1), modified: .distantPast, body: nil)]
         await #expect(throws: (any Error).self) { try await EPUBBook.bytes(source, records: oversized, path: ["big"], limit: TextFile.limit) }
         try FileManager.default.moveItem(at: url, to: tree.url("original.epub"))
         try FileManager.default.moveItem(at: tree.url("replacement"), to: url)
@@ -465,7 +466,7 @@ struct BookPreviewTests {
         let (completed, completionSignal) = AsyncStream<Void>.makeStream()
         var results: [Int] = []
         for (index, name) in ["a.cbz", "b.cbz", "c.cbz"].enumerated() {
-            loader.request(id: index, source: try PreviewArchiveSource(tree.url(name)), pixels: 64) { _ in results.append(index); completionSignal.yield() }
+            loader.request(id: index, source: try ArchiveSource(tree.url(name)), pixels: 64) { _ in results.append(index); completionSignal.yield() }
         }
         var iterator = started.makeAsyncIterator()
         let first = await iterator.next(), second = await iterator.next()
@@ -524,10 +525,10 @@ struct BookPreviewTests {
         let bytes = try image()
         try zip([("1.png", bytes)]).write(to: tree.url("comic.cbz"))
         let access = PreviewArchiveAccess(reader: { source, member, directory, password in
-            if member != nil, password != "fixture" { throw PreviewArchiveError.password }
-            return try await PreviewArchiveReader.read(source, member: member, directory: directory)
+            if member != nil, password != "fixture" { throw ArchiveReadError.password }
+            return try await ArchiveReader.read(source, member: member, directory: directory)
         })
-        access.reset(try PreviewArchiveSource(tree.url("comic.cbz")))
+        access.reset(try ArchiveSource(tree.url("comic.cbz")))
         var prompts = 0
         access.requestPassword = { _ in prompts += 1; return "fixture" }
         let pages = PreviewArchiveThumbnails(access: access), owner = NSObject()

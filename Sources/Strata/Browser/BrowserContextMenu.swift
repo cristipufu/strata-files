@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// What a pane's context menu offers, decided from what's true of the pane and its selection (`Facts`, which the

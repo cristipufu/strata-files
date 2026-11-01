@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import StrataPreviews
@@ -8,7 +9,7 @@ struct OneNoteReaderTests {
     private func reader(_ data: Data, in tree: TestTree, named name: String = "Notes.one",
                         limits: OneNoteSectionReader.Limits = .init()) throws -> OneNoteSectionReader {
         try data.write(to: tree.url(name))
-        return try OneNoteSectionReader(try PreviewArchiveSource(tree.url(name)).open(), limits: limits)
+        return try OneNoteSectionReader(try ArchiveSource(tree.url(name)).open(), limits: limits)
     }
 
     private func failure(_ data: Data, in tree: TestTree) -> OneStoreError? {
@@ -146,7 +147,7 @@ struct OneNoteReaderTests {
         let third = try #require(section.ranges(of: header).dropFirst(2).first)
         section.replaceSubrange(third.upperBound..<third.upperBound + 8, with: OneStoreFixture.ID.le(UInt64(9)))
         try section.write(to: tree.url("Media.one"))
-        let source = try PreviewArchiveSource(tree.url("Media.one")), file = try source.open()
+        let source = try ArchiveSource(tree.url("Media.one")), file = try source.open()
         let reader = try OneNoteSectionReader(file)
         let outlines = try reader.content(of: try #require(reader.pages.first)).outlines.map { $0.flatMap(\.content) }
         guard outlines.count == 6, case .image(let image) = outlines[0].first,
@@ -280,7 +281,7 @@ struct OneNoteReaderTests {
         let section = fixture.section([[space]])
         func properties(_ bytes: [UInt8]) throws -> OneStoreError? {
             try (section + Data(bytes)).write(to: tree.url("Crafted.one"))
-            let store = try OneStore(try PreviewArchiveSource(tree.url("Crafted.one")).open())
+            let store = try OneStore(try ArchiveSource(tree.url("Crafted.one")).open())
             let object = StoredObject(jcid: 0x0006_000E, content: .properties(
                 FileChunk(offset: UInt64(section.count), count: UInt64(bytes.count)), GlobalIDTable()))
             do { _ = try store.properties(of: object); return nil } catch { return error as? OneStoreError }
@@ -309,7 +310,7 @@ extension OneNoteReaderTests {
     /// What a section shows, independent of where its parts sit in the file: each page's title and level, then its
     /// items' text and the bytes of its pictures.
     private func shown(_ data: Data, in tree: TestTree) throws -> [String] {
-        let reader = try reader(data, in: tree), file = try PreviewArchiveSource(tree.url("Notes.one")).open()
+        let reader = try reader(data, in: tree), file = try ArchiveSource(tree.url("Notes.one")).open()
         var shown: [String] = []
         func describe(_ items: [OneNoteElement]) throws {
             for item in items {
@@ -723,7 +724,7 @@ extension OneNoteReaderTests {
         func opens(nodes: Int) -> OneStoreError? {
             var limits = OneStore.Limits()
             limits.nodes = nodes
-            do { _ = try OneStore(try PreviewArchiveSource(tree.url("Notes.one")).open(), limits: limits); return nil }
+            do { _ = try OneStore(try ArchiveSource(tree.url("Notes.one")).open(), limits: limits); return nil }
             catch { return error as? OneStoreError }
         }
         let entries = fixture.store.logEntryCount
@@ -745,7 +746,7 @@ extension OneNoteReaderTests {
             let sets = le(1 << 31) + [1, 0] + le(0x10 << 26 | 1) + le(UInt32(count)) + le(0x11 << 26)
                 + [UInt8](repeating: 0, count: 2 * count)
             try (data + Data(sets)).write(to: tree.url("Arrays.one"))
-            let store = try OneStore(try PreviewArchiveSource(tree.url("Arrays.one")).open(), limits: limits)
+            let store = try OneStore(try ArchiveSource(tree.url("Arrays.one")).open(), limits: limits)
             let object = StoredObject(jcid: 0x0006_000E, content: .properties(
                 FileChunk(offset: UInt64(data.count), count: UInt64(sets.count)), GlobalIDTable()))
             do { _ = try store.properties(of: object); return nil } catch { return error as? OneStoreError }

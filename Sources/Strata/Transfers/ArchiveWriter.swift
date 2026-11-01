@@ -1,3 +1,4 @@
+import StrataArchives
 import Foundation
 import StrataArchiveClient
 import UniformTypeIdentifiers
@@ -143,7 +144,7 @@ package nonisolated final class ArchiveWriter {
 
     // MARK: - Reading the stream
 
-    private var unreadable: Archiver.Failure { Archiver.Failure(message: PreviewArchiveError.unreadable.localizedDescription) }
+    private var unreadable: Archiver.Failure { Archiver.Failure(message: ArchiveReadError.unreadable.localizedDescription) }
 
     /// Makes a byte available; false at the end of the stream.
     private func fill() throws -> Bool {

@@ -96,7 +96,7 @@
   "reason": "The Shelf is the app's, not a window's: it uses the active window's copies (AGENTS.md), and with no window active, the app's, which production windows share."
  },
  {
-  "file": "Sources/Strata/Previews/PreviewArchiveReader.swift",
+  "file": "Sources/Strata/Archives/ArchiveReader.swift",
   "instance": "allowance: .shared",
   "count": 1,
   "reason": "Archive workers are the Mac's to spend: Space previews in every window share two at a time (ArchiveReadAllowance)."

@@ -1,28 +1,6 @@
+import StrataArchives
 import Foundation
 import UniformTypeIdentifiers
-
-/// The archive families Strata recognizes by name: the zip family, whose preview shows its size on disk and whose
-/// `__MACOSX` folder Expand drops, and the formats `tar` reads.
-nonisolated package enum ArchiveKind: Sendable {
-    case zip
-    case tar
-
-    package init?(fileName: String) {
-        let name = fileName.lowercased()
-        let ext = (name as NSString).pathExtension
-        if Self.zipExtensions.contains(ext) {
-            self = .zip
-        } else if Self.tarExtensions.contains(ext) || Self.compressedTarSuffixes.contains(where: name.hasSuffix) {
-            self = .tar
-        } else {
-            return nil
-        }
-    }
-
-    private static let zipExtensions: Set<String> = ["cbz", "zip", "jar", "war", "ear", "aar", "apk", "aab", "ipa", "nupkg", "vsix", "whl", "xpi"]
-    private static let tarExtensions: Set<String> = ["cbr", "cb7", "cbt", "tar", "tgz", "tbz", "tbz2", "txz", "tzst", "tlz", "7z", "rar", "cpio", "xar", "iso", "cab", "onepkg"]
-    private static let compressedTarSuffixes = [".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tar.lz", ".tar.lzma", ".tar.z"]
-}
 
 /// One file or folder inside an archive. Folders implied by deeper paths are created too.
 nonisolated package final class ArchiveNode {
@@ -83,29 +61,24 @@ nonisolated package enum ArchiveLister {
     /// Lists `url` in the archive service's sandboxed worker, as a tree. A link to an archive lists the archive.
     @concurrent
     package static func list(_ url: URL, kind: ArchiveKind, timeout: TimeInterval = timeout) async throws -> ArchiveListing {
-        let source: PreviewArchiveSource, listed: PreviewArchiveListing
+        let source: ArchiveSource, listed: ArchiveReadListing
         do {
-            source = try PreviewArchiveSource(url.resolvingSymlinksInPath())
-            listed = try await PreviewArchiveReader.list(source, timeout: timeout)
+            source = try ArchiveSource(url.resolvingSymlinksInPath())
+            listed = try await ArchiveReader.list(source, timeout: timeout)
         } catch let error as POSIXError where error.code == .ESTALE {
             // The archive changed before it could be pinned, as one still downloading can.
             throw PreviewError.message(reason(.unreadable, named: url.lastPathComponent), symbol: "archivebox")
-        } catch let error as PreviewArchiveError {
+        } catch let error as ArchiveReadError {
             throw PreviewError.message(reason(error, named: url.lastPathComponent), symbol: "archivebox")
         }
         try Task.checkCancellation()
         return try tree(listed, compressed: kind == .zip ? source.size : nil, named: url.lastPathComponent)
     }
 
-    /// Why an archive called `name` can't be read without its password: Strata's listings never ask for one.
-    package static func passwordProtected(_ name: String) -> String {
-        String(localized: "“\(name)” is password-protected. Open it with Archive Utility to enter the password.")
-    }
-
     /// The listing of the archive called `name` as a tree. A listing cut short shows what it read, and says why: past
     /// its limits (time, memory, entries) it shows the first part, and a password, an unsafe entry or a failed read says
     /// so.
-    package static func tree(_ listed: PreviewArchiveListing, compressed: Int64?, named name: String) throws -> ArchiveListing {
+    package static func tree(_ listed: ArchiveReadListing, compressed: Int64?, named name: String) throws -> ArchiveListing {
         if listed.records.isEmpty {
             let message = switch listed.end {
             case .complete: String(localized: "This archive is empty.")
@@ -146,9 +119,9 @@ nonisolated package enum ArchiveLister {
                               compressed: compressed, note: note)
     }
 
-    private static func reason(_ error: PreviewArchiveError, named name: String) -> String {
+    private static func reason(_ error: ArchiveReadError, named name: String) -> String {
         switch error {
-        case .password: passwordProtected(name)
+        case .password: ArchiveReadError.passwordProtected(name)
         case .limit, .unsafe, .encryption: error.localizedDescription
         case .unreadable, .needsExtraction: String(localized: "This archive couldn’t be read.")
         }

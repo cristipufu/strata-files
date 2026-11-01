@@ -1,3 +1,4 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 import StrataArchiveClient
@@ -226,7 +227,7 @@ struct ArchiveExtractTests {
         for (label, metadata) in cases {
             let tree = try TestTree("out/")
             let archive = try await tarWithMetadata(metadata, for: "file", in: tree)
-            await #expect(throws: Archiver.Failure(message: PreviewArchiveError.unreadable.localizedDescription), "\(label)") {
+            await #expect(throws: Archiver.Failure(message: ArchiveReadError.unreadable.localizedDescription), "\(label)") {
                 _ = try await extract(archive, into: tree.url("out"))
             }
             #expect(tree.snapshot().filter { $0.hasPrefix("out") } == ["out/"], "\(label)")
@@ -236,7 +237,7 @@ struct ArchiveExtractTests {
     @Test func theWorkerRefusesAnEntryNamedToClimbOut() async throws {
         let tree = try TestTree("payload/", "payload/escaped", "work/", "work/out/")
         try await tar(["-P", "-s", ",^\\./escaped,../../escaped,", "-cf", "../climb.tar", "./escaped"], in: tree.url("payload"))
-        await #expect(throws: Archiver.Failure(message: PreviewArchiveError.unsafe.localizedDescription)) {
+        await #expect(throws: Archiver.Failure(message: ArchiveReadError.unsafe.localizedDescription)) {
             _ = try await extract(tree.url("climb.tar"), into: tree.url("work/out"))
         }
         #expect(tree.snapshot() == ["climb.tar", "payload/", "payload/escaped", "work/", "work/out/"])
@@ -248,10 +249,10 @@ struct ArchiveExtractTests {
         let manifest = tree.url("manifest.tar")
         try Data("#mtree\n./leak type=file contents=/etc/hosts\n".utf8).write(to: manifest)
         await #expect(throws: Archiver.Failure.self) { _ = try await extract(manifest, into: tree.url("out")) }
-        let listed = try await PreviewArchiveReader.list(PreviewArchiveSource(manifest), timeout: 20)
+        let listed = try await ArchiveReader.list(ArchiveSource(manifest), timeout: 20)
         #expect(listed.records.isEmpty)
         await #expect(throws: (any Error).self) {
-            _ = try await PreviewArchiveReader.read(PreviewArchiveSource(manifest), member: ["leak"])
+            _ = try await ArchiveReader.read(ArchiveSource(manifest), member: ["leak"])
         }
         #expect(tree.snapshot() == ["manifest.tar", "out/"])
     }
@@ -372,9 +373,9 @@ struct ArchiveExtractTests {
         let surveyed = await Archiver.inspect(tree.url("own.zip"))
         #expect(surveyed.complete && surveyed.entries == 6 && !surveyed.encrypted)
         // Copied out alone, an item read that way would leave its Mac metadata behind: it takes a full Extract.
-        let mixed = try PreviewArchiveSource(tree.url("mixed.zip"))
-        await #expect(throws: PreviewArchiveError.needsExtraction) {
-            try await PreviewArchiveReader.read(mixed, member: ["mixed", "file"])
+        let mixed = try ArchiveSource(tree.url("mixed.zip"))
+        await #expect(throws: ArchiveReadError.needsExtraction) {
+            try await ArchiveReader.read(mixed, member: ["mixed", "file"])
         }
         // Only libarchive tells Mac metadata from a zip's own items, from an intact zip's directory: these are all kept.
         let archives = [tree.url("own.zip"), try damaged(tree.url("own.zip")), tree.url("lower.zip"),
@@ -443,7 +444,7 @@ struct ArchiveExtractTests {
         try whole.prefix(whole.count / 2).write(to: damaged)
         await #expect(throws: Archiver.Failure.self) { _ = try await extract(damaged, into: tree.url("out")) }
         try await run("zip", ["-q", "-P", "secret", "../locked.zip", "a.txt"], in: tree.url("payload"))
-        await #expect(throws: Archiver.Failure(message: ArchiveLister.passwordProtected("locked.zip"))) {
+        await #expect(throws: Archiver.Failure(message: ArchiveReadError.passwordProtected("locked.zip"))) {
             _ = try await extract(tree.url("locked.zip"), into: tree.url("out"))
         }
         #expect(tree.snapshot() == ["damaged.tar.gz", "locked.zip", "out/", "payload/", "payload/a.txt", "payload/b.txt"])
@@ -453,7 +454,7 @@ struct ArchiveExtractTests {
         let tree = try TestTree("payload/")
         try Data(count: 8 << 20).write(to: tree.url("payload/zeros"))
         try await tar(["-cf", "../big.tar", "zeros"], in: tree.url("payload"))
-        let source = try PreviewArchiveSource(tree.url("big.tar"))
+        let source = try ArchiveSource(tree.url("big.tar"))
         struct Refused: Error {}
         // The worker is still writing, its pipe full, when the writer refuses what it read.
         let outcome = await TransferWorker(label: "strata-test-unpack-stop").run {
@@ -461,7 +462,7 @@ struct ArchiveExtractTests {
                 let file = try source.open()
                 defer { try? file.close() }
                 let reader = try PipeReader()
-                return try PreviewArchiveReader.unpack(file, reader: reader) { output in
+                return try ArchiveReader.unpack(file, reader: reader) { output in
                     var buffer = [UInt8](repeating: 0, count: 4096)
                     _ = try buffer.withUnsafeMutableBytes { try reader.readSome(output, into: $0) }
                     throw Refused()
@@ -482,7 +483,7 @@ struct ArchiveExtractTests {
             let input = try #require(try ArchiveService.requestPipe(request))
             defer { try? input.close() }
             try #require(lseek(archive.fileDescriptor, 0, SEEK_SET) == 0)
-            let run = try await ProcessRunner.run(PreviewArchiveReader.harness.path, unpacking ? ["--unpacking"] : [],
+            let run = try await ProcessRunner.run(ArchiveReader.harness.path, unpacking ? ["--unpacking"] : [],
                                                   timeout: 60, standardInput: input, file: archive)
             #expect(run.status == ArchiveService.Status.unreadable.rawValue, "\(mode) \(unpacking)")
         }

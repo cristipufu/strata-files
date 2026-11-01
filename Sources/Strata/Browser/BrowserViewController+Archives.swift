@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// Compress (Finder's File ▸ Compress) and Extract, run as jobs in the Transfers list.

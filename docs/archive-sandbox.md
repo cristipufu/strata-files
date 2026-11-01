@@ -50,7 +50,8 @@ Strata.app
 ```
 
 In the source tree, the service is `Sources/StrataArchiveService`, the worker `Sources/StrataArchiveWorker` with the
-parser in `Sources/CArchivePreview`, and the app side `Sources/StrataArchiveClient`, used by `PreviewArchiveReader`.
+parser in `Sources/CArchivePreview`, and the app side `Sources/StrataArchiveClient`, used by `ArchiveReader` in the `StrataArchives` library. Transfers and preview UI depend on that library; the
+file layer does not depend on the preview interface.
 What the service and its workers share, their statuses and the sandbox check, is `Sources/CArchiveSandbox`: the service
 links only that, so the parser isn't even in its process.
 

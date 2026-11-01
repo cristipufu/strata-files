@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 import ImageIO
 import QuickLookThumbnailing
@@ -28,7 +29,7 @@ final class FileThumbnails {
         var entry: FileEntry
         var request: QLThumbnailGenerator.Request
         var generation: Int
-        var coverSource: PreviewArchiveSource?
+        var coverSource: ArchiveSource?
         var callbacks: [Int: Observer]
     }
 
@@ -161,7 +162,7 @@ final class FileThumbnails {
             keysByPath.removeAll(keepingCapacity: true)
         }
         keysByPath[entry.url.path, default: []].insert(key)
-        let coverSource = BookFormat.hasCover(entry.url) ? try? PreviewArchiveSource(entry.url) : nil
+        let coverSource = BookFormat.hasCover(entry.url) ? try? ArchiveSource(entry.url) : nil
         pending[key] = Pending(entry: entry, request: request, generation: generation, coverSource: coverSource,
                                callbacks: [ticket.id: Observer(image: completion, finished: finished)])
         generate(request) { [weak self] original, cancelled in
