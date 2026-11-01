@@ -268,12 +268,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A folder opens; a file (or package) is shown selected in its folder.
             let target = URL(filePath: expanded, directoryHint: .inferFromPath)
             Task { [weak controller] in
-                let opening = await FileEntry.opening(target)
+                let (opening, located) = await FileEntry.locate(target)
                 guard let controller, !controller.isClosed else { return }
                 if opening == .item {
-                    controller.navigate(to: target.deletingLastPathComponent(), select: target)
+                    controller.navigate(to: located.deletingLastPathComponent(), select: located)
                 } else {
-                    controller.navigate(to: target)
+                    controller.navigate(to: located)
                 }
             }
         case "recents":

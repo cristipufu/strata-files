@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 // strata — open folders and searches in Strata from a terminal.
 //
@@ -78,7 +79,7 @@ func absolute(_ path: String) -> URL {
         writeError("strata: : no such file or directory\n")
         exit(1)
     }
-    return URL(fileURLWithPath: expanded, relativeTo: cwd).standardizedFileURL
+    return TypedPath.location(of: URL(fileURLWithPath: expanded, relativeTo: cwd))
 }
 
 guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {

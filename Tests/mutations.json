@@ -3049,7 +3049,7 @@
   },
   {
     "file": "Strata/Remote/RemoteCopyStore.swift",
-    "find": "self.root = CopyRoot.spelled(root)",
+    "find": "self.root = root.lexicallyStandardized",
     "replace": "self.root = root.standardizedFileURL",
     "rule": "Remote environment uncreated cache roots survive native path normalization",
     "tests": "RemoteCopyOwnershipTests/aMissingCopyRootKeepsItsIdentityWhenNativeNavigationNormalizesItsPath"
@@ -7332,8 +7332,8 @@
   },
   {
     "file": "Strata/Toolbar/PathBar.swift",
-    "find": "            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
-    "replace": "            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing else { return }",
+    "find": "            let (opening, located) = await FileEntry.locate(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }",
+    "replace": "            let (opening, located) = await FileEntry.locate(URL(filePath: path, directoryHint: .inferFromPath))\n            guard let self, !Task.isCancelled, isEditing else { return }",
     "rule": "Path bar: Return acts on an answer for text that was typed over",
     "tests": "PathBarDiskTests/returnOpensAFolderOrShowsAFileAndANewerTextWins"
   },
@@ -7416,10 +7416,17 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController+Palette.swift",
-    "find": "                go(.folder(url.lexicallyStandardized), in: typedIn)",
-    "replace": "                go(.folder(url.lexicallyStandardized))",
+    "find": "                go(.folder(located), in: typedIn)",
+    "replace": "                go(.folder(located))",
     "rule": "A typed path goes to whichever pane has focus when it's read, not the one it was typed in",
     "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse"
+  },
+  {
+    "file": "Strata/Model/FileEntry.swift",
+    "find": "        await OwnThread.run { (readOpening(url), TypedPath.location(of: url)) }",
+    "replace": "        await OwnThread.run { (readOpening(url), url.standardizedFileURL) }",
+    "rule": "A typed path with a .. that ends at a link shows what the link points to instead of the link",
+    "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
   },
   {
     "file": "Strata/Window/Workspaces.swift",

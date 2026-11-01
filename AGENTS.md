@@ -272,7 +272,8 @@ These apply everywhere below; the sections that follow add only what is specific
   `url.lexicallyStandardized`, never `standardizedFileURL` on the main thread (the main-thread audit fails on one): it
   stats a /private path and resolves the links on the way to a `..`, so it can wait on a disk, and its answer changes
   once an item is gone. Off the main thread it stays where resolving those links is the point: a check that a path
-  from a document, an archive or a plan stays inside its folder.
+  from a document, an archive or a plan stays inside its folder, where a typed path really is (`FileEntry.locate`), a
+  submodule's relative `gitdir:`.
 - **`DirectoryReadSession`** schedules folder reads: each presentation owns its generation, rejects late success and
   error responses, and invalidates reads when removed or replaced by results. An explicit Reload's invalidation and
   the listing that follows are one cancellable request: check cancellation after invalidation, and an old Reload never

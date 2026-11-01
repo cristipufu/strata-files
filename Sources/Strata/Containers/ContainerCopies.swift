@@ -49,7 +49,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
         root: SecureStorage.Context.shared.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory))
 
     package init(root: URL) {
-        let resolved = CopyRoot.spelled(root)
+        let resolved = root.lexicallyStandardized
         self.root = resolved
         self.rootPath = resolved.path
     }

@@ -429,9 +429,9 @@ enum DockSearchItems {
     /// Shows a folder in Strata; anything else, selected in its folder.
     static func show(_ url: URL) {
         Task {
-            let opening = await FileEntry.opening(url)
+            let (opening, located) = await FileEntry.locate(url)
             guard let delegate = NSApp.delegate as? AppDelegate else { return }
-            if opening == .folder { delegate.showFolder(url) } else { delegate.revealInStrata([url]) }
+            if opening == .folder { delegate.showFolder(located) } else { delegate.revealInStrata([located]) }
         }
     }
 

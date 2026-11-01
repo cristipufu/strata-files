@@ -12,7 +12,7 @@ package nonisolated struct RemoteCopyStore: Sendable {
         server: { RemoteRegistry.shared.server(id: $0) })
 
     package init(root: URL, server: @escaping @Sendable (String) -> RemoteServer?) {
-        self.root = CopyRoot.spelled(root)
+        self.root = root.lexicallyStandardized
         rootPath = self.root.path
         lookup = server
     }

@@ -56,6 +56,12 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         await OwnThread.run { readOpening(url) }
     }
 
+    /// What a typed or handed path opens as, and where it is: its `..` taken after the links on the way, as the kernel
+    /// takes them when it checks what the path opens, so the place shown is the place checked.
+    package static func locate(_ url: URL) async -> (opening: Opening, url: URL) {
+        await OwnThread.run { (readOpening(url), TypedPath.location(of: url)) }
+    }
+
     /// The same, read where it's called.
     package static func readOpening(_ url: URL) -> Opening {
         guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {

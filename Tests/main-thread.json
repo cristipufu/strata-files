@@ -78,14 +78,6 @@
   "reason": "The one item about to be previewed, checked just before a renderer opens it by path (it can't be handed a descriptor): a pipe swapped in for it would hang the renderer, a link would show what it points to."
  },
  {
-  "helper": "ContainerCopyStore(root:)",
-  "reason": "Strata's own cache folder for containers' copies, looked at once when a window's services are made: in its caches on the startup disk."
- },
- {
-  "helper": "RemoteCopyStore(root:)",
-  "reason": "Strata's own cache folder for servers' copies, looked at once when a window's services are made: in its caches on the startup disk."
- },
- {
   "helper": "Prefs.registerTestCleanup()",
   "reason": "Only in its `atexit` callback, as the process ends: the test preference domain's own file."
  },

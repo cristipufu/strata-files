@@ -430,7 +430,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         let path = resolvedPath(), text = field.stringValue, current = url
         suggesting?.cancel()
         suggesting = Task { [weak self] in
-            let opening = await FileEntry.opening(URL(filePath: path, directoryHint: .inferFromPath))
+            let (opening, located) = await FileEntry.locate(URL(filePath: path, directoryHint: .inferFromPath))
             guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
             guard opening != .missing else {
                 if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
@@ -439,7 +439,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 if let best = found.first { go(to: best) } else { shake() }
                 return
             }
-            let target = URL(filePath: path, directoryHint: opening == .folder ? .isDirectory : .notDirectory).lexicallyStandardized
+            let target = URL(filePath: located.path, directoryHint: opening == .folder ? .isDirectory : .notDirectory)
             endEditing(restoreFocus: true)
             if opening == .folder {
                 onNavigate?(target, nil)

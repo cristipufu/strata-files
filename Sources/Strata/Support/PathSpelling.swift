@@ -7,8 +7,21 @@ package nonisolated enum PathSpelling {
     private static let aliases = ["/var", "/tmp", "/etc"]
 
     /// As `standardizedFileURL` spells it (no `.`, `..` or doubled slash; /private/var as /var), without the stat that
-    /// makes its answer depend on whether the item exists.
-    package static func short(_ url: URL) -> String { short(url.standardized.path) }
+    /// makes its answer depend on whether the item exists, or the links it resolves on the way to a `..`.
+    package static func short(_ url: URL) -> String { short(lexicalPath(url)) }
+
+    /// `url`'s absolute path, decoded, with each `.`, `..` and doubled slash taken out by its letters.
+    private static func lexicalPath(_ url: URL) -> String {
+        var parts: [Substring] = []
+        for part in url.absoluteURL.path.split(separator: "/") {
+            switch part {
+            case ".": continue
+            case "..": if !parts.isEmpty { parts.removeLast() }
+            default: parts.append(part)
+            }
+        }
+        return "/" + parts.joined(separator: "/")
+    }
 
     package static func short(_ path: String) -> String {
         for alias in aliases where path == "/private" + alias || path.hasPrefix("/private" + alias + "/") {

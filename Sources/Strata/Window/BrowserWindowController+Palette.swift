@@ -27,13 +27,13 @@ extension BrowserWindowController {
     func go(toPath url: URL) -> Task<Void, Never> {
         let typedIn = pane, revision = pane.browser.navigationRevision
         return Task { [weak self, weak typedIn] in
-            let isFolder = await FileEntry.opening(url) == .folder
+            let (opening, located) = await FileEntry.locate(url)
             guard let self, let typedIn, panes.contains(where: { $0 === typedIn }),
                   typedIn.browser.navigationRevision == revision else { return }
-            if isFolder {
-                go(.folder(url.lexicallyStandardized), in: typedIn)
+            if opening == .folder {
+                go(.folder(located), in: typedIn)
             } else {
-                go(.folder(url.deletingLastPathComponent().lexicallyStandardized), in: typedIn, select: url)
+                go(.folder(located.deletingLastPathComponent()), in: typedIn, select: located)
             }
         }
     }

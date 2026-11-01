@@ -241,6 +241,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "StrataCLI",
+            dependencies: ["StrataSupport"],
             path: "Sources/StrataCLI",
             linkerSettings: [.linkedFramework("AppKit")]
         ),
