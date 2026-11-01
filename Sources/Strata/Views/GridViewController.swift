@@ -472,10 +472,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
-        if let lead, indexPaths.contains(IndexPath(item: lead, section: 0)),
-           !collectionView.selectionIndexPaths.contains(IndexPath(item: lead, section: 0)) {
-            self.lead = collectionView.selectionIndexPaths.map(\.item).max()
-        }
+        lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths)
         reportSelection()
     }
 

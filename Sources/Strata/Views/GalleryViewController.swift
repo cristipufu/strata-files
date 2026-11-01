@@ -532,9 +532,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
-        if let lead, !strip.selectionIndexPaths.contains(IndexPath(item: lead, section: 0)) {
-            self.lead = strip.selectionIndexPaths.map(\.item).max()
-        }
+        lead = Self.lead(lead, keptIn: strip.selectionIndexPaths)
         reportSelection()
     }
 

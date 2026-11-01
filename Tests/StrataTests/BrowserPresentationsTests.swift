@@ -110,6 +110,16 @@ struct BrowserPresentationsTests {
         #expect(tree.snapshot() == ["a.txt", "shown/", "shown/inner/"])
     }
 
+    /// Icons and Gallery keep the keyboard's lead on a selected item, so arrows never start from one that isn't.
+    @Test func theKeyboardsLeadStaysOnASelectedItem() {
+        func indexes(_ items: [Int]) -> Set<IndexPath> { Set(items.map { IndexPath(item: $0, section: 0) }) }
+        #expect(GridViewController.lead(2, keptIn: indexes([0, 2])) == 2)
+        #expect(GridViewController.lead(2, keptIn: indexes([0, 1, 4])) == 4)
+        #expect(GalleryViewController.lead(3, keptIn: indexes([1])) == 1)
+        #expect(GalleryViewController.lead(3, keptIn: []) == nil)
+        #expect(GridViewController.lead(nil, keptIn: indexes([1])) == nil)
+    }
+
     @Test func directoryContextChangesEvenWhenTheNewFolderIsEmpty() throws {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("old/a.txt", "new/")

@@ -193,6 +193,13 @@ extension FileItemCollection {
         return []
     }
 
+    /// The keyboard's lead once the selection is `selection`: it stays while it's selected, else it's the last item
+    /// selected, so arrows never start from an item that isn't.
+    static func lead(_ lead: Int?, keptIn selection: Set<IndexPath>) -> Int? {
+        guard let lead, !selection.contains(IndexPath(item: lead, section: 0)) else { return lead }
+        return selection.map(\.item).max()
+    }
+
     /// Where renaming `url` starts: any rename under way cancelled, and the item, selected.
     func prepareRename(_ url: URL) -> (index: Int, entry: FileEntry)? {
         cancelRename()
