@@ -273,9 +273,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
               let target = other.browser.targetDirectory else { return }
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
-        // Onto a server: copied there (or moved within it), through the server.
-        if services.remote.copies.contains(target) { return other.browser.serverCommands.copy(urls, into: target, move: move) }
-        guard !ReadOnlyCopies.contains(target, copies: services.copies), !Trash.isTrash(target) else { return }
+        switch OtherPaneTransfer.route(into: target, copies: services.copies, servers: services.remote.copies) {
+        case .server: return other.browser.serverCommands.copy(urls, into: target, move: move)
+        case .refused: return
+        case .queue: break
+        }
         let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
         job.onFinish = { [weak self, weak other] job in
@@ -340,23 +342,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if bar.url != shown || bar.isShowingTitle { bar.url = shown }
             updateGitChrome(on: bar, destination: p.destination, location: shown)
         case .search(let text, _):
-            if bar.url != p.location { bar.url = p.location }
-            bar.gitRoot = nil
-            bar.branchPill.model = nil
-            bar.showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
-                              : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
-                          symbol: "magnifyingglass")
+            showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
+                          : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
+                      symbol: "magnifyingglass", on: bar, for: p)
         case .duplicates:
-            if bar.url != p.location { bar.url = p.location }
-            bar.gitRoot = nil
-            bar.branchPill.model = nil
-            bar.showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square")
+            showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square",
+                      on: bar, for: p)
         case .recents:
-            if bar.url != p.location { bar.url = p.location }
-            bar.gitRoot = nil
-            bar.branchPill.model = nil
-            bar.showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock")
+            showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock", on: bar, for: p)
         }
+    }
+
+    /// A pane showing results: its path bar keeps the pane's place, without a repository, under the results' title.
+    private func showTitle(_ title: String, symbol: String, on bar: PathBar, for p: Pane) {
+        if bar.url != p.location { bar.url = p.location }
+        bar.gitRoot = nil
+        bar.branchPill.model = nil
+        bar.showTitle(title, symbol: symbol)
     }
 
     // MARK: - Navigation

@@ -7988,5 +7988,19 @@
     "replace": "        let others = trashes.filter { $0.count > 0 }",
     "rule": "The notice over a Trash names the Trash shown as another disk's",
     "tests": "FolderNoticeTests/overATrashOnlyOtherDisksTrashesThatHoldSomethingAreNamed"
+  },
+  {
+    "file": "Strata/Window/OtherPaneTransfer.swift",
+    "find": "        guard !ReadOnlyCopies.contains(target, copies: copies), !Trash.isTrash(target) else { return .refused }",
+    "replace": "        guard !ReadOnlyCopies.contains(target, copies: copies) else { return .refused }",
+    "rule": "Copy to Other Pane copies the selection into a Trash shown there",
+    "tests": "OtherPaneTransferTests/aCopyGoesThroughTheServerTheQueueOrNowhereByWhereTheOtherPaneIs"
+  },
+  {
+    "file": "Strata/Window/OtherPaneTransfer.swift",
+    "find": "        guard !ReadOnlyCopies.contains(target, copies: copies), !Trash.isTrash(target) else { return .refused }",
+    "replace": "        guard !Trash.isTrash(target) else { return .refused }",
+    "rule": "Copy to Other Pane copies the selection into a read-only copy shown there",
+    "tests": "OtherPaneTransferTests/aCopyGoesThroughTheServerTheQueueOrNowhereByWhereTheOtherPaneIs"
   }
 ]
