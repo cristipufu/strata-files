@@ -254,6 +254,8 @@ struct ProviderFetchTests {
         await gate.started(1)
         browser = nil
         #expect(released == nil)
+        // The pane's fetches went with it, and so did their small read.
+        #expect(work.isCancelled)
         await gate.finish()
         await work.value
         #expect(actions == 0)

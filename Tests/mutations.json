@@ -8121,5 +8121,26 @@
     "replace": "",
     "rule": "The window loses track of its path bar's toolbar item, so it never hides it for dual-pane address bars",
     "tests": "BrowserPreferencesTests"
+  },
+  {
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "        selection?.cancel()\n        action?.cancel()\n    }\n",
+    "replace": "        selection?.cancel()\n    }\n",
+    "rule": "A small read keeps going after its pane has closed",
+    "tests": "ProviderFetchTests/aSmallReadDoesNotRetainAClosedBrowser"
+  },
+  {
+    "file": "Strata/Browser/PaneResults.swift",
+    "find": "            summary.isEmpty ? [] : [summary]\n",
+    "replace": "            [summary]\n",
+    "rule": "An empty results summary still takes a place in the status bar",
+    "tests": "PaneResultsTests/aCappedSearchSaysSoAndASummaryIsSaidInsteadOfACount"
+  },
+  {
+    "file": "Strata/Browser/PaneResults.swift",
+    "find": "        list.tableColumn(withIdentifier: .kind)?.width = 120\n",
+    "replace": "",
+    "rule": "Showing results leaves Kind its full width, so Where has no room",
+    "tests": "PaneResultsTests/whereBorrowsDateAndKindsWidthAndGivesItBackOnce"
   }
 ]
