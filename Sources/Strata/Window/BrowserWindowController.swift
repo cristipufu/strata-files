@@ -378,7 +378,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// The containers of the engine Strata found, as folders.
-    func openContainers() {
+    private func openContainers() {
         guard let engine = services.containerStore.engine, let folder = try? services.copies.containerCopies.prepare(engine) else {
             Sounds.beep()
             return

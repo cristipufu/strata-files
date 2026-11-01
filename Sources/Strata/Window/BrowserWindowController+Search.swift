@@ -12,7 +12,7 @@ extension BrowserWindowController {
     }
 
     /// The toolbar field searches the whole index; typing in the list still filters the current folder.
-    func searchTextChanged(_ text: String) {
+    private func searchTextChanged(_ text: String) {
         let query = text.trimmingCharacters(in: .whitespaces)
         if query.isEmpty {
             if case .search = destination { leaveSearch() }

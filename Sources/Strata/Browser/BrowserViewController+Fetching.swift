@@ -3,7 +3,7 @@ import Quartz
 
 /// Server and container files are fetched through the window's providers before opening or previewing.
 extension BrowserViewController {
-    static let selectionPrefetchLimit: Int64 = 256 << 20
+    private static let selectionPrefetchLimit: Int64 = 256 << 20
 
     /// Starts fetching the selected files that are still placeholders (a few, up to a size: Select All doesn't read a
     /// whole folder). A new selection stops the last one's.

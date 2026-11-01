@@ -18,7 +18,7 @@ extension BrowserViewController: ArchiveOpeningPane {
         preferences.openArchivesAsFolders && !entry.isFolder && Self.browsableByDefault(entry.name)
     }
 
-    static func browsableByDefault(_ name: String) -> Bool {
+    private static func browsableByDefault(_ name: String) -> Bool {
         let lower = name.lowercased()
         let ext = (lower as NSString).pathExtension
         if ["zip", "tar", "tgz", "tbz", "tbz2", "txz", "tzst", "tlz", "7z", "rar"].contains(ext) { return true }

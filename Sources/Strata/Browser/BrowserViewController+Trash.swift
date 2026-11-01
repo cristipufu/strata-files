@@ -8,7 +8,7 @@ extension BrowserViewController {
     }
 
     /// The selected items that sit directly in a Trash.
-    var selectedTrashItems: [URL] {
+    private var selectedTrashItems: [URL] {
         selectedURLs.filter(Trash.contains)
     }
 

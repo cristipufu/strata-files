@@ -184,7 +184,7 @@ extension BrowserViewController {
     }
 
     /// Rename N Items…: a rule for all of them, previewed live, applied as one undoable step.
-    func renameItems() {
+    private func renameItems() {
         let urls = selectedURLs
         guard urls.count > 1, !isInsideArchive, !isOnServer, !isLoadingFolder else { return }
         let revision = navigationRevision
@@ -272,7 +272,7 @@ extension BrowserViewController {
 
     /// Where to point a popover about the selection: the first selected item on screen (not under the toolbar), or
     /// the top middle of the folder when none is. The edge says which way the popover should open.
-    func selectionAnchor() -> (rect: NSRect, edge: NSRectEdge) {
+    private func selectionAnchor() -> (rect: NSRect, edge: NSRectEdge) {
         let area = view.safeAreaRect
         if let window = view.window {
             let anchor = selectedURLs.prefix(200).lazy.compactMap { [self] url -> NSRect? in
@@ -451,7 +451,7 @@ extension BrowserViewController {
         }
     }
 
-    func presentFileError(_ error: Error) {
+    private func presentFileError(_ error: Error) {
         guard let window = view.window else { return }
         NSAlert(error: error).beginSheetModal(for: window)
         refresh()

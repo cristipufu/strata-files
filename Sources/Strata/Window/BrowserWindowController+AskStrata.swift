@@ -6,7 +6,7 @@ extension BrowserWindowController {
         presentAskStrata(instruction: nil)
     }
 
-    func presentAskStrata(instruction: String?) {
+    private func presentAskStrata(instruction: String?) {
         guard let window, window.attachedSheet == nil, !browser.isInsideArchive else { return }
         let urls = browser.selectedURLs.isEmpty ? browser.topLevelEntries.map(\.url) : browser.selectedURLs
         guard !urls.isEmpty else { return }

@@ -706,7 +706,7 @@ final class BrowserViewController: NSViewController {
     var selectedURLs: [URL] { selectedEntries.map(\.url) }
     var itemCount: Int { nodes.count }
     var topLevelEntries: [FileEntry] { nodes.map(\.entry) }
-    var visibleCount: Int { rows.count }
+    private var visibleCount: Int { rows.count }
 
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
