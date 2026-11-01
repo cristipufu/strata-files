@@ -74,8 +74,8 @@ struct ScratchVolumeTests {
         }
         let root = tree.root
         let cleanup = Mutex<[String]>([])
-        let (problems, attached, mount, device, left) = try await TestWork.run {
-            () -> ([String], [String], String, String?, [String]) in
+        let (problems, attached, mount, device, listed, left) = try await TestWork.run {
+            () -> ([String], [String], String, String?, String, [String]) in
             let folders = ["strata-volume-ended", "strata-volume-running"].map { root.appending(path: $0) }
             // This test's own images, whatever happened, mounted or not.
             defer {
@@ -105,17 +105,19 @@ struct ScratchVolumeTests {
             let attached = ours(try ScratchVolume.attachedImagePaths())
             // The running disk detaches by the whole disk its image's path names.
             let image = folders[1].appending(path: "disk.sparseimage").path
-            let device = ScratchVolume.wholeDisk(of: image, in: try ScratchVolume.attachedImages())
+            let device = try ScratchVolume.wholeDisk(ofAttached: image)
+            let listed = ScratchVolume.image(at: image, in: try ScratchVolume.attachedImages()).map { "\($0)" } ?? "not listed"
             try ScratchVolume.detach(image: image)
             let left = ours(try ScratchVolume.attachedImagePaths())
-            return (problems, attached, mount, device, left)
+            return (problems, attached, mount, device, listed, left)
         }
         // The disk mounted in the ended folder is detached and the folder removed; the running one's disk is never
         // reached through a link, and the folder holding the link is left.
         #expect(cleanup.withLock { $0 }.isEmpty)
         #expect(problems.count == 1 && problems.allSatisfy { $0.hasSuffix("strata-volume-linked, which holds dmg.link") })
         #expect(attached.count == 1 && attached.allSatisfy { $0.hasSuffix("strata-volume-running/disk.sparseimage") })
-        #expect(device != nil && left.isEmpty)
+        // What hdiutil listed of the image just after looking for its disk, should it ever be missing.
+        #expect(device != nil && left.isEmpty, "\(listed)")
         #expect(tree.snapshot() == ["strata-volume-linked/", "strata-volume-linked/dmg.link -> strata-volume-running/\(mount)",
                                     "strata-volume-linked/owner", "strata-volume-running/",
                                     "strata-volume-running/disk.sparseimage", "strata-volume-running/owner"])

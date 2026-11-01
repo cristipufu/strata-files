@@ -161,12 +161,23 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         try attachedImages().compactMap { $0["image-path"] as? String }
     }
 
+    /// The disk the attached image at `path` is, once hdiutil lists it: an image can be listed before its disks are, on
+    /// a busy machine, and a detach that looked then would find nothing to detach. Nil when the image isn't attached.
+    static func wholeDisk(ofAttached path: String, attempts: Int = 40,
+                          pause: () -> Void = { Thread.sleep(forTimeInterval: 0.25) }) throws -> String? {
+        for _ in 0..<attempts {
+            let images = try attachedImages()
+            guard image(at: path, in: images) != nil else { return nil }
+            if let disk = wholeDisk(of: path, in: images) { return disk }
+            pause()
+        }
+        return nil
+    }
+
     /// The disk the image at `path` is attached as, among `images`: its own, which carries its partition scheme, not a
     /// container the system made from it, nor a slice of either.
     static func wholeDisk(of path: String, in images: [[String: Any]]) -> String? {
-        let ours = spellings(path)
-        guard let image = images.first(where: { ($0["image-path"] as? String).map { !spellings($0).isDisjoint(with: ours) } == true })
-        else { return nil }
+        guard let image = image(at: path, in: images) else { return nil }
         let entities = image["system-entities"] as? [[String: Any]] ?? []
         return entities.lazy.compactMap { entity -> String? in
             guard let device = entity["dev-entry"] as? String, device.hasPrefix("/dev/disk"),
@@ -174,6 +185,12 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
             let number = device.dropFirst("/dev/disk".count)
             return !number.isEmpty && number.allSatisfy({ $0.isASCII && $0.isNumber }) ? device : nil
         }.first
+    }
+
+    /// What hdiutil lists of the image at `path`, however either spells it.
+    static func image(at path: String, in images: [[String: Any]]) -> [String: Any]? {
+        let ours = spellings(path)
+        return images.first { ($0["image-path"] as? String).map { !spellings($0).isDisjoint(with: ours) } == true }
     }
 
     private static func checkoutDisk(_ fileSystem: String) throws -> SharedDisk {
@@ -456,7 +473,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
     /// Detaches the disk the image at `image` is attached as, if it is: an image Strata's tests made, at a path no
     /// other has.
     static func detach(image: String) throws {
-        try detach { wholeDisk(of: image, in: try attachedImages()) }
+        try detach { try wholeDisk(ofAttached: image) }
     }
 
     /// Detaches what `target` names, if it names anything, asking it again after each failed try: a failure is no
