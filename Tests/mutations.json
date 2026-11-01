@@ -1268,7 +1268,7 @@
     "tests": "DirectoryReadSessionTests/columnsRejectStaleReadsAndStopApplyingAfterTeardown"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Results.swift",
     "find": "        let selection = pending.selection ?? selectedURLs\n        enterResults()\n        loading.showResults()",
     "replace": "        let selection = pending.selection ?? selectedURLs\n        enterResults()",
     "rule": "Directory read ownership a folder response replaces search results",
@@ -1296,7 +1296,7 @@
     "tests": "DirectoryReadSessionTests/aReloadHonorsEmptySelectionAndEachViewsSelectionPolicy"
   },
   {
-    "file": "Strata/Browser/BrowserViewController.swift",
+    "file": "Strata/Browser/BrowserViewController+Results.swift",
     "find": "isShowingResults, pending.selection == nil, resultsSummary == nil",
     "replace": "isShowingResults, resultsSummary == nil",
     "rule": "Applied browser actions unchanged search results ignore the requested selection",
