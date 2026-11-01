@@ -22,6 +22,7 @@ package actor RemoteFiles {
     package nonisolated let copies: RemoteCopyStore
     private let now: @Sendable () -> Date
     private let treeDepthLimit: Int
+    private let readDirectory: @Sendable (URL) throws -> [String]
     private let removeCopy: @Sendable (String) -> Void
     private var removals: [String: Task<Void, Never>] = [:]
     /// Where connections come from (tests give a local one).
@@ -49,8 +50,12 @@ package actor RemoteFiles {
          backends: @escaping @Sendable (String) async throws -> any RemoteBackend,
          serverBackends: (@Sendable (RemoteServer) async throws -> any RemoteBackend)? = nil,
          retire: @escaping @Sendable (String, any RemoteBackend) async -> Void = { _, _ in },
-         removeCopy: (@Sendable (String) -> Void)? = nil, treeDepthLimit: Int = 512) {
+         removeCopy: (@Sendable (String) -> Void)? = nil, treeDepthLimit: Int = 512,
+         readDirectory: @escaping @Sendable (URL) throws -> [String] = {
+             try FileManager.default.contentsOfDirectory(atPath: $0.path)
+         }) {
         self.treeDepthLimit = min(512, max(1, treeDepthLimit))
+        self.readDirectory = readDirectory
         self.copies = copies
         self.backends = backends
         self.serverBackends = serverBackends ?? { server in
@@ -68,16 +73,25 @@ package actor RemoteFiles {
     /// Brings the copy's `folder` up to date with the server. Problems are reported with `.containerCopyProblem` (the
     /// window shows them over the folder); what's in the copy stays as it was.
     package func refresh(_ folder: URL) async {
+        try? await update(folder)
+    }
+
+    private func update(_ folder: URL) async throws {
+        try Task.checkCancellation()
         let real = folder.resolvingSymlinksInPath().lexicallyStandardized
         guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
-              !closing.contains(server.id) else { return }
+              !closing.contains(server.id) else { throw CancellationError() }
         let key = real.path
         while !closing.contains(server.id), let request = listings.request(for: key, now: now(), start: {
-            Task { await self.list(real, path: path, server: server, top: top) }
+            Task { try await self.list(real, path: path, server: server, top: top) }
         }) {
-            let fresh = await request.task.value
-            guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
+            let result = await request.task.result
+            let repeatRead = listings.finish(request, for: key, freshFor: try? result.get(), now: now())
+            try Task.checkCancellation()
+            try ensureCurrent(server, top: top)
+            if !repeatRead { _ = try result.get(); return }
         }
+        try ensureCurrent(server, top: top)
     }
 
     /// The next `refresh` of `folder` (and of folders in it) lists it again, even one under way.
@@ -100,15 +114,14 @@ package actor RemoteFiles {
         return true
     }
 
-    /// Lists and applies one folder; how long the result stays current, or nil when it failed.
-    private func list(_ folder: URL, path: String, server: RemoteServer, top: URL) async -> TimeInterval? {
+    private func list(_ folder: URL, path: String, server: RemoteServer, top: URL) async throws -> TimeInterval? {
         var acquired: (any RemoteBackend)?
         do {
             try ensureCurrent(server, top: top)
             let backend = try await serverBackends(server)
             acquired = backend
             let entries = try await backend.list(path)
-            guard !closing.contains(server.id), copies.server(containing: top)?.server == server else { return nil }
+            try ensureCurrent(server, top: top)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             _ = try CopyWriter.apply(entries, contents: [:], to: folder, containerPath: path, top: top)
             if modes.count > 200_000 { modes.removeAll() }
@@ -136,12 +149,12 @@ package actor RemoteFiles {
             }
             return Self.freshFor
         } catch is CancellationError {
-            return nil
+            throw CancellationError()
         } catch {
             // A late timeout belongs to the connection that made this read, never its replacement or another pool.
             if case SFTPError.stoppedAnswering = error, let acquired { await retire(server.id, acquired) }
             await Self.report(error, folder: folder, copyRoot: copies.root.path)
-            return nil
+            throw error
         }
     }
 
@@ -243,14 +256,16 @@ package actor RemoteFiles {
     private func fetchTree(_ folder: URL, depth: Int = 0) async throws {
         guard depth < treeDepthLimit else { throw CocoaError(.fileReadCorruptFile) }
         invalidate(folder)
-        await refresh(folder)
-        let contents = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey])) ?? []
+        try await update(folder)
+        let contents = try readDirectory(folder)
         var files: [URL] = []
-        for item in contents {
+        for name in contents {
             try Task.checkCancellation()
-            let values = try? item.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
-            if values?.isSymbolicLink == true { continue }
-            if values?.isDirectory == true { try await fetchTree(item, depth: depth + 1) } else { files.append(item) }
+            let item = folder.appending(path: name)
+            var info = stat()
+            guard lstat(item.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            if info.st_mode & S_IFMT == S_IFLNK { continue }
+            if info.st_mode & S_IFMT == S_IFDIR { try await fetchTree(item, depth: depth + 1) } else { files.append(item) }
         }
         try await fetch(files)
     }
@@ -279,7 +294,7 @@ package actor RemoteFiles {
         fetching.forEach { $0.cancel() }
         for task in background { await task.value }
         for task in fetching { _ = try? await task.value }
-        for task in listings.tasks(under: top) { _ = await task.value }
+        for task in listings.tasks(under: top) { _ = await task.result }
         for task in previewing { _ = try? await task.value }
         previews.forget(under: top)
         fetches.forget(under: top)

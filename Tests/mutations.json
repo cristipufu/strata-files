@@ -1479,7 +1479,7 @@
   },
   {
     "file": "Strata/Remote/RemoteFiles.swift",
-    "find": "for task in listings.tasks(under: top) { _ = await task.value }",
+    "find": "for task in listings.tasks(under: top) { _ = await task.result }",
     "replace": "// Mutation: remove before the reader finishes.",
     "rule": "Copy listing coordination removes a server copy before its listing finishes",
     "tests": "RemoteFilesTests/discardingACopyDrainsItsListingBeforeRemovingIt"
@@ -3703,14 +3703,14 @@
   },
   {
     "file": "Strata/Queue/TransferJob.swift",
-    "find": "guard !(await copies.containsPlaceholderOffMain(in: fromContainers)) else { throw CocoaError(.fileReadUnknown) }",
+    "find": "guard try await !copies.containsPlaceholderOffMain(in: fromContainers) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership transfer job copies an item that remained a placeholder",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
   },
   {
     "file": "Strata/Queue/RemoteJobs.swift",
-    "find": "guard !(await copies.containsPlaceholderOffMain(in: elsewhere)) else { throw CocoaError(.fileReadUnknown) }",
+    "find": "guard try await !copies.containsPlaceholderOffMain(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }",
     "replace": "guard true else { throw CocoaError(.fileReadUnknown) }",
     "rule": "Browser copy provider ownership upload job uploads an item that remained a placeholder",
     "tests": "BrowserCopyProviderTests/transfersAndUploadsUseTheirInjectedCopyProvidersAndRefusePlaceholders"
@@ -3759,7 +3759,7 @@
   },
   {
     "file": "Strata/Remote/LazyCopies.swift",
-    "find": "guard !copies.containsPlaceholder(in: [url]) else { return nil }",
+    "find": "guard (try? copies.containsPlaceholder(in: [url])) == false else { return nil }",
     "replace": "guard true else { return nil }",
     "rule": "Browser copy provider ownership clipboard staging copies an unfetched placeholder",
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
@@ -8142,5 +8142,47 @@
     "replace": "",
     "rule": "Showing results leaves Kind its full width, so Where has no room",
     "tests": "PaneResultsTests/whereBorrowsDateAndKindsWidthAndGivesItBackOnce"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "pending.append(contentsOf: try readDirectory(url).map { url.appending(path: $0) })",
+    "replace": "pending.append(contentsOf: ((try? readDirectory(url)) ?? []).map { url.appending(path: $0) })",
+    "rule": "Copy preparation errors verification ignores an unreadable descendant",
+    "tests": "CopyPreparationTests"
+  },
+  {
+    "file": "Strata/Remote/CopyProviders.swift",
+    "find": "guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }",
+    "replace": "guard lstat(url.path, &info) == 0 else { continue }",
+    "rule": "Copy preparation errors verification ignores a missing owned source",
+    "tests": "CopyPreparationTests/failedEnumerationNeverCertifiesACopyAsComplete"
+  },
+  {
+    "file": "Strata/Connections/CopyFetches.swift",
+    "find": "guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }",
+    "replace": "guard lstat(url.path, &info) == 0 else { continue }",
+    "rule": "Copy preparation errors preparation ignores a missing owned source",
+    "tests": "CopyPreparationTests/preparingAMissingOwnedSourcePropagatesItsReadError"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "if !repeatRead { _ = try result.get(); return }",
+    "replace": "if !repeatRead { return }",
+    "rule": "Copy preparation errors server preparation ignores a failed listing",
+    "tests": "CopyPreparationTests/serverPreparationPropagatesNestedListingErrorsInsteadOfExportingStaleContents"
+  },
+  {
+    "file": "Strata/Remote/RemoteFiles.swift",
+    "find": "let contents = try readDirectory(folder)",
+    "replace": "let contents = (try? readDirectory(folder)) ?? []",
+    "rule": "Copy preparation errors server preparation ignores a failed local enumeration",
+    "tests": "CopyPreparationTests/serverPreparationPropagatesLocalEnumerationErrors"
+  },
+  {
+    "file": "Strata/Remote/LazyCopies.swift",
+    "find": "guard (try? copies.containsPlaceholder(in: [url])) == false else { return nil }",
+    "replace": "guard (try? copies.containsPlaceholder(in: [url])) != true else { return nil }",
+    "rule": "Copy preparation errors clipboard exports a copy whose completeness could not be checked",
+    "tests": "CopyPreparationTests/clipboardStagingLeavesUnverifiableCopiesOutAndKeepsLocalItems"
   }
 ]

@@ -8,7 +8,7 @@ import StrataSupport
 package nonisolated struct CopyListings: Sendable {
     package struct Request: Sendable {
         fileprivate let id = UUID()
-        package let task: Task<TimeInterval?, Never>
+        package let task: Task<TimeInterval?, Error>
     }
 
     private struct Running: Sendable {
@@ -22,7 +22,7 @@ package nonisolated struct CopyListings: Sendable {
     package init() {}
 
     /// Nil for a fresh listing. Otherwise every caller gets the same request until it finishes.
-    package mutating func request(for key: String, now: Date = Date(), start: () -> Task<TimeInterval?, Never>) -> Request? {
+    package mutating func request(for key: String, now: Date = Date(), start: () -> Task<TimeInterval?, Error>) -> Request? {
         if let current = running[key] { return current.request }
         if let until = freshUntil[key], now < until { return nil }
         let request = Request(task: start())
@@ -53,7 +53,7 @@ package nonisolated struct CopyListings: Sendable {
         freshUntil = freshUntil.filter { !Self.contains($0.key, under: path) }
     }
 
-    package func tasks(under path: String) -> [Task<TimeInterval?, Never>] {
+    package func tasks(under path: String) -> [Task<TimeInterval?, Error>] {
         running.filter { Self.contains($0.key, under: path) }.map(\.value.request.task)
     }
 

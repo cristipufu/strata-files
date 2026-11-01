@@ -71,10 +71,10 @@ struct CopyProvidersTests {
         let tree = try TestTree("copy/", "copy/sub/", "copy/sub/deep.pending", "copy/plain/", "copy/plain/file.txt",
                                 "outside.pending")
         let providers = CopyProviders([Provider(name: "tree", calls: Calls(), folder: tree.url("copy"))])
-        #expect(await providers.containsPlaceholderOffMain(in: [tree.url("copy")]))
-        #expect(!(await providers.containsPlaceholderOffMain(in: [tree.url("copy/plain")])))
-        #expect(!(await providers.containsPlaceholderOffMain(in: [tree.url("outside.pending")])))
-        #expect(providers.containsPlaceholder(in: [tree.url("copy/sub")]))
+        #expect(try await providers.containsPlaceholderOffMain(in: [tree.url("copy")]))
+        #expect(!(try await providers.containsPlaceholderOffMain(in: [tree.url("copy/plain")])))
+        #expect(!(try await providers.containsPlaceholderOffMain(in: [tree.url("outside.pending")])))
+        #expect(try providers.containsPlaceholder(in: [tree.url("copy/sub")]))
         #expect(tree.snapshot() == ["copy/", "copy/plain/", "copy/plain/file.txt", "copy/sub/", "copy/sub/deep.pending",
                                     "outside.pending"])
     }

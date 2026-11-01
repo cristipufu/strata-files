@@ -24,7 +24,7 @@ package nonisolated enum LazyCopies {
         guard var folder = newFolder() else { return urls.filter { !copies.contains($0) } }
         return urls.compactMap { url in
             guard copies.contains(url) else { return url }
-            guard !copies.containsPlaceholder(in: [url]) else { return nil }
+            guard (try? copies.containsPlaceholder(in: [url])) == false else { return nil }
             var info = stat()
             // Two chosen items with one name (from different folders) each get a folder of their own.
             if lstat(folder.appending(path: url.lastPathComponent).path, &info) == 0 {

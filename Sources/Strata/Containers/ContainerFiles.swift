@@ -88,7 +88,7 @@ package actor ContainerFiles {
         while !closing.contains(top.lexicallyStandardized.path), let request = listings.request(for: key, now: now(), start: {
             Task { await self.list(real, path: path, source: source, top: top) }
         }) {
-            let fresh = await request.task.value
+            let fresh = try? await request.task.value
             guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
         }
     }
@@ -99,7 +99,7 @@ package actor ContainerFiles {
         let key = folder.path
         let copies = self.copies
         while let request = listings.request(for: key, now: now(), start: {
-            Task<TimeInterval?, Never> {
+            Task<TimeInterval?, Error> {
                 do {
                     let list = try await blocking { try ContainerAPI.containers(engine) }
                     let gone = try await blocking { try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies) }
@@ -112,7 +112,7 @@ package actor ContainerFiles {
                 }
             }
         }) {
-            let fresh = await request.task.value
+            let fresh = try? await request.task.value
             guard listings.finish(request, for: key, freshFor: fresh, now: now()) else { return }
         }
     }
@@ -229,7 +229,7 @@ package actor ContainerFiles {
         let listing = listings.tasks(under: path)
         for task in background { await task.value }
         for task in fetching { _ = try? await task.value }
-        for task in listing { _ = await task.value }
+        for task in listing { _ = await task.result }
         for task in previewing { _ = try? await task.value }
         previews.forget(under: path)
         fetches.forget(under: path)

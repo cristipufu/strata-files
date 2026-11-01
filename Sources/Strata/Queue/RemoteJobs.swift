@@ -53,7 +53,7 @@ package final class RemoteUploadJob {
                         prepSource = url
                         try await copies.prepareForCopying([url])
                     }
-                    guard !(await copies.containsPlaceholderOffMain(in: elsewhere)) else { throw CocoaError(.fileReadUnknown) }
+                    guard try await !copies.containsPlaceholderOffMain(in: elsewhere) else { throw CocoaError(.fileReadUnknown) }
                     prepSource = nil
                 }
                 totalBytes = await Self.size(of: sources)

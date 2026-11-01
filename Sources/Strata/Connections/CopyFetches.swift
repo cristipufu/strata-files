@@ -45,7 +45,7 @@ package nonisolated struct CopyFetches: Sendable {
         for url in urls where holds(url) {
             try Task.checkCancellation()
             var info = stat()
-            guard lstat(url.path, &info) == 0 else { continue }
+            guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             if info.st_mode & S_IFMT == S_IFDIR { try await folder(url) } else { try await file([url]) }
         }
     }

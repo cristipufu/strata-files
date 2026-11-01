@@ -27,13 +27,18 @@ package nonisolated struct CopyProviders: Sendable {
     package static let previewEntryLimit = 50_000
     package static let live = CopyProviders(servers: .shared, containers: .shared)
     private let providers: [any CopyProvider]
+    private let readDirectory: @Sendable (URL) throws -> [String]
     package let remoteCopies: RemoteCopyStore
     package let containerCopies: ContainerCopyStore
     package let clipboardRoot: URL
 
     package init(_ providers: [any CopyProvider], remoteCopies: RemoteCopyStore, containerCopies: ContainerCopyStore,
-                 clipboardRoot: URL) {
+                 clipboardRoot: URL,
+                 readDirectory: @escaping @Sendable (URL) throws -> [String] = {
+                     try FileManager.default.contentsOfDirectory(atPath: $0.path)
+                 }) {
         self.providers = providers
+        self.readDirectory = readDirectory
         self.remoteCopies = remoteCopies
         self.containerCopies = containerCopies
         self.clipboardRoot = clipboardRoot
@@ -57,30 +62,33 @@ package nonisolated struct CopyProviders: Sendable {
     }
     package var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
     package func isPlaceholder(_ url: URL) -> Bool { provider(for: url)?.isPlaceholder(url) ?? false }
-    package func containsPlaceholder(in urls: [URL]) -> Bool { Self.containsPlaceholder(in: urls, providers: providers) }
+    package func containsPlaceholder(in urls: [URL]) throws -> Bool {
+        try Self.containsPlaceholder(in: urls, providers: providers, readDirectory: readDirectory)
+    }
 
     /// `containsPlaceholder` away from the main thread: it reads every item of a folder copied out of a server or a
     /// container, which can hold thousands.
-    package func containsPlaceholderOffMain(in urls: [URL]) async -> Bool {
-        await Self.containsPlaceholder(in: urls, of: providers)
+    package func containsPlaceholderOffMain(in urls: [URL]) async throws -> Bool {
+        try await Self.containsPlaceholder(in: urls, of: providers, readDirectory: readDirectory)
     }
 
-    @concurrent private static func containsPlaceholder(in urls: [URL], of providers: [any CopyProvider]) async -> Bool {
-        containsPlaceholder(in: urls, providers: providers)
+    @concurrent private static func containsPlaceholder(in urls: [URL], of providers: [any CopyProvider],
+        readDirectory: @Sendable (URL) throws -> [String]) async throws -> Bool {
+        try containsPlaceholder(in: urls, providers: providers, readDirectory: readDirectory)
     }
 
-    nonisolated private static func containsPlaceholder(in urls: [URL], providers: [any CopyProvider]) -> Bool {
-        func check(_ url: URL) -> Bool {
-            guard let provider = providers.first(where: { $0.contains(url) }) else { return false }
+    nonisolated private static func containsPlaceholder(in urls: [URL], providers: [any CopyProvider],
+        readDirectory: @Sendable (URL) throws -> [String]) throws -> Bool {
+        var pending = urls
+        while let url = pending.popLast() {
+            try Task.checkCancellation()
+            guard let provider = providers.first(where: { $0.contains(url) }) else { continue }
             if provider.isPlaceholder(url) { return true }
             var info = stat()
-            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return false }
-            for name in (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? [] {
-                if check(url.appending(path: name)) { return true }
-            }
-            return false
+            guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            if info.st_mode & S_IFMT == S_IFDIR { pending.append(contentsOf: try readDirectory(url).map { url.appending(path: $0) }) }
         }
-        return urls.contains(where: check)
+        return false
     }
     package func stageForClipboard(_ urls: [URL]) -> [URL] {
         LazyCopies.stageForClipboard(urls, copies: self)

@@ -63,7 +63,7 @@ package nonisolated final class ContainerPromises: NSObject, NSFilePromiseProvid
         Task {
             do {
                 try await copies.prepareForCopying([source])
-                guard !copies.containsPlaceholder(in: [source]) else { throw CocoaError(.fileReadUnknown) }
+                guard try !copies.containsPlaceholder(in: [source]) else { throw CocoaError(.fileReadUnknown) }
                 // Dragged out, the copy belongs to the receiving app: Strata keeps no History of it.
                 let result = await TransferWorker(label: "dev.strata.file-promise").run {
                     Result { _ = try TransferEngine.copyForExport(source, to: url) }

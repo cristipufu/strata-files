@@ -222,7 +222,7 @@ package final class TransferJob {
         if !fromContainers.isEmpty {
             let fetch = Task {
                 try await copies.prepareForCopying(fromContainers)
-                guard !(await copies.containsPlaceholderOffMain(in: fromContainers)) else { throw CocoaError(.fileReadUnknown) }
+                guard try await !copies.containsPlaceholderOffMain(in: fromContainers) else { throw CocoaError(.fileReadUnknown) }
             }
             containerFetch = fetch
             do {

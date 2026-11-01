@@ -11,15 +11,15 @@ import Testing
 
 struct CopyListingsTests {
     private let instant = Date(timeIntervalSince1970: 1000)
-    private func task(_ freshFor: TimeInterval?) -> Task<TimeInterval?, Never> { Task { freshFor } }
+    private func task(_ freshFor: TimeInterval?) -> Task<TimeInterval?, Error> { Task { freshFor } }
 
     @Test func callersShareOneReadAndFreshnessExpiresAtItsBoundary() async throws {
         var listings = CopyListings(), starts = 0
         let first = try #require(listings.request(for: "/copy/a", now: instant) { starts += 1; return task(10) })
         let joined = try #require(listings.request(for: "/copy/a", now: instant) { starts += 1; return task(999) })
         #expect(starts == 1)
-        let fresh = await first.task.value
-        #expect(await joined.task.value == fresh)
+        let fresh = try await first.task.value
+        #expect(try await joined.task.value == fresh)
         let retry1 = listings.finish(first, for: "/copy/a", freshFor: fresh, now: instant)
         #expect(!retry1)
         let retry2 = listings.finish(joined, for: "/copy/a", freshFor: fresh, now: instant.addingTimeInterval(5))
@@ -27,7 +27,7 @@ struct CopyListingsTests {
         #expect(listings.request(for: "/copy/a", now: instant.addingTimeInterval(9)) { starts += 1; return task(10) } == nil)
         let expired = try #require(listings.request(for: "/copy/a", now: instant.addingTimeInterval(10)) { starts += 1; return task(10) })
         #expect(starts == 2)
-        _ = await expired.task.value
+        _ = try await expired.task.value
     }
 
     @Test func lateWaitersCannotEraseTheReplacementOrMakeTheirOldResponseFresh() async throws {
@@ -36,7 +36,7 @@ struct CopyListingsTests {
         let joined = try #require(listings.request(for: "/copy/a", now: instant) { starts += 1; return task(999) })
         listings.invalidate(under: "/copy/a")
         listings.invalidate(under: "/copy/a")
-        let oldFresh = await first.task.value
+        let oldFresh = try await first.task.value
         let retry3 = listings.finish(first, for: "/copy/a", freshFor: oldFresh, now: instant)
         #expect(retry3)
         let replacement = try #require(listings.request(for: "/copy/a", now: instant) { starts += 1; return task(20) })
@@ -44,8 +44,8 @@ struct CopyListingsTests {
         #expect(retry4)
         let stillRunning = try #require(listings.request(for: "/copy/a", now: instant) { starts += 1; return task(999) })
         #expect(starts == 2 && listings.tasks(under: "/copy/a").count == 1)
-        let newFresh = await replacement.task.value
-        #expect(await stillRunning.task.value == newFresh)
+        let newFresh = try await replacement.task.value
+        #expect(try await stillRunning.task.value == newFresh)
         let retry5 = listings.finish(replacement, for: "/copy/a", freshFor: newFresh, now: instant)
         #expect(!retry5)
         let retry6 = listings.finish(joined, for: "/copy/a", freshFor: oldFresh, now: instant.addingTimeInterval(5))
@@ -53,7 +53,7 @@ struct CopyListingsTests {
         #expect(listings.request(for: "/copy/a", now: instant.addingTimeInterval(19)) { starts += 1; return task(20) } == nil)
         let expired = try #require(listings.request(for: "/copy/a", now: instant.addingTimeInterval(20)) { starts += 1; return task(20) })
         #expect(starts == 3)
-        _ = await expired.task.value
+        _ = try await expired.task.value
     }
 
     @Test func invalidationIncludesDescendantsButNeverLookalikesOrOtherCopies() async throws {
@@ -63,7 +63,7 @@ struct CopyListingsTests {
             let requests = try keys.map { key in try #require(listings.request(for: key, now: instant) { task(10) }) }
             if cached {
                 for (index, key) in keys.enumerated() {
-                    let fresh = await requests[index].task.value
+                    let fresh = try await requests[index].task.value
                     let retry = listings.finish(requests[index], for: key, freshFor: fresh, now: instant)
                     #expect(!retry)
                 }
@@ -71,13 +71,13 @@ struct CopyListingsTests {
             listings.invalidate(under: "/copy/a")
             for (index, key) in keys.enumerated() {
                 if !cached {
-                    let fresh = await requests[index].task.value
+                    let fresh = try await requests[index].task.value
                     let retry = listings.finish(requests[index], for: key, freshFor: fresh, now: instant)
                     #expect(retry == (index < 2), "\(key)")
                 }
                 let next = listings.request(for: key, now: instant) { task(10) }
                 #expect((next != nil) == (index < 2), "\(key), cached: \(cached)")
-                if let next { _ = await next.task.value }
+                if let next { _ = try await next.task.value }
             }
         }
     }
@@ -88,7 +88,7 @@ struct CopyListingsTests {
         let sibling = try #require(listings.request(for: "/copy/ab", now: instant) { starts += 1; return task(10) })
         let pending = listings.tasks(under: "/copy/a")
         #expect(pending.count == 1)
-        for work in pending { _ = await work.value }
+        for work in pending { _ = try await work.value }
         listings.forget(under: "/copy/a")
         #expect(listings.tasks(under: "/copy/a").isEmpty)
         #expect(listings.tasks(under: "/copy/ab").count == 1)
@@ -98,8 +98,8 @@ struct CopyListingsTests {
         let retry9 = listings.finish(removed, for: "/copy/a/child", freshFor: 999, now: instant)
         #expect(retry9)
         #expect(listings.tasks(under: "/copy/a").count == 1 && starts == 3)
-        _ = await reopened.task.value
-        let fresh = await sibling.task.value
+        _ = try await reopened.task.value
+        let fresh = try await sibling.task.value
         let retry10 = listings.finish(sibling, for: "/copy/ab", freshFor: fresh, now: instant)
         #expect(!retry10)
         #expect(listings.request(for: "/copy/ab", now: instant) { starts += 1; return task(10) } == nil)
@@ -108,21 +108,36 @@ struct CopyListingsTests {
     @Test func failedReadsCanRetryAndExpiringAnArchiveDoesNotCancelItsReads() async throws {
         var listings = CopyListings()
         let failed = try #require(listings.request(for: "/copy/a", now: instant) { task(nil) })
-        let failure = await failed.task.value
+        let failure = try await failed.task.value
         let retry11 = listings.finish(failed, for: "/copy/a", freshFor: failure, now: instant)
         #expect(!retry11)
         let retried = try #require(listings.request(for: "/copy/a", now: instant) { task(10) })
-        let fresh = await retried.task.value
+        let fresh = try await retried.task.value
         let retry12 = listings.finish(retried, for: "/copy/a", freshFor: fresh, now: instant)
         #expect(!retry12)
         let child = try #require(listings.request(for: "/copy/a/child", now: instant) { task(10) })
         listings.expire(under: "/copy/a")
         let next = try #require(listings.request(for: "/copy/a", now: instant) { task(10) })
         #expect(listings.tasks(under: "/copy/a").count == 2)
-        let childFresh = await child.task.value
+        let childFresh = try await child.task.value
         let retry13 = listings.finish(child, for: "/copy/a/child", freshFor: childFresh, now: instant)
         #expect(!retry13)
-        _ = await next.task.value
+        _ = try await next.task.value
+    }
+
+    @Test func everyWaiterReceivesTheListingFailureAndCanRetry() async throws {
+        var listings = CopyListings()
+        let first = try #require(listings.request(for: "/copy/a", now: instant) {
+            Task { throw POSIXError(.EIO) }
+        })
+        let joined = try #require(listings.request(for: "/copy/a", now: instant) { task(999) })
+        for request in [first, joined] {
+            await #expect(throws: POSIXError(.EIO)) { try await request.task.value }
+            let repeatRead = listings.finish(request, for: "/copy/a", freshFor: nil, now: instant)
+            #expect(!repeatRead)
+        }
+        let retry = try #require(listings.request(for: "/copy/a", now: instant) { task(10) })
+        #expect(try await retry.task.value == 10)
     }
 
     @Test func containerListingsUseTheSharedInvalidationRulesBeforeReportingFreshness() async throws {
