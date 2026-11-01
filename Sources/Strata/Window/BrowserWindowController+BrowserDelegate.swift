@@ -63,6 +63,14 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         go(.folder(url.lexicallyStandardized), recordHistory: firstHop, countVisit: false)
     }
 
+    func browserShowInspector(_ browser: BrowserViewController) {
+        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }
+        activate(owner)
+        window?.makeFirstResponder(browser.focusView)
+        split.inspectorItem.isCollapsed = false
+        refreshPanels()
+    }
+
     func browserSelectionDidChange(_ browser: BrowserViewController) {
         if browser === pane.browser { refreshPanels() }
     }

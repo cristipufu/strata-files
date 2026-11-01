@@ -21,9 +21,11 @@ extension BrowserViewController {
     func makeContextMenu() -> NSMenu {
         let facts = contextMenuFacts
         let urls = facts.selection.map(\.url)
-        return BrowserContextMenu(facts: facts, target: self) { [weak self] tag in
+        let menu = BrowserContextMenu(facts: facts, target: self) { [weak self] tag in
             self?.toggle(tag, on: urls)
         }.make()
+        menu.items.first { $0.action == StrataCommand.getInfo.action }?.representedObject = InspectorTarget(browser: self, urls: urls)
+        return menu
     }
 
     private var contextMenuFacts: BrowserContextMenu.Facts {
@@ -189,6 +191,7 @@ extension BrowserViewController {
 extension BrowserViewController: NSMenuItemValidation, PaneCommandState {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let action = item.action else { return true }
+        if action == StrataCommand.getInfo.action { return canGetInfo(item.representedObject) }
         if let shown = validateViewOption(item, action) { return shown }
         let answer = PaneCommandAvailability.answer(for: action, represented: item.representedObject, in: self)
         if let title = answer.title { item.title = title }

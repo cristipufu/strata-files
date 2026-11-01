@@ -184,6 +184,7 @@ struct BrowserContextMenu {
         if !inTrash, facts.canDownload { addTitled(String(localized: "Download Now"), #selector(BrowserViewController.downloadNow(_:)), "icloud.and.arrow.down", to: menu) }
         if !inTrash, facts.canRemoveDownload { addTitled(String(localized: "Remove Download"), #selector(BrowserViewController.removeDownload(_:)), "icloud.slash", to: menu) }
         add(.toggleQuickLook, to: menu)
+        add(.getInfo, to: menu)
         // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
         // container's files: they're only read when copied out.
         if !facts.isInContainerCopy { menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem) }

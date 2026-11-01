@@ -721,6 +721,7 @@
     "Gallery": "ギャラリー",
     "GDScript source": "GDScriptソース",
     "General": "一般",
+    "Get Info": "情報を見る",
     "Get the gist of this document in a few lines, written on your Mac.": "この書類の要点を数行でまとめます。要約はお使いのMac上で作成されます。",
     "git status timed out; showing the last known state": "git statusがタイムアウトしました。最後に確認できた状態を表示しています",
     "git.status.added": "追加",

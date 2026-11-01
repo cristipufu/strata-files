@@ -2,6 +2,7 @@ import AppKit
 
 protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, navigateTo url: URL)
+    func browserShowInspector(_ browser: BrowserViewController)
     func browserSelectionDidChange(_ browser: BrowserViewController)
     func browserContentDidChange(_ browser: BrowserViewController)
     /// Column view moved deeper without changing the browser's folder.

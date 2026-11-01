@@ -29,6 +29,7 @@ struct BrowserContextMenuTests {
         server.isOnServer = true
         let onServer = actions(server)
         #expect(onServer.contains(StrataCommand.moveToTrash.action))
+        #expect(onServer.contains(StrataCommand.getInfo.action))
         for command in [StrataCommand.cut, .duplicate, .compress, .addToShelf] {
             #expect(!onServer.contains(command.action), "\(command.id)")
         }
@@ -37,6 +38,7 @@ struct BrowserContextMenuTests {
         archive.isInsideArchive = true
         let inArchive = actions(archive)
         #expect(inArchive.contains(StrataCommand.copy.action))
+        #expect(inArchive.contains(StrataCommand.getInfo.action))
         for command in [StrataCommand.moveToTrash, .renameSelection, .cut, .duplicate, .compress] {
             #expect(!inArchive.contains(command.action), "\(command.id)")
         }

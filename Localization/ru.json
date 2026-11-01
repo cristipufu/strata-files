@@ -1002,6 +1002,7 @@
     "Gallery": "Галерея",
     "GDScript source": "Исходный код GDScript",
     "General": "Основные",
+    "Get Info": "Свойства",
     "Get the gist of this document in a few lines, written on your Mac.": "Получите суть этого документа в нескольких строках, составленных прямо на вашем Mac.",
     "git status timed out; showing the last known state": "Время ожидания git status истекло; показано последнее известное состояние",
     "git.status.added": "Добавлен",

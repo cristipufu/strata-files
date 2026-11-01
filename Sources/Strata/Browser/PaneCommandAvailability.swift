@@ -55,7 +55,7 @@ enum PaneCommandAvailability {
     }
 
     private static let fileCommands: Set<Selector> = [
-        #selector(Pane.openSelection(_:)), #selector(Pane.moveToTrash(_:)), #selector(Pane.duplicate(_:)), #selector(Pane.newFolder(_:)),
+        #selector(Pane.getInfo(_:)), #selector(Pane.openSelection(_:)), #selector(Pane.moveToTrash(_:)), #selector(Pane.duplicate(_:)), #selector(Pane.newFolder(_:)),
         #selector(Pane.newFile(_:)), #selector(Pane.renameSelection(_:)), #selector(Pane.toggleQuickLook(_:)), #selector(Pane.pasteAndMove(_:)),
         #selector(Pane.copy(_:)), #selector(Pane.cut(_:)), #selector(Pane.paste(_:)), #selector(Pane.share(_:)),
         #selector(Pane.putBack(_:)), #selector(Pane.deleteImmediately(_:)), #selector(Pane.compress(_:)), #selector(Pane.extract(_:)),
@@ -130,7 +130,7 @@ enum PaneCommandAvailability {
         case #selector(Pane.extract(_:)):
             return Answer(isEnabled: !pane.selectedArchives.isEmpty && !pane.isShowingTrash && pane.canWriteBesideSelection,
                           title: pane.extractTitle)
-        case #selector(Pane.openSelection(_:)), #selector(Pane.deleteImmediately(_:)),
+        case #selector(Pane.getInfo(_:)), #selector(Pane.openSelection(_:)), #selector(Pane.deleteImmediately(_:)),
              #selector(Pane.copy(_:)), #selector(Pane.cut(_:)), #selector(Pane.toggleQuickLook(_:)), #selector(Pane.share(_:)):
             return Answer(isEnabled: hasSelection)
         case #selector(Pane.renameSelection(_:)):

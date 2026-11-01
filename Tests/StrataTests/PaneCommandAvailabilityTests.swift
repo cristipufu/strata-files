@@ -28,7 +28,7 @@ import Testing
     }
 
     @Test func whileANameIsEditedOrAnotherFolderLoadsTheFileCommandsAreOff() {
-        let commands = [#selector(Pane.moveToTrash(_:)), #selector(Pane.deleteImmediately(_:)), #selector(Pane.duplicate(_:)),
+        let commands = [#selector(Pane.getInfo(_:)), #selector(Pane.moveToTrash(_:)), #selector(Pane.deleteImmediately(_:)), #selector(Pane.duplicate(_:)),
                         #selector(Pane.newFolder(_:)), #selector(Pane.paste(_:)), #selector(Pane.renameSelection(_:))]
         let ready = FakePane(selectedEntries: [entry(here)], clipboardHasFiles: true)
         for command in commands { #expect(answer(command, ready).isEnabled, "\(command)") }
