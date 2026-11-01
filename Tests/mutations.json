@@ -4310,6 +4310,13 @@
     "tests": "PlanExpanderTests/aRenameByDateSkipsAnItemWithoutThatDateHoweverThePatternSpellsIt"
   },
   {
+    "file": "Strata/AI/PlanGenerator.swift",
+    "find": "if item.isFolder, key == .kind || key == .extension {",
+    "replace": "if false {",
+    "rule": "Grouping by kind or extension moves folders into a group too",
+    "tests": "PlanExpanderTests/groupingByKindOrExtensionLeavesFoldersWhereTheyAre"
+  },
+  {
     "file": "Strata/Index/IndexStore.swift",
     "rule": "Security review: entry counts are bounded before narrowing",
     "tests": "SecurityReviewTests",

@@ -39,10 +39,14 @@ struct PlanExpanderTests {
         func title(_ template: String) -> String {
             PlanRecipe(action: .rename(template: template, transforms: []), dateSource: .taken).title
         }
-        for template in ["{date} {name}", "{Date} {name}", "{monthname} {name}"] {
+        for template in ["{date} {name}", "{Date} {Name}", "{monthname} {name}"] {
             #expect(title(template) == "Add the date taken before each name", "\(template)")
         }
+        #expect(title("{Name} {DATE}") == "Add the date taken after each name")
+        // Nested braces read as the token "{name", which names nothing: the name goes, so it isn't added to.
+        #expect(title("{date} {{Name}}") == "Rename by date taken")
         #expect(title("{Year}-{Time}") == "Rename by date and time taken")
+        #expect(title("Photo {N}") == "Number them “Photo 01”, “Photo 02”, …")
     }
 
     @Test func groupingByKindOrExtensionLeavesFoldersWhereTheyAre() throws {

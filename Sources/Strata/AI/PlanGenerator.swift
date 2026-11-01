@@ -32,7 +32,9 @@ package nonisolated struct PlanRecipe: Sendable, Hashable {
         }
         var text: String
         switch action {
-        case let .rename(template, transforms):
+        case let .rename(written, transforms):
+            // As the rename reads it: `{Name}` is `{name}`.
+            let template = PlanExpander.normalized(written)
             let datey = PlanExpander.usesDate(template)
             let changes = transforms.map(\.title).joined(separator: ", ")
             if template == "{name}" {
@@ -44,7 +46,7 @@ package nonisolated struct PlanRecipe: Sendable, Hashable {
                 case .modified: String(localized: "Add the date modified after each name")
                 case .best: String(localized: "Add the date after each name")
                 }
-            } else if datey, template.contains("{name}") {
+            } else if datey, PlanExpander.tokens(in: template).contains("name") {
                 text = switch dateSource {
                 case .taken: String(localized: "Add the date taken before each name")
                 case .created: String(localized: "Add the date created before each name")
@@ -619,6 +621,16 @@ package nonisolated enum PlanExpander {
     /// Whether `template` names items by one of their dates, however it spells the token (`{Date}` is `{date}`).
     package static func usesDate(_ template: String) -> Bool {
         tokens(in: template).contains { dateFormatters[$0] != nil }
+    }
+
+    /// `template` with each `{token}` spelled as `render` reads it, and its text as written.
+    package static func normalized(_ template: String) -> String {
+        parts(of: template).map { part in
+            switch part {
+            case .text(let text): String(text)
+            case .token(let token): "{" + token + "}"
+            }
+        }.joined()
     }
 
     /// The `{tokens}` in `template`, lowercased, as `render` reads them.
