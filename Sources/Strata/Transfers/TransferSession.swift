@@ -170,50 +170,73 @@ package nonisolated final class CopySession: @unchecked Sendable {
                 destination: UnsafePointer<CChar>?, code: Int32) -> Int32 {
         let quitCode = Int32(COPYFILE_QUIT)
         if quit { return quitCode }
-
         if let source, stage == COPYFILE_START {
-            let src = String(cString: source)
-            if sourceIdentities[src] == nil, let id = Self.sourceIdentity(state, path: src) {
-                sourceIdentities[src] = id
-            }
+            recordSourceIdentity(String(cString: source), state: state)
         }
-
         if stage == COPYFILE_ERR {
-            if code == ECANCELED || control.isCancelled {
-                quit = true
-                return quitCode
-            }
-            // Extended attributes the destination won't take (protected or unsupported) don't fail the file.
-            if what == COPYFILE_COPY_XATTR { return Int32(COPYFILE_CONTINUE) }
-            recordError(what: what, state: state, source: source, destination: destination, code: code)
-            if what == COPYFILE_RECURSE_FILE || what == COPYFILE_COPY_DATA {
-                finishFile()
-            }
-            return Int32(COPYFILE_SKIP)
+            return failed(what: what, state: state, source: source, destination: destination, code: code)
         }
+        if stage == COPYFILE_FINISH, let destination {
+            landed(what: what, state: state, source: source, destination: destination)
+        }
+        reportProgress(what: what, stage: stage, state: state, source: source)
+        // Block here while paused; stop at the next block once cancelled.
+        if !control.checkpoint() {
+            quit = true
+            return quitCode
+        }
+        return Int32(COPYFILE_CONTINUE)
+    }
 
-        if what == COPYFILE_RECURSE_DIR && stage == COPYFILE_FINISH, let destination {
-            let dst = String(cString: destination)
+    private func recordSourceIdentity(_ src: String, state: copyfile_state_t?) {
+        if sourceIdentities[src] == nil, let id = Self.sourceIdentity(state, path: src) {
+            sourceIdentities[src] = id
+        }
+    }
+
+    /// Stops when cancelled; otherwise records the error and skips the item. Extended attributes the destination
+    /// won't take (protected or unsupported) don't fail the file.
+    private func failed(what: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
+                        destination: UnsafePointer<CChar>?, code: Int32) -> Int32 {
+        if code == ECANCELED || control.isCancelled {
+            quit = true
+            return Int32(COPYFILE_QUIT)
+        }
+        if what == COPYFILE_COPY_XATTR { return Int32(COPYFILE_CONTINUE) }
+        recordError(what: what, state: state, source: source, destination: destination, code: code)
+        if what == COPYFILE_RECURSE_FILE || what == COPYFILE_COPY_DATA {
+            finishFile()
+        }
+        return Int32(COPYFILE_SKIP)
+    }
+
+    /// A folder made or finished, or a file finished: what landed, by the identity it was made with (a folder's from
+    /// its descriptor, kept until its metadata is done), then the fault hook's failure, if any.
+    private func landed(what: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
+                        destination: UnsafePointer<CChar>) {
+        let dst = String(cString: destination)
+        if what == COPYFILE_RECURSE_DIR {
             let descriptor = DirectoryDescriptor(state)
             directories[dst] = descriptor
             if let id = descriptor?.identity ?? FileIdentity.read(dst) { created[dst] = id }
         }
-        if what == COPYFILE_RECURSE_DIR_CLEANUP && stage == COPYFILE_FINISH, let destination {
-            let dst = String(cString: destination)
+        if what == COPYFILE_RECURSE_DIR_CLEANUP {
             if let id = directories[dst]?.identity { created[dst] = id }
         }
-        if what == COPYFILE_RECURSE_FILE && stage == COPYFILE_FINISH, let destination {
-            let dst = String(cString: destination)
+        if what == COPYFILE_RECURSE_FILE {
             if let id = Self.destinationIdentity(state) ?? FileIdentity.read(dst) { created[dst] = id }
         }
-        if stage == COPYFILE_FINISH && (what == COPYFILE_RECURSE_FILE || what == COPYFILE_RECURSE_DIR_CLEANUP),
-           let destination, let code = copyFailure?(URL(fileURLWithPath: String(cString: destination))) {
+        if what == COPYFILE_RECURSE_FILE || what == COPYFILE_RECURSE_DIR_CLEANUP,
+           let code = copyFailure?(URL(fileURLWithPath: dst)) {
             recordError(what: what, state: state, source: source, destination: destination, code: code)
         }
-        if what == COPYFILE_RECURSE_DIR_CLEANUP && stage == COPYFILE_FINISH, let destination {
-            directories.removeValue(forKey: String(cString: destination))
+        if what == COPYFILE_RECURSE_DIR_CLEANUP {
+            directories.removeValue(forKey: dst)
         }
+    }
 
+    /// The file being copied and its bytes so far, slowed to `throttle` when there's one.
+    private func reportProgress(what: Int32, stage: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?) {
         switch (what, stage) {
         case (COPYFILE_RECURSE_FILE, COPYFILE_START):
             var info = stat()
@@ -237,12 +260,6 @@ package nonisolated final class CopySession: @unchecked Sendable {
         default:
             break
         }
-        // Block here while paused; stop at the next block once cancelled.
-        if !control.checkpoint() {
-            quit = true
-            return quitCode
-        }
-        return Int32(COPYFILE_CONTINUE)
     }
 
     private func recordError(what: Int32, state: copyfile_state_t?, source: UnsafePointer<CChar>?,
