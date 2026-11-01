@@ -63,6 +63,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(namesRead(_:)), name: .folderNamesRead,
                                                object: names)
 
+        setUpCrumbs()
+        setUpField()
+        suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
+        layOut()
+    }
+
+    private func setUpCrumbs() {
         crumbs.orientation = .horizontal
         crumbs.spacing = 0
         crumbs.alignment = .centerY
@@ -72,7 +79,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
         crumbs.setClippingResistancePriority(embedded ? .init(230) : .defaultLow, for: .horizontal)
         crumbs.translatesAutoresizingMaskIntoConstraints = false
         addSubview(crumbs)
+    }
 
+    private func setUpField() {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.isBordered = false
         field.drawsBackground = false
@@ -85,8 +94,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.delegate = self
         field.isHidden = true
         addSubview(field)
-        suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
+    }
 
+    /// Embedded in a pane, the bar gives way to what's beside it; in the toolbar, it wishes for a width it gives up
+    /// before other items overflow.
+    private func layOut() {
         var constraints = [
             crumbs.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             crumbs.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
