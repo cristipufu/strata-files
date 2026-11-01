@@ -55,22 +55,11 @@ final class SearchScopeBar: NSSplitViewItemAccessoryViewController {
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let stack = NSStackView(views: [scope, matchCase, summary, spacer, filters, save])
         stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        stack.translatesAutoresizingMaskIntoConstraints = false
         // In a narrow pane the summary truncates, then Match Case steps aside, and what's left clips: the bar never holds
         // the pane (and the window) wider. It's laid out even while hidden.
         stack.setVisibilityPriority(.detachOnlyIfNecessary, for: matchCase)
         stack.setClippingResistancePriority(.defaultLow, for: .horizontal)
-        let container = ThemeAccessoryView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.heightAnchor.constraint(equalToConstant: 34),
-        ])
-        view = container
+        view = ThemeAccessoryView.bar(holding: stack)
     }
 
     /// `caseApplies`: off for searches Spotlight or a plain-English reading answers (case means nothing there).

@@ -3318,7 +3318,7 @@
     "You’re offline.": "Checking an app for updates: no internet connection · AppUpdateCheck.swift:397",
     "Zoom": "MainMenu.swift:144",
     "{name} the current name · {n} a number · {date} {time} {year} {month} {day} when it was taken or made · {camera} · {kind} · {parent} its folder": "Keep the tokens in braces as they are: they’re what people type · BatchRenameController.swift:223",
-    "“%@”": "Path bar title while searching: the search text in quotes · Search scope: the current folder, by name in quotes · BrowserWindowController.swift:347, BrowserWindowController.swift:500, SearchScopeBar.swift:82",
+    "“%@”": "Path bar title while searching: the search text in quotes · Search scope: the current folder, by name in quotes · BrowserWindowController.swift:347, BrowserWindowController.swift:500, SearchScopeBar.swift:71",
     "“%@” (%@)": "A disk and how many items its Trash holds · BrowserWindowController+Trash.swift:104",
     "“%@” (left)   ⇄   “%@” (right)": "The two folders being compared, by name · CompareController.swift:74",
     "“%@” and %lld more in %@": "HistoryWindowController.swift:146",
