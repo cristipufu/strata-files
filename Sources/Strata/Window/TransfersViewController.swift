@@ -27,46 +27,12 @@ package final class TransfersViewController: NSViewController {
     package required init?(coder: NSCoder) { fatalError() }
 
     package override func loadView() {
-        let title = NSTextField(labelWithString: TransfersToolbarItem.localizedLabel)
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
-        clearButton.target = self
-        clearButton.action = #selector(clearFinished(_:))
-        clearButton.bezelStyle = .push
-        clearButton.controlSize = .small
-        clearButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        clearButton.toolTip = String(localized: "Remove finished transfers from the list")
-        let header = NSStackView(views: [title, NSView(), clearButton])
-        header.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 8, right: 12)
-        header.translatesAutoresizingMaskIntoConstraints = false
-
+        let header = header()
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
-
-        listStack.orientation = .vertical
-        listStack.alignment = .leading
-        listStack.spacing = 0
-        listStack.translatesAutoresizingMaskIntoConstraints = false
-        let document = TransfersFlippedView()
-        document.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(listStack)
-        scrollView.documentView = document
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-
-        let emptyTitle = NSTextField(labelWithString: String(localized: "No Transfers"))
-        emptyTitle.font = .systemFont(ofSize: 13, weight: .medium)
-        emptyTitle.textColor = .secondaryLabelColor
-        let emptyBody = NSTextField(labelWithString: String(localized: "Copies and moves you start appear here."))
-        emptyBody.font = .systemFont(ofSize: 11)
-        emptyBody.textColor = .tertiaryLabelColor
-        emptyView.setViews([emptyTitle, emptyBody], in: .center)
-        emptyView.orientation = .vertical
-        emptyView.spacing = 3
-        emptyView.translatesAutoresizingMaskIntoConstraints = false
-
+        setUpList()
+        setUpEmptyView()
         let root = NSView()
         root.addSubview(header)
         root.addSubview(separator)
@@ -86,13 +52,6 @@ package final class TransfersViewController: NSViewController {
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             listHeight,
-            document.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            document.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            document.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            listStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
-            listStack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
-            listStack.topAnchor.constraint(equalTo: document.topAnchor),
-            listStack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
             emptyView.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             emptyView.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
@@ -100,6 +59,60 @@ package final class TransfersViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(queueChanged), name: TransferQueue.didChangeNotification,
                                                object: queue)
         reload()
+    }
+
+    /// The title, and Clear for the finished jobs.
+    private func header() -> NSStackView {
+        let title = NSTextField(labelWithString: TransfersToolbarItem.localizedLabel)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        clearButton.target = self
+        clearButton.action = #selector(clearFinished(_:))
+        clearButton.bezelStyle = .push
+        clearButton.controlSize = .small
+        clearButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        clearButton.toolTip = String(localized: "Remove finished transfers from the list")
+        let header = NSStackView(views: [title, NSView(), clearButton])
+        header.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 8, right: 12)
+        header.translatesAutoresizingMaskIntoConstraints = false
+        return header
+    }
+
+    /// The jobs' rows, one under another, scrolling once they're taller than the list.
+    private func setUpList() {
+        listStack.orientation = .vertical
+        listStack.alignment = .leading
+        listStack.spacing = 0
+        listStack.translatesAutoresizingMaskIntoConstraints = false
+        let document = TransfersFlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(listStack)
+        scrollView.documentView = document
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            document.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            document.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            document.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            listStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            listStack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            listStack.topAnchor.constraint(equalTo: document.topAnchor),
+            listStack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+        ])
+    }
+
+    private func setUpEmptyView() {
+        let emptyTitle = NSTextField(labelWithString: String(localized: "No Transfers"))
+        emptyTitle.font = .systemFont(ofSize: 13, weight: .medium)
+        emptyTitle.textColor = .secondaryLabelColor
+        let emptyBody = NSTextField(labelWithString: String(localized: "Copies and moves you start appear here."))
+        emptyBody.font = .systemFont(ofSize: 11)
+        emptyBody.textColor = .tertiaryLabelColor
+        emptyView.setViews([emptyTitle, emptyBody], in: .center)
+        emptyView.orientation = .vertical
+        emptyView.spacing = 3
+        emptyView.translatesAutoresizingMaskIntoConstraints = false
     }
 
     @objc private func queueChanged() {
