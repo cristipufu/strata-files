@@ -31,6 +31,16 @@ package protocol QueueJob: AnyObject {
     func finished() async
 }
 
+/// A job the queue lists and hears from: when it changes, and when it ends.
+protocol ListedJob: QueueJob {
+    var onChange: ((Self) -> Void)? { get set }
+    var onFinish: ((Self) -> Void)? { get set }
+}
+
+extension ArchiveJob: ListedJob {}
+extension CopyFetchJob: ListedJob {}
+extension RemoteUploadJob: ListedJob {}
+
 extension TransferJob: QueueJob {
     package var failureCount: Int { failures.count }
 }

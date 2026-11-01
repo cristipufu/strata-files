@@ -20,7 +20,7 @@ package final class RemoteUploadJob {
     private var totalBytes: Int64 = 0
     package var onChange: ((RemoteUploadJob) -> Void)?
     package var onFinish: ((RemoteUploadJob) -> Void)?
-    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+    private let finishWaiters = Waiters()
 
     package init(_ sources: [URL], into folder: URL, skipping: Set<String> = [], expected: RemoteServer? = nil,
          files: RemoteFiles, copies: CopyProviders) {
@@ -103,16 +103,14 @@ package final class RemoteUploadJob {
 
     package func finished() async {
         guard state.isActive else { return }
-        await withCheckedContinuation { finishWaiters.append($0) }
+        await finishWaiters.waitForRelease()
     }
 
     private func finish() {
         task = nil
         onChange?(self)
         onFinish?(self)
-        let waiters = finishWaiters
-        finishWaiters = []
-        waiters.forEach { $0.resume() }
+        finishWaiters.release()
     }
 }
 

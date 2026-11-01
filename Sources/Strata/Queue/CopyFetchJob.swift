@@ -12,7 +12,7 @@ package final class CopyFetchJob {
     private var then: (() -> Void)?
     package var onChange: ((CopyFetchJob) -> Void)?
     package var onFinish: ((CopyFetchJob) -> Void)?
-    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+    private let finishWaiters = Waiters()
 
     /// `then` runs once everything is read (not when it fails or is stopped).
     package init(_ urls: [URL], copies: CopyProviders, then: @escaping () -> Void) {
@@ -55,7 +55,7 @@ package final class CopyFetchJob {
 
     package func finished() async {
         guard state.isActive else { return }
-        await withCheckedContinuation { finishWaiters.append($0) }
+        await finishWaiters.waitForRelease()
     }
 
     private func finish() {
@@ -64,9 +64,7 @@ package final class CopyFetchJob {
         task = nil
         onChange?(self)
         onFinish?(self)
-        let waiters = finishWaiters
-        finishWaiters = []
-        waiters.forEach { $0.resume() }
+        finishWaiters.release()
     }
 }
 

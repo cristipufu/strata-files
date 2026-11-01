@@ -66,7 +66,7 @@ package final class TransferJob {
     /// The disk a paused job gave up, to take back when it resumes.
     private var pausedDisk: dev_t?
     private var started = false
-    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+    private let finishWaiters = Waiters()
     private var isRunningPass = false
     private var measured = false
 
@@ -209,7 +209,7 @@ package final class TransferJob {
     /// Waits until the current pass (first run or a retry) is over: finished, failed or cancelled.
     package func finished() async {
         guard isRunningPass else { return }
-        await withCheckedContinuation { finishWaiters.append($0) }
+        await finishWaiters.waitForRelease()
     }
 
     private func run() async {
@@ -660,9 +660,7 @@ package final class TransferJob {
         queue?.jobDidFinish(self)
         isRunningPass = false
         onFinish?(self)
-        let waiters = finishWaiters
-        finishWaiters = []
-        waiters.forEach { $0.resume() }
+        finishWaiters.release()
     }
 
     private func registerUndo() {

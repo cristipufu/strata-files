@@ -28,7 +28,7 @@ package final class ArchiveJob {
     /// Called on the main thread when the state changes, and when it finishes.
     package var onChange: ((ArchiveJob) -> Void)?
     package var onFinish: ((ArchiveJob) -> Void)?
-    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
+    private let finishWaiters = Waiters()
 
     package init(_ operation: Operation, undo: UndoManager?) {
         self.operation = operation
@@ -81,15 +81,13 @@ package final class ArchiveJob {
 
     package func finished() async {
         guard state.isActive else { return }
-        await withCheckedContinuation { finishWaiters.append($0) }
+        await finishWaiters.waitForRelease()
     }
 
     private func finish() {
         onChange?(self)
         onFinish?(self)
-        let waiters = finishWaiters
-        finishWaiters = []
-        waiters.forEach { $0.resume() }
+        finishWaiters.release()
     }
 
     /// Picks up progress from the worker; called a few times a second while running.

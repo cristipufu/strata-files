@@ -95,7 +95,7 @@ package actor SemanticIndex {
     private var freeRows: [Int] = []
     private var loaded = false
     private var loading = false
-    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
+    private let loadWaiters = Waiters()
     private var updating = false
     private var unsavedChanges = 0
     private var lastSave = ContinuousClock.now
@@ -552,16 +552,14 @@ package actor SemanticIndex {
     private func loadIfNeeded() async {
         guard !loaded else { return }
         if loading {
-            await withCheckedContinuation { loadWaiters.append($0) }
+            await loadWaiters.waitForRelease()
             return
         }
         loading = true
         defer {
             loading = false
             loaded = true
-            let waiters = loadWaiters
-            loadWaiters.removeAll()
-            for waiter in waiters { waiter.resume() }
+            loadWaiters.release()
         }
         // Earlier builds kept passages in a plain property list: start over rather than keep that copy around.
         SecureStorage.removeLegacy(configuration.storeDirectory.appending(path: "index.plist"))

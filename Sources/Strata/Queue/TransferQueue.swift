@@ -81,40 +81,32 @@ package final class TransferQueue {
     /// Runs a Compress or Extract in the list, with the copies. Archive jobs run one at a time (several tools on one disk
     /// only slow each other down, and their free-space checks would race); the rest wait in the list.
     package func add(_ job: ArchiveJob) {
-        jobs.append(job)
-        job.onChange = { [weak self] _ in self?.notify() }
-        job.onFinish = { [weak self, previous = job.onFinish] job in
-            previous?(job)
-            self?.startNextArchiveJob()
-            self?.notifyNow()
+        list(job, starting: startNextArchiveJob) { queue in
+            queue.startNextArchiveJob()
+            queue.notifyNow()
         }
-        startNextArchiveJob()
-        notify()
-        startTicking()
     }
 
     /// Reading from a provider starts right away, alongside other transfers.
     package func add(_ job: CopyFetchJob) {
-        jobs.append(job)
-        job.onChange = { [weak self] _ in self?.notify() }
-        job.onFinish = { [weak self, previous = job.onFinish] job in
-            previous?(job)
-            self?.notifyNow()
-        }
-        job.start()
-        notify()
-        startTicking()
+        list(job, starting: job.start) { $0.notifyNow() }
     }
 
     /// Copying onto a server: starts right away, alongside copies on this Mac.
     package func add(_ job: RemoteUploadJob) {
+        list(job, starting: job.start) { $0.notifyNow() }
+    }
+
+    /// Lists `job`, hears whenever it changes, and starts it with `start`; once it ends, after what it was already set
+    /// to do then, `finished` runs.
+    private func list<Job: ListedJob>(_ job: Job, starting start: () -> Void, finished: @escaping (TransferQueue) -> Void) {
         jobs.append(job)
         job.onChange = { [weak self] _ in self?.notify() }
         job.onFinish = { [weak self, previous = job.onFinish] job in
             previous?(job)
-            self?.notifyNow()
+            if let self { finished(self) }
         }
-        job.start()
+        start()
         notify()
         startTicking()
     }
@@ -413,18 +405,17 @@ package enum TransferUndo {
         }
 
         private var outcome: Outcome?
-        private var waiters: [CheckedContinuation<Void, Never>] = []
+        private let waiters = Waiters()
 
         fileprivate func settle(_ outcome: Outcome) {
             self.outcome = outcome
-            waiters.forEach { $0.resume() }
-            waiters = []
+            waiters.release()
         }
 
         /// What it moved that's still where it went (clashes may have renamed items on the way), and what each is
         /// there, for checking again just before each moves back.
         package func landed() async -> (moves: [TransferMove], expected: [String: FileIdentity]) {
-            if outcome == nil { await withCheckedContinuation { waiters.append($0) } }
+            if outcome == nil { await waiters.waitForRelease() }
             switch outcome {
             case .renamed(let done, let landed):
                 let still = Set(await landed.holding(done.map(\.to)))
