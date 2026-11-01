@@ -45,22 +45,13 @@ final class AppUpdatesController: NSViewController {
         stack.spacing = 4
         stack.setCustomSpacing(12, after: summary)
         stack.setCustomSpacing(16, after: scroll)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(stack)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [scroll, footer], themed: false)
         container.addSubview(escapeButton())
         let separators = CGFloat(max(0, urls.count - 1))
         let height = min(CGFloat(urls.count) * Self.rowHeight + separators, 6.5 * Self.rowHeight)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        NSLayoutConstraint.activate(constraints + [
             container.widthAnchor.constraint(equalToConstant: 520),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             scroll.heightAnchor.constraint(equalToConstant: height),
-            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             summary.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -40),
         ])
         view = container

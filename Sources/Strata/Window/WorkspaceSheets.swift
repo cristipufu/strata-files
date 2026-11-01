@@ -55,22 +55,8 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         stack.setCustomSpacing(14, after: hint)
         stack.setCustomSpacing(12, after: name)
         stack.setCustomSpacing(16, after: note)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        ThemeStyle.bind(container, to: .content)
-        container.addSubview(stack)
-        var constraints = [
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 460),
-        ]
-        for view in [hint, name, tabs, note, footer] {
-            constraints.append(view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40))
-        }
-        NSLayoutConstraint.activate(constraints)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [hint, name, tabs, note, footer])
+        NSLayoutConstraint.activate(constraints + [container.widthAnchor.constraint(equalToConstant: 460)])
         view = container
         ThemeStyle.refresh(container)
         nameChanged()

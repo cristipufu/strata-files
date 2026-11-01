@@ -144,21 +144,10 @@ final class BatchRenameController: NSViewController, NSTableViewDataSource, NSTa
         stack.alignment = .leading
         stack.spacing = 12
         stack.setCustomSpacing(16, after: title)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        ThemeStyle.bind(container, to: .content)
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [scroll, footer, rulesStack])
+        NSLayoutConstraint.activate(constraints + [
             container.widthAnchor.constraint(equalToConstant: 640),
             scroll.heightAnchor.constraint(equalToConstant: 260),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            rulesStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
         return container
     }

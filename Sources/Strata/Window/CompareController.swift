@@ -171,21 +171,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(4, after: title)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [options, scroll, footer], themed: false)
+        NSLayoutConstraint.activate(constraints + [
             container.widthAnchor.constraint(greaterThanOrEqualToConstant: 800),
             sides.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -40),
-            options.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 320),
-            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
         return container
     }

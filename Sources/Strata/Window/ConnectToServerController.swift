@@ -79,22 +79,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         stack.setCustomSpacing(14, after: title)
         stack.setCustomSpacing(14, after: kindPicker)
         stack.setCustomSpacing(16, after: message)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        ThemeStyle.bind(container, to: .content)
-        container.addSubview(stack)
-        var constraints = [
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 480),
-        ]
-        for view in [address, s3Form, hint, message, footer] as [NSView] {
-            constraints.append(view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40))
-        }
-        NSLayoutConstraint.activate(constraints)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [address, s3Form, hint, message, footer])
+        NSLayoutConstraint.activate(constraints + [container.widthAnchor.constraint(equalToConstant: 480)])
         view = container
         showKind()
         if let editing { fill(editing) }
