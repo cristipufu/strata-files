@@ -2650,8 +2650,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,",
-    "replace": "guard let descriptor = outlineView.sortDescriptors.first,",
+    "find": "              ordering.choice != .init(key: key, ascending: descriptor.ascending) else { return }",
+    "replace": "              true else { return }",
     "rule": "Browser ordering programmatic choices update the native header without persisting",
     "tests": "BrowserOrderingTests/nativeHeadersSelectionsAndSavedChoicesFollowResultAndFolderTransitions"
   },
@@ -4928,9 +4928,9 @@
     "tests": "BrowserListingTests/everyViewTypesDeletesAndClearsTheFilterAlike"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "        services.previews.invalidate(owner: self)",
-    "replace": "        // Keep a preview after its pane navigates.",
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        navigationRevision += 1\n        services.previews.invalidate(owner: self)",
+    "replace": "        navigationRevision += 1\n        // Keep a preview after its pane navigates.",
     "rule": "Space preview foundation: source navigation cancels only its own preview",
     "tests": "PreviewSessionTests/previewExplorationNeverChangesTheBrowserAndNavigationClosesOnlyItsOwnPreview"
   },

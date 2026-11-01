@@ -123,7 +123,7 @@ final class BrowserViewController: NSViewController {
     /// The last Move to Trash asked here: its items going, then the next row chosen.
     var trashing: Task<Void, Never>?
     /// Bumped whenever this pane changes folder, column location or results context.
-    var navigationRevision = 0
+    private(set) var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
     private(set) lazy var serverCommands = ServerCommands(context: self)
@@ -138,7 +138,6 @@ final class BrowserViewController: NSViewController {
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
                         tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
-    var updatingSortDescriptor = false
     let pending = BrowserPendingActions()
     /// Opens the folder row a drag rests on (only rows still on screen).
     lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
@@ -601,11 +600,16 @@ final class BrowserViewController: NSViewController {
     /// The same order feeds the native list and deeper columns.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool { ordering.ordered(a, b) }
 
+    func noteNavigationContextChanged() {
+        navigationRevision += 1
+        services.previews.invalidate(owner: self)
+        actionFetch?.cancel()
+        actionFetch = nil
+    }
+
     func syncSortDescriptor() {
         let descriptors = ordering.choice.map { [NSSortDescriptor(key: $0.key.rawValue, ascending: $0.ascending)] } ?? []
         guard outlineView.sortDescriptors != descriptors else { return }
-        updatingSortDescriptor = true
-        defer { updatingSortDescriptor = false }
         outlineView.sortDescriptors = descriptors
     }
 

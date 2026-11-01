@@ -137,8 +137,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,
-              let key = SortKey(rawValue: descriptor.key ?? "") else { return }
+        // The header follows the pane's choice (`syncSortDescriptor`): only a click that picks another order applies it.
+        guard let descriptor = outlineView.sortDescriptors.first, let key = SortKey(rawValue: descriptor.key ?? ""),
+              ordering.choice != .init(key: key, ascending: descriptor.ascending) else { return }
         applySort(key, ascending: descriptor.ascending)
     }
 

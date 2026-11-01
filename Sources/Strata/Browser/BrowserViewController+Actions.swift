@@ -139,13 +139,6 @@ extension BrowserViewController {
         refresh()
     }
 
-    func noteNavigationContextChanged() {
-        navigationRevision += 1
-        services.previews.invalidate(owner: self)
-        actionFetch?.cancel()
-        actionFetch = nil
-    }
-
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
         noteNavigationContextChanged()
