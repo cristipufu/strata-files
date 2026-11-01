@@ -188,55 +188,22 @@ extension BrowserViewController {
 
 // MARK: - Menu validation
 
-extension BrowserViewController: NSMenuItemValidation {
+extension BrowserViewController: NSMenuItemValidation, PaneCommandState {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let action = item.action else { return true }
-        // While a name is being edited, ⌘⌫, ⌘D, ⇧⌘N and ⌥⌘N belong to the text, not the file. While another folder loads,
-        // the rows on screen are the previous folder's.
-        if Self.fileCommands.contains(action), view.window?.firstResponder is NSText || isLoadingFolder {
-            return false
-        }
-        if isOnServer, Self.serverChanges.contains(action) { return validateOnServer(item, action) }
-        // Back from a server: the File menu says Move to Trash again (Delete… was the server's).
-        if action == #selector(moveToTrash(_:)) { item.title = String(localized: "Move to Trash") }
-        if Self.changes.contains(action), isInsideArchive { return false }
-        return validateViewOption(item, action) ?? validateCommand(item, action)
+        if let shown = validateViewOption(item, action) { return shown }
+        let answer = PaneCommandAvailability.answer(for: action, represented: item.representedObject, in: self)
+        if let title = answer.title { item.title = title }
+        return answer.isEnabled
     }
 
-    private static let fileCommands: Set<Selector> = [
-        #selector(openSelection(_:)), #selector(moveToTrash(_:)), #selector(duplicate(_:)), #selector(newFolder(_:)),
-        #selector(newFile(_:)), #selector(renameSelection(_:)), #selector(toggleQuickLook(_:)), #selector(pasteAndMove(_:)),
-        #selector(copy(_:)), #selector(cut(_:)), #selector(paste(_:)), #selector(share(_:)),
-        #selector(putBack(_:)), #selector(deleteImmediately(_:)), #selector(compress(_:)), #selector(extract(_:)),
-    ]
+    var isEditingText: Bool { view.window?.firstResponder is NSText }
+    var hasFolder: Bool { directory != nil }
+    var clipboardHasFiles: Bool { services.clipboard.hasFiles }
+    var hasStackProjects: Bool { !stackProjectDirectories().isEmpty }
 
-    /// An archive opened as a folder is a copy that isn't saved back: nothing in it is changed from Strata.
-    private static let changes: Set<Selector> = [
-        #selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)), #selector(renameSelection(_:)),
-        #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)), #selector(duplicate(_:)), #selector(cut(_:)),
-        #selector(compress(_:)), #selector(extract(_:)), #selector(putBack(_:)),
-        #selector(editTags(_:)), #selector(addToSidebar(_:)),
-    ]
-
-    /// On a server: new files and folders, renaming one item, deleting and pasting go to the server; the rest stays off.
-    private static let serverChanges: Set<Selector> = [
-        #selector(newFolder(_:)), #selector(newFile(_:)), #selector(paste(_:)), #selector(pasteAndMove(_:)),
-        #selector(renameSelection(_:)), #selector(moveToTrash(_:)), #selector(deleteImmediately(_:)),
-    ]
-
-    private func validateOnServer(_ item: NSMenuItem, _ action: Selector) -> Bool {
-        let hasSelection = !selectedEntries.isEmpty
-        // Like on this Mac: not in search results, a folder that didn't load, or Disk Usage.
-        let showsFolder = showsEditableFolder
-        switch action {
-        case #selector(moveToTrash(_:)):
-            item.title = String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)")
-            return hasSelection
-        case #selector(deleteImmediately(_:)): return hasSelection
-        case #selector(renameSelection(_:)): return showsFolder && selectedEntries.count == 1
-        case #selector(paste(_:)), #selector(pasteAndMove(_:)): return showsFolder && services.clipboard.hasFiles
-        default: return showsFolder
-        }
+    func isBusy(_ container: ContainerInfo) -> Bool {
+        services.containerStore.busy[container.id] != nil
     }
 
     /// Show and sort options; nil for anything else.
@@ -268,63 +235,6 @@ extension BrowserViewController: NSMenuItemValidation {
             return !isShowingResults
         default:
             return nil
-        }
-    }
-
-    private func validateCommand(_ item: NSMenuItem, _ action: Selector) -> Bool {
-        let selectionCount = selectedEntries.count
-        let hasSelection = selectionCount > 0
-        switch action {
-        case #selector(moveToTrash(_:)):
-            // Finder's File menu says Put Back for things in the Trash, and won't trash what's inside a trashed folder.
-            let inTrash = hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
-            item.title = inTrash ? String(localized: "Put Back") : String(localized: "Move to Trash")
-            return hasSelection && (inTrash || !selectedEntries.contains { Trash.isInTrash($0.url) || Trash.isTrash($0.url) })
-        case #selector(putBack(_:)):
-            return hasSelection && selectedEntries.allSatisfy { Trash.contains($0.url) }
-        case #selector(checkAppsForUpdates(_:)):
-            item.title = appUpdatesTitle
-            return !selectedApps.isEmpty
-        // A container's files are read only when copied out: no shelf, no share sheet, no Finder.
-        case #selector(addToShelf(_:)) where isInContainerCopy,
-             #selector(share(_:)) where isInContainerCopy,
-             #selector(showInFinder(_:)) where isInContainerCopy:
-            return false
-        case #selector(openInTerminal(_:)) where serverKind != nil:
-            // On a server it's a shell there over ssh; a bucket has none.
-            return serverKind == .sftp
-        case #selector(openInTerminal(_:)) where isStackContext:
-            return !stackProjectDirectories().isEmpty
-        case #selector(openInTerminal(_:)) where canOpenTerminalInContainer != nil:
-            // In a container's files it's a shell in the container, which has to be running.
-            return canOpenTerminalInContainer == true
-        case #selector(containerAction(_:)):
-            guard let raw = item.representedObject as? String, let chosen = ContainerAction(rawValue: raw) else { return false }
-            return selectedContainers.contains { chosen.applies(to: $0.state) && services.containerStore.busy[$0.id] == nil }
-        case #selector(duplicate(_:)):
-            return hasSelection && !isShowingTrash
-        case #selector(editTags(_:)):
-            return canTagSelection
-        case #selector(compress(_:)):
-            // Finder names what it compresses: "Compress “Photos”", "Compress 3 Items".
-            item.title = hasSelection ? compressTitle : String(localized: "Compress", comment: "Menu command: zip the selected items")
-            return hasSelection && !isShowingTrash && effectiveMode != .treemap && canWriteBesideSelection
-        case #selector(extract(_:)):
-            item.title = extractTitle
-            return !selectedArchives.isEmpty && !isShowingTrash && canWriteBesideSelection
-        case #selector(openSelection(_:)), #selector(deleteImmediately(_:)),
-             #selector(copy(_:)), #selector(cut(_:)), #selector(toggleQuickLook(_:)), #selector(share(_:)):
-            return hasSelection
-        case #selector(renameSelection(_:)):
-            item.title = renameTitle
-            return selectionCount >= 1 && effectiveMode != .treemap
-        case #selector(paste(_:)), #selector(pasteAndMove(_:)):
-            return directory != nil && !isShowingResults && services.clipboard.hasFiles && !isShowingTrash
-        case #selector(newFolder(_:)), #selector(newFile(_:)):
-            // Disk Usage can't show an empty folder or file, so a new one would seem to vanish.
-            return directory != nil && showsEditableFolder && !isShowingTrash
-        default:
-            return true
         }
     }
 }

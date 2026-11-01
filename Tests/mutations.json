@@ -8002,5 +8002,26 @@
     "replace": "        guard !Trash.isTrash(target) else { return .refused }",
     "rule": "Copy to Other Pane copies the selection into a read-only copy shown there",
     "tests": "OtherPaneTransferTests/aCopyGoesThroughTheServerTheQueueOrNowhereByWhereTheOtherPaneIs"
+  },
+  {
+    "file": "Strata/Browser/PaneCommandAvailability.swift",
+    "find": "            return Answer(isEnabled: hasSelection && (inTrash || !selected.contains { Trash.isInTrash($0.url) || Trash.isTrash($0.url) }),",
+    "replace": "            return Answer(isEnabled: hasSelection,",
+    "rule": "Move to Trash is on for an item inside a trashed folder, or for the Trash itself",
+    "tests": "PaneCommandAvailabilityTests/moveToTrashIsOnlyOfferedWhereItCanHappenAndInATrashItPutsBack"
+  },
+  {
+    "file": "Strata/Browser/PaneCommandAvailability.swift",
+    "find": "        if fileCommands.contains(action), pane.isEditingText || pane.isLoadingFolder { return Answer(isEnabled: false) }",
+    "replace": "        if fileCommands.contains(action), pane.isLoadingFolder { return Answer(isEnabled: false) }",
+    "rule": "Move to Trash and the other file commands stay on while a name is being edited, so ⌘⌫ trashes the file",
+    "tests": "PaneCommandAvailabilityTests/whileANameIsEditedOrAnotherFolderLoadsTheFileCommandsAreOff"
+  },
+  {
+    "file": "Strata/Browser/PaneCommandAvailability.swift",
+    "find": "        if changes.contains(action), pane.isInsideArchive {",
+    "replace": "        if changes.contains(action), pane.isInsideArchive, pane.isLoadingFolder {",
+    "rule": "Commands that change files stay on inside an archive's or a container's read-only copy",
+    "tests": "PaneCommandAvailabilityTests/aReadOnlyCopyChangesNothingAndAServerDeletesForGood"
   }
 ]
