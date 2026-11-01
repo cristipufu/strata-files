@@ -344,14 +344,7 @@ package actor RemoteFiles {
 
     /// A new folder named `name` in `folder`; where it is in the copy.
     package func makeFolder(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
-        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
-        let (server, top, path) = try target(folder)
-        if let expected, server != expected { throw CancellationError() }
-        let backend = try await serverBackends(server)
-        try ensureCurrent(server, top: top)
-        let newPath = RemotePath.join(path, name)
-        if try await backend.exists(newPath) { throw RemoteError.exists(name) }
-        try ensureCurrent(server, top: top)
+        let (server, top, _, newPath, backend) = try await newItem(named: name, in: folder, expected: expected)
         try await backend.makeFolder(newPath)
         if (try? ensureCurrent(server, top: top)) != nil { await relist(folder) }
         return folder.appending(path: name, directoryHint: .isDirectory)
@@ -360,14 +353,7 @@ package actor RemoteFiles {
     /// An empty file named `name` in `folder`, made on the server; where it is in the copy. Written under a temporary
     /// name, then renamed into place: like any rename here, never over something that's there.
     package func makeFile(named name: String, in folder: URL, expected: RemoteServer? = nil) async throws -> URL {
-        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
-        let (server, top, path) = try target(folder)
-        if let expected, server != expected { throw CancellationError() }
-        let backend = try await serverBackends(server)
-        try ensureCurrent(server, top: top)
-        let newPath = RemotePath.join(path, name)
-        if try await backend.exists(newPath) { throw RemoteError.exists(name) }
-        try ensureCurrent(server, top: top)
+        let (server, top, path, newPath, backend) = try await newItem(named: name, in: folder, expected: expected)
         let empty = FileManager.default.temporaryDirectory.appending(path: "strata-empty-\(UUID().uuidString)")
         try Data().write(to: empty, options: .withoutOverwriting)
         defer { try? FileManager.default.removeItem(at: empty) }
@@ -383,6 +369,21 @@ package actor RemoteFiles {
         }
         if (try? ensureCurrent(server, top: top)) != nil { await relist(folder) }
         return folder.appending(path: name)
+    }
+
+    /// Where a new item named `name` goes in `folder` on its server, checked free just before it's made. A name that
+    /// can't be used, a folder of a server other than `expected`, or a name already there is refused.
+    private func newItem(named name: String, in folder: URL, expected: RemoteServer?) async throws
+        -> (server: RemoteServer, top: URL, folderPath: String, path: String, backend: any RemoteBackend) {
+        guard ContainerCopies.isSafeName(name) else { throw RemoteError.refused(String(localized: "That name can’t be used.")) }
+        let (server, top, path) = try target(folder)
+        if let expected, server != expected { throw CancellationError() }
+        let backend = try await serverBackends(server)
+        try ensureCurrent(server, top: top)
+        let newPath = RemotePath.join(path, name)
+        if try await backend.exists(newPath) { throw RemoteError.exists(name) }
+        try ensureCurrent(server, top: top)
+        return (server, top, path, newPath, backend)
     }
 
     /// Renames the item at `url` on the server; where it is in the copy now.
