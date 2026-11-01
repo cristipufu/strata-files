@@ -203,7 +203,7 @@ final class SidebarViewController: NSViewController {
             item.help = engine.name
             return item
         }
-        let cloud = cloudFolders.filter { !pinned.contains($0.url.standardizedFileURL.path) }.map {
+        let cloud = cloudFolders.filter { !pinned.contains($0.url.lexicallyStandardized.path) }.map {
             SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
         }
         return SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
@@ -322,7 +322,7 @@ final class SidebarViewController: NSViewController {
 
     private func matches(_ a: SidebarTarget, _ b: SidebarTarget?) -> Bool {
         switch (a, b) {
-        case (.folder(let x), .folder(let y)?): x.standardizedFileURL.path == y.standardizedFileURL.path
+        case (.folder(let x), .folder(let y)?): x.lexicallyStandardized.path == y.lexicallyStandardized.path
         case (.recents, .recents?), (.duplicates, .duplicates?), (.largeFiles, .largeFiles?): true
         case (.search(let x), .search(let y)?): x == y
         case (.containers, .containers?): true
@@ -628,7 +628,7 @@ extension SidebarViewController {
 
     /// As spelled and standardized: standardizing drops a leading /private that a mount point keeps.
     private static func isMountPoint(_ url: URL, in mounts: Set<String>) -> Bool {
-        [url.path, url.standardizedFileURL.path].contains { path in
+        [url.path, url.lexicallyStandardized.path].contains { path in
             mounts.contains(path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path)
         }
     }

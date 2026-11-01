@@ -603,8 +603,8 @@ final class PaletteRanker {
     }
 
     private func merge(_ extra: [PaletteItem]) {
-        let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
-        let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
+        let known = Set(scored.compactMap { $0.item.url?.lexicallyStandardized.path })
+        let fresh = extra.filter { item in item.url.map { !known.contains($0.lexicallyStandardized.path) } ?? true }
         guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
         // The typed path, once found, is what Return takes, unless a row was chosen meanwhile.
         let keeping = (rowChosen ? nil : fresh.first { $0.kind == .path }?.title) ?? selectedTitle()

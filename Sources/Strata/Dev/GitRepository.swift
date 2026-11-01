@@ -25,13 +25,13 @@ package nonisolated struct GitRepository: Sendable, Hashable {
 
     /// Folders never treated as a work tree root even when they hold `.git`. A dotfiles repo in the home folder
     /// would otherwise make every folder you browse "untracked" and run status over your whole home.
-    package static let excludedRoots: Set<String> = ["/", FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path]
+    package static let excludedRoots: Set<String> = ["/", FileManager.default.homeDirectoryForCurrentUser.lexicallyStandardized.path]
 
     /// The repository containing `url` (a folder, or a file whose folder is used), or nil. A few `lstat`s per level,
     /// no git process.
     package static func locate(from url: URL) -> GitRepository? {
         let fm = FileManager.default
-        var path = url.standardizedFileURL.path
+        var path = url.lexicallyStandardized.path
         var isDirectory: ObjCBool = false
         if fm.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
             path = (path as NSString).deletingLastPathComponent
@@ -68,7 +68,7 @@ package nonisolated struct GitRepository: Sendable, Hashable {
         let target = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
         guard !target.isEmpty else { return nil }
         let absolute = target.hasPrefix("/") ? target : (folder as NSString).appendingPathComponent(target)
-        let url = URL(fileURLWithPath: absolute, isDirectory: true).standardizedFileURL
+        let url = URL(fileURLWithPath: absolute, isDirectory: true).lexicallyStandardized
         return FileManager.default.fileExists(atPath: url.appending(path: "HEAD").path) ? url : nil
     }
 

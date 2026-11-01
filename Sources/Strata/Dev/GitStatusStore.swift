@@ -40,7 +40,7 @@ package final class GitStatusStore {
     private var lastStart: [String: Date] = [:]
     private var watchers: [String: (watcher: GitRepoWatcher, count: Int)] = [:]
 
-    private static func key(_ url: URL) -> String { url.standardizedFileURL.path }
+    private static func key(_ url: URL) -> String { url.lexicallyStandardized.path }
 
     // MARK: - Repositories
 
@@ -48,7 +48,7 @@ package final class GitStatusStore {
     /// main thread (an lstat or two at every level up to "/", each a round trip on a server) and nil until then; a
     /// status change says when it's found. `observe` looks again.
     package func repository(containing folder: URL) -> GitRepository? {
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         if let cached = repositoriesByFolder[path] { return cached }
         find(path)
         return nil
@@ -57,7 +57,7 @@ package final class GitStatusStore {
     /// The same, waiting for the lookup when it isn't known yet: for deciding something by it, such as which of a
     /// project's folders git tracks.
     package func repositoryFound(containing folder: URL) async -> GitRepository? {
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         if let cached = repositoriesByFolder[path] { return cached }
         return await find(path).value
     }
@@ -65,7 +65,7 @@ package final class GitStatusStore {
     /// The repository an item in the list belongs to: its parent folder's. (A nested repository's root is an
     /// untracked folder of the outer one, which is how it should look from outside.)
     package func repository(forItem url: URL) -> GitRepository? {
-        repository(containing: url.standardizedFileURL.deletingLastPathComponent())
+        repository(containing: url.lexicallyStandardized.deletingLastPathComponent())
     }
 
     /// Each folder's newest lookup: only it may record what it found, however the lookups end.
@@ -127,7 +127,7 @@ package final class GitStatusStore {
     /// staging, commits and checkouts made anywhere refresh it, and runs status unless a watched snapshot is already
     /// current. Returns nil outside a repository.
     package func observe(_ folder: URL) async -> GitObservation? {
-        guard let repository = await find(folder.standardizedFileURL.path, fresh: true).value else { return nil }
+        guard let repository = await find(folder.lexicallyStandardized.path, fresh: true).value else { return nil }
         // Read before anything's decided: no await comes between finding there's no watcher and making one.
         let filter = await GitEventFilter.read(repository)
         let root = repository.rootPath
@@ -327,7 +327,7 @@ package nonisolated struct GitEventFilter: Sendable {
 
     package init(repository: GitRepository) {
         func variants(_ url: URL) -> [String] {
-            let path = url.standardizedFileURL.path
+            let path = url.lexicallyStandardized.path
             guard let real = realpath(path, nil) else { return [path] }
             defer { free(real) }
             let resolved = String(cString: real)
@@ -386,7 +386,7 @@ package nonisolated struct GitEventFilter: Sendable {
         context = GitWatcherContext(filter: filter, onChange: onChange)
 
         var watched = [repository.rootPath]
-        let gitDir = repository.gitDirectory.standardizedFileURL.path
+        let gitDir = repository.gitDirectory.lexicallyStandardized.path
         if !gitDir.hasPrefix(repository.rootPath + "/") { watched.append(gitDir) }
 
         // The stream owns one reference to the context and releases it when the stream is freed, so a callback that's

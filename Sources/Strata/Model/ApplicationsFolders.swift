@@ -10,8 +10,8 @@ package nonisolated struct ApplicationsFolders: Sendable {
                                system: URL(fileURLWithPath: "/System/Applications", isDirectory: true))
 
     package func directories(for directory: URL) -> [URL] {
-        guard directory.standardizedFileURL.path == installed.standardizedFileURL.path,
-              installed.standardizedFileURL.path != system.standardizedFileURL.path else { return [directory] }
+        guard directory.lexicallyStandardized.path == installed.lexicallyStandardized.path,
+              installed.lexicallyStandardized.path != system.lexicallyStandardized.path else { return [directory] }
         return [directory, system]
     }
 
@@ -28,26 +28,26 @@ package nonisolated struct ApplicationsFolders: Sendable {
     /// Columns can reveal a system app through a folder actually listed at their root, including Applications itself.
     /// The chain chooses rows; their entries supply the physical URLs used by commands.
     package func revealChain(to url: URL, from root: URL, listed: [FileEntry]) -> [URL]? {
-        let path = url.standardizedFileURL.path, rootPath = root.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path, rootPath = root.lexicallyStandardized.path
         func inside(_ path: String, _ parent: String) -> Bool { path.hasPrefix(parent == "/" ? "/" : parent + "/") }
         let boundary: String
         let first: URL?
         if inside(path, rootPath) {
             boundary = rootPath
             first = nil
-        } else if let ancestor = listed.first(where: { $0.isFolder && inside(path, $0.url.standardizedFileURL.path) }) {
-            boundary = ancestor.url.standardizedFileURL.path
+        } else if let ancestor = listed.first(where: { $0.isFolder && inside(path, $0.url.lexicallyStandardized.path) }) {
+            boundary = ancestor.url.lexicallyStandardized.path
             first = ancestor.url
-        } else if inside(path, system.standardizedFileURL.path),
-                  let applications = listed.first(where: { $0.isFolder && $0.url.standardizedFileURL.path == installed.standardizedFileURL.path }) {
-            boundary = system.standardizedFileURL.path
+        } else if inside(path, system.lexicallyStandardized.path),
+                  let applications = listed.first(where: { $0.isFolder && $0.url.lexicallyStandardized.path == installed.lexicallyStandardized.path }) {
+            boundary = system.lexicallyStandardized.path
             first = applications.url
         } else {
             return nil
         }
         var chain: [URL] = []
         var current = url
-        while current.standardizedFileURL.path != boundary, current.path != "/" {
+        while current.lexicallyStandardized.path != boundary, current.path != "/" {
             chain.insert(current, at: 0)
             current = current.deletingLastPathComponent()
         }

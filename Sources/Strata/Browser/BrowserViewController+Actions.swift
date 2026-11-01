@@ -480,7 +480,7 @@ extension BrowserViewController {
                                           conflicts: .sheet(for: view.window))
         job.onFinish = { [weak self] job in
             guard let self else { return }
-            if target.standardizedFileURL == targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
+            if target.lexicallyStandardized == targetDirectory?.lexicallyStandardized, !job.createdItems.isEmpty {
                 pending.selection = job.createdItems
             }
             refresh()

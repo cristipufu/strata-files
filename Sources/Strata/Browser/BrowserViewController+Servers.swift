@@ -20,7 +20,7 @@ extension BrowserViewController {
     /// Whether `url` is a server's own top folder (its `/`), which can't be renamed or deleted.
     static func isServerTop(_ url: URL, copies: RemoteCopyStore) -> Bool {
         guard let (_, top) = copies.server(containing: url) else { return false }
-        return top.standardizedFileURL == url.standardizedFileURL
+        return top.lexicallyStandardized == url.lexicallyStandardized
     }
 
     static func serverDeletionTargets(_ urls: [URL], copies: RemoteCopyStore) -> [URL] {
@@ -143,7 +143,7 @@ extension BrowserViewController {
             return runOnServer(in: folder) { [weak self] in
                 let moved = try await files.move(urls, into: folder, expected: expected)
                 guard let self else { return }
-                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !moved.isEmpty { self.pending.selection = moved }
+                if folder.lexicallyStandardized == self.targetDirectory?.lexicallyStandardized, !moved.isEmpty { self.pending.selection = moved }
                 self.refresh()
             }
         }
@@ -174,7 +174,7 @@ extension BrowserViewController {
                                       files: services.remote.files, copies: services.copies)
             job.onFinish = { job in
                 guard let self else { return }
-                if folder.standardizedFileURL == self.targetDirectory?.standardizedFileURL, !job.createdItems.isEmpty {
+                if folder.lexicallyStandardized == self.targetDirectory?.lexicallyStandardized, !job.createdItems.isEmpty {
                     self.pending.selection = job.createdItems
                 }
                 self.refresh()

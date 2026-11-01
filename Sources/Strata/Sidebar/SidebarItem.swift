@@ -47,7 +47,7 @@ final class SidebarItem {
 
     init(_ place: Place) {
         title = place.title
-        target = .folder(place.url.standardizedFileURL)
+        target = .folder(place.url.lexicallyStandardized)
         symbol = place.symbol
         isEjectable = place.isEjectable
     }

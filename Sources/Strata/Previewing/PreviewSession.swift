@@ -269,10 +269,10 @@ import StrataPreviews
     /// Reject a malformed provider batch before adding any rows. Only immediate children belong to this folder.
     private func makeItems(_ entries: [FileEntry], in folder: URL, parent: PreviewItem? = nil) throws -> [PreviewItem] {
         guard entries.count <= DirectoryReader.previewLimit - items.count else { throw CocoaError(.fileReadTooLarge) }
-        let bases = Set(applications.directories(for: folder).map { $0.standardizedFileURL.path })
+        let bases = Set(applications.directories(for: folder).map { $0.lexicallyStandardized.path })
         var seen: Set<String> = []
         for entry in entries {
-            let url = entry.url.standardizedFileURL
+            let url = entry.url.lexicallyStandardized
             guard url.isFileURL, bases.contains(url.deletingLastPathComponent().path),
                   !entry.name.isEmpty, entry.name != ".", entry.name != "..", !entry.name.contains("/"),
                   !entry.name.utf8.contains(0), entry.name.utf8.elementsEqual(entry.url.lastPathComponent.utf8),

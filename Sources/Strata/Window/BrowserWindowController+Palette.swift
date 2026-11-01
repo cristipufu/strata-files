@@ -31,9 +31,9 @@ extension BrowserWindowController {
             guard let self, let typedIn, panes.contains(where: { $0 === typedIn }),
                   typedIn.browser.navigationRevision == revision else { return }
             if isFolder {
-                go(.folder(url.standardizedFileURL), in: typedIn)
+                go(.folder(url.lexicallyStandardized), in: typedIn)
             } else {
-                go(.folder(url.deletingLastPathComponent().standardizedFileURL), in: typedIn, select: url)
+                go(.folder(url.deletingLastPathComponent().lexicallyStandardized), in: typedIn, select: url)
             }
         }
     }

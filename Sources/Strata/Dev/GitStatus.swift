@@ -208,7 +208,7 @@ package nonisolated struct GitStatusSnapshot: Sendable {
 
     /// `url` relative to the repository root ("" for the root itself), or nil when it's outside the work tree.
     package func relativePath(_ url: URL) -> String? {
-        GitStatusSnapshot.relativePath(url.standardizedFileURL.path, root: repository.rootPath)
+        GitStatusSnapshot.relativePath(url.lexicallyStandardized.path, root: repository.rootPath)
     }
 
     package static func relativePath(_ path: String, root: String) -> String? {

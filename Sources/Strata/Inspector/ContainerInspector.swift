@@ -625,14 +625,14 @@ final class ComposeInspectorView: NSView {
         await OwnThread.run {
             var resolved = known
             for directory in directories where resolved[directory] == nil {
-                resolved[directory] = URL(fileURLWithPath: directory).resolvingSymlinksInPath().standardizedFileURL.path
+                resolved[directory] = URL(fileURLWithPath: directory).resolvingSymlinksInPath().lexicallyStandardized.path
             }
             let file = fileNames.lazy.map { folder.appending(path: $0) }.first { FileManager.default.fileExists(atPath: $0.path) }
             let modified = file.flatMap { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate }
             let names = file.map { file in
                 cached[file.path].flatMap { $0.modified == modified ? $0.names : nil } ?? serviceNames(in: file)
             } ?? []
-            return Read(real: folder.resolvingSymlinksInPath().standardizedFileURL.path, resolved: resolved,
+            return Read(real: folder.resolvingSymlinksInPath().lexicallyStandardized.path, resolved: resolved,
                         file: file, modified: modified, names: names)
         }
     }

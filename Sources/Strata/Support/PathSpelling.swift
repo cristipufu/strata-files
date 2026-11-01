@@ -25,3 +25,13 @@ package nonisolated enum PathSpelling {
         return path
     }
 }
+
+extension URL {
+    /// The file URL as `standardizedFileURL` spells it (`PathSpelling.short`, its directory hint kept), without asking
+    /// the disk: `standardizedFileURL` stats a /private path and resolves the links on the way to a `..`, so its answer
+    /// can wait on a disk, and changes once an item is gone.
+    package nonisolated var lexicallyStandardized: URL {
+        guard isFileURL, !path.isEmpty else { return self }
+        return URL(filePath: PathSpelling.short(self), directoryHint: hasDirectoryPath ? .isDirectory : .notDirectory)
+    }
+}

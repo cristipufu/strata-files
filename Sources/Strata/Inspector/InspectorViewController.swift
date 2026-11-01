@@ -218,7 +218,7 @@ final class InspectorViewController: NSViewController {
     @objc private func containerFilesFetched(_ notification: Notification) {
         guard shownURLs.count == 1, let urls = notification.object as? [URL],
               let shown = shownURLs.first, services.copies.contains(shown),
-              urls.contains(where: { $0.standardizedFileURL.path == shown.standardizedFileURL.path }),
+              urls.contains(where: { $0.lexicallyStandardized.path == shown.lexicallyStandardized.path }),
               let entry = FileEntry(url: shown), canPreview(entry) else { return }
         if !entry.isDirectory {
             updateSummary(for: [entry])
@@ -471,7 +471,7 @@ final class InspectorViewController: NSViewController {
     /// the archive's folder.
     private func whereRow(_ entry: FileEntry, place: Placement, isCopy: Bool) -> (String, NSView)? {
         let target: (folder: URL, item: URL)
-        if let (archive, top) = ArchiveCache.archive(containing: entry.url), top.standardizedFileURL == entry.url.standardizedFileURL {
+        if let (archive, top) = ArchiveCache.archive(containing: entry.url), top.lexicallyStandardized == entry.url.lexicallyStandardized {
             target = (archive.deletingLastPathComponent(), archive)
         } else {
             target = (entry.url.deletingLastPathComponent(), entry.url)
@@ -571,7 +571,7 @@ final class InspectorViewController: NSViewController {
     /// Loads the project section for `url` (nil hides it). The same folder isn't reloaded unless `force`; a forced
     /// reload keeps the current section on screen until the new data arrives.
     private func loadProject(_ url: URL?, force: Bool = false) {
-        let same = url?.standardizedFileURL.path == projectFolder?.standardizedFileURL.path
+        let same = url?.lexicallyStandardized.path == projectFolder?.lexicallyStandardized.path
         guard !same || force else { return }
         projectFolder = url
         projectTask?.cancel()
@@ -599,7 +599,7 @@ final class InspectorViewController: NSViewController {
     /// A repository's status changed: refresh the git part only (no rescans).
     func gitStatusChanged(_ notification: Notification) {
         guard let info = projectView.info, let root = notification.userInfo?["root"] as? URL else { return }
-        let path = info.folder.standardizedFileURL.path
+        let path = info.folder.lexicallyStandardized.path
         guard path == root.path || path.hasPrefix(root.path + "/") else { return }
         projectView.configure(info.withCurrentGit(store: services.git))
     }

@@ -111,7 +111,7 @@ extension BrowserWindowController {
     func navigatePane(_ index: Int, to url: URL, mode: Int? = nil) {
         guard !isClosed, panes.indices.contains(index) else { return }
         let target = panes[index]
-        go(.folder(url.standardizedFileURL), in: target, recordHistory: false)
+        go(.folder(url.lexicallyStandardized), in: target, recordHistory: false)
         if let mode, let viewMode = BrowserViewMode(rawValue: mode) {
             let focused = pane
             target.browser.setMode(viewMode, remember: false)

@@ -248,8 +248,8 @@ final class ShelfWell: NSView, NSDraggingSource {
                                                undo: controller.window?.undoManager, conflicts: .sheet(for: controller.window))
         job.onFinish = { [weak self] job in
             if move {
-                let moved = Set(job.completedMoves.map { $0.from.standardizedFileURL })
-                self?.items.removeAll { moved.contains($0.standardizedFileURL) }
+                let moved = Set(job.completedMoves.map { $0.from.lexicallyStandardized })
+                self?.items.removeAll { moved.contains($0.lexicallyStandardized) }
             }
             self?.refresh()
         }

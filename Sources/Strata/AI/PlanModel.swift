@@ -35,7 +35,7 @@ package nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
 
     package init(url: URL, name: String, isFolder: Bool, kind: String, contentType: UTType?, size: Int64?, created: Date?, modified: Date?,
          captureDate: Date?, cameraModel: String?) {
-        self.url = url.standardizedFileURL
+        self.url = url.lexicallyStandardized
         self.name = name
         self.isFolder = isFolder
         self.kind = kind

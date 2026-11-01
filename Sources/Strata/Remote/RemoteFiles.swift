@@ -68,7 +68,7 @@ package actor RemoteFiles {
     /// Brings the copy's `folder` up to date with the server. Problems are reported with `.containerCopyProblem` (the
     /// window shows them over the folder); what's in the copy stays as it was.
     package func refresh(_ folder: URL) async {
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        let real = folder.resolvingSymlinksInPath().lexicallyStandardized
         guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { return }
         let key = real.path
@@ -82,7 +82,7 @@ package actor RemoteFiles {
 
     /// The next `refresh` of `folder` (and of folders in it) lists it again, even one under way.
     package func invalidate(_ folder: URL) {
-        let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let key = folder.resolvingSymlinksInPath().lexicallyStandardized.path
         listings.invalidate(under: key)
     }
 
@@ -116,7 +116,7 @@ package actor RemoteFiles {
             var bytes: Int64 = 0
             for entry in entries where entry.kind == .file && ContainerCopies.isSafeName(entry.name) {
                 let url = folder.appending(path: entry.name)
-                modes[url.standardizedFileURL.path] = entry.mode
+                modes[url.lexicallyStandardized.path] = entry.mode
                 // Only what everyone on the server may read comes by itself (a key or a .env waits until it's opened);
                 // a bucket's objects have no such permissions.
                 let everyone = server.kind == .s3 || entry.mode & 0o004 != 0
@@ -196,7 +196,7 @@ package actor RemoteFiles {
     /// One placeholder, once (a second request waits for the first). True when it was fetched now.
     private func fetchOne(_ requested: URL) async throws -> Bool {
         // Through a linked folder: the real one, in the same copy.
-        let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent).standardizedFileURL
+        let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent).lexicallyStandardized
         let key = url.path
         try Task.checkCancellation()
         if let running = fetches.join(key) {
@@ -269,7 +269,7 @@ package actor RemoteFiles {
     }
 
     private func drainAndRemove(_ id: String) async {
-        let top = copies.top(of: id).standardizedFileURL.path
+        let top = copies.top(of: id).lexicallyStandardized.path
         let inside: (String) -> Bool = { $0 == top || $0.hasPrefix(top + "/") }
         let background = Array((eager.removeValue(forKey: id) ?? [:]).values)
         let fetching = fetches.tasks(under: top)
@@ -416,7 +416,7 @@ package actor RemoteFiles {
                 try ensureCurrent(server, top: top)
                 // What it is (a folder, or a link to one) is the server's to say: a link goes, what it points to stays.
                 try await backend.remove(path)
-                parents.append((url.deletingLastPathComponent().standardizedFileURL, server, top))
+                parents.append((url.deletingLastPathComponent().lexicallyStandardized, server, top))
             }
         } catch {
             for parent in Set(parents.filter { (try? ensureCurrent($0.server, top: $0.top)) != nil }.map { $0.url }) {
@@ -440,7 +440,7 @@ package actor RemoteFiles {
         }
         guard sources.allSatisfy({ $0.1.server == server }) else { throw CancellationError() }
         let backend = try await serverBackends(server)
-        var parents: Set<URL> = [folder.standardizedFileURL]
+        var parents: Set<URL> = [folder.lexicallyStandardized]
         var moved: [URL] = []
         let normalized = Self.outermostTargets(sources)
         do {
@@ -452,7 +452,7 @@ package actor RemoteFiles {
                 let newPath = RemotePath.join(destination, RemotePath.name(path))
                 guard newPath != path else { continue }
                 try await backend.rename(path, to: newPath)
-                parents.insert(url.deletingLastPathComponent().standardizedFileURL)
+                parents.insert(url.deletingLastPathComponent().lexicallyStandardized)
                 moved.append(folder.appending(path: RemotePath.name(path)))
             }
         } catch {
@@ -623,8 +623,8 @@ extension RemoteFiles {
 
     package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
-        let real = await RealPath.of(folder).standardizedFileURL
-        if real == copies.root.standardizedFileURL { return }
+        let real = await RealPath.of(folder).lexicallyStandardized
+        if real == copies.root.lexicallyStandardized { return }
         guard let (server, top) = copies.server(containing: real), let path = RemoteCopies.remotePath(of: real, top: top),
               !closing.contains(server.id) else { throw CancellationError() }
         let chosen = try await ChosenFile.choose(real)

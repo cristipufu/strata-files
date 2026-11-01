@@ -6,7 +6,7 @@ extension BrowserViewController {
     var selectedContainers: [ContainerInfo] {
         let copies = services.copies.containerCopies, store = services.containerStore
         return selectedURLs.compactMap { url in
-            guard let (source, top) = copies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL else { return nil }
+            guard let (source, top) = copies.copy(containing: url), top.lexicallyStandardized == url.lexicallyStandardized else { return nil }
             return store.container(id: source.id)
         }
     }

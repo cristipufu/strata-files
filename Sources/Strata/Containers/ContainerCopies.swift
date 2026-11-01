@@ -118,12 +118,12 @@ package nonisolated final class ContainerCopyStore: Sendable {
             throw CocoaError(.fileWriteUnknown)
         }
         CopyWriter.remember(container.created, onFolder: child)
-        sources.withLock { $0[folder.appending(path: name).standardizedFileURL.path] = source }
+        sources.withLock { $0[folder.appending(path: name).lexicallyStandardized.path] = source }
     }
 
     /// Whether `url` is the cache or inside it.
     package func contains(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
@@ -163,7 +163,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
     }
 
     private func components(_ url: URL) -> [String]? {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let parts = path.dropFirst(rootPath.count + 1).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
         guard let first = parts.first, !first.hasPrefix(".") else { return nil }
@@ -171,7 +171,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
     }
 
     private func source(of top: URL) -> ContainerSource? {
-        let path = top.standardizedFileURL.path
+        let path = top.lexicallyStandardized.path
         if let known = sources.withLock({ $0[path] }) { return known }
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return nil }
@@ -185,7 +185,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
     }
 
     private func engineRecord(_ folder: URL) -> EngineRecord? {
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         if let known = engines.withLock({ $0[path] }) { return known }
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return nil }
@@ -220,7 +220,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
     /// Removes an engine's folder, a Compose project's folder, or a container's folder. Never the cache itself, and
     /// never a folder inside a container (its files aren't Strata's to delete).
     package func remove(_ folder: URL) {
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         guard path.hasPrefix(rootPath + "/") else { return }
         let depth = path.dropFirst(rootPath.count + 1).split(separator: "/").count
         guard (1...3).contains(depth) else { return }
@@ -294,7 +294,7 @@ package nonisolated enum ContainerCopies {
 
     /// `url`'s path inside the container ("/etc/hosts"); nil outside `top`.
     package static func containerPath(of url: URL, top: URL) -> String? {
-        let path = url.standardizedFileURL.path, topPath = top.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path, topPath = top.lexicallyStandardized.path
         if path == topPath { return "/" }
         guard path.hasPrefix(topPath + "/") else { return nil }
         return String(path.dropFirst(topPath.count))

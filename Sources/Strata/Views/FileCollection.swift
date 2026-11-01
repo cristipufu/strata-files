@@ -314,7 +314,7 @@ enum FileDrop {
     static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool,
                           copies: CopyProviders, disk: DragFacts) -> NSDragOperation {
         guard let first = urls.first else { return [] }
-        let targetPath = target.standardizedFileURL.path
+        let targetPath = target.lexicallyStandardized.path
         if disk.isInside(urls, target) { return [] }
         let remoteCopies = copies.remoteCopies
         // Onto a server: copied there, or moved within that server.
@@ -324,7 +324,7 @@ enum FileDrop {
             if urls.allSatisfy({ remoteCopies.server(containing: $0)?.server.id == sameServer }) {
                 // Within one server: a move there, or a copy with Option, as on this Mac.
                 if option { return .copy }
-                return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move
+                return urls.allSatisfy({ $0.deletingLastPathComponent().lexicallyStandardized.path == targetPath }) ? [] : .move
             }
             return mask.contains(.copy) || mask.contains(.generic) ? .copy : []
         }
@@ -338,7 +338,7 @@ enum FileDrop {
         } else {
             operation = .move
         }
-        if operation == .move, urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) {
+        if operation == .move, urls.allSatisfy({ $0.deletingLastPathComponent().lexicallyStandardized.path == targetPath }) {
             return []
         }
         return operation

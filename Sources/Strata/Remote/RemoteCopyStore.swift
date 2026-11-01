@@ -18,12 +18,12 @@ package nonisolated struct RemoteCopyStore: Sendable {
     }
 
     package func contains(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         return path == rootPath || path.hasPrefix(rootPath + "/")
     }
 
     package func server(containing url: URL) -> (server: RemoteServer, top: URL)? {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         guard path.hasPrefix(rootPath + "/") else { return nil }
         let id = path.dropFirst(rootPath.count + 1).split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
         guard RemoteServer.isValidID(id), let server = lookup(id), server.id == id else { return nil }

@@ -35,7 +35,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isAliasFileKey]) else { return url }
         if values.isSymbolicLink == true {
             let resolved = url.resolvingSymlinksInPath()
-            if resolved.standardizedFileURL.path != url.standardizedFileURL.path, isNavigableFolder(resolved) {
+            if resolved.lexicallyStandardized.path != url.lexicallyStandardized.path, isNavigableFolder(resolved) {
                 return resolved
             }
         } else if values.isAliasFile == true, let resolved = try? URL(resolvingAliasFileAt: url), isNavigableFolder(resolved) {

@@ -158,9 +158,9 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     func select(_ urls: [URL], scroll: Bool = true) {
         guard let rootPane = panes.first else { return }
         if let first = urls.first {
-            let parentKey = first.deletingLastPathComponent().standardizedFileURL.fileViewKey
-            if urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == parentKey }),
-               let index = panes.indices.dropFirst().last(where: { panes[$0].folder.standardizedFileURL.fileViewKey == parentKey }) {
+            let parentKey = first.deletingLastPathComponent().lexicallyStandardized.fileViewKey
+            if urls.allSatisfy({ $0.deletingLastPathComponent().lexicallyStandardized.fileViewKey == parentKey }),
+               let index = panes.indices.dropFirst().last(where: { panes[$0].folder.lexicallyStandardized.fileViewKey == parentKey }) {
                 let pane = panes[index]
                 activeIndex = index
                 if urls.allSatisfy({ pane.row(for: $0) != nil }) {
@@ -484,7 +484,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     // MARK: - Rename
 
     func renameWhenShown(_ url: URL, in folder: URL) {
-        guard let pane = panes.first(where: { $0.folder.standardizedFileURL.fileViewKey == folder.standardizedFileURL.fileViewKey }) else { return }
+        guard let pane = panes.first(where: { $0.folder.lexicallyStandardized.fileViewKey == folder.lexicallyStandardized.fileViewKey }) else { return }
         pendingReveal = []
         if focusWhenLoaded === pane { focusWhenLoaded = nil }
         pendingRename = url

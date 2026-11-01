@@ -10,7 +10,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
     func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {
         // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.
         guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }
-        go(.folder(folder.standardizedFileURL), in: owner)
+        go(.folder(folder.lexicallyStandardized), in: owner)
     }
 
     func browser(_ browser: BrowserViewController, openingArchive archive: URL?, stop: (() -> Void)?) {
@@ -35,7 +35,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         var shown: Set<String> = []
         for case let controller as BrowserWindowController in NSApp.windows.compactMap(\.windowController) {
             for pane in controller.panes {
-                if let folder = pane.browser.directory { shown.insert(folder.standardizedFileURL.path) }
+                if let folder = pane.browser.directory { shown.insert(folder.lexicallyStandardized.path) }
             }
         }
         return shown
@@ -47,7 +47,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         for case let controller as BrowserWindowController in NSApp.windows.compactMap(\.windowController) {
             for pane in controller.panes {
                 if let folder = pane.browser.directory, let (_, top) = ArchiveCache.archive(containing: folder) {
-                    shown.insert(top.standardizedFileURL.path)
+                    shown.insert(top.lexicallyStandardized.path)
                 }
             }
         }
@@ -60,7 +60,7 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         activate(owner)
         let firstHop = owner.springDrag != drag
         owner.springDrag = drag
-        go(.folder(url.standardizedFileURL), recordHistory: firstHop, countVisit: false)
+        go(.folder(url.lexicallyStandardized), recordHistory: firstHop, countVisit: false)
     }
 
     func browserSelectionDidChange(_ browser: BrowserViewController) {

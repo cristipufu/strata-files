@@ -47,7 +47,8 @@ nonisolated enum SemanticFixture {
         return Store(sentences: sentences, files: (0..<passages).map { index in
             let term = index == passages / 2 ? "stratamemoryprobe" : "ordinary"
             let hash = Terms.hash(Terms.normalize(term).first!).littleEndian
-            return File(path: root.appending(path: "document-\(index).txt").path,
+            // As the index keys a file.
+            return File(path: root.appending(path: "document-\(index).txt").lexicallyStandardized.path,
                         chunks: [Chunk(text: "\(term) document passage \(index).", terms: withUnsafeBytes(of: hash) { Data($0) },
                                        counts: Data([1]), word: word, sentence: sentence)])
         })

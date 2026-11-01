@@ -87,7 +87,7 @@ final class BrowserOrdering {
         let foldersFirst = foldersFirst()
         func size(_ entry: FileEntry) -> Int64 {
             guard entry.isDirectory else { return entry.size ?? 0 }
-            let key = entry.url.standardizedFileURL.path
+            let key = entry.url.lexicallyStandardized.path
             if let cached = pass.sizes[key] { return cached }
             let bytes = metadata.folderSize(entry.url) ?? -1
             pass.sizes[key] = bytes

@@ -307,7 +307,7 @@ final class FileThumbnails {
     func immediate(_ entry: FileEntry, showHidden: Bool) -> String? {
         // A container says whether it runs (its folder only holds what's been browsed, so no count).
         if entry.isDirectory, let (source, top) = copies.containerCopies.copy(containing: entry.url),
-           top.standardizedFileURL == entry.url.standardizedFileURL {
+           top.lexicallyStandardized == entry.url.lexicallyStandardized {
             return switch containerStore.container(id: source.id)?.state {
             case .running?: String(localized: "Running", comment: "Container state")
             case .paused?: String(localized: "Paused", comment: "Container state")
@@ -439,7 +439,7 @@ extension IconCache {
         // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
         // grey while it's stopped, orange while it's paused or only partly running.
         if entry.isDirectory, let (source, top) = containerCopies.copy(containing: entry.url),
-           top.standardizedFileURL == entry.url.standardizedFileURL {
+           top.lexicallyStandardized == entry.url.lexicallyStandardized {
             let mark = ContainerIconMark.container(state: containerStore.container(id: source.id)?.state, busy: containerStore.busy[source.id] != nil)
             return markedIcon(mark.containerSymbol, mark)
         }

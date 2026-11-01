@@ -32,6 +32,8 @@ CALLS = re.compile("|".join([
     r"\.resourceValues\(forKeys",
     r"\b(?:Data|String)\(contentsOf:",
     r"\.resolvingSymlinksInPath\(\)",
+    # Stats a /private path and resolves the links on the way to a `..`: `lexicallyStandardized` asks nothing.
+    r"\.standardizedFileURL\b|\.standardizingPath\b",
     r"\bURL\(resolvingAliasFileAt:",
     r"\b(?:lstat|fstatat|getxattr|setxattr|removexattr|realpath|statfs|opendir|renamex_np|unlink|rmdir|chflags)\(",
     r"\bstat\((?!\))",

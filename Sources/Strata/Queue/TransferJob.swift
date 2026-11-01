@@ -99,7 +99,7 @@ package final class TransferJob {
         copies = queue.copies
         self.worker = TransferWorker(label: "dev.strata.transfer")
         self.items = moves.map {
-            TransferItem(source: $0.from.standardizedFileURL, destination: $0.to, operation: .copy,
+            TransferItem(source: $0.from.lexicallyStandardized, destination: $0.to, operation: .copy,
                          expected: expected?[$0.from.path])
         }
     }
@@ -375,7 +375,7 @@ package final class TransferJob {
     nonisolated private static func facts(_ source: URL, _ destination: URL, moving: Bool) -> Facts {
         let folder = destination.deletingLastPathComponent()
         return Facts(sourceExists: TransferEngine.exists(source), folderExists: TransferEngine.exists(folder),
-                     inside: isInside(folder.standardizedFileURL.path, source.path),
+                     inside: isInside(folder.lexicallyStandardized.path, source.path),
                      sameDisk: moving && TransferEngine.device(source) == TransferEngine.device(folder))
     }
 
@@ -383,8 +383,8 @@ package final class TransferJob {
     private func planItem(_ index: Int, _ facts: Facts) {
         let item = items[index]
         let source = item.source
-        let parent = source.deletingLastPathComponent().standardizedFileURL.path
-        let folder = item.destination.deletingLastPathComponent().standardizedFileURL.path
+        let parent = source.deletingLastPathComponent().lexicallyStandardized.path
+        let folder = item.destination.deletingLastPathComponent().lexicallyStandardized.path
         let sameFolder = parent == folder
         if !facts.sourceExists {
             fail(index, String(localized: "The item couldn’t be found"))
@@ -395,7 +395,7 @@ package final class TransferJob {
                 : String(localized: "A folder can’t be moved into itself"))
         } else if mode == .move, sameFolder, item.destination.lastPathComponent == source.lastPathComponent {
             items[index].outcome = .done   // Already there.
-            placed.insert(item.destination.standardizedFileURL.path.lowercased())
+            placed.insert(item.destination.lexicallyStandardized.path.lowercased())
         } else if mode == .copy {
             items[index].operation = .copy
             items[index].copyStyleName = sameFolder && item.destination.lastPathComponent == source.lastPathComponent
@@ -491,7 +491,7 @@ package final class TransferJob {
         let item = items[index]
         switch decision {
         case .replace:
-            let existing = item.destination.standardizedFileURL.path
+            let existing = item.destination.lexicallyStandardized.path
             if Self.isInside(item.source.path, existing) {
                 fail(index, String(localized: "“\(item.destination.lastPathComponent)” can’t be replaced by an item inside it"))
             } else {
@@ -520,7 +520,7 @@ package final class TransferJob {
         let item = items[index]
         // Two of the job's own items with one name (from different folders, say): the later one goes beside the one
         // this job just put there, whatever was decided for the name; replacing it would trash one of your originals.
-        let placedByThisJob = placed.contains(item.destination.standardizedFileURL.path.lowercased())
+        let placedByThisJob = placed.contains(item.destination.lexicallyStandardized.path.lowercased())
         // Checked away from the main thread: a copy to a slow disk waits for it between items, the window doesn't.
         let destination = item.destination
         let available = { (copyStyle: Bool) in await self.worker.run { FileOps.available(destination, copyStyle: copyStyle) } }
@@ -604,7 +604,7 @@ package final class TransferJob {
         failures += result.failures
         switch result.outcome {
         case .done, .partial:
-            placed.insert(result.destination.standardizedFileURL.path.lowercased())
+            placed.insert(result.destination.lexicallyStandardized.path.lowercased())
             // Both the first pass and retries carry ownership captured by the worker.
             landed.set(result.landed, at: result.destination)
             if let replaced = result.replaced { landed.set(result.replacedIdentity, at: replaced.to) }

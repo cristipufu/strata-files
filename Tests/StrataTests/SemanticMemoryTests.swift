@@ -73,7 +73,7 @@ struct SemanticMemoryTests {
         #expect(await index.vectorStorageBytes.sentence == 0)
         let saved = try SemanticFixture.read(from: tree.url("store"))
         #expect(saved.files.contains { $0.path == tree.url("new.txt").standardizedFileURL.path })
-        #expect(!saved.files.contains { $0.path == tree.url("document-1.txt").path })
+        #expect(!saved.files.contains { $0.path == tree.url("document-1.txt").lexicallyStandardized.path })
         await index.reset()
         let cleared = await index.vectorStorageBytes
         #expect(cleared.word == 0 && cleared.sentence == 0)

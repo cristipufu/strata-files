@@ -150,7 +150,7 @@ package enum FileOps {
     /// The order to run `pairs` in: each moves after the one whose place it takes (`blocker`); a cycle is broken by
     /// parking its first item and finishing it last.
     package nonisolated static func chainSteps(_ pairs: [Move]) -> [ChainStep] {
-        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+        func key(_ url: URL) -> String { url.lexicallyStandardized.path.lowercased() }
         let bySource = Dictionary(pairs.enumerated().map { (key($0.element.from), $0.offset) }, uniquingKeysWith: { first, _ in first })
         var blocked = [Bool](repeating: false, count: pairs.count)
         // waiting[j]: the pair that goes where pair j is now.
@@ -208,7 +208,7 @@ package enum FileOps {
 
     /// Whether an item goes where another one is now (a swap or a chain of renames).
     package nonisolated static func isChain(_ pairs: [Move]) -> Bool {
-        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+        func key(_ url: URL) -> String { url.lexicallyStandardized.path.lowercased() }
         let sources = Set(pairs.map { key($0.from) })
         return pairs.contains { key($0.to) != key($0.from) && sources.contains(key($0.to)) }
     }
@@ -431,7 +431,7 @@ package enum FileOps {
 
     /// `urls` in order without duplicates or items inside another of them, keeping each item's original URL spelling.
     package nonisolated static func outermost(_ urls: [URL]) -> [URL] {
-        let pairs = urls.map { (url: $0, path: $0.standardizedFileURL.path) }
+        let pairs = urls.map { (url: $0, path: $0.lexicallyStandardized.path) }
         var seen: Set<String> = []
         return pairs.filter { item in
             guard seen.insert(item.path).inserted else { return false }

@@ -59,7 +59,7 @@ nonisolated final class PathQuery {
 
         var seenRoots = Set<URL>()
         var starts: [(url: URL, score: Int)] = []
-        for url in roots where seenRoots.insert(url.standardizedFileURL).inserted {
+        for url in roots where seenRoots.insert(url.lexicallyStandardized).inserted {
             if let match = Self.score(segments[0], url.lastPathComponent) { starts.append((url, match.score)) }
         }
         // The first part may also name a folder one level inside the first few roots (`strata/` inside GitHub).
@@ -97,7 +97,7 @@ nonisolated final class PathQuery {
     /// The last part must match the folder's own name; earlier parts match ancestors right to left, gaps allowed.
     private func matchWithGaps(_ segments: [String], _ url: URL) -> Fuzzy.Match? {
         guard let last = segments.last, !last.isEmpty else { return nil }
-        let components = Array(url.standardizedFileURL.pathComponents.dropFirst())
+        let components = Array(url.lexicallyStandardized.pathComponents.dropFirst())
         guard let name = components.last, let nameMatch = Self.score(last, name) else { return nil }
         var total = nameMatch.score
         var index = components.count - 2

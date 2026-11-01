@@ -50,7 +50,7 @@ final class PathSuggestions {
         }
         var found: [String: PathSuggestion] = [:]
         func keep(_ suggestion: PathSuggestion) {
-            let key = suggestion.url.standardizedFileURL.path
+            let key = suggestion.url.lexicallyStandardized.path
             if found[key].map({ $0.score < suggestion.score }) ?? true { found[key] = suggestion }
         }
         if typed.contains("/") {

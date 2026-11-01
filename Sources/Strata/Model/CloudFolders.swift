@@ -17,7 +17,7 @@ package nonisolated enum CloudFolders {
 
     package static func providerRoot(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL? {
         guard url.isFileURL, home.isFileURL else { return nil }
-        let root = URL(fileURLWithPath: PathSpelling.system(home.appending(path: "Library/CloudStorage").standardizedFileURL.path))
+        let root = URL(fileURLWithPath: PathSpelling.system(home.appending(path: "Library/CloudStorage").lexicallyStandardized.path))
         let path = PathSpelling.system(PathSpelling.short(url))
         guard path.hasPrefix(root.path + "/"),
               let account = path.dropFirst(root.path.count + 1).split(separator: "/").first else { return nil }

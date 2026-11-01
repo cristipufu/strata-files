@@ -18,7 +18,7 @@ extension ProjectInfo {
     @MainActor
     package static func load(for folder: URL, store: GitStatusStore,
                              onUpdate: (@MainActor (ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
-        let folder = folder.standardizedFileURL
+        let folder = folder.lexicallyStandardized
         var info = await ProjectDetector.detect(folder)
         let repository = await store.repositoryFound(containing: folder)
         let isRoot = repository?.rootPath == folder.path
@@ -68,7 +68,7 @@ extension ProjectInfo {
 
     /// Forgets measured sizes under `folder` (after cleaning, or a reload).
     package static func invalidateSizes(under folder: URL) {
-        let prefix = folder.standardizedFileURL.path + "/"
+        let prefix = folder.lexicallyStandardized.path + "/"
         sizeCache = sizeCache.filter { !$0.key.hasPrefix(prefix) }
     }
 
@@ -219,9 +219,9 @@ package enum ProjectActions {
 
     /// First installed terminal from `terminalBundleIDs` that declares it can open `file`; Terminal as the fallback.
     package nonisolated static func preferredTerminal(for file: URL) -> URL? {
-        let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.standardizedFileURL))
+        let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.lexicallyStandardized))
         for id in terminalBundleIDs {
-            if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.standardizedFileURL) {
+            if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.lexicallyStandardized) {
                 return app
             }
         }

@@ -197,7 +197,7 @@ enum ProjectEditors {
         var apps: [URL] = []
         for id in ids {
             for app in NSWorkspace.shared.urlsForApplications(withBundleIdentifier: id) {
-                let url = app.standardizedFileURL
+                let url = app.lexicallyStandardized
                 guard seen.insert(url.path).inserted else { continue }
                 let bundle = Bundle(url: url)
                 let category = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String

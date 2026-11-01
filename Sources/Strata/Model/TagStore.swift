@@ -83,13 +83,13 @@ package final class TagStore {
     }
 
     /// Last known tags only: sorting must never read extended attributes inside its comparator.
-    package func cachedTags(for url: URL) -> [FinderTag] { cache[url.standardizedFileURL.path] ?? [] }
+    package func cachedTags(for url: URL) -> [FinderTag] { cache[url.lexicallyStandardized.path] ?? [] }
 
     /// `url`'s tags, in the order they were added, as last read. One not read yet, or changed since, is read away from
     /// the main thread with the others asked about meanwhile, and `.tagsLoaded` says when: a list of search results
     /// read each row's tags as it drew it. Changing tags reads them from disk first, never from here.
     package func tags(for url: URL) -> [FinderTag] {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         if let cached = cache[path], !stale.contains(path) { return cached }
         request(path)
         return cache[path] ?? []
@@ -155,7 +155,7 @@ package final class TagStore {
     package func load(_ entries: [FileEntry]) -> Task<Void, Never> {
         let current = NSWorkspace.shared.fileLabels
         labels.withLock { $0 = current }
-        for entry in entries { request(entry.url.standardizedFileURL.path) }
+        for entry in entries { request(entry.url.lexicallyStandardized.path) }
         return Task { await reads.settled() }
     }
 
@@ -174,7 +174,7 @@ package final class TagStore {
             readAgain.formUnion(requestedSince.keys.filter(reads.isUnderWay))
             return
         }
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         let prefix = path == "/" ? "/" : path + "/"
         stale.formUnion(cache.keys.filter { $0.hasPrefix(prefix) })
         // A read under way may be from before: read again once it's in. One still waiting begins after this.
@@ -264,7 +264,7 @@ package final class TagStore {
     @concurrent private static func toggling(_ tag: FinderTag, on urls: [URL], copies: CopyProviders,
                                              labels: [String]) async -> Applied {
         let current = urls.filter { canTag(onDisk: $0, copies: copies) }
-            .map { (url: $0, tags: read($0.standardizedFileURL.path, labels: labels)) }
+            .map { (url: $0, tags: read($0.lexicallyStandardized.path, labels: labels)) }
         let everyHas = current.allSatisfy { $0.tags.contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame } }
         var applied = write(current.map { item in
             var tags = item.tags.filter { $0.name.caseInsensitiveCompare(tag.name) != .orderedSame }
@@ -279,7 +279,7 @@ package final class TagStore {
                                              labels: [String]) async -> Applied {
         let added = adding.map(clean).filter { !$0.isEmpty }
         var applied = write(urls.filter { canTag(onDisk: $0, copies: copies) }.map { url in
-            var tags = read(url.standardizedFileURL.path, labels: labels).filter { !removing.contains($0.name.lowercased()) }
+            var tags = read(url.lexicallyStandardized.path, labels: labels).filter { !removing.contains($0.name.lowercased()) }
             for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
                 tags.append(FinderTag(name: name, color: color(forNew: name, labels: labels)))
             }
@@ -320,7 +320,7 @@ package final class TagStore {
                     return before
                 }
                 guard let before else { continue }
-                applied.changes.append(Change(url: url, path: url.standardizedFileURL.path, identity: chosen.identity,
+                applied.changes.append(Change(url: url, path: url.lexicallyStandardized.path, identity: chosen.identity,
                                               before: before, after: wanted))
             } catch {
                 applied.failed.append(url)

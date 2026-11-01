@@ -77,15 +77,15 @@ package actor ContainerFiles {
     /// what's in the copy stays as it was.
     package func refresh(_ folder: URL) async {
         // Links in a copy all point inside it, so the real folder is still in the same copy.
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        let real = folder.resolvingSymlinksInPath().lexicallyStandardized
         if let engine = copies.engineFolder(real) { return await syncContainers(real, engine: engine) }
         if copies.isStack(real), let engine = copies.engineFolder(real.deletingLastPathComponent()) {
             return await syncContainers(real.deletingLastPathComponent(), engine: engine)
         }
         guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
-              !closing.contains(top.standardizedFileURL.path) else { return }
+              !closing.contains(top.lexicallyStandardized.path) else { return }
         let key = real.path
-        while !closing.contains(top.standardizedFileURL.path), let request = listings.request(for: key, now: now(), start: {
+        while !closing.contains(top.lexicallyStandardized.path), let request = listings.request(for: key, now: now(), start: {
             Task { await self.list(real, path: path, source: source, top: top) }
         }) {
             let fresh = await request.task.value
@@ -133,7 +133,7 @@ package actor ContainerFiles {
     /// The next `refresh` of `folder`, and of any folder in it, lists it again (Reload: columns and folders expanded in
     /// the list too), even one already under way.
     package func invalidate(_ folder: URL) {
-        let key = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let key = folder.resolvingSymlinksInPath().lexicallyStandardized.path
         listings.invalidate(under: key)
     }
 
@@ -154,7 +154,7 @@ package actor ContainerFiles {
 
     /// Lists and applies one folder; how long the result stays current, or nil when it failed.
     private func list(_ folder: URL, path: String, source: ContainerSource, top: URL) async -> TimeInterval? {
-        let topKey = top.standardizedFileURL.path
+        let topKey = top.lexicallyStandardized.path
         do {
             let result = try await readListing(source, path)
             let entries = result.entries, contents = result.contents, fresh = result.freshFor
@@ -163,7 +163,7 @@ package actor ContainerFiles {
             let eager = try await blocking { try CopyWriter.apply(listed, contents: files, to: folder, containerPath: path, top: top) }
             if modes.count > 200_000 { modes.removeAll() }
             for entry in entries where entry.kind == .file {
-                modes[folder.appending(path: entry.name).standardizedFileURL.path] = entry.mode
+                modes[folder.appending(path: entry.name).lexicallyStandardized.path] = entry.mode
             }
             if !contents.isEmpty { await Self.announce(Array(contents.keys).map { folder.appending(path: $0) }) }
             if !eager.isEmpty, !closing.contains(topKey) {
@@ -205,7 +205,7 @@ package actor ContainerFiles {
 
     /// Stops everything reading into the copy at `top` (and keeps anything new from starting), then removes the copy.
     package func discard(_ top: URL) async {
-        let path = top.standardizedFileURL.path
+        let path = top.lexicallyStandardized.path
         if let running = removals[path] { await running.value; return }
         closing.insert(path)
         let task = Task {
@@ -218,7 +218,7 @@ package actor ContainerFiles {
     }
 
     private func drainAndRemove(_ top: URL) async {
-        let path = top.standardizedFileURL.path
+        let path = top.lexicallyStandardized.path
         let inside: (String) -> Bool = { $0 == path || $0.hasPrefix(path + "/") }
         let background = Array((eager.removeValue(forKey: path) ?? [:]).values)
         let fetching = fetches.tasks(under: path)
@@ -246,9 +246,9 @@ package actor ContainerFiles {
 
     /// A folder with everything in it, from one archive stream (once: a second request waits for the first).
     private func fetchTree(_ folder: URL) async throws {
-        let real = folder.resolvingSymlinksInPath().standardizedFileURL
+        let real = folder.resolvingSymlinksInPath().lexicallyStandardized
         guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
-              !closing.contains(top.standardizedFileURL.path) else { return }
+              !closing.contains(top.lexicallyStandardized.path) else { return }
         let key = real.path
         try Task.checkCancellation()
         if let running = fetches.join(key, kind: .tree) { return try await join(running) }
@@ -272,7 +272,7 @@ package actor ContainerFiles {
         var total: Int64 = 0
         var chosen: [URL] = []
         for url in urls where copies.isPlaceholder(url) {
-            let key = url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent).standardizedFileURL.path
+            let key = url.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: url.lastPathComponent).lexicallyStandardized.path
             guard let mode = modes[key], mode & 0o004 != 0 else { continue }
             let size = max(0, Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0))
             let (nextTotal, overflow) = total.addingReportingOverflow(size)
@@ -298,14 +298,14 @@ package actor ContainerFiles {
     private func fetchOne(_ requested: URL, source: ContainerSource, top: URL) async throws -> Bool {
         // Through a linked folder (`/bin` → `usr/bin` on most images): the real folder, which is in the same copy.
         let url = requested.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: requested.lastPathComponent)
-        guard copies.copy(containing: url)?.top.standardizedFileURL == top.standardizedFileURL else { return false }
-        let key = url.standardizedFileURL.path
+        guard copies.copy(containing: url)?.top.lexicallyStandardized == top.lexicallyStandardized else { return false }
+        let key = url.lexicallyStandardized.path
         try Task.checkCancellation()
         if let running = fetches.join(key) {
             try await join(running)
             return false
         }
-        guard !closing.contains(top.standardizedFileURL.path), copies.isPlaceholder(url),
+        guard !closing.contains(top.lexicallyStandardized.path), copies.isPlaceholder(url),
               let path = ContainerCopies.containerPath(of: url, top: top) else { return false }
         let request = fetches.request(key) {
             Task {
@@ -331,17 +331,17 @@ package actor ContainerFiles {
 extension ContainerFiles {
     package func previewFolder(_ folder: URL) async throws {
         try Task.checkCancellation()
-        let real = await RealPath.of(folder).standardizedFileURL
+        let real = await RealPath.of(folder).lexicallyStandardized
         // Engine and stack roots contain only container metadata; their normal refresh never fetches file contents.
         if copies.engineFolder(real) != nil || copies.isStack(real) { await refresh(real); try Task.checkCancellation(); return }
         guard let (source, top) = copies.copy(containing: real), let path = ContainerCopies.containerPath(of: real, top: top),
-              !closing.contains(top.standardizedFileURL.path) else { throw CancellationError() }
+              !closing.contains(top.lexicallyStandardized.path) else { throw CancellationError() }
         let chosen = try await ChosenFile.choose(real)
         let request = previews.request(real.path) {
             Task {
                 let listing = try await self.readPreviewListing(source, path)
                 try Task.checkCancellation()
-                guard !self.closing.contains(top.standardizedFileURL.path),
+                guard !self.closing.contains(top.lexicallyStandardized.path),
                       self.copies.copy(containing: real)?.source.id == source.id else { throw CancellationError() }
                 guard listing.entries.count <= CopyProviders.previewEntryLimit else { throw CocoaError(.fileReadTooLarge) }
                 let entries = listing.entries

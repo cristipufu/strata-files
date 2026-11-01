@@ -52,7 +52,7 @@ package nonisolated struct CopyProviders: Sendable {
 
     package func contains(_ url: URL) -> Bool { provider(for: url) != nil }
     package func isClipboardStaging(_ url: URL) -> Bool {
-        let root = clipboardRoot.standardizedFileURL.path, path = url.standardizedFileURL.path
+        let root = clipboardRoot.lexicallyStandardized.path, path = url.lexicallyStandardized.path
         return path == root || path.hasPrefix(root + "/")
     }
     package var previewRoot: URL { clipboardRoot.deletingLastPathComponent().appendingPathComponent("Previews.noindex", isDirectory: true) }
@@ -101,7 +101,7 @@ package nonisolated struct CopyProviders: Sendable {
         if containerCopies.contains(url) {
             guard let (source, top) = containerCopies.copy(containing: url),
                   let path = ContainerCopies.containerPath(of: url, top: top) else { return nil }
-            return top.standardizedFileURL == url.standardizedFileURL ? source.name : path
+            return top.lexicallyStandardized == url.lexicallyStandardized ? source.name : path
         }
         if contains(url) { return displayPath(url) }
         return url.path

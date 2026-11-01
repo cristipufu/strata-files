@@ -11,7 +11,7 @@ extension Notification.Name {
 package enum Trash {
     /// The startup disk's Trash, in your home folder.
     package nonisolated static let home = FileManager.default.homeDirectoryForCurrentUser
-        .appending(path: ".Trash", directoryHint: .isDirectory).standardizedFileURL
+        .appending(path: ".Trash", directoryHint: .isDirectory).lexicallyStandardized
     nonisolated private static let homePath = PathSpelling.short(home)
     nonisolated private static let homePathLower = homePath.lowercased()
     nonisolated private static let uid = String(getuid())
@@ -142,14 +142,14 @@ package enum Trash {
         var needRecords: [URL] = []
         for item in items {
             // History wins unless the item was put in the Trash again after Strata last put it there (by Finder, say).
-            if let hit = moved[item.standardizedFileURL.path], !isInTrash(hit.from),
+            if let hit = moved[item.lexicallyStandardized.path], !isInTrash(hit.from),
                hit.date.timeIntervalSince(arrived(item) ?? .distantPast) > -5 {
                 result[item] = hit.from
             } else {
                 needRecords.append(item)
             }
         }
-        for (trash, inTrash) in Dictionary(grouping: needRecords, by: { $0.deletingLastPathComponent().standardizedFileURL }) {
+        for (trash, inTrash) in Dictionary(grouping: needRecords, by: { $0.deletingLastPathComponent().lexicallyStandardized }) {
             let (kept, written) = records(trash)
             for item in inTrash {
                 // A record older than the item is about something else that once had its name. (Disks that keep no
@@ -173,7 +173,7 @@ package enum Trash {
               !names.contains(where: { $0 == "." || $0 == ".." || $0.contains("\0") }),
               (record.name as NSString).pathExtension.lowercased() == item.pathExtension.lowercased() else { return nil }
         // The home Trash is on the startup disk ("/"); any other is `<disk>/.Trashes/<uid>`.
-        let base = trash.standardizedFileURL.path == homePath ? URL(fileURLWithPath: "/", isDirectory: true)
+        let base = trash.lexicallyStandardized.path == homePath ? URL(fileURLWithPath: "/", isDirectory: true)
                                                               : trash.deletingLastPathComponent().deletingLastPathComponent()
         var info = stat()
         guard lstat(trash.path, &info) == 0 else { return nil }

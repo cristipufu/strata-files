@@ -8,8 +8,8 @@ import Foundation
 package nonisolated enum RemoteCopies {
     /// The server's own path for `url` in the copy at `top` ("/" for the top), without following links.
     package static func remotePath(of url: URL, top: URL) -> String? {
-        let path = url.standardizedFileURL.path
-        let topPath = top.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
+        let topPath = top.lexicallyStandardized.path
         if path == topPath { return "/" }
         guard path.hasPrefix(topPath + "/") else { return nil }
         return String(path.dropFirst(topPath.count))

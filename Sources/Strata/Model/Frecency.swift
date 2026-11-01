@@ -24,7 +24,7 @@ package final class Frecency {
     }
 
     package func record(_ url: URL) {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         var visit = visits[path] ?? Visit(count: 0, last: now())
         visit.count += 1
         visit.last = now()

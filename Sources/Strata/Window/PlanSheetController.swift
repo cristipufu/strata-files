@@ -519,7 +519,7 @@ final class PlanSheetController: NSViewController {
         var ownPlace: Set<Int> = []
 
         /// Every source, destination and destination's folder has a key; anything else is compared as spelled.
-        func key(_ url: URL) -> String { keys[url] ?? url.standardizedFileURL.path }
+        func key(_ url: URL) -> String { keys[url] ?? url.lexicallyStandardized.path }
         /// Whether `step`'s destination is taken by something other than its own item.
         func occupied(_ step: PlanStep) -> Bool {
             step.destination.map { taken.contains($0) && !ownPlace.contains(step.id) } ?? false

@@ -36,7 +36,7 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
     /// `path`: where the folder searched really is (`FolderSearch.path(of:)`).
     /// Where `folder` really is, its links followed: asked of its disk, away from the main thread.
     @concurrent package static func path(of folder: URL) async -> String {
-        folder.resolvingSymlinksInPath().standardizedFileURL.path
+        folder.resolvingSymlinksInPath().lexicallyStandardized.path
     }
 
     package init(path: String, indexed: IndexedParts?, queue: DispatchQueue) {

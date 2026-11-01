@@ -57,7 +57,7 @@ extension BrowserViewController {
         var failures: [(url: URL, error: Error)] = []
         for item in items {
             guard let original = locations[item] else { continue }
-            let folder = original.deletingLastPathComponent().standardizedFileURL
+            let folder = original.deletingLastPathComponent().standardized
             if !TransferEngine.exists(folder) {
                 let missing = missingFolders(down: folder)
                 do {
@@ -237,7 +237,7 @@ extension BrowserViewController {
 
     /// `urls` without those inside another of them.
     nonisolated static func outermost(_ urls: [URL]) -> [URL] {
-        let paths = urls.map { $0.standardizedFileURL.path }.sorted { $0.count < $1.count }
+        let paths = urls.map { $0.lexicallyStandardized.path }.sorted { $0.count < $1.count }
         var kept: [String] = []
         for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }) {
             kept.append(path)

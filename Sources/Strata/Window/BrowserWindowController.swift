@@ -190,7 +190,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         pane.host.pathBar.onNavigate = { [weak self, weak pane] url, select in
             guard let self, let pane else { return }
             activate(pane)
-            go(.folder(url.standardizedFileURL), in: pane, select: select)
+            go(.folder(url.lexicallyStandardized), in: pane, select: select)
             window?.makeFirstResponder(pane.browser.focusView)
         }
         pane.host.pathBar.onFinishEditing = { [weak self, weak pane] in
@@ -287,11 +287,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Completion for a reviewed operation. Keep its original pane and navigation, including leaving and returning
     /// to the same folder, and let the next applied listing select its results instead of guessing a delay.
     func selectionAfterOperation() -> ([URL]) -> Void {
-        let origin = pane, revision = pane.navigationRevision, folder = pane.location.standardizedFileURL.fileViewKey
+        let origin = pane, revision = pane.navigationRevision, folder = pane.location.lexicallyStandardized.fileViewKey
         return { [weak self, weak origin] results in
             guard let self, let origin, origin.navigationRevision == revision,
                   panes.contains(where: { $0 === origin }) else { return }
-            origin.browser.pending.selection = results.filter { $0.deletingLastPathComponent().standardizedFileURL.fileViewKey == folder }
+            origin.browser.pending.selection = results.filter { $0.deletingLastPathComponent().lexicallyStandardized.fileViewKey == folder }
             switch origin.destination {
             case .folder: origin.browser.reloadFolder(nil)
             case .search, .recents, .duplicates: origin.search.run()
@@ -362,7 +362,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Navigation
 
     func navigate(to url: URL, select: URL? = nil, recordHistory: Bool = true) {
-        go(.folder(url.standardizedFileURL), select: select, recordHistory: recordHistory)
+        go(.folder(url.lexicallyStandardized), select: select, recordHistory: recordHistory)
     }
 
     /// Inspector mount links can point into a copy that has not been listed yet. Its owner prepares the path before
@@ -419,7 +419,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let work = origin.opening.open(notice: notice, operation: operation) { [weak self, weak origin] result in
             guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
             switch result {
-            case .success(let folder): go(.folder(folder.standardizedFileURL), in: origin)
+            case .success(let folder): go(.folder(folder.lexicallyStandardized), in: origin)
             case .failure(let error):
                 if pane === origin { refreshOpeningNotice() }
                 failed(error)
@@ -547,12 +547,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Selects the folder we came from when it's inside the destination (going back up, or to an enclosing folder).
     private func childToSelect(in destination: Destination, from origin: Destination) -> URL? {
         guard case .folder(let target) = destination, case .folder(let from) = origin else { return nil }
-        let parent = target.standardizedFileURL.path
-        let path = from.standardizedFileURL.path
+        let parent = target.lexicallyStandardized.path
+        let path = from.lexicallyStandardized.path
         guard path.hasPrefix(parent == "/" ? "/" : parent + "/") else { return nil }
         let rest = path.dropFirst(parent == "/" ? 1 : parent.count + 1)
         guard let first = rest.split(separator: "/").first else { return nil }
-        return target.appending(path: String(first)).standardizedFileURL
+        return target.appending(path: String(first)).lexicallyStandardized
     }
 
     @objc func goBack(_ sender: Any?) {
@@ -579,12 +579,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             let current = (browser.mode == .columns ? browser.columns.activeDirectory : nil) ?? location
             guard current.path != "/" else { return }
             // Up from an archive opened as a folder: the folder the archive is in, with the archive selected.
-            if let (archive, top) = ArchiveCache.archive(containing: current), top.standardizedFileURL == current.standardizedFileURL {
+            if let (archive, top) = ArchiveCache.archive(containing: current), top.lexicallyStandardized == current.lexicallyStandardized {
                 return navigate(to: archive.deletingLastPathComponent(), select: archive)
             }
             // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
             if services.copies.containerCopies.engineFolder(current) != nil { return Sounds.beep() }
-            if let (_, top) = services.remote.copies.server(containing: current), top.standardizedFileURL == current.standardizedFileURL { return Sounds.beep() }
+            if let (_, top) = services.remote.copies.server(containing: current), top.lexicallyStandardized == current.lexicallyStandardized { return Sounds.beep() }
             navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
@@ -622,17 +622,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
     private var ejectTargets: [URL] {
         // Volumes are listed once, then matched by path (a big selection mustn't list them per item).
-        let ejectable = Set(services.places.snapshot.volumes.filter(\.isEjectable).map { $0.url.standardizedFileURL.path })
+        let ejectable = Set(services.places.snapshot.volumes.filter(\.isEjectable).map { $0.url.lexicallyStandardized.path })
         guard !ejectable.isEmpty else { return [] }
-        let selected = browser.selectedURLs.filter { ejectable.contains($0.standardizedFileURL.path) }
+        let selected = browser.selectedURLs.filter { ejectable.contains($0.lexicallyStandardized.path) }
         if !selected.isEmpty { return selected }
-        if case .folder = destination, ejectable.contains(location.standardizedFileURL.path) { return [location] }
+        if case .folder = destination, ejectable.contains(location.lexicallyStandardized.path) { return [location] }
         return []
     }
 
     @objc func ejectVolume(_ sender: Any?) {
         for url in ejectTargets {
-            if location.standardizedFileURL.path == url.standardizedFileURL.path { navigate(to: Places.home) }
+            if location.lexicallyStandardized.path == url.lexicallyStandardized.path { navigate(to: Places.home) }
             Places.eject(url, from: window)
         }
     }
@@ -655,7 +655,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// A server's files were let go: panes showing them go home.
     @objc private func serverDisconnected(_ notification: Notification) {
         guard let id = notification.userInfo?["serverID"] as? String else { return }
-        for p in panes where services.remote.copies.server(containing: p.location)?.server.id == id || p.location.standardizedFileURL == services.remote.copies.top(of: id).standardizedFileURL {
+        for p in panes where services.remote.copies.server(containing: p.location)?.server.id == id || p.location.lexicallyStandardized == services.remote.copies.top(of: id).lexicallyStandardized {
             let folder = WaitingFolder(path: p.location.path, mode: p.browser.mode.rawValue, server: id)
             go(.folder(Places.home), in: p)
             // Kept for its server folder, so updating a workspace (or the session) doesn't lose it.

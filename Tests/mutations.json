@@ -690,7 +690,7 @@
   },
   {
     "file": "Strata/Model/ArchiveCache.swift",
-    "find": "            if keep.contains(copy.top.standardizedFileURL.path) { continue }\n",
+    "find": "            if keep.contains(copy.top.lexicallyStandardized.path) { continue }\n",
     "replace": "",
     "rule": "Pruning removes a copy that's on show",
     "tests": "CacheRemovalTests/pruning"
@@ -789,8 +789,8 @@
   },
   {
     "file": "Strata/Model/ArchiveCache.swift",
-    "find": "for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {",
-    "replace": "for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL {",
+    "find": "for other in copies() where other.top.lexicallyStandardized != folder.lexicallyStandardized && other.source == source {",
+    "replace": "for other in copies() where other.top.lexicallyStandardized != folder.lexicallyStandardized {",
     "rule": "A finished archive copy removes other archives' copies",
     "tests": "CacheRemovalTests/aNewCopy"
   },
@@ -939,14 +939,14 @@
   },
   {
     "file": "Strata/Model/ApplicationsFolders.swift",
-    "find": "        guard directory.standardizedFileURL.path == installed.standardizedFileURL.path,",
+    "find": "        guard directory.lexicallyStandardized.path == installed.lexicallyStandardized.path,",
     "replace": "        guard directory.lastPathComponent == installed.lastPathComponent,",
     "rule": "Applications combines only the configured folder, never another folder with the same name",
     "tests": "ApplicationsFoldersTests"
   },
   {
     "file": "Strata/Model/ApplicationsFolders.swift",
-    "find": "        } else if let ancestor = listed.first(where: { $0.isFolder && inside(path, $0.url.standardizedFileURL.path) }) {",
+    "find": "        } else if let ancestor = listed.first(where: { $0.isFolder && inside(path, $0.url.lexicallyStandardized.path) }) {",
     "replace": "        } else if let ancestor = listed.first(where: { _ in false }) {",
     "rule": "Applications columns reach system Utilities through the actual listed folder",
     "tests": "ApplicationsFoldersTests"
@@ -3064,8 +3064,8 @@
         "replace": "let url = URL(fileURLWithPath: path)"
       },
       {
-        "find": "top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }",
-        "replace": "top.standardizedFileURL == url.standardizedFileURL { return server.name }"
+        "find": "top.lexicallyStandardized.path == url.lexicallyStandardized.path { return server.name }",
+        "replace": "top.lexicallyStandardized == url.lexicallyStandardized { return server.name }"
       }
     ]
   },
@@ -3141,8 +3141,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "case .success(let folder): go(.folder(folder.standardizedFileURL), in: origin)",
-    "replace": "case .success(let folder): go(.folder(folder.standardizedFileURL))",
+    "find": "case .success(let folder): go(.folder(folder.lexicallyStandardized), in: origin)",
+    "replace": "case .success(let folder): go(.folder(folder.lexicallyStandardized))",
     "rule": "Pane opening ownership a delayed open navigates the focused pane",
     "tests": "RemoteSessionOwnershipTests/aDeferredServerOpeningKeepsItsOriginalPaneWhenFocusChanges|RemoteSessionOwnershipTests/containerOpeningsUseTheSamePaneOwnershipAndNavigationCancellation"
   },
@@ -3809,14 +3809,14 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController+Trash.swift",
-    "find": "        controller.onConnected = { [weak self, weak origin] mounted in\n            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }\n            go(.folder(mounted.standardizedFileURL), in: origin)\n        }\n        controller.onServer = { [weak self, weak origin] server in\n            guard let self, let origin else { return }\n            openServer(server, in: origin)\n        }",
+    "find": "        controller.onConnected = { [weak self, weak origin] mounted in\n            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }\n            go(.folder(mounted.lexicallyStandardized), in: origin)\n        }\n        controller.onServer = { [weak self, weak origin] server in\n            guard let self, let origin else { return }\n            openServer(server, in: origin)\n        }",
     "replace": "        controller.onConnected = { [weak self] mounted in\n            self?.navigate(to: mounted)\n        }\n        controller.onServer = { [weak self] server in\n            self?.openServer(server)\n        }",
     "rule": "Async action context ownership Connect to Server sheet navigates the currently focused pane instead of its originating pane",
     "tests": "AsyncActionContextTests/connectToServerKeepsItsOriginatingPaneAcrossFocusChangesAndIgnoresClosedPanes"
   },
   {
     "file": "Strata/Window/BrowserWindowController+BrowserDelegate.swift",
-    "find": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.\n        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }\n        go(.folder(folder.standardizedFileURL), in: owner)\n    }",
+    "find": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        // An archive opens in the pane that asked for it, even if the other pane was focused meanwhile.\n        guard !isClosed, let owner = panes.first(where: { $0.browser === browser }) else { return }\n        go(.folder(folder.lexicallyStandardized), in: owner)\n    }",
     "replace": "    func browser(_ browser: BrowserViewController, showArchiveCopy folder: URL) {\n        navigate(to: folder)\n    }",
     "rule": "Async action context ownership archive browsing opens in the currently focused pane instead of its originating pane",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
@@ -3824,7 +3824,7 @@
   {
     "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
     "find": "        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.\n            guard let self, navigationRevision == startedRevision else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
-    "replace": "        let startedAt = directory?.standardizedFileURL.path\n        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            guard let self, directory?.standardizedFileURL.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
+    "replace": "        let startedAt = directory?.lexicallyStandardized.path\n        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            guard let self, directory?.lexicallyStandardized.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
     "rule": "Async action context ownership archive browsing completes after leaving and returning to the same folder",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
@@ -7339,8 +7339,8 @@
   },
   {
     "file": "Strata/Index/FileIndex.swift",
-    "find": "        folder.resolvingSymlinksInPath().standardizedFileURL.path\n",
-    "replace": "        folder.standardizedFileURL.path\n",
+    "find": "        folder.resolvingSymlinksInPath().lexicallyStandardized.path\n",
+    "replace": "        folder.lexicallyStandardized.path\n",
     "rule": "Index: a folder reached through a link is judged by its link's path, not where it is",
     "tests": "IndexWorkerTests/foldersOverlapTheIndexByTheirRealPaths"
   },
@@ -7416,8 +7416,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController+Palette.swift",
-    "find": "                go(.folder(url.standardizedFileURL), in: typedIn)",
-    "replace": "                go(.folder(url.standardizedFileURL))",
+    "find": "                go(.folder(url.lexicallyStandardized), in: typedIn)",
+    "replace": "                go(.folder(url.lexicallyStandardized))",
     "rule": "A typed path goes to whichever pane has focus when it's read, not the one it was typed in",
     "tests": "WindowReadsTests/aTypedPathGoesIntoAFolderOrALinkToOneAndSelectsAnythingElse"
   },
@@ -7472,8 +7472,8 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "        [url.path, url.standardizedFileURL.path].contains { path in",
-    "replace": "        [url.standardizedFileURL.path].contains { path in",
+    "find": "        [url.path, url.lexicallyStandardized.path].contains { path in",
+    "replace": "        [url.lexicallyStandardized.path].contains { path in",
     "rule": "The sidebar's Trash takes a disk mounted under /private",
     "tests": "DropTests/theSidebarsTrashTakesOnlyWhatCanBeTrashed"
   },
@@ -7543,7 +7543,7 @@
   },
   {
     "file": "Strata/Model/Places.swift",
-    "find": "        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL } } ?? shown",
+    "find": "        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).lexicallyStandardized } } ?? shown",
     "replace": "        shown",
     "rule": "Changing favorites drops one last found missing",
     "tests": "FavoritesTests/aFavoriteLastFoundMissingIsKeptWhenOthersChange"

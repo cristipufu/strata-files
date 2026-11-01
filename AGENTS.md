@@ -268,8 +268,11 @@ These apply everywhere below; the sections that follow add only what is specific
   The pane settles there when its first listing lands (`browser(_:landedAt:asked:)`, `Pane.settle(at:)`, the same
   visit, not a new one), and visits and the last location record that folder. A folder is watched before it's read:
   `BrowserWatching.watch` returns once its watchers are live, opened off the main actor, and the read waits for that,
-  so no change made while it's read is missed. Compare path spellings with `PathSpelling`, never `standardizedFileURL`
-  on the main thread: it asks the disk, and its answer changes once an item is gone.
+  so no change made while it's read is missed. Compare and key path spellings with `PathSpelling` or
+  `url.lexicallyStandardized`, never `standardizedFileURL` on the main thread (the main-thread audit fails on one): it
+  stats a /private path and resolves the links on the way to a `..`, so it can wait on a disk, and its answer changes
+  once an item is gone. Off the main thread it stays where resolving those links is the point: a check that a path
+  from a document, an archive or a plan stays inside its folder.
 - **`DirectoryReadSession`** schedules folder reads: each presentation owns its generation, rejects late success and
   error responses, and invalidates reads when removed or replaced by results. An explicit Reload's invalidation and
   the listing that follows are one cancellable request: check cancellation after invalidation, and an old Reload never
@@ -422,7 +425,7 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   frees it after its last use and its folder goes with it, so a test that only expects refusals would pass without
   checking anything.
 - The temporary folder is `/private/var/...`. Spell URLs the way `DirectoryLoader` lists them (`TestTree.root` is
-  already resolved); `standardizedFileURL` and `resolvingSymlinksInPath` drop the `/private`.
+  already resolved); `lexicallyStandardized`, `standardizedFileURL` and `resolvingSymlinksInPath` drop the `/private`.
 - View controllers run without a window: `BrowserViewController`, `ColumnBrowserViewController` and
   `BrowserWindowController` (two panes) all load, select and run commands headless.
 - If a check you broke on purpose still passes, `touch` the file and run again: the build can miss quick edits.

@@ -658,7 +658,7 @@ final class Workspaces {
             tab.compactMap { path -> String? in
                 guard !path.isEmpty else { return nil }
                 let url = URL(filePath: path, directoryHint: .isDirectory)
-                if let (server, top) = remote.copies.server(containing: url), top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }
+                if let (server, top) = remote.copies.server(containing: url), top.lexicallyStandardized.path == url.lexicallyStandardized.path { return server.name }
                 return url.lastPathComponent.isEmpty ? path : url.lastPathComponent
             }.joined(separator: "  |  ")
         }

@@ -26,7 +26,7 @@ final class AppUpdatesController: NSViewController {
     /// Whether `url` is the Strata that's running, which its own updater installs: its links followed, so read away from
     /// the main thread.
     nonisolated static func isThisCopyOfStrata(_ url: URL) -> Bool {
-        url.resolvingSymlinksInPath().standardizedFileURL == Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL
+        url.resolvingSymlinksInPath().lexicallyStandardized == Bundle.main.bundleURL.resolvingSymlinksInPath().lexicallyStandardized
     }
 
     @concurrent static func isRunningCopy(_ url: URL) async -> Bool { isThisCopyOfStrata(url) }

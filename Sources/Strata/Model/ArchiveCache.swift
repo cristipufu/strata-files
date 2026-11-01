@@ -14,7 +14,7 @@ import Synchronization
 package nonisolated enum ArchiveCache {
     package static let root: URL = {
         SecureStorage.Context.shared.caches.appending(path: "Archives", directoryHint: .isDirectory)
-            .standardizedFileURL
+            .lexicallyStandardized
     }()
 
     private static let rootPath = root.path
@@ -31,7 +31,7 @@ package nonisolated enum ArchiveCache {
         var info = stat()
         guard stat(real.path, &info) == 0 else { return nil }
         // Tools that keep modification dates can't fake the change time or the file's identity.
-        let key = "\(real.standardizedFileURL.path)|\(info.st_dev)|\(info.st_ino)|\(info.st_size)|"
+        let key = "\(real.lexicallyStandardized.path)|\(info.st_dev)|\(info.st_ino)|\(info.st_size)|"
             + "\(info.st_mtimespec.tv_sec).\(info.st_mtimespec.tv_nsec)|\(info.st_ctimespec.tv_sec).\(info.st_ctimespec.tv_nsec)"
         let hash = SHA256.hash(data: Data(key.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
         return root.appending(path: hash, directoryHint: .isDirectory).appending(path: copyName, directoryHint: .isDirectory)
@@ -55,17 +55,17 @@ package nonisolated enum ArchiveCache {
 
     /// The finished copy of `archive`, if there is one.
     package static func existing(for archive: URL) -> URL? {
-        guard let folder = folder(for: archive), learnSource(of: folder) == archive.resolvingSymlinksInPath().standardizedFileURL,
+        guard let folder = folder(for: archive), learnSource(of: folder) == archive.resolvingSymlinksInPath().lexicallyStandardized,
               FileManager.default.fileExists(atPath: folder.path) else { return nil }
         return folder
     }
 
     /// Records where a finished copy came from, and removes older copies of the same archive.
     package static func finish(_ folder: URL, from archive: URL) throws {
-        let source = archive.resolvingSymlinksInPath().standardizedFileURL
+        let source = archive.resolvingSymlinksInPath().lexicallyStandardized
         try Data(source.path.utf8).write(to: sourceFile(folder))
         sources.withLock { $0[folder.path] = source }
-        for other in copies() where other.top.standardizedFileURL != folder.standardizedFileURL && other.source == source {
+        for other in copies() where other.top.lexicallyStandardized != folder.lexicallyStandardized && other.source == source {
             setAside(other.entry)
         }
     }
@@ -105,7 +105,7 @@ package nonisolated enum ArchiveCache {
     package static func prune(olderThan age: TimeInterval = 24 * 60 * 60, keeping keep: Set<String> = []) {
         var survivors: [(entry: URL, used: Date, size: Int64)] = []
         for copy in copies() {
-            if keep.contains(copy.top.standardizedFileURL.path) { continue }
+            if keep.contains(copy.top.lexicallyStandardized.path) { continue }
             // Read fresh: an open in another window may have just marked it used.
             let used = (try? URL(fileURLWithPath: copy.entry.path).resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate ?? .distantPast
@@ -128,7 +128,7 @@ package nonisolated enum ArchiveCache {
     /// Removes a copy's `<hash>` folder (made writable and cleared first, whatever the archive set). Never the cache
     /// itself or anything outside it.
     package static func remove(_ entry: URL) {
-        let path = entry.standardizedFileURL.path
+        let path = entry.lexicallyStandardized.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return }
         forget(entry)
         Archiver.removeTree(entry)
@@ -139,7 +139,7 @@ package nonisolated enum ArchiveCache {
     /// copy. Returns where it was set aside; nil when it wasn't a whole copy of the cache, or wasn't there.
     @discardableResult
     package static func setAside(_ entry: URL) -> URL? {
-        let path = entry.standardizedFileURL.path
+        let path = entry.lexicallyStandardized.path
         guard path.hasPrefix(rootPath + "/"), !path.dropFirst(rootPath.count + 1).contains("/") else { return nil }
         let aside = root.appending(path: "removing-" + UUID().uuidString, directoryHint: .isDirectory)
         guard renamex_np(path, aside.path, UInt32(RENAME_EXCL)) == 0 else { return nil }
@@ -169,7 +169,7 @@ package nonisolated enum ArchiveCache {
     private static func source(of folder: URL) -> URL? {
         guard let data = try? Data(contentsOf: sourceFile(folder)), data.count < 4096,
               let path = String(data: data, encoding: .utf8), path.hasPrefix("/") else { return nil }
-        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let url = URL(fileURLWithPath: path).lexicallyStandardized
         // An archive is never inside the cache's own bookkeeping folder.
         return url.path == rootPath ? nil : url
     }

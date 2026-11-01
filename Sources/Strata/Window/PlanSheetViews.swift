@@ -154,7 +154,7 @@ final class PlanRowView: NSTableCellView {
     }
 
     private func relative(_ url: URL, to base: URL) -> String {
-        let path = url.standardizedFileURL.path, root = base.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path, root = base.lexicallyStandardized.path
         if path.hasPrefix(root + "/") { return String(path.dropFirst(root.count + 1)) }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path

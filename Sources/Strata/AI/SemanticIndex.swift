@@ -171,7 +171,7 @@ package actor SemanticIndex {
     /// Indexes or re-indexes one file now (for example right after Strata renamed or saved it), regardless of roots.
     package func refresh(_ url: URL) async {
         await loadIfNeeded()
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         guard let stamp = Self.stamp(url) else {
             remove(path)
             return
@@ -181,7 +181,7 @@ package actor SemanticIndex {
 
     /// Forgets a file (deleted or moved out of the roots).
     package func forget(_ url: URL) {
-        remove(url.standardizedFileURL.path)
+        remove(url.lexicallyStandardized.path)
     }
 
     /// Deletes everything stored on disk and in memory.
@@ -498,7 +498,7 @@ package actor SemanticIndex {
                 guard values.isRegularFile == true || isRTFD,
                       TextExtractor.canExtract(url, contentType: values.contentType, options: configuration.extraction),
                       let stamp = isRTFD ? stamp(url) : FileStamp(values) else { continue }
-                found[url.standardizedFileURL.path] = stamp
+                found[url.lexicallyStandardized.path] = stamp
             }
         }
         return found

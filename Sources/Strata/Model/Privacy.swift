@@ -25,7 +25,7 @@ package enum Privacy {
     /// Whether this made one of them known: what the index may read has changed then.
     @discardableResult
     package static func markAccessible(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         let home = Places.home.path
         for relative in ["Desktop", "Documents", "Downloads"] {
             let root = home + "/" + relative
@@ -57,8 +57,8 @@ package enum Privacy {
     /// access is granted, so only folders guarded more narrowly than where you're browsing count.
     package static func measuringWouldPrompt(_ url: URL, browsing directory: URL) -> Bool {
         guard !hasFullDiskAccess else { return false }
-        let path = url.standardizedFileURL.path
-        let current = directory.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
+        let current = directory.lexicallyStandardized.path
         for root in guardedRoots where path == root || path.hasPrefix(root + "/") {
             if !(current == root || current.hasPrefix(root + "/")) && !isKnownAccessible(root) { return true }
         }

@@ -98,7 +98,7 @@ nonisolated package enum SecureStorage {
         package func url(_ relative: String, isDirectory: Bool = false) -> URL {
             let url = directory.appending(path: relative, directoryHint: isDirectory ? .isDirectory : .notDirectory)
             let folder = isDirectory ? url : url.deletingLastPathComponent()
-            if folder.standardizedFileURL != directory.standardizedFileURL { Self.prepare(folder) }
+            if folder.lexicallyStandardized != directory.lexicallyStandardized { Self.prepare(folder) }
             return url
         }
 

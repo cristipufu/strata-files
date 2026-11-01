@@ -44,7 +44,7 @@ package final class FolderSizer {
 
     /// Drops cached sizes for `url` and every folder above it, since a change inside changes all of them.
     package static func invalidate(_ url: URL) {
-        var current = url.standardizedFileURL
+        var current = url.lexicallyStandardized
         while current.path != "/" {
             cache[current] = nil
             current = current.deletingLastPathComponent()

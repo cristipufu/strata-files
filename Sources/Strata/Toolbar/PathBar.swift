@@ -163,7 +163,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let url else { return }
         let parts = Self.components(of: url, copies: copies, names: names)
-        let repoRootPath = gitRoot?.standardizedFileURL.path
+        let repoRootPath = gitRoot?.lexicallyStandardized.path
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
             let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast)
@@ -174,7 +174,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             crumb.destination = part.url
             let group = NSStackView(views: [crumb])
             group.spacing = 0
-            let isRepoRoot = part.url.standardizedFileURL.path == repoRootPath
+            let isRepoRoot = part.url.lexicallyStandardized.path == repoRootPath
             if isRepoRoot {
                 group.addArrangedSubview(branchPill)
                 group.setCustomSpacing(2, after: crumb)
@@ -241,7 +241,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private static func steps(of url: URL, below top: URL) -> [Crumb] {
         var parts: [Crumb] = []
         var current = top
-        let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+        let inner = url.lexicallyStandardized.path.dropFirst(top.lexicallyStandardized.path.count).split(separator: "/")
         for component in inner {
             current = current.appending(path: String(component))
             parts.append((String(component), current, nil))
@@ -252,8 +252,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// Your home folder, another disk or the startup disk, then each folder by the name it's shown with; a Trash as
     /// one "Trash" step.
     private static func localComponents(of url: URL, copies: CopyProviders, names: FolderNames) -> [Crumb] {
-        let path = url.standardizedFileURL.path
-        let home = Places.home.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
+        let home = Places.home.lexicallyStandardized.path
         var parts: [Crumb] = []
         let root: String
         if path == home || path.hasPrefix(home + "/") {
@@ -384,7 +384,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             // Nothing to add when the only suggestion is the folder already typed.
             let typed = resolvedPath()
-            if found.count == 1, found[0].url.standardizedFileURL.path == URL(filePath: typed, directoryHint: .inferFromPath).standardizedFileURL.path {
+            if found.count == 1, found[0].url.lexicallyStandardized.path == URL(filePath: typed, directoryHint: .inferFromPath).lexicallyStandardized.path {
                 return closeSuggestions()
             }
             let typedIsThere = await FileEntry.opening(URL(filePath: typed, directoryHint: .inferFromPath)) != .missing
@@ -406,7 +406,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     private func go(to suggestion: PathSuggestion) {
         endEditing(restoreFocus: true)
-        onNavigate?(suggestion.url.standardizedFileURL, nil)
+        onNavigate?(suggestion.url.lexicallyStandardized, nil)
     }
 
     /// Tab on a chosen suggestion: its path goes in the field, to keep typing inside it.
@@ -439,7 +439,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 if let best = found.first { go(to: best) } else { shake() }
                 return
             }
-            let target = URL(filePath: path, directoryHint: opening == .folder ? .isDirectory : .notDirectory).standardizedFileURL
+            let target = URL(filePath: path, directoryHint: opening == .folder ? .isDirectory : .notDirectory).lexicallyStandardized
             endEditing(restoreFocus: true)
             if opening == .folder {
                 onNavigate?(target, nil)

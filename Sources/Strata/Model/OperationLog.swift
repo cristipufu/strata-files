@@ -269,12 +269,12 @@ package final class OperationLog {
     /// wins, and only while the file there is still the one that was moved. Keyed by standardized path; one pass over
     /// the entries, reading the disk, so off the main thread.
     package nonisolated static func movedFrom(_ urls: [URL], in entries: [Entry]) -> [String: (from: URL, date: Date)] {
-        let wanted = Set(urls.map { $0.standardizedFileURL.path })
+        let wanted = Set(urls.map { $0.lexicallyStandardized.path })
         var found: [String: (from: URL, date: Date)] = [:]
         for entry in entries {
             let when = entry.changed ?? entry.date
             for pair in entry.pairs where pair.count == 2 && !pair[0].isEmpty && !pair[1].isEmpty {
-                let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).standardizedFileURL.path
+                let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).lexicallyStandardized.path
                 guard wanted.contains(here), found[here].map({ $0.date <= when }) ?? true else { continue }
                 // The identity was recorded where the operation left the file, at `pair[1]`.
                 let same = entry.identities[pair[1]].map { FileIdentity.matchesHistory($0, at: here) } ?? TransferEngine.exists(URL(fileURLWithPath: here))

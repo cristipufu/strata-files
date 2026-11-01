@@ -51,8 +51,8 @@ package final class TransferQueue {
     @discardableResult
     package func enqueue(_ sources: [URL], to destination: URL, mode: TransferMode, options: TransferEngine.Options,
                  undo: UndoManager?, conflicts: ConflictResolver) -> TransferJob {
-        let folder = destination.standardizedFileURL
-        let moves = sources.map { TransferMove(from: $0.standardizedFileURL, to: folder.appending(path: $0.lastPathComponent)) }
+        let folder = destination.lexicallyStandardized
+        let moves = sources.map { TransferMove(from: $0.lexicallyStandardized, to: folder.appending(path: $0.lastPathComponent)) }
         return enqueue(moves: moves, destination: folder, mode: mode, options: options, undo: undo, conflicts: conflicts)
     }
 
@@ -388,9 +388,9 @@ package enum TransferUndo {
     private static func movesBack(moved: [TransferMove], replaced: [TransferMove], vacated: [URL],
                                   owns: @Sendable (URL) -> Bool) async -> [TransferMove] {
         let returning = moved.filter { owns($0.to) }
-        let freed = Set((vacated + returning.map(\.to)).map { $0.standardizedFileURL.path })
+        let freed = Set((vacated + returning.map(\.to)).map { $0.lexicallyStandardized.path })
         let restoring = replaced.filter {
-            owns($0.to) && (freed.contains($0.from.standardizedFileURL.path) || !TransferEngine.exists($0.from))
+            owns($0.to) && (freed.contains($0.from.lexicallyStandardized.path) || !TransferEngine.exists($0.from))
         }
         return returning.reversed().map(\.reversed) + restoring.reversed().map(\.reversed)
     }

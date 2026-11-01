@@ -123,7 +123,7 @@ package nonisolated enum CopyWriter {
             let stack = folder.appending(path: project, directoryHint: .isDirectory)
             if let held {
                 if renameat(fd, held, child, project) == 0 {
-                    copies.forget(folder.appending(path: held).standardizedFileURL.path)
+                    copies.forget(folder.appending(path: held).lexicallyStandardized.path)
                 }
             }
             var keepChild = Set<String>()
@@ -141,7 +141,7 @@ package nonisolated enum CopyWriter {
         private func moveAside(_ project: String) -> String? {
             let temp = ".hold-" + String(UUID().uuidString.prefix(8))
             guard renameat(fd, project, fd, temp) == 0 else { return nil }
-            copies.forget(folder.appending(path: project).standardizedFileURL.path)
+            copies.forget(folder.appending(path: project).lexicallyStandardized.path)
             return temp
         }
     }
@@ -155,7 +155,7 @@ package nonisolated enum CopyWriter {
               info.st_mode & S_IFMT == S_IFDIR else { return }
         guard let recorded = ContainerCopies.recordedSource(container.name, in: engineFD), recorded.id == container.id else { return }
         guard renameat(engineFD, container.name, stackFD, container.name) == 0 else { return }
-        copies.forget(engineFolder.appending(path: container.name).standardizedFileURL.path)
+        copies.forget(engineFolder.appending(path: container.name).lexicallyStandardized.path)
     }
 
     /// Makes `folder` match `entries`: folders and links made, files as placeholders (or written, from `contents`),

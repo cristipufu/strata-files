@@ -26,7 +26,7 @@ extension BrowserWindowController {
                                                    connections: services.remote.connections)
         controller.onConnected = { [weak self, weak origin] mounted in
             guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }
-            go(.folder(mounted.standardizedFileURL), in: origin)
+            go(.folder(mounted.lexicallyStandardized), in: origin)
         }
         controller.onServer = { [weak self, weak origin] server in
             guard let self, let origin else { return }
@@ -93,7 +93,7 @@ extension BrowserWindowController {
         guard Trash.isTrash(url) else { return split.noticeBar.hide() }
         split.noticeBar.hide()
         Task { [weak self] in
-            let others = await Trash.contents().filter { $0.count > 0 && $0.folder.standardizedFileURL != url.standardizedFileURL }
+            let others = await Trash.contents().filter { $0.count > 0 && $0.folder.lexicallyStandardized != url.lexicallyStandardized }
             guard let self, pane.opening.request == nil, case .folder(let shown) = destination, shown == url,
                   let first = others.first else { return }
             let text: String
@@ -123,7 +123,7 @@ extension BrowserWindowController {
         }
         // The folder shown, or one below it (a column, a folder expanded in the list). Both are in this window's copy
         // root, spelled from it, so their paths compare without asking the disk.
-        let shownPath = shown.standardizedFileURL.path, problem = folder.standardizedFileURL.path
+        let shownPath = shown.lexicallyStandardized.path, problem = folder.lexicallyStandardized.path
         guard problem == shownPath || problem.hasPrefix(shownPath + "/") else { return }
         split.noticeBar.show(symbol: "exclamationmark.triangle", text: message,
                              button: String(localized: "Try Again", comment: "Button: read a container's folder again")) { [weak self] in

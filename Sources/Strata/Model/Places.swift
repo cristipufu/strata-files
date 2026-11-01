@@ -52,7 +52,7 @@ package enum Places {
         return paths.compactMap { path in
             guard isFolder(path) != false else { return nil }
             let url = URL(filePath: path, directoryHint: .isDirectory)
-            return defaults.first { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }
+            return defaults.first { $0.url.lexicallyStandardized.path == url.lexicallyStandardized.path }
                 ?? Place(title: name(url), url: url, symbol: "folder")
         }
     }
@@ -61,10 +61,10 @@ package enum Places {
     /// instead. Which of `urls` are folders is read away from the main thread. The rest of your list is kept as it's
     /// saved, with any favorite `checks` last found missing (a disk that may be back).
     package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs, checks: PlaceChecks) async {
-        let folders = await folders(among: urls.map(\.standardizedFileURL))
+        let folders = await folders(among: urls.map(\.lexicallyStandardized))
         guard !folders.isEmpty else { return }
         let paths = Set(folders.map(\.path))
-        let shown = favorites(preferences: preferences, checks: checks).map(\.url.standardizedFileURL)
+        let shown = favorites(preferences: preferences, checks: checks).map(\.url.lexicallyStandardized)
         var saved = savedFavorites(preferences: preferences, shown: shown).filter { !paths.contains($0.path) }
         // Before the first favorite shown at `index` or after it that stays where it is.
         let anchor = index.flatMap { index in shown.dropFirst(max(0, index)).first { !paths.contains($0.path) } }
@@ -75,14 +75,14 @@ package enum Places {
     }
 
     package static func removeFavorite(_ url: URL, preferences: Prefs, checks: PlaceChecks) {
-        let path = url.standardizedFileURL.path
-        let shown = favorites(preferences: preferences, checks: checks).map(\.url.standardizedFileURL)
+        let path = url.lexicallyStandardized.path
+        let shown = favorites(preferences: preferences, checks: checks).map(\.url.lexicallyStandardized)
         preferences.favoritePaths = savedFavorites(preferences: preferences, shown: shown).map(\.path).filter { $0 != path }
     }
 
     /// Your own list, or the defaults as `shown` until you've changed it.
     private static func savedFavorites(preferences: Prefs, shown: [URL]) -> [URL] {
-        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL } } ?? shown
+        preferences.favoritePaths.map { $0.map { URL(filePath: $0, directoryHint: .isDirectory).lexicallyStandardized } } ?? shown
     }
 
     nonisolated private static func folders(among urls: [URL]) async -> [URL] {

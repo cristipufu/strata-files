@@ -52,7 +52,7 @@ package nonisolated enum CloudStatus: Sendable, Equatable {
     /// Whether `folder` holds cloud items: iCloud Drive, a File Provider folder (`~/Library/CloudStorage`), or anything
     /// the system reports as ubiquitous.
     package static func isCloudFolder(_ folder: URL) -> Bool {
-        let path = folder.standardizedFileURL.path
+        let path = folder.lexicallyStandardized.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if CloudFolders.contains(folder, in: URL(fileURLWithPath: home + "/Library/Mobile Documents"))
             || CloudFolders.contains(folder, in: URL(fileURLWithPath: home + "/Library/CloudStorage")) { return true }
@@ -123,7 +123,7 @@ package enum CloudActions {
             coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { visible in
                 accessed = true
                 do {
-                    guard visible.standardizedFileURL == url.standardizedFileURL else { throw POSIXError(.ESTALE) }
+                    guard visible.lexicallyStandardized == url.lexicallyStandardized else { throw POSIXError(.ESTALE) }
                     try chosen.withDescriptor { _, info in
                         guard info.st_flags & UInt32(SF_DATALESS) == 0 else { throw POSIXError(.EAGAIN) }
                     }
@@ -155,7 +155,7 @@ package enum CloudActions {
         return urls.filter { url in
             var info = stat()
             guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK, status(url) == .downloaded else { return false }
-            return seen.insert(url.standardizedFileURL.path).inserted
+            return seen.insert(url.lexicallyStandardized.path).inserted
         }
     }
 
@@ -215,12 +215,12 @@ package final class CloudStore {
     private static let keptFolders = 48
 
     package func status(for url: URL) -> CloudStatus? {
-        statuses[url.standardizedFileURL.path]
+        statuses[url.lexicallyStandardized.path]
     }
 
     /// Reads the states of `urls`, the items of `folder`, when it's a cloud folder.
     package func load(_ urls: [URL], in folder: URL) {
-        let key = folder.standardizedFileURL.path
+        let key = folder.lexicallyStandardized.path
         Task {
             guard let (paths, read) = await Self.read(urls, in: key) else {
                 if items[key] != nil { forget(key) }
@@ -233,7 +233,7 @@ package final class CloudStore {
     /// Reads these folders again (after Download Now or Remove Download), and keeps reading them for a while.
     package func refresh(_ folders: Set<URL>) {
         for folder in folders {
-            let key = folder.standardizedFileURL.path
+            let key = folder.lexicallyStandardized.path
             guard items[key] != nil else { continue }
             forced[key] = 5
             readAgain(key)
@@ -303,7 +303,7 @@ package final class CloudStore {
     @concurrent
     private static func read(_ urls: [URL], in folder: String) async -> (paths: [String], statuses: [String: CloudStatus])? {
         guard CloudStatus.isCloudFolder(URL(fileURLWithPath: folder)) else { return nil }
-        let paths = urls.map { $0.standardizedFileURL.path }
+        let paths = urls.map { $0.lexicallyStandardized.path }
         var result: [String: CloudStatus] = [:]
         for path in paths {
             if let status = CloudStatus.read(URL(fileURLWithPath: path)) { result[path] = status }

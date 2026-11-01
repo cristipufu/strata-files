@@ -96,7 +96,7 @@ package final class FileIndex {
     /// Total size and file count of a folder, if it's indexed.
     package func folderSize(_ url: URL) -> FolderSize? {
         guard let store else { return nil }
-        let path = url.standardizedFileURL.path
+        let path = url.lexicallyStandardized.path
         return store.read { store in
             guard let id = store.lookup(path), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
             return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]))
@@ -107,7 +107,7 @@ package final class FileIndex {
     /// re-walks the sibling list every time).
     package func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
-        let base = folder.standardizedFileURL.path
+        let base = folder.lexicallyStandardized.path
         return store.read { store in
             guard let id = store.lookup(base) else { return [:] }
             var sizes: [String: FolderSize] = [:]
@@ -127,7 +127,7 @@ package final class FileIndex {
     package func search(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int)? {
         guard let store else { return nil }
         var query = IndexQuery.parse(text)
-        if let scope { query.scopePath = scope.standardizedFileURL.path }
+        if let scope { query.scopePath = scope.lexicallyStandardized.path }
         guard !query.isEmpty else { return ([], 0) }
         return await Self.run(query, store, limit)
     }
@@ -135,7 +135,7 @@ package final class FileIndex {
     /// Like `search`, but plain English is understood too; returns how it was interpreted when it was.
     package func understand(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?)? {
         guard let store else { return nil }
-        return await IndexSearch.understand(text, scopePath: scope?.standardizedFileURL.path, in: store, limit: limit)
+        return await IndexSearch.understand(text, scopePath: scope?.lexicallyStandardized.path, in: store, limit: limit)
     }
 
     /// The index's roots inside `folder` (your home folder and Applications, when searching `/` or `/Users`): a folder
@@ -178,7 +178,7 @@ package final class FileIndex {
 
     nonisolated private static func resolved(_ folder: URL) async -> String {
         await OwnThread.run {
-            folder.resolvingSymlinksInPath().standardizedFileURL.path
+            folder.resolvingSymlinksInPath().lexicallyStandardized.path
         }
     }
 

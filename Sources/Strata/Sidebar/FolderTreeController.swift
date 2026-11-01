@@ -173,7 +173,7 @@ final class FolderTreeController: NSViewController {
         let home = Places.home
         var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
         for volume in places.snapshot.volumes {
-            let url = volume.url.standardizedFileURL
+            let url = volume.url.lexicallyStandardized
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
         }
         for folder in cloudFolders where !fresh.contains(where: { $0.url.fileViewKey == folder.url.fileViewKey }) {
@@ -335,7 +335,7 @@ final class FolderTreeController: NSViewController {
             guard let values = try? child.resourceValues(forKeys: Set(keys)) else { return false }
             return values.isDirectory == true && values.isPackage != true && values.isSymbolicLink != true
         }
-        .map { ($0.standardizedFileURL, FileManager.default.displayName(atPath: $0.path)) }
+        .map { ($0.lexicallyStandardized, FileManager.default.displayName(atPath: $0.path)) }
         .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
@@ -442,7 +442,7 @@ final class FolderTreeController: NSViewController {
             current = nil
             return isViewLoaded ? deselect() : ()
         }
-        let target = url.standardizedFileURL
+        let target = url.lexicallyStandardized
         current = target
         guard isViewLoaded, isActive, !roots.isEmpty else { return }
         // The Trash (and what's in it) and the containers' files have their own rows.
@@ -497,7 +497,7 @@ final class FolderTreeController: NSViewController {
 
     /// The loaded node for `url`, if it's in the tree.
     private func node(for url: URL) -> FolderNode? {
-        let key = url.standardizedFileURL.fileViewKey
+        let key = url.lexicallyStandardized.fileViewKey
         func find(_ nodes: [FolderNode]) -> FolderNode? {
             for node in nodes where node.kind == .folder {
                 let nodeKey = node.url.fileViewKey
@@ -644,7 +644,7 @@ extension FolderTreeController: NSMenuDelegate {
             return
         }
         add(String(localized: "Copy Path"), #selector(copyPath(_:)))
-        let isFavorite = Places.favorites(preferences: preferences, checks: places).contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
+        let isFavorite = Places.favorites(preferences: preferences, checks: places).contains { $0.url.lexicallyStandardized.fileViewKey == node.url.fileViewKey }
         if !isFavorite {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))

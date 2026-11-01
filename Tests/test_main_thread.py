@@ -22,6 +22,7 @@ class MainThreadAuditTests(unittest.TestCase):
     def test_blocking_calls_on_the_main_thread_need_review(self):
         for call in ["FileManager.default.fileExists(atPath: path)", "try? url.resourceValues(forKeys: [.nameKey])",
                      "NSWorkspace.shared.icon(forFile: path)", "lstat(path, &info)", "url.resolvingSymlinksInPath()",
+                     "url.standardizedFileURL", "path.standardizingPath",
                      "SecItemCopyMatching(query, &result)", "process.waitUntilExit()", "semaphore.wait()",
                      "try Data(contentsOf: url)", "fm.contentsOfDirectory(atPath: path)"]:
             issues = self.check(f"final class Pane {{\n    func show() {{\n        _ = {call}\n    }}\n}}\n")

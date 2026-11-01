@@ -153,9 +153,9 @@ import AppKit
         let validContentQuery = contentQuery.flatMap { $0.count >= 3 ? $0 : nil }
         let contentHits = validContentQuery != nil
             ? await services.contentIndex.search(validContentQuery ?? "", limit: 15) : []
-        let known = Set(byName.map { $0.url.standardizedFileURL.path })
+        let known = Set(byName.map { $0.url.lexicallyStandardized.path })
         let contentURLs = contentHits.map(\.url).filter { url in
-            !known.contains(url.standardizedFileURL.path) && (scope.map { url.path.hasPrefix($0.path + "/") } ?? true)
+            !known.contains(url.lexicallyStandardized.path) && (scope.map { url.path.hasPrefix($0.path + "/") } ?? true)
         }
         return await Self.entries(contentURLs).filter { entry in structural.map { $0.matches(entry) } ?? true }
     }

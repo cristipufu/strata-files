@@ -36,7 +36,7 @@ final class Pane {
 
     init(location: URL, services: BrowserServices) {
         browser = BrowserViewController(services: services)
-        self.location = location.standardizedFileURL
+        self.location = location.lexicallyStandardized
         destination = .folder(self.location)
         host = PaneHostViewController(browser: browser)
     }
