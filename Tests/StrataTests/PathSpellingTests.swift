@@ -43,6 +43,12 @@ struct PathSpellingTests {
         #expect(PathSpelling.short(TypedPath.location(of: "link/../../../home/report.pdf", in: home))
             == PathSpelling.short(tree.url("home/report.pdf")))
         #expect(PathSpelling.short(TypedPath.location(of: tree.url("home/notes.txt").path, in: tree.url("away"))) == PathSpelling.short(tree.url("home/notes.txt")))
+        // Typed relative to the shell's folder or in full, a path names the same place, spelled the same way: a folder
+        // with its slash, a link as a link.
+        for path in ["../away", "link", "link/", "link/..", "notes.txt", "link/../notes.txt", "missing", "."] {
+            #expect(TypedPath.location(of: path, in: home) == TypedPath.location(of: home.path + "/" + path, in: tree.root), "\(path)")
+        }
+        #expect(TypedPath.location(of: "../away", in: home).hasDirectoryPath)
         #expect(tree.snapshot() == ["away/", "away/a/", "away/a/b/", "away/a/final.pdf", "away/a/notes.txt", "home/",
                                     "home/link -> away/a/b", "home/notes.txt", "home/report.pdf -> away/a/final.pdf"])
     }

@@ -5,9 +5,10 @@ import Foundation
 /// points to (`standardizedFileURL` resolves the whole path once a `..` is in it). It asks the disk.
 package nonisolated enum TypedPath {
     /// `path` as typed in `folder` (a shell's working folder): a relative path goes on from there, its `..` kept for
-    /// the walk rather than taken off its letters as a relative URL takes it.
+    /// the walk rather than taken off its letters as a relative URL takes it. Either way a folder ends with a slash, as
+    /// the system spells one, asked of the disk once the walk has found it.
     package static func location(of path: String, in folder: URL) -> URL {
-        location(of: path.hasPrefix("/") ? URL(fileURLWithPath: path) : folder.appending(path: path))
+        location(of: path.hasPrefix("/") ? URL(fileURLWithPath: path) : folder.appending(path: path, directoryHint: .checkFileSystem))
     }
 
     package static func location(of url: URL) -> URL {

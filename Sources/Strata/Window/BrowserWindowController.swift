@@ -14,7 +14,6 @@ extension NSToolbarItem.Identifier {
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     static let largeFilesQuery = "kind:file size:>500mb"
 
-    /// What a search is called in titles: Large Files by name, others by their text.
     let services: BrowserServices
     lazy var navigationGestures = BrowserNavigation(owner: self)
     private(set) var panes: [Pane]

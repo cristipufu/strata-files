@@ -8055,7 +8055,7 @@
   },
   {
     "file": "Strata/Support/TypedPath.swift",
-    "find": "        location(of: path.hasPrefix(\"/\") ? URL(fileURLWithPath: path) : folder.appending(path: path))",
+    "find": "        location(of: path.hasPrefix(\"/\") ? URL(fileURLWithPath: path) : folder.appending(path: path, directoryHint: .checkFileSystem))",
     "replace": "        location(of: URL(fileURLWithPath: path, relativeTo: folder))",
     "rule": "The strata command takes a relative path's .. off its letters, not after the links on the way",
     "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
@@ -8080,5 +8080,12 @@
     "replace": "            survivors.isEmpty ? nil : survivors[0]",
     "rule": "After Move to Trash the first row is selected instead of the one taking the trashed ones' place",
     "tests": "DeleteTests/theRowTakingTheTrashedOnesPlaceIsSelectedAWholePathAtATime|DeleteTests/moveToTrashSelectsTheRowTakingItsPlaceUnlessAnotherWasChosen"
+  },
+  {
+    "file": "Strata/Support/TypedPath.swift",
+    "find": "folder.appending(path: path, directoryHint: .checkFileSystem))",
+    "replace": "folder.appending(path: path))",
+    "rule": "The strata command hands a folder typed relative to the shell's folder over without its slash",
+    "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
   }
 ]
