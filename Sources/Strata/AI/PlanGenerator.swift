@@ -281,68 +281,95 @@ package nonisolated enum PlanRules {
         let text = instruction.lowercased()
         let dateSource = Self.dateSource(text)
         var filter = itemFilter(instruction, now: now)
-
-        var action: PlanRecipe.Action?
-        var explained: [String] = []
-
-        if let group = match(text, "\\b(?:group|sort|organi[sz]e|split|file|arrange|categori[sz]e)\\b.*?\\bby\\s+(year|month|day|date|type|kind|extension|file type|format|camera)") {
-            let key: PlanRecipe.GroupKey = switch group[1] {
-            case "year": .year
-            case "month", "date": .month
-            case "day": .day
-            case "extension", "format": .extension
-            case "camera": .camera
-            default: .kind
-            }
-            let inside = match(instruction, "(?i)\\binside\\s+(?:a\\s+|the\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$")?[1]
-            action = .group(by: key, inside: inside)
-            explained += ["group", "sort", "organize", "organise", "split", "arrange", "into", "folders", "folder", "by", group[1]]
-        } else if let transforms = Optional(nameTransforms(text)),
-                  text.range(of: "\\b(?:rename|name them|name these)\\b", options: .regularExpression) != nil || !transforms.isEmpty
-                    || text.range(of: "\\b(?:add|put|prepend|append|insert)\\b.*\\bdates?\\b", options: .regularExpression) != nil {
-            var template = "{name}"
-            if text.range(of: "\\b(?:suffix|append|at the end|after the name)\\b", options: .regularExpression) != nil, text.contains("date") {
-                template = "{name} {date}"
-            } else if text.range(of: "\\b(?:prefix|prepend|in front|before the name|at the start|add|put|insert)\\b", options: .regularExpression) != nil, text.contains("date") {
-                template = "{date} {name}"
-            } else if text.range(of: "\\bby\\s+(?:the\\s+)?(?:date|day|time|when)|\\b(?:date taken|taken|capture date|creation date|modified date|date created|date modified)\\b|\\bto (?:the )?date", options: .regularExpression) != nil {
-                template = dateSource == .taken ? "{date} {time}" : "{date} {name}"
-            } else if let sequence = match(instruction, "(?i)\\b(?:to|as)\\s+[\"“]?(.+?)[\"”]?\\s*(?:\\d+\\s*,.*|followed by (?:a )?numbers?|with (?:a )?(?:number|numbers|counter)|sequentially|numbered|in order|\\{n\\}|#)?\\s*$"),
-                      transforms.isEmpty {
-                let base = sequence[1].trimmingCharacters(in: .whitespaces)
-                if !base.isEmpty, base.count < 60 { template = base.contains("{") ? base : base + " {n}" }
-            } else if text.range(of: "\\b(?:sequential|number them|numbered|with numbers)\\b", options: .regularExpression) != nil {
-                template = "{parent} {n}"
-            }
-            guard template != "{name}" || !transforms.isEmpty else { return nil }
-            action = .rename(template: template, transforms: transforms)
-            explained += ["rename", "by", "date", "taken", "to", "as", "prefix", "suffix", "with", "lowercase", "uppercase", "replace",
-                          "spaces", "dashes", "underscores", "names", "name", "and", "numbered", "sequentially", "add", "the", "remove",
-                          "time", "capture", "created", "modified", "creation", "when"]
-        } else if text.range(of: "\\b(?:move|put|archive|file|place|drop)\\b", options: .regularExpression) != nil,
-                  let parts = match(instruction, "(?i)^(.*)\\s(?:into|to|in)\\s+(?:an?\\s+|the\\s+|a\\s+new\\s+|my\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$"),
-                  !parts[2].trimmingCharacters(in: .whitespaces).isEmpty {
+        let transforms = nameTransforms(text)
+        let action: PlanRecipe.Action
+        let explained: [String]
+        if let group = groupAction(text, instruction) {
+            (action, explained) = group
+        } else if asksToRename(text, transforms: transforms) {
+            guard let rename = renameAction(text, instruction, transforms: transforms, dateSource: dateSource) else { return nil }
+            (action, explained) = (rename, renameWords)
+        } else if let move = moveAction(text, instruction) {
             // "move screenshots older than 30 days | into an Archive folder": constraints come from the first part.
-            action = .move(folder: parts[2].trimmingCharacters(in: .whitespaces))
-            filter = itemFilter(parts[1], now: now)
-            explained += ["move", "put", "archive", "file", "place", "into", "to", "in", "folder", "a", "an", "new"]
-            explained += parts[2].lowercased().split(separator: " ").map(String.init)
+            (action, explained) = (.move(folder: move.folder), moveWords + move.folder.lowercased().split(separator: " ").map(String.init))
+            filter = itemFilter(move.items, now: now)
         } else if text.range(of: "^\\s*archive\\b", options: .regularExpression) != nil {
-            action = .move(folder: "Archive")
-            explained += ["archive"]
+            (action, explained) = (.move(folder: "Archive"), ["archive"])
         } else if text.range(of: "\\b(?:delete|trash|remove|bin|throw away|get rid of)\\b", options: .regularExpression) != nil {
-            action = .trash
-            explained += ["delete", "trash", "remove", "bin", "throw", "away", "get", "rid", "of", "move", "to"]
+            (action, explained) = (.trash, ["delete", "trash", "remove", "bin", "throw", "away", "get", "rid", "of", "move", "to"])
+        } else {
+            return nil
         }
-        guard let action else { return nil }
+        return Result(recipe: PlanRecipe(action: action, filter: filter, dateSource: dateSource),
+                      fullyUnderstood: isFullyUnderstood(instruction, explained: explained, now: now))
+    }
 
-        // Anything left that neither the action nor the item filter explains?
-        let interpretation = QueryInterpreter.parse(instruction, now: now)
-        let unexplained = interpretation.unrecognized.filter { word in
-            !explained.contains(word) && !["these", "those", "them", "all", "photos", "files", "items", "selected", "selection",
-                                            "pictures", "images", "folder", "folders", "into", "separate"].contains(word)
+    /// "Group by year", "sort into folders by kind", perhaps "inside a folder called Photos".
+    private static func groupAction(_ text: String, _ instruction: String) -> (PlanRecipe.Action, [String])? {
+        guard let group = match(text, "\\b(?:group|sort|organi[sz]e|split|file|arrange|categori[sz]e)\\b.*?\\bby\\s+(year|month|day|date|type|kind|extension|file type|format|camera)") else {
+            return nil
         }
-        return Result(recipe: PlanRecipe(action: action, filter: filter, dateSource: dateSource), fullyUnderstood: unexplained.isEmpty)
+        let key: PlanRecipe.GroupKey = switch group[1] {
+        case "year": .year
+        case "month", "date": .month
+        case "day": .day
+        case "extension", "format": .extension
+        case "camera": .camera
+        default: .kind
+        }
+        let inside = match(instruction, "(?i)\\binside\\s+(?:a\\s+|the\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$")?[1]
+        return (.group(by: key, inside: inside),
+                ["group", "sort", "organize", "organise", "split", "arrange", "into", "folders", "folder", "by", group[1]])
+    }
+
+    private static func asksToRename(_ text: String, transforms: [PlanRecipe.NameTransform]) -> Bool {
+        text.range(of: "\\b(?:rename|name them|name these)\\b", options: .regularExpression) != nil || !transforms.isEmpty
+            || text.range(of: "\\b(?:add|put|prepend|append|insert)\\b.*\\bdates?\\b", options: .regularExpression) != nil
+    }
+
+    /// The new names' template: a date before or after the name, the date taken, a base and a counter, or the
+    /// folder's name and a counter. Nil when nothing about the names would change.
+    private static func renameAction(_ text: String, _ instruction: String, transforms: [PlanRecipe.NameTransform],
+                                     dateSource: PlanRecipe.DateSource) -> PlanRecipe.Action? {
+        var template = "{name}"
+        if text.range(of: "\\b(?:suffix|append|at the end|after the name)\\b", options: .regularExpression) != nil, text.contains("date") {
+            template = "{name} {date}"
+        } else if text.range(of: "\\b(?:prefix|prepend|in front|before the name|at the start|add|put|insert)\\b", options: .regularExpression) != nil, text.contains("date") {
+            template = "{date} {name}"
+        } else if text.range(of: "\\bby\\s+(?:the\\s+)?(?:date|day|time|when)|\\b(?:date taken|taken|capture date|creation date|modified date|date created|date modified)\\b|\\bto (?:the )?date", options: .regularExpression) != nil {
+            template = dateSource == .taken ? "{date} {time}" : "{date} {name}"
+        } else if let sequence = match(instruction, "(?i)\\b(?:to|as)\\s+[\"“]?(.+?)[\"”]?\\s*(?:\\d+\\s*,.*|followed by (?:a )?numbers?|with (?:a )?(?:number|numbers|counter)|sequentially|numbered|in order|\\{n\\}|#)?\\s*$"),
+                  transforms.isEmpty {
+            let base = sequence[1].trimmingCharacters(in: .whitespaces)
+            if !base.isEmpty, base.count < 60 { template = base.contains("{") ? base : base + " {n}" }
+        } else if text.range(of: "\\b(?:sequential|number them|numbered|with numbers)\\b", options: .regularExpression) != nil {
+            template = "{parent} {n}"
+        }
+        guard template != "{name}" || !transforms.isEmpty else { return nil }
+        return .rename(template: template, transforms: transforms)
+    }
+
+    private static let renameWords = ["rename", "by", "date", "taken", "to", "as", "prefix", "suffix", "with", "lowercase", "uppercase", "replace",
+                                      "spaces", "dashes", "underscores", "names", "name", "and", "numbered", "sequentially", "add", "the", "remove",
+                                      "time", "capture", "created", "modified", "creation", "when"]
+
+    /// "Move … into a folder called X": the folder, and the part that says which items.
+    private static func moveAction(_ text: String, _ instruction: String) -> (folder: String, items: String)? {
+        guard text.range(of: "\\b(?:move|put|archive|file|place|drop)\\b", options: .regularExpression) != nil,
+              let parts = match(instruction, "(?i)^(.*)\\s(?:into|to|in)\\s+(?:an?\\s+|the\\s+|a\\s+new\\s+|my\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$"),
+              !parts[2].trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return (parts[2].trimmingCharacters(in: .whitespaces), parts[1])
+    }
+
+    private static let moveWords = ["move", "put", "archive", "file", "place", "into", "to", "in", "folder", "a", "an", "new"]
+
+    /// Whether every word is explained by the action or by the item filter.
+    private static func isFullyUnderstood(_ instruction: String, explained: [String], now: Date) -> Bool {
+        let interpretation = QueryInterpreter.parse(instruction, now: now)
+        return interpretation.unrecognized.allSatisfy { word in
+            explained.contains(word) || ["these", "those", "them", "all", "photos", "files", "items", "selected", "selection",
+                                         "pictures", "images", "folder", "folders", "into", "separate"].contains(word)
+        }
     }
 
     package static func nameTransforms(_ text: String) -> [PlanRecipe.NameTransform] {
