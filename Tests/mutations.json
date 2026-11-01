@@ -8059,5 +8059,19 @@
     "replace": "        location(of: URL(fileURLWithPath: path, relativeTo: folder))",
     "rule": "The strata command takes a relative path's .. off its letters, not after the links on the way",
     "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
+  },
+  {
+    "file": "Strata/Window/ParentFolder.swift",
+    "find": "        guard path.hasPrefix(parent == \"/\" ? \"/\" : parent + \"/\") else { return nil }",
+    "replace": "        guard path.hasPrefix(parent) else { return nil }",
+    "rule": "Going up selects an item whose name only starts like the folder you came from",
+    "tests": "ParentFolderTests/theParentSelectsTheItemOnTheWayDownAWholeNameAtATime"
+  },
+  {
+    "file": "Strata/Window/ParentFolder.swift",
+    "find": "        if let (_, top) = servers.server(containing: current), top.lexicallyStandardized == current.lexicallyStandardized { return .refused }\n",
+    "replace": "",
+    "rule": "Going up from a server's top leaves the server for Strata's own copy folder",
+    "tests": "ParentFolderTests/upGoesToTheFolderAboveExceptAtATopWithNothingAbove"
   }
 ]

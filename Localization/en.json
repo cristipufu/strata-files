@@ -2481,7 +2481,7 @@
     "in memory": "Inspector, Mounts: a tmpfs mount · ContainerInspector.swift:402",
     "Incoming": "Conflict sheet: over the item being copied or moved · ConflictSheetController.swift:68",
     "Index": "Settings ▸ Search & Index: section about the file index · SettingsWindowController.swift:209",
-    "Indexing %lld items…": "BrowserWindowController.swift:743",
+    "Indexing %lld items…": "BrowserWindowController.swift:733",
     "Indexing…": "PaneSearch.swift:100, PaneSearch.swift:296",
     "Indexing… %lld items so far": "SettingsWindowController.swift:257",
     "infoplist.NSDesktopFolderUsageDescription": "macOS permission prompt (Info.plist), shown the first time Strata opens that place · Info.plist NSDesktopFolderUsageDescription",

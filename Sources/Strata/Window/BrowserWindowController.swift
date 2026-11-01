@@ -524,15 +524,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         field.stringValue = text
     }
 
-    /// Selects the folder we came from when it's inside the destination (going back up, or to an enclosing folder).
     private func childToSelect(in destination: Destination, from origin: Destination) -> URL? {
         guard case .folder(let target) = destination, case .folder(let from) = origin else { return nil }
-        let parent = target.lexicallyStandardized.path
-        let path = from.lexicallyStandardized.path
-        guard path.hasPrefix(parent == "/" ? "/" : parent + "/") else { return nil }
-        let rest = path.dropFirst(parent == "/" ? 1 : parent.count + 1)
-        guard let first = rest.split(separator: "/").first else { return nil }
-        return target.appending(path: String(first)).lexicallyStandardized
+        return ParentFolder.child(of: target, toward: from)
     }
 
     @objc func goBack(_ sender: Any?) {
@@ -557,15 +551,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if browser.mode == .columns, browser.columns.focusParentColumn() { return }
             // In column view "here" is the focused column's folder, not the first column's.
             let current = (browser.mode == .columns ? browser.columns.activeDirectory : nil) ?? location
-            guard current.path != "/" else { return }
-            // Up from an archive opened as a folder: the folder the archive is in, with the archive selected.
-            if let (archive, top) = ArchiveCache.archive(containing: current), top.lexicallyStandardized == current.lexicallyStandardized {
-                return navigate(to: archive.deletingLastPathComponent(), select: archive)
+            switch ParentFolder.up(from: current, containers: services.copies.containerCopies, servers: services.remote.copies) {
+            case .to(let parent, let selecting): navigate(to: parent, select: selecting)
+            case .none: break
+            case .refused: Sounds.beep()
             }
-            // The Containers folder has nothing above it (a container's `/` goes up to it); nor has a server's `/`.
-            if services.copies.containerCopies.engineFolder(current) != nil { return Sounds.beep() }
-            if let (_, top) = services.remote.copies.server(containing: current), top.lexicallyStandardized == current.lexicallyStandardized { return Sounds.beep() }
-            navigate(to: current.deletingLastPathComponent(), select: current)
         } else {
             navigate(to: location)
         }
