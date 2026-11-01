@@ -82,86 +82,107 @@ import AppKit
         // Finder tags aren't in the index: Spotlight answers those.
         if let query = SpotlightQuery.parse(text) {
             await searchSpotlight(query, in: scope, pane: p, generation: generation, target: target)
+        } else if let scope, await !services.index.covers(scope) {
+            await searchOutsideIndex(text, in: scope, pane: p, generation: generation, target: target)
+        } else {
+            await searchIndex(text, in: scope, pane: p, generation: generation, target: target)
+        }
+    }
+
+    /// Whether `generation` is still the pane's latest search, and the pane still shows it.
+    private func isCurrent(_ generation: Int, _ p: Pane, _ target: Destination) -> Bool {
+        generation == latest && p.destination == target
+    }
+
+    private func showIndexing(_ p: Pane) {
+        p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
+                              message: String(localized: "Search works as soon as the first index is built."))
+        show(summary: "")
+    }
+
+    /// A folder the index doesn't cover is read directly, unless that would duplicate the first index while it's
+    /// built (and ask for the folders macOS guards in it), or macOS would ask before Strata reads it.
+    private func searchOutsideIndex(_ text: String, in scope: URL, pane p: Pane, generation: Int, target: Destination) async {
+        let overlaps = await services.index.overlapsIndexedFolders(scope)
+        guard isCurrent(generation, p, target) else { return }
+        if !services.index.isReady, overlaps {
+            return showIndexing(p)
+        }
+        if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
+            // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
+            let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
+            p.browser.showMessage(symbol: "lock", title: String(localized: "Open “\(name)” to search it"),
+                                  message: String(localized: "macOS asks before apps read this folder. Open it in Strata once, then search it."))
+            show(summary: "")
             return
         }
-        if let scope, await !services.index.covers(scope) {
-            let overlaps = await services.index.overlapsIndexedFolders(scope)
-            guard generation == latest, p.destination == target else { return }
-            if !services.index.isReady, overlaps {
-                // Reading your home folder now would duplicate the first index (and ask for the folders macOS
-                // guards in it).
-                p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
-                                      message: String(localized: "Search works as soon as the first index is built."))
-                show(summary: "")
-                return
-            }
-            if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
-                // A link or saved search pointing into a guarded folder you haven't opened: macOS would ask.
-                let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
-                p.browser.showMessage(symbol: "lock", title: String(localized: "Open “\(name)” to search it"),
-                                      message: String(localized: "macOS asks before apps read this folder. Open it in Strata once, then search it."))
-                show(summary: "")
-                return
-            }
-            await searchDirectly(text, in: scope, pane: p, generation: generation, target: target)
-            return
-        }
+        await searchDirectly(text, in: scope, pane: p, generation: generation, target: target)
+    }
+
+    private func searchIndex(_ text: String, in scope: URL?, pane p: Pane, generation: Int, target: Destination) async {
         // Replaced while the index was asked: the folder scan is a newer search's now.
-        guard generation == latest, p.destination == target else { return }
+        guard isCurrent(generation, p, target) else { return }
         folderScan?.cancel()
         folderScan = nil
         let givenUpBefore = NameRegex.namesGivenUp
         let understood = await services.index.understand(text, in: scope)
-        guard generation == latest, p.destination == target else { return }
-        guard let result = understood else {
-            p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
-                                  message: String(localized: "Search works as soon as the first index is built."))
-            show(summary: "")
-            return
-        }
-        // Documents whose text matches (on-device, Documents/Desktop/Downloads) follow the name matches. Explicit
-        // filters (ext:, size:…) apply to them too: they're skipped for syntax searches, and a plain-English
-        // reading's kinds, sizes and dates must hold for each one.
-        let plainNames = result.interpretation == nil && !IndexQuery.parse(text).hasFilters
-        let contentQuery = result.interpretation?.contentQuery ?? (plainNames ? text : nil)
-        var structural = result.interpretation
+        guard isCurrent(generation, p, target) else { return }
+        guard let result = understood else { return showIndexing(p) }
+        let byName = result.hits.map(FileEntry.init(hit:))
+        let byContent = await contentMatches(text, interpretation: result.interpretation, besides: byName, in: scope)
+        guard isCurrent(generation, p, target) else { return }
+        let total = result.total + byContent.count
+        p.browser.showResults(byName + byContent, total: total)
+        let scopeName = scope.map { Places.displayName($0, copies: services.copies, names: services.folderNames) }
+        show(summary: Self.resultsSummary(total: total, in: scopeName, byContent: byContent.count, interpretation: result.interpretation,
+                                   patternGaveUp: NameRegex.namesGivenUp > givenUpBefore))
+    }
+
+    /// Documents whose text matches (on-device, Documents/Desktop/Downloads), to follow the name matches. Explicit
+    /// filters (ext:, size:…) apply to them too: they're skipped for syntax searches, and a plain-English reading's
+    /// kinds, sizes and dates must hold for each one.
+    private func contentMatches(_ text: String, interpretation: SearchFilter?, besides byName: [FileEntry],
+                                in scope: URL?) async -> [FileEntry] {
+        let plainNames = interpretation == nil && !IndexQuery.parse(text).hasFilters
+        let contentQuery = interpretation?.contentQuery ?? (plainNames ? text : nil)
+        var structural = interpretation
         structural?.nameContains = []
         structural?.keywords = []
         let validContentQuery = contentQuery.flatMap { $0.count >= 3 ? $0 : nil }
         let contentHits = validContentQuery != nil
             ? await services.contentIndex.search(validContentQuery ?? "", limit: 15) : []
-        var entries = result.hits.map(FileEntry.init(hit:))
-        let known = Set(entries.map { $0.url.standardizedFileURL.path })
+        let known = Set(byName.map { $0.url.standardizedFileURL.path })
         let contentURLs = contentHits.map(\.url).filter { url in
             !known.contains(url.standardizedFileURL.path) && (scope.map { url.path.hasPrefix($0.path + "/") } ?? true)
         }
-        let byContent = await Self.entries(contentURLs).filter { entry in structural.map { $0.matches(entry) } ?? true }
-        guard generation == latest, p.destination == target else { return }
-        entries += byContent
-        let total = result.total + byContent.count
-        p.browser.showResults(entries, total: total)
+        return await Self.entries(contentURLs).filter { entry in structural.map { $0.matches(entry) } ?? true }
+    }
+
+    /// "12 results in “Documents” · 2 by content · PDFs": how many, where, how many by content, and the search as
+    /// it was understood.
+    static func resultsSummary(total: Int, in scopeName: String?, byContent: Int, interpretation: SearchFilter?,
+                               patternGaveUp: Bool) -> String {
         var parts: [String]
-        if let scope {
-            let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
+        if let name = scopeName {
             parts = [total == 0 ? String(localized: "No results in “\(name)”")
                 : String(localized: "\(total) results in “\(name)”", comment: "plural")]
         } else {
             parts = [total == 0 ? String(localized: "No results everywhere")
                 : String(localized: "\(total) results everywhere", comment: "plural")]
         }
-        if !byContent.isEmpty {
-            parts.append(String(localized: "\(byContent.count) by content", comment: "plural"))
+        if byContent > 0 {
+            parts.append(String(localized: "\(byContent) by content", comment: "plural"))
         }
-        if let filter = result.interpretation { parts.append(filter.summary) }
-        if NameRegex.namesGivenUp > givenUpBefore {
+        if let filter = interpretation { parts.append(filter.summary) }
+        if patternGaveUp {
             parts.append(String(localized: "the pattern took too long on some names, so they’re left out"))
         }
-        show(summary: parts.joined(separator: " · "))
+        return parts.joined(separator: " · ")
     }
 
     private func runRecents(in p: Pane, generation: Int, target: Destination) async {
         let recent = await services.index.recentFiles()
-        guard generation == latest, p.destination == target else { return }
+        guard isCurrent(generation, p, target) else { return }
         let hits = recent ?? []
         p.browser.showResults(hits.map(FileEntry.init(hit:)), total: hits.count)
     }
@@ -183,7 +204,7 @@ import AppKit
         }
         let result = await SpotlightSearch.run(query.predicate, scope: scope)
         let entries = await Self.entries(result.urls)
-        guard generation == latest, p.destination == target else { return }
+        guard isCurrent(generation, p, target) else { return }
         p.browser.showResults(entries, total: result.total)
         var parts: [String]
         if let scope {
@@ -213,12 +234,12 @@ import AppKit
     private func searchDirectly(_ text: String, in scope: URL, pane p: Pane, generation: Int, target: Destination) async {
         let search: FolderSearch
         let path = await FolderSearch.path(of: scope)
-        guard generation == latest, p.destination == target else { return }
+        guard isCurrent(generation, p, target) else { return }
         if let current = folderScan, current.canServe(path) {
             search = current
         } else {
             let indexed = await services.index.indexedParts(inside: scope)
-            guard generation == latest, p.destination == target else { return }
+            guard isCurrent(generation, p, target) else { return }
             folderScan?.cancel()
             search = FolderSearch(path: path, indexed: indexed)
             folderScan = search
