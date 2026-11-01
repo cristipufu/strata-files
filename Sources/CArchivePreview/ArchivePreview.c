@@ -16,7 +16,7 @@
  * input is the app's pinned descriptor 3; its output is a binary stream, bounded except for Extract's, never tar or
  * executable metadata. Passwords arrive on stdin. */
 static uint64_t cpu_limit, memory_limit;
-struct source { unsigned char buffer[65536]; uint64_t read, cap; off_t size; int limited; };
+struct source { unsigned char buffer[65536]; uint64_t read, cap; off_t size, zip_disk_count; int limited; };
 static int exact_read(int fd, void *bytes, size_t count) {
     unsigned char *p = bytes;
     while (count) {
@@ -60,6 +60,61 @@ static uint64_t cpu_used(void) {
 }
 static int over_cpu(void) { return cpu_used() >= cpu_limit; }
 static int over_memory(void) { return resident() >= memory_limit; }
+
+static uint64_t little_number(const unsigned char *p, unsigned count) {
+    uint64_t value = 0;
+    for (unsigned i = 0; i < count; ++i) value |= (uint64_t)p[i] << (8*i);
+    return value;
+}
+
+static int peek(struct source *s, off_t offset, unsigned char *bytes, size_t count) {
+    if (offset < 0 || offset > s->size || count > (uint64_t)(s->size-offset)) return 0;
+    while (count) {
+        if (over_cpu() || over_memory() || s->read >= s->cap) { s->limited = 1; return 0; }
+        const size_t take = count < s->cap-s->read ? count : (size_t)(s->cap-s->read);
+        ssize_t n = pread(3, bytes, take, offset);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return 0;
+        bytes += n; count -= (size_t)n; offset += n; s->read += (uint64_t)n;
+    }
+    return 1;
+}
+
+/* OneDrive writes zero volumes in some single-volume ZIP64 locators. libarchive rejects that locator, then tries
+ * the 32-bit directory offset and cannot list archives over 4 GiB. Correct only the bytes handed to libarchive,
+ * after both end records prove a single-volume layout; the archive itself is never changed. */
+static off_t zip_disk_count(struct source *s) {
+    unsigned char signature[4];
+    if (!peek(s, 0, signature, sizeof(signature)) || little_number(signature, 4) != 0x04034b50) return -1;
+    unsigned char tail[65535+22+20];
+    const size_t count = s->size < (off_t)sizeof(tail) ? (size_t)s->size : sizeof(tail);
+    if (count < 42 || !peek(s, s->size-(off_t)count, tail, count)) return -1;
+    for (size_t at = count-22; at >= 20; --at) {
+        const unsigned char *end = tail+at, *locator = end-20;
+        if (little_number(end, 4) != 0x06054b50 || little_number(end+20, 2) != count-at-22) continue;
+        if (little_number(end+4, 2) || little_number(end+6, 2) ||
+            little_number(end+8, 2) != little_number(end+10, 2) ||
+            little_number(locator, 4) != 0x07064b50 || little_number(locator+4, 4) ||
+            little_number(locator+16, 4) != 0) return -1;
+        const uint64_t offset = little_number(locator+8, 8);
+        const uint64_t position = (uint64_t)s->size-count+at-20;
+        unsigned char record[56];
+        if (offset > position || position-offset < sizeof(record) ||
+            !peek(s, (off_t)offset, record, sizeof(record))) return -1;
+        const uint64_t length = little_number(record+4, 8);
+        const uint64_t entries = little_number(record+32, 8);
+        const uint64_t bytes = little_number(record+40, 8), directory = little_number(record+48, 8);
+        if (little_number(record, 4) != 0x06064b50 || length < 44 || length > 16372 ||
+            length != position-offset-12 || little_number(record+16, 4) || little_number(record+20, 4) ||
+            little_number(record+24, 8) != entries || directory > offset || bytes != offset-directory ||
+            (little_number(end+10, 2) != 0xffff && little_number(end+10, 2) != entries) ||
+            (little_number(end+12, 4) != 0xffffffff && little_number(end+12, 4) != bytes) ||
+            (little_number(end+16, 4) != 0xffffffff && little_number(end+16, 4) != directory)) return -1;
+        return (off_t)(position+16);
+    }
+    return -1;
+}
+
 /* Both limits are checked at each read of the archive, so a read stops at its first read past even a lowered one; the
  * kernel's CPU limit and the memory watchdog stop one stuck inside a library call. */
 static ssize_t input(struct archive *a, void *context, const void **buffer) {
@@ -70,6 +125,11 @@ static ssize_t input(struct archive *a, void *context, const void **buffer) {
     ssize_t n;
     do { n = read(3, s->buffer, sizeof(s->buffer)); } while (n < 0 && errno == EINTR);
     if (n > 0) s->read += (uint64_t)n;
+    if (n > 0 && s->zip_disk_count >= 0) {
+        const off_t end = lseek(3, 0, SEEK_CUR);
+        if (end < n) return -1;
+        if (s->zip_disk_count >= end-n && s->zip_disk_count < end) s->buffer[s->zip_disk_count-(end-n)] = 1;
+    }
     *buffer = s->buffer;
     return n;
 }
@@ -424,7 +484,8 @@ int strata_archive_preview_worker(uint64_t lowered_cpu_limit, uint64_t lowered_m
     if (fstat(3, &info) || !S_ISREG(info.st_mode)) return strata_archive_unreadable;
     /* A preview reads at most 1 GiB of archive; Extract, and the survey before it, read all of it. */
     struct source source = {.read = 0, .cap = surveying || unpacking ? UINT64_MAX : 1ULL << 30, .size = info.st_size,
-                            .limited = 0};
+                            .zip_disk_count = -1, .limited = 0};
+    source.zip_disk_count = zip_disk_count(&source);
     int result = strata_archive_unreadable;
     struct archive *a;
     struct archive_entry *entry;

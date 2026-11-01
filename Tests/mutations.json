@@ -8268,5 +8268,26 @@
     "replace": "entry = (try? Entry(from: decoder)) ?? Entry(name: \"Unsupported\", kind: .create, moves: [], fileIdentities: [:])",
     "rule": "Typed History ignores unsupported records safely on upgrade",
     "tests": "HistoryRecordTests/unsupportedHistoryIsIgnoredOnUpgradeWithoutChangingFiles|HistoryDecodingSafetyTests/invalidRecordsDoNotHideValidNeighborsOrRewriteHistory"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "source.zip_disk_count = zip_disk_count(&source);",
+    "replace": "source.zip_disk_count = -1;",
+    "rule": "OneDrive ZIP64 single-volume archives cannot be listed copied or extracted safely",
+    "tests": "OneDriveZIP64Tests"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "directory > offset || bytes != offset-directory ||",
+    "replace": "directory > offset ||",
+    "rule": "OneDrive ZIP64 inconsistent directory bounds are relabelled as valid",
+    "tests": "OneDriveZIP64Tests/anInconsistentZeroVolumeFooterIsNotRepaired"
+  },
+  {
+    "file": "CArchivePreview/ArchivePreview.c",
+    "find": "little_number(locator+16, 4) != 0) return -1;",
+    "replace": "little_number(locator+16, 4) == 1) return -1;",
+    "rule": "OneDrive ZIP64 multiple-volume archives are relabelled as single-volume",
+    "tests": "OneDriveZIP64Tests/aMultipleVolumeLocatorIsNeverRelabelledAsSingleVolume"
   }
 ]
