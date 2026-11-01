@@ -241,6 +241,7 @@ package final class TransferQueue {
 
     /// Waits until no other job writes to `disk`. Returns false if the job was cancelled while waiting.
     package func acquireDisk(_ disk: dev_t, for job: TransferJob) async -> Bool {
+        guard !Task.isCancelled, job.canCancel else { return false }
         if isDiskFree(disk, for: job) {
             busyDisks[disk] = ObjectIdentifier(job)
             return true

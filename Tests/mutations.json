@@ -8184,5 +8184,61 @@
     "replace": "guard (try? copies.containsPlaceholder(in: [url])) != true else { return nil }",
     "rule": "Copy preparation errors clipboard exports a copy whose completeness could not be checked",
     "tests": "CopyPreparationTests/clipboardStagingLeavesUnverifiableCopiesOutAndKeepsLocalItems"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "guard case .queued = execution, let queue else { return }",
+    "replace": "guard let queue else { return }",
+    "rule": "Transfer lifecycle a cancelled unstarted job can be started again",
+    "tests": "TransferTests/aCancelledUnstartedTransferCannotBeStartedAgain"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "await pass.finished.waitForRelease()",
+    "replace": "return",
+    "rule": "Transfer lifecycle finished returns before its own pass ends",
+    "tests": "TransferTests/aRetryStartedByACompletionNotificationKeepsEachPassesOwnWaiters"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "guard case .complete = execution else { return false }",
+    "replace": "",
+    "rule": "Transfer lifecycle a pass can retry while registering its History",
+    "tests": "TransferTests/aTransferCannotRetryWhileItsPreviousPassIsStillRegisteringHistory"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "execution = .complete\n        changed()\n        queue?.jobDidFinish(self)",
+    "replace": "changed()\n        queue?.jobDidFinish(self)\n        execution = .complete",
+    "rule": "Transfer lifecycle a completion notification cannot start the next pass",
+    "tests": "TransferTests/aRetryStartedByACompletionNotificationKeepsEachPassesOwnWaiters"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "state = .queued\n        resumeTask = Task {",
+    "replace": "resumeTask = Task {",
+    "rule": "Transfer lifecycle two Resume actions can request the same disk",
+    "tests": "TransferTests/aPausedTransferReleasesItsDiskAndOnlyOneResumeCanWait"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "diskAccess = .paused(disk)\n            queue?.releaseDisk(disk, for: self)",
+    "replace": "diskAccess = .paused(disk)",
+    "rule": "Transfer lifecycle Pause keeps its disk from other jobs",
+    "tests": "TransferTests/aPausedTransferReleasesItsDiskAndOnlyOneResumeCanWait"
+  },
+  {
+    "file": "Strata/Queue/TransferJob.swift",
+    "find": "if case .held(let disk) = diskAccess {\n            queue?.releaseDisk(disk, for: self)\n        }\n        diskAccess = .none",
+    "replace": "diskAccess = .none",
+    "rule": "Transfer lifecycle a finished pass keeps ownership of its disk",
+    "tests": "TransferTests/aPausedTransferReleasesItsDiskAndOnlyOneResumeCanWait"
+  },
+  {
+    "file": "Strata/Queue/TransferQueue.swift",
+    "find": "guard !Task.isCancelled, job.canCancel else { return false }",
+    "replace": "",
+    "rule": "Transfer lifecycle a cancelled job can acquire a new disk lease",
+    "tests": "TransferTests/aCancelledUnstartedTransferCannotBeStartedAgain"
   }
 ]

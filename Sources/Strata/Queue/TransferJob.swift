@@ -14,9 +14,9 @@ package final class TransferJob {
 
     package private(set) var state: TransferState = .queued
     /// Queued behind another transfer writing to the same disk.
-    package private(set) var isWaitingForDisk = false
+    package var isWaitingForDisk: Bool { diskAccess.isWaiting }
     /// A conflict sheet is up and the job is waiting for the answer.
-    package private(set) var isAwaitingDecision = false
+    package var isAwaitingDecision: Bool { decisionTask != nil }
     package private(set) var totalBytes: Int64 = 0
     package private(set) var totalFiles = 0
     package private(set) var completedBytes: Int64 = 0
@@ -62,13 +62,32 @@ package final class TransferJob {
     /// Where this job has put items so far (lowercased paths): a later item of the job never replaces one of them.
     private var placed: Set<String> = []
     private var decisionTask: Task<ConflictResolution, Never>?
-    private var heldDisk: dev_t?
-    /// The disk a paused job gave up, to take back when it resumes.
-    private var pausedDisk: dev_t?
-    private var started = false
-    private let finishWaiters = Waiters()
-    private var isRunningPass = false
+    private var resumeTask: Task<Void, Never>?
+    private var diskAccess = DiskAccess.none
+    private var execution = Execution.queued
     private var measured = false
+
+    private final class Pass {
+        let finished = Waiters()
+    }
+
+    private enum Execution {
+        case queued, running(Pass), complete
+
+        func owns(_ pass: Pass) -> Bool {
+            if case .running(let current) = self { return current === pass }
+            return false
+        }
+    }
+
+    private enum DiskAccess {
+        case none, held(dev_t), paused(dev_t), requesting(dev_t, waiting: Bool)
+
+        var isWaiting: Bool {
+            if case .requesting(_, waiting: true) = self { return true }
+            return false
+        }
+    }
 
     private let journal = TransferJournal()
     /// What each item is where it landed, recorded as it lands (for undo; see `LandedFiles`).
@@ -108,8 +127,11 @@ package final class TransferJob {
 
     package var canPause: Bool { state == .running }
     package var canResume: Bool { state == .paused }
-    package var canCancel: Bool { state.isActive }
-    package var canRetry: Bool { queue != nil && (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil) }
+    package var canCancel: Bool { state.isActive && !control.isCancelled }
+    package var canRetry: Bool {
+        guard case .complete = execution else { return false }
+        return queue != nil && (state == .finished || state == .failed) && (!failures.isEmpty || errorMessage != nil)
+    }
 
     package var totalWork: Double {
         Double(totalBytes) * (options.verify ? 2 : 1) + Double(totalFiles) * Self.fileWeight
@@ -134,9 +156,8 @@ package final class TransferJob {
         guard canPause else { return }
         control.pause()
         state = .paused
-        if let disk = heldDisk {
-            heldDisk = nil
-            pausedDisk = disk
+        if case .held(let disk) = diskAccess {
+            diskAccess = .paused(disk)
             queue?.releaseDisk(disk, for: self)
         }
         resetRate()
@@ -145,27 +166,22 @@ package final class TransferJob {
 
     /// Carries on, after the disk is free again if another transfer took it meanwhile.
     package func resume() {
-        guard canResume else { return }
-        Task {
-            if let disk = pausedDisk, let queue {
-                if !queue.isDiskFree(disk, for: self) {
-                    isWaitingForDisk = true
-                    state = .queued
-                    changed()
-                }
-                let granted = await queue.acquireDisk(disk, for: self)
-                isWaitingForDisk = false
-                if granted {
-                    pausedDisk = nil
-                    heldDisk = disk
-                }
-                guard granted, !control.isCancelled else { return }
+        guard canResume, case .running(let pass) = execution else { return }
+        let disk: dev_t? = if case .paused(let disk) = diskAccess { disk } else { nil }
+        state = .queued
+        resumeTask = Task {
+            defer { if execution.owns(pass) { resumeTask = nil } }
+            guard !Task.isCancelled, execution.owns(pass), !control.isCancelled else { return }
+            if let disk, let queue {
+                guard await acquireDisk(disk, in: queue, for: pass) else { return }
             }
+            guard !Task.isCancelled, execution.owns(pass), !control.isCancelled else { return }
             control.resume()
             state = .running
             runningSince = ProcessInfo.processInfo.systemUptime
             changed()
         }
+        changed()
     }
 
     package func cancel() {
@@ -173,8 +189,9 @@ package final class TransferJob {
         control.cancel()
         decisionTask?.cancel()
         containerFetch?.cancel()
+        resumeTask?.cancel()
         queue?.stopWaiting(self)
-        if !started { finish() } else { changed() }
+        if case .queued = execution { finish() } else { changed() }
     }
 
     /// Runs the failed parts again: whole items that failed, single files inside items, or removing originals.
@@ -185,7 +202,7 @@ package final class TransferJob {
         errorMessage = nil
         control = TransferControl()
         state = .scanning
-        isRunningPass = true
+        execution = .running(Pass())
         changed()
         Task {
             await runRetry(previous)
@@ -196,9 +213,8 @@ package final class TransferJob {
     // MARK: - Running
 
     package func start() {
-        guard !started, let queue else { return }
-        started = true
-        isRunningPass = true
+        guard case .queued = execution, let queue else { return }
+        execution = .running(Pass())
         // Keep the owner alive through completion, without a permanent queue → job → queue cycle.
         Task {
             await run()
@@ -208,8 +224,8 @@ package final class TransferJob {
 
     /// Waits until the current pass (first run or a retry) is over: finished, failed or cancelled.
     package func finished() async {
-        guard isRunningPass else { return }
-        await finishWaiters.waitForRelease()
+        guard case .running(let pass) = execution else { return }
+        await pass.finished.waitForRelease()
     }
 
     private func run() async {
@@ -307,22 +323,30 @@ package final class TransferJob {
 
     /// Waits for the destination disk if bytes need copying, then runs `body` in the running state.
     private func execute(needsDisk: Bool, _ body: () async -> Void) async {
+        guard case .running(let pass) = execution else { return }
         let destination = destination
         if needsDisk, let queue, let disk = await worker.run({ TransferEngine.device(destination) }) {
-            if !queue.isDiskFree(disk, for: self) {
-                isWaitingForDisk = true
-                state = .queued
-                changed()
-            }
-            let granted = await queue.acquireDisk(disk, for: self)
-            isWaitingForDisk = false
-            if granted { heldDisk = disk }
-            guard granted, !control.isCancelled else { return }
+            guard await acquireDisk(disk, in: queue, for: pass) else { return }
         }
+        guard !control.isCancelled else { return }
         state = control.isPaused ? .paused : .running
         runningSince = ProcessInfo.processInfo.systemUptime
         changed()
         await body()
+    }
+
+    private func acquireDisk(_ disk: dev_t, in queue: TransferQueue, for pass: Pass) async -> Bool {
+        guard execution.owns(pass), !control.isCancelled, !Task.isCancelled else { return false }
+        let waiting = !queue.isDiskFree(disk, for: self)
+        diskAccess = .requesting(disk, waiting: waiting)
+        if waiting {
+            state = .queued
+            changed()
+        }
+        let granted = await queue.acquireDisk(disk, for: self)
+        guard execution.owns(pass) else { return false }
+        diskAccess = granted ? .held(disk) : .none
+        return granted && !control.isCancelled && !Task.isCancelled
     }
 
     private func performPending() async {
@@ -474,14 +498,15 @@ package final class TransferJob {
         if let rememberedDecision { return rememberedDecision }
         let conflict = TransferConflict(mode: mode, source: items[index].source, existing: items[index].destination,
                                         remaining: remaining)
-        isAwaitingDecision = true
-        changed()
         let resolver = resolver
-        let task = Task { await resolver.resolve(conflict) }
+        let task = Task {
+            guard !Task.isCancelled else { return ConflictResolution(decision: .stop) }
+            return await resolver.resolve(conflict)
+        }
         decisionTask = task
+        changed()
         let answer = await task.value
         decisionTask = nil
-        isAwaitingDecision = false
         if control.isCancelled { return .stop }
         if answer.applyToAll, answer.decision != .stop { rememberedDecision = answer.decision }
         return answer.decision
@@ -629,23 +654,34 @@ package final class TransferJob {
 
     /// `finish`, once what History keeps of the items is read away from the main thread.
     private func finishing() async {
+        let resuming = resumeTask
+        resuming?.cancel()
+        queue?.stopWaiting(self)
+        await resuming?.value
         await journal.prepareHistory(logging: logsHistory)
         finish()
     }
 
     private func finish() {
-        if let disk = heldDisk {
-            queue?.releaseDisk(disk, for: self)
-            heldDisk = nil
+        let completedPass: Pass?
+        switch execution {
+        case .running(let pass): completedPass = pass
+        case .queued: completedPass = nil
+        case .complete: return
         }
-        pausedDisk = nil
-        isWaitingForDisk = false
+        let completion = onFinish
+        if case .held(let disk) = diskAccess {
+            queue?.releaseDisk(disk, for: self)
+        }
+        diskAccess = .none
         queue?.stopWaiting(self)
         sample(ProcessInfo.processInfo.systemUptime)
         resetRate()
         currentItemName = nil
         isVerifying = false
-        isAwaitingDecision = false
+        decisionTask = nil
+        containerFetch = nil
+        resumeTask = nil
         if control.isCancelled {
             state = .cancelled
         } else if errorMessage != nil || (!failures.isEmpty && completedItems == 0) {
@@ -656,11 +692,11 @@ package final class TransferJob {
         registerUndo()
         FolderSizer.invalidate(destination)
         for source in Set(sources.map { $0.deletingLastPathComponent() }) { FolderSizer.invalidate(source) }
+        execution = .complete
         changed()
         queue?.jobDidFinish(self)
-        isRunningPass = false
-        onFinish?(self)
-        finishWaiters.release()
+        completion?(self)
+        completedPass?.finished.release()
     }
 
     private func registerUndo() {
