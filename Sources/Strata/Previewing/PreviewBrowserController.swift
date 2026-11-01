@@ -92,20 +92,8 @@ import StrataPreviews
         view = NSView()
         ThemeStyle.bind(view, to: .content)
         configureOutline()
-        ThemeStyle.bind(treeHost, to: .content)
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        treeHost.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: treeHost.topAnchor), scroll.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
-        ])
-        controls.onQuery = { [weak self] query in self?.filter(query) }
-        controls.onOrder = { [weak self] key in self?.chooseSort(key) }
-        controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
-        controls.onIconSize = { [weak self] size in self?.chooseIconSize(size) }
-        controls.onBack = { [weak self] in self?.goToPreviewParent() }
-        controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
-        controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
+        setUpTree()
+        wireControls()
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
@@ -113,6 +101,48 @@ import StrataPreviews
         addChild(split)
         split.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(split.view)
+        let footer = footer()
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(footer)
+        view.addSubview(separator)
+        NSLayoutConstraint.activate([
+            split.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), split.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            controls.topAnchor.constraint(equalTo: view.topAnchor), controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            split.view.topAnchor.constraint(equalTo: controls.bottomAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            separator.leadingAnchor.constraint(equalTo: view.leadingAnchor), separator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            separator.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footer.heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    /// The outline, scrolling in the tree's place.
+    private func setUpTree() {
+        ThemeStyle.bind(treeHost, to: .content)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        treeHost.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: treeHost.topAnchor), scroll.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
+        ])
+    }
+
+    /// The filter, sort, view, icon size, Back and action controls act on this browser.
+    private func wireControls() {
+        controls.onQuery = { [weak self] query in self?.filter(query) }
+        controls.onOrder = { [weak self] key in self?.chooseSort(key) }
+        controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
+        controls.onIconSize = { [weak self] size in self?.chooseIconSize(size) }
+        controls.onBack = { [weak self] in self?.goToPreviewParent() }
+        controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
+        controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
+    }
+
+    /// Where the preview is, what's loading or measured, and Calculate Size and Cancel.
+    private func footer() -> NSStackView {
         path.font = .systemFont(ofSize: 11)
         path.lineBreakMode = .byTruncatingMiddle
         path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -136,21 +166,7 @@ import StrataPreviews
         footer.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         footer.translatesAutoresizingMaskIntoConstraints = false
         ThemeStyle.bind(footer, to: .content)
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(footer)
-        view.addSubview(separator)
-        NSLayoutConstraint.activate([
-            split.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), split.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controls.topAnchor.constraint(equalTo: view.topAnchor), controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            split.view.topAnchor.constraint(equalTo: controls.bottomAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
-            separator.leadingAnchor.constraint(equalTo: view.leadingAnchor), separator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            separator.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footer.heightAnchor.constraint(equalToConstant: 28),
-        ])
+        return footer
     }
 
     private func configureOutline() {
