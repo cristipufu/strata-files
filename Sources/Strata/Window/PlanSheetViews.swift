@@ -35,21 +35,25 @@ final class PlanRowView: NSTableCellView {
 
     func configure(_ step: PlanStep, base: URL, editable: Bool, onToggle: @escaping (Bool) -> Void) {
         self.onToggle = onToggle
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .regular)
-        defer {
-            for label in [before, after] {
-                let text = NSMutableAttributedString(attributedString: label.attributedStringValue)
-                text.addAttribute(.paragraphStyle, value: Self.truncating, range: NSRange(location: 0, length: text.length))
-                label.attributedStringValue = text
-            }
-        }
+        showCheckbox(step, editable: editable)
+        showIcon(step)
+        showNames(step, base: base)
+        describe(step)
+        needsLayout = true
+        truncateNames()
+    }
+
+    /// New folders follow their moves, and skipped steps can't be applied: no checkbox to suggest otherwise.
+    private func showCheckbox(_ step: PlanStep, editable: Bool) {
         let excluded = step.problem != nil
         checkbox.state = step.isEnabled && !excluded ? .on : .off
         checkbox.isEnabled = editable
-        // New folders follow their moves, and skipped steps can't be applied: no checkbox to suggest otherwise.
         checkbox.isHidden = excluded || step.kind == .createFolder
         arrow.isHidden = false
+    }
 
+    private func showIcon(_ step: PlanStep) {
+        let excluded = step.problem != nil
         let symbolName: String
         let tint: NSColor
         switch (excluded, step.kind) {
@@ -63,11 +67,15 @@ final class PlanRowView: NSTableCellView {
         icon.symbolConfiguration = .init(pointSize: 12, weight: .medium)
         icon.contentTintColor = tint
         icon.alphaValue = step.isEnabled || excluded ? 1 : 0.45
+    }
 
+    /// What the item is called before, and what becomes of it: a new name, a folder, the Trash, or why it's skipped.
+    private func showNames(_ step: PlanStep, base: URL) {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .regular)
+        let excluded = step.problem != nil
         let dim = !step.isEnabled && !excluded
         let primary: NSColor = dim ? .tertiaryLabelColor : .labelColor
         let secondary: NSColor = dim ? .tertiaryLabelColor : .secondaryLabelColor
-
         switch step.kind {
         case .createFolder:
             let path = step.destination.map { relative($0, to: base) } ?? ""
@@ -94,6 +102,10 @@ final class PlanRowView: NSTableCellView {
                 after.attributedStringValue = highlighted(old: step.beforeName, new: destination.lastPathComponent, font: font, color: primary, accent: dim ? secondary : .controlAccentColor)
             }
         }
+    }
+
+    /// Where the item is and goes, for its help tag, and the step in words for VoiceOver.
+    private func describe(_ step: PlanStep) {
         var tip = [step.source?.path, step.destination.map { "→ " + $0.path }].compactMap { $0 }.joined(separator: "\n")
         if let note = step.note { tip += "\n" + note }
         if let problem = step.problem { tip += "\n" + problem }
@@ -102,7 +114,15 @@ final class PlanRowView: NSTableCellView {
                               ? String(localized: "\(step.kind.title): \(before.stringValue)", comment: "VoiceOver: a plan step (like “Move to Trash”), then an item’s name")
                               : String(localized: "\(step.kind.title): \(before.stringValue) to \(after.stringValue)",
                                        comment: "VoiceOver: a plan step (like “Rename”), an item’s name, then what it becomes"))
-        needsLayout = true
+    }
+
+    /// Long names lose their middle, not their ends.
+    private func truncateNames() {
+        for label in [before, after] {
+            let text = NSMutableAttributedString(attributedString: label.attributedStringValue)
+            text.addAttribute(.paragraphStyle, value: Self.truncating, range: NSRange(location: 0, length: text.length))
+            label.attributedStringValue = text
+        }
     }
 
     private static let truncating: NSParagraphStyle = {
