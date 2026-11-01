@@ -84,9 +84,6 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         cv.backgroundColors = [.controlBackgroundColor]
         ThemeStyle.bind(cv, to: .content)
         cv.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
-        cv.registerForDraggedTypes(FileDrop.types)
-        cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        cv.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
         cv.host = self
 
@@ -556,20 +553,6 @@ final class GridCollectionView: FileCollectionView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         controller?.refreshVisibleItems()
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        super.draggingExited(sender)
-        controller?.endDrop()
-    }
-
-    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
-        controller?.endDrop()
     }
 
     override func scrollToBeginningOfDocument(_ sender: Any?) { scroll(.zero) }

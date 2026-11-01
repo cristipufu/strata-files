@@ -111,9 +111,6 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
         strip.allowsEmptySelection = false
         strip.backgroundColors = [.clear]
         strip.register(GalleryThumbnailItem.self, forItemWithIdentifier: GalleryThumbnailItem.identifier)
-        strip.registerForDraggedTypes(FileDrop.types)
-        strip.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        strip.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         strip.setAccessibilityLabel(String(localized: "Gallery", comment: "View mode: items in a gallery"))
         strip.host = self
 
@@ -647,20 +644,6 @@ final class GalleryStripView: FileCollectionView {
     override func menu(for event: NSEvent) -> NSMenu? {
         window?.makeFirstResponder(self)
         return controller?.contextMenu(at: indexPathForItem(at: convert(event.locationInWindow, from: nil))?.item)
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        super.draggingExited(sender)
-        controller?.endDrop()
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
-        controller?.endDrop()
-    }
-
-    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 }
 

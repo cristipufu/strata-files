@@ -219,6 +219,11 @@ enum BrowserViewMode: Int, CaseIterable {
 /// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
 /// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
 enum FileDrop {
+    /// What dragging files out of a file view offers: within Strata a copy or a move, elsewhere an alias too.
+    static func sourceOperations(local: Bool) -> NSDragOperation {
+        local ? [.copy, .move, .generic] : [.copy, .move, .link, .generic]
+    }
+
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
     static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders) -> NSDragOperation {

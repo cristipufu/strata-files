@@ -1,14 +1,16 @@
 import AppKit
 
-/// What a file collection view's keys and focus go to: its controller.
+/// What a file collection view's keys, focus and drags go to: its controller.
 protocol FileCollectionHost: AnyObject {
     func handleKey(_ key: FileViewKey) -> Bool
     func focusChanged()
+    func endDrop()
 }
 
 /// Icons' and Gallery's collection view: the file views' keys go to their controller, and focus, or the window
-/// becoming key or not, redraws the selection's emphasis. Each adds its own moves (`move(for:extend:)`), clicks,
-/// menus and drags.
+/// becoming key or not, redraws the selection's emphasis. Files are dragged out of it and dropped onto it; a drag out
+/// of a read-only or server copy offers only what `FileDrop.sourceMask` allows. Each adds its own moves
+/// (`move(for:plain:extend:)`), clicks and menus.
 class FileCollectionView: NSCollectionView {
     weak var host: (any FileCollectionHost)?
     let copies: CopyProviders
@@ -17,6 +19,23 @@ class FileCollectionView: NSCollectionView {
     init(copies: CopyProviders) {
         self.copies = copies
         super.init(frame: .zero)
+        registerForDraggedTypes(FileDrop.types)
+        setDraggingSourceOperationMask(FileDrop.sourceOperations(local: true), forLocal: true)
+        setDraggingSourceOperationMask(FileDrop.sourceOperations(local: false), forLocal: false)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        host?.endDrop()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        super.draggingEnded(sender)
+        host?.endDrop()
+    }
+
+    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }
 
     @available(*, unavailable)

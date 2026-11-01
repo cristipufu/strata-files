@@ -92,8 +92,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked(_:))
         tableView.registerForDraggedTypes(FileDrop.types)
-        tableView.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        tableView.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
+        tableView.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: true), forLocal: true)
+        tableView.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: false), forLocal: false)
         tableView.draggingDestinationFeedbackStyle = .regular
         tableView.pane = self
         tableView.setAccessibilityLabel(label)

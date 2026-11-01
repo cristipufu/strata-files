@@ -61,6 +61,17 @@ struct BrowserPresentationsTests {
         #expect(tree.snapshot() == ["a.txt", "b.txt", "c.txt"])
     }
 
+    @Test func iconsAndGalleryTakeFileDrags() throws {
+        let preferences = try Prefs.isolated()
+        let controllers: [NSViewController] = [
+            GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()),
+            GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())]
+        for controller in controllers {
+            let collection = try #require(views(controller.view, of: FileCollectionView.self).first)
+            #expect(Set(FileDrop.types).isSubset(of: collection.registeredDraggedTypes), "\(controller)")
+        }
+    }
+
     @Test func directoryContextChangesEvenWhenTheNewFolderIsEmpty() throws {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("old/a.txt", "new/")

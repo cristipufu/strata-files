@@ -524,8 +524,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(context == .withinApplication ? [.copy, .move, .generic] : [.copy, .move, .link, .generic],
-                            session, copies: copies)
+        FileDrop.sourceMask(FileDrop.sourceOperations(local: context == .withinApplication), session, copies: copies)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

@@ -257,8 +257,8 @@ final class BrowserViewController: NSViewController {
         ov.target = self
         ov.doubleAction = #selector(openSelection(_:))
         ov.registerForDraggedTypes(FileDrop.types)
-        ov.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
+        ov.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: true), forLocal: true)
+        ov.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: false), forLocal: false)
         ov.draggingDestinationFeedbackStyle = .regular
     }
 
