@@ -193,21 +193,18 @@ nonisolated extension TransferEngine {
             switch Int32(entry.pointee.fts_info) {
             case FTS_F:
                 progress.update { $0.currentName = (path as NSString).lastPathComponent }
-                let original = sha256(path, buffer: buffers.0, control: control) { n in
-                    progress.update { $0.verifiedBytes += Int64(n) }
-                }
-                if control.isCancelled { outcome.cancelled = true; return outcome }
-                let copy = sha256(target, expected: expectedIdentity, buffer: buffers.1, control: control) { _ in }
-                if control.isCancelled { outcome.cancelled = true; return outcome }
-                if original == nil || copy == nil || original != copy {
-                    let reason = copy == nil ? String(localized: "The copy can’t be read back")
-                        : String(localized: "The copy doesn’t match the original")
-                    outcome.mismatches.append(EntryError(source: path, destination: target,
-                                                         message: original == nil ? String(localized: "The original can’t be read") : reason,
-                                                         identity: identity))
+                switch compareFile(path, with: target, expected: expectedIdentity, buffers: buffers, control: control,
+                                   progress: progress) {
+                case .cancelled:
+                    outcome.cancelled = true
+                    return outcome
+                case .different(let message):
+                    outcome.mismatches.append(EntryError(source: path, destination: target, message: message, identity: identity))
+                case .same:
+                    break
                 }
             case FTS_SL, FTS_SLNONE:
-                if readLink(path) != readLink(target) || (expectedIdentity != nil && FileIdentity.read(target) != expectedIdentity) {
+                if !linkMatches(path, target, expected: expectedIdentity) {
                     outcome.mismatches.append(EntryError(source: path, destination: target,
                                                          message: String(localized: "The copied alias points somewhere else"), identity: identity))
                 }
@@ -216,6 +213,33 @@ nonisolated extension TransferEngine {
             }
         }
         return outcome
+    }
+
+    private enum FileCheck {
+        case same
+        case different(String)
+        case cancelled
+    }
+
+    /// The original's and the copy's SHA-256, the copy read only while it's still `expected` (when known).
+    private static func compareFile(_ path: String, with target: String, expected: FileIdentity?,
+                                    buffers: (UnsafeMutableRawBufferPointer, UnsafeMutableRawBufferPointer),
+                                    control: TransferControl, progress: TransferProgress) -> FileCheck {
+        let original = sha256(path, buffer: buffers.0, control: control) { n in
+            progress.update { $0.verifiedBytes += Int64(n) }
+        }
+        if control.isCancelled { return .cancelled }
+        let copy = sha256(target, expected: expected, buffer: buffers.1, control: control) { _ in }
+        if control.isCancelled { return .cancelled }
+        guard original == nil || copy == nil || original != copy else { return .same }
+        if original == nil { return .different(String(localized: "The original can’t be read")) }
+        return .different(copy == nil ? String(localized: "The copy can’t be read back")
+                          : String(localized: "The copy doesn’t match the original"))
+    }
+
+    /// Whether the copied link points where the original does, and is still the link this job made.
+    private static func linkMatches(_ path: String, _ target: String, expected: FileIdentity?) -> Bool {
+        readLink(path) == readLink(target) && (expected == nil || FileIdentity.read(target) == expected)
     }
 
     package static func sha256(_ path: String, expected: FileIdentity? = nil, buffer: UnsafeMutableRawBufferPointer,
