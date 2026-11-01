@@ -408,11 +408,21 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     @objc private func sync(_ sender: Any?) {
         guard lastResult?.isComplete == true else { return }
         let plan = FolderCompare.syncPlan(differences, actions: actions, left: left, right: right)
+        guard !plan.isEmpty, let window = view.window else { return }
+        confirmation(for: plan).beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let undo = undo, left = left, right = right, parent = window.sheetParent
+            dismiss(nil)
+            Task { @MainActor in
+                await self.apply(plan, undo: undo, left: left, right: right, errorsIn: parent)
+            }
+        }
+    }
+
+    /// What the sync copies each way and moves to the Trash, in numbers, before anything changes.
+    private func confirmation(for plan: FolderCompare.SyncPlan) -> NSAlert {
         let (toRight, toLeft, trashLeft, trashRight) = (plan.toRight, plan.toLeft, plan.trashLeft, plan.trashRight)
-        let replacesOtherKind = plan.replacesOtherKind
-        let trash = trashLeft + trashRight
-        guard !(toRight.isEmpty && toLeft.isEmpty && trash.isEmpty), let window = view.window else { return }
-        let count = toRight.count + toLeft.count + trash.count
+        let count = toRight.count + toLeft.count + trashLeft.count + trashRight.count
         let leftName = left.lastPathComponent, rightName = right.lastPathComponent
         let alert = NSAlert()
         alert.messageText = String(localized: "Sync \(count) items?", comment: "plural")
@@ -429,8 +439,8 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         if !trashLeft.isEmpty {
             lines.append(String(localized: "\(trashLeft.count) items in “\(leftName)” on the left moved to the Trash", comment: "plural"))
         }
-        if replacesOtherKind > 0 {
-            lines.append(String(localized: "\(replacesOtherKind) items replace a file with a folder or a folder with a file", comment: "plural"))
+        if plan.replacesOtherKind > 0 {
+            lines.append(String(localized: "\(plan.replacesOtherKind) items replace a file with a folder or a folder with a file", comment: "plural"))
         }
         let hidden = differences.count - shown.count
         if hidden > 0 { lines.append(String(localized: "(This includes rows the Show menu hides.)")) }
@@ -438,33 +448,33 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
             + String(localized: "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.")
         alert.addButton(withTitle: String(localized: "Sync", comment: "Button: sync the two folders"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            let undo = undo, left = left, right = right, parent = window.sheetParent
-            dismiss(nil)
-            Task { @MainActor in
-                // Extras go first, so nothing a copy writes can be trashed after it.
-                if !trash.isEmpty {
-                    do {
-                        try await FileOps.trashInBackground(trash, undo: undo, copies: transfers.copies, history: transfers.history)
-                    } catch {
-                        let failed = NSAlert(error: error)
-                        failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")
-                        if let parent { failed.beginSheetModal(for: parent, completionHandler: nil) }
-                        return
-                    }
-                }
-                var options = TransferEngine.Options()
-                options.verify = true
-                if !toRight.isEmpty {
-                    transfers.enqueue(moves: toRight, destination: right, mode: .copy, options: options, undo: undo,
-                                                 conflicts: .replace, actionName: "Sync")
-                }
-                if !toLeft.isEmpty {
-                    transfers.enqueue(moves: toLeft, destination: left, mode: .copy, options: options, undo: undo,
-                                                 conflicts: .replace, actionName: "Sync")
-                }
+        return alert
+    }
+
+    /// Extras go to the Trash first, so nothing a copy writes can be trashed after it; then the copies are queued,
+    /// checked after they're written. A Trash that fails stops the sync there.
+    private func apply(_ plan: FolderCompare.SyncPlan, undo: UndoManager?, left: URL, right: URL,
+                       errorsIn parent: NSWindow?) async {
+        let trash = plan.trashLeft + plan.trashRight
+        if !trash.isEmpty {
+            do {
+                try await FileOps.trashInBackground(trash, undo: undo, copies: transfers.copies, history: transfers.history)
+            } catch {
+                let failed = NSAlert(error: error)
+                failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")
+                if let parent { failed.beginSheetModal(for: parent, completionHandler: nil) }
+                return
             }
+        }
+        var options = TransferEngine.Options()
+        options.verify = true
+        if !plan.toRight.isEmpty {
+            transfers.enqueue(moves: plan.toRight, destination: right, mode: .copy, options: options, undo: undo,
+                              conflicts: .replace, actionName: "Sync")
+        }
+        if !plan.toLeft.isEmpty {
+            transfers.enqueue(moves: plan.toLeft, destination: left, mode: .copy, options: options, undo: undo,
+                              conflicts: .replace, actionName: "Sync")
         }
     }
 }
