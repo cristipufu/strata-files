@@ -463,16 +463,22 @@ nonisolated package enum IndexSearch {
     }
 
     /// Files changed recently, newest first, skipping folders, hidden items and noise such as caches.
-    package static func recent(in store: IndexStore, since: UInt32, limit: Int) -> [IndexHit] {
-        store.read { store in
-            var found: [(id: Int32, mtime: UInt32)] = []
+    package static func recent(in store: IndexStore, since: UInt32, limit: Int,
+                               isCancelled: @Sendable () -> Bool = { Task.isCancelled }) -> [IndexHit] {
+        guard limit > 0, !isCancelled() else { return [] }
+        return store.read { store in
+            var found = SearchCandidates(limit: limit)
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
             // App internals carry the noise flag, so the skip mask already leaves them out.
-            for id in 0..<store.count where store.flags[id] & skip == 0 && store.mtime[id] >= since {
-                found.append((Int32(id), store.mtime[id]))
+            for id in 0..<store.count {
+                if id & 255 == 0, isCancelled() { return [] }
+                guard store.flags[id] & skip == 0, store.mtime[id] >= since else { continue }
+                // Flip the sign bit to preserve the full unsigned timestamp order in the signed score.
+                found.add((Int32(id), Int32(bitPattern: store.mtime[id] ^ 0x8000_0000)))
             }
-            found.sort { $0.mtime > $1.mtime }
-            return found.prefix(limit).map { item in
+            guard !isCancelled() else { return [] }
+            found.items.sort { SearchCandidates.worse($1, than: $0) }
+            return found.items.map { item in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: false, isPackage: false, size: store.size[id],
                                 files: 1, mtime: store.mtime[id], score: 0)
