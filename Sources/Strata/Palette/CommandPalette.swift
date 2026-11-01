@@ -158,17 +158,7 @@ final class CommandPalette: NSObject {
 
     // MARK: - Layout
 
-    private func buildContent() {
-        let chrome = ShadowedGlass(cornerRadius: 22)
-        let glass = chrome.glass
-
-        let content = NSView()
-        ThemeStyle.bind(content, to: .content)
-        let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
-        icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
-        icon.contentTintColor = .secondaryLabelColor
-        icon.translatesAutoresizingMaskIntoConstraints = false
-
+    private func setUpField() {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.isBordered = false
         field.drawsBackground = false
@@ -179,33 +169,24 @@ final class CommandPalette: NSObject {
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
+    }
 
+    private func buildContent() {
+        let chrome = ShadowedGlass(cornerRadius: 22)
+        let glass = chrome.glass
+        let content = NSView()
+        ThemeStyle.bind(content, to: .content)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
+        icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
+        icon.contentTintColor = .secondaryLabelColor
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        setUpField()
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
-
-        let column = NSTableColumn(identifier: .init("main"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(rowClicked)
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
         table.pressed = { [weak self] row in self?.ranker.press(row) }
-        table.refusesFirstResponder = true
-
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
-        scroll.documentView = table
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0))
 
         content.addSubview(icon)
         content.addSubview(field)

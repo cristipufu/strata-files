@@ -180,28 +180,9 @@ final class PathSuggestionList: NSObject {
         glass.cornerRadius = 14
         let content = NSView()
 
-        let column = NSTableColumn(identifier: .init("main"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(rowClicked)
-        table.refusesFirstResponder = true
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
         table.setAccessibilityLabel(String(localized: "Folder suggestions"))
-
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 5, left: 0, bottom: 0, right: 0)
-        scroll.documentView = table
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 5, left: 0, bottom: 0, right: 0))
 
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 10.5)
