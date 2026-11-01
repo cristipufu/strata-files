@@ -73,6 +73,13 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         return try body(storage)
     }
 
+    /// UI reads keep their last value while a writer owns or is waiting for the index.
+    package func tryRead<T>(_ body: (borrowing Storage) throws -> T) rethrows -> T? {
+        guard pthread_rwlock_tryrdlock(lock) == 0 else { return nil }
+        defer { pthread_rwlock_unlock(lock) }
+        return try body(storage)
+    }
+
     package func write<T>(_ body: (inout Storage) throws -> T) rethrows -> T {
         pthread_rwlock_wrlock(lock)
         defer { pthread_rwlock_unlock(lock) }

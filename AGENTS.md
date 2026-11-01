@@ -399,7 +399,11 @@ Strata browses servers and containers through local copies whose files are place
 Index columns belong to `IndexStore.Storage`: borrow them inside `read`, mutate them inside `write`, and keep related
 column changes in one write scope. Never reenter the same store's lock from a scope. Returning a column creates a
 copy-on-write snapshot, so avoid that in hot paths. Raw column pointers stay inside `withColumns`, with parallel
-searches joined before the scope ends. Keep the compact-storage and buffer-growth tests.
+searches joined before the scope ends. Keep the compact-storage and buffer-growth tests. UI metadata reads must
+never wait on that lock: use `tryRead` with the last value or an unknown result, or acquire it off the main actor.
+Searches propagate cancellation into their workers, bound workers and retained candidates, and count matches without
+retaining all of them. A leading dot includes hidden names, not every cache and build folder; name those folders or
+scope a search into them to include their contents.
 
 ## Appearance and theming
 

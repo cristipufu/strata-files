@@ -93,7 +93,7 @@ import AppKit
 
     /// Whether `generation` is still the pane's latest search, and the pane still shows it.
     private func isCurrent(_ generation: Int, _ p: Pane, _ target: Destination) -> Bool {
-        generation == latest && p.destination == target
+        !Task.isCancelled && generation == latest && p.destination == target
     }
 
     private func showIndexing(_ p: Pane) {
@@ -130,7 +130,8 @@ import AppKit
         let understood = await services.index.understand(text, in: scope)
         guard isCurrent(generation, p, target) else { return }
         guard let result = understood else { return showIndexing(p) }
-        let byName = result.hits.map(FileEntry.init(hit:))
+        let byName = await FileEntry.entries(from: result.hits)
+        guard isCurrent(generation, p, target) else { return }
         let byContent = await contentMatches(text, interpretation: result.interpretation, besides: byName, in: scope)
         guard isCurrent(generation, p, target) else { return }
         let total = result.total + byContent.count
@@ -145,7 +146,7 @@ import AppKit
     /// kinds, sizes and dates must hold for each one.
     private func contentMatches(_ text: String, interpretation: SearchFilter?, besides byName: [FileEntry],
                                 in scope: URL?) async -> [FileEntry] {
-        let plainNames = interpretation == nil && !IndexQuery.parse(text).hasFilters
+        let plainNames = interpretation == nil && IndexQuery.parse(text).searchesContent
         let contentQuery = interpretation?.contentQuery ?? (plainNames ? text : nil)
         var structural = interpretation
         structural?.nameContains = []
@@ -186,7 +187,9 @@ import AppKit
         let recent = await services.index.recentFiles()
         guard isCurrent(generation, p, target) else { return }
         let hits = recent ?? []
-        p.browser.showResults(hits.map(FileEntry.init(hit:)), total: hits.count)
+        let entries = await FileEntry.entries(from: hits)
+        guard isCurrent(generation, p, target) else { return }
+        p.browser.showResults(entries, total: hits.count)
     }
 
     private func show(summary: String) {
@@ -258,7 +261,9 @@ import AppKit
             guard isCurrent(generation, p, target) else { return }
             if finished || found.total > 0, finished || found.total != shown {
                 shown = found.total
-                p.browser.showResults(found.hits.map(FileEntry.init(hit:)), total: found.total)
+                let entries = await FileEntry.entries(from: found.hits)
+                guard isCurrent(generation, p, target) else { return }
+                p.browser.showResults(entries, total: found.total)
             } else if shown < 0 {
                 shown = 0
                 p.browser.showMessage(symbol: "magnifyingglass", title: String(localized: "Searching…"),

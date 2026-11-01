@@ -57,6 +57,9 @@ nonisolated package struct IndexQuery: Sendable {
             || regex != nil || invalidRegex || caseSensitive
     }
 
+    /// A leading dot asks for a filename/extension, not document text or an embedding.
+    package var searchesContent: Bool { !hasFilters && !terms.contains { $0.first == UInt8(ascii: ".") } }
+
     package var isEmpty: Bool {
         terms.isEmpty && pathTerms.isEmpty && extensions.isEmpty && kind == nil && minSize == nil && maxSize == nil
             && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty && regex == nil && !invalidRegex
@@ -176,7 +179,7 @@ nonisolated package struct IndexQuery: Sendable {
         let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self).lowercased() }
         let scopes = query.scopeNames.map { String(decoding: $0, as: UTF8.self) }
         query.includeHidden = mentioned.contains { $0.hasPrefix(".") } || scopes.contains { noiseWords.contains($0) }
-        query.includeNoise = mentioned.contains { noiseWords.contains($0) || $0.hasPrefix(".") }
+        query.includeNoise = mentioned.contains { noiseWords.contains($0) }
             || scopes.contains { buildFolderWords.contains($0) }
     }
 
@@ -326,20 +329,51 @@ nonisolated package struct IndexHit: Sendable {
     }
 }
 
-/// Per-chunk results collected from `concurrentPerform` workers.
-nonisolated private final class Partials: @unchecked Sendable {
-    private var chunks: [[(id: Int32, score: Int32)]]
-    private let lock = NSLock()
+/// Each worker retains only its best rows, while counting every match.
+nonisolated private struct SearchCandidates {
+    typealias Item = (id: Int32, score: Int32)
+    var items: [Item] = []
+    var total = 0
+    let limit: Int
 
-    init(count: Int) { chunks = Array(repeating: [], count: count) }
-
-    func set(_ index: Int, _ value: [(id: Int32, score: Int32)]) {
-        lock.lock()
-        chunks[index] = value
-        lock.unlock()
+    static func worse(_ a: Item, than b: Item) -> Bool {
+        a.score != b.score ? a.score < b.score : a.id > b.id
     }
 
-    var all: [(id: Int32, score: Int32)] { chunks.flatMap { $0 } }
+    mutating func add(_ item: Item) {
+        total += 1
+        guard limit > 0 else { return }
+        if items.count < limit {
+            items.append(item)
+            var child = items.count - 1
+            while child > 0 {
+                let parent = (child - 1) / 2
+                guard Self.worse(items[child], than: items[parent]) else { break }
+                items.swapAt(child, parent)
+                child = parent
+            }
+        } else if Self.worse(items[0], than: item) {
+            items[0] = item
+            var parent = 0
+            while parent * 2 + 1 < items.count {
+                var child = parent * 2 + 1
+                if child + 1 < items.count, Self.worse(items[child + 1], than: items[child]) { child += 1 }
+                guard Self.worse(items[child], than: items[parent]) else { break }
+                items.swapAt(child, parent)
+                parent = child
+            }
+        }
+    }
+}
+
+nonisolated private final class Partials: @unchecked Sendable {
+    private var chunks: [SearchCandidates]
+    private let lock = NSLock()
+
+    init(count: Int) { chunks = Array(repeating: SearchCandidates(limit: 0), count: count) }
+    func set(_ index: Int, _ value: SearchCandidates) { lock.withLock { chunks[index] = value } }
+    var all: [(id: Int32, score: Int32)] { chunks.flatMap(\.items) }
+    var total: Int { chunks.reduce(0) { $0 + $1.total } }
 }
 
 nonisolated package enum IndexSearch {
@@ -358,61 +392,33 @@ nonisolated package enum IndexSearch {
         extensionsByKind[kind] ?? []
     }
 
-    /// Runs `query` over the whole store in parallel and returns the best `limit` hits plus the total match count.
-    ///
-    /// Only matching holds the store's read lock. Ranking happens outside it, because a folder search's scanner waits
-    /// on that lock and "e" can match a million entries; the lock is taken again just to build the `limit` hits. Ids stay
-    /// valid in between: a store only grows (compaction makes a new one).
-    package static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
-        let matched = matches(query, in: store)
-        let best = top(matched, limit)
-        let hits = store.read { store in
-            best.map { item -> IndexHit in
+    /// Counts every match, retaining at most `limit` rows per worker. Borrowed columns stay under the read lock.
+    package static func run(_ query: IndexQuery, in store: IndexStore, limit: Int,
+                            isCancelled: @escaping @Sendable () -> Bool = { false }) -> (hits: [IndexHit], total: Int) {
+        guard !isCancelled() else { return ([], 0) }
+        let matched = matches(query, in: store, limit: max(0, limit), isCancelled: isCancelled)
+        guard !isCancelled() else { return ([], 0) }
+        let best = matched.all.sorted { SearchCandidates.worse($1, than: $0) }.prefix(max(0, limit))
+        let hits = store.read { store -> [IndexHit] in
+            guard !isCancelled() else { return [] }
+            return best.map { item -> IndexHit in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
                                 isPackage: store.flags[id] & IndexStore.Flag.package != 0, size: store.size[id],
                                 files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score))
             }
         }
-        return (hits, matched.count)
+        return isCancelled() ? ([], 0) : (hits, matched.total)
     }
 
-    /// The best `limit` of `all`, by score then id (ties in id order stay put while a folder search's store grows, so
-    /// live results don't reshuffle). Beyond a few thousand it doesn't sort everything: it counts scores to find the one
-    /// that cuts at `limit` and sorts only what's above it.
-    package static func top(_ all: [(id: Int32, score: Int32)], _ limit: Int) -> [(id: Int32, score: Int32)] {
-        let ordered: ((id: Int32, score: Int32), (id: Int32, score: Int32)) -> Bool = {
-            $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
-        }
-        guard limit > 0 else { return [] }
-        guard all.count / 4 > limit else { return Array(all.sorted(by: ordered).prefix(limit)) }
-        var low = Int32.max, high = Int32.min
-        for item in all {
-            low = min(low, item.score)
-            high = max(high, item.score)
-        }
-        let span = Int(high) - Int(low) + 1
-        guard span <= 1 << 16 else { return Array(all.sorted(by: ordered).prefix(limit)) }
-        var counts = [Int](repeating: 0, count: span)
-        for item in all { counts[Int(item.score - low)] += 1 }
-        // Walk down from the best score until at least `limit` are at or above it.
-        var cut = span - 1
-        var above = 0
-        while cut > 0 && above + counts[cut] < limit {
-            above += counts[cut]
-            cut -= 1
-        }
-        let threshold = low + Int32(cut)
-        return Array(all.filter { $0.score >= threshold }.sorted(by: ordered).prefix(limit))
-    }
-
-    /// Every entry matching `query`, with its score (under the read lock).
-    private static func matches(_ query: IndexQuery, in store: IndexStore) -> [(id: Int32, score: Int32)] {
+    /// Counts matches under the read lock, retaining bounded candidates.
+    private static func matches(_ query: IndexQuery, in store: IndexStore, limit: Int,
+                                isCancelled: @escaping @Sendable () -> Bool) -> Partials {
         store.read { store in
             let count = store.count
-            guard count > 0, !query.isEmpty else { return [] }
+            guard count > 0, !query.isEmpty, !isCancelled() else { return Partials(count: 0) }
             let scopeID: Int32? = query.scopePath.flatMap { store.lookup($0) }
-            if query.scopePath != nil && scopeID == nil { return [] }
+            if query.scopePath != nil && scopeID == nil { return Partials(count: 0) }
             // Searching inside a cache or build folder (in:, or the scope bar while browsing it) includes its contents.
             var scoped = query
             if let scopeID, store.flags[Int(scopeID)] & IndexStore.Flag.noise != 0 { scoped.includeNoise = true }
@@ -423,10 +429,10 @@ nonisolated package enum IndexSearch {
                 ?? query.extensions
             let wantedExtensions = extensions.compactMap { ext in Array(ext.utf8).withUnsafeBufferPointer { packExtension($0) } }
             // Only extensions longer than any real one were asked for: nothing can match (not everything).
-            if !extensions.isEmpty && wantedExtensions.isEmpty { return [] }
+            if !extensions.isEmpty && wantedExtensions.isEmpty { return Partials(count: 0) }
             let now = Int(Date().timeIntervalSince1970)
 
-            let chunks = max(1, min(64, count / 50_000))
+            let chunks = max(1, min(4, count / 50_000))
             let partials = Partials(count: chunks)
             store.withColumns { columns in
                 // `a/b` and `in:name` need folder parts matched by ancestors: work out, in one pass from the roots down,
@@ -434,14 +440,15 @@ nonisolated package enum IndexSearch {
                 // ancestors, which made such searches ~100× slower).
                 let chains = query.pathTerms.map { Array($0.dropLast()) } + query.scopeNames.map { [$0] }
                 func collect<Progress: FixedWidthInteger & Sendable>(_: Progress.Type) {
-                    let progress: [[Progress]] = chains.map { ancestorProgress($0, columns, count) }
+                    let progress: [[Progress]] = chains.map { ancestorProgress($0, columns, count, isCancelled: isCancelled) }
                     DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
                         let lower = count * chunk / chunks
                         let upper = count * (chunk + 1) / chunks
-                        var found: [(id: Int32, score: Int32)] = []
+                        var found = SearchCandidates(limit: limit)
                         for id in lower..<upper {
+                            if (id - lower) % 256 == 0 && isCancelled() { break }
                             if let score = match(id, query, columns, scopeID, wantedExtensions, now, progress) {
-                                found.append((Int32(id), Int32(score)))
+                                found.add((Int32(id), Int32(clamping: score)))
                             }
                         }
                         partials.set(chunk, found)
@@ -451,7 +458,7 @@ nonisolated package enum IndexSearch {
                 if chains.contains(where: { $0.count > Int(UInt8.max) }) { collect(UInt32.self) }
                 else { collect(UInt8.self) }
             }
-            return partials.all
+            return partials
         }
     }
 
@@ -596,10 +603,12 @@ nonisolated package enum IndexSearch {
     /// For each entry, how many of `parts` (in order) are found in the names along its path, root first, itself
     /// included. Parents have smaller ids than their children, so one forward pass computes it; only folders can be
     /// ancestors, so files just inherit.
-    private static func ancestorProgress<Progress: FixedWidthInteger>(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int) -> [Progress] {
+    private static func ancestorProgress<Progress: FixedWidthInteger>(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int,
+                                                                    isCancelled: @Sendable () -> Bool) -> [Progress] {
         var progress = [Progress](repeating: 0, count: count)
         guard !parts.isEmpty else { return progress }
         for i in 0..<count {
+            if i % 256 == 0 && isCancelled() { break }
             let p = Int(c.parent[i])
             var value = p >= 0 ? progress[p] : 0
             if c.flags[i] & IndexStore.Flag.directory != 0, Int(value) < parts.count {

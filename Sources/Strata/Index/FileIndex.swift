@@ -1,4 +1,5 @@
 import AppKit
+import os
 import UniformTypeIdentifiers
 
 extension Notification.Name {
@@ -15,9 +16,10 @@ package final class FileIndex {
     private let storage: SecureStorage.Context
     private let copies: CopyProviders
 
-    package init(storage: SecureStorage.Context, copies: CopyProviders) {
+    package init(storage: SecureStorage.Context, copies: CopyProviders, store: IndexStore? = nil) {
         self.storage = storage
         self.copies = copies
+        self.store = store
     }
 
     package private(set) var phase: IndexWorker.Phase = .loading
@@ -58,8 +60,12 @@ package final class FileIndex {
         }
     }
 
+    private var lastItemCount = 0
     /// Number of entries, including ones deleted since the last full scan.
-    package var itemCount: Int { store?.read { $0.count } ?? 0 }
+    package var itemCount: Int {
+        if let count = store?.tryRead({ $0.count }) { lastItemCount = count }
+        return lastItemCount
+    }
 
     /// Takes its turn after the settings changes before it, and those after it wait for it.
     package func rebuild() {
@@ -97,10 +103,10 @@ package final class FileIndex {
     package func folderSize(_ url: URL) -> FolderSize? {
         guard let store else { return nil }
         let path = url.lexicallyStandardized.path
-        return store.read { store in
+        return store.tryRead { store -> FolderSize? in
             guard let id = store.lookup(path), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
             return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]))
-        }
+        } ?? nil
     }
 
     /// Sizes of every indexed subfolder of `folder`, by path, from one walk of its children (looking each up by path
@@ -108,7 +114,7 @@ package final class FileIndex {
     package func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
         let base = folder.lexicallyStandardized.path
-        return store.read { store in
+        return store.tryRead { store -> [String: FolderSize] in
             guard let id = store.lookup(base) else { return [:] }
             var sizes: [String: FolderSize] = [:]
             let prefix = base == "/" ? "/" : base + "/"
@@ -116,7 +122,7 @@ package final class FileIndex {
                 sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]))
             }
             return sizes
-        }
+        } ?? [:]
     }
 
     /// Excluded folders are present as entries but never descended into, so their size would read as zero.
@@ -143,6 +149,10 @@ package final class FileIndex {
     package func indexedParts(inside folder: URL) async -> FolderSearch.IndexedParts? {
         guard let store else { return nil }
         let base = await Self.resolved(folder)
+        return await Self.indexedParts(inside: base, store: store)
+    }
+
+    @concurrent private static func indexedParts(inside base: String, store: IndexStore) async -> FolderSearch.IndexedParts? {
         let prefix = base == "/" ? "/" : base + "/"
         let roots = store.read { store in store.roots.map(\.path) }
             .filter { $0.hasPrefix(prefix) }
@@ -157,13 +167,17 @@ package final class FileIndex {
         guard let store else { return false }
         let path = await Self.resolved(folder)
         if excludedPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return false }
-        // A disk mounted inside an indexed folder isn't in the index: the scanner stops at mount points.
-        guard let root = store.read({ store in store.roots.first { path == $0.path || path.hasPrefix($0.path + "/") } }),
-              await Self.sameVolume(path, root.path) else { return false }
-        // A folder, not a symlink that happens to share its name (those aren't followed into).
-        return store.read { store in
-            guard let id = store.lookup(path) else { return false }
-            return store.flags[Int(id)] & (IndexStore.Flag.directory | IndexStore.Flag.symlink) == IndexStore.Flag.directory
+        guard let root = await Self.coveringRoot(path, store: store) else { return false }
+        return await Self.sameVolume(path, root)
+    }
+
+    @concurrent private static func coveringRoot(_ path: String, store: IndexStore) async -> String? {
+        store.read { store in
+            guard let root = store.roots.first(where: { path == $0.path || path.hasPrefix($0.path + "/") }),
+                  let id = store.lookup(path),
+                  store.flags[Int(id)] & (IndexStore.Flag.directory | IndexStore.Flag.symlink) == IndexStore.Flag.directory
+            else { return nil }
+            return root.path
         }
     }
 
@@ -220,7 +234,10 @@ package final class FileIndex {
 
     @concurrent
     private nonisolated static func run(_ query: IndexQuery, _ store: IndexStore, _ limit: Int) async -> (hits: [IndexHit], total: Int) {
-        IndexSearch.run(query, in: store, limit: limit)
+        let cancelled = OSAllocatedUnfairLock(initialState: false)
+        return await withTaskCancellationHandler {
+            IndexSearch.run(query, in: store, limit: limit, isCancelled: { cancelled.withLock { $0 } })
+        } onCancel: { cancelled.withLock { $0 = true } }
     }
 
     @concurrent
@@ -269,8 +286,13 @@ package final class FileIndex {
 }
 
 extension FileEntry {
+    @concurrent package static func entries(from hits: [IndexHit]) async -> [FileEntry] {
+        guard !Task.isCancelled else { return [] }
+        return hits.map(FileEntry.init(hit:))
+    }
+
     /// An entry built from an index hit, without touching the disk.
-    package init(hit: IndexHit) {
+    nonisolated package init(hit: IndexHit) {
         let url = URL(fileURLWithPath: hit.path, isDirectory: hit.isDirectory)
         let type = hit.isDirectory && !hit.isPackage ? UTType.folder : UTType(filenameExtension: url.pathExtension)
         self.init(url: url, name: url.lastPathComponent, isDirectory: hit.isDirectory, isPackage: hit.isPackage,

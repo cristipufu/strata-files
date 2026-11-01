@@ -42,6 +42,7 @@ CALLS = re.compile("|".join([
     r"\bSecItem(?:CopyMatching|Add|Update|Delete)\(",
     r"\.waitUntilExit\(\)|\.readDataToEndOfFile\(\)|\bDispatchQueue\.main\.sync\b|\busleep\(|\bThread\.sleep\(",
     r"\.wait\(\)",
+    r"\bpthread_rwlock_(?:rdlock|wrlock)\(",
     r"\bAXUIElementCopyAttributeValue\(",
     r"\bCGImageSourceCreateWithURL\(",
 ]))

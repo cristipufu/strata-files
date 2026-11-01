@@ -31,6 +31,13 @@ class MainThreadAuditTests(unittest.TestCase):
             issues = self.check(f"func show() {{\n    DispatchQueue.main.async {{\n        _ = {call}\n    }}\n}}\n")
             self.assertTrue(any("Blocks the main thread" in issue for issue in issues), call)
 
+    def test_read_write_locks_can_block_ui_while_try_locks_do_not(self):
+        for call in ["pthread_rwlock_rdlock(lock)", "pthread_rwlock_wrlock(lock)"]:
+            self.assertTrue(self.check(f"func draw() {{ _ = {call} }}"), call)
+            helper = f"nonisolated enum Store {{ static func read() {{ _ = {call} }} }}"
+            self.assertTrue(self.check(helper + "\nfunc draw() { Store.read() }"), call)
+        self.assertEqual(self.check("func draw() { _ = pthread_rwlock_tryrdlock(lock) }"), [])
+
     def test_calls_away_from_the_main_thread_pass(self):
         call = "FileManager.default.fileExists(atPath: path)"
         for code in [
