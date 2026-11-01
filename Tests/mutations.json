@@ -3521,22 +3521,22 @@
   },
   {
     "file": "Strata/Views/FileThumbnails.swift",
-    "find": "guard Self.canLoad(entry, copies: copies) else {\n                    guard let self else { return }",
-    "replace": "guard true else {\n                    guard let self else { return }",
+    "find": "guard Self.canLoad(entry, copies: copies) else {\n                        guard let self else { return }",
+    "replace": "guard true else {\n                        guard let self else { return }",
     "rule": "Provider thumbnail and info ownership scheduled item info reads a copy that became a placeholder",
     "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
   },
   {
     "file": "Strata/Views/FileThumbnails.swift",
-    "find": "guard needsLoading(entry) else {\n                    drop(key, generation: generation)\n                    return\n                }",
+    "find": "guard needsLoading(entry) else {\n                        drop(key, generation: generation)\n                        return\n                    }",
     "replace": "",
     "rule": "Provider thumbnail and info ownership completed item info caches fallback size for an invalidated copy",
     "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
   },
   {
     "file": "Strata/Views/FileThumbnails.swift",
-    "find": "isolated deinit { tasks.values.forEach { $0.cancel() } }",
-    "replace": "isolated deinit {}",
+    "find": "        tasks.values.forEach { $0.cancel() }",
+    "replace": "        // Leave the released loader’s readers running.",
     "rule": "Provider thumbnail and info ownership released item info loader leaves its task running",
     "tests": "ProviderThumbnailInfoTests/itemInfoCancelsAndDiscardsInFlightReadsWhenCopyBecomesAPlaceholderOrLoaderReleases"
   },
@@ -4998,8 +4998,8 @@
   },
   {
     "file": "Strata/Views/FileThumbnails.swift",
-    "find": "defer { for observer in entry.callbacks.values { observer.finished?() } }",
-    "replace": "// Do not release the preview allowance on completion.",
+    "find": "            for observer in entry.callbacks.values { observer.finished?() }\n            reads.finish(generation)",
+    "replace": "            reads.finish(generation)",
     "rule": "Space preview grid: failed thumbnail requests release the next waiting item",
     "tests": "PreviewGridTests/thumbnailFailuresReleaseThePreviewAllowanceAndClosingRejectsLateImages"
   },

@@ -178,12 +178,6 @@
   "reason": "Measuring the one item shown in Space: opened (pinned) as it's chosen and checked against the preview's root, so the size shown is that item's."
  },
  {
-  "file": "Sources/Strata/Views/FileThumbnails.swift",
-  "call": "ArchiveSource(_:)",
-  "count": 1,
-  "reason": "A book's thumbnail: its file is pinned the moment the thumbnail is asked for, so a file swapped in before Quick Look answers is never read for its cover. Off the main thread this needs the listing to carry each item's identity to check the pin against (a stat per entry)."
- },
- {
   "file": "Sources/Strata/Model/CreatedFolders.swift",
   "call": "FileOps.removeEmptyFolders(_:)",
   "count": 1,

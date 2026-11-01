@@ -12,6 +12,71 @@ import Testing
 @testable import StrataSearch
 
 struct ProviderThumbnailInfoTests {
+    @Test func thumbnailsBoundWorkSkipCancelledRequestsAndIgnoreOldCompletions() async throws {
+        let tree = try TestTree((0..<10).map { "\($0).png" })
+        let before = tree.snapshot(), generator = Generator()
+        let environment = try IndependentEnvironment()
+        let loader = generator.loader(copies: environment.services.copies)
+        let entries = try (0..<10).map { try #require(FileEntry(url: tree.url("\($0).png"))) }
+        var delivered: [Int] = []
+        let tickets = entries.enumerated().map { index, entry in
+            loader.request(entry, size: 64, scale: 1) { _ in delivered.append(index) }
+        }
+        #expect(generator.requests.count == 4)
+        loader.cancel(tickets[9])
+        loader.cancel(tickets[0])
+        #expect(generator.requests.count == 5 && generator.cancelled.count == 1)
+        generator.requests[0].1(try bitmap(red: 0.2), false)
+        await flushMainQueue()
+        #expect(delivered.isEmpty && generator.requests.count == 5)
+        // Finishing real requests advances the queue; cancelled work never reaches Quick Look.
+        for index in 1..<9 {
+            try #require(generator.requests.count > index)
+            generator.requests[index].1(try bitmap(red: 0.5), false)
+            await flushMainQueue()
+        }
+        #expect(generator.requests.count == 9)
+        #expect(Set(delivered) == Set(1..<9))
+        #expect(loader.cached(entries[0], size: 64, scale: 1) == nil)
+        #expect(loader.cached(entries[9], size: 64, scale: 1) == nil)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
+
+    @Test func metadataReadsKeepTheirSlotsUntilCancelledReadersActuallyReturn() async throws {
+        let tree = try TestTree((0..<8).map { "\($0).png" })
+        let before = tree.snapshot(), reads = Reads(held: true)
+        let environment = try IndependentEnvironment()
+        let loader = ItemInfoLoader(copies: environment.services.copies, containerStore: environment.services.containerStore,
+                                    mediaReader: { await reads.read($0) })
+        let entries = try (0..<8).map { try #require(FileEntry(url: tree.url("\($0).png"))) }
+        var delivered: Set<Int> = []
+        let tickets = entries.enumerated().map { index, entry in
+            loader.request(entry, showHidden: false) { _ in delivered.insert(index) }
+        }
+        await reads.started(4)
+        #expect(await reads.entries.count == 4 && loader.tasks.count == 4)
+        loader.cancel(tickets[7])
+        // Hold all four readers after cancelling. The next request must wait for a physical reader to end.
+        for index in 0..<4 { loader.cancel(tickets[index]) }
+        #expect(loader.tasks.isEmpty)
+        #expect(await reads.entries.count == 4)
+        await reads.finish(0)
+        await reads.started(5)
+        #expect(await reads.entries.count == 5)
+        for index in 1..<4 { await reads.finish(index) }
+        await reads.started(7)
+        let active = Array(loader.tasks.values)
+        for index in 4..<7 { await reads.finish(index) }
+        for task in active { await task.value }
+        #expect(await reads.entries.count == 7)
+        #expect(delivered == Set(4..<7))
+        #expect(loader.immediate(entries[0], showHidden: false) == nil)
+        #expect(loader.immediate(entries[7], showHidden: false) == nil)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
+
     @Test func placeholderInvalidationFinishesBoundedThumbnailObserversWithoutDeliveringLateImages() async throws {
         let tree = try TestTree("provider/a.png")
         let state = State([]), generator = Generator()

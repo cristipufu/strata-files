@@ -443,10 +443,16 @@ struct BookPreviewTests {
         let original = try Data(contentsOf: url)
         try original.write(to: tree.url("replacement"))
         var callback: FileThumbnails.Completion?
-        let loader = FileThumbnails(copies: .live, containerStore: .shared, generate: { _, completion in callback = completion })
+        let (started, startSignal) = AsyncStream<Void>.makeStream()
+        let loader = FileThumbnails(copies: .live, containerStore: .shared, generate: { _, completion in
+            callback = completion
+            startSignal.yield()
+        })
         let (finished, signal) = AsyncStream<Void>.makeStream()
         var delivered = false
         loader.request(entry, size: 64, scale: 1, finished: { signal.yield() }) { _ in delivered = true }
+        var starts = started.makeAsyncIterator()
+        _ = await starts.next(); startSignal.finish()
         try FileManager.default.moveItem(at: url, to: tree.url("original.epub"))
         try FileManager.default.moveItem(at: tree.url("replacement"), to: url)
         callback?(nil, false)
