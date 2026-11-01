@@ -6967,15 +6967,15 @@
   {
     "file": "Strata/Previewing/PreviewSession.swift",
     "rule": "Space: a notebook package is listed in its notebook's order",
-    "find": "                        return try await Self.notebook(in: files, source: source)",
-    "replace": "                        return nil",
+    "find": "            return try await Self.notebook(in: files, source: source)",
+    "replace": "            return nil",
     "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
   },
   {
     "file": "Strata/Previewing/PreviewSession.swift",
     "rule": "Space: a notebook folder is listed in its notebook's order",
-    "find": "                    if OneNoteContents.pick(entries.map(\\.name)) != nil {\n",
-    "replace": "                    if false {\n",
+    "find": "                if OneNoteContents.pick(entries.map(\\.name)) != nil {\n",
+    "replace": "                if false {\n",
     "tests": "OneNoteContentsTests/aPackageWithATableOfContentsIsListedInItsNotebooksOrder"
   },
   {

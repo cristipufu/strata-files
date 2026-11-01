@@ -64,59 +64,74 @@ import StrataPreviews
         self.showHidden = showHidden
         self.applications = applications
         error = nil
-        let revision = revision
         if entry.isFolder && !entry.isSymlink {
-            isLoading = true
-            rootRead.load(entry.url, showHidden: showHidden, applications: applications) { [weak self] result, _ in
-                guard let self, !isClosed, self.revision == revision else { return }
-                isLoading = false
-                do {
-                    let listing = try result.get(), entries = listing.entries
-                    roots = try makeItems(entries, in: listing.folder)
-                    if OneNoteContents.pick(entries.map(\.name)) != nil {
-                        order { [isPlaceholder] in
-                            try await Self.notebook(among: entries, isPlaceholder: isPlaceholder)
-                        }
-                    }
-                } catch { self.error = error }
-                onChange?(.root)
-            }
+            showFolder(entry)
         } else if !entry.isDirectory, !entry.isSymlink, !isPlaceholder(entry.url), let kind = ArchiveKind(fileName: entry.name) {
-            isLoading = true
-            let read = archiveReader
-            let access = archiveAccess
-            do { access.reset(try PreviewArchiveSource(entry.url)) }
-            catch { self.error = error; isLoading = false; onChange?(.root); return }
-            archiveTask = Task { [weak self] in
-                let result: Result<ArchiveListing, Error>
-                do {
-                    try Task.checkCancellation()
-                    if let read { result = .success(try await read(entry.url, kind)) }
-                    else {
-                        let listed = PreviewArchiveListing(records: try await access.read(), end: .complete)
-                        result = .success(try ArchiveLister.tree(listed, compressed: nil, named: entry.url.lastPathComponent))
-                    }
-                } catch { result = .failure(error) }
-                guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
-                archiveTask = nil
-                isLoading = false
-                switch result {
-                case .success(let listing):
-                    archive = listing
-                    roots = listing.root.value.children.map { PreviewItem(.member($0, path: [$0.name])) }
-                    register(roots)
-                    let files = listing.root.value.children.filter { !$0.isDirectory }
-                        .map { (name: $0.name, size: $0.size) }
-                    order { [source = access.source] in
-                        guard let source else { return nil }
-                        return try await Self.notebook(in: files, source: source)
-                    }
-                case .failure(let error): if !(error is CancellationError) { self.error = error }
-                }
-                onChange?(.root)
-            }
+            showArchive(entry, kind: kind)
         }
         onChange?(.root)
+    }
+
+    /// A folder's items, once read, in its notebook's order when it holds one.
+    private func showFolder(_ entry: FileEntry) {
+        let revision = revision
+        isLoading = true
+        rootRead.load(entry.url, showHidden: showHidden, applications: applications) { [weak self] result, _ in
+            guard let self, !isClosed, self.revision == revision else { return }
+            isLoading = false
+            do {
+                let listing = try result.get(), entries = listing.entries
+                roots = try makeItems(entries, in: listing.folder)
+                if OneNoteContents.pick(entries.map(\.name)) != nil {
+                    order { [isPlaceholder] in
+                        try await Self.notebook(among: entries, isPlaceholder: isPlaceholder)
+                    }
+                }
+            } catch { self.error = error }
+            onChange?(.root)
+        }
+    }
+
+    /// An archive's items, once its worker has listed them. One that can't be opened shows why at once.
+    private func showArchive(_ entry: FileEntry, kind: ArchiveKind) {
+        let revision = revision
+        isLoading = true
+        let read = archiveReader
+        let access = archiveAccess
+        do { access.reset(try PreviewArchiveSource(entry.url)) }
+        catch { self.error = error; isLoading = false; return }
+        archiveTask = Task { [weak self] in
+            let result: Result<ArchiveListing, Error>
+            do {
+                try Task.checkCancellation()
+                if let read { result = .success(try await read(entry.url, kind)) }
+                else {
+                    let listed = PreviewArchiveListing(records: try await access.read(), end: .complete)
+                    result = .success(try ArchiveLister.tree(listed, compressed: nil, named: entry.url.lastPathComponent))
+                }
+            } catch { result = .failure(error) }
+            guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
+            archiveTask = nil
+            isLoading = false
+            switch result {
+            case .success(let listing): showListing(listing, access: access)
+            case .failure(let error): if !(error is CancellationError) { self.error = error }
+            }
+            onChange?(.root)
+        }
+    }
+
+    /// An archive's top items, in its notebook's order when it holds one.
+    private func showListing(_ listing: ArchiveListing, access: PreviewArchiveAccess) {
+        archive = listing
+        roots = listing.root.value.children.map { PreviewItem(.member($0, path: [$0.name])) }
+        register(roots)
+        let files = listing.root.value.children.filter { !$0.isDirectory }
+            .map { (name: $0.name, size: $0.size) }
+        order { [source = access.source] in
+            guard let source else { return nil }
+            return try await Self.notebook(in: files, source: source)
+        }
     }
 
     /// Once the root's items show, gives them their places in the OneNote notebook they hold, from the table of
