@@ -269,6 +269,20 @@ final class PlanSheetController: NSViewController {
 
     private func render() {
         guard isViewLoaded else { return }
+        resetControls()
+        switch phase {
+        case .prompt: renderPrompt()
+        case .planning: renderPlanning()
+        case let .review(plan): renderReview(plan)
+        case let .failed(message, suggestions): renderFailed(message, suggestions: suggestions)
+        case let .applying(plan): renderApplying(plan)
+        }
+        table.reloadData()
+        scroll.isHidden = rows.isEmpty
+    }
+
+    /// What every phase starts from: nothing over the table, and the controls usable.
+    private func resetControls() {
         overlay.arrangedSubviews.forEach { $0.removeFromSuperview() }
         footerSpinner.stopAnimation(nil)
         footerSpinner.isHidden = true
@@ -277,72 +291,77 @@ final class PlanSheetController: NSViewController {
         planButton.isEnabled = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
         cancelButton.isEnabled = true
         understood.isHidden = true
+    }
 
-        switch phase {
-        case .prompt:
-            rows = []
-            badge.set(nil)
-            summary.stringValue = AIModel.isAvailable ? String(localized: "Plans are made on this Mac and shown before anything changes.")
-                : AIModel.isSupported ? String(localized: "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests.",
-                                               comment: "Starts with why Apple Intelligence can’t be used, like “Apple Intelligence is off”")
-                : String(localized: "Strata’s built-in rules make the plan, and it’s shown before anything changes.")
-            showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : String(localized: "Try one of these"))
-            applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
-            applyButton.isEnabled = false
-        case .planning:
-            rows = []
-            let spinner = NSProgressIndicator()
-            spinner.style = .spinning
-            spinner.controlSize = .regular
-            spinner.startAnimation(nil)
-            overlay.addArrangedSubview(spinner)
-            overlay.addArrangedSubview(label(AIModel.isAvailable ? String(localized: "Planning with Apple Intelligence…") : String(localized: "Planning…"),
-                                             size: 12.5, color: .secondaryLabelColor))
-            summary.stringValue = ""
-            planButton.isEnabled = false
-            applyButton.isEnabled = false
-        case let .review(plan):
-            rows = plan.steps + plan.excluded
-            badge.set(plan.source)
-            understood.isHidden = false
-            understood.attributedStringValue = interpretation(plan)
-            if rows.isEmpty {
-                overlay.addArrangedSubview(symbol("checkmark.circle", size: 26, color: .tertiaryLabelColor))
-                overlay.addArrangedSubview(label(String(localized: "Nothing to change — everything already matches."), size: 12.5, color: .secondaryLabelColor))
-            }
-            updateFooter(plan)
-        case let .failed(message, suggestions):
-            rows = []
-            badge.set(nil)
-            overlay.addArrangedSubview(symbol("questionmark.bubble", size: 26, color: .tertiaryLabelColor))
-            let text = label(message, size: 12.5, color: .secondaryLabelColor)
-            text.alignment = .center
-            overlay.addArrangedSubview(text)
-            if AIModel.canOpenSettings {
-                let settings = NSButton(title: String(localized: "Open Apple Intelligence Settings…"), target: self, action: #selector(openSettings(_:)))
-                settings.bezelStyle = .push
-                settings.controlSize = .small
-                overlay.addArrangedSubview(settings)
-            }
-            if !suggestions.isEmpty {
-                if let last = overlay.arrangedSubviews.last { overlay.setCustomSpacing(18, after: last) }
-                appendSuggestions(suggestions, title: String(localized: "Strata can do these without it", comment: "Heading of requests Strata can plan without Apple Intelligence"))
-            }
-            summary.stringValue = ""
-            applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
-            applyButton.isEnabled = false
-        case let .applying(plan):
-            rows = plan.steps + plan.excluded
-            footerSpinner.isHidden = false
-            footerSpinner.startAnimation(nil)
-            summary.stringValue = String(localized: "Applying…")
-            field.isEnabled = false
-            planButton.isEnabled = false
-            applyButton.isEnabled = false
-            cancelButton.isEnabled = false
+    private func renderPrompt() {
+        rows = []
+        badge.set(nil)
+        summary.stringValue = AIModel.isAvailable ? String(localized: "Plans are made on this Mac and shown before anything changes.")
+            : AIModel.isSupported ? String(localized: "\(AIModel.shortStatus) — Strata’s built-in rules handle common requests.",
+                                           comment: "Starts with why Apple Intelligence can’t be used, like “Apple Intelligence is off”")
+            : String(localized: "Strata’s built-in rules make the plan, and it’s shown before anything changes.")
+        showSuggestions(PlanGenerator.suggestions(for: items), title: items.isEmpty ? nil : String(localized: "Try one of these"))
+        applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
+        applyButton.isEnabled = false
+    }
+
+    private func renderPlanning() {
+        rows = []
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .regular
+        spinner.startAnimation(nil)
+        overlay.addArrangedSubview(spinner)
+        overlay.addArrangedSubview(label(AIModel.isAvailable ? String(localized: "Planning with Apple Intelligence…") : String(localized: "Planning…"),
+                                         size: 12.5, color: .secondaryLabelColor))
+        summary.stringValue = ""
+        planButton.isEnabled = false
+        applyButton.isEnabled = false
+    }
+
+    private func renderReview(_ plan: Plan) {
+        rows = plan.steps + plan.excluded
+        badge.set(plan.source)
+        understood.isHidden = false
+        understood.attributedStringValue = interpretation(plan)
+        if rows.isEmpty {
+            overlay.addArrangedSubview(symbol("checkmark.circle", size: 26, color: .tertiaryLabelColor))
+            overlay.addArrangedSubview(label(String(localized: "Nothing to change — everything already matches."), size: 12.5, color: .secondaryLabelColor))
         }
-        table.reloadData()
-        scroll.isHidden = rows.isEmpty
+        updateFooter(plan)
+    }
+
+    private func renderFailed(_ message: String, suggestions: [String]) {
+        rows = []
+        badge.set(nil)
+        overlay.addArrangedSubview(symbol("questionmark.bubble", size: 26, color: .tertiaryLabelColor))
+        let text = label(message, size: 12.5, color: .secondaryLabelColor)
+        text.alignment = .center
+        overlay.addArrangedSubview(text)
+        if AIModel.canOpenSettings {
+            let settings = NSButton(title: String(localized: "Open Apple Intelligence Settings…"), target: self, action: #selector(openSettings(_:)))
+            settings.bezelStyle = .push
+            settings.controlSize = .small
+            overlay.addArrangedSubview(settings)
+        }
+        if !suggestions.isEmpty {
+            if let last = overlay.arrangedSubviews.last { overlay.setCustomSpacing(18, after: last) }
+            appendSuggestions(suggestions, title: String(localized: "Strata can do these without it", comment: "Heading of requests Strata can plan without Apple Intelligence"))
+        }
+        summary.stringValue = ""
+        applyButton.title = String(localized: "Apply", comment: "Button: apply the plan’s changes")
+        applyButton.isEnabled = false
+    }
+
+    private func renderApplying(_ plan: Plan) {
+        rows = plan.steps + plan.excluded
+        footerSpinner.isHidden = false
+        footerSpinner.startAnimation(nil)
+        summary.stringValue = String(localized: "Applying…")
+        field.isEnabled = false
+        planButton.isEnabled = false
+        applyButton.isEnabled = false
+        cancelButton.isEnabled = false
     }
 
     private func updateFooter(_ plan: Plan) {
