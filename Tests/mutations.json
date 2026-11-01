@@ -8289,5 +8289,12 @@
     "replace": "little_number(locator+16, 4) == 1) return -1;",
     "rule": "OneDrive ZIP64 multiple-volume archives are relabelled as single-volume",
     "tests": "OneDriveZIP64Tests/aMultipleVolumeLocatorIsNeverRelabelledAsSingleVolume"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "guard pending[key] == id else { return }",
+    "replace": "guard true else { return }",
+    "rule": "Folder sizing publishes an obsolete completion over its replacement",
+    "tests": "FolderSizerCancellationTests"
   }
 ]

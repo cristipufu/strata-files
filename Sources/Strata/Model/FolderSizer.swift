@@ -14,25 +14,39 @@ nonisolated package struct FolderSize: Sendable {
 /// Computes folder sizes in the background. Results are shared by every window; each browser owns
 /// its own queue so leaving a folder cancels only that browser's pending walks.
 package final class FolderSizer {
-    private static var cache: [URL: FolderSize] = [:]
+    private static var cache: [String: FolderSize] = [:]
 
     package var onUpdate: ((URL) -> Void)?
     private let queue = OperationQueue()
-    private var pending: Set<URL> = []
+    package typealias Reader = @Sendable (String, @Sendable () -> Bool) -> FolderSize?
+    package typealias Delivery = @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+    private let deliver: Delivery
+    private let reader: Reader
+    private var pending: [String: UUID] = [:]
 
-    package init() {
+    package init(reader: @escaping Reader = FolderSizer.measure,
+                 deliver: @escaping Delivery = { action in Task { @MainActor in action() } }) {
+        self.reader = reader
+        self.deliver = deliver
         queue.maxConcurrentOperationCount = 4
         queue.qualityOfService = .utility
     }
 
-    package static func cached(_ url: URL) -> FolderSize? { cache[url] }
+    isolated deinit { queue.cancelAllOperations() }
+
+    private static func key(_ url: URL) -> String { url.lexicallyStandardized.path }
+    package static func cached(_ url: URL) -> FolderSize? { cache[key(url)] }
 
     package func request(_ url: URL) {
-        guard Self.cache[url] == nil, pending.insert(url).inserted else { return }
-        let op = SizeOperation(path: url.path)
+        let key = Self.key(url)
+        guard Self.cache[key] == nil, pending[key] == nil else { return }
+        let id = UUID()
+        pending[key] = id
+        let op = SizeOperation(path: url.path, reader: reader)
+        let deliver = deliver
         op.completionBlock = { [unowned op, weak self] in
             let result = op.result
-            Task { @MainActor in self?.finish(url, result) }
+            deliver { [weak self] in self?.finish(url, id: id, result) }
         }
         queue.addOperation(op)
     }
@@ -46,20 +60,23 @@ package final class FolderSizer {
     package static func invalidate(_ url: URL) {
         var current = url.lexicallyStandardized
         while current.path != "/" {
-            cache[current] = nil
+            cache[current.path] = nil
             current = current.deletingLastPathComponent()
         }
     }
 
-    private func finish(_ url: URL, _ result: FolderSize?) {
-        pending.remove(url)
+    private func finish(_ url: URL, id: UUID, _ result: FolderSize?) {
+        let key = Self.key(url)
+        guard pending[key] == id else { return }
+        pending[key] = nil
         guard let result else { return }
-        Self.cache[url] = result
+        if Self.cache.count >= 4096 { Self.cache.removeAll(keepingCapacity: true) }
+        Self.cache[key] = result
         onUpdate?(url)
     }
 
-    nonisolated package static func measure(_ path: String, isCancelled: () -> Bool) -> FolderSize? {
-        guard let cpath = strdup(path) else { return nil }
+    nonisolated package static func measure(_ path: String, isCancelled: @Sendable () -> Bool) -> FolderSize? {
+        guard !isCancelled(), let cpath = strdup(path) else { return nil }
         defer { free(cpath) }
         var paths: [UnsafeMutablePointer<CChar>?] = [cpath, nil]
         guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR | FTS_XDEV, nil) else { return nil }
@@ -69,7 +86,7 @@ package final class FolderSizer {
         var visited = 0
         while let entry = fts_read(fts) {
             visited += 1
-            if visited & 2047 == 0, isCancelled() { return nil }
+            if visited & 63 == 0, isCancelled() { return nil }
             switch Int32(entry.pointee.fts_info) {
             case FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT:
                 if let stat = entry.pointee.fts_statp { bytes = bytes.saturatingAdd(max(0, Int64(stat.pointee.st_size))) }
@@ -78,17 +95,20 @@ package final class FolderSizer {
                 break
             }
         }
-        return FolderSize(bytes: bytes, files: files)
+        return isCancelled() ? nil : FolderSize(bytes: bytes, files: files)
     }
 }
 
 nonisolated private final class SizeOperation: Operation, @unchecked Sendable {
     let path: String
     var result: FolderSize?
+    private let reader: FolderSizer.Reader
 
-    init(path: String) { self.path = path }
+    init(path: String, reader: @escaping FolderSizer.Reader) { self.path = path; self.reader = reader }
 
     override func main() {
-        result = FolderSizer.measure(path) { [unowned self] in isCancelled }
+        guard !isCancelled else { return }
+        let measured = reader(path) { [unowned self] in isCancelled }
+        if !isCancelled { result = measured }
     }
 }
