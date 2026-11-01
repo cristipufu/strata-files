@@ -134,7 +134,7 @@ package enum Trash {
     /// are left out.
     @concurrent
     package static func originalLocations(of items: [URL], history: [OperationLog.Entry],
-                                          records: RecordReader = finderRecords) async -> [URL: URL] {
+                                          records: RecordReader) async -> [URL: URL] {
         let items = items.filter(contains)
         guard !items.isEmpty else { return [:] }
         let moved = OperationLog.movedFrom(items, in: history)

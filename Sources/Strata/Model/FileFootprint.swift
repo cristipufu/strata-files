@@ -162,7 +162,7 @@ nonisolated package enum FootprintReader {
 
         /// Close the stream before descending. The entry budget bounds the snapshot and all deeper directories.
         private func snapshot(_ fd: Int32) throws -> [(name: String, info: stat)] {
-            let copy = dup(fd)
+            let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
             guard copy >= 0, let stream = fdopendir(copy) else {
                 if copy >= 0 { close(copy) }; complete = false; return []
             }

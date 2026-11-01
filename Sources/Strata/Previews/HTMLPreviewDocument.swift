@@ -150,7 +150,7 @@ package actor HTMLPreviewDocument {
         guard css || ["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "avif", "tif", "tiff", "ico", "bmp"].contains(ext) else {
             throw PreviewError.unsupported
         }
-        var parent = dup(folder)
+        var parent = fcntl(folder, F_DUPFD_CLOEXEC, 0)
         guard parent >= 0 else { throw POSIXError(.EIO) }
         defer { close(parent) }
         for part in parts.dropLast() {

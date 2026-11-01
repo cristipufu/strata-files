@@ -207,7 +207,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     /// Orphans after a crash count against the same ceiling. Unknown files are counted, never adopted or deleted.
     private static func cacheBytes(_ fd: Int32, depth: Int, remaining: inout Int) throws -> Int64 {
         guard depth < 128 else { throw PreviewArchiveError.limit }
-        let copy = dup(fd)
+        let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
         guard copy >= 0, let stream = fdopendir(copy) else {
             if copy >= 0 { close(copy) }; throw POSIXError(.EIO)
         }
@@ -281,7 +281,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     }
 
     private func opened(_ parts: [String]) throws -> Int32 {
-        var fd = dup(rootFD)
+        var fd = fcntl(rootFD, F_DUPFD_CLOEXEC, 0)
         guard fd >= 0 else { throw POSIXError(.EIO) }
         do {
             for depth in parts.indices {

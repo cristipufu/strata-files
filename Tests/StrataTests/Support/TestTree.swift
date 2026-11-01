@@ -118,7 +118,7 @@ final class TestTree {
     /// only as long as its name: `DirectoryEntryName` reads it within that length. A name that isn't text shows as a
     /// marker, so a whole listing still has something there.
     private static func names(in folder: Int32) -> [String] {
-        let copy = dup(folder)
+        let copy = fcntl(folder, F_DUPFD_CLOEXEC, 0)
         guard copy >= 0, let stream = fdopendir(copy) else {
             if copy >= 0 { close(copy) }
             return []

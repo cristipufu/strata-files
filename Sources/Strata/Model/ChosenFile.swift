@@ -137,7 +137,7 @@ nonisolated package final class ChosenFile: Sendable {
 
     /// A listing that fails partway, or holds a name that isn't text, fails whole.
     private static func forEachName(in fd: Int32, _ body: (String) throws -> Void) throws {
-        let copy = dup(fd)
+        let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
         guard copy >= 0, let stream = fdopendir(copy) else {
             let failure = errno
             if copy >= 0 { close(copy) }

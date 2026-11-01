@@ -47,15 +47,20 @@ import Testing
         let scans = DispatchQueue(label: "Held folder scan")
         scans.suspend()
         pane.search = PaneSearch(pane: pane, services: environment.services, scans: scans)
-        controller.search("report", in: tree.url("docs"))
+        // Its first line comes from the scan's loop, while the scan waits.
+        await withCheckedContinuation { reading in
+            pane.search.onSummary = { _ in
+                pane.search.onSummary = nil
+                reading.resume()
+            }
+            controller.search("report", in: tree.url("docs"))
+        }
         let running = pane.search.task
-        for _ in 0..<500 where pane.search.summary.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
-        let reading = !pane.search.summary.isEmpty
         controller.go(.folder(tree.url("docs")), in: pane)
         await pane.browser.directoryReads.task?.value
         scans.resume()
         await running?.value
-        #expect(running != nil && reading)
+        #expect(running != nil)
         #expect(!pane.browser.isShowingResults && shown(pane) == ["notes.txt", "report.txt"])
         #expect(tree.snapshot() == ["docs/", "docs/notes.txt", "docs/report.txt"])
     }

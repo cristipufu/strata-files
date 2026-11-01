@@ -313,7 +313,7 @@ package enum FileOps {
             defer { close(fd) }
             var info = stat()
             guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { continue }
-            let copy = dup(fd)
+            let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
             guard copy >= 0 else { continue }
             guard let listing = fdopendir(copy) else { close(copy); continue }
             defer { closedir(listing) }
