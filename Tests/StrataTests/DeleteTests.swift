@@ -49,13 +49,27 @@ struct DeleteTests {
     @Test func aSelectionStillTrashedIsOnlyTheTrashedItemsOrNoneOnceTheyveLeft() {
         let a = URL(filePath: "/f/a.txt"), b = URL(filePath: "/f/b.txt"), c = URL(filePath: "/f/c.txt")
         let removed: Set = [b.path, c.path]
-        #expect(BrowserViewController.stillTrashed([b, c], removed, listed: [a, b, c]))
-        #expect(BrowserViewController.stillTrashed([b], removed, listed: [a]))
+        #expect(TrashedSelection.stillTrashed([b, c], removed, listed: [a, b, c]))
+        #expect(TrashedSelection.stillTrashed([b], removed, listed: [a]))
         // Emptied by a reload that dropped them, or by you while they were still shown.
-        #expect(BrowserViewController.stillTrashed([], removed, listed: [a]))
-        #expect(!BrowserViewController.stillTrashed([], removed, listed: [a, b, c]))
-        #expect(!BrowserViewController.stillTrashed([a], removed, listed: [a]))
-        #expect(!BrowserViewController.stillTrashed([a, b], removed, listed: [a, b, c]))
+        #expect(TrashedSelection.stillTrashed([], removed, listed: [a]))
+        #expect(!TrashedSelection.stillTrashed([], removed, listed: [a, b, c]))
+        #expect(!TrashedSelection.stillTrashed([a], removed, listed: [a]))
+        #expect(!TrashedSelection.stillTrashed([a, b], removed, listed: [a, b, c]))
+    }
+
+    @Test func theRowTakingTheTrashedOnesPlaceIsSelectedAWholePathAtATime() {
+        let rows = ["a", "ab", "b", "c"].map { URL(filePath: "/f/" + $0) }
+        let next = { (names: [String]) in TrashedSelection.next(after: Set(names.map { "/f/" + $0 }), in: rows)?.lastPathComponent }
+        #expect(next(["ab"]) == "b")
+        #expect(next(["ab", "b"]) == "c")
+        // The last rows gone: the one left above them. Everything gone, or nothing listed gone: nothing to select.
+        #expect(next(["c"]) == "b")
+        #expect(next(["b", "c"]) == "ab")
+        #expect(next(["a", "ab", "b", "c"]) == nil)
+        #expect(next(["elsewhere"]) == nil)
+        // `a` gone never takes `ab`, whose name starts the same, with it.
+        #expect(next(["a"]) == "ab")
     }
 
     private func delete(_ urls: [URL]) async -> (refused: [URL], failures: [(url: URL, error: Error)]) {

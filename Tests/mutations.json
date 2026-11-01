@@ -7655,14 +7655,14 @@
     "tests": "WorkspaceOwnershipTests/aWaitingPaneWhoseDiskDoesntAnswerDoesntHoldItsWindow"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "file": "Strata/Browser/TrashedSelection.swift",
     "find": "        guard selection.allSatisfy({ removed.contains($0.path) }) else { return false }\n",
     "replace": "",
     "rule": "Move to Trash replaces a selection made while its items went",
     "tests": "DeleteTests/moveToTrashSelectsTheRowTakingItsPlaceUnlessAnotherWasChosen|DeleteTests/aSelectionStillTrashedIsOnlyTheTrashedItemsOrNoneOnceTheyveLeft"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "file": "Strata/Browser/TrashedSelection.swift",
     "find": "        return !selection.isEmpty || !listed.contains { removed.contains($0.path) }",
     "replace": "        return true",
     "rule": "Move to Trash selects the next row after you emptied the selection while its items were shown",
@@ -8073,5 +8073,12 @@
     "replace": "",
     "rule": "Going up from a server's top leaves the server for Strata's own copy folder",
     "tests": "ParentFolderTests/upGoesToTheFolderAboveExceptAtATopWithNothingAbove"
+  },
+  {
+    "file": "Strata/Browser/TrashedSelection.swift",
+    "find": "            survivors.isEmpty ? nil : survivors[min(first, survivors.count - 1)]",
+    "replace": "            survivors.isEmpty ? nil : survivors[0]",
+    "rule": "After Move to Trash the first row is selected instead of the one taking the trashed ones' place",
+    "tests": "DeleteTests/theRowTakingTheTrashedOnesPlaceIsSelectedAWholePathAtATime|DeleteTests/moveToTrashSelectsTheRowTakingItsPlaceUnlessAnotherWasChosen"
   }
 ]
