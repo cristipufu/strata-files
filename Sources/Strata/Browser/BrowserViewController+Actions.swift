@@ -15,7 +15,7 @@ extension BrowserViewController {
     func open(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         guard !entries.isEmpty else { return }
         // A container's files are fetched first.
-        afterFetching(entries.filter { !$0.isFolder }.map(\.url)) { [weak self] in
+        fetches.afterFetching(entries.filter { !$0.isFolder }.map(\.url)) { [weak self] in
             self?.openFetched(entries, fileOpener: fileOpener)
         }
     }
@@ -28,7 +28,7 @@ extension BrowserViewController {
         // An index hit (search results, Recents) may be one too: its listing never said.
         let aliases = entries.filter { !$0.isFolder && ($0.isAlias || !$0.isListed) }
         guard !aliases.isEmpty else { return open(entries, aliasedFolders: [], fileOpener: fileOpener) }
-        afterReading({ aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }) { [weak self] folders in
+        fetches.afterReading({ aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }) { [weak self] folders in
             self?.open(entries, aliasedFolders: folders, fileOpener: fileOpener)
         }
     }
@@ -52,7 +52,7 @@ extension BrowserViewController {
                   NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
               }) {
         guard !urls.isEmpty else { return }
-        afterFetching(urls) { opener(urls, app) }
+        fetches.afterFetching(urls) { opener(urls, app) }
     }
 
     @objc func moveToTrash(_ sender: Any?) {
@@ -144,8 +144,7 @@ extension BrowserViewController {
         noteNavigationContextChanged()
         inlineRename.cancel()
         presentations.cached.forEach { $0.cancelRename() }
-        selectionFetch?.cancel()
-        selectionFetch = nil
+        fetches.cancelSelection()
         pending.cancel()
         columnController?.cancelPendingRename()
     }

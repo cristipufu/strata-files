@@ -3252,14 +3252,14 @@
     "tests": "InspectorFolderOpeningTests/selectionsChangedDuringReloadAreNotReplacedByItsStartingSelection"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {\n        let copies = services.copies",
     "replace": "func afterFetching(_ urls: [URL], _ action: @escaping () -> Void) -> Task<Void, Never>? {\n        let copies = CopyProviders.live",
     "rule": "Provider fetch ownership small reads ignore their provider",
     "tests": "ProviderFetchTests/openingAPlaceholderUsesTheBrowsersProviderBeforeItsAction"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "CopyFetchJob(pending, copies: copies, then: act)",
     "replace": "CopyFetchJob(pending, copies: .live, then: act)",
     "rule": "Provider fetch ownership large reads ignore their provider",
@@ -3301,35 +3301,35 @@
     "tests": "ProviderFetchTests/queuedReadsUseTheirProviderForPreparationNamesErrorsAndPlaceholderChecks"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "guard !pending.contains(where: copies.isPlaceholder) else { throw ContainerAPIError.notFound }",
     "replace": "guard true else { throw ContainerAPIError.notFound }",
     "rule": "Provider fetch ownership small reads open remaining placeholders",
     "tests": "ProviderFetchTests/smallReadFailureOrRemainingPlaceholderDoesNotRunItsActionOrOpenAModal"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "try await copies.fetch(pending)\n                try Task.checkCancellation()",
     "replace": "try await copies.fetch(pending)",
     "rule": "Provider fetch ownership cancelled small reads deliver late success",
     "tests": "ProviderFetchTests/cancelledSmallReadsSuppressLateSuccessAndFailure"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "try Task.checkCancellation()\n                try await copies.fetch(pending)",
     "replace": "try await copies.fetch(pending)",
     "rule": "Provider fetch ownership cancelled small reads still contact the provider",
     "tests": "ProviderFetchTests/cancellationBeforeASmallReadStartsDoesNotContactTheProvider"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "find": "let copies = services.copies\n        guard let directory",
-    "replace": "let copies = CopyProviders.live\n        guard let directory",
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "let copies = services.copies\n        guard let folder, copies.contains(folder)",
+    "replace": "let copies = CopyProviders.live\n        guard let folder, copies.contains(folder)",
     "rule": "Provider fetch ownership selection prefetch ignores its provider",
     "tests": "ProviderFetchTests/selectionPrefetchUsesItsProviderAndPreservesTheItemAndByteLimits"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
+    "file": "Strata/Browser/PaneFetches.swift",
     "find": "guard files.count <= 20 else { return }",
     "replace": "guard files.count <= 21 else { return }",
     "rule": "Provider fetch ownership selection prefetch exceeds its item budget",
@@ -3337,7 +3337,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.cancel()\n        presentations.cached.forEach { $0.cancelRename() }\n        selectionFetch?.cancel()\n        selectionFetch = nil",
+    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.cancel()\n        presentations.cached.forEach { $0.cancelRename() }\n        fetches.cancelSelection()",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
@@ -3365,18 +3365,10 @@
     "tests": "ProviderFetchTests/cancellingFromTheStartNotificationPreventsTheCompletionAction"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "edits": [
-      {
-        "find": "let fetch = Task { [weak self] in",
-        "replace": "let fetch = Task { [self] in"
-      },
-      {
-        "find": "guard !Task.isCancelled, let self, let window",
-        "replace": "guard !Task.isCancelled, let window"
-      }
-    ],
-    "rule": "Provider fetch ownership a small read retains its closed browser",
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "                                                window: { [weak self] in self?.viewIfLoaded?.window })",
+    "replace": "                                                window: { self.viewIfLoaded?.window })",
+    "rule": "Provider fetch ownership a small read retains its closed browser: the pane's fetches hold it",
     "tests": "ProviderFetchTests/aSmallReadDoesNotRetainAClosedBrowser"
   },
   {
@@ -3837,8 +3829,8 @@
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "find": "        actionFetch = fetch\n        return fetch\n",
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "        self.action = fetch\n        return fetch\n",
     "replace": "        return fetch\n",
     "rule": "Async action context ownership deferred open action fires after navigation changes: the pane doesn't hold its fetch",
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
@@ -7858,15 +7850,15 @@
     "tests": "ExtractDestinationTests/anArchiveInsideAnotherArchivesCopyGoesToDownloads"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "find": "        replacePendingAction()\n        actionFetch = Task { [weak self] in\n",
-    "replace": "        replacePendingAction()\n        _ = Task { [weak self] in\n",
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "        cancelAction()\n        self.action = Task { [weak self] in\n",
+    "replace": "        cancelAction()\n        _ = Task { [weak self] in\n",
     "rule": "An archive looked up before going elsewhere is still unpacked: the pane doesn't hold its read",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Fetching.swift",
-    "find": "        let act = { [weak self] in if self?.navigationRevision == revision { action() } }\n",
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "        let act = { [revision] in if revision() == started { action() } }\n",
     "replace": "        let act = action\n",
     "rule": "A big fetch finished after the pane went elsewhere still opens what it fetched",
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"

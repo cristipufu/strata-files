@@ -70,7 +70,7 @@ import Testing
         window.browser.open([doc]) { opened.append($0.lastPathComponent) }
         #expect(opened == ["doc.txt"])
         window.browser.open([alias]) { opened.append($0.lastPathComponent) }
-        await window.browser.actionFetch?.value
+        await window.browser.fetches.action?.value
         await landed(window)
         #expect(window.location.lastPathComponent == "real" && opened == ["doc.txt"])
     }

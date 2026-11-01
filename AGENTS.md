@@ -292,7 +292,7 @@ These apply everywhere below; the sections that follow add only what is specific
 - **Pane actions** (`browseArchive`, `openArchiveAsFolder`, `open(_:fileOpener:)`, `open(_:withApplicationAt:opener:)`,
   `openQuickLook`, and Connect to Server's `onConnected`/`onServer`) keep their pane and
   `BrowserViewController.navigationRevision`. Navigating away (even back to the same folder), entering a deeper column,
-  showing results or messages, or closing the pane cancels `actionFetch` and drops stale completions; deferred Quick
+  showing results or messages, or closing the pane cancels its `PaneFetches` action and drops stale completions; deferred Quick
   Look also checks window visibility and selection membership. Closing a pane (`stopBackgroundWork()`) stops active and
   cached presentation work in `ColumnBrowserViewController` and `GalleryViewController`, directory watchers, git
   observation and deferred resort work.
@@ -313,7 +313,7 @@ Strata browses servers and containers through local copies whose files are place
 - `BrowserServices.copies` and its default directory reader share the window's server environment. Inspector folder
   links prepare their path through that owner and navigate through the pane's `FolderOpenSession`. Provider cache
   paths never become remembered local locations or draggable window-title URLs.
-- Shared fetching lives in `BrowserViewController+Fetching`, queued preparation in `CopyFetchJob`; both keep their
+- Shared fetching lives in `PaneFetches`, queued preparation in `CopyFetchJob`; both keep their
   providers through completion, placeholder checks and error messages. Install a job's task before notifying
   observers, because a callback can request Stop. Cancelled work never delivers a completion action or a late failure
   message, and small reads present no error after their browser has closed.

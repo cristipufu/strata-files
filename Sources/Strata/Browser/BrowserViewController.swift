@@ -115,11 +115,8 @@ final class BrowserViewController: NSViewController {
     var nodes: [FileNode] { listing.nodes }
     var rows: [FileNode] { listing.rows }
     var generation: Int { directoryReads.generation }
-    /// Optional provider reads for the current selection (see `prefetchSelection`).
-    var selectionFetch: Task<Void, Never>?
-    /// The pane's pending action, waiting for a fetch or a read (`afterFetching`, `afterReading`); cancelled when the
-    /// navigation context changes.
-    var actionFetch: Task<Void, Never>?
+    private(set) lazy var fetches = PaneFetches(services: services, revision: { [weak self] in self?.navigationRevision },
+                                                window: { [weak self] in self?.viewIfLoaded?.window })
     /// The last Move to Trash asked here: its items going, then the next row chosen.
     var trashing: Task<Void, Never>?
     /// Bumped whenever this pane changes folder, column location or results context.
@@ -175,8 +172,6 @@ final class BrowserViewController: NSViewController {
 
     isolated deinit {
         services.previews.invalidate(owner: self)
-        selectionFetch?.cancel()
-        actionFetch?.cancel()
     }
 
     // MARK: - View
@@ -603,8 +598,7 @@ final class BrowserViewController: NSViewController {
     func noteNavigationContextChanged() {
         navigationRevision += 1
         services.previews.invalidate(owner: self)
-        actionFetch?.cancel()
-        actionFetch = nil
+        fetches.cancelAction()
     }
 
     func syncSortDescriptor() {

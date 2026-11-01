@@ -287,7 +287,7 @@ struct AsyncActionContextTests {
         #expect(window.pane === rightPane)
         leftPane.browser.browseArchive(cachedArchive)
         // Where its copy is is looked up away from the main thread first.
-        await leftPane.browser.actionFetch?.value
+        await leftPane.browser.fetches.action?.value
         #expect(leftPane.location == cachedCopy.standardizedFileURL)
         #expect(rightPane.location == tree.url("right").standardizedFileURL)
         #expect(window.pane === rightPane)
@@ -306,7 +306,7 @@ struct AsyncActionContextTests {
         window.go(.folder(tree.url("left")), in: leftPane)
         await leftPane.browser.directoryReads.task?.value
         leftPane.browser.browseArchive(freshArchive)
-        await leftPane.browser.actionFetch?.value
+        await leftPane.browser.fetches.action?.value
         #expect(leftPane.location == freshCopy.standardizedFileURL)
         #expect(!env.transfers.jobs.contains { $0 !== freshJob && ($0 as? ArchiveJob)?.sources == [freshArchive] })
 
@@ -316,7 +316,7 @@ struct AsyncActionContextTests {
         window.go(.folder(tree.url("left")), in: leftPane)
         await leftPane.browser.directoryReads.task?.value
         leftPane.browser.browseArchive(movedAwayArchive)
-        await leftPane.browser.actionFetch?.value
+        await leftPane.browser.fetches.action?.value
         window.navigate(to: tree.url("other"))
         window.navigate(to: tree.url("left"))
         let movedJob = try await waitForArchiveJob(for: movedAwayArchive, in: env.transfers)
@@ -325,7 +325,7 @@ struct AsyncActionContextTests {
 
         // 4. Moving to a deeper column in the same pane invalidates the pending archive browse.
         leftPane.browser.browseArchive(columnArchive)
-        await leftPane.browser.actionFetch?.value
+        await leftPane.browser.fetches.action?.value
         window.browser(leftPane.browser, columnLocationChanged: tree.url("sub"))
         let columnJob = try await waitForArchiveJob(for: columnArchive, in: env.transfers)
         await columnJob.finished()
@@ -333,7 +333,7 @@ struct AsyncActionContextTests {
 
         // 5. Going elsewhere while the archive is still being looked up drops it: nothing is unpacked.
         leftPane.browser.browseArchive(droppedArchive)
-        let lookup = try #require(leftPane.browser.actionFetch)
+        let lookup = try #require(leftPane.browser.fetches.action)
         window.navigate(to: tree.url("other"))
         #expect(lookup.isCancelled)
         await lookup.value
@@ -363,7 +363,7 @@ struct AsyncActionContextTests {
         let entryA = try #require(FileEntry(url: itemA))
         var openedFiles: [URL] = []
         browser1.open([entryA]) { openedFiles.append($0) }
-        let fetchTask1 = try #require(browser1.actionFetch)
+        let fetchTask1 = try #require(browser1.fetches.action)
         await gate1.started(1)
         browser1.load(tree.url("other"))
         browser1.load(tree.url("provider"))
@@ -379,7 +379,7 @@ struct AsyncActionContextTests {
         try handle.close()
         _ = state1.placeholders.withLock { $0.insert(big.standardizedFileURL.path) }
         browser1.open([try #require(FileEntry(url: big))]) { openedFiles.append($0) }
-        await browser1.actionFetch?.value
+        await browser1.fetches.action?.value
         let bigFetch = try #require(env1.transfers.jobs.compactMap { $0 as? CopyFetchJob }.first)
         await gate1.started(2)
         browser1.load(tree.url("other"))
@@ -399,7 +399,7 @@ struct AsyncActionContextTests {
         var openedWithApp: [([URL], URL)] = []
         let appURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
         browser2.open([itemA], withApplicationAt: appURL) { urls, app in openedWithApp.append((urls, app)) }
-        let fetchTask2 = try #require(browser2.actionFetch)
+        let fetchTask2 = try #require(browser2.fetches.action)
         await gate2.started(1)
         browser2.showMessage(symbol: "magnifyingglass", title: "Searching…")
         #expect(fetchTask2.isCancelled)
@@ -413,7 +413,7 @@ struct AsyncActionContextTests {
         await browser2.directoryReads.task?.value
         browser2.select([pack])
         browser2.openArchiveAsFolder(nil)
-        let archiveFetchTask = try #require(browser2.actionFetch)
+        let archiveFetchTask = try #require(browser2.fetches.action)
         await gate2.started(2)
         browser2.showResults([entryA], total: 1)
         #expect(archiveFetchTask.isCancelled)
@@ -432,7 +432,7 @@ struct AsyncActionContextTests {
         browser3.select([itemA])
         var quickLookShown = 0
         browser3.openQuickLook { quickLookShown += 1 }
-        let qlTask1 = try #require(browser3.actionFetch)
+        let qlTask1 = try #require(browser3.fetches.action)
         await gate3.started(1)
         browser3.select([itemB])
         await gate3.finish()
@@ -441,7 +441,7 @@ struct AsyncActionContextTests {
 
         // When itemB stays selected and navigation does not change, `openQuickLook` invokes `showPanel`.
         browser3.openQuickLook { quickLookShown += 1 }
-        let qlTask2 = try #require(browser3.actionFetch)
+        let qlTask2 = try #require(browser3.fetches.action)
         await gate3.started(2)
         await gate3.finish()
         await qlTask2.value

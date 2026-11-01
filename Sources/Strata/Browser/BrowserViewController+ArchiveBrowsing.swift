@@ -30,7 +30,7 @@ extension BrowserViewController: ArchiveOpeningPane {
     func browseArchive(_ archive: URL) {
         // Where its copy is, and whether it's finished, is read away from the main thread: the archive may be on a
         // disk that doesn't answer.
-        afterReading({ ArchiveCache.lookup(archive) }) { [weak self] found in
+        fetches.afterReading({ ArchiveCache.lookup(archive) }) { [weak self] found in
             guard let self else { return }
             ArchiveOpening.open(archive, copy: found, from: self)
         }
@@ -48,7 +48,7 @@ extension BrowserViewController: ArchiveOpeningPane {
     @objc func openArchiveAsFolder(_ sender: Any?) {
         guard let url = selectedURLs.first else { return }
         // An archive in a container's files is read from the container first.
-        afterFetching([url]) { [weak self] in self?.browseArchive(url) }
+        fetches.afterFetching([url]) { [weak self] in self?.browseArchive(url) }
     }
 
     /// Shows the archive (not Strata's copy of it) in Finder.
@@ -61,7 +61,7 @@ extension BrowserViewController: ArchiveOpeningPane {
     /// read-only disk, the Trash, another archive's copy), then shows the result.
     func extractArchive(_ archive: URL) {
         let copies = services.copies
-        afterReading({ Self.extractDestination(for: archive, copies: copies) }) { [weak self] destination in
+        fetches.afterReading({ Self.extractDestination(for: archive, copies: copies) }) { [weak self] destination in
             self?.extract(archive, into: destination)
         }
     }

@@ -28,7 +28,7 @@ extension BrowserViewController {
         guard !selectedKeys.isEmpty else { return }
         let hadWindow = viewIfLoaded?.window != nil
         // A container's file being fetched: show it once it's here.
-        afterFetching(urls) { [weak self] in
+        fetches.afterFetching(urls) { [weak self] in
             guard let self, (!hadWindow || viewIfLoaded?.window?.isVisible == true),
                   !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }
             showPanel()
