@@ -89,6 +89,14 @@ import AppKit
     init(readFacts: @escaping (URL, Bool) async -> Facts) {
         self.readFacts = readFacts
         super.init()
+        setUpComments()
+        setUpOpenWith()
+        setUpPermissions()
+        layOutContents()
+    }
+
+    /// Spotlight comments: a few wrapping lines.
+    private func setUpComments() {
         comments.placeholderString = String(localized: "Add Comments", comment: "Placeholder of the Inspector’s Spotlight comments field")
         comments.font = .systemFont(ofSize: 12)
         comments.bezelStyle = .roundedBezel
@@ -100,7 +108,10 @@ import AppKit
         comments.delegate = self
         comments.setAccessibilityLabel(String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"))
         ThemeStyle.bind(comments, to: .preview)
+    }
 
+    /// The app that opens the item, and Change All for every document like it.
+    private func setUpOpenWith() {
         openWith.target = self
         openWith.action = #selector(openWithChanged(_:))
         openWith.setAccessibilityLabel(String(localized: "Open With"))
@@ -114,7 +125,10 @@ import AppKit
         openWithNote.font = .systemFont(ofSize: 11)
         openWithNote.textColor = InspectorColors.secondary
         openWithNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
 
+    /// Locked, and a menu of access for each of owner, group and everyone.
+    private func setUpPermissions() {
         locked.controlSize = .mini
         locked.target = self
         locked.action = #selector(lockedChanged(_:))
@@ -130,7 +144,9 @@ import AppKit
             menu.tag = who.rawValue
             accessMenus[who] = menu
         }
+    }
 
+    private func layOutContents() {
         for stack in [commentsContent, openWithContent, permissionsContent] {
             stack.orientation = .vertical
             stack.alignment = .leading
