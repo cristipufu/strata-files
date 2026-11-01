@@ -10,6 +10,10 @@ import Testing
 @testable import StrataSearch
 
 struct ApplicationsFoldersTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private actor Reads {
         private var pending: [Task<[FileEntry], Error>] = []
 
@@ -37,9 +41,9 @@ struct ApplicationsFoldersTests {
     private let reads = Reads()
 
     private func services() -> BrowserServices {
-        BrowserServices.configured(transfers: .shared, visits: .shared, windows: .headless,
-                                   remote: .shared, containers: .shared, containerStore: .shared,
-                                   clipboard: .shared, directories: reads.reader)
+        BrowserServices.configured(transfers: testEnvironment.services.transfers, visits: testEnvironment.services.visits, windows: .headless,
+                                   remote: testEnvironment.services.remote, containers: testEnvironment.services.containers, containerStore: testEnvironment.services.containerStore,
+                                   clipboard: testEnvironment.services.clipboard, directories: reads.reader)
     }
 
     private func fixture() throws -> TestTree {
@@ -129,7 +133,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live, history: .shared)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             undo.endUndoGrouping()
             let renamed = before.map { $0.replacingOccurrences(of: "System/Applications/Same.app/", with: "System/Applications/Renamed.app/") }.sorted()
             #expect(tree.snapshot() == renamed, "\(mode)")
@@ -159,7 +163,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: .live, history: .shared)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             undo.endUndoGrouping()
             #expect(tree.snapshot() == before.map {
                 $0.replacingOccurrences(of: "System/Applications/Utilities/Tool.app/", with: "System/Applications/Utilities/Renamed.app/")

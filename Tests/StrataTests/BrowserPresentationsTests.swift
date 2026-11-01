@@ -11,6 +11,10 @@ import Testing
 @testable import StrataSearch
 
 struct BrowserPresentationsTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private final class ReadLog {
         var folders: [URL] = []
         func record(_ folder: URL) { folders.append(folder) }
@@ -36,9 +40,9 @@ struct BrowserPresentationsTests {
         let metadata = FileCollectionMetadata(ordered: { comparisons += 1; return $0.name < $1.name },
                                               canMeasure: { _ in permissions += 1; return false },
                                               size: { sizes += 1; return $0.size })
-        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()),
-                                                       ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read)),
-                                                       GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()), TreemapViewController(copies: .live)]
+        let controllers: [FileCollectionController] = [GridViewController(preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated()),
+                                                       ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read)),
+                                                       GalleryViewController(thumbnails: testEnvironment.services.thumbnails, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated()), TreemapViewController(copies: testEnvironment.services.copies)]
         for controller in controllers {
             sizes = 0; permissions = 0; comparisons = 0
             controller.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
@@ -64,8 +68,8 @@ struct BrowserPresentationsTests {
     @Test func iconsAndGalleryTakeFileDrags() throws {
         let preferences = try Prefs.isolated()
         let controllers: [NSViewController] = [
-            GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()),
-            GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())]
+            GridViewController(preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated()),
+            GalleryViewController(thumbnails: testEnvironment.services.thumbnails, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated())]
         for controller in controllers {
             let collection = try #require(views(controller.view, of: FileCollectionView.self).first)
             #expect(Set(FileDrop.types).isSubset(of: collection.registeredDraggedTypes), "\(controller)")
@@ -79,8 +83,8 @@ struct BrowserPresentationsTests {
         let tree = try TestTree("shown/", "shown/inner/", "a.txt")
         let inner = try #require(FileEntry(url: tree.url("shown/inner")))
         let controllers: [any FileItemCollection] = [
-            GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()),
-            GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())]
+            GridViewController(preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated()),
+            GalleryViewController(thumbnails: testEnvironment.services.thumbnails, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated())]
         for controller in controllers {
             controller.view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
             controller.apply(FileCollectionContent(directory: tree.url("shown"), entries: [inner], matches: [:]),
@@ -125,9 +129,9 @@ struct BrowserPresentationsTests {
         let tree = try TestTree("old/a.txt", "new/")
         let old = FileCollectionContent(directory: tree.url("old"), entries: try entries(tree, ["old/a.txt"]), matches: [:])
         let empty = FileCollectionContent(directory: tree.url("new"), entries: [], matches: [:])
-        let grid = GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
-        let gallery = GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
+        let grid = GridViewController(preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated())
+        let columns = ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let gallery = GalleryViewController(thumbnails: testEnvironment.services.thumbnails, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated())
         for controller in [grid, columns, gallery] as [FileCollectionController] {
             controller.apply(old, metadata: metadata, animated: false)
             controller.apply(empty, metadata: metadata, animated: false)
@@ -145,7 +149,7 @@ struct BrowserPresentationsTests {
         let root = try entries(tree, ["folder", "other.txt"]), children = try entries(tree, ["folder/a.txt", "folder/z.txt"])
         let reads = ReadLog()
         let reader = DirectoryReader { folder, _, _ in await reads.record(folder); return children }
-        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(directoryReader: reader, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let content = FileCollectionContent(directory: tree.root, entries: root, matches: [:])
         let descending = Mutex(false)
@@ -173,7 +177,7 @@ struct BrowserPresentationsTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("alpha.txt")
         let entry = try #require(FileEntry(url: tree.url("alpha.txt")))
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.apply(FileCollectionContent(directory: tree.root, entries: [entry], matches: [entry.url: [0, 1]]),
                       metadata: metadata, animated: false)
         let pane = try #require(views(columns.view, of: ColumnPane.self).first)
@@ -200,7 +204,7 @@ struct BrowserPresentationsTests {
             permissionReads.append($0.name)
             return $0.name != "guarded"
         }, size: { sizeReads.append($0.name); return sizes[$0.name] })
-        let map = TreemapViewController(copies: .live)
+        let map = TreemapViewController(copies: testEnvironment.services.copies)
         map.apply(FileCollectionContent(directory: all[0].url.deletingLastPathComponent(), entries: all, matches: [:]),
                   metadata: metadata, animated: false)
         #expect(permissionReads == ["known", "pending", "guarded"])
@@ -212,7 +216,7 @@ struct BrowserPresentationsTests {
     }
 
     @Test func presentationsAreLazyReusedAndAttachedOnlyToTheirOwnBrowser() throws {
-        let first = BrowserViewController(services: .shared), second = BrowserViewController(services: .shared)
+        let first = BrowserViewController(services: testEnvironment.services), second = BrowserViewController(services: testEnvironment.services)
         first.setStoredMode(.list); second.setStoredMode(.list)
         _ = first.view; _ = second.view
         #expect(first.presentations.cached.isEmpty && second.presentations.cached.isEmpty)
@@ -249,13 +253,13 @@ struct BrowserPresentationsTests {
         let entries = try entries(tree, ["a.txt", "b.txt"])
         let reader = DirectoryReader { _, _, _ in entries }
         var browser: BrowserViewController? = BrowserViewController(services: BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: testEnvironment.services.clipboard,
             directories: reader))
         weak let owner = browser
         browser?.setStoredMode(.list)

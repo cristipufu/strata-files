@@ -48,6 +48,8 @@ struct RemoteEnvironmentTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let network = Network()
         let remote: RemoteServices
@@ -58,19 +60,20 @@ struct RemoteEnvironmentTests {
             preferences = try Prefs.isolated()
             preferences.defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             remote = RemoteServices(preferences: preferences, credentials: network.credentials(folder),
                 copyRoot: tree.url(folder + "/cache"), connector: network.connector, notifications: notifications)
             let storage = SecureStorage.Context(directory: tree.url(folder + "/state"), caches: tree.url(folder + "/state/Caches"), key: nil)
-            let copies = CopyProviders(servers: remote.files, containers: .shared)
+            let copies = CopyProviders(servers: remote.files, containers: testEnvironment.services.containers)
             services = BrowserServices.configured(
                 transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies),
                                          copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: reader)
         }
     }

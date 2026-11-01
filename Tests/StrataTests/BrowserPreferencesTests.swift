@@ -11,26 +11,7 @@ import Testing
 @testable import StrataSearch
 
 struct BrowserPreferencesTests {
-    private final class Environment {
-        let state: TestTree
-        let preferences: Prefs
-        let services: BrowserServices
-
-        init(reader: DirectoryReader = .live) throws {
-            state = try TestTree()
-            preferences = try Prefs.isolated()
-            preferences.showIconPreviews = false
-            services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil), copies: .live), copies: .live),
-                visits: Frecency(preferences: preferences.defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
-                directories: reader)
-        }
-    }
+    private typealias Environment = IndependentEnvironment
 
     private final class Reads {
         let entries: [FileEntry]
@@ -97,7 +78,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "z.txt", "middle/", ".hidden")
         let entries = try ["a.txt", "z.txt", "middle", ".hidden"].map { try #require(FileEntry(url: tree.url($0))) }
         let firstReads = Reads(entries), secondReads = Reads(entries)
-        let first = try Environment(reader: firstReads.reader), second = try Environment(reader: secondReads.reader)
+        let first = try Environment(directories: firstReads.reader), second = try Environment(directories: secondReads.reader)
         first.preferences.sortAscending = false
         first.preferences.foldersFirst = false
         second.preferences.foldersFirst = true
@@ -169,7 +150,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "b/")
         let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
         let env = try Environment()
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: env.preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(directoryReader: env.services.directories, preferences: env.preferences, thumbnails: env.services.thumbnails, itemInfo: env.services.itemInfo, copies: env.services.copies, clipboard: env.services.clipboard, statuses: env.services.statuses, names: env.services.folderNames)
         env.preferences.foldersFirst = true
         #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
         env.preferences.foldersFirst = false

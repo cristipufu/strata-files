@@ -13,7 +13,7 @@ extension ColorThemeTests {
     @Test func theFileCanvasContinuesBehindTheFooterAndRoundedPanelsWithNativeSpacing() async throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
@@ -28,7 +28,7 @@ extension ColorThemeTests {
         for mode in BrowserViewMode.ordered {
             first.browser.setMode(mode, remember: false)
             for dual in [false, true] {
-                let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
+                let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
                 if dual {
                     second.browser.setMode(mode, remember: false)
                     split.panes.add(second)
@@ -84,7 +84,7 @@ extension ColorThemeTests {
     @Test func theColumnTitlesMatchTheFileBackgroundAndKeepNativeHeaderInteraction() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.loadViewIfNeeded()
         let header = try #require(browser.outlineView.headerView)
         let column = try #require(browser.outlineView.tableColumns.first)

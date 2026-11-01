@@ -14,8 +14,8 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let tree = try TestTree("Folder/", "one.zip", "two.zip")
-        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
-        let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
+        let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil

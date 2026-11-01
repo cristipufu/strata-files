@@ -35,7 +35,7 @@ final class PreviewEnvironment {
         let copies = providers.map { CopyProviders($0, remoteCopies: remote.copies, containerCopies: containers.copies,
                                                   clipboardRoot: tree.url("environment/clipboard")) }
             ?? CopyProviders(servers: remote.files, containers: containers, clipboardRoot: tree.url("environment/clipboard"))
-        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies)
+        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies)
         let containerStore = ContainerStore()
         services = BrowserServices.configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                                               remote: remote, containers: containers, containerStore: containerStore,

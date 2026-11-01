@@ -14,6 +14,10 @@ import Testing
 @testable import StrataSupport
 
 struct EdgeCaseSafetyTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test func extremeSpotlightAndNaturalQueriesNeverOverflowOrTrap() {
         for raw in [
             "width:99999999999999999999999",
@@ -130,7 +134,7 @@ struct EdgeCaseSafetyTests {
     @Test func previewPanelAndPreviewPaneHandleBoundaryInputsSafely() throws {
         let tree = try TestTree("a.txt")
         let entry = try #require(FileEntry(url: tree.url("a.txt")))
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         #expect(browser.previewPanel(nil, previewItemAt: -1) == nil)
         #expect(browser.previewPanel(nil, previewItemAt: 0) == nil)

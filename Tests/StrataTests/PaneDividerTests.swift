@@ -10,9 +10,13 @@ import Testing
 @testable import StrataSearch
 
 struct PaneDividerTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test(arguments: [BrowserViewMode.columns, .treemap, .list, .grid, .gallery])
     func closingTheOtherPaneKeepsItsDividerOutOfTheSharedFooter(_ mode: BrowserViewMode) async throws {
-        let first = PaneHostViewController(browser: BrowserViewController(services: .shared))
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         first.browser.setMode(mode, remember: false)
         let controller = MainSplitViewController(firstPane: first)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -27,7 +31,7 @@ struct PaneDividerTests {
         }
         for width in [1240.0, 960.0, 1240.0] {
             window.setContentSize(NSSize(width: width, height: 780))
-            let second = PaneHostViewController(browser: BrowserViewController(services: .shared))
+            let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
             second.browser.setMode(mode, remember: false)
             controller.panes.add(second)
             controller.status.isHidden = true
@@ -49,7 +53,7 @@ struct PaneDividerTests {
     }
 
     @Test func dividerStaysBetweenTheToolbarAndSharedFooter() throws {
-        let panes = PaneContainerViewController(first: PaneHostViewController(browser: BrowserViewController(services: .shared)))
+        let panes = PaneContainerViewController(first: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         let split = panes.splitView
         split.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
 

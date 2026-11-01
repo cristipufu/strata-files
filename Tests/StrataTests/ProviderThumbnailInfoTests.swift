@@ -110,6 +110,8 @@ struct ProviderThumbnailInfoTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let generator: Generator
         let services: BrowserServices
@@ -117,20 +119,21 @@ struct ProviderThumbnailInfoTests {
         init(_ tree: TestTree, copies: CopyProviders, image: CGImage? = nil,
              reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
             preferences = try Prefs.isolated()
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             preferences.showIconPreviews = true
             generator = Generator(immediateImage: image)
             let thumbnails = generator.loader(copies: copies)
-            let itemInfo = ItemInfoLoader(copies: copies, containerStore: .shared, mediaReader: reader)
+            let itemInfo = ItemInfoLoader(copies: copies, containerStore: testEnvironment.services.containerStore, mediaReader: reader)
             let state = tree.url("state/\(UUID().uuidString)")
             let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 mediaReader: reader,
                 thumbnails: thumbnails,
                 itemInfo: itemInfo)

@@ -10,6 +10,10 @@ import Testing
 @testable import StrataSearch
 
 struct ViewOptionsTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test func iconOptionsPersistAndUnknownValuesKeepTheDefault() throws {
         let defaults = try Prefs.isolated().defaults
         #expect(IconViewOptions.read(from: defaults) == IconViewOptions())
@@ -41,7 +45,7 @@ struct ViewOptionsTests {
                        preferences: preferences, thumbnails: .shared, itemInfo: .shared)
         // Keep a second reader alive so the count arrives after this item's option changes.
         var loaded = false
-        let ticket = ItemInfoLoader.shared.request(entry, showHidden: Prefs.shared.showHidden) { _ in loaded = true }
+        let ticket = ItemInfoLoader.shared.request(entry, showHidden: testEnvironment.services.preferences.showHidden) { _ in loaded = true }
         defer { ItemInfoLoader.shared.cancel(ticket) }
         item.configure(entry, matches: [], metrics: metrics, showsInfo: false, dimmed: false, scale: 2,
                        preferences: preferences, thumbnails: .shared, itemInfo: .shared)
@@ -56,7 +60,7 @@ struct ViewOptionsTests {
 
     @Test func folderSizesIncludeNestedAndHiddenFilesAndDoNotWalkLinks() async throws {
         let tree = try TestTree("folder/", "folder/a", "folder/.hidden", "folder/sub/", "folder/sub/b", "link -> folder")
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.load(tree.root)
         for _ in 0..<100 where !browser.isLoaded { try await Task.sleep(for: .milliseconds(20)) }

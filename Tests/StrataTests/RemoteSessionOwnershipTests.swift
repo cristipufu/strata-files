@@ -423,21 +423,24 @@ struct RemoteSessionOwnershipTests {
     }
 
     private final class BrowserEnvironment {
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, browsing: RemoteBrowsing,
              openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { _ in throw Failure.refused }) throws {
             let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: .live)
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: testEnvironment.services.copies), copies: testEnvironment.services.copies)
             services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: DirectoryReader { _, _, _ in [] },
                 remoteBrowsing: browsing,
                 openContainer: openContainer)

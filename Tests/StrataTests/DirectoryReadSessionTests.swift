@@ -10,17 +10,21 @@ import Testing
 @testable import StrataSearch
 
 struct DirectoryReadSessionTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private typealias Reads = ControlledDirectoryReads
 
     private func browser(_ reads: Reads) -> BrowserViewController {
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: testEnvironment.services.clipboard,
             directories: reads.reader)
         let browser = BrowserViewController(services: services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
@@ -33,13 +37,13 @@ struct DirectoryReadSessionTests {
         let reads = Reads()
         defer { reads.stop() }
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: testEnvironment.services.clipboard,
             directories: reads.reader,
             availableCapacity: { _ in 123 })
         let browser = BrowserViewController(services: services)
@@ -198,7 +202,7 @@ struct DirectoryReadSessionTests {
         let tree = try TestTree("a.txt", "b.txt")
         let reads = Reads()
         defer { reads.stop() }
-        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         let pane = ColumnPane(folder: tree.root, controller: controller)
         let a = try #require(FileEntry(url: tree.url("a.txt")))
         let b = try #require(FileEntry(url: tree.url("b.txt")))
@@ -800,16 +804,16 @@ struct DirectoryReadSessionTests {
 
     private func window(_ folder: URL, second: URL?, reads: Reads,
                         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-                        clipboard: Clipboard = .shared) -> BrowserWindowController {
+                        clipboard: Clipboard? = nil) -> BrowserWindowController {
         _ = NSApplication.shared
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: clipboard,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: clipboard ?? testEnvironment.services.clipboard,
             directories: reads.reader, mediaReader: mediaReader)
         let controller = BrowserWindowController(location: folder, secondPane: second, services: services)
         controller.split.splitView.autosaveName = nil

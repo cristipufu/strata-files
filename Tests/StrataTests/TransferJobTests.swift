@@ -15,9 +15,13 @@ import Testing
 /// folder never goes into itself, and a name clash is settled for that item alone. A replaced item goes to your real
 /// Trash: each test takes it back out.
 @Suite(.serialized) struct TransferJobTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func run(_ sources: [URL], to folder: URL, _ mode: TransferMode,
                      conflicts: ConflictResolver = .keepBoth) async -> TransferJob {
-        let job = TransferQueue.shared.enqueue(sources, to: folder, mode: mode, options: .init(verify: false, clone: false),
+        let job = testEnvironment.services.transfers.enqueue(sources, to: folder, mode: mode, options: .init(verify: false, clone: false),
                                                undo: nil, conflicts: conflicts)
         await job.finished()
         return job
@@ -75,7 +79,7 @@ import Testing
                                      (.keepBoth, ["to/a.txt": "to/a.txt", "to/a 2.txt": "from/a.txt"]),
                                      (.replace, ["to/a.txt": "from/a.txt"])] {
             let tree = try TestTree("from/", "from/a.txt", "from/b.txt", "to/", "to/a.txt", "to/z.txt")
-            defer { tree.removeFromTrash() }
+            defer { tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
             _ = await run([tree.url("from/a.txt"), tree.url("from/b.txt")], to: tree.url("to"), .copy, conflicts: resolver)
             for (path, text) in expected { #expect(tree.text(path) == text, "\(path)") }
             // What didn't clash is copied either way, and nothing else in the folder is touched.
@@ -87,7 +91,7 @@ import Testing
     @Test func mergingKeepsWhatsOnlyInTheDestination() async throws {
         let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/same.txt", "from/box/older.txt",
                                 "to/", "to/box/", "to/box/mine.txt", "to/box/same.txt", "to/box/older.txt")
-        defer { tree.removeFromTrash() }
+        defer { tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
         let past = Date(timeIntervalSinceNow: -3600)
         try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("to/box/same.txt").path)
         try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("from/box/older.txt").path)
@@ -102,7 +106,7 @@ import Testing
 
     @Test func mergeAppliedToAllSettlesTwoFilesByWhichIsNewer() async throws {
         let tree = try TestTree("from/", "from/newer.txt", "from/older.txt", "to/", "to/newer.txt", "to/older.txt")
-        defer { tree.removeFromTrash() }
+        defer { tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
         let past = Date(timeIntervalSinceNow: -3600)
         try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("to/newer.txt").path)
         try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url("from/older.txt").path)
@@ -118,7 +122,7 @@ import Testing
         let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/older.txt", "to/", "to/box/", "to/box/older.txt")
         let release = DispatchSemaphore(value: 0)
         // Only its own hook: other suites keep theirs. A held read is always let go.
-        defer { TransferEngine.hooks.beforeMergePlan = nil; release.signal(); tree.removeFromTrash() }
+        defer { TransferEngine.hooks.beforeMergePlan = nil; release.signal(); tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
         // The destination's copy is newer, so the merge would leave it out and the job's count would change.
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)],
                                               ofItemAtPath: tree.url("from/box/older.txt").path)
@@ -130,7 +134,7 @@ import Testing
             release.wait()
         }
         let merge = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
-        let job = TransferQueue.shared.enqueue([tree.url("from/box")], to: tree.url("to"), mode: .copy,
+        let job = testEnvironment.services.transfers.enqueue([tree.url("from/box")], to: tree.url("to"), mode: .copy,
                                                options: .init(verify: false, clone: false), undo: nil, conflicts: merge)
         // Bounded, counted on the main actor the queue starts jobs from: if another suite reset the hooks meanwhile,
         // the merge runs without stopping here and this fails.
@@ -151,7 +155,7 @@ import Testing
     @Test func stoppingAsMergeIsChosenChangesNothing() async throws {
         let tree = try TestTree("from/", "from/box/", "from/box/new.txt", "from/box/same.txt", "from/newer.txt",
                                 "to/", "to/box/", "to/box/same.txt", "to/newer.txt")
-        defer { tree.removeFromTrash() }
+        defer { tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
         let past = Date(timeIntervalSinceNow: -3600)
         for path in ["to/box/same.txt", "to/newer.txt"] {
             try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: tree.url(path).path)
@@ -164,7 +168,7 @@ import Testing
             box.job?.cancel()
             return ConflictResolution(decision: .merge, applyToAll: true)
         }
-        let job = TransferQueue.shared.enqueue([tree.url("from/box"), tree.url("from/newer.txt")], to: tree.url("to"), mode: .copy,
+        let job = testEnvironment.services.transfers.enqueue([tree.url("from/box"), tree.url("from/newer.txt")], to: tree.url("to"), mode: .copy,
                                                options: .init(verify: false, clone: false), undo: nil, conflicts: stopping)
         box.job = job
         await job.finished()
@@ -179,7 +183,7 @@ import Testing
             for alreadyThere in [false, true] {
                 let tree = try TestTree("x/", "x/a.txt", "y/", "y/a.txt", "to/")
                 if alreadyThere { try tree.add(["to/a.txt"]) }
-                defer { tree.removeFromTrash() }
+                defer { tree.removeFromTrash(history: testEnvironment.services.transfers.history) }
                 let job = await run([tree.url("x/a.txt"), tree.url("y/a.txt")], to: tree.url("to"), mode, conflicts: resolver)
                 #expect(job.failures.isEmpty, "\(mode) \(label) \(alreadyThere): \(job.failures.map(\.message))")
                 #expect(job.errorMessage == nil)
@@ -210,7 +214,7 @@ import Testing
 
     @Test func otherPaneCommandsSendOnlyTheFocusedPanesSelection() async throws {
         let tree = try TestTree("left/", "left/a.txt", "left/b.txt", "right/", "right/c.txt")
-        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: .shared)
+        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: testEnvironment.services)
         let other = try #require(window.otherBrowser)
         await wait { window.browser.itemCount == 2 && other.itemCount == 1 }
         #expect(window.browser.directory?.lastPathComponent == "left" && other.directory?.lastPathComponent == "right")

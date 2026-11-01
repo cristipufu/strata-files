@@ -1,6 +1,10 @@
 from pathlib import Path
 import re
 import unittest
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from swift_source import code_only
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +28,25 @@ class TestIsolationTests(unittest.TestCase):
         new_suite = re.compile(r"UserDefaults(?:\.init)?\(suiteName: (?![\w.]+\.domainName\))")
         offenders = [name for name, text in self.sources() if new_suite.search(text)]
         self.assertEqual(offenders, [], "Use Prefs.isolated() for a new suite.")
+
+    def test_native_fixtures_never_borrow_application_services_or_clipboard(self):
+        shared = re.compile(r"\b(?:services|clipboard):\s*\.shared\b|\bBrowserServices\.shared\b|\bClipboard\.shared\b"
+                            r"|\bclipboard:\s*Clipboard\??\s*=\s*\.shared\b")
+        offenders = [name for name, text in self.sources() if shared.search(code_only(text))]
+        self.assertEqual(offenders, [], "Use IndependentEnvironment for native browser fixtures.")
+
+    def test_custom_browser_compositions_keep_independent_dependencies(self):
+        offenders = []
+        for name, source in self.sources():
+            code = code_only(source)
+            for match in re.finditer(r"\bBrowserServices\.configured\(", code):
+                depth, end = 1, match.end()
+                while end < len(code) and depth:
+                    depth += (code[end] == "(") - (code[end] == ")")
+                    end += 1
+                if re.search(r"\b\w+:\s*\.(?:shared|live)\b", code[match.end():end]):
+                    offenders.append(name)
+        self.assertEqual(offenders, [], "Compose fixtures from IndependentEnvironment or explicit isolated dependencies.")
 
 
 class SoundTests(unittest.TestCase):

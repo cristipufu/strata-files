@@ -11,6 +11,10 @@ import Testing
 @testable import StrataSearch
 
 struct QuickLookLifecycleTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func previewHost(in view: NSView) -> QuickLookPreviewView? {
         if let preview = view as? QuickLookPreviewView { return preview }
         return view.subviews.lazy.compactMap { previewHost(in: $0) }.first
@@ -20,7 +24,7 @@ struct QuickLookLifecycleTests {
         let _ = NSApplication.shared
         let tree = try TestTree("folder/")
         var pending: DispatchWorkItem?
-        let inspector = InspectorViewController(services: .shared, previewScheduler: { pending = $0 })
+        let inspector = InspectorViewController(services: testEnvironment.services, previewScheduler: { pending = $0 })
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 700),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -99,7 +103,7 @@ struct QuickLookLifecycleTests {
         let tree = try TestTree("binary.swift")
         try Data([0, 1, 0, 2]).write(to: tree.url("binary.swift"))
         var pending: DispatchWorkItem?
-        let inspector = InspectorViewController(services: .shared, previewScheduler: { pending = $0 })
+        let inspector = InspectorViewController(services: testEnvironment.services, previewScheduler: { pending = $0 })
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 700),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

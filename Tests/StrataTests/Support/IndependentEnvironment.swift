@@ -16,10 +16,12 @@ final class IndependentEnvironment {
     let state: TestTree
     let storage: SecureStorage.Context
     let services: BrowserServices
+    var preferences: Prefs { services.preferences }
+    var defaults: UserDefaults { preferences.defaults }
 
-    init(directories: DirectoryReader? = nil) throws {
+    init(directories: DirectoryReader? = nil, preferences supplied: Prefs? = nil) throws {
         state = try TestTree()
-        let preferences = try Prefs.isolated()
+        let preferences = try supplied ?? Prefs.isolated()
         preferences.showIconPreviews = false
         storage = SecureStorage.Context(directory: state.url("state"), caches: state.url("cache"),
                                         key: SymmetricKey(size: .bits256))

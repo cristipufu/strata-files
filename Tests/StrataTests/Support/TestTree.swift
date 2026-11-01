@@ -135,9 +135,13 @@ final class TestTree {
     /// Takes back out of your Trash exactly what this tree's items were moved to it as (History, a test run's own, has
     /// where each went; replaced items too).
     func removeFromTrash() {
-        let prefix = root.path + "/"
-        for entry in OperationLog.shared.entries {
-            for pair in entry.pairs + entry.replaced where pair[0].hasPrefix(prefix) {
+        removeFromTrash(history: .shared)
+    }
+
+    func removeFromTrash(history: OperationLog) {
+        let prefix = root.lexicallyStandardized.path + "/"
+        for entry in history.entries {
+            for pair in entry.pairs + entry.replaced where URL(fileURLWithPath: pair[0]).lexicallyStandardized.path.hasPrefix(prefix) {
                 let trashed = URL(fileURLWithPath: pair[1])
                 Self.removeFromTrash(trashed, matching: entry.identities[pair[1]])
             }

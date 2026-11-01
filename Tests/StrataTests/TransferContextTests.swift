@@ -12,18 +12,24 @@ import Testing
 
 struct TransferContextTests {
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
         let preferences: Prefs
         var defaults: UserDefaults { preferences.defaults }
         let storage: SecureStorage.Context
         let history: OperationLog
         let queue: TransferQueue
+        lazy var services = BrowserServices.configured(
+            transfers: queue, visits: Frecency(preferences: defaults), windows: .headless,
+            remote: testEnvironment.services.remote, containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard)
 
         init(_ tree: TestTree) throws {
             preferences = try Prefs.isolated()
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                              key: SymmetricKey(data: Data(repeating: 9, count: 32)))
-            history = OperationLog(storage: storage, copies: .live)
-            queue = TransferQueue(preferences: preferences, history: history, copies: .live)
+            history = OperationLog(storage: storage, copies: testEnvironment.services.copies)
+            queue = TransferQueue(preferences: preferences, history: history, copies: testEnvironment.services.copies)
         }
     }
 
@@ -226,14 +232,7 @@ struct TransferContextTests {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("left/a.txt", "left/ab.txt", "right/b.txt", "right/bb.txt", "state/")
             let env = try Environment(tree)
-            let services = BrowserServices.configured(
-                transfers: env.queue,
-                visits: Frecency(preferences: env.defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared)
+            let services = env.services
             let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
             defer { controller.window?.contentViewController = nil }
             let left = controller.browser
@@ -263,14 +262,7 @@ struct TransferContextTests {
     @Test func replacementPanesAndBrowserCommandsKeepTheWindowServices() async throws {
         let tree = try TestTree("left/a.txt", "left/ab.txt", "right/", "third/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
         defer { controller.window?.contentViewController = nil }
         controller.toggleDualPane(at: nil)
@@ -290,22 +282,8 @@ struct TransferContextTests {
         let first = try TestTree("start/", "visited/", "state/")
         let second = try TestTree("start/", "visited/", "state/")
         let a = try Environment(first), b = try Environment(second)
-        let servicesA = BrowserServices.configured(
-            transfers: a.queue,
-            visits: Frecency(preferences: a.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
-        let servicesB = BrowserServices.configured(
-            transfers: b.queue,
-            visits: Frecency(preferences: b.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let servicesA = a.services
+        let servicesB = b.services
         let windowA = makeWindow(first.url("start"), services: servicesA)
         let windowB = makeWindow(second.url("start"), services: servicesB)
         defer {
@@ -332,14 +310,7 @@ struct TransferContextTests {
     @Test func bothSidebarDropModesUseTheWindowQueue() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "places/", "folders/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let sidebar = SidebarViewController(services: services)
         _ = sidebar.view
         let folderTree = try #require(sidebar.children.compactMap { $0 as? FolderTreeController }.first)
@@ -365,9 +336,7 @@ struct TransferContextTests {
         for mode in [BrowserViewMode.list, .grid, .columns, .gallery] {
             let tree = try TestTree("a.txt", "shown/", "shown/inner/", "shown/inner b/", "state/")
             let env = try Environment(tree)
-            let services = BrowserServices.configured(
-                transfers: env.queue, visits: Frecency(preferences: env.defaults), windows: .headless, remote: .shared,
-                containers: .shared, containerStore: .shared, clipboard: .shared)
+            let services = env.services
             let browser = BrowserViewController(services: services)
             browser.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
             browser.setMode(mode, remember: false)
@@ -423,14 +392,7 @@ struct TransferContextTests {
     @Test func completedTransfersDoNotKeepClosedPanesAlive() async throws {
         let tree = try TestTree("left/a.txt", "right/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
         defer { controller.window?.contentViewController = nil }
         var other = controller.otherBrowser
@@ -453,14 +415,7 @@ struct TransferContextTests {
     @Test func fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled() async throws {
         let tree = try TestTree("state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         for cancelled in [false, true] {
             var browser: BrowserViewController? = BrowserViewController(services: services)
             weak var heldBrowser: BrowserViewController?

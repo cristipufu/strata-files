@@ -11,6 +11,10 @@ import Testing
 @testable import StrataSearch
 
 struct ColumnRevealTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     /// Columns read their folders off the main thread: waits until they show what's expected (or gives up).
     private func wait(until condition: () -> Bool) async {
         for _ in 0..<100 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
@@ -26,9 +30,9 @@ struct ColumnRevealTests {
         try FileManager.default.createDirectory(at: made.appending(path: "Parent/Old/inner"), withIntermediateDirectories: true)
         try "hi".write(to: made.appending(path: "Parent/notes.txt"), atomically: true, encoding: .utf8)
 
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 500)
-        let entries = try await DirectoryLoader.load(made, showHidden: false, copies: .live).entries
+        let entries = try await DirectoryLoader.load(made, showHidden: false, copies: testEnvironment.services.copies).entries
         // Spelled as listed (the temporary folder is reached through a link), like the browser has them.
         let parent = try #require(entries.first { $0.name == "Parent" }).url
         let root = parent.deletingLastPathComponent()
@@ -40,7 +44,7 @@ struct ColumnRevealTests {
 
         try FileManager.default.removeItem(at: deleted)
         // What the browser does after deleting: shows its folder again, then selects what was selected.
-        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false, copies: .live).entries)
+        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false, copies: testEnvironment.services.copies).entries)
         columns.select([deleted])
         await wait { columns.location?.fileViewKey == parent.fileViewKey }
         #expect(columns.location?.fileViewKey == parent.fileViewKey)

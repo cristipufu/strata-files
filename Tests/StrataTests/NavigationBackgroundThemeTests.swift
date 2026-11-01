@@ -53,7 +53,7 @@ extension ColorThemeTests {
     @Test func backAndForwardLoseTheirSharedGlassInColoredThemesAndKeepTheirNativeActions() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: .shared)))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),

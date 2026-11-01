@@ -64,6 +64,8 @@ struct InspectorProviderTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         var defaults: UserDefaults { preferences.defaults }
         let remote: RemoteServices
@@ -73,6 +75,7 @@ struct InspectorProviderTests {
             preferences = try Prefs.isolated()
             preferences.defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let keychain = RemoteKeychain(access: KeychainAccess(
                 copy: { _ in (errSecItemNotFound, nil) },
                 add: { _ in errSecSuccess },
@@ -93,7 +96,7 @@ struct InspectorProviderTests {
                 key: nil
             )
             let copies = extraProviders.isEmpty
-                ? CopyProviders(servers: remote.files, containers: .shared)
+                ? CopyProviders(servers: remote.files, containers: testEnvironment.services.containers)
                 : CopyProviders(extraProviders, remoteCopies: remote.copies,
                                 containerCopies: ContainerCopyStore(root: tree.url(folder + "/containers")),
                                 clipboardRoot: tree.url(folder + "/clipboard"))
@@ -102,9 +105,9 @@ struct InspectorProviderTests {
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: DirectoryReader { _, _, _ in [] })
         }
     }

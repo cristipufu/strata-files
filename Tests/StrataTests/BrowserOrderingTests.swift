@@ -10,25 +10,7 @@ import Testing
 @testable import StrataSearch
 
 struct BrowserOrderingTests {
-    private final class Environment {
-        let state: TestTree
-        let preferences: Prefs
-        let services: BrowserServices
-        init(reader: DirectoryReader = .live) throws {
-            state = try TestTree()
-            preferences = try Prefs.isolated()
-            preferences.showIconPreviews = false
-            services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil), copies: .live), copies: .live),
-                visits: Frecency(preferences: preferences.defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
-                directories: reader)
-        }
-    }
+    private typealias Environment = IndependentEnvironment
 
     private func entry(_ path: String, size: Int64? = 0, label: String? = nil, folder: Bool = false,
                        package: Bool = false, modified: Date? = nil, created: Date? = nil,
@@ -251,7 +233,7 @@ struct BrowserOrderingTests {
     @Test func nativeHeadersSelectionsAndSavedChoicesFollowResultAndFolderTransitions() async throws {
         let tree = try TestTree("a", "z")
         let entries = [entry("a", size: 1), entry("z", size: 10)]
-        let environment = try Environment(reader: DirectoryReader { _, _, _ in entries })
+        let environment = try Environment(directories: DirectoryReader { _, _, _ in entries })
         for remember in [false, true] {
             environment.preferences.sortColumn = "name"; environment.preferences.sortAscending = true
             let browser = BrowserViewController(services: environment.services)

@@ -11,6 +11,10 @@ import Testing
 
 @Suite(.serialized)
 struct ColorThemeTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func resolved(_ color: NSColor, in appearance: NSAppearance) throws -> NSColor {
         var rgb: NSColor?
         appearance.performAsCurrentDrawingAppearance { rgb = color.usingColorSpace(.sRGB) }
@@ -100,15 +104,15 @@ struct ColorThemeTests {
         let saved = ThemeStyle.options
         defer { ThemeStyle.apply(saved, windows: []) }
         let tree = try TestTree("a/b/c/note.txt")
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         let entry = try #require(FileEntry(url: tree.url("a")))
         #expect(browser.outlineView(browser.outlineView, rowViewForItem: FileNode(entry: entry)) is ThemeRowView)
 
         let scroll = NSScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll, directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(scrollView: scroll, directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live).entries)
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: testEnvironment.services.copies).entries)
         columns.select([tree.url("a/b/c/note.txt")])
         let strip = try #require(scroll.documentView)
         for _ in 0..<100 {
@@ -140,7 +144,7 @@ struct ColorThemeTests {
         // Archive fixtures keep Quick Look’s external renderer out of this headless appearance test.
         let tree = try TestTree("one.zip", "two.zip", "three.zip")
         for mode in BrowserViewMode.ordered {
-            let browser = BrowserViewController(services: .shared)
+            let browser = BrowserViewController(services: testEnvironment.services)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
             browser.load(tree.root)
@@ -256,7 +260,7 @@ struct ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: []) }
         let cell = NameCellView()
         let image = NSImage(size: NSSize(width: 18, height: 18))
-        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false, thumbnails: .shared, typography: .standard)
+        cell.configure(name: "original.txt", icon: image, matches: [0], dimmed: false, thumbnails: testEnvironment.services.thumbnails, typography: .standard)
         let label = try #require(cell.textField)
         label.isEditable = true
         label.stringValue = "still typing.txt"

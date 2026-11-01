@@ -41,6 +41,8 @@ struct WorkspaceOwnershipTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         var defaults: UserDefaults { preferences.defaults }
         let services: BrowserServices
@@ -49,17 +51,18 @@ struct WorkspaceOwnershipTests {
         init(_ tree: TestTree) throws {
             preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let state = tree.url(UUID().uuidString)
             let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: .live)
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: testEnvironment.services.copies), copies: testEnvironment.services.copies)
             services = BrowserServices.configured(
                 transfers: transfers,
                 visits: Frecency(preferences: preferences.defaults),
                 windows: windows.boundary,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: DirectoryReader { _, _, _ in [] })
         }
     }

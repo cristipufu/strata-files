@@ -11,6 +11,10 @@ import Testing
 
 @Suite(.serialized)
 struct CommandCatalogTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func waitForLoad(_ browser: BrowserViewController) async throws {
         for _ in 0..<200 {
             if browser.isLoaded && !browser.isLoadingFolder { return }
@@ -21,7 +25,7 @@ struct CommandCatalogTests {
 
     private func window(at folder: URL, other: URL? = nil) throws -> BrowserWindowController {
         let _ = NSApplication.shared
-        let controller = BrowserWindowController(location: folder, secondPane: other, services: .shared)
+        let controller = BrowserWindowController(location: folder, secondPane: other, services: testEnvironment.services)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")

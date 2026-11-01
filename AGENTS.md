@@ -429,6 +429,9 @@ searches joined before the scope ends. Keep the compact-storage and buffer-growt
   already resolved); `lexicallyStandardized`, `standardizedFileURL` and `resolvingSymlinksInPath` drop the `/private`.
 - View controllers run without a window: `BrowserViewController`, `ColumnBrowserViewController` and
   `BrowserWindowController` (two panes) all load, select and run commands headless.
+- Native browser fixtures use `IndependentEnvironment`, kept alive through their views' work. Custom compositions
+  keep their own clipboard, credentials and copy roots, and their queue and History use the same providers. The
+  Python isolation checks reject borrowed application services and clipboards in these fixtures.
 - If a check you broke on purpose still passes, `touch` the file and run again: the build can miss quick edits.
 
 ### Isolation

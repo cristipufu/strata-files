@@ -82,19 +82,22 @@ struct ProviderMediaInfoTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders, reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
             let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: .live), copies: copies),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 mediaReader: reader)
         }
     }

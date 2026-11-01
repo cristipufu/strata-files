@@ -9,8 +9,12 @@ import Testing
 @testable import StrataSearch
 
 struct FolderTreeOrderTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test func trashStaysLastWhetherOrNotContainersAreAvailable() throws {
-        let tree = FolderTreeController(places: try PlaceChecks.isolated(), transfers: .shared, preferences: .shared, remote: .shared, copies: .live, containerStore: .shared, clipboard: .shared, watchBudget: .shared)
+        let tree = FolderTreeController(places: testEnvironment.services.places, transfers: testEnvironment.services.transfers, preferences: testEnvironment.services.preferences, remote: testEnvironment.services.remote, copies: testEnvironment.services.copies, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, watchBudget: FolderWatchers.Budget(limit: 96))
         for containers in [false, true, false, true] {
             let roots = tree.currentRoots(hasContainers: containers)
             #expect(roots.first?.url == Places.home)

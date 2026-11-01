@@ -206,6 +206,8 @@ struct BrowserCopyProviderTests {
     }
 
     private final class Environment {
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let storage: SecureStorage.Context
         let history: OperationLog
@@ -221,12 +223,12 @@ struct BrowserCopyProviderTests {
             preferences = try Prefs.isolated()
             preferences.defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             storage = SecureStorage.Context(
                 directory: tree.url(folder + "/state"),
                 caches: tree.url(folder + "/state/Caches"),
                 key: nil
             )
-            history = OperationLog(storage: storage, copies: .live)
             let serverStorage = tree.url(folder + "/remote-storage")
             try FileManager.default.createDirectory(at: serverStorage, withIntermediateDirectories: true)
             backend = DiskRemoteBackend(root: serverStorage)
@@ -247,9 +249,10 @@ struct BrowserCopyProviderTests {
             copies = CopyProviders(
                 [ServerCopyProvider(files: remote.files)] + extraProviders,
                 remoteCopies: remote.copies,
-                containerCopies: .shared,
+                containerCopies: testEnvironment.services.containers.copies,
                 clipboardRoot: tree.url(folder + "/clipboard")
             )
+            history = OperationLog(storage: storage, copies: copies)
             pasteboard = NSPasteboard(name: .init("StrataBrowserCopyProviderTests.pasteboard.\(UUID().uuidString)"))
             clipboard = Clipboard(pasteboard: pasteboard, notifications: NotificationCenter())
             queue = TransferQueue(preferences: preferences, history: history, copies: copies)
@@ -258,8 +261,8 @@ struct BrowserCopyProviderTests {
                 visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
-                containers: .shared,
-                containerStore: .shared,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
                 clipboard: clipboard)
         }
 
@@ -356,17 +359,17 @@ struct BrowserCopyProviderTests {
         #expect(FileOps.canTrash(localFile, copies: first.copies))
         #expect(SidebarViewController.canTrash([localFile], copies: first.copies, mounts: MountPoints.current()))
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies, history: .shared)
+            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies, history: first.history)
         }
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies, history: .shared)
+            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies, history: first.history)
         }
         await #expect(throws: FileOps.insideArchiveError) {
-            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies, history: .shared)
+            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies, history: first.history)
         }
         await #expect(throws: FileOps.insideArchiveError) {
             try await FileOps.move([(from: localFile, to: topA.appending(path: "file.txt"))],
-                                   actionName: "Move", undo: nil, history: .shared, copies: first.copies)
+                                   actionName: "Move", undo: nil, history: first.history, copies: first.copies)
         }
         withExtendedLifetime((tree, first, second, browserA, browserB)) {}
     }

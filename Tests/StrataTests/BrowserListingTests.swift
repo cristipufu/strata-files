@@ -10,6 +10,10 @@ import Testing
 @testable import StrataSearch
 
 struct BrowserListingTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func entry(_ path: String, size: Int64 = 0, label: String? = nil, folder: Bool = false) -> FileEntry {
         let url = URL(fileURLWithPath: "/strata-listing-fixture/" + path, isDirectory: folder)
         return FileEntry(url: url, name: url.lastPathComponent, isDirectory: folder, isPackage: false,
@@ -103,7 +107,7 @@ struct BrowserListingTests {
         listing.replace([a, a], preservingNodes: false, sort: { _ in })
         #expect(listing.updateResults([entry("a.txt", size: 42), b], sorted: false) == nil)
         #expect(listing.nodes.map(\.entry) == [a, a])
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.showResults([a, a], total: 2)
         let changedA = entry("a.txt", size: 42)
@@ -132,7 +136,7 @@ struct BrowserListingTests {
     }
 
     @Test func resultRefreshRetainsNativeSelectionAndResortsChangedValues() throws {
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         let a = entry("a.txt", size: 1), b = entry("b.txt", size: 2)
         browser.showResults([a, b], total: 2)
@@ -162,13 +166,13 @@ struct BrowserListingTests {
         let reader = DirectoryReader { _, _, _ in entries }
         for mode in BrowserViewMode.ordered {
             let browser = BrowserViewController(services: BrowserServices.configured(
-                transfers: .shared,
-                visits: .shared,
+                transfers: testEnvironment.services.transfers,
+                visits: testEnvironment.services.visits,
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: reader))
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
@@ -220,8 +224,8 @@ struct BrowserListingTests {
         let root = tree.root
         let reader = DirectoryReader { url, _, _ in url.standardizedFileURL == root.standardizedFileURL ? entries : [] }
         let browser = BrowserViewController(services: BrowserServices.configured(
-            transfers: .shared, visits: .shared, windows: .headless, remote: .shared, containers: .shared,
-            containerStore: .shared, clipboard: .shared, directories: reader))
+            transfers: testEnvironment.services.transfers, visits: testEnvironment.services.visits, windows: .headless, remote: testEnvironment.services.remote, containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, directories: reader))
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.load(tree.root)
         await browser.directoryReads.task?.value

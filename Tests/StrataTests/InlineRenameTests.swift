@@ -13,13 +13,17 @@ import Testing
 /// Renaming one item in place (Return, a slow click, File ▸ Rename): only that item changes name, it stays in its
 /// folder, it never takes the name of another item, and undo gives the old name back.
 struct InlineRenameTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func wait(until condition: () -> Bool) async {
         for _ in 0..<60 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
     @Test func onlyThatItemChangesName() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "b/", "b/a.txt", "link -> a.txt")
-        let renamed = try await FileOps.rename(tree.url("a.txt"), to: "c.txt", undo: nil, copies: .live, history: .shared)
+        let renamed = try await FileOps.rename(tree.url("a.txt"), to: "c.txt", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         #expect(renamed.lastPathComponent == "c.txt")
         #expect(tree.snapshot() == ["ab.txt", "b/", "b/a.txt", "c.txt", "link -> a.txt"])
         #expect(tree.text("c.txt") == "a.txt")
@@ -27,14 +31,14 @@ struct InlineRenameTests {
 
     @Test func aLinkIsRenamedNotWhatItPointsTo() async throws {
         let tree = try TestTree("target.txt", "link -> target.txt")
-        _ = try await FileOps.rename(tree.url("link"), to: "renamed link", undo: nil, copies: .live, history: .shared)
+        _ = try await FileOps.rename(tree.url("link"), to: "renamed link", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         #expect(tree.snapshot() == ["renamed link -> target.txt", "target.txt"])
     }
 
     @Test func neverTheNameOfAnotherItem() async throws {
         let tree = try TestTree("a.txt", "b.txt", "folder/")
         for name in ["b.txt", "B.TXT", "folder", "FOLDER"] {
-            await #expect(throws: (any Error).self, "\(name)") { _ = try await FileOps.rename(tree.url("a.txt"), to: name, undo: nil, copies: .live, history: .shared) }
+            await #expect(throws: (any Error).self, "\(name)") { _ = try await FileOps.rename(tree.url("a.txt"), to: name, undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history) }
         }
         #expect(tree.snapshot() == ["a.txt", "b.txt", "folder/"])
         #expect(tree.text("b.txt") == "b.txt")
@@ -42,7 +46,7 @@ struct InlineRenameTests {
 
     @Test func onlyTheCaseCanChange() async throws {
         let tree = try TestTree("report.txt", "other.txt")
-        _ = try await FileOps.rename(tree.url("report.txt"), to: "Report.TXT", undo: nil, copies: .live, history: .shared)
+        _ = try await FileOps.rename(tree.url("report.txt"), to: "Report.TXT", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         #expect(tree.snapshot() == ["Report.TXT", "other.txt"])
         #expect(tree.text("Report.TXT") == "report.txt")
     }
@@ -52,7 +56,7 @@ struct InlineRenameTests {
         let overlong = String(repeating: "a", count: 256)
         for name in ["../escape.txt", "x/a.txt", "..", ".", "", "a:b.txt", "a\nb.txt", "a\u{00}b.txt", "a\u{7F}b.txt", overlong] {
             await #expect(throws: (any Error).self, "\(name)") {
-                _ = try await FileOps.rename(tree.url("folder/a.txt"), to: name, undo: nil, copies: .live, history: .shared)
+                _ = try await FileOps.rename(tree.url("folder/a.txt"), to: name, undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             }
         }
         #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/x/"])
@@ -73,7 +77,7 @@ struct InlineRenameTests {
         field.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification, object: field))
         #expect(committed == "bad/name.jpg")
 
-        let gallery = GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())
+        let gallery = GalleryViewController(thumbnails: testEnvironment.services.thumbnails, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated())
         gallery.setEntries([entry])
         #expect(gallery.beginRename(entry.url))
         let galleryField = try #require(gallery.view.subviews.compactMap { $0 as? InlineRenameField }.first)
@@ -87,7 +91,7 @@ struct InlineRenameTests {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("sub/", "sub/a.txt", "sub/b.txt", "top.txt")
         let rootEntries = try ["sub", "top.txt"].map { try #require(FileEntry(url: tree.url($0))) }
-        let columns = ColumnBrowserViewController(directoryReader: .live, preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
+        let columns = ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
         let metadata = FileCollectionMetadata(ordered: { $0.name < $1.name }, canMeasure: { _ in false }, size: { _ in nil })
         columns.apply(FileCollectionContent(directory: tree.root, entries: rootEntries, matches: [:]),
@@ -103,8 +107,8 @@ struct InlineRenameTests {
         columns.select([subA, subB], scroll: false)
         #expect(columns.selectedURLs == [subA, subB])
         // Selecting newly renamed items in that deeper column reloads the column in place and selects them.
-        let renamedA = try await FileOps.rename(subA, to: "a-renamed.txt", undo: nil, copies: .live, history: .shared)
-        let renamedB = try await FileOps.rename(subB, to: "b-renamed.txt", undo: nil, copies: .live, history: .shared)
+        let renamedA = try await FileOps.rename(subA, to: "a-renamed.txt", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
+        let renamedB = try await FileOps.rename(subB, to: "b-renamed.txt", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         columns.select([renamedA, renamedB], scroll: false)
         await wait { columns.selectedURLs == [renamedA, renamedB] }
         #expect(columns.selectedURLs == [renamedA, renamedB])
@@ -113,14 +117,14 @@ struct InlineRenameTests {
 
     @Test func expandedSubfolderSelectionSurvivesBrowserRefresh() async throws {
         let tree = try TestTree("sub/", "sub/a.txt", "sub/b.txt")
-        let browser = BrowserViewController(services: .shared)
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.load(tree.root)
         await wait { browser.outlineView.numberOfRows == 1 }
         let subNode = try #require(browser.node(for: tree.url("sub")))
         browser.outlineView.expandItem(subNode)
         await wait { browser.node(for: tree.url("sub/a.txt")) != nil }
-        let renamed = try await FileOps.rename(tree.url("sub/a.txt"), to: "c.txt", undo: nil, copies: .live, history: .shared)
+        let renamed = try await FileOps.rename(tree.url("sub/a.txt"), to: "c.txt", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         browser.selectWhenShown([renamed])
         await wait { browser.selectedURLs == [renamed] }
         #expect(browser.selectedURLs == [renamed])
@@ -132,7 +136,7 @@ struct InlineRenameTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = try await FileOps.rename(tree.url("a.txt"), to: "b.txt", undo: undo, copies: .live, history: .shared)
+        _ = try await FileOps.rename(tree.url("a.txt"), to: "b.txt", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["b.txt", "keep.txt"])
         undo.undo()
@@ -143,7 +147,7 @@ struct InlineRenameTests {
     @Test func nothingInAnArchiveCopyIsRenamed() async {
         // Anything under the archives' copies is read-only; the check comes before anything on disk.
         let inside = ArchiveCache.root.appending(path: "never-made-\(UUID().uuidString)/contents/a.txt")
-        await #expect(throws: (any Error).self) { _ = try await FileOps.rename(inside, to: "b.txt", undo: nil, copies: .live, history: .shared) }
+        await #expect(throws: (any Error).self) { _ = try await FileOps.rename(inside, to: "b.txt", undo: nil, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history) }
         #expect(!FileManager.default.fileExists(atPath: inside.deletingLastPathComponent().path))
     }
 }
