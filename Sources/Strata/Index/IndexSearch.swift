@@ -90,69 +90,94 @@ nonisolated package struct IndexQuery: Sendable {
         let tokens = tokenize(text)
         query.caseSensitive = tokens.contains { caseWords.contains($0.lowercased()) }
         var pattern: String?
-        for token in tokens {
-            let lower = token.lowercased()
-            // With case on, words keep their letters (composed the same way names are compared).
-            let folded = query.caseSensitive ? token.precomposedStringWithCanonicalMapping : foldText(token)
-            if caseWords.contains(lower) || noCaseWords.contains(lower) {
-                continue
-            } else if lower.hasPrefix("regex:") || lower.hasPrefix("re:") {
-                let value = String(token.drop(while: { $0 != ":" }).dropFirst())
-                if !value.isEmpty { pattern = value }
-            } else if let value = value(of: lower, keys: ["ext:", "extension:"]) {
-                query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
-            } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
-                // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
-                let suffix = String(lower.dropFirst(2))
-                query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
-                if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
-            } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
-                // "kind:pdf" names an extension; "kind:spreadsheet" a group of them.
-                if let kind = kind(value) {
-                    query.kind = kind
-                } else if let group = extensionGroups[value] {
-                    query.extensions.formUnion(group)
-                } else {
-                    query.extensions.insert(value)
-                }
-            } else if let value = value(of: lower, keys: ["size:"]) {
-                (query.minSize, query.maxSize) = sizeRange(value)
-            } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
-                (query.modifiedAfter, query.modifiedBefore) = dateRange(value, now: now)
-            } else if let value = value(of: token, keys: ["in:", "In:", "IN:"]) {
-                // (Folder names below are matched without case either way.)
-                if value.hasPrefix("/") || value.hasPrefix("~") {
-                    query.scopePath = (value as NSString).expandingTildeInPath
-                } else {
-                    let scope = foldText(value)
-                    if !scope.isEmpty { query.scopeNames.append(Array(scope.utf8)) }
-                }
-            } else if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
-                let term = folded.dropFirst()
-                if !term.isEmpty { query.excludedTerms.append(Array(term.utf8)) }
-            } else if lower == "!" || lower == "-" {
-                continue   // Half-typed exclusion: not a term yet.
-            } else if lower.contains("/") {
-                // Folder parts are matched without case either way; the name (the last part) follows `case:`.
-                var parts = foldText(token).split(separator: "/").map { Array($0.utf8) }
-                if query.caseSensitive, parts.count > 1, let name = folded.split(separator: "/").last {
-                    parts[parts.count - 1] = Array(name.utf8)
-                }
-                if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
-            } else if !folded.isEmpty {
-                query.terms.append(Array(folded.utf8))
+        for token in tokens { read(token, into: &query, pattern: &pattern, now: now) }
+        finish(&query, pattern: pattern)
+        return query
+    }
+
+    /// One word of a query: a case word, a regex, a filter, a scope, or a term.
+    private static func read(_ token: String, into query: inout IndexQuery, pattern: inout String?, now: Date) {
+        let lower = token.lowercased()
+        if caseWords.contains(lower) || noCaseWords.contains(lower) { return }
+        if lower.hasPrefix("regex:") || lower.hasPrefix("re:") {
+            let value = String(token.drop(while: { $0 != ":" }).dropFirst())
+            if !value.isEmpty { pattern = value }
+        } else if readFilter(lower, into: &query, now: now) {
+            return
+        } else if let value = value(of: token, keys: ["in:", "In:", "IN:"]) {
+            // (Folder names below are matched without case either way.)
+            if value.hasPrefix("/") || value.hasPrefix("~") {
+                query.scopePath = (value as NSString).expandingTildeInPath
+            } else {
+                let scope = foldText(value)
+                if !scope.isEmpty { query.scopeNames.append(Array(scope.utf8)) }
             }
+        } else {
+            readTerm(token, into: &query)
         }
+    }
+
+    /// `ext:`, `*.ext`, `kind:`, `size:` or `modified:`: whether `lower` was one.
+    private static func readFilter(_ lower: String, into query: inout IndexQuery, now: Date) -> Bool {
+        if let value = value(of: lower, keys: ["ext:", "extension:"]) {
+            query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
+        } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
+            // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
+            let suffix = String(lower.dropFirst(2))
+            query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
+            if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
+        } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
+            // "kind:pdf" names an extension; "kind:spreadsheet" a group of them.
+            if let kind = kind(value) {
+                query.kind = kind
+            } else if let group = extensionGroups[value] {
+                query.extensions.formUnion(group)
+            } else {
+                query.extensions.insert(value)
+            }
+        } else if let value = value(of: lower, keys: ["size:"]) {
+            (query.minSize, query.maxSize) = sizeRange(value)
+        } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
+            (query.modifiedAfter, query.modifiedBefore) = dateRange(value, now: now)
+        } else {
+            return false
+        }
+        return true
+    }
+
+    /// A word to leave out ("-draft"), a path ("projects/app"), or a word the name contains.
+    private static func readTerm(_ token: String, into query: inout IndexQuery) {
+        let lower = token.lowercased()
+        // With case on, words keep their letters (composed the same way names are compared).
+        let folded = query.caseSensitive ? token.precomposedStringWithCanonicalMapping : foldText(token)
+        if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
+            let term = folded.dropFirst()
+            if !term.isEmpty { query.excludedTerms.append(Array(term.utf8)) }
+        } else if lower == "!" || lower == "-" {
+            return   // Half-typed exclusion: not a term yet.
+        } else if lower.contains("/") {
+            // Folder parts are matched without case either way; the name (the last part) follows `case:`.
+            var parts = foldText(token).split(separator: "/").map { Array($0.utf8) }
+            if query.caseSensitive, parts.count > 1, let name = folded.split(separator: "/").last {
+                parts[parts.count - 1] = Array(name.utf8)
+            }
+            if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
+        } else if !folded.isEmpty {
+            query.terms.append(Array(folded.utf8))
+        }
+    }
+
+    /// The regex, once every word is read (`case:` may come after it), and whether hidden items and build or cache
+    /// folders are wanted: names that start with a dot, or `in:target` (or another such folder) to look inside them.
+    private static func finish(_ query: inout IndexQuery, pattern: String?) {
         if let pattern {
             if let regex = NameRegex(pattern, caseSensitive: query.caseSensitive) { query.regex = regex } else { query.invalidRegex = true }
         }
         let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self).lowercased() }
-        // `in:target` (or another build/cache folder name) means you want to look inside such folders.
         let scopes = query.scopeNames.map { String(decoding: $0, as: UTF8.self) }
         query.includeHidden = mentioned.contains { $0.hasPrefix(".") } || scopes.contains { noiseWords.contains($0) }
         query.includeNoise = mentioned.contains { noiseWords.contains($0) || $0.hasPrefix(".") }
             || scopes.contains { buildFolderWords.contains($0) }
-        return query
     }
 
     private static let extensionGroups: [String: Set<String>] = [
@@ -452,24 +477,50 @@ nonisolated package enum IndexSearch {
     private static func match<Progress: FixedWidthInteger>(_ i: Int, _ query: IndexQuery, _ c: IndexStore.Columns, _ scopeID: Int32?,
                               _ extensions: [UInt64], _ now: Int, _ progress: [[Progress]]) -> Int? {
         let flags = c.flags[i]
-        if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return nil }
-        if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return nil }
-        if !query.includeHidden && flags & IndexStore.Flag.hidden != 0 { return nil }
+        guard passesFilters(i, flags, query, c) else { return nil }
+        let isDirectory = flags & IndexStore.Flag.directory != 0
+        let isPackage = flags & IndexStore.Flag.package != 0
+        let name = c.name(i)
+        guard var score = nameScore(i, flags, name, query, c, extensions, progress), let depth = depth(of: i, c, in: scopeID)
+        else { return nil }
+        // Prefer shallow paths, recent changes, apps and folders a little.
+        score -= depth * 2 + name.count / 6
+        let age = now - Int(c.mtime[i])
+        if age < 86_400 { score += 12 } else if age < 7 * 86_400 { score += 8 } else if age < 30 * 86_400 { score += 4 }
+        if isPackage { score += 10 } else if isDirectory { score += 4 }
+        return score + 1000
+    }
+
+    /// Whether the item is one the query looks at, by what it is, its size and its date.
+    @inline(__always)
+    private static func passesFilters(_ i: Int, _ flags: UInt8, _ query: IndexQuery, _ c: IndexStore.Columns) -> Bool {
+        if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return false }
+        if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return false }
+        if !query.includeHidden && flags & IndexStore.Flag.hidden != 0 { return false }
         let isDirectory = flags & IndexStore.Flag.directory != 0
         let isPackage = flags & IndexStore.Flag.package != 0
         switch query.kind {
-        case .folder: if !isDirectory || isPackage { return nil }
-        case .file: if isDirectory && !isPackage { return nil }
-        case .app: if !isPackage { return nil }
-        case .book, .comic: if isDirectory { return nil }
+        case .folder: if !isDirectory || isPackage { return false }
+        case .file: if isDirectory && !isPackage { return false }
+        case .app: if !isPackage { return false }
+        case .book, .comic: if isDirectory { return false }
         default: break
         }
-        if let minSize = query.minSize, c.size[i] < minSize { return nil }
-        if let maxSize = query.maxSize, c.size[i] > maxSize { return nil }
-        if let after = query.modifiedAfter, c.mtime[i] < after { return nil }
-        if let before = query.modifiedBefore, c.mtime[i] >= before { return nil }
+        if let minSize = query.minSize, c.size[i] < minSize { return false }
+        if let maxSize = query.maxSize, c.size[i] > maxSize { return false }
+        if let after = query.modifiedAfter, c.mtime[i] < after { return false }
+        if let before = query.modifiedBefore, c.mtime[i] >= before { return false }
+        return true
+    }
 
-        let name = c.name(i)
+    /// How well the item's name (and the folders above it, through `progress`) matches the query's words, or nil when
+    /// it doesn't.
+    @inline(__always)
+    private static func nameScore<Progress: FixedWidthInteger>(_ i: Int, _ flags: UInt8, _ name: UnsafeBufferPointer<UInt8>,
+                                                               _ query: IndexQuery, _ c: IndexStore.Columns,
+                                                               _ extensions: [UInt64], _ progress: [[Progress]]) -> Int? {
+        let isDirectory = flags & IndexStore.Flag.directory != 0
+        let isPackage = flags & IndexStore.Flag.package != 0
         // Names with non-ASCII bytes are compared Unicode-aware (folded once, or just composed with case on); ASCII
         // names take the byte search alone.
         let unicode = flags & IndexStore.Flag.unicodeName != 0
@@ -504,7 +555,12 @@ nonisolated package enum IndexSearch {
             score += positionScore(min(position, name.count - 1), last.count, name) + 20
         }
         for index in query.scopeNames.indices where progress[query.pathTerms.count + index][parent] < 1 { return nil }
-        // Depth doubles as the scope check: walk to the root once.
+        return score
+    }
+
+    /// How deep the item is, or nil when it isn't inside `scopeID`: one walk to the root does both.
+    @inline(__always)
+    private static func depth(of i: Int, _ c: IndexStore.Columns, in scopeID: Int32?) -> Int? {
         var depth = 0
         var inScope = scopeID == nil
         var ancestor = c.parent[i]
@@ -513,13 +569,7 @@ nonisolated package enum IndexSearch {
             depth += 1
             ancestor = c.parent[Int(ancestor)]
         }
-        guard inScope else { return nil }
-        // Prefer shallow paths, recent changes, apps and folders a little.
-        score -= depth * 2 + name.count / 6
-        let age = now - Int(c.mtime[i])
-        if age < 86_400 { score += 12 } else if age < 7 * 86_400 { score += 8 } else if age < 30 * 86_400 { score += 4 }
-        if isPackage { score += 10 } else if isDirectory { score += 4 }
-        return score + 1000
+        return inScope ? depth : nil
     }
 
     private static let appSuffix = Array(".app".utf8)
