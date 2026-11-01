@@ -8318,5 +8318,12 @@
     "replace": "        store(record, at: path)",
     "rule": "Semantic cancellation preserves existing passages after a cancelled refresh",
     "tests": "EmbedderCancellationTests/aCancelledRefreshPreservesItsExistingPassagesAndSavedIndex"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        refreshPending = true\n        if task == nil { scheduleRefresh() }",
+    "replace": "        runSearch()",
+    "rule": "Search refreshes let the current request finish instead of repeatedly restarting it",
+    "tests": "SearchRefreshTests/indexChangesLetTheCurrentSearchLandAndJoinOneDelayedRefresh"
   }
 ]

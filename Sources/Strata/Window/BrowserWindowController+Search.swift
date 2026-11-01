@@ -77,7 +77,7 @@ extension BrowserWindowController {
         indexRefresh.request { [weak self] in
             for p in self?.panes ?? [] {
                 switch p.destination {
-                case .search, .recents: p.search.run()
+                case .search, .recents: p.search.refresh()
                 case .folder, .duplicates: break
                 }
             }
@@ -85,7 +85,7 @@ extension BrowserWindowController {
     }
 
     @objc func indexPhaseChanged() {
-        for p in panes where p.destination == .recents && services.index.isReady { p.search.run() }
+        for p in panes where p.destination == .recents && services.index.isReady { p.search.refresh() }
         refreshPanels()
     }
 }

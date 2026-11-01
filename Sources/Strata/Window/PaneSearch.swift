@@ -20,11 +20,52 @@ import AppKit
     /// The scope `folderScan` was made for, as asked.
     private var folderScanScope: URL?
     private let scans: DispatchQueue
+    private let waitForRefresh: () async -> Void
+    private var refreshPending = false
+    private var refreshTask: Task<Void, Never>?
 
-    init(pane: Pane, services: BrowserServices, scans: DispatchQueue = FolderSearch.scanQueue) {
+    init(pane: Pane, services: BrowserServices, scans: DispatchQueue = FolderSearch.scanQueue,
+         waitForRefresh: @escaping () async -> Void = { try? await Task.sleep(for: .seconds(2)) }) {
         self.pane = pane
         self.services = services
         self.scans = scans
+        self.waitForRefresh = waitForRefresh
+    }
+
+    /// An index update must not keep restarting a search before its results land. Coalesce changes and leave a
+    /// pause after the current read, so a busy index doesn't keep a full search running continuously.
+    func refresh() {
+        guard let pane else { return }
+        switch pane.destination {
+        case .search, .recents: break
+        case .folder, .duplicates: return
+        }
+        refreshPending = true
+        if task == nil { scheduleRefresh() }
+    }
+
+    private func cancelRefresh() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshPending = false
+    }
+
+    private func scheduleRefresh() {
+        guard refreshTask == nil, let target = pane?.destination else { return }
+        let generation = latest, wait = waitForRefresh
+        refreshTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            await wait()
+            guard !Task.isCancelled, let self, latest == generation, pane?.destination == target else { return }
+            refreshTask = nil
+            runSearch()
+        }
+    }
+
+    private func finished(_ generation: Int) {
+        guard generation == latest else { return }
+        task = nil
+        if refreshPending { scheduleRefresh() }
     }
 
     /// Runs what the pane shows: its query or Recents, or a search for duplicates.
@@ -40,6 +81,7 @@ import AppKit
     /// The pane goes to `target`: what doesn't serve it stops. A finished folder scan stays a minute, so Back shows its
     /// results at once; a search left behind stops (a Spotlight query would otherwise run on to its time limit).
     func leave(for target: Destination) {
+        cancelRefresh()
         if target != .duplicates { duplicateSearch?.set() }
         if case .search = target {} else {
             task?.cancel()
@@ -53,6 +95,7 @@ import AppKit
 
     /// The pane is closing.
     func stop() {
+        cancelRefresh()
         task?.cancel()
         task = nil
         duplicateSearch?.set()
@@ -63,12 +106,14 @@ import AppKit
 
     private func runSearch() {
         guard let p = pane else { return }
+        cancelRefresh()
         latest += 1
         let generation = latest
         let target = p.destination
         // Only the latest search runs on: an earlier one (a Spotlight query a keystroke ago) is stopped.
         task?.cancel()
         task = Task {
+            defer { finished(generation) }
             switch target {
             case .search(let text, let scope):
                 await runQuery(text, in: scope, pane: p, generation: generation, target: target)
