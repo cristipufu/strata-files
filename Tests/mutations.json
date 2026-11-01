@@ -3823,9 +3823,17 @@
   },
   {
     "file": "Strata/Browser/ArchiveOpening.swift",
-    "find": "            guard let pane, pane.navigationRevision == startedRevision else { return }\n            pane.showArchiveCopy(copy)\n",
-    "replace": "            guard let pane else { return }\n            pane.showArchiveCopy(copy)\n",
-    "rule": "Async action context ownership archive browsing shows its copy in a pane that has navigated away since",
+    "edits": [
+      {
+        "find": "        let startedRevision = pane.navigationRevision\n",
+        "replace": "        let startedRevision = pane.navigationRevision\n        let startedAt = (pane as? BrowserViewController)?.directory?.lexicallyStandardized.path\n"
+      },
+      {
+        "find": "            guard let pane, pane.navigationRevision == startedRevision else { return }\n            pane.showArchiveCopy(copy)\n",
+        "replace": "            guard let pane, (pane as? BrowserViewController)?.directory?.lexicallyStandardized.path == startedAt else { return }\n            pane.showArchiveCopy(copy)\n"
+      }
+    ],
+    "rule": "Async action context ownership archive browsing completes after leaving and returning to the same folder",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
@@ -8023,5 +8031,33 @@
     "replace": "        if changes.contains(action), pane.isInsideArchive, pane.isLoadingFolder {",
     "rule": "Commands that change files stay on inside an archive's or a container's read-only copy",
     "tests": "PaneCommandAvailabilityTests/aReadOnlyCopyChangesNothingAndAServerDeletesForGood"
+  },
+  {
+    "file": "Strata/Browser/BrowserContextMenu.swift",
+    "find": "            if !reachesIntoTrash { add(.moveToTrash, to: menu) }\n",
+    "replace": "            if reachesIntoTrash { add(.moveToTrash, to: menu) }\n",
+    "rule": "The context menu leaves out Move to Trash for an item on this Mac",
+    "tests": "BrowserContextMenuTests/anItemOnThisMacIsMovedToTheTrashAndOneInATrashIsPutBackOrDeleted"
+  },
+  {
+    "file": "Strata/Browser/BrowserContextMenu.swift",
+    "find": "        if inTrash {\n            add(.putBack, to: menu)\n            add(.deleteImmediately, to: menu)\n            menu.addItem(.separator())\n        }\n",
+    "replace": "",
+    "rule": "The context menu offers an item in a Trash neither Put Back nor Delete Immediately",
+    "tests": "BrowserContextMenuTests/anItemOnThisMacIsMovedToTheTrashAndOneInATrashIsPutBackOrDeleted"
+  },
+  {
+    "file": "Strata/Browser/BrowserContextMenu.swift",
+    "find": "            addArchiveSelectionItems(to: menu)\n            return menu\n",
+    "replace": "            addArchiveSelectionItems(to: menu)\n",
+    "rule": "The context menu offers an archive's or a container's items commands that change them",
+    "tests": "BrowserContextMenuTests/aServerOrAnArchiveIsOfferedOnlyWhatItCanDo"
+  },
+  {
+    "file": "Strata/Support/TypedPath.swift",
+    "find": "        location(of: path.hasPrefix(\"/\") ? URL(fileURLWithPath: path) : folder.appending(path: path))",
+    "replace": "        location(of: URL(fileURLWithPath: path, relativeTo: folder))",
+    "rule": "The strata command takes a relative path's .. off its letters, not after the links on the way",
+    "tests": "PathSpellingTests/aTypedPathsDotDotIsTakenAfterTheLinksOnTheWay"
   }
 ]

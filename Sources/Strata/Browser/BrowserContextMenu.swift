@@ -30,8 +30,9 @@ struct BrowserContextMenu {
         var folderIsArchiveCopy: Bool
         var selectionIsStacks: Bool
         var hasStackProjects: Bool
-        /// For each standard tag, whether every selected item has it (empty for a huge selection).
-        var appliedTags: [String: Bool]
+        /// For each standard tag, whether every selected item has it (empty for a huge selection), read only when the
+        /// tag row is shown.
+        var appliedTags: () -> [String: Bool]
     }
 
     let facts: Facts
@@ -216,7 +217,7 @@ struct BrowserContextMenu {
     private func addTagItems(to menu: NSMenu) {
         menu.addItem(.separator())
         let row = NSMenuItem()
-        row.view = TagMenuView(applied: facts.appliedTags, onPick: toggleTag)
+        row.view = TagMenuView(applied: facts.appliedTags(), onPick: toggleTag)
         menu.addItem(row)
         add(.editTags, to: menu)
     }

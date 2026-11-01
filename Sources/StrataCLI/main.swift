@@ -79,7 +79,7 @@ func absolute(_ path: String) -> URL {
         writeError("strata: : no such file or directory\n")
         exit(1)
     }
-    return TypedPath.location(of: URL(fileURLWithPath: expanded, relativeTo: cwd))
+    return TypedPath.location(of: expanded, in: cwd)
 }
 
 guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {

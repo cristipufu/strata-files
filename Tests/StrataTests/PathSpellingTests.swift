@@ -37,6 +37,12 @@ struct PathSpellingTests {
         let (linkOpening, link) = await FileEntry.locate(URL(fileURLWithPath: tree.url("home").path + "/link/../../../home/report.pdf"))
         #expect(linkOpening == .item)
         #expect(PathSpelling.short(link) == PathSpelling.short(tree.url("home/report.pdf")))
+        // Typed relative to a shell's folder, as to the `strata` command: the same places.
+        let home = tree.url("home")
+        #expect(PathSpelling.short(TypedPath.location(of: "link/../notes.txt", in: home)) == PathSpelling.short(tree.url("away/a/notes.txt")))
+        #expect(PathSpelling.short(TypedPath.location(of: "link/../../../home/report.pdf", in: home))
+            == PathSpelling.short(tree.url("home/report.pdf")))
+        #expect(PathSpelling.short(TypedPath.location(of: tree.url("home/notes.txt").path, in: tree.url("away"))) == PathSpelling.short(tree.url("home/notes.txt")))
         #expect(tree.snapshot() == ["away/", "away/a/", "away/a/b/", "away/a/final.pdf", "away/a/notes.txt", "home/",
                                     "home/link -> away/a/b", "home/notes.txt", "home/report.pdf -> away/a/final.pdf"])
     }

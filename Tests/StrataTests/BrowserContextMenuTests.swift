@@ -61,6 +61,6 @@ struct BrowserContextMenuTests {
             isInContainerCopy: false, isShowingTrash: false, clipboardHasFiles: false, canTag: false, renameTitle: "Rename",
             compressTitle: "Compress", extractTitle: "Extract", appUpdatesTitle: "", hasArchives: false, hasApps: false,
             containers: [], canDownload: false, canRemoveDownload: false, opensAsFolder: false, folderIsStack: false,
-            folderIsEngine: false, folderIsArchiveCopy: false, selectionIsStacks: false, hasStackProjects: false, appliedTags: [:])
+            folderIsEngine: false, folderIsArchiveCopy: false, selectionIsStacks: false, hasStackProjects: false, appliedTags: { [:] })
     }
 }

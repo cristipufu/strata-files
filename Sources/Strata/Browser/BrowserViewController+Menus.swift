@@ -58,7 +58,7 @@ extension BrowserViewController {
             folderIsArchiveCopy: directory.map(ArchiveCache.contains) == true,
             selectionIsStacks: selectionIsStacks,
             hasStackProjects: offersStacks && !stackProjectDirectories().isEmpty,
-            appliedTags: canTag ? appliedStandardTags(selected.map(\.url)) : [:])
+            appliedTags: { [weak self] in self?.appliedStandardTags(selected.map(\.url)) ?? [:] })
     }
 
     /// Checkmarks for the tags every item has (not worked out for huge selections: each item would be read).
