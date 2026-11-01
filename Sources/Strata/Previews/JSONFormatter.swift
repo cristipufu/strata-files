@@ -28,64 +28,86 @@ nonisolated package enum JSONFormatter {
         // would make the preview too large, including incomplete files that bypass JSON validation.
         let outputLimit = 1 << 20
         guard input.count <= outputLimit else { return text }
-        var out: [UInt16] = []
-        out.reserveCapacity(input.count + input.count / 2)
-        var depth = 0
+        var printer = Printer(input: input)
         var i = 0
-        let n = input.count
-
-        func newline() {
-            out.append(newlineChar)
-            out.append(contentsOf: repeatElement(space, count: depth * 2))
-        }
-
-        while i < n {
-            guard out.count <= outputLimit else { return text }
+        while i < input.count {
+            guard printer.out.count <= outputLimit else { return text }
             let c = input[i]
             switch c {
             case space, tab, newlineChar, 0x0D:
                 i += 1
             case quote:
-                let end = stringEnd(input, from: i)
-                out.append(contentsOf: input[i..<end])
-                i = end
+                i = printer.copy(from: i, to: stringEnd(input, from: i))
             case openBrace, openBracket:
-                let close = c == openBrace ? closeBrace : closeBracket
-                let next = skipWhitespace(input, from: i + 1)
-                if next < n, input[next] == close {
-                    out.append(c); out.append(close)
-                    i = next + 1
-                } else if c == openBracket, let (inline, end) = inlineArray(input, from: i) {
-                    out.append(contentsOf: inline)
-                    i = end
-                } else {
-                    out.append(c)
-                    guard depth < 64 else { return text }
-                    depth += 1
-                    newline()
-                    i += 1
-                }
+                guard let next = printer.open(at: i) else { return text }
+                i = next
             case closeBrace, closeBracket:
-                depth = max(0, depth - 1)
-                newline()
-                out.append(c)
+                printer.close(c)
                 i += 1
             case comma:
-                out.append(comma)
-                newline()
+                printer.out.append(comma)
+                printer.newline()
                 i += 1
             case colon:
-                out.append(colon)
-                out.append(space)
+                printer.out.append(colon)
+                printer.out.append(space)
                 i += 1
             default:
-                let end = scalarEnd(input, from: i)
-                out.append(contentsOf: input[i..<end])
-                i = end
+                i = printer.copy(from: i, to: scalarEnd(input, from: i))
             }
         }
-        guard out.count <= outputLimit else { return text }
-        return String(utf16CodeUnits: out, count: out.count)
+        guard printer.out.count <= outputLimit else { return text }
+        return String(utf16CodeUnits: printer.out, count: printer.out.count)
+    }
+
+    /// The indented text so far, and how deep it is.
+    private struct Printer {
+        let input: [UInt16]
+        var out: [UInt16] = []
+        var depth = 0
+
+        init(input: [UInt16]) {
+            self.input = input
+            out.reserveCapacity(input.count + input.count / 2)
+        }
+
+        mutating func newline() {
+            out.append(newlineChar)
+            out.append(contentsOf: repeatElement(space, count: depth * 2))
+        }
+
+        /// Copies `input[start..<end]` as written: where to go on.
+        mutating func copy(from start: Int, to end: Int) -> Int {
+            out.append(contentsOf: input[start..<end])
+            return end
+        }
+
+        /// An object or array opening at `i`: empty, a short array of plain values on one line, or a new level on
+        /// lines of its own. Where to go on, or nil when it's nested too deep to indent.
+        mutating func open(at i: Int) -> Int? {
+            let c = input[i]
+            let close = c == openBrace ? closeBrace : closeBracket
+            let next = skipWhitespace(input, from: i + 1)
+            if next < input.count, input[next] == close {
+                out.append(c); out.append(close)
+                return next + 1
+            }
+            if c == openBracket, let (inline, end) = inlineArray(input, from: i) {
+                out.append(contentsOf: inline)
+                return end
+            }
+            out.append(c)
+            guard depth < 64 else { return nil }
+            depth += 1
+            newline()
+            return i + 1
+        }
+
+        mutating func close(_ c: UInt16) {
+            depth = max(0, depth - 1)
+            newline()
+            out.append(c)
+        }
     }
 
     // MARK: - Helpers
