@@ -221,6 +221,36 @@ package nonisolated enum GitRunner {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = ["--no-optional-locks", "-C", directory.path] + arguments
         process.currentDirectoryURL = directory
+        process.environment = hardenedEnvironment()
+        let stdout = PipeCollector()
+        let stderr = PipeCollector()
+        process.standardOutput = stdout.pipe
+        process.standardError = stderr.pipe
+        process.standardInput = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return GitRunResult(exitCode: -1, output: Data(), errorOutput: error.localizedDescription, timedOut: false,
+                                duration: Date().timeIntervalSince(start))
+        }
+        let (timer, timedOut) = stopAfter(timeout, process)
+        process.waitUntilExit()
+        timer.cancel()
+        // Output is collected as it arrives (so a full pipe never stalls git). After exit, wait briefly for the pipes
+        // to reach EOF; a lingering grandchild holding them open can't keep us here.
+        stdout.finish(within: 1)
+        stderr.finish(within: 0.2)
+
+        let readError = stdout.readError ?? stderr.readError
+        return GitRunResult(exitCode: readError == nil ? process.terminationStatus : -1, output: stdout.data,
+                            errorOutput: readError ?? String(decoding: stderr.data, as: UTF8.self), timedOut: timedOut.isSet,
+                            duration: Date().timeIntervalSince(start))
+    }
+
+    /// This process's environment, without what could point git at another repository or undo the hardening of its
+    /// arguments, and with no locks, fetches, transports or prompts, in plain C.
+    private static func hardenedEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         // Never let an inherited GIT_DIR (Strata launched from a hook or a git alias) point us at another repository.
         // Nor inherited config overrides that could undo the hardening above.
@@ -235,20 +265,12 @@ package nonisolated enum GitRunner {
         environment["GIT_ALLOW_PROTOCOL"] = ""
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_ALL"] = "C"
-        process.environment = environment
-        let stdout = PipeCollector()
-        let stderr = PipeCollector()
-        process.standardOutput = stdout.pipe
-        process.standardError = stderr.pipe
-        process.standardInput = FileHandle.nullDevice
+        return environment
+    }
 
-        do {
-            try process.run()
-        } catch {
-            return GitRunResult(exitCode: -1, output: Data(), errorOutput: error.localizedDescription, timedOut: false,
-                                duration: Date().timeIntervalSince(start))
-        }
-
+    /// Ends `process` once `timeout` passes: SIGTERM, then SIGKILL if it's stuck in uninterruptible I/O. The timer to
+    /// cancel when it's done, and whether it timed out.
+    private static func stopAfter(_ timeout: TimeInterval, _ process: Process) -> (DispatchSourceTimer, TimeoutFlag) {
         let flag = TimeoutFlag()
         let pid = process.processIdentifier
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
@@ -257,23 +279,12 @@ package nonisolated enum GitRunner {
             guard process.isRunning else { return }
             flag.set()
             process.terminate()
-            // SIGTERM is enough for git; escalate if it's stuck in uninterruptible I/O.
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
                 if process.isRunning { kill(pid, SIGKILL) }
             }
         }
         timer.resume()
-        process.waitUntilExit()
-        timer.cancel()
-        // Output is collected as it arrives (so a full pipe never stalls git). After exit, wait briefly for the pipes
-        // to reach EOF; a lingering grandchild holding them open can't keep us here.
-        stdout.finish(within: 1)
-        stderr.finish(within: 0.2)
-
-        let readError = stdout.readError ?? stderr.readError
-        return GitRunResult(exitCode: readError == nil ? process.terminationStatus : -1, output: stdout.data,
-                            errorOutput: readError ?? String(decoding: stderr.data, as: UTF8.self), timedOut: flag.isSet,
-                            duration: Date().timeIntervalSince(start))
+        return (timer, flag)
     }
 }
 
