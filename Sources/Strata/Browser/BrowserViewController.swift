@@ -228,6 +228,16 @@ final class BrowserViewController: NSViewController {
     }
 
     private func configureOutline() {
+        setUpOutlineView()
+        addColumns()
+        outlineView.headerView?.menu = columnsMenu()
+        applyColumnVisibility(fitName: false)
+        syncSortDescriptor()
+        wireOutlineKeys()
+    }
+
+    /// A list that selects several items, takes and gives drags, and opens on double-click.
+    private func setUpOutlineView() {
         let ov = outlineView
         ov.style = .inset
         ov.rowHeight = FileViewStyle.listHeight(for: preferences)
@@ -250,7 +260,11 @@ final class BrowserViewController: NSViewController {
         ov.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
         ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         ov.draggingDestinationFeedbackStyle = .regular
+    }
 
+    /// Name, then each list column, then Where (shown with results).
+    private func addColumns() {
+        let ov = outlineView
         addColumn(.name, String(localized: "Name"), width: 340, min: 160, ascending: true)
         for column in ListColumn.allCases {
             addColumn(NSUserInterfaceItemIdentifier(column.rawValue), column.title, width: column.preferredWidth,
@@ -262,7 +276,11 @@ final class BrowserViewController: NSViewController {
         for column in ov.tableColumns {
             ThemeStyle.bind(column)
         }
-        // Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
+    }
+
+    /// Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
+    private func columnsMenu() -> NSMenu {
+        let ov = outlineView
         let columnsMenu = NSMenu()
         for id in Self.optionalColumns {
             guard let column = ov.tableColumn(withIdentifier: id) else { continue }
@@ -271,10 +289,12 @@ final class BrowserViewController: NSViewController {
             item.representedObject = id.rawValue
             columnsMenu.addItem(item)
         }
-        ov.headerView?.menu = columnsMenu
-        applyColumnVisibility(fitName: false)
-        syncSortDescriptor()
+        return columnsMenu
+    }
 
+    /// Typing, Backspace, Escape, Return, Space, a click on a name, the context menu and drags' end.
+    private func wireOutlineKeys() {
+        let ov = outlineView
         ov.onType = { [weak self] text in _ = self?.handle(.type(text)) }
         ov.onBackspace = { [weak self] in self?.handle(.backspace) ?? false }
         ov.onEscape = { [weak self] in self?.handle(.escape) ?? false }
