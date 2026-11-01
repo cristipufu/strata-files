@@ -62,6 +62,26 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         panes = [first]
         pane = first
         split = MainSplitViewController(firstPane: first.host)
+        let window = Self.makeWindow()
+        super.init(window: window)
+
+        window.navigation = navigationGestures
+        window.delegate = self
+        window.contentViewController = split
+        window.setContentSize(NSSize(width: 1240, height: 780))
+        setUpToolbar(in: window)
+        if !window.setFrameAutosaveName("StrataBrowserWindow") { window.center() }
+
+        configure(first)
+        wireBars()
+        observeChanges()
+        observeFocus(in: window)
+        go(.folder(first.location), select: select, recordHistory: false)
+        if let secondPane { toggleDualPane(at: secondPane) }
+        ThemeStyle.apply(to: window)
+    }
+
+    private static func makeWindow() -> BrowserWindow {
         let window = BrowserWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -71,20 +91,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.tabbingIdentifier = "dev.strata.browser"
         window.minSize = NSSize(width: 760, height: 420)
         window.isRestorable = false
-        super.init(window: window)
+        return window
+    }
 
-        window.navigation = navigationGestures
-        window.delegate = self
-        window.contentViewController = split
-        window.setContentSize(NSSize(width: 1240, height: 780))
+    private func setUpToolbar(in window: BrowserWindow) {
         let toolbar = NSToolbar(identifier: services.preferences.domainName + ".main")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
         toolbarCustomization = BrowserToolbar(toolbar, preferences: services.preferences)
-        if !window.setFrameAutosaveName("StrataBrowserWindow") { window.center() }
+    }
 
-        configure(first)
+    /// The sidebar, path bar and search scope bar act on this window.
+    private func wireBars() {
         split.sidebar.onSelect = { [weak self] target in self?.open(target) }
         split.sidebar.onOpenInNewTab = { [weak self] url in
             self?.openTab(at: url)
@@ -98,6 +117,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             guard let self, case .search(let text, _) = self.destination else { return }
             SearchFiltersController(query: text, context: SearchFilterContext(self)).show(from: anchor)
         }
+    }
+
+    private func observeChanges() {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange,
                                                object: services.index)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
@@ -110,7 +132,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
                                                object: services.cloud)
         NotificationCenter.default.addObserver(self, selector: #selector(containerCopyProblem(_:)), name: .containerCopyProblem, object: nil)
-        // Clicking into a pane gives it focus.
+    }
+
+    /// Clicking into a pane gives it focus, and the Inspector refreshes when it's shown again.
+    private func observeFocus(in window: BrowserWindow) {
         responderObservation = window.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in
             MainActor.assumeIsolated {
                 guard let self, let view = window.firstResponder as? NSView,
@@ -124,9 +149,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 self.refreshPanels()
             }
         }
-        go(.folder(first.location), select: select, recordHistory: false)
-        if let secondPane { toggleDualPane(at: secondPane) }
-        ThemeStyle.apply(to: window)
     }
 
     @available(*, unavailable)
