@@ -97,9 +97,7 @@ final class BrowserViewController: NSViewController {
     }
 
     var filter: String { listing.filter }
-    lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
-    /// Items' own icons arrived while the Columns view was hidden.
-    var columnsMissedIcons = false
+    private(set) lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
     var availableCapacity: Int64? { loading.availableCapacity }
 
     let outlineView: FileOutlineView
@@ -123,7 +121,7 @@ final class BrowserViewController: NSViewController {
     private(set) lazy var clipboardCommands = ClipboardCommands(context: self)
 
     let watching = BrowserWatching()
-    lazy var ordering = BrowserOrdering(
+    private(set) lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
         metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
@@ -133,7 +131,7 @@ final class BrowserViewController: NSViewController {
                         tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
     let pending = BrowserPendingActions()
     /// Opens the folder row a drag rests on (only rows still on screen).
-    lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
+    private(set) lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
         let row = outlineView.row(forItem: node)
         return row >= 0 ? outlineView.rect(ofRow: row) : nil
@@ -142,7 +140,7 @@ final class BrowserViewController: NSViewController {
         springLoad(folder, drag: drag)
     })
     let inlineRename = BrowserRenaming()
-    lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
+    private(set) lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
     let results = PaneResults()

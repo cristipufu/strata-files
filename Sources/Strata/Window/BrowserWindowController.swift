@@ -15,7 +15,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     static let largeFilesQuery = "kind:file size:>500mb"
 
     let services: BrowserServices
-    lazy var navigationGestures = BrowserNavigation(owner: self)
+    private(set) lazy var navigationGestures = BrowserNavigation(owner: self)
     private(set) var panes: [Pane]
     /// The pane with focus; navigation, search and the inspector act on it.
     private(set) var pane: Pane
