@@ -352,6 +352,19 @@ struct ContainerTests {
         #expect(CopyWriter.fetchesEagerly(size: 10, mode: 0o644, bytes: 0, count: 0))
     }
 
+    @Test func aListedFolderTakesThePlaceOfALinkWithoutFollowingIt() throws {
+        let tree = try TestTree("copy/", "copy/apt -> ../outside", "outside/", "outside/keep.txt")
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let before = try FileManager.default.attributesOfItem(atPath: tree.url("outside").path)[.modificationDate] as? Date
+        let entries = [ListedEntry(name: "apt", kind: .directory, size: 0, mode: 0o755, modified: date, linkTarget: "")]
+        _ = try CopyWriter.apply(entries, contents: [:], to: tree.url("copy"), containerPath: "/etc")
+        #expect(tree.snapshot() == ["copy/", "copy/apt/", "outside/", "outside/keep.txt"])
+        // What the link led to is neither marked as downloaded nor given the container folder's date.
+        #expect(getxattr(tree.url("outside").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) < 0)
+        #expect(try FileManager.default.attributesOfItem(atPath: tree.url("outside").path)[.modificationDate] as? Date == before)
+        #expect(getxattr(tree.url("copy/apt").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) > 0)
+    }
+
     @Test func theContainersFolderFollowsTheEngine() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-containers-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder.appending(path: "removed-one"), withIntermediateDirectories: true)

@@ -7895,5 +7895,26 @@
     "replace": "                guard movesIn else {\n",
     "rule": "A leftover container folder named like a project stays in the project's way",
     "tests": "ContainerTests/aLeftoverFolderNamedLikeAProjectMakesWay"
+  },
+  {
+    "file": "Strata/Containers/CopyWriter.swift",
+    "find": "        if found != nil, !isFolder { removeAt(fd, name) }\n",
+    "replace": "",
+    "rule": "A listed container folder keeps a link that took its place",
+    "tests": "ContainerTests/aListedFolderTakesThePlaceOfALinkWithoutFollowingIt"
+  },
+  {
+    "file": "Strata/Containers/CopyWriter.swift",
+    "find": "        guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + \"/\" + name) else { return }\n",
+    "replace": "        let target = entry.linkTarget\n",
+    "rule": "A container's listed link leads where it leads on this Mac, out of the copy",
+    "tests": "ContainerTests/listingsAreWrittenWithoutEscapingTheFolder"
+  },
+  {
+    "file": "Strata/Containers/CopyWriter.swift",
+    "find": "            fchmodat(fd, name, mode_t(entry.mode & 0o111), AT_SYMLINK_NOFOLLOW)\n",
+    "replace": "",
+    "rule": "A container file's placeholder keeps execute bits the file no longer has",
+    "tests": "ContainerTests/listingsAreWrittenWithoutEscapingTheFolder"
   }
 ]

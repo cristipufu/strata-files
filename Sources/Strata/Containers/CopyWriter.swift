@@ -187,47 +187,15 @@ package nonisolated enum CopyWriter {
             let name = entry.name
             guard entry.kind != .other, listed.insert(folded(name)).inserted else { continue }
             var info = stat()
-            var exists = fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0
-            let type = exists ? info.st_mode & S_IFMT : 0
+            let found = fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0 ? info : nil
             switch entry.kind {
             case .directory:
-                if exists, type != S_IFDIR { removeAt(fd, name); exists = false }
-                if !exists { mkdirat(fd, name, 0o755) }
-                let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                if child >= 0 {
-                    // A folder can be an app (`Foo.app`): marked like the files.
-                    try? markDownloaded(child)
-                    remember(entry.modified, onFolder: child)
-                    close(child)
-                }
+                writeFolder(entry, fd: fd, found: found)
             case .symlink:
-                guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + "/" + name) else { continue }
-                if entry.targetIsDirectory, topFD >= 0 {
-                    makeFolders(topFD, ContainerCopies.normalized(entry.linkTarget, from: ContainerCopies.normalized(base)))
-                }
-                if exists, type == S_IFLNK, linkTarget(name, fd: fd) == target { continue }
-                if exists { removeAt(fd, name) }
-                symlinkat(target, fd, name)
-                setLinkTimes(fd, name, entry.modified)
+                writeLink(entry, fd: fd, topFD: topFD, base: base, found: found)
             case .file:
-                let same = exists && type == S_IFREG && Int64(info.st_size) == entry.size
-                    && Int(info.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified)
-                let placeholder = same && ContainerCopies.isPlaceholderMode(info.st_mode)
-                // A placeholder follows the container's execute bits (`chmod +x` changes neither size nor date).
-                if placeholder, info.st_mode & 0o111 != mode_t(entry.mode & 0o111) {
-                    fchmodat(fd, name, mode_t(entry.mode & 0o111), AT_SYMLINK_NOFOLLOW)
-                }
-                if let data = contents[name] {
-                    if same, !placeholder { continue }
-                    if exists, type != S_IFREG { removeAt(fd, name) }
-                    try write(data, as: name, fd: fd, mode: entry.mode, modified: entry.modified)
-                    continue
-                }
-                if !same {
-                    if exists { removeAt(fd, name) }
-                    try makePlaceholder(name, fd: fd, size: entry.size, mode: entry.mode, modified: entry.modified)
-                }
-                if !same || placeholder, fetchesEagerly(size: entry.size, mode: entry.mode, bytes: eagerBytes, count: eager.count) {
+                if try writeFile(entry, fd: fd, found: found, data: contents[name]),
+                   fetchesEagerly(size: entry.size, mode: entry.mode, bytes: eagerBytes, count: eager.count) {
                     eagerBytes += entry.size
                     eager.append(folder.appending(path: name))
                 }
@@ -239,6 +207,62 @@ package nonisolated enum CopyWriter {
             removeAt(fd, name)
         }
         return eager
+    }
+
+    /// A listed folder, made where it isn't one yet (whatever else is there goes), and marked like the files.
+    private static func writeFolder(_ entry: ListedEntry, fd: Int32, found: stat?) {
+        let name = entry.name
+        let isFolder = found.map { $0.st_mode & S_IFMT == S_IFDIR } ?? false
+        if found != nil, !isFolder { removeAt(fd, name) }
+        if !isFolder { mkdirat(fd, name, 0o755) }
+        let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        if child >= 0 {
+            // A folder can be an app (`Foo.app`): marked like the files.
+            try? markDownloaded(child)
+            remember(entry.modified, onFolder: child)
+            close(child)
+        }
+    }
+
+    /// A listed link, leading where it leads in the container but always inside the copy; the folder it leads to is
+    /// made, so it can be followed.
+    private static func writeLink(_ entry: ListedEntry, fd: Int32, topFD: Int32, base: String, found: stat?) {
+        let name = entry.name
+        guard let target = ContainerCopies.copyLinkTarget(entry.linkTarget, at: base + "/" + name) else { return }
+        if entry.targetIsDirectory, topFD >= 0 {
+            makeFolders(topFD, ContainerCopies.normalized(entry.linkTarget, from: ContainerCopies.normalized(base)))
+        }
+        if let found, found.st_mode & S_IFMT == S_IFLNK, linkTarget(name, fd: fd) == target { return }
+        if found != nil { removeAt(fd, name) }
+        symlinkat(target, fd, name)
+        setLinkTimes(fd, name, entry.modified)
+    }
+
+    /// A listed file: written when its contents came with the listing; else a placeholder, made again only when its
+    /// size or date changed. Whether a placeholder is left, which may be fetched now.
+    private static func writeFile(_ entry: ListedEntry, fd: Int32, found: stat?, data: Data?) throws -> Bool {
+        let name = entry.name
+        let isFile = found.map { $0.st_mode & S_IFMT == S_IFREG } ?? false
+        let same = isFile && found.map {
+            Int64($0.st_size) == entry.size && Int($0.st_mtimespec.tv_sec) == ContainerTime.seconds(entry.modified)
+        } == true
+        let mode = found?.st_mode ?? 0
+        let placeholder = same && ContainerCopies.isPlaceholderMode(mode)
+        // A placeholder follows the container's execute bits (`chmod +x` changes neither size nor date).
+        if placeholder, mode & 0o111 != mode_t(entry.mode & 0o111) {
+            fchmodat(fd, name, mode_t(entry.mode & 0o111), AT_SYMLINK_NOFOLLOW)
+        }
+        if let data {
+            if same, !placeholder { return false }
+            if found != nil, !isFile { removeAt(fd, name) }
+            try write(data, as: name, fd: fd, mode: entry.mode, modified: entry.modified)
+            return false
+        }
+        if !same {
+            if found != nil { removeAt(fd, name) }
+            try makePlaceholder(name, fd: fd, size: entry.size, mode: entry.mode, modified: entry.modified)
+        }
+        return !same || placeholder
     }
 
     /// Streams the container's file at `containerPath` into the placeholder at `url`, replacing it when complete.
