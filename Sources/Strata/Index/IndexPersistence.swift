@@ -61,23 +61,41 @@ nonisolated package enum IndexPersistence {
     }
 
     package static func load(from url: URL, storage: SecureStorage.Context) throws -> (IndexStore, Header) {
-        let reader = try SecureStorage.Reader(url: url, storage: storage)
+        let file = IndexFile(reader: try SecureStorage.Reader(url: url, storage: storage))
+        let header = try file.header()
+        let store = IndexStore()
+        try store.write { store in
+            try file.readColumns(into: &store)
+            store.roots = header.roots
+            try file.reader.finish()
+            guard validStructure(store) else { throw IndexFile.Corrupt() }
+        }
+        return (store, header)
+    }
+
+    /// The index file's fields in the order they're written, each checked against its limits before it's read into
+    /// memory.
+    private struct IndexFile {
         struct Corrupt: Error {}
-        func get<T>(_: T.Type) throws -> T {
+        let reader: SecureStorage.Reader
+
+        func value<T>(_: T.Type) throws -> T {
             try withUnsafeTemporaryAllocation(of: T.self, capacity: 1) { buffer in
                 try reader.read(into: UnsafeMutableRawBufferPointer(buffer))
                 return UnsafeMutableRawBufferPointer(buffer).loadUnaligned(as: T.self)
             }
         }
-        func getString() throws -> String {
-            let length = Int(try get(UInt32.self))
+
+        func string() throws -> String {
+            let length = Int(try value(UInt32.self))
             guard length <= 1 << 20 else { throw Corrupt() }
             var bytes = [UInt8](repeating: 0, count: length)
             try bytes.withUnsafeMutableBytes { try reader.read(into: $0) }
             return String(decoding: bytes, as: UTF8.self)
         }
-        func getColumn<T>(_: T.Type) throws -> ContiguousArray<T> {
-            guard let count = Int(exactly: try get(UInt64.self)),
+
+        func column<T>(_: T.Type) throws -> ContiguousArray<T> {
+            guard let count = Int(exactly: try value(UInt64.self)),
                   count <= reader.maximumLength / MemoryLayout<T>.stride else { throw Corrupt() }
             var failure: Error?
             // Leave modest, untouched growth room so a burst of new files after loading doesn't copy every column.
@@ -97,41 +115,41 @@ nonisolated package enum IndexPersistence {
             return column
         }
 
-        guard try get(UInt32.self) == magic, try get(UInt32.self) == version else { throw Corrupt() }
-        var header = Header(eventID: try get(UInt64.self), roots: [], excluded: [])
-        let rootCount = Int(try get(UInt32.self))
-        guard rootCount <= 10_000 else { throw Corrupt() }
-        for _ in 0..<rootCount {
-            let id = try get(Int32.self)
-            header.roots.append((id, try getString()))
+        /// The format's magic and version, then where the index's events had got to, its roots and excluded folders.
+        func header() throws -> Header {
+            guard try value(UInt32.self) == magic, try value(UInt32.self) == version else { throw Corrupt() }
+            var header = Header(eventID: try value(UInt64.self), roots: [], excluded: [])
+            let rootCount = Int(try value(UInt32.self))
+            guard rootCount <= 10_000 else { throw Corrupt() }
+            for _ in 0..<rootCount {
+                let id = try value(Int32.self)
+                header.roots.append((id, try string()))
+            }
+            let excludedCount = Int(try value(UInt32.self))
+            guard excludedCount <= 100_000 else { throw Corrupt() }
+            for _ in 0..<excludedCount { header.excluded.append(try string()) }
+            return header
         }
-        let excludedCount = Int(try get(UInt32.self))
-        guard excludedCount <= 100_000 else { throw Corrupt() }
-        for _ in 0..<excludedCount { header.excluded.append(try getString()) }
 
-        let store = IndexStore()
-        try store.write { store in
-            store.parent = try getColumn(Int32.self)
-            store.firstChild = try getColumn(Int32.self)
-            store.nextSibling = try getColumn(Int32.self)
-            store.nameStart = try getColumn(UInt32.self)
-            store.nameLength = try getColumn(UInt16.self)
-            store.size = try getColumn(Int64.self)
-            store.fileCount = try getColumn(UInt32.self)
-            store.mtime = try getColumn(UInt32.self)
-            store.fileKey = try getColumn(UInt32.self)
-            store.flags = try getColumn(UInt8.self)
-            store.names = try getColumn(UInt8.self)
-            store.roots = header.roots
+        /// The store's columns, every one as long as the first.
+        func readColumns(into store: inout IndexStore.Storage) throws {
+            store.parent = try column(Int32.self)
+            store.firstChild = try column(Int32.self)
+            store.nextSibling = try column(Int32.self)
+            store.nameStart = try column(UInt32.self)
+            store.nameLength = try column(UInt16.self)
+            store.size = try column(Int64.self)
+            store.fileCount = try column(UInt32.self)
+            store.mtime = try column(UInt32.self)
+            store.fileKey = try column(UInt32.self)
+            store.flags = try column(UInt8.self)
+            store.names = try column(UInt8.self)
             let count = store.parent.count
             guard [store.firstChild.count, store.nextSibling.count, store.nameStart.count, store.nameLength.count,
                    store.size.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
                    store.flags.count].allSatisfy({ $0 == count })
             else { throw Corrupt() }
-            try reader.finish()
-            guard validStructure(store) else { throw Corrupt() }
         }
-        return (store, header)
     }
 
     /// Authentication protects bytes, not the invariants of an index saved by an earlier build.
