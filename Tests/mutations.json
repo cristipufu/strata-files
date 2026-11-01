@@ -7960,5 +7960,19 @@
     "replace": "",
     "rule": "A container file's placeholder keeps execute bits the file no longer has",
     "tests": "ContainerTests/listingsAreWrittenWithoutEscapingTheFolder"
+  },
+  {
+    "file": "Strata/Browser/BrowserContextMenu.swift",
+    "find": "            if !reachesIntoTrash { add(.moveToTrash, to: menu) }\n",
+    "replace": "            add(.moveToTrash, to: menu)\n",
+    "rule": "The context menu offers Move to Trash for an item inside a trashed folder",
+    "tests": "BrowserContextMenuTests/anItemOnThisMacIsMovedToTheTrashAndOneInATrashIsPutBackOrDeleted"
+  },
+  {
+    "file": "Strata/Browser/BrowserContextMenu.swift",
+    "find": "            addServerSelectionItems(to: menu)\n            return menu\n",
+    "replace": "            addServerSelectionItems(to: menu)\n",
+    "rule": "The context menu offers a server's items Cut, Duplicate and Compress, which a server can't do",
+    "tests": "BrowserContextMenuTests/aServerOrAnArchiveIsOfferedOnlyWhatItCanDo"
   }
 ]

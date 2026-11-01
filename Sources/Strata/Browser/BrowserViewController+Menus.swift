@@ -19,204 +19,63 @@ extension BrowserViewController {
     // MARK: - Context menu
 
     func makeContextMenu() -> NSMenu {
-        let menu = NSMenu()
+        let facts = contextMenuFacts
+        let urls = facts.selection.map(\.url)
+        return BrowserContextMenu(facts: facts, target: self) { [weak self] tag in
+            self?.toggle(tag, on: urls)
+        }.make()
+    }
+
+    private var contextMenuFacts: BrowserContextMenu.Facts {
         let selected = selectedEntries
-        if selected.isEmpty {
-            populateBackgroundContextMenu(menu)
-            return menu
-        }
-        let inTrash = selected.allSatisfy { Trash.contains($0.url) }
-        let reachesIntoTrash = !inTrash && selected.contains { Trash.isInTrash($0.url) }
-        if inTrash {
-            addMenuCommand(.putBack, to: menu)
-            addMenuCommand(.deleteImmediately, to: menu)
-            menu.addItem(.separator())
-        }
-        addOpenAndShareContextItems(to: menu, selected: selected, inTrash: inTrash)
-        menu.addItem(.separator())
-        if isOnServer {
-            addServerSelectionContextItems(to: menu, count: selected.count)
-            return menu
-        }
-        if isInsideArchive {
-            addArchiveSelectionContextItems(to: menu)
-            return menu
-        }
-        addMenuCommand(.renameSelection, title: renameTitle, to: menu)
-        if inTrash {
-            addEmptyTrashMenuItem(to: menu)
-        } else {
-            addMenuCommand(.compress, title: compressTitle, to: menu)
-            if !selectedArchives.isEmpty { addMenuCommand(.extract, title: extractTitle, to: menu) }
-            addMenuCommand(.duplicate, to: menu)
-            if !reachesIntoTrash { addMenuCommand(.moveToTrash, to: menu) }
-        }
-        menu.addItem(.separator())
-        addMenuCommand(.copy, to: menu)
-        addMenuCommand(.cut, to: menu)
-        addMenuCommand(.copyPath, to: menu)
-        addMenuCommand(.addToShelf, to: menu)
-        if !inTrash, canTagSelection {
-            addTagContextItems(to: menu, urls: selected.map(\.url))
-        }
-        if selected.contains(where: \.isFolder) { addMenuCommand(.addToSidebar, to: menu) }
-        menu.addItem(.separator())
-        addMenuCommand(.openInTerminal, to: menu)
-        addMenuCommand(.showInFinder, to: menu)
-        return menu
+        let containerCopies = services.copies.containerCopies
+        let canTag = canTagSelection
+        let folderIsStack = directory.map(containerCopies.isStack) == true
+        let selectionIsStacks = !selected.isEmpty && selected.allSatisfy { containerCopies.isStack($0.url) }
+        let offersStacks = selected.isEmpty ? folderIsStack : selectionIsStacks
+        return BrowserContextMenu.Facts(
+            selection: selected,
+            showsHiddenFiles: preferences.showHidden,
+            isOnServer: isOnServer,
+            serverHasShell: directory.flatMap({ services.remote.copies.server(containing: $0)?.server.kind }) == .sftp,
+            isInsideArchive: isInsideArchive,
+            isInContainerCopy: isInContainerCopy,
+            isShowingTrash: isShowingTrash,
+            clipboardHasFiles: services.clipboard.hasFiles,
+            canTag: canTag,
+            renameTitle: renameTitle,
+            compressTitle: compressTitle,
+            extractTitle: extractTitle,
+            appUpdatesTitle: appUpdatesTitle,
+            hasArchives: !selectedArchives.isEmpty,
+            hasApps: !selectedApps.isEmpty,
+            containers: selectedContainers,
+            canDownload: !downloadableCloudURLs.isEmpty,
+            canRemoveDownload: selectedCloudStatuses.contains(.downloaded),
+            opensAsFolder: selected.count == 1 && opensAsFolder(selected[0]),
+            folderIsStack: folderIsStack,
+            folderIsEngine: directory.map(containerCopies.engineFolder) != nil,
+            folderIsArchiveCopy: directory.map(ArchiveCache.contains) == true,
+            selectionIsStacks: selectionIsStacks,
+            hasStackProjects: offersStacks && !stackProjectDirectories().isEmpty,
+            appliedTags: canTag ? appliedStandardTags(selected.map(\.url)) : [:])
     }
 
-    private func addTitledMenuItem(_ title: String, _ action: Selector, _ symbol: String? = nil, to menu: NSMenu) {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        item.target = self
-        if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
-        menu.addItem(item)
-    }
-
-    private func addMenuCommand(_ command: StrataCommand, title: String? = nil, to menu: NSMenu) {
-        let item = command.menuItem(title: title, target: self, withShortcut: false)
-        item.image = command.image
-        menu.addItem(item)
-    }
-
-    private func addEmptyTrashMenuItem(to menu: NSMenu) {
-        let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
-        empty.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
-        menu.addItem(empty)
-    }
-
-    private func addStackOpenItems(to menu: NSMenu) {
-        guard !stackProjectDirectories().isEmpty else { return }
-        addMenuCommand(.openInTerminal, to: menu)
-        menu.addItem(OpenWithMenu(target: self, action: #selector(openStackWithApplication(_:))) {
-            await ProjectEditors.installed()
-        }.item)
-    }
-
-    private func populateBackgroundContextMenu(_ menu: NSMenu) {
-        let hiddenFilesTitle = preferences.showHidden ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
-        // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
-        if isOnServer {
-            addMenuCommand(.newFolder, to: menu)
-            addMenuCommand(.newFile, to: menu)
-            if services.clipboard.hasFiles { addMenuCommand(.paste, to: menu) }
-            menu.addItem(.separator())
-            if directory.flatMap({ services.remote.copies.server(containing: $0)?.server.kind }) == .sftp {
-                addMenuCommand(.openInTerminal, to: menu)
-            }
-            addMenuCommand(.copyPath, to: menu)
-            menu.addItem(.separator())
-            addMenuCommand(.toggleHiddenFiles, title: hiddenFilesTitle, to: menu)
-            return
-        }
-        // Inside an archive opened as a folder nothing is added; Finder is shown the archive itself.
-        if isInsideArchive {
-            if directory.map(services.copies.containerCopies.isStack) == true {
-                addStackOpenItems(to: menu)
-            } else if directory.map(services.copies.containerCopies.engineFolder) == nil {
-                addMenuCommand(.openInTerminal, to: menu)
-            }
-            if directory.map(ArchiveCache.contains) == true {
-                addTitledMenuItem(String(localized: "Show Archive in Finder"), #selector(showArchiveInFinder(_:)), "macwindow", to: menu)
-            }
-            menu.addItem(.separator())
-            addMenuCommand(.toggleHiddenFiles, title: hiddenFilesTitle, to: menu)
-            return
-        }
-        addMenuCommand(.newFolder, to: menu)
-        addMenuCommand(.newFile, to: menu)
-        if services.clipboard.hasFiles { addMenuCommand(.paste, to: menu) }
-        menu.addItem(.separator())
-        addMenuCommand(.openInTerminal, to: menu)
-        addMenuCommand(.copyPath, to: menu)
-        addMenuCommand(.showInFinder, to: menu)
-        menu.addItem(.separator())
-        addMenuCommand(.toggleHiddenFiles, title: hiddenFilesTitle, to: menu)
-        if isShowingTrash {
-            menu.addItem(.separator())
-            addEmptyTrashMenuItem(to: menu)
-        }
-    }
-
-    private func addOpenAndShareContextItems(to menu: NSMenu, selected: [FileEntry], inTrash: Bool) {
-        addMenuCommand(.openSelection, to: menu)
-        // Containers: what can be done to them, then a shell in one.
-        let containers = selectedContainers
-        if !containers.isEmpty {
-            menu.addItem(.separator())
-            for action in ContainerControl.actions(for: containers) {
-                addMenuCommand(.container(action), to: menu)
-            }
-            addMenuCommand(.openInTerminal, to: menu)
-            menu.addItem(.separator())
-        }
-        // With archives opening normally (Settings), browsing one is still a click away.
-        if selected.count == 1, let entry = selected.first, !entry.isFolder, !opensAsFolder(entry),
-           ArchiveKind(fileName: entry.name) != nil {
-            addTitledMenuItem(String(localized: "Open as Folder"), #selector(openArchiveAsFolder(_:)), "archivebox", to: menu)
-        }
-        if let first = selected.first, !first.isFolder {
-            let file = first.url
-            menu.addItem(OpenWithMenu(target: self, action: #selector(openWithApplication(_:))) {
-                await OpenWithApp.all(opening: file, limit: 24)
-            }.item)
-        }
-        if !selectedApps.isEmpty { addMenuCommand(.checkAppsForUpdates, title: appUpdatesTitle, to: menu) }
-        // iCloud Drive and File Provider folders: bring items here, or free their space.
-        let cloud = selectedCloudStatuses
-        if !inTrash, !downloadableCloudURLs.isEmpty { addTitledMenuItem(String(localized: "Download Now"), #selector(downloadNow(_:)), "icloud.and.arrow.down", to: menu) }
-        if !inTrash, cloud.contains(.downloaded) { addTitledMenuItem(String(localized: "Remove Download"), #selector(removeDownload(_:)), "icloud.slash", to: menu) }
-        addMenuCommand(.toggleQuickLook, to: menu)
-        // The system's own item: it keeps its picker alive and shows the share sheet next to the menu. Not for a
-        // container's files: they're only read when copied out.
-        if !isInContainerCopy { menu.addItem(NSSharingServicePicker(items: selected.map(\.url)).standardShareMenuItem) }
-    }
-
-    private func addServerSelectionContextItems(to menu: NSMenu, count: Int) {
-        if count == 1 { addMenuCommand(.renameSelection, title: renameTitle, to: menu) }
-        addTitledMenuItem(String(localized: "Delete…", comment: "Menu command: delete for good (on a server, which has no Trash)"),
-                          #selector(moveToTrash(_:)), "trash", to: menu)
-        menu.addItem(.separator())
-        addMenuCommand(.copy, to: menu)
-        addMenuCommand(.copyPath, to: menu)
-    }
-
-    private func addArchiveSelectionContextItems(to menu: NSMenu) {
-        addMenuCommand(.copy, to: menu)
-        if !isInContainerCopy { addMenuCommand(.addToShelf, to: menu) }
-        if selectedContainers.isEmpty {
-            if !selectedEntries.isEmpty, selectedEntries.allSatisfy({ services.copies.containerCopies.isStack($0.url) }) {
-                if !stackProjectDirectories().isEmpty { menu.addItem(.separator()) }
-                addStackOpenItems(to: menu)
-            } else {
-                menu.addItem(.separator())
-                addMenuCommand(.openInTerminal, to: menu)
-            }
-        }
-        if directory.map(ArchiveCache.contains) == true {
-            addTitledMenuItem(String(localized: "Show Archive in Finder"), #selector(showArchiveInFinder(_:)), "macwindow", to: menu)
-        }
-    }
-
-    private func addTagContextItems(to menu: NSMenu, urls: [URL]) {
-        menu.addItem(.separator())
+    /// Checkmarks for the tags every item has (not worked out for huge selections: each item would be read).
+    private func appliedStandardTags(_ urls: [URL]) -> [String: Bool] {
+        guard urls.count <= 300 else { return [:] }
         var applied: [String: Bool] = [:]
-        // Checkmarks for what every item has (not worked out for huge selections: each item would be read).
-        if urls.count <= 300 {
-            for tag in FinderTag.standard {
-                applied[tag.name.lowercased()] = urls.allSatisfy { url in
-                    services.tags.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
-                }
+        for tag in FinderTag.standard {
+            applied[tag.name.lowercased()] = urls.allSatisfy { url in
+                services.tags.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
             }
         }
-        let row = NSMenuItem()
-        row.view = TagMenuView(applied: applied) { [weak self] tag in
-            guard let self else { return }
-            let tags = services.tags, undo = undoManager
-            performAsync { try await tags.toggle(tag, on: urls, undo: undo) }
-        }
-        menu.addItem(row)
-        addMenuCommand(.editTags, to: menu)
+        return applied
+    }
+
+    private func toggle(_ tag: FinderTag, on urls: [URL]) {
+        let tags = services.tags, undo = undoManager
+        performAsync { try await tags.toggle(tag, on: urls, undo: undo) }
     }
 
     /// The selection is a Compose project (or the folder shown is one, with nothing selected).
