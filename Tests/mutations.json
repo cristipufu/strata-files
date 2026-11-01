@@ -3822,10 +3822,10 @@
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+ArchiveBrowsing.swift",
-    "find": "        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.\n            guard let self, navigationRevision == startedRevision else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
-    "replace": "        let startedAt = directory?.lexicallyStandardized.path\n        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in\n            guard let self, directory?.lexicallyStandardized.path == startedAt else { return }\n            delegate?.browser(self, showArchiveCopy: copy)\n        }",
-    "rule": "Async action context ownership archive browsing completes after leaving and returning to the same folder",
+    "file": "Strata/Browser/ArchiveOpening.swift",
+    "find": "            guard let pane, pane.navigationRevision == startedRevision else { return }\n            pane.showArchiveCopy(copy)\n",
+    "replace": "            guard let pane else { return }\n            pane.showArchiveCopy(copy)\n",
+    "rule": "Async action context ownership archive browsing shows its copy in a pane that has navigated away since",
     "tests": "AsyncActionContextTests/archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges"
   },
   {

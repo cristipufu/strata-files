@@ -1,35 +1,7 @@
 import AppKit
 
-/// Archives being opened as folders, by their copy's folder: a second open of the same archive (a double double-click,
-/// the other pane) waits for the first instead of starting over and deleting what it's making.
-private enum OpeningArchives {
-    struct Waiter {
-        weak var browser: BrowserViewController?
-        let revision: Int
-        let show: (URL) -> Void
-
-        var isActive: Bool {
-            guard let browser else { return false }
-            return browser.navigationRevision == revision
-        }
-    }
-
-    static var waiters: [String: [Waiter]] = [:]
-}
-
-/// Archives open like folders, the way Windows Explorer shows a zip: browse in, Quick Look, copy things out. The archive
-/// is extracted once, safely, into Strata's caches (see `ArchiveCache`), and nothing inside is changed from Strata.
-extension BrowserViewController {
-    /// Unpacking more than this asks first.
-    private static let largeArchive: Int64 = 2 << 30
-
-    /// Whether opening an archive as a folder asks first: when it holds more than `largeArchive`, or when its survey ran
-    /// into a limit after counting some of it, which says only that it holds at least that much.
-    static func asksBeforeOpening(_ inspection: Archiver.Inspection) -> Bool {
-        guard let atLeast = inspection.lowerBound else { return false }
-        return inspection.complete ? atLeast > largeArchive : atLeast > 0
-    }
-
+/// A pane's archives opened as folders (see `ArchiveOpening`), Show Archive in Finder and Extract.
+extension BrowserViewController: ArchiveOpeningPane {
     /// Whether this pane shows (or the selection is) inside a read-only copy (an archive opened as a folder, or a
     /// container's files): changing things there is off.
     func isReadOnlyCopy(_ url: URL) -> Bool {
@@ -58,151 +30,18 @@ extension BrowserViewController {
     func browseArchive(_ archive: URL) {
         // Where its copy is, and whether it's finished, is read away from the main thread: the archive may be on a
         // disk that doesn't answer.
-        afterReading({ ArchiveCache.lookup(archive) }) { [weak self] found in self?.browseArchive(archive, copy: found) }
-    }
-
-    private func browseArchive(_ archive: URL, copy found: (folder: URL, finished: Bool)?) {
-        let window = view.window
-        // Read away from the main thread, the answer can be older than a job that finished it meanwhile: a copy is
-        // recorded before its waiters are let go, so it's either still being made (waiters) or known finished here.
-        if let found, found.finished || ArchiveCache.isFinished(found.folder) {
-            delegate?.browser(self, showArchiveCopy: found.folder)
-            return
-        }
-        guard let folder = found?.folder, ArchiveKind(fileName: archive.lastPathComponent) != nil else {
-            return Self.showUnreadable(archive, in: window)
-        }
-        let key = folder.path
-        let startedRevision = navigationRevision
-        let waiter = OpeningArchives.Waiter(browser: self, revision: startedRevision) { [weak self] copy in
-            // Only if you're still where you opened it: a slow archive mustn't pull you away from elsewhere.
-            guard let self, navigationRevision == startedRevision else { return }
-            delegate?.browser(self, showArchiveCopy: copy)
-        }
-        if OpeningArchives.waiters[key] != nil {
-            OpeningArchives.waiters[key]?.append(waiter)
-            return
-        }
-        OpeningArchives.waiters[key] = [waiter]
-        delegate?.browser(self, openingArchive: archive, stop: nil)
-        Task { [weak self] in
-            let inspection = await Archiver.inspect(archive)
-            // Keep unpacking while the opening pane or any waiting pane is still alive.
-            guard let activeOwner = Self.owner(self, startedRevision, key).browser else {
-                OpeningArchives.waiters[key] = nil
-                return
-            }
-            if Self.asksBeforeOpening(inspection) {
-                let response = await Self.confirmOpening(archive, inspection, in: activeOwner.view.window ?? window)
-                guard response == .alertFirstButtonReturn else {
-                    Self.stopOpening(key)
-                    if response == .alertSecondButtonReturn { activeOwner.extractArchive(archive) }
-                    return
-                }
-            }
-            let (runner, waiting) = Self.owner(self, startedRevision, key)
-            guard let runner else {
-                OpeningArchives.waiters[key] = nil
-                return
-            }
-            let runnerRevision = runner === self ? startedRevision : (waiting?.revision ?? runner.navigationRevision)
-            await runner.unpackForBrowsing(archive, into: folder, key: key, startedRevision: runnerRevision)
+        afterReading({ ArchiveCache.lookup(archive) }) { [weak self] found in
+            guard let self else { return }
+            ArchiveOpening.open(archive, copy: found, from: self)
         }
     }
 
-    private static func showUnreadable(_ archive: URL, in window: NSWindow?) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
-        alert.informativeText = String(localized: "It can’t be read.")
-        FileAlerts.present(alert, in: window) { _ in }
+    func showArchiveCopy(_ folder: URL) {
+        delegate?.browser(self, showArchiveCopy: folder)
     }
 
-    /// Who unpacks the copy: the pane that opened it while it's still where it opened it, else the first pane still
-    /// waiting for it (`waiting`), else the opening pane if it's still there.
-    private static func owner(_ opener: BrowserViewController?, _ startedRevision: Int, _ key: String)
-        -> (browser: BrowserViewController?, waiting: OpeningArchives.Waiter?) {
-        let waiting = (OpeningArchives.waiters[key] ?? []).first(where: \.isActive)
-        return ((opener?.navigationRevision == startedRevision ? opener : nil) ?? waiting?.browser ?? opener, waiting)
-    }
-
-    /// A big archive asks before it's unpacked into Strata's caches: Open, Extract (next to it) or Cancel.
-    private static func confirmOpening(_ archive: URL, _ inspection: Archiver.Inspection,
-                                       in window: NSWindow?) async -> NSApplication.ModalResponse {
-        let size = ByteCountFormatter.string(fromByteCount: inspection.bytes, countStyle: .file)
-        let alert = NSAlert()
-        alert.messageText = inspection.complete
-            ? String(localized: "“\(archive.lastPathComponent)” holds \(size).", comment: "An archive, then its unpacked size (“5 GB”)")
-            : String(localized: "“\(archive.lastPathComponent)” holds at least \(size).",
-                     comment: "An archive, then the least its unpacked size can be (“5 GB”): counting it didn’t finish")
-        alert.informativeText = String(localized: "Opening it as a folder unpacks all of it into Strata’s caches first. Extract puts it next to the archive instead.")
-        alert.addButton(withTitle: String(localized: "Open", comment: "Alert button: open the archive as a folder"))
-        alert.addButton(withTitle: String(localized: "Extract", comment: "Alert button: unpack the archive next to it"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        return await withCheckedContinuation { continuation in
-            FileAlerts.present(alert, in: window) { continuation.resume(returning: $0) }
-        }
-    }
-
-    /// Every pane still waiting for the copy stops showing that it's opening.
-    private static func stopOpening(_ key: String) {
-        let cancelledWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
-        for w in cancelledWaiters where w.isActive {
-            if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
-        }
-    }
-
-    /// Nothing else is making this copy (it would be in `waiters`): what's at `entry` is left from an earlier attempt.
-    /// Never extracted into: it's set aside, or the copy isn't made.
-    @concurrent private static func prepareCopy(at entry: URL) async -> (any Error)? {
-        let fm = FileManager.default
-        do {
-            if fm.fileExists(atPath: entry.path) { ArchiveCache.setAside(entry) }
-            try fm.createDirectory(at: entry.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // Fails if anything is still there.
-            try fm.createDirectory(at: entry, withIntermediateDirectories: false)
-            return nil
-        } catch {
-            return error
-        }
-    }
-
-    private func unpackForBrowsing(_ archive: URL, into folder: URL, key: String, startedRevision: Int) async {
-        let entry = folder.deletingLastPathComponent()
-        let window = view.window
-        if let error = await Self.prepareCopy(at: entry) {
-            let failedWaiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
-            for w in failedWaiters where w.isActive {
-                if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
-            }
-            return FileAlerts.report([(archive, error)], .open, in: window)
-        }
-        let job = ArchiveJob(.browse(archive, at: folder), undo: nil)
-        for w in OpeningArchives.waiters[key] ?? [] where w.isActive {
-            if let b = w.browser { b.delegate?.browser(b, openingArchive: archive) { job.cancel() } }
-        }
-        job.onFinish = { [weak self] job in
-            let waiters = OpeningArchives.waiters.removeValue(forKey: key) ?? []
-            for w in waiters where w.isActive {
-                if let b = w.browser { b.delegate?.browser(b, openingArchive: nil, stop: nil) }
-            }
-            if let self, navigationRevision == startedRevision { delegate?.browser(self, openingArchive: nil, stop: nil) }
-            // The job records its finished copy, or sets aside one it didn't finish, away from the main thread.
-            guard job.state == .finished else {
-                if job.state == .failed, let message = job.errorMessage {
-                    let alert = NSAlert()
-                    alert.messageText = String(localized: "“\(archive.lastPathComponent)” couldn’t be opened.")
-                    alert.informativeText = message
-                    let targetWindow = waiters.first(where: \.isActive)?.browser?.view.window ?? window
-                    FileAlerts.present(alert, in: targetWindow) { _ in }
-                }
-                return
-            }
-            waiters.forEach { $0.show(folder) }
-            // Keeps the cache in check while Strata stays open (launch isn't the only time).
-            let keep = Set(OpeningArchives.waiters.keys).union(BrowserWindowController.archiveCopiesShown())
-            DispatchQueue.global(qos: .utility).async { ArchiveCache.prune(keeping: keep) }
-        }
-        services.transfers.add(job)
+    func showOpening(_ archive: URL?, stop: (() -> Void)?) {
+        delegate?.browser(self, openingArchive: archive, stop: stop)
     }
 
     /// Context menu, when archives don't open as folders by default (or for kinds that open in their own apps).

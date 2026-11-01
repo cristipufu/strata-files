@@ -57,15 +57,15 @@ struct ArchiveSafetyTests {
     }
 
     @Test func openingAnArchiveAsAFolderAsksWhenItsLargeOrItsSurveyDidntFinish() {
-        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, complete: true)))
-        #expect(BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30, complete: true)))
+        #expect(!ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, complete: true)))
+        #expect(ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30, complete: true)))
         // A survey that ran into a limit counted only part of it.
-        #expect(BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, limited: true)))
+        #expect(ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20, limited: true)))
         // One stopped by damage or a password, or that counted nothing, says nothing about the size.
-        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 0, limited: true)))
-        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20)))
-        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30)))
-        #expect(!BrowserViewController.asksBeforeOpening(Archiver.Inspection()))
+        #expect(!ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 0, limited: true)))
+        #expect(!ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 1 << 20)))
+        #expect(!ArchiveOpening.asksBeforeOpening(Archiver.Inspection(entries: 3, bytes: 3 << 30)))
+        #expect(!ArchiveOpening.asksBeforeOpening(Archiver.Inspection()))
     }
 
     @Test func anEncryptedArchiveIsRefusedBeforeAnythingIsUnpacked() async throws {
