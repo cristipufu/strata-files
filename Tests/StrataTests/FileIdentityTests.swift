@@ -55,22 +55,20 @@ struct FileIdentityTests {
         #expect(tree.snapshot() == ["destination", "saved"])
     }
 
-    @Test func historyFormatsKeepTheirExistingRemountAndFallbackRules() {
+    @Test func historyUsesVolumeIdentityAndFallsBackWhenAVolumeHasNoUUID() {
         let first = FileIdentity(device: 7, inode: 12, birthSeconds: 100, birthNanoseconds: 200)
         let remounted = FileIdentity(device: 8, inode: 12, birthSeconds: 100, birthNanoseconds: 200)
         let reused = FileIdentity(device: 7, inode: 12, birthSeconds: 101, birthNanoseconds: 200)
         let later = FileIdentity(device: 7, inode: 12, birthSeconds: 100, birthNanoseconds: 201)
         #expect(first != remounted && first != reused && first != later)
-        #expect(first.legacyHistoryKey == "7:12")
         #expect(first.historyKey(volumeID: nil) == "7/12")
         #expect(first.historyKey(volumeID: "volume-id") == "volume-id/12")
         #expect(first.historyKey(volumeID: "volume-id") == remounted.historyKey(volumeID: "volume-id"))
         #expect(first.historyKey(volumeID: nil) != remounted.historyKey(volumeID: nil))
-        // Existing History never recorded birth time; this refactor does not reinterpret its saved keys.
         #expect(first.historyKey(volumeID: "volume-id") == reused.historyKey(volumeID: "volume-id"))
     }
 
-    @Test func decodedHistoryRecognizesBothFormatsAndRefusesReplacements() async throws {
+    @Test func decodedHistoryRefusesMissingOwnershipAndReplacements() async throws {
         let tree = try TestTree("state/", "cache/", "destination", "keep")
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("cache"), key: nil)
         let history = OperationLog(storage: storage, copies: .live)
@@ -79,20 +77,19 @@ struct FileIdentityTests {
         let current = try #require(OperationLog.identity(path))
         let volume = try tree.url("destination").resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString
         #expect(current == identity.historyKey(volumeID: volume))
-        var entries: [OperationLog.Entry] = []
-        for key in [current, identity.legacyHistoryKey] {
-            var entry = OperationLog.Entry(name: "Move", kind: .move, pairs: [[tree.url("source").path, path]])
-            entry.identities[path] = key
-            let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(entry))
-            #expect(decoded.identities[path] == key)
-            #expect(await history.canUndo(decoded))
-            #expect(!FileIdentity.matchesHistory(key, at: tree.url("missing").path))
-            #expect(!FileIdentity.matchesHistory(key, at: tree.url("keep").path))
-            entries.append(decoded)
-        }
+        let entry = OperationLog.Entry(name: "Move", kind: .move,
+            moves: [HistoryMove(from: tree.url("source"), to: tree.url("destination"))], fileIdentities: [path: current])
+        let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: JSONEncoder().encode(entry))
+        #expect(decoded.expectation(at: path) == .recorded(current))
+        #expect(await history.canUndo(decoded))
+        #expect(!FileIdentity.matchesHistory(current, at: tree.url("missing").path))
+        #expect(!FileIdentity.matchesHistory(current, at: tree.url("keep").path))
+        var missing = decoded
+        missing.ownership = [:]
+        #expect(await !history.canUndo(missing))
         try FileManager.default.moveItem(at: tree.url("destination"), to: tree.url("saved"))
         try Data("replacement".utf8).write(to: tree.url("destination"))
-        for entry in entries { #expect(await !history.canUndo(entry)) }
+        #expect(await !history.canUndo(decoded))
         for invalid in ["", "no-identity", "0:0", "volume/0", "7:12:100.200"] {
             #expect(!FileIdentity.matchesHistory(invalid, at: path))
         }

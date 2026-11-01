@@ -123,8 +123,8 @@ struct DeleteScopeTests {
         // Whatever went to the Trash despite this comes back out.
         defer {
             for entry in OperationLog.shared.entries {
-                for pair in entry.pairs where pair[0] == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair[1])) {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves where pair.from == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair.to)) {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }

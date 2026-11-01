@@ -37,7 +37,7 @@ struct FileCommandOwnershipTests {
         let renamed = try await first.services.files.rename(tree.url("a.txt"), to: "b.txt", undo: undo)
         undo.endUndoGrouping()
         let entry = try #require(first.services.transfers.history.entries.first)
-        #expect(entry.pairs == [[tree.url("a.txt").path, renamed.path]])
+        #expect(entry.moves == [HistoryMove(from: tree.url("a.txt"), to: renamed)])
         #expect(second.services.transfers.history.entries.isEmpty)
         #expect(!OperationLog.shared.entries.contains { $0.id == entry.id })
         for _ in 0..<3 {
@@ -107,8 +107,8 @@ struct FileCommandOwnershipTests {
             // The ownership mutation records in the shared test journal instead; clean only this tree's entries.
             tree.removeFromTrash()
             for entry in history.entries {
-                for pair in entry.pairs + entry.replaced {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves + entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }
@@ -117,7 +117,7 @@ struct FileCommandOwnershipTests {
         try await env.services.files.trash([tree.url("a"), tree.url("a/inner.txt"), tree.url("link")], undo: undo)
         undo.endUndoGrouping()
         let trashed = try #require(history.entries.first)
-        #expect(trashed.pairs.count == 2)
+        #expect(trashed.moves.count == 2)
         #expect(tree.snapshot() == ["ab.txt", "other/", "other/a.txt"])
         undo.undo()
         await FileOps.undoWork?.value
@@ -143,13 +143,13 @@ struct FileCommandOwnershipTests {
         let history = env.services.transfers.history
         defer {
             for entry in history.entries {
-                for pair in entry.pairs + entry.replaced {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves + entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }
         try await env.services.files.trash([tree.url("Gone/a.txt")], undo: nil)
-        let trashed = URL(fileURLWithPath: try #require(history.entries.first?.pairs.first?[1]))
+        let trashed = URL(fileURLWithPath: try #require(history.entries.first?.moves.first?.to))
         // The folder it was in goes too: Put Back makes it again.
         try FileManager.default.removeItem(at: tree.url("Gone"))
         // The Trash's own records can name its folder too: with none, only History can say.

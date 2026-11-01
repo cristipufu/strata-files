@@ -151,8 +151,8 @@ struct ToolbarCustomizationTests {
                     owner.window?.contentViewController = nil
                     owner.panes.forEach { $0.stopBackgroundWork() }
                     for entry in environment.services.transfers.history.entries {
-                        for pair in entry.pairs where pair[0].hasPrefix(tree.root.path + "/") {
-                            TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                        for pair in entry.moves where pair.from.hasPrefix(tree.root.path + "/") {
+                            TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                         }
                     }
                 }
@@ -179,7 +179,7 @@ struct ToolbarCustomizationTests {
                 #expect(tree.snapshot() == before.filter { $0 != (index == 0 ? "left/a" : "right/a") })
                 let history = environment.services.transfers.history
                 let recorded = try #require(history.entries.last)
-                #expect(recorded.pairs.map { URL(fileURLWithPath: $0[0]).lastPathComponent } == ["a"])
+                #expect(recorded.moves.map { URL(fileURLWithPath: $0.from).lastPathComponent } == ["a"])
                 try await history.undo(recorded, undoManager: nil)
                 #expect(tree.snapshot() == before)
                 withExtendedLifetime((environment, state)) {}

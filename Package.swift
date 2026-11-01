@@ -51,6 +51,7 @@ let appModelSources = [
     "FolderCompare.swift",
     "Frecency.swift",
     "OperationLog.swift",
+    "HistoryEntry.swift",
     "PlaceChecks.swift",
     "Places.swift",
     "Prefs.swift",

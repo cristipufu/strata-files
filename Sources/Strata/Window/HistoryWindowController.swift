@@ -121,19 +121,17 @@ final class HistoryWindowController: NSWindowController {
     }
 
     fileprivate func summary(_ entry: OperationLog.Entry) -> String {
-        let items = entry.kind == .move ? entry.pairs.compactMap { $0.first } : entry.created
+        let items = entry.kind == .move ? entry.moves.map(\.from) : entry.created
         let first = (items.first as NSString?)?.lastPathComponent ?? ""
         let more = max(0, items.count - 1)
         switch entry.kind {
         case .move:
-            let destination = entry.pairs.first.flatMap {
-                $0.count == 2 && !$0[1].isEmpty ? Format.tildePath(URL(fileURLWithPath: $0[1]).deletingLastPathComponent()) : nil
-            } ?? ""
+            let destination = entry.moves.first.map { Format.tildePath(URL(fileURLWithPath: $0.to).deletingLastPathComponent()) } ?? ""
             // Renames (every item stays in its folder) show the new name, not a destination.
-            let inPlace = !entry.pairs.isEmpty && entry.pairs.allSatisfy {
-                $0.count == 2 && ($0[0] as NSString).deletingLastPathComponent == ($0[1] as NSString).deletingLastPathComponent
+            let inPlace = !entry.moves.isEmpty && entry.moves.allSatisfy {
+                ($0.from as NSString).deletingLastPathComponent == ($0.to as NSString).deletingLastPathComponent
             }
-            if inPlace, let to = entry.pairs.first.flatMap({ $0.count == 2 ? ($0[1] as NSString).lastPathComponent : nil }) {
+            if inPlace, let to = entry.moves.first.map({ ($0.to as NSString).lastPathComponent }) {
                 return more > 0 ? String(localized: "“\(first)” → “\(to)” and \(more) more, in \(destination)", comment: "plural")
                     : String(localized: "“\(first)” → “\(to)”", comment: "History: an item renamed from one name to another")
             }

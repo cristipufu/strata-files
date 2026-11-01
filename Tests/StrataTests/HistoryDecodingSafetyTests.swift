@@ -10,29 +10,37 @@ import Testing
 @testable import StrataSearch
 
 struct HistoryDecodingSafetyTests {
-    @Test(arguments: ["pairs", "replaced"], [0, 1, 3])
-    func malformedHistoryPairsAreRejectedBeforeUndo(_ key: String, _ count: Int) throws {
+    @Test(arguments: ["moves", "replacements"])
+    func malformedHistoryMovesAreRejectedBeforeUndo(_ key: String) throws {
         let tree = try TestTree("a", "b")
-        let entry = OperationLog.Entry(name: "Move", kind: .move, pairs: [[tree.url("a").path, tree.url("b").path]])
+        let entry = OperationLog.Entry(name: "Move", kind: .move,
+            moves: [HistoryMove(from: tree.url("a"), to: tree.url("b"))])
         let encoded = try JSONEncoder().encode(entry)
         var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        object[key] = [Array(repeating: tree.url("a").path, count: count)]
-        let malformed = try JSONSerialization.data(withJSONObject: object)
-        #expect(throws: DecodingError.self) { try JSONDecoder().decode(OperationLog.Entry.self, from: malformed) }
+        let invalid: [Any] = [[], ["source"], ["from": tree.url("a").path], ["to": tree.url("b").path],
+                              ["from": 7, "to": tree.url("b").path]]
+        for value in invalid {
+            object[key] = [value]
+            let malformed = try JSONSerialization.data(withJSONObject: object)
+            #expect(throws: DecodingError.self) { try JSONDecoder().decode(OperationLog.Entry.self, from: malformed) }
+        }
         #expect(tree.snapshot() == ["a", "b"])
     }
 
-    @Test func validAndOlderHistoryRecordsKeepTheirPairs() throws {
+    @Test func historyRequiresEveryCurrentRecordField() throws {
         let tree = try TestTree("a", "b")
-        let entry = OperationLog.Entry(name: "Move", kind: .move, pairs: [[tree.url("a").path, tree.url("b").path]])
+        let entry = OperationLog.Entry(name: "Move", kind: .move,
+            moves: [HistoryMove(from: tree.url("a"), to: tree.url("b"))])
         let encoded = try JSONEncoder().encode(entry)
-        var old = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        for key in ["replaced", "containers", "identities", "changed", "undone"] { old[key] = nil }
-        for data in [encoded, try JSONSerialization.data(withJSONObject: old)] {
-            let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: data)
-            #expect(decoded.pairs == entry.pairs)
-            #expect(decoded.replaced.isEmpty)
-            #expect(!decoded.undone)
+        let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let decoded = try JSONDecoder().decode(OperationLog.Entry.self, from: encoded)
+        #expect(decoded.sameItems(as: entry) && !decoded.undone)
+        for key in ["id", "date", "name", "kind", "moves", "created", "replacements", "containers", "ownership", "undone"] {
+            var missing = object
+            missing[key] = nil
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(OperationLog.Entry.self, from: JSONSerialization.data(withJSONObject: missing))
+            }
         }
         #expect(tree.snapshot() == ["a", "b"])
     }
@@ -40,34 +48,31 @@ struct HistoryDecodingSafetyTests {
     @Test func invalidRecordsDoNotHideValidNeighborsOrRewriteHistory() throws {
         let tree = try TestTree("a", "b")
         var first = OperationLog.Entry(name: "Move", kind: .move,
-                                       pairs: [[tree.url("a").path, tree.url("b").path]])
+                                       moves: [HistoryMove(from: tree.url("a"), to: tree.url("b"))])
         first.date = Date(timeIntervalSince1970: 1000)
         first.undone = true
         first.changed = Date(timeIntervalSince1970: 1234)
         var last = OperationLog.Entry(name: "Copy", kind: .create, created: [tree.url("b").path],
-                                      replaced: [[tree.url("a").path, tree.url("b").path]])
+                                      replacements: [HistoryMove(from: tree.url("a"), to: tree.url("b"))])
         last.date = Date(timeIntervalSince1970: 2000)
         let valid = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode([first, last])) as? [[String: Any]])
         var invalid = valid[0]
-        invalid["pairs"] = [[tree.url("a").path]]
-        var older = valid[1]
-        for key in ["replaced", "containers", "identities", "changed", "undone"] { older[key] = nil }
-        let olderID = UUID()
-        older["id"] = olderID.uuidString
-        let values: [Any] = [NSNull(), valid[0], invalid, "bad", [], 42, older, valid[1], invalid]
+        invalid["moves"] = [["from": tree.url("a").path]]
+        var missingOwnership = valid[1]
+        missingOwnership["ownership"] = nil
+        let values: [Any] = [NSNull(), valid[0], invalid, "bad", [], 42, missingOwnership, valid[1], invalid]
         let file = tree.url("history.sealed")
         try SecureStorage.Context.shared.write(JSONSerialization.data(withJSONObject: values), to: file)
         let original = try Data(contentsOf: file)
         let decoded = OperationLog.readEntries(from: file, storage: .shared)
-        #expect(decoded.count == 3)
-        #expect(decoded.map(\.id) == [first.id, olderID, last.id])
-        if decoded.count == 3 {
+        #expect(decoded.count == 2)
+        #expect(decoded.map(\.id) == [first.id, last.id])
+        if decoded.count == 2 {
             // Compare all encoded fields, including identities and undo state, not just the names.
             let encoder = JSONEncoder()
             encoder.outputFormatting = .sortedKeys
             #expect(try encoder.encode(decoded[0]) == encoder.encode(first))
-            #expect(try encoder.encode(decoded[2]) == encoder.encode(last))
-            #expect(decoded[1].identities.isEmpty && !decoded[1].undone)
+            #expect(try encoder.encode(decoded[1]) == encoder.encode(last))
         }
         #expect(try Data(contentsOf: file) == original)
         #expect(tree.snapshot() == ["a", "b", "history.sealed"])

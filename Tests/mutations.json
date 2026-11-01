@@ -1,10 +1,10 @@
 [
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "guard paths.allSatisfy({ $0.count == 2 && !$0[0].isEmpty && !$0[1].isEmpty }) else {",
+    "file": "Strata/Model/HistoryEntry.swift",
+    "find": "guard !from.isEmpty, !to.isEmpty else {",
     "replace": "guard true else {",
-    "rule": "Malformed History pairs reach undo",
-    "tests": "HistoryDecodingSafetyTests"
+    "rule": "Malformed History endpoints reach Undo",
+    "tests": "HistoryDecodingSafetyTests|HistoryRecordTests/anEmptyHistoryEndpointIsRejected"
   },
   {
     "file": "Strata/Model/FileOps.swift",
@@ -225,17 +225,10 @@
   },
   {
     "file": "Strata/Model/FileIdentity.swift",
-    "find": "        return read(path)?.legacyHistoryKey == recorded",
-    "replace": "        return true",
-    "rule": "History's undo trusts identities saved by older versions",
-    "tests": "TrashUndoTests/historyUndoChecksIdentities|FileIdentityTests/decodedHistoryRecognizesBothFormatsAndRefusesReplacements"
-  },
-  {
-    "file": "Strata/Model/FileIdentity.swift",
-    "find": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return historyKey(at: path) == recorded }",
-    "replace": "        guard recorded.contains(\":\"), !recorded.contains(\"/\") else { return true }",
-    "rule": "History's undo skips the identity check for current entries",
-    "tests": "TrashUndoTests|FileIdentityTests/decodedHistoryRecognizesBothFormatsAndRefusesReplacements"
+    "find": "        historyKey(at: path) == recorded",
+    "replace": "        true",
+    "rule": "History identity checks reject replacements",
+    "tests": "TrashUndoTests|FileIdentityTests/decodedHistoryRefusesMissingOwnershipAndReplacements"
   },
   {
     "file": "Strata/Transfers/TransferEngine+Operations.swift",
@@ -1078,13 +1071,6 @@
     "tests": "StorageContextTests/historyUndo"
   },
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "SecureStorage.removeLegacy(storage.url(\"history.json\"))",
-    "replace": "SecureStorage.removeLegacy(storage.url(\"../second/history.json\"))",
-    "rule": "Storage isolation removes another contexts legacy History",
-    "tests": "StorageContextTests/historyRemoves"
-  },
-  {
     "file": "Strata/Model/SecureStorage.swift",
     "find": "let base = directory.absoluteURL.path + \"/\"",
     "replace": "let base = SecureStorage.Context.shared.directory.absoluteURL.path + \"/\"",
@@ -1839,8 +1825,8 @@
     "file": "Strata/Model/CreatedFolders.swift",
     "find": "guard let saved = recorded[path], let identity",
     "replace": "guard let saved = recorded[path] ?? FileIdentity.historyKey(at: path), let identity",
-    "rule": "Created folder ownership missing in old History is not guessed",
-    "tests": "CreatedFolderOwnershipTests/olderHistoryRestoresFilesWithoutRemovingUnidentifiedContainers"
+    "rule": "Created folder ownership is never guessed when capture failed",
+    "tests": "CreatedFolderOwnershipTests/historyLeavesContainersWhoseOwnershipWasNotCaptured"
   },
   {
     "file": "Strata/Model/CreatedFolders.swift",
@@ -1851,7 +1837,7 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "        entries[index].identities.merge(updates) { _, new in new }\n",
+    "find": "        entries[index].ownership.merge(updates.mapValues { HistoryIdentity($0) }) { _, new in new }\n",
     "replace": "",
     "rule": "Created folder ownership in saved History follows Redo",
     "tests": "CreatedFolderOwnershipTests/redoUpdatesOwnershipForLiveAndSavedHistory"
@@ -1918,21 +1904,21 @@
     "find": "        for (path, identity) in identities { saved[path] = identity.historyKey(at: path) ?? \"\" }",
     "replace": "        for (path, _) in identities { saved[path] = FileIdentity.historyKey(at: path) ?? \"\" }",
     "rule": "Saved History ownership never adopts current replacements",
-    "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+    "tests": "HistoryOwnershipTests/missingOwnershipAlwaysRefusesUndo"
   },
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "identities[path] = fileIdentities[path] ?? \"\"",
-    "replace": "identities[path] = fileIdentities[path] ?? OperationLog.identity(path) ?? \"\"",
+    "file": "Strata/Model/HistoryEntry.swift",
+    "find": "ownership[path] = HistoryIdentity(fileIdentities[path])",
+    "replace": "ownership[path] = HistoryIdentity(fileIdentities[path] ?? OperationLog.identity(path))",
     "rule": "Missing supplied History ownership never falls back to current files",
-    "tests": "HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+    "tests": "HistoryOwnershipTests/missingOwnershipAlwaysRefusesUndo"
   },
   {
-    "file": "Strata/Model/OperationLog.swift",
-    "find": "identities[path] = fileIdentities[path] ?? \"\"",
-    "replace": "let recorded = fileIdentities[path] ?? \"\"; identities[path] = recorded.isEmpty ? nil : recorded",
-    "rule": "Refused History ownership never becomes an untracked legacy record",
-    "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration|HistoryOwnershipTests/absentOwnershipIsExplicitAndNeverBecomesLegacyHistory"
+    "file": "Strata/Model/HistoryEntry.swift",
+    "find": "ownership[path] ?? .unavailable",
+    "replace": "ownership[path] ?? .recorded(OperationLog.identity(path) ?? \"\")",
+    "rule": "Missing History ownership never accepts the current file",
+    "tests": "TransferTests/historyRejectsItemsReplacedBeforeTransferRegistration|HistoryOwnershipTests/missingOwnershipAlwaysRefusesUndo"
   },
   {
     "file": "Strata/Model/FileOps.swift",
@@ -1943,8 +1929,8 @@
   },
   {
     "file": "Strata/Model/OperationLog.swift",
-    "find": "        (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {",
-    "replace": "        (entry.pairs.reversed() + entry.replaced.reversed().filter { holdsOriginal(entry, $0[1]) }).map {",
+    "find": "        (entry.moves.reversed() + entry.replacements.reversed()).filter { holdsOriginal(entry, $0.to) }.map {",
+    "replace": "        (entry.moves.reversed() + entry.replacements.reversed().filter { holdsOriginal(entry, $0.to) }).map {",
     "rule": "Mixed History Undo checks ownership of moved items even when an owned copy remains",
     "tests": "HistoryOwnershipTests/mixedHistoryUndoSkipsReplacedMovesWhileUndoingItsOwnCopy"
   },
@@ -8261,5 +8247,26 @@
     "replace": "let work = Task { [context = Optional(context), weak window] in",
     "rule": "Local command visits do not keep a closed Trash pane alive",
     "tests": "LocalFileCommandsTests/pendingTrashDoesNotKeepItsClosedPaneAlive"
+  },
+  {
+    "file": "Strata/Model/HistoryEntry.swift",
+    "find": "ownership = try c.decode([String: HistoryIdentity].self, forKey: .ownership)",
+    "replace": "ownership = try c.decodeIfPresent([String: HistoryIdentity].self, forKey: .ownership) ?? [:]",
+    "rule": "Typed History requires ownership in its current format",
+    "tests": "HistoryDecodingSafetyTests/historyRequiresEveryCurrentRecordField"
+  },
+  {
+    "file": "Strata/Model/HistoryEntry.swift",
+    "find": "key.map { FileIdentity.matchesHistory($0, at: path) } ?? false",
+    "replace": "key.map { FileIdentity.matchesHistory($0, at: path) } ?? TransferEngine.exists(URL(fileURLWithPath: path))",
+    "rule": "Typed History always refuses unavailable ownership",
+    "tests": "HistoryRecordTests/recordsSaveReopenAndRefuseMissingOwnership"
+  },
+  {
+    "file": "Strata/Model/OperationLog.swift",
+    "find": "entry = try? Entry(from: decoder)",
+    "replace": "entry = (try? Entry(from: decoder)) ?? Entry(name: \"Unsupported\", kind: .create, moves: [], fileIdentities: [:])",
+    "rule": "Typed History ignores unsupported records safely on upgrade",
+    "tests": "HistoryRecordTests/unsupportedHistoryIsIgnoredOnUpgradeWithoutChangingFiles|HistoryDecodingSafetyTests/invalidRecordsDoNotHideValidNeighborsOrRewriteHistory"
   }
 ]

@@ -59,9 +59,9 @@ struct PutBackTests {
     @Test func historyKnowsOnlyTheFileItPutThere() throws {
         let tree = try TestTree("T/a.txt", "T/ab.txt", "T/new.txt")
         let item = tree.url("T/a.txt")
-        var older = OperationLog.Entry(name: "Move to Trash", kind: .move, pairs: [[tree.url("Old/a.txt").path, item.path]])
+        var older = OperationLog.Entry(name: "Move to Trash", kind: .move, moves: [HistoryMove(from: tree.url("Old/a.txt"), to: item)])
         older.date = .distantPast
-        let newer = OperationLog.Entry(name: "Move to Trash", kind: .move, pairs: [[tree.url("Docs/a.txt").path, item.path]])
+        let newer = OperationLog.Entry(name: "Move to Trash", kind: .move, moves: [HistoryMove(from: tree.url("Docs/a.txt"), to: item)])
         let found = OperationLog.movedFrom([item, tree.url("T/ab.txt")], in: [newer, older])
         #expect(found.mapValues(\.from.path) == [item.standardizedFileURL.path: tree.url("Docs/a.txt").path])
         // Another file takes its place: History knows nothing about that one.

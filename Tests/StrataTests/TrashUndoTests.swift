@@ -15,7 +15,7 @@ import Testing
 struct TrashUndoTests {
     /// The last History entry for items of `tree`.
     private func entry(for tree: TestTree) -> OperationLog.Entry? {
-        OperationLog.shared.entries.last { $0.pairs.contains { $0[0].hasPrefix(tree.root.path + "/") } }
+        OperationLog.shared.entries.last { $0.moves.contains { $0.from.hasPrefix(tree.root.path + "/") } }
     }
 
     @Test(arguments: [false, true])
@@ -64,8 +64,8 @@ struct TrashUndoTests {
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["ab.txt", "d.txt"])
         let trashed = try #require(entry(for: tree))
-        #expect(trashed.pairs.map { URL(fileURLWithPath: $0[0]).lastPathComponent }.sorted() == ["a.txt", "b"])
-        #expect(trashed.pairs.allSatisfy { Trash.isInTrash(URL(fileURLWithPath: $0[1])) })
+        #expect(trashed.moves.map { URL(fileURLWithPath: $0.from).lastPathComponent }.sorted() == ["a.txt", "b"])
+        #expect(trashed.moves.allSatisfy { Trash.isInTrash(URL(fileURLWithPath: $0.to)) })
 
         undo.undo()
         await FileOps.undoWork?.value
@@ -86,8 +86,8 @@ struct TrashUndoTests {
         try await FileOps.trashInBackground([tree.url("a.txt"), tree.url("b.txt")], undo: nil, copies: .live, history: .shared)
         let trashed = try #require(entry(for: tree))
         let canUndo = await OperationLog.shared.canUndo(trashed)
-        let details = canUndo ? "" : trashed.pairs.map { pair in
-            "Recorded: \(trashed.identities[pair[1]] ?? "missing"); current: \(OperationLog.identity(pair[1]) ?? "missing"); original: \(OperationLog.identity(pair[0]) ?? "absent"); path: \(pair[1])"
+        let details = canUndo ? "" : trashed.moves.map { pair in
+            "Recorded: \(trashed.expectation(at: pair.to).key ?? "missing"); current: \(OperationLog.identity(pair.to) ?? "missing"); original: \(OperationLog.identity(pair.from) ?? "absent"); path: \(pair.to)"
         }.joined(separator: "\n")
         #expect(canUndo, Comment(rawValue: details))
         try await OperationLog.shared.undo(trashed, undoManager: nil)
@@ -120,23 +120,6 @@ struct TrashUndoTests {
         await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
         #expect(tree.snapshot() == ["b.txt"])
         #expect(tree.text("b.txt") == "someone else's")
-    }
-
-    @Test func historyUndoChecksIdentitiesSavedByOlderVersions() async throws {
-        let tree = try TestTree("a.txt")
-        try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt"))], actionName: "Rename", undo: nil, history: .shared, copies: .live)
-        var renamed = try #require(entry(for: tree))
-        // History saved before volume UUIDs were used recorded each item as "device:inode".
-        var info = stat()
-        #expect(lstat(tree.url("b.txt").path, &info) == 0)
-        renamed.identities[tree.url("b.txt").path] = "\(info.st_dev):\(info.st_ino)"
-        #expect(await OperationLog.shared.canUndo(renamed))
-        // Swapped for another file, it's no longer the one the rename left: undo refuses and moves nothing.
-        try FileManager.default.removeItem(at: tree.url("b.txt"))
-        try Data("someone else's".utf8).write(to: tree.url("b.txt"))
-        #expect(await !OperationLog.shared.canUndo(renamed))
-        await #expect(throws: (any Error).self) { try await OperationLog.shared.undo(renamed, undoManager: nil) }
-        #expect(tree.snapshot() == ["b.txt"] && tree.text("b.txt") == "someone else's")
     }
 
     @Test func undoMovesBackOnlyTheMovedItems() async throws {

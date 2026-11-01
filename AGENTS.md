@@ -127,16 +127,17 @@ test guards its rule: break the rule once, watch the test fail, restore it.
 
 - File identity reads belong in `FileIdentity`; live operation ownership belongs in `LandedFiles`. Read without
   following links, and record identities when items land, before callbacks can replace them. Runtime identities
-  include birth time; History keeps its volume UUID/inode and legacy device:inode formats. Don't silently change those
-  saved representations or replace a same-disk expectation with an identity read later.
+  include birth time; History uses volume UUID/inode keys, with device numbers for volumes without UUIDs. Never
+  replace a same-disk expectation with an identity read later. Runtime and saved History use `HistoryMove` and
+  `HistoryIdentity`, with one strict current format. Unsupported records are ignored safely without migrating or
+  rewriting the input file. Missing ownership always refuses Undo.
 - Pass captured `LandedFiles` into History registration after asynchronous work or callbacks. Converting to saved
-  identities must still match that ownership; a failed match gets an explicit refusing key, never an absent key that
-  would enable legacy existence-only Undo. Cover saving, reopening and a replacement arriving before logging.
+  identities must still match that ownership; a failed match gets an explicit unavailable identity. Cover saving, reopening and a replacement arriving before logging.
 - Folders an operation creates: `CreatedFolders` captures their ownership when they're made, before alerts or
   asynchronous transfers, and is shared by live Undo, History and cancellation cleanup. Cleanup verifies the recorded
   identity and removes empty folders nonrecursively; a failed directory listing is not an empty folder. Redo records
-  the folders it recreates and updates their saved History identities. Old records without container identities may
-  restore files but must not remove those folders. Read and remove Finder records relative to an owned, opened
+  the folders it recreates and updates their saved History identities. A folder without captured ownership must
+  never be removed by cleanup. Read and remove Finder records relative to an owned, opened
   directory and never follow a cleanup symlink. Cover replacement files, folders and symlinks, including anything at a
   link's target; never use recursive removal for this cleanup.
 - Retrying a failed transfer keeps the destination and parent identities of the failed attempt: a replacement file,

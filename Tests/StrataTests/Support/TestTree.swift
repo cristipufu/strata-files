@@ -141,9 +141,9 @@ final class TestTree {
     func removeFromTrash(history: OperationLog) {
         let prefix = root.lexicallyStandardized.path + "/"
         for entry in history.entries {
-            for pair in entry.pairs + entry.replaced where URL(fileURLWithPath: pair[0]).lexicallyStandardized.path.hasPrefix(prefix) {
-                let trashed = URL(fileURLWithPath: pair[1])
-                Self.removeFromTrash(trashed, matching: entry.identities[pair[1]])
+            for pair in entry.moves + entry.replacements where URL(fileURLWithPath: pair.from).lexicallyStandardized.path.hasPrefix(prefix) {
+                let trashed = URL(fileURLWithPath: pair.to)
+                Self.removeFromTrash(trashed, matching: entry.expectation(at: pair.to).key)
             }
         }
     }

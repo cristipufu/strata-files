@@ -108,7 +108,13 @@ struct ScratchVolumeTests {
             let device = try ScratchVolume.wholeDisk(ofAttached: image)
             let listed = ScratchVolume.image(at: image, in: try ScratchVolume.attachedImages()).map { "\($0)" } ?? "not listed"
             try ScratchVolume.detach(image: image)
-            let left = ours(try ScratchVolume.attachedImagePaths())
+            // DiskImages can publish the successful detach after hdiutil exits.
+            var left = ours(try ScratchVolume.attachedImagePaths())
+            for _ in 0..<40 {
+                if left.isEmpty { break }
+                Thread.sleep(forTimeInterval: 0.025)
+                left = ours(try ScratchVolume.attachedImagePaths())
+            }
             return (problems, attached, mount, device, listed, left)
         }
         // The disk mounted in the ended folder is detached and the folder removed; the running one's disk is never

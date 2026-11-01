@@ -98,7 +98,7 @@ struct LocalFileCommandsTests {
         #expect(closed == nil)
         await work.value
         #expect(peer.services.transfers.history.entries.isEmpty)
-        #expect(env.services.transfers.history.entries.first?.pairs.count == 2)
+        #expect(env.services.transfers.history.entries.first?.moves.count == 2)
         #expect(tree.snapshot() == ["ab.txt", "other/", "other/a.txt"])
     }
 }

@@ -10,8 +10,8 @@ package final class CreatedFolders {
 
     package init(_ urls: [URL] = []) { record(urls) }
 
-    /// The folders History recorded at `paths` that are still the ones it made, read away from the main thread. Old
-    /// History may lack folder identities: its files are restored, but unidentifiable folders are left alone.
+    /// The folders History recorded at `paths` that are still the ones it made, read away from the main thread.
+    /// A folder without captured ownership is always left alone.
     package static func recorded(paths: [String], recorded: [String: String]) async -> CreatedFolders {
         let unique = paths.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         return CreatedFolders(paths: unique, matched: await matching(unique, recorded))

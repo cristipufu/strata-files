@@ -42,7 +42,7 @@ extension TransferTests {
             TransferEngine.hooks = .init()
             #expect(result.results.map(\.lastPathComponent) == ["photo 2.jpg"], "\(newcomerIsFolder)")
             #expect(result.failures.count == 1 && result.failures[0].contains("photo 2.jpg"), "\(result.failures)")
-            #expect(history.entries.first?.pairs.map { $0.map { ($0 as NSString).lastPathComponent } } == [["photo.jpg", "photo 2.jpg"]])
+            #expect(history.entries.first?.moves.map { [($0.from as NSString).lastPathComponent, ($0.to as NSString).lastPathComponent] } == [["photo.jpg", "photo 2.jpg"]])
             #expect(tree.snapshot() == (newcomerIsFolder ? ["photo 2.jpg", "photo.jpg/", "photos.jpg"]
                                                          : ["photo 2.jpg", "photo.jpg", "photos.jpg"]), "\(newcomerIsFolder)")
             #expect(tree.text("photo 2.jpg") == "photo.jpg")

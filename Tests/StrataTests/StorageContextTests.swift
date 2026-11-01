@@ -120,16 +120,6 @@ struct StorageContextTests {
         #expect(tree.snapshot() == ["store/", "store/Caches/", "store/history.sealed"])
     }
 
-    @Test func historyRemovesOnlyItsOwnLegacyStore() throws {
-        let tree = try TestTree("first/", "first/history.json -> ../outside.txt", "first/history.json.tmp",
-                                "second/", "second/history.json", "outside.txt")
-        let storage = context(tree, "first", key: key)
-        #expect(OperationLog(storage: storage, copies: .live).entries.isEmpty)
-        #expect(tree.text("outside.txt") == "outside.txt")
-        #expect(tree.text("second/history.json") == "second/history.json")
-        #expect(tree.snapshot() == ["first/", "first/Caches/", "outside.txt", "second/", "second/history.json"])
-    }
-
     @Test func historyUndoAndRedoKeepTheOwningStore() async throws {
         let tree = try TestTree("state/", "a.txt", "ab.txt", "nested/", "nested/a.txt", "link -> a.txt")
         let storage = context(tree, "state", key: key)

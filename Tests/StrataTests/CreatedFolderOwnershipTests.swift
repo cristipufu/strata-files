@@ -119,7 +119,7 @@ struct CreatedFolderOwnershipTests {
             await FileOps.undoWork?.value
             #expect(tree.snapshot() == atDestination)
             let saved = try #require(OperationLog(storage: env.storage, copies: .live).entries.first)
-            #expect(saved.identities[tree.url("made/inner").path] == OperationLog.identity(tree.url("made/inner").path))
+            #expect(saved.expectation(at: tree.url("made/inner").path).key == OperationLog.identity(tree.url("made/inner").path))
         }
         let history = OperationLog(storage: env.storage, copies: .live)
         let saved = try #require(history.entries.first)
@@ -134,7 +134,7 @@ struct CreatedFolderOwnershipTests {
             await FileOps.undoWork?.value
             #expect(tree.snapshot() == atDestination)
             let fresh = try #require(OperationLog(storage: env.storage, copies: .live).entries.first)
-            #expect(fresh.identities[tree.url("made/inner").path] == OperationLog.identity(tree.url("made/inner").path))
+            #expect(fresh.expectation(at: tree.url("made/inner").path).key == OperationLog.identity(tree.url("made/inner").path))
             historyUndo.redo()
             await FileOps.undoWork?.value
             #expect(tree.snapshot() == atSource)
@@ -144,13 +144,13 @@ struct CreatedFolderOwnershipTests {
         #expect(tree.snapshot() == atSource)
     }
 
-    @Test func olderHistoryRestoresFilesWithoutRemovingUnidentifiedContainers() async throws {
+    @Test func historyLeavesContainersWhoseOwnershipWasNotCaptured() async throws {
         let tree = try TestTree("made/a.txt", "state/", "neighbor/keep")
         let env = try Environment(tree)
         let old = OperationLog.Entry(name: "Put Back", kind: .move,
-                                     pairs: [[tree.url("a.txt").path, tree.url("made/a.txt").path]],
+                                     moves: [HistoryMove(from: tree.url("a.txt"), to: tree.url("made/a.txt"))],
                                      containers: [tree.url("made").path])
-        #expect(old.identities[tree.url("made").path] == nil)
+        #expect(old.expectation(at: tree.url("made").path).key == nil)
         try env.storage.write(JSONEncoder().encode([old]), to: env.storage.url("history.sealed"))
         let history = OperationLog(storage: env.storage, copies: .live)
         try await history.undo(try #require(history.entries.first), undoManager: nil)

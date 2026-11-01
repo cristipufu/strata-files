@@ -54,12 +54,6 @@
   "reason": "Strata's own store left over from before encryption, in its own storage folder on the startup disk: removed once, when the store opens."
  },
  {
-  "file": "Sources/Strata/Model/OperationLog.swift",
-  "call": "OperationLog.holdsOriginal(_:)",
-  "count": 1,
-  "reason": "In the `owns` closure handed to FileOps.trashForUndo, which calls it on its worker, item by item as each is about to go: never on the main thread."
- },
- {
   "file": "Sources/Strata/Model/LandedFiles.swift",
   "call": "LandedFiles.holds(_:)",
   "count": 2,

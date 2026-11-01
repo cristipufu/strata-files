@@ -58,8 +58,8 @@ struct CopyPreparationTests {
         let before = tree.snapshot()
         defer {
             for entry in history.entries {
-                for pair in entry.replaced {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }

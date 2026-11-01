@@ -10,86 +10,6 @@ extension Notification.Name {
 /// (the Edit menu's Undo only covers the current session).
 package final class OperationLog {
     nonisolated private static let log = Logger(subsystem: "dev.strata.app", category: "history")
-    package nonisolated struct Entry: Codable, Identifiable, Sendable {
-        package enum Kind: String, Codable, Sendable {
-            /// `pairs` moved from → to (moves, renames, trash).
-            case move
-            /// `created` were made (copies, duplicates, new folders).
-            case create
-        }
-
-        package var id = UUID()
-        package var date = Date()
-        package var name: String
-        package var kind: Kind
-        /// Items moved, from → to.
-        package var pairs: [[String]] = []
-        /// Items the operation made (copies, duplicates, new folders): undo moves them to the Trash.
-        package var created: [String] = []
-        /// Items the operation replaced, from their place → the Trash: undo brings them back.
-        package var replaced: [[String]] = []
-        /// Folders made to hold moved items: undo removes them once they're empty again.
-        package var containers: [String] = []
-        /// Which file each recorded path held right after the operation (volume UUID/inode, or device:inode in older
-        /// entries): undo only touches those same files, never something else that took their place since.
-        package var identities: [String: String] = [:]
-        package var undone = false
-        /// When it was last undone or redone (nil: never since it was done, at `date`).
-        package var changed: Date?
-
-        package init(name: String, kind: Kind, pairs: [[String]] = [], created: [String] = [], replaced: [[String]] = [],
-             containers: [String] = [], containerIdentities: [String: String] = [:], fileIdentities: [String: String]) {
-            self.name = name
-            self.kind = kind
-            self.pairs = pairs
-            self.created = created
-            self.replaced = replaced
-            self.containers = containers
-            let containerPaths = Set(containers)
-            identities = containerIdentities.filter { containerPaths.contains($0.key) }
-            for path in pairs.map({ $0[1] }) + created + replaced.map({ $0[1] }) {
-                identities[path] = fileIdentities[path] ?? ""
-            }
-        }
-
-        /// Whether `other` records the same items, as they were recorded.
-        package func sameItems(as other: Entry) -> Bool {
-            pairs == other.pairs && created == other.created && replaced == other.replaced
-                && containers == other.containers && identities == other.identities
-        }
-
-        // History saved by earlier versions lacks the newer fields.
-        package init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            id = try c.decode(UUID.self, forKey: .id)
-            date = try c.decode(Date.self, forKey: .date)
-            name = try c.decode(String.self, forKey: .name)
-            kind = try c.decode(Kind.self, forKey: .kind)
-            pairs = try c.decodeIfPresent([[String]].self, forKey: .pairs) ?? []
-            created = try c.decodeIfPresent([String].self, forKey: .created) ?? []
-            replaced = try c.decodeIfPresent([[String]].self, forKey: .replaced) ?? []
-            containers = try c.decodeIfPresent([String].self, forKey: .containers) ?? []
-            identities = try c.decodeIfPresent([String: String].self, forKey: .identities) ?? [:]
-            undone = try c.decodeIfPresent(Bool.self, forKey: .undone) ?? false
-            changed = try c.decodeIfPresent(Date.self, forKey: .changed)
-            for (key, paths) in [(CodingKeys.pairs, pairs), (.replaced, replaced)] {
-                guard paths.allSatisfy({ $0.count == 2 && !$0[0].isEmpty && !$0[1].isEmpty }) else {
-                    throw DecodingError.dataCorruptedError(forKey: key, in: c,
-                                                          debugDescription: "History needs a source and destination for each move.")
-                }
-            }
-            for (key, paths) in [(CodingKeys.created, created), (.containers, containers)] {
-                guard paths.allSatisfy({ !$0.isEmpty }) else {
-                    throw DecodingError.dataCorruptedError(forKey: key, in: c,
-                                                          debugDescription: "History paths cannot be empty.")
-                }
-            }
-        }
-
-        /// `name` as History shows it, in the app's language.
-        package var displayName: String { OperationLog.displayName(name) }
-    }
-
     /// An operation's name as History and the Edit menu show it. Entries keep the English name they were recorded
     /// with (it's saved, and History picks its icon by it); the known ones are translated here, anything else is shown
     /// as recorded.
@@ -166,9 +86,6 @@ package final class OperationLog {
         file = storage.url("history.sealed")
         Self.waitForWrites()
         entries = Self.readEntries(from: file, storage: storage)
-        // Never import a plain history file: anything running as you could plant one, and undoing its entries would
-        // move files with Strata's access. One from an earlier build is simply removed.
-        SecureStorage.removeLegacy(storage.url("history.json"))
     }
 
     // A bad record must not hide valid neighbors. Authentication and the JSON array itself still have to be
@@ -190,13 +107,13 @@ package final class OperationLog {
     @discardableResult
     package func recordMove(_ name: String, _ pairs: [(from: URL, to: URL)], fileIdentities: [String: String]) -> UUID? {
         guard !pairs.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .move, pairs: Self.paths(pairs), fileIdentities: fileIdentities))
+        return append(Entry(name: name, kind: .move, moves: Self.moves(pairs), fileIdentities: fileIdentities))
     }
 
     @discardableResult
     package func recordCreate(_ name: String, _ created: [URL], fileIdentities: [String: String]) -> UUID? {
         guard !created.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .create, created: created.map(\.path), fileIdentities: fileIdentities))
+        return append(Entry(name: name, kind: .create, moves: [], created: created.map(\.path), fileIdentities: fileIdentities))
     }
 
     /// One entry for a whole copy or move job, including what it replaced.
@@ -206,8 +123,8 @@ package final class OperationLog {
                         containerIdentities: [String: String], fileIdentities: [String: String],
                         updating id: UUID? = nil) -> UUID? {
         guard !(created.isEmpty && moved.isEmpty) else { return nil }
-        var entry = Entry(name: name, kind: created.isEmpty ? .move : .create, pairs: Self.paths(moved),
-                          created: created.map(\.path), replaced: Self.paths(replaced), containers: containers.map(\.path),
+        var entry = Entry(name: name, kind: created.isEmpty ? .move : .create, moves: Self.moves(moved),
+                          created: created.map(\.path), replacements: Self.moves(replaced), containers: containers.map(\.path),
                           containerIdentities: containerIdentities,
                           fileIdentities: fileIdentities)
         guard let id else { return append(entry) }
@@ -231,7 +148,7 @@ package final class OperationLog {
     package func recordPlan(_ name: String, moved: [(from: URL, to: URL)], containers: [URL],
                     containerIdentities: [String: String], fileIdentities: [String: String]) -> UUID? {
         guard !moved.isEmpty else { return nil }
-        return append(Entry(name: name, kind: .move, pairs: Self.paths(moved), containers: containers.map(\.path),
+        return append(Entry(name: name, kind: .move, moves: Self.moves(moved), containers: containers.map(\.path),
                             containerIdentities: containerIdentities,
                             fileIdentities: fileIdentities))
     }
@@ -250,17 +167,17 @@ package final class OperationLog {
     package func updateContainerIdentities(_ id: UUID, _ identities: [String: String]) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         let containers = Set(entries[index].containers)
-        let updates = identities.filter { containers.contains($0.key) && entries[index].identities[$0.key] != $0.value }
+        let updates = identities.filter { containers.contains($0.key) && entries[index].ownership[$0.key] != HistoryIdentity($0.value) }
         guard !updates.isEmpty else { return }
-        entries[index].identities.merge(updates) { _, new in new }
+        entries[index].ownership.merge(updates.mapValues { HistoryIdentity($0) }) { _, new in new }
         save()
     }
 
-    private static func paths(_ pairs: [(from: URL, to: URL)]) -> [[String]] {
-        pairs.map { [$0.from.path, $0.to.path] }
+    private static func moves(_ pairs: [(from: URL, to: URL)]) -> [HistoryMove] {
+        pairs.map { HistoryMove(from: $0.from, to: $0.to) }
     }
 
-    /// History's volume UUID/inode key, with compatibility for volumes without UUIDs.
+    /// History's volume UUID/inode key, with device numbers for volumes without UUIDs.
     package nonisolated static func identity(_ path: String) -> String? { FileIdentity.historyKey(at: path) }
 
     /// For each of `urls`: where it was before Strata last put it where it is, according to `entries` (a History's),
@@ -273,23 +190,22 @@ package final class OperationLog {
         var found: [String: (from: URL, date: Date)] = [:]
         for entry in entries {
             let when = entry.changed ?? entry.date
-            for pair in entry.pairs where pair.count == 2 && !pair[0].isEmpty && !pair[1].isEmpty {
-                let here = URL(fileURLWithPath: entry.undone ? pair[0] : pair[1]).lexicallyStandardized.path
+            for pair in entry.moves {
+                let here = URL(fileURLWithPath: entry.undone ? pair.from : pair.to).lexicallyStandardized.path
                 guard wanted.contains(here), found[here].map({ $0.date <= when }) ?? true else { continue }
-                // The identity was recorded where the operation left the file, at `pair[1]`.
-                let same = entry.identities[pair[1]].map { FileIdentity.matchesHistory($0, at: here) } ?? TransferEngine.exists(URL(fileURLWithPath: here))
+                // The identity was recorded where the operation left the file, at `pair.to`.
+                let same = entry.expectation(at: pair.to).matches(at: here)
                 guard same else { continue }
-                found[here] = (URL(fileURLWithPath: entry.undone ? pair[1] : pair[0]), when)
+                found[here] = (URL(fileURLWithPath: entry.undone ? pair.to : pair.from), when)
             }
         }
         return found
     }
 
-    /// `path` still holds the file the operation left there (entries from before identities were kept: it exists).
+    /// `path` still holds the file the operation left there. Missing ownership always refuses Undo.
     nonisolated private static func holdsOriginal(_ entry: Entry, _ path: String) -> Bool {
         guard !path.isEmpty else { return false }
-        guard let recorded = entry.identities[path] else { return TransferEngine.exists(URL(fileURLWithPath: path)) }
-        return FileIdentity.matchesHistory(recorded, at: path)
+        return entry.expectation(at: path).matches(at: path)
     }
 
     /// Whether undoing `entry` can still work: the very items the operation left are still where it left them, and
@@ -303,11 +219,11 @@ package final class OperationLog {
     /// What goes back: each moved or replaced item still the one the operation left, to a place that's free (nothing
     /// there, the item itself, or a place another of its moves vacates first). Read away from the main thread.
     @concurrent private static func movesBack(_ entry: Entry) async -> [FileOps.Move] {
-        (entry.pairs.reversed() + entry.replaced.reversed()).filter { holdsOriginal(entry, $0[1]) }.map {
-            (from: URL(fileURLWithPath: $0[1]), to: URL(fileURLWithPath: $0[0]))
+        (entry.moves.reversed() + entry.replacements.reversed()).filter { holdsOriginal(entry, $0.to) }.map {
+            (from: URL(fileURLWithPath: $0.to), to: URL(fileURLWithPath: $0.from))
         }.filter { move in
             identity(move.to.path) == nil || identity(move.to.path) == identity(move.from.path)
-                || entry.pairs.contains { $0[1] == move.to.path && holdsOriginal(entry, $0[1]) }
+                || entry.moves.contains { $0.to == move.to.path && holdsOriginal(entry, $0.to) }
         }
     }
 
@@ -335,10 +251,10 @@ package final class OperationLog {
     nonisolated private static func itemsAllowUndo(_ entry: Entry) -> Bool {
         // A place counts as free when nothing is there, it's the item itself (a case-only rename), or another move in
         // the same entry will vacate it first ("trash X, rename Y to X").
-        let destinations = Set(entry.pairs.map { $0[1] })
-        let movesBack = !entry.pairs.isEmpty && entry.pairs.allSatisfy { pair in
-            holdsOriginal(entry, pair[1])
-                && (identity(pair[0]) == nil || Self.identity(pair[0]) == Self.identity(pair[1]) || destinations.contains(pair[0]))
+        let destinations = Set(entry.moves.map { $0.to })
+        let movesBack = !entry.moves.isEmpty && entry.moves.allSatisfy { pair in
+            holdsOriginal(entry, pair.to)
+                && (identity(pair.from) == nil || Self.identity(pair.from) == Self.identity(pair.to) || destinations.contains(pair.from))
         }
         switch entry.kind {
         case .move:
@@ -364,7 +280,7 @@ package final class OperationLog {
         undoing.insert(entry.id)
         retiredTransfers.insert(entry.id)
         defer { undoing.remove(entry.id) }
-        let containers = await CreatedFolders.recorded(paths: entry.containers, recorded: entry.identities)
+        let containers = await CreatedFolders.recorded(paths: entry.containers, recorded: entry.identityKeys)
         // Everything happens without registering undo piecemeal; one ⌘Z afterwards puts it all back (below).
         var done: [FileOps.Move] = []
         // Each copy only while it's still the one the copy made, checked as it goes.

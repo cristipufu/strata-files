@@ -19,8 +19,8 @@ struct DeleteTests {
         let history = env.services.transfers.history
         defer {
             for entry in history.entries {
-                for pair in entry.pairs + entry.replaced {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves + entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }
