@@ -8296,5 +8296,27 @@
     "replace": "guard true else { return }",
     "rule": "Folder sizing publishes an obsolete completion over its replacement",
     "tests": "FolderSizerCancellationTests"
+  },
+  {
+    "file": "Strata/AI/Embedder.swift",
+    "rule": "Semantic cancellation skips remaining texts after a held native model call returns",
+    "tests": "EmbedderCancellationTests/cancellingABatchReleasesItsCallerWhileTheNativeCallIsStillHeld",
+    "edits": [
+      {
+        "find": "for text in texts {\n                        guard !batch.isCancelled else { return }",
+        "replace": "for text in texts {"
+      },
+      {
+        "find": "                        guard !batch.isCancelled else { return }\n                        result.append(embedding)",
+        "replace": "                        result.append(embedding)"
+      }
+    ]
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        guard !Task.isCancelled else { return }\n        store(record, at: path)",
+    "replace": "        store(record, at: path)",
+    "rule": "Semantic cancellation preserves existing passages after a cancelled refresh",
+    "tests": "EmbedderCancellationTests/aCancelledRefreshPreservesItsExistingPassagesAndSavedIndex"
   }
 ]

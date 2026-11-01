@@ -405,6 +405,11 @@ Searches propagate cancellation into their workers, bound workers and retained c
 retaining all of them. A leading dot includes hidden names, not every cache and build folder; name those folders or
 scope a search into them to include their contents.
 
+Content search cancels embedding batches when their caller leaves, skips the remaining texts after a native model call
+returns, and checks cancellation before storing passages or publishing matches. Native embedding models are accessed
+only on their embedder's serial queue; snippet scoring uses that queue too. Keep injected calculation tests that hold
+a native call while cancelling and replacing its caller, without loading a live language model.
+
 ## Appearance and theming
 
 - UI backgrounds and borders use `ThemeStyle`; `swift test` and CI run the color audit.

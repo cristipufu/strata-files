@@ -1,6 +1,7 @@
 import Accelerate
 import Foundation
 import NaturalLanguage
+import Synchronization
 import UniformTypeIdentifiers
 
 package nonisolated struct PassageEmbedding: Sendable {
@@ -23,30 +24,75 @@ package nonisolated final class Embedder: @unchecked Sendable {
 
     private let queue: DispatchQueue
     private let sentences: Bool
-    private let lock = NSLock()
+    package typealias Calculate = @Sendable (String, Bool) -> PassageEmbedding
+    private let calculate: Calculate?
     private var words: NLEmbedding?
     private var sentenceModel: NLEmbedding?
     private var didLoad = false
 
-    package init(label: String, qos: DispatchQoS, sentences: Bool) {
+    package init(label: String, qos: DispatchQoS, sentences: Bool, calculate: Calculate? = nil) {
         queue = DispatchQueue(label: label, qos: qos)
         self.sentences = sentences
+        self.calculate = calculate
     }
 
-    package func embed(_ texts: [String]) async -> [PassageEmbedding] {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                continuation.resume(returning: texts.map { text in
-                    PassageEmbedding(word: self.wordVector(text), sentence: self.sentences ? self.sentenceVector(text) : nil)
-                })
+    package func embed(_ texts: [String], wordsOnly: Bool = false) async -> [PassageEmbedding] {
+        let batch = Batch()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard batch.begin(continuation) else { return }
+                queue.async {
+                    var result: [PassageEmbedding] = []
+                    for text in texts {
+                        guard !batch.isCancelled else { return }
+                        let useSentences = self.sentences && !wordsOnly
+                        let embedding = self.calculate?(text, useSentences)
+                            ?? PassageEmbedding(word: self.wordVector(text), sentence: useSentences ? self.sentenceVector(text) : nil)
+                        guard !batch.isCancelled else { return }
+                        result.append(embedding)
+                    }
+                    batch.finish(result)
+                }
             }
+        } onCancel: {
+            batch.cancel()
+        }
+    }
+
+    /// A native model call cannot be interrupted. Release its cancelled caller immediately and skip the rest of its batch.
+    private final class Batch: Sendable {
+        private struct State {
+            var cancelled = false
+            var continuation: CheckedContinuation<[PassageEmbedding], Never>?
+        }
+        private let state = Mutex(State())
+        var isCancelled: Bool { state.withLock { $0.cancelled } }
+
+        func begin(_ continuation: CheckedContinuation<[PassageEmbedding], Never>) -> Bool {
+            let accepted = state.withLock {
+                guard !$0.cancelled else { return false }
+                $0.continuation = continuation
+                return true
+            }
+            if !accepted { continuation.resume(returning: []) }
+            return accepted
+        }
+
+        func cancel() {
+            let continuation = state.withLock {
+                $0.cancelled = true
+                return $0.continuation.take()
+            }
+            continuation?.resume(returning: [])
+        }
+
+        func finish(_ result: [PassageEmbedding]) {
+            state.withLock { $0.continuation.take() }?.resume(returning: result)
         }
     }
 
     /// Mean word vector of the distinct content words; nil when none are in the vocabulary. Cheap (table lookups).
-    package func wordVector(_ text: String) -> [Float]? {
-        lock.lock()
-        defer { lock.unlock() }
+    private func wordVector(_ text: String) -> [Float]? {
         loadIfNeeded()
         guard let words else { return nil }
         var seen: Set<Substring> = []
@@ -63,8 +109,6 @@ package nonisolated final class Embedder: @unchecked Sendable {
     }
 
     private func sentenceVector(_ text: String) -> [Float]? {
-        lock.lock()
-        defer { lock.unlock() }
         loadIfNeeded()
         guard let sentenceModel, let raw = sentenceModel.vector(for: text), raw.count == Self.sentenceDimension else { return nil }
         return Self.unit(raw.map(Float.init))

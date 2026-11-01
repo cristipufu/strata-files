@@ -100,12 +100,12 @@ package actor SemanticIndex {
     private var unsavedChanges = 0
     private var lastSave = ContinuousClock.now
 
-    package init(configuration: Configuration) {
+    package init(configuration: Configuration, indexEmbedder: Embedder? = nil, queryEmbedder: Embedder? = nil) {
         self.configuration = configuration
         // Disabled sentence embeddings keep an empty matrix, including while loading or recycling passage rows.
         sentenceRows = VectorRows(dimension: configuration.sentenceEmbeddings ? Embedder.sentenceDimension : 0)
-        indexEmbedder = Embedder(label: "dev.strata.semantic.index", qos: .utility, sentences: configuration.sentenceEmbeddings)
-        queryEmbedder = Embedder(label: "dev.strata.semantic.query", qos: .userInitiated, sentences: configuration.sentenceEmbeddings)
+        self.indexEmbedder = indexEmbedder ?? Embedder(label: "dev.strata.semantic.index", qos: .utility, sentences: configuration.sentenceEmbeddings)
+        self.queryEmbedder = queryEmbedder ?? Embedder(label: "dev.strata.semantic.query", qos: .userInitiated, sentences: configuration.sentenceEmbeddings)
     }
 
     package func setRoots(_ roots: [URL]) {
@@ -121,7 +121,9 @@ package actor SemanticIndex {
 
     /// Brings the index up to date with the roots. Cancel the calling task to stop; work done so far is kept.
     package func update(progress: (@Sendable (SemanticIndexProgress) -> Void)? = nil) async throws {
+        try Task.checkCancellation()
         await loadIfNeeded()
+        try Task.checkCancellation()
         guard !updating else { return }
         updating = true
         defer { updating = false }
@@ -170,13 +172,17 @@ package actor SemanticIndex {
 
     /// Indexes or re-indexes one file now (for example right after Strata renamed or saved it), regardless of roots.
     package func refresh(_ url: URL) async {
+        guard !Task.isCancelled else { return }
         await loadIfNeeded()
+        guard !Task.isCancelled else { return }
         let path = url.lexicallyStandardized.path
         guard let stamp = Self.stamp(url) else {
             remove(path)
             return
         }
-        store(await Self.process(url, stamp: stamp, configuration: configuration, embedder: indexEmbedder), at: path)
+        let record = await Self.process(url, stamp: stamp, configuration: configuration, embedder: indexEmbedder)
+        guard !Task.isCancelled else { return }
+        store(record, at: path)
     }
 
     /// Forgets a file (deleted or moved out of the roots).
@@ -244,13 +250,15 @@ package actor SemanticIndex {
 
     /// Documents whose content best matches `text`, best first.
     package func search(_ text: String, limit: Int = 20) async -> [SemanticHit] {
+        guard !Task.isCancelled else { return [] }
         await loadIfNeeded()
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty, !files.isEmpty, limit > 0 else { return [] }
-        let signals = await signals(for: query)
+        guard !Task.isCancelled, !query.isEmpty, !files.isEmpty, limit > 0,
+              let signals = await signals(for: query) else { return [] }
 
         var ranked: [(path: String, score: Float, semantic: Float, keyword: Float)] = []
         for candidate in signals.candidates {
+            guard !Task.isCancelled else { return [] }
             let semantic = signals.semantic(word: candidate.word, sentence: candidate.sentence)
             // Some shared words, or clearly closer in meaning than the rest of the collection.
             let relevant = candidate.keyword >= 0.12 || candidate.name > 0 || signals.isClearlyRelated(word: candidate.word)
@@ -261,12 +269,14 @@ package actor SemanticIndex {
 
         var hits: [SemanticHit] = []
         for match in ranked.prefix(limit) {
+            guard !Task.isCancelled else { return [] }
             guard !match.path.isEmpty,
                   let file = files[match.path],
                   // The passage to quote: best blend of meaning and wording within this document.
                   let chunk = file.chunks.max(by: { signals.chunkScore($0) < signals.chunkScore($1) }) else { continue }
             let snippet = await Self.snippet(chunk.text, chunkStart: chunk.start, pages: chunk.pages, terms: Set(signals.terms),
                                              queryVector: signals.queryWordVector, embedder: queryEmbedder)
+            guard !Task.isCancelled else { return [] }
             hits.append(SemanticHit(url: URL(fileURLWithPath: match.path), title: file.title, score: match.score,
                                     snippet: snippet.text, highlights: snippet.highlights, page: snippet.page,
                                     semanticScore: match.semantic, keywordScore: match.keyword))
@@ -276,21 +286,27 @@ package actor SemanticIndex {
 
     /// Diagnostics: the raw signals behind a search, per document (best passage cosines, keyword score, name overlap).
     package func explain(_ text: String) async -> [(url: URL, word: Float, sentence: Float, keyword: Float, name: Float)] {
+        guard !Task.isCancelled else { return [] }
         await loadIfNeeded()
-        return await signals(for: text).candidates.compactMap {
+        guard !Task.isCancelled, let signals = await signals(for: text) else { return [] }
+        return signals.candidates.compactMap {
             guard !$0.path.isEmpty else { return nil }
             return (URL(fileURLWithPath: $0.path), $0.word, $0.sentence, $0.keyword, $0.name)
         }
     }
 
-    private func signals(for query: String) async -> QuerySignals {
+    private func signals(for query: String) async -> QuerySignals? {
+        guard !Task.isCancelled else { return nil }
         let terms = Array(Set(Terms.normalize(query)))
         let embedding = await queryEmbedder.embed([query]).first ?? PassageEmbedding()
+        guard !Task.isCancelled else { return nil }
         let wordCosines = embedding.word.map { wordRows.similarities(to: $0, rows: rowCount) } ?? []
         let sentenceCosines = embedding.sentence.map { sentenceRows.similarities(to: $0, rows: rowCount) } ?? []
+        guard !Task.isCancelled else { return nil }
         let keyword = KeywordScorer(terms: terms, files: files)
         var candidates: [QuerySignals.Candidate] = []
         for (path, file) in files where !file.chunks.isEmpty {
+            guard !Task.isCancelled else { return nil }
             let name = keyword.nameOverlap(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent, title: file.title)
             candidates.append(.init(path: path, word: file.chunks.map { wordCosines[safe: $0.row] }.max() ?? 0,
                                     sentence: file.chunks.map { sentenceCosines[safe: $0.row] }.max() ?? 0,
@@ -387,6 +403,7 @@ package actor SemanticIndex {
     /// The sentence (or two) of a passage that best matches the query, with the matching words and its PDF page.
     package nonisolated static func snippet(_ text: String, chunkStart: Int, pages: [PageMark], terms: Set<String>, queryVector: [Float]?,
                                     embedder: Embedder) async -> (text: String, highlights: [String], page: Int?) {
+        guard !Task.isCancelled else { return ("", [], nil) }
         let sentences = TextChunker.segments(text)
         guard !sentences.isEmpty else { return (String(text.prefix(220)), [], pages.first.map { Int($0.page) }) }
         // Each query word counts more when it is rare within the passage ("taper" beats "marathon" in a training plan).
@@ -398,8 +415,10 @@ package actor SemanticIndex {
         }
         if scores.allSatisfy({ $0 < 0.5 }), let queryVector {
             // No shared words: pick by meaning instead (word vectors are cheap lookups).
-            for (index, sentence) in sentences.prefix(24).enumerated() {
-                if let vector = embedder.wordVector(sentence.text) {
+            let embeddings = await embedder.embed(sentences.prefix(24).map(\.text), wordsOnly: true)
+            guard !Task.isCancelled else { return ("", [], nil) }
+            for (index, embedding) in embeddings.enumerated() {
+                if let vector = embedding.word {
                     scores[index] = zip(vector, queryVector).reduce(0) { $0 + $1.0 * $1.1 }
                 }
             }
@@ -481,10 +500,11 @@ package actor SemanticIndex {
                                       .contentTypeKey]
         let fm = FileManager.default
         for root in configuration.roots {
+            guard !Task.isCancelled else { return found }
             guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: keys,
                                                  options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
             for case let url as URL in enumerator {
-                guard found.count < configuration.maxFiles else { return found }
+                guard !Task.isCancelled, found.count < configuration.maxFiles else { return found }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
                 if values.isDirectory == true, values.isPackage != true {
                     // Source repositories are code, not documents: they'd crowd out real documents under `maxFiles`.
@@ -520,7 +540,8 @@ package actor SemanticIndex {
 
     @concurrent
     private static func process(_ url: URL, stamp: FileStamp, configuration: Configuration, embedder: Embedder) async -> IndexedFile.Pending {
-        guard let extracted = await TextExtractor.extract(url, options: configuration.extraction) else {
+        guard !Task.isCancelled, let extracted = await TextExtractor.extract(url, options: configuration.extraction),
+              !Task.isCancelled else {
             // Remember unreadable files too, so they aren't retried until they change.
             return IndexedFile.Pending(stamp: stamp, title: nil, chunks: [])
         }
@@ -819,6 +840,7 @@ private nonisolated struct VectorRows {
                 result.withUnsafeMutableBufferPointer { out in
                     var start = 0
                     while start < rows {
+                        if Task.isCancelled { return }
                         let count = min(blockRows, rows - start)
                         block.withUnsafeMutableBufferPointer { floats in
                             Half.decode(UnsafeBufferPointer(rebasing: halves[(start * dimension)..<((start + count) * dimension)]),
@@ -854,6 +876,7 @@ private nonisolated struct KeywordScorer {
         var passages = 0
         var totalLength = 0
         for file in files.values {
+            if Task.isCancelled { break }
             for chunk in file.chunks {
                 passages += 1
                 let (nextTotal, overflow) = totalLength.addingReportingOverflow(chunk.length)
