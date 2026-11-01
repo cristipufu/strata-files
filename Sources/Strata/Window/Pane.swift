@@ -87,9 +87,9 @@ final class Pane {
             let shown = (browser.mode == .columns ? columnLocation : nil) ?? url
             let name = Places.displayName(shown, copies: browser.services.copies, names: browser.services.folderNames)
             return (name, Trash.isTrash(shown) ? "trash" : "folder")
-        case .search(let text, _): return (BrowserWindowController.searchTitle(text), "magnifyingglass")
-        case .recents: return (String(localized: "Recents", comment: "Title of the view listing recently used files"), "clock")
-        case .duplicates: return (String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), "square.on.square")
+        case .search, .recents, .duplicates:
+            let title = ResultsTitle(destination)
+            return (title?.window ?? "", title?.symbol ?? "")
         }
     }
 }

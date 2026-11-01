@@ -26,7 +26,7 @@ extension BrowserWindowController {
         }
         if case .search(_, let scope) = destination {
             destination = .search(query, scope: scope)
-            window?.title = Self.searchTitle(query)
+            if let title = ResultsTitle(destination) { window?.title = title.window }
             // Typing or deleting case: shows on the checkbox.
             split.scopeBar.setMatchCase(IndexQuery.isCaseSensitive(query), applies: Self.caseApplies(query))
             updateHeaders()

@@ -15,11 +15,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     static let largeFilesQuery = "kind:file size:>500mb"
 
     /// What a search is called in titles: Large Files by name, others by their text.
-    static func searchTitle(_ text: String) -> String {
-        text == largeFilesQuery ? String(localized: "Large Files")
-            : String(localized: "Search: \(text)", comment: "Window title while searching; the search text")
-    }
-
     let services: BrowserServices
     lazy var navigationGestures = BrowserNavigation(owner: self)
     private(set) var panes: [Pane]
@@ -341,24 +336,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             let shown = (p.browser.mode == .columns ? p.columnLocation : nil) ?? url
             if bar.url != shown || bar.isShowingTitle { bar.url = shown }
             updateGitChrome(on: bar, destination: p.destination, location: shown)
-        case .search(let text, _):
-            showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
-                          : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
-                      symbol: "magnifyingglass", on: bar, for: p)
-        case .duplicates:
-            showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square",
-                      on: bar, for: p)
-        case .recents:
-            showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock", on: bar, for: p)
+        case .search, .duplicates, .recents:
+            // Results: the path bar keeps the pane's place, without a repository, under the results' title.
+            guard let title = ResultsTitle(p.destination) else { return }
+            if bar.url != p.location { bar.url = p.location }
+            bar.gitRoot = nil
+            bar.branchPill.model = nil
+            bar.showTitle(title.pathBar, symbol: title.symbol)
         }
-    }
-
-    /// A pane showing results: its path bar keeps the pane's place, without a repository, under the results' title.
-    private func showTitle(_ title: String, symbol: String, on bar: PathBar, for p: Pane) {
-        if bar.url != p.location { bar.url = p.location }
-        bar.gitRoot = nil
-        bar.branchPill.model = nil
-        bar.showTitle(title, symbol: symbol)
     }
 
     // MARK: - Navigation
@@ -497,37 +482,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             updateNotice(for: url)
         case .search(let text, let scope):
             setSearchField(text)
-            // The query itself, so a search shows what was asked (Large Files by name).
-            pathBar.showTitle(text == Self.largeFilesQuery ? String(localized: "Large Files")
-                                  : String(localized: "“\(text)”", comment: "Path bar title while searching: the search text in quotes"),
-                              symbol: "magnifyingglass")
+            showResultsTitle()
             if text == Self.largeFilesQuery && scope == nil {
                 split.sidebar.highlight(.largeFiles)
             } else {
                 split.sidebar.highlight(services.savedSearches.all.first { $0.query == text && $0.scopePath == scope?.path }.map { .search($0) })
             }
-            window?.title = Self.searchTitle(text)
-            window?.representedURL = nil
             split.scopeBar.configure(folderName: Places.displayName((scope ?? location), copies: services.copies, names: services.folderNames),
                                      everywhere: scope == nil, matchCase: IndexQuery.isCaseSensitive(text),
                                      caseApplies: Self.caseApplies(text))
             split.scopeBar.setSummary(pane.search.summary)
             split.scopeBar.isHidden = false
             split.noticeBar.hide()
-        case .duplicates:
+        case .duplicates, .recents:
             setSearchField("")
-            pathBar.showTitle(String(localized: "Duplicates", comment: "Title of the view listing duplicate files"), symbol: "square.on.square")
-            split.sidebar.highlight(.duplicates)
-            window?.title = String(localized: "Duplicates", comment: "Title of the view listing duplicate files")
-            window?.representedURL = nil
-            split.scopeBar.isHidden = true
-            split.noticeBar.hide()
-        case .recents:
-            setSearchField("")
-            pathBar.showTitle(String(localized: "Recents", comment: "Title of the view listing recently used files"), symbol: "clock")
-            split.sidebar.highlight(.recents)
-            window?.title = String(localized: "Recents", comment: "Title of the view listing recently used files")
-            window?.representedURL = nil
+            showResultsTitle()
+            split.sidebar.highlight(destination == .duplicates ? .duplicates : .recents)
             split.scopeBar.isHidden = true
             split.noticeBar.hide()
         }
@@ -535,6 +505,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         syncViewModeItem()
         window?.toolbar?.validateVisibleItems()
         updateHeaders()
+    }
+
+    /// The query itself, so a search shows what was asked (Large Files by name).
+    private func showResultsTitle() {
+        guard let title = ResultsTitle(destination) else { return }
+        pathBar.showTitle(title.pathBar, symbol: title.symbol)
+        window?.title = title.window
+        window?.representedURL = nil
     }
 
     func focusList() {
