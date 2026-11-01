@@ -299,12 +299,20 @@ struct ArchiveExtractTests {
             // first, would be taken over or removed when "x" is made: the later of the two gets a number.
             #expect(try await extract(tree.url("pair.zip"), into: volume.root).lastPathComponent == "pair")
             #expect(try await extract(tree.url("reversed.zip"), into: volume.root).lastPathComponent == "reversed")
-            #expect(TestTree.listing(of: volume.url("pair")) == ["._x 2", "x"])
-            #expect(TestTree.listing(of: volume.url("reversed")) == ["._x", "x 2"])
+            let pair = ["._x 2", "x"], reversed = ["._x", "x 2"]
+            #expect(TestTree.archiveListing(of: volume.url("pair"), keeping: pair) == pair)
+            #expect(TestTree.archiveListing(of: volume.url("reversed"), keeping: reversed) == reversed)
+            #expect(try Data(contentsOf: volume.url("pair/._x 2")) == Data(contentsOf: tree.url("payload/._x")))
+            #expect(try Data(contentsOf: volume.url("reversed/._x")) == Data(contentsOf: tree.url("payload/._x")))
+            #expect(try Data(contentsOf: volume.url("pair/x")) == Data(contentsOf: tree.url("payload/x")))
+            #expect(try Data(contentsOf: volume.url("reversed/x 2")) == Data(contentsOf: tree.url("payload/x")))
             // A "._" file without its partner, as zips made from a Mac's USB stick hold, is the archive's own...
             try FileManager.default.createDirectory(at: volume.url("plain"), withIntermediateDirectories: false)
             #expect(try await extract(tree.url("alone.zip"), into: volume.url("plain")).lastPathComponent == "alone")
-            #expect(TestTree.listing(of: volume.url("plain")) == ["alone/", "alone/._.DS_Store", "alone/file"])
+            let plain = ["alone/", "alone/._.DS_Store", "alone/file"]
+            #expect(TestTree.archiveListing(of: volume.url("plain"), keeping: plain) == plain)
+            #expect(try Data(contentsOf: volume.url("plain/alone/._.DS_Store")) == Data(contentsOf: tree.url("alone/._.DS_Store")))
+            #expect(try Data(contentsOf: volume.url("plain/alone/file")) == Data(contentsOf: tree.url("alone/file")))
             // ...but downloaded, it isn't extracted there: no "._" file takes the download's quarantine mark on such a
             // disk, and an item that can't be marked isn't extracted.
             try FileManager.default.copyItem(at: tree.url("alone.zip"), to: tree.url("downloaded.zip"))

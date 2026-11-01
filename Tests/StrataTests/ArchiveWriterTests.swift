@@ -216,7 +216,16 @@ struct ArchiveWriterTests {
             for (name, data, listing) in cases {
                 try FileManager.default.createDirectory(at: volume.url(name), withIntermediateDirectories: false)
                 #expect(try write(data, into: volume.url(name)), "\(name)")
-                #expect(TestTree.listing(of: volume.url(name)) == listing, "\(name)")
+                #expect(TestTree.archiveListing(of: volume.url(name), keeping: listing) == listing, "\(name)")
+                let forgedName: String? = switch name {
+                case "before", "caseBefore": "._" + (name == "caseBefore" ? "X" : "x")
+                case "after": "._x 2"
+                case "numbered": "._x 2"
+                case "caseAfter": "._X 2"
+                case "folderBefore", "implied": "._d"
+                default: nil
+                }
+                if let forgedName { #expect(try Data(contentsOf: volume.url(name).appending(path: forgedName)) == forged[0]) }
             }
             // A name the disk can't hold fails as the disk says, not as one taken.
             try FileManager.default.createDirectory(at: volume.url("invalid"), withIntermediateDirectories: false)
