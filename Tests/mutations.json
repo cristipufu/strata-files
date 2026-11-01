@@ -3850,7 +3850,7 @@
   },
   {
     "file": "Strata/Transfers/Archiver.swift",
-    "find": "    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        entries(parent).contains(name)\n    }",
+    "find": "    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        DirectoryEntryName.names(inFolder: parent).contains(name)\n    }",
     "replace": "    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {\n        true\n    }",
     "rule": "Shared operation safety directory entry check ignores case-sensitive spelling",
     "tests": "RemoteCopyOwnershipTests/preparingCopiesRefusesInvalidIDsAndReplacementLinks|RemoteCopyOwnershipTests/descriptorCleanupStaysWithTheOpenedFolderAndRejectsEscapingNames"

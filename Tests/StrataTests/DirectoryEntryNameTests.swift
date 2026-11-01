@@ -51,8 +51,7 @@ struct DirectoryEntryNameTests {
         let folder = tree.url("chosen"), fd = try ChosenFile.openDirectory(folder.path)
         defer { close(fd) }
         let expected = (names + ["link"]).sorted()
-        #expect(Archiver.entries(fd).sorted() == expected)
-        #expect(CopyWriter.names(in: fd).sorted() == expected)
+        #expect(DirectoryEntryName.names(inFolder: fd).sorted() == expected)
         switch kind {
         case "archive": Archiver.removeTree(folder)
         case "trash":

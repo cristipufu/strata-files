@@ -118,7 +118,7 @@ package nonisolated final class ContainerCopyStore: Sendable {
         if fstatat(fd, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_mode & S_IFMT != S_IFDIR { CopyWriter.removeAt(fd, name) }
         mkdirat(fd, name, 0o755)
         // Two containers whose names differ only in case can't both have a folder on this disk: the first keeps it.
-        guard CopyWriter.names(in: fd).contains(name) else { throw CocoaError(.fileWriteFileExists) }
+        guard DirectoryEntryName.names(inFolder: fd).contains(name) else { throw CocoaError(.fileWriteFileExists) }
         let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard child >= 0 else { throw CocoaError(.fileWriteNoPermission) }
         defer { close(child) }

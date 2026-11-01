@@ -138,7 +138,7 @@ nonisolated extension TransferEngine {
                 stack.append((parentFD: frame.parentFD, fd: currentFD, name: frame.name,
                               path: frame.path, expanded: true, keep: frame.keep))
                 let frame = (parentFD: frame.parentFD, fd: currentFD, name: frame.name, path: frame.path, expanded: false, keep: frame.keep)
-                for childName in Archiver.entries(frame.fd) {
+                for childName in DirectoryEntryName.names(inFolder: frame.fd) {
                     let childPath = (frame.path as NSString).appendingPathComponent(childName)
                     guard let expectedChild = created[childPath] else { continue }
                     var childInfo = stat()

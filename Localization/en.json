@@ -2506,7 +2506,7 @@
     "It isn’t in the bucket anymore.": "S3Client.swift:33",
     "It isn’t on the server anymore.": "SFTPClient.swift:49",
     "It no longer exists.": "Container action failed: the container was removed · ContainerStore.swift:84",
-    "It stopped with an error (%lld).": "An archive tool failed; the number is its exit status · Archiver.swift:680",
+    "It stopped with an error (%lld).": "An archive tool failed; the number is its exit status · Archiver.swift:663",
     "Item": "Compare column: the item's path · CompareController.swift:114",
     "Item count": "ViewOptionsWindowController.swift:45",
     "items": "Which items a plan applies to, as in “items, over 10 MB” · PlanGenerator.swift:156",

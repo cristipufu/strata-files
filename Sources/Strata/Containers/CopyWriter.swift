@@ -50,7 +50,7 @@ package nonisolated enum CopyWriter {
         for (key, stack) in byStack {
             sync.syncProject(key, named: stack.project, members: stack.members, keeping: &keep)
         }
-        for name in names(in: fd) where !keep.contains(folded(name)) {
+        for name in DirectoryEntryName.names(inFolder: fd) where !keep.contains(folded(name)) {
             sync.gone.append(folder.appending(path: name, directoryHint: .isDirectory))
         }
         return sync.gone
@@ -131,7 +131,7 @@ package nonisolated enum CopyWriter {
                 bringDown(container, from: fd, to: child, stack: stack, engineFolder: folder, copies: copies)
                 place(container, in: child, at: stack, keeping: &keepChild)
             }
-            for name in names(in: child) where !keepChild.contains(folded(name)) {
+            for name in DirectoryEntryName.names(inFolder: child) where !keepChild.contains(folded(name)) {
                 gone.append(stack.appending(path: name, directoryHint: .isDirectory))
             }
         }
@@ -178,7 +178,7 @@ package nonisolated enum CopyWriter {
         }
         let topFD = top.map { open($0.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) } ?? -1
         defer { if topFD >= 0 { close(topFD) } }
-        let existing = names(in: fd)
+        let existing = DirectoryEntryName.names(inFolder: fd)
         var listed = Set<String>()
         var eager: [URL] = []
         var eagerBytes: Int64 = 0
@@ -617,7 +617,7 @@ package nonisolated enum CopyWriter {
     /// Removes what's in the folder open at `fd` but not in `keeping` (folded paths), recursively and without following
     /// links.
     private static func sweep(_ fd: Int32, prefix: String, keeping: [String: String], folded: (String) -> String) {
-        for name in names(in: fd) where !name.hasPrefix(tempPrefix) {
+        for name in DirectoryEntryName.names(inFolder: fd) where !name.hasPrefix(tempPrefix) {
             let key = prefix + folded(name)
             guard keeping[key] != nil else {
                 removeAt(fd, name)
@@ -746,24 +746,6 @@ package nonisolated enum CopyWriter {
         return String(decoding: buffer[0..<count].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
-    /// The names in the folder open at `fd` (without `.` and `..`).
-    package static func names(in fd: Int32) -> [String] {
-        let copy = dup(fd)
-        guard copy >= 0, let dir = fdopendir(copy) else {
-            if copy >= 0 { close(copy) }
-            return []
-        }
-        defer { closedir(dir) }
-        // A copy of `fd` shares its place in the folder: from the start, whoever read it before.
-        rewinddir(dir)
-        var names: [String] = []
-        while let entry = readdir(dir) {
-            guard let name = DirectoryEntryName.read(entry) else { continue }
-            if name != ".", name != ".." { names.append(name) }
-        }
-        return names
-    }
-
     /// Removes an item of the folder open at `fd` (a folder with all it holds), never following a link.
     package static func removeAt(_ fd: Int32, _ name: String) {
         var info = stat()
@@ -772,7 +754,7 @@ package nonisolated enum CopyWriter {
             fchmodat(fd, name, 0o755, 0)
             let child = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             if child >= 0 {
-                for item in names(in: child) { removeAt(child, item) }
+                for item in DirectoryEntryName.names(inFolder: child) { removeAt(child, item) }
                 close(child)
             }
             unlinkat(fd, name, AT_REMOVEDIR)

@@ -553,7 +553,7 @@ package nonisolated enum Archiver {
     }
 
     package static func hasEntry(_ name: String, in parent: Int32) -> Bool {
-        entries(parent).contains(name)
+        DirectoryEntryName.names(inFolder: parent).contains(name)
     }
 
     private static func removeEntry(in parent: Int32, _ name: String) {
@@ -579,7 +579,7 @@ package nonisolated enum Archiver {
                 acl_set_fd_np(fd, empty, ACL_TYPE_EXTENDED)
                 acl_free(UnsafeMutableRawPointer(empty))
             }
-            for child in entries(fd) { removeEntry(in: fd, child) }
+            for child in DirectoryEntryName.names(inFolder: fd) { removeEntry(in: fd, child) }
             close(fd)
             unlinkat(parent, name, AT_REMOVEDIR)
         } else {
@@ -595,23 +595,6 @@ package nonisolated enum Archiver {
             }
             unlinkat(parent, name, 0)
         }
-    }
-
-    /// The names in an open folder.
-    package static func entries(_ fd: Int32) -> [String] {
-        let copy = dup(fd)
-        guard copy >= 0, let dir = fdopendir(copy) else {
-            if copy >= 0 { close(copy) }
-            return []
-        }
-        defer { closedir(dir) }
-        rewinddir(dir)
-        var names: [String] = []
-        while let entry = readdir(dir) {
-            guard let name = DirectoryEntryName.read(entry) else { continue }
-            if name != ".", name != ".." { names.append(name) }
-        }
-        return names
     }
 
     /// Every name in the folder at `path`, read from the folder itself (FileManager leaves out files named "._…",
