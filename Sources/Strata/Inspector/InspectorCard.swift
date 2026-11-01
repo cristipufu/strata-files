@@ -30,14 +30,26 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         translatesAutoresizingMaskIntoConstraints = false
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
+        styleHeader(symbol: symbol, title: title)
+        layOut(header: header(with: accessory))
+        bodyHeightWhenCollapsed = body.heightAnchor.constraint(equalToConstant: 0)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(title)
+        apply(collapsed: isCollapsed, animated: false)
+        updateColorTheme()
+    }
 
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func styleHeader(symbol: String, title: String) {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage()
         icon.setAccessibilityElement(false)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setAccessibilityElement(false)
-
         chevron.isBordered = false
         chevron.bezelStyle = .accessoryBarAction
         chevron.imagePosition = .imageOnly
@@ -45,7 +57,11 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         chevron.target = self
         chevron.action = #selector(toggle)
         chevron.setAccessibilityLabel(title)
+    }
 
+    /// The icon, the title, the accessory if there's one, and the chevron, in a row that collapses and expands the
+    /// card wherever it's clicked.
+    private func header(with accessory: NSView?) -> NSStackView {
         var headerViews: [NSView] = [icon, titleLabel, NSView()]
         if let accessory {
             // A long accessory (an upstream branch, a size) gives way before the title does.
@@ -58,10 +74,12 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         header.alignment = .centerY
         header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
-        // The whole header row collapses and expands, not just the chevron.
         let click = NSClickGestureRecognizer(target: self, action: #selector(toggle))
         header.addGestureRecognizer(click)
+        return header
+    }
 
+    private func layOut(header: NSStackView) {
         body.translatesAutoresizingMaskIntoConstraints = false
         content.translatesAutoresizingMaskIntoConstraints = false
         body.addSubview(content)
@@ -91,16 +109,8 @@ final class InspectorCard: NSView, ColorThemeUpdating {
             content.topAnchor.constraint(equalTo: body.topAnchor),
             bottom,
         ])
-        bodyHeightWhenCollapsed = body.heightAnchor.constraint(equalToConstant: 0)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        setAccessibilityLabel(title)
-        apply(collapsed: isCollapsed, animated: false)
-        updateColorTheme()
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
 
     func updateColorTheme() {
         let themed = ThemeStyle.options.palette != .system && !ThemeStyle.highContrast && !effectiveAppearance.isHighContrast
