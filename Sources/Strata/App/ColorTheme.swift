@@ -392,6 +392,40 @@ package final class ThemeSurfaceView: NSView {
 
 /// Lists and deeper columns use the same selection palette as icon names.
 package final class ThemeRowView: NSTableRowView {
+    private var showsAlternatingRows = false { didSet { needsDisplay = true } }
+    var alternating: Bool {
+        guard showsAlternatingRows else { return false }
+        var parent = superview
+        while let view = parent {
+            if let table = view as? NSTableView {
+                let row = table.row(for: self)
+                return row >= 0 && !row.isMultiple(of: 2)
+            }
+            parent = view.superview
+        }
+        return false
+    }
+
+    package convenience init(alternatingRows: Bool) {
+        self.init(frame: .zero)
+        showsAlternatingRows = alternatingRows
+    }
+
+    package static func updateAlternatingRows(in table: NSTableView, enabled: Bool) {
+        table.enumerateAvailableRowViews { view, _ in
+            (view as? ThemeRowView)?.showsAlternatingRows = enabled
+        }
+    }
+
+    package override func drawBackground(in dirtyRect: NSRect) {
+        if alternating {
+            ThemeStyle.surface(.alternatingRow).setFill()
+            dirtyRect.fill()
+        } else {
+            super.drawBackground(in: dirtyRect)
+        }
+    }
+
     package override func drawSelection(in dirtyRect: NSRect) {
         guard ThemeStyle.options.palette != .system, !ThemeStyle.highContrast, !effectiveAppearance.isHighContrast else {
             super.drawSelection(in: dirtyRect)

@@ -477,6 +477,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     /// Row height and text size changed (Settings ▸ Appearance).
+    func updateAlternatingRows() {
+        for pane in panes { ThemeRowView.updateAlternatingRows(in: pane.tableView, enabled: preferences.alternatingRows) }
+    }
+
     func restyle() {
         for pane in panes { pane.restyle() }
     }

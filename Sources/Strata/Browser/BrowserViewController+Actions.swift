@@ -300,6 +300,11 @@ extension BrowserViewController {
         refresh()
     }
 
+    @objc func alternatingRowsChanged() {
+        ThemeRowView.updateAlternatingRows(in: outlineView, enabled: preferences.alternatingRows)
+        columnController?.updateAlternatingRows()
+    }
+
     /// Density or text size changed: every view takes the new row height and font (nothing is read again).
     @objc func appearanceChanged() {
         refreshListTypography()

@@ -307,6 +307,7 @@
     "All Differences": "모든 차이점",
     "Already changed by another step": "다른 단계에서 이미 변경됨",
     "Also ⇧⌘. in any window.": "어느 윈도우에서나 ⇧⌘.를 눌러 전환할 수도 있습니다.",
+    "Alternating row colors": "행 색상 번갈아 표시",
     "Amazon S3 for the region": "해당 리전의 Amazon S3",
     "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.": "Amazon S3 또는 엔드포인트를 지정한 S3 호환 서비스(Cloudflare R2, Backblaze B2, Wasabi, MinIO…). 보안 액세스 키는 키체인에 보관됩니다.",
     "Amber": "앰버",

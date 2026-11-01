@@ -307,6 +307,7 @@
     "All Differences": "すべての相違",
     "Already changed by another step": "別のステップですでに変更済み",
     "Also ⇧⌘. in any window.": "どのウインドウでも⇧⌘.で切り替えられます。",
+    "Alternating row colors": "行の背景色を交互にする",
     "Amazon S3 for the region": "リージョンのAmazon S3",
     "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.": "Amazon S3、またはエンドポイントを指定したS3互換サービス（Cloudflare R2、Backblaze B2、Wasabi、MinIO…）。シークレットキーはキーチェーンに保管されます。",
     "Amber": "アンバー",

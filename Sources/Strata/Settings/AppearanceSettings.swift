@@ -6,6 +6,7 @@ struct AppearanceSettings: View {
     @State private var colors = Prefs.shared.colorThemeOptions
     @State private var density = Prefs.shared.density
     @State private var size = Prefs.shared.nameTextSize
+    @State private var alternatingRows = Prefs.shared.alternatingRows
     @State private var previews = Prefs.shared.showIconPreviews
 
     var body: some View {
@@ -68,6 +69,7 @@ struct AppearanceSettings: View {
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")
+                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; Prefs.shared.alternatingRows = $0 }))
                 Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.shared.showIconPreviews = $0 })) {
                     Text("Show icon previews")
                     Text("Pictures, documents and movies show a thumbnail of their contents in place of their icon.")
@@ -84,6 +86,7 @@ struct AppearanceSettings: View {
             if size != Prefs.shared.nameTextSize { size = Prefs.shared.nameTextSize }
             if theme != Prefs.shared.theme { theme = Prefs.shared.theme }
         }
+        .onReceive(Prefs.shared.notifications.publisher(for: .alternatingRowsChanged, object: Prefs.shared)) { _ in alternatingRows = Prefs.shared.alternatingRows }
         .onReceive(NotificationCenter.default.publisher(for: .colorThemeChanged)) { _ in colors = Prefs.shared.colorThemeOptions }
     }
 }

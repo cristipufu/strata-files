@@ -40,7 +40,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         return node.entry.isFolder
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { ThemeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        ThemeRowView(alternatingRows: preferences.alternatingRows)
+    }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? FileNode else { return nil }

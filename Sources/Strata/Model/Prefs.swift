@@ -1,6 +1,7 @@
 import AppKit
 
 extension Notification.Name {
+    package static let alternatingRowsChanged = Notification.Name("StrataAlternatingRowsChanged")
     package static let prefsChanged = Notification.Name("StrataPrefsChanged")
     /// Theme, density or text size changed (Settings ▸ Appearance): views restyle, nothing reloads.
     package static let appearanceChanged = Notification.Name("StrataAppearanceChanged")
@@ -83,6 +84,7 @@ package final class Prefs {
         static let theme = "theme"
         static let density = "density"
         static let nameTextSize = "nameTextSize"
+        static let alternatingRows = "alternatingRows"
         static let showIconPreviews = "showIconPreviews"
         static let sidebarShowsTree = "sidebarShowsTree"
         static let sortColumn = "sortColumn"
@@ -275,6 +277,15 @@ package final class Prefs {
             return value.isFinite ? min(max(value, 11), 16) : Self.defaultNameTextSize
         }
         set { defaults.set(newValue, forKey: Key.nameTextSize); notifications.post(name: .appearanceChanged, object: nil) }
+    }
+
+    package var alternatingRows: Bool {
+        get { defaults.bool(forKey: Key.alternatingRows) }
+        set {
+            guard newValue != alternatingRows else { return }
+            defaults.set(newValue, forKey: Key.alternatingRows)
+            notifications.post(name: .alternatingRowsChanged, object: self)
+        }
     }
 
     /// Files show a Quick Look thumbnail of their contents in place of their icon, like Finder's "Show icon preview".

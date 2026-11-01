@@ -307,6 +307,7 @@
     "All Differences": "所有差異",
     "Already changed by another step": "已被另一個步驟更改",
     "Also ⇧⌘. in any window.": "在任何視窗中按⇧⌘.也可切換。",
+    "Alternating row colors": "交替列背景色",
     "Amazon S3 for the region": "該區域的Amazon S3",
     "Amazon S3, or an S3-compatible service with its endpoint (Cloudflare R2, Backblaze B2, Wasabi, MinIO…). The secret key is kept in your keychain.": "Amazon S3，或指定了端點的S3相容服務（Cloudflare R2、Backblaze B2、Wasabi、MinIO⋯）。私密存取金鑰會儲存在你的鑰匙圈中。",
     "Amber": "琥珀色",
