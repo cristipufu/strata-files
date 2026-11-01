@@ -103,3 +103,48 @@ final class SelectionReports {
         tell(last)
     }
 }
+
+/// A drop on Icons or Gallery: onto the folder it rests on, which springs open, else into the folder shown.
+enum CollectionDrop {
+    struct Target {
+        let entries: [FileEntry]
+        let directory: URL?
+        let copies: CopyProviders
+        let springLoader: SpringLoader
+        let highlight: NSView
+        let canSpringLoad: (URL, NSDraggingInfo) -> Bool
+    }
+
+    static func validate(_ info: NSDraggingInfo, proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
+                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>, on target: Target) -> NSDragOperation {
+        let urls = FileDrop.urls(info, copies: target.copies)
+        let proposed = proposedIndexPath.pointee as IndexPath
+        let index = proposed.count == 2 ? proposed.item : -1
+        // The folder the drag rests on: never one of the dragged items or inside one.
+        let entries = target.entries
+        let folder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
+            && !FileDrop.isInside(urls, entries[index].url, during: info) ? entries[index].url : nil
+        let springs = folder.map { target.canSpringLoad($0, info) } == true
+        target.springLoader.hover(springs ? folder : nil, drag: info.draggingSequenceNumber)
+        guard !urls.isEmpty else { return hideHighlight(target) }
+        if let folder {
+            let operation = FileDrop.operation(urls, into: folder, info: info, copies: target.copies)
+            if !operation.isEmpty {
+                target.highlight.isHidden = true
+                return operation
+            }
+        }
+        // Anywhere else drops into the folder being shown.
+        guard let directory = target.directory else { return hideHighlight(target) }
+        proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
+        dropOperation.pointee = .before
+        let operation = FileDrop.operation(urls, into: directory, info: info, copies: target.copies)
+        target.highlight.isHidden = operation.isEmpty
+        return operation
+    }
+
+    private static func hideHighlight(_ target: Target) -> NSDragOperation {
+        target.highlight.isHidden = true
+        return []
+    }
+}

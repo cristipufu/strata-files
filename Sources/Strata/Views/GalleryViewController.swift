@@ -571,29 +571,12 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let proposed = proposedIndexPath.pointee as IndexPath
-        let index = proposed.count == 2 ? proposed.item : -1
-        let onFolder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url, during: draggingInfo)
-        // A folder the drag rests on springs open.
-        let springs = onFolder
-            && fileDelegate?.fileView(self, canSpringLoad: entries[index].url, during: draggingInfo) == true
-        springLoader.hover(springs ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
-        guard !urls.isEmpty else { return hideDropHighlight() }
-        if onFolder {
-            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
-            if !operation.isEmpty {
-                dropHighlight.isHidden = true
-                return operation
-            }
+        let target = CollectionDrop.Target(entries: entries, directory: directory, copies: copies, springLoader: springLoader,
+                                           highlight: dropHighlight) { [weak self] folder, info in
+            guard let self else { return false }
+            return fileDelegate?.fileView(self, canSpringLoad: folder, during: info) == true
         }
-        guard let directory else { return hideDropHighlight() }
-        proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
-        dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo, copies: copies)
-        dropHighlight.isHidden = operation.isEmpty
-        return operation
+        return CollectionDrop.validate(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation, on: target)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
