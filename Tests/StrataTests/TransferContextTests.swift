@@ -420,35 +420,6 @@ struct TransferContextTests {
         root.subviews.flatMap { ([$0 as? View].compactMap { $0 }) + views(of: type, in: $0) }
     }
 
-    /// A private pasteboard and a copy-only source exercise the native drop delegates without posting a drag or
-    /// depending on the user's modifier keys. No promised files or drag-image callbacks are involved in this drop.
-    private final class FileDrag: NSObject, NSDraggingInfo {
-        let draggingPasteboard = NSPasteboard(name: .init("StrataTransferDropTests.\(UUID().uuidString)"))
-        var draggingDestinationWindow: NSWindow? { nil }
-        var draggingSourceOperationMask: NSDragOperation { .copy }
-        var draggingLocation: NSPoint { .zero }
-        var draggedImageLocation: NSPoint { .zero }
-        nonisolated var draggedImage: NSImage? { nil }
-        var draggingSource: Any? { nil }
-        var draggingSequenceNumber: Int { 1 }
-        var draggingFormation: NSDraggingFormation = .none
-        var animatesToDestination = false
-        var numberOfValidItemsForDrop = 1
-        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
-
-        init(_ url: URL) {
-            super.init()
-            draggingPasteboard.writeObjects([url as NSURL])
-        }
-
-        func slideDraggedImage(to screenPoint: NSPoint) {}
-        nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
-        func resetSpringLoading() {}
-        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions, for view: NSView?, classes: [AnyClass],
-                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any],
-                                    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
-    }
-
     @Test func completedTransfersDoNotKeepClosedPanesAlive() async throws {
         let tree = try TestTree("left/a.txt", "right/", "state/")
         let env = try Environment(tree)

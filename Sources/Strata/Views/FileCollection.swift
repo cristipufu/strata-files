@@ -218,6 +218,11 @@ enum BrowserViewMode: Int, CaseIterable {
 
 /// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
 /// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
+/// A drag that says which keys are held (a test's, which mustn't depend on the keyboard of the Mac it runs on).
+protocol DragKeys {
+    var optionHeld: Bool { get }
+}
+
 enum FileDrop {
     /// What dragging files out of a file view offers: within Strata a copy or a move, elsewhere an alias too.
     static func sourceOperations(local: Bool) -> NSDragOperation {
@@ -266,16 +271,20 @@ enum FileDrop {
     /// What dropping `urls` on `target` would do, while the drag moves: views ask on every move of the pointer, so
     /// what the disk says comes from `DragFacts`.
     static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders) -> NSDragOperation {
-        let option = NSEvent.modifierFlags.contains(.option)
-        return operation(urls, into: target, mask: info.draggingSourceOperationMask, option: option, copies: copies,
-                         disk: DragFacts.of(info))
+        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: optionHeld(during: info), copies: copies,
+                  disk: DragFacts.of(info))
+    }
+
+    /// Whether Option is held while `info` moves: what the drag says, else (a drag AppKit made) the keyboard.
+    static func optionHeld(during info: NSDraggingInfo) -> Bool {
+        (info as? DragKeys)?.optionHeld ?? NSEvent.modifierFlags.contains(.option)
     }
 
     /// Takes the drop of `urls` on `target` and hands `act` its move (true) or copy once that's decided (`decided`):
     /// AppKit wants an answer at once, and the disk may not give one. A drop that does nothing calls nothing.
     static func drop(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders,
                      then act: @escaping (_ move: Bool) -> Void) {
-        let option = NSEvent.modifierFlags.contains(.option), mask = info.draggingSourceOperationMask
+        let option = optionHeld(during: info), mask = info.draggingSourceOperationMask
         let facts = DragFacts.of(info)
         Task {
             let operation = await decided(urls, into: target, mask: mask, option: option, copies: copies, facts: facts)

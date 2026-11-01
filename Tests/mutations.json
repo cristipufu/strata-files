@@ -301,6 +301,13 @@
     "tests": "DropTests"
   },
   {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "(info as? DragKeys)?.optionHeld ?? NSEvent.modifierFlags.contains(.option)",
+    "replace": "NSEvent.modifierFlags.contains(.option)",
+    "rule": "A view's drop decision goes by the keyboard of the Mac instead of the drag it's deciding",
+    "tests": "BrowserPresentationsTests/iconsAndGalleryDecideWhereADropGoesAndWhetherItMoves"
+  },
+  {
     "file": "Strata/Model/FileOps.swift",
     "find": "        return (urls, cut?.changeCount == pasteboard.changeCount)",
     "replace": "        return (urls, cut != nil)",

@@ -72,6 +72,44 @@ struct BrowserPresentationsTests {
         }
     }
 
+    /// Icons and Gallery decide a drop alike: onto the folder it rests on (never a dragged one), a move on one disk
+    /// unless Option is held, anywhere else into the folder shown.
+    @Test func iconsAndGalleryDecideWhereADropGoesAndWhetherItMoves() async throws {
+        let preferences = try Prefs.isolated()
+        let tree = try TestTree("shown/", "shown/inner/", "a.txt")
+        let inner = try #require(FileEntry(url: tree.url("shown/inner")))
+        let controllers: [any FileItemCollection] = [
+            GridViewController(preferences: preferences, thumbnails: .shared, itemInfo: .shared, copies: .live, clipboard: .shared, statuses: try .isolated()),
+            GalleryViewController(thumbnails: .shared, copies: .live, clipboard: .shared, statuses: try .isolated())]
+        for controller in controllers {
+            controller.view.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+            controller.apply(FileCollectionContent(directory: tree.url("shown"), entries: [inner], matches: [:]),
+                             metadata: metadata, animated: false)
+            // Asked once, then again once what the disk says about the drag has been read.
+            func decide(_ drag: FileDrag) async -> (operation: NSDragOperation, item: Int, on: Bool) {
+                var proposed = IndexPath(item: 0, section: 0) as NSIndexPath
+                var dropOperation = NSCollectionView.DropOperation.on
+                _ = controller.validateDrop(drag, proposedIndexPath: &proposed, dropOperation: &dropOperation)
+                await DragFacts.of(drag).settled()
+                proposed = IndexPath(item: 0, section: 0) as NSIndexPath
+                dropOperation = .on
+                let operation = controller.validateDrop(drag, proposedIndexPath: &proposed, dropOperation: &dropOperation)
+                return (operation, (proposed as IndexPath).item, dropOperation == .on)
+            }
+            let offered: NSDragOperation = [.copy, .move, .generic]
+            let moved = await decide(FileDrag([tree.url("a.txt")], offering: offered))
+            #expect(moved.operation == .move && moved.item == 0 && moved.on, "\(controller)")
+            let copied = await decide(FileDrag([tree.url("a.txt")], offering: offered, option: true))
+            #expect(copied.operation == .copy && copied.item == 0 && copied.on, "\(controller)")
+            // The dragged folder itself isn't a place to drop: the folder shown is, where it already is.
+            let itself = await decide(FileDrag([tree.url("shown/inner")], offering: offered))
+            #expect(itself.operation == [] && itself.item == 1 && !itself.on && controller.dropHighlight.isHidden, "\(controller)")
+            let nothing = await decide(FileDrag([], offering: offered))
+            #expect(nothing.operation == [] && nothing.item == 0 && nothing.on && controller.dropHighlight.isHidden, "\(controller)")
+        }
+        #expect(tree.snapshot() == ["a.txt", "shown/", "shown/inner/"])
+    }
+
     @Test func directoryContextChangesEvenWhenTheNewFolderIsEmpty() throws {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("old/a.txt", "new/")
