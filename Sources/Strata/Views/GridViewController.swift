@@ -1,7 +1,7 @@
 import AppKit
 
 /// The icon view: a justified grid of large icons and Quick Look thumbnails, fed by the browser.
-final class GridViewController: NSViewController, FileCollectionController, FileCollectionHost {
+final class GridViewController: NSViewController, FileItemCollection, FileCollectionHost {
     let preferences: Prefs
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
@@ -52,9 +52,9 @@ final class GridViewController: NSViewController, FileCollectionController, File
     let collectionView: GridCollectionView
     private let scrollView = NSScrollView()
     private let layout = GridLayout()
-    private let dropHighlight = DropHighlightView()
+    let dropHighlight = DropHighlightView()
     /// Opens the folder a drag rests on (only one still shown).
-    private lazy var springLoader = SpringLoader(view: collectionView, frame: { [weak self] folder in
+    lazy var springLoader = SpringLoader(view: collectionView, frame: { [weak self] folder in
         guard let self, let index = indexByKey[folder.fileViewKey] else { return nil }
         return collectionView.frameForItem(at: index)
     }, open: { [weak self] folder, drag in
@@ -184,7 +184,7 @@ final class GridViewController: NSViewController, FileCollectionController, File
     }
 
     func screenRect(for url: URL) -> NSRect? {
-        guard let index = indexByKey[url.fileViewKey], let window = view.window,
+        guard let index = index(of: url), let window = view.window,
               let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return nil }
         let rect = item.itemView.convert(item.itemView.iconRect, to: nil)
         guard collectionView.visibleRect.intersects(collectionView.convert(rect, from: nil)) else { return nil }
@@ -411,6 +411,8 @@ final class GridViewController: NSViewController, FileCollectionController, File
         }
     }
 
+    func index(of url: URL) -> Int? { indexByKey[url.fileViewKey] }
+
     // MARK: - Rename
 
     func cancelRename() {
@@ -419,12 +421,7 @@ final class GridViewController: NSViewController, FileCollectionController, File
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
-        if let existing = renameField {
-            existing.cancel()
-        }
-        guard let index = indexByKey[url.fileViewKey] else { return false }
-        let entry = entries[index]
-        select([url], scroll: true)
+        guard let (index, entry) = prepareRename(url) else { return false }
         collectionView.layoutSubtreeIfNeeded()
         guard let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return false }
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, font: layout.metrics.typography.font)
@@ -492,8 +489,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard indexPath.count == 2, entries.indices.contains(indexPath.item) else { return nil }
-        return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
+        pasteboardWriter(at: indexPath)
     }
 
     // Dropping in
@@ -501,28 +497,12 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let target = CollectionDrop.Target(entries: entries, directory: directory, copies: copies, springLoader: springLoader,
-                                           highlight: dropHighlight) { [weak self] folder, info in
-            guard let self else { return false }
-            return fileDelegate?.fileView(self, canSpringLoad: folder, during: info) == true
-        }
-        return CollectionDrop.validate(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation, on: target)
+        validateDrop(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        dropHighlight.isHidden = true
-        springLoader.cancel()
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let index = indexPath.count == 2 ? indexPath.item : -1
-        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
-            ? entries[index].url : nil
-        return fileDelegate?.fileView(self, drop: urls, onto: folder, info: draggingInfo) ?? false
-    }
-
-    fileprivate func dragExited() {
-        dropHighlight.isHidden = true
-        springLoader.cancel()
+        acceptDrop(draggingInfo, indexPath: indexPath, dropOperation: dropOperation)
     }
 }
 
@@ -580,7 +560,7 @@ final class GridCollectionView: FileCollectionView {
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)
-        controller?.dragExited()
+        controller?.endDrop()
     }
 
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
@@ -589,7 +569,7 @@ final class GridCollectionView: FileCollectionView {
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
         super.draggingEnded(sender)
-        controller?.dragExited()
+        controller?.endDrop()
     }
 
     override func scrollToBeginningOfDocument(_ sender: Any?) { scroll(.zero) }

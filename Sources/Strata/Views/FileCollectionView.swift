@@ -104,47 +104,81 @@ final class SelectionReports {
     }
 }
 
-/// A drop on Icons or Gallery: onto the folder it rests on, which springs open, else into the folder shown.
-enum CollectionDrop {
-    struct Target {
-        let entries: [FileEntry]
-        let directory: URL?
-        let copies: CopyProviders
-        let springLoader: SpringLoader
-        let highlight: NSView
-        let canSpringLoad: (URL, NSDraggingInfo) -> Bool
+/// Icons and Gallery: their items, found by URL, dragged out through their copy providers and dropped onto (a folder
+/// springs open) or between, into the folder shown; and renaming one.
+protocol FileItemCollection: FileCollectionController {
+    var entries: [FileEntry] { get }
+    var directory: URL? { get }
+    var copies: CopyProviders { get }
+    var springLoader: SpringLoader { get }
+    var dropHighlight: DropHighlightView { get }
+    func index(of url: URL) -> Int?
+}
+
+extension FileItemCollection {
+    func pasteboardWriter(at indexPath: IndexPath) -> NSPasteboardWriting? {
+        guard indexPath.count == 2, entries.indices.contains(indexPath.item) else { return nil }
+        return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
     }
 
-    static func validate(_ info: NSDraggingInfo, proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
-                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>, on target: Target) -> NSDragOperation {
-        let urls = FileDrop.urls(info, copies: target.copies)
+    func validateDrop(_ info: NSDraggingInfo, proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
+                      dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
+        let urls = FileDrop.urls(info, copies: copies)
         let proposed = proposedIndexPath.pointee as IndexPath
         let index = proposed.count == 2 ? proposed.item : -1
         // The folder the drag rests on: never one of the dragged items or inside one.
-        let entries = target.entries
         let folder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
             && !FileDrop.isInside(urls, entries[index].url, during: info) ? entries[index].url : nil
-        let springs = folder.map { target.canSpringLoad($0, info) } == true
-        target.springLoader.hover(springs ? folder : nil, drag: info.draggingSequenceNumber)
-        guard !urls.isEmpty else { return hideHighlight(target) }
+        let springs = folder.map { fileDelegate?.fileView(self, canSpringLoad: $0, during: info) == true } == true
+        springLoader.hover(springs ? folder : nil, drag: info.draggingSequenceNumber)
+        guard !urls.isEmpty else { return hideDropHighlight() }
         if let folder {
-            let operation = FileDrop.operation(urls, into: folder, info: info, copies: target.copies)
+            let operation = FileDrop.operation(urls, into: folder, info: info, copies: copies)
             if !operation.isEmpty {
-                target.highlight.isHidden = true
+                dropHighlight.isHidden = true
                 return operation
             }
         }
         // Anywhere else drops into the folder being shown.
-        guard let directory = target.directory else { return hideHighlight(target) }
+        guard directory != nil else { return hideDropHighlight() }
         proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
         dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: info, copies: target.copies)
-        target.highlight.isHidden = operation.isEmpty
+        return dropIntoFolderShown(urls, info: info)
+    }
+
+    func dropIntoFolderShown(_ urls: [URL], info: NSDraggingInfo) -> NSDragOperation {
+        guard !urls.isEmpty, let directory else { return hideDropHighlight() }
+        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
+        dropHighlight.isHidden = operation.isEmpty
         return operation
     }
 
-    private static func hideHighlight(_ target: Target) -> NSDragOperation {
-        target.highlight.isHidden = true
+    func acceptDrop(_ info: NSDraggingInfo, indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
+        endDrop()
+        let urls = FileDrop.urls(info, copies: copies)
+        let index = indexPath.count == 2 ? indexPath.item : -1
+        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
+            ? entries[index].url : nil
+        return fileDelegate?.fileView(self, drop: urls, onto: folder, info: info) ?? false
+    }
+
+    /// The drag left or ended: nothing highlighted, and no folder waiting to spring open.
+    func endDrop() {
+        dropHighlight.isHidden = true
+        springLoader.cancel()
+    }
+
+    @discardableResult
+    func hideDropHighlight() -> NSDragOperation {
+        dropHighlight.isHidden = true
         return []
+    }
+
+    /// Where renaming `url` starts: any rename under way cancelled, and the item, selected.
+    func prepareRename(_ url: URL) -> (index: Int, entry: FileEntry)? {
+        cancelRename()
+        guard let index = index(of: url) else { return nil }
+        select([url], scroll: true)
+        return (index, entries[index])
     }
 }
