@@ -192,7 +192,7 @@
     "file": "Strata/Queue/TransferQueue.swift",
     "find": "        let returning = moved.filter { owns($0.to) }",
     "replace": "        let returning = moved",
-    "rule": "Undo of a move job moves back a file swapped in since",
+    "rule": "Undo of a move job brings back what it replaced beside a file swapped in since",
     "tests": "TrashUndoTests|TransferTests/aMoveJobAcross"
   },
   {
@@ -1080,7 +1080,7 @@
   {
     "file": "Strata/Model/SecureStorage.swift",
     "find": "let base = directory.absoluteURL.path + \"/\"",
-    "replace": "let base = SecureStorage.directory.absoluteURL.path + \"/\"",
+    "replace": "let base = SecureStorage.Context.shared.directory.absoluteURL.path + \"/\"",
     "rule": "Storage isolation authenticates names against the global directory",
     "tests": "StorageContextTests/storeNames"
   },
@@ -3049,10 +3049,18 @@
   },
   {
     "file": "Strata/Window/Workspaces.swift",
-    "find": "top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }",
-    "replace": "top.standardizedFileURL == url.standardizedFileURL { return server.name }",
     "rule": "Remote environment workspace tooltips recognize uncreated server roots",
-    "tests": "RemoteEnvironmentTests/workspacePlansAndTooltipsUseTheirOwnServerPaths"
+    "tests": "RemoteEnvironmentTests/workspacePlansAndTooltipsUseTheirOwnServerPaths",
+    "edits": [
+      {
+        "find": "let url = URL(filePath: path, directoryHint: .isDirectory)",
+        "replace": "let url = URL(fileURLWithPath: path)"
+      },
+      {
+        "find": "top.standardizedFileURL.path == url.standardizedFileURL.path { return server.name }",
+        "replace": "top.standardizedFileURL == url.standardizedFileURL { return server.name }"
+      }
+    ]
   },
   {
     "file": "Strata/Sidebar/FolderTreeController.swift",
@@ -3232,7 +3240,7 @@
   {
     "file": "Strata/Browser/BrowserViewController.swift",
     "find": "        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
-    "replace": "        if pendingSelection == nil { pendingSelection = selectedURLs }\n        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
+    "replace": "        if pending.selection == nil { pending.selection = selectedURLs }\n        reload(scrollToTop: false, invalidateCopy: invalidateCopy)",
     "rule": "Provider directory ownership Reload restores the selection from before its wait",
     "tests": "InspectorFolderOpeningTests/selectionsChangedDuringReloadAreNotReplacedByItsStartingSelection"
   },
@@ -6278,7 +6286,7 @@
     "file": "Strata/Previews/OneNotePageMarkup.swift",
     "rule": "OneNote: a picture a page shows twice is one request",
     "find": "let index = pictures.firstIndex(of: data)",
-    "replace": "let index = pictures.lastIndex { _ in false }",
+    "replace": "let index = pictures.firstIndex(where: { _ in false })",
     "tests": "OneNotePreviewTests/picturesShowOnceEachWithinTheirLimitAndEverythingElseAsAChip"
   },
   {
@@ -7281,10 +7289,18 @@
   },
   {
     "file": "Strata/Window/PaneSearch.swift",
-    "find": "        let isCurrent = { generation == self.latest && p.destination == target }",
-    "replace": "        let isCurrent = { true }",
     "rule": "Search: a folder search still running shows its results after the pane went elsewhere",
-    "tests": "PaneSearchTests/aSearchStillRunningWhenThePaneGoesBackToItsFolderNeverShows"
+    "tests": "PaneSearchTests/aFolderScanStillReadingWhenThePaneGoesBackToItsFolderNeverShows",
+    "edits": [
+      {
+        "find": "        while isCurrent(generation, p, target) {",
+        "replace": "        while true {"
+      },
+      {
+        "find": "            let found = await search.search(text)\n            guard isCurrent(generation, p, target) else { return }\n",
+        "replace": "            let found = await search.search(text)\n"
+      }
+    ]
   },
   {
     "file": "Strata/Window/PaneHistory.swift",

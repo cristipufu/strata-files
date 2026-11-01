@@ -315,4 +315,20 @@ struct TrashUndoTests {
         #expect(tree.snapshot() == ["from/", "from/a.txt", "to/", "to/b.txt"])
         #expect(tree.text("from/a.txt") == "someone else's")
     }
+
+    @Test func undoingAMoveJobLeavesWhatItReplacedInTheTrashWhileANewcomerHasItsPlace() async throws {
+        let tree = try TestTree("from/", "from/a.txt", "to/", "to/a.txt")
+        defer { tree.removeFromTrash() }
+        let undo = await undoable { undo in
+            await TransferQueue.shared.enqueue([tree.url("from/a.txt")], to: tree.url("to"), mode: .move,
+                                               options: .init(verify: false, clone: false), undo: undo, conflicts: .replace).finished()
+        }
+        try swap(tree, "to/a.txt")
+        undo.undo()
+        await FileOps.undoWork?.value
+        // The moved file isn't there to go back, so its spot isn't freed: what it replaced stays in the Trash rather
+        // than coming back beside the newcomer.
+        #expect(tree.snapshot() == ["from/", "to/", "to/a.txt"])
+        #expect(tree.text("to/a.txt") == "someone else's")
+    }
 }

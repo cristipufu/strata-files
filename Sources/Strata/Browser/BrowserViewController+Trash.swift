@@ -23,12 +23,13 @@ extension BrowserViewController {
         putBack(items: items)
     }
 
-    /// Put Back of `items`, which sit directly in a Trash, through this window's History and queue.
+    /// Put Back of `items`, which sit directly in a Trash, through this window's History and queue, and the Trash's
+    /// records as `records` reads them.
     @discardableResult
-    func putBack(items: [URL]) -> Task<Void, Never> {
+    func putBack(items: [URL], records: @escaping Trash.RecordReader = Trash.finderRecords) -> Task<Void, Never> {
         let undo = undoManager, history = services.transfers.history.entries
         return Task { [weak self, weak window = view.window, services] in
-            let locations = await Trash.originalLocations(of: items, history: history)
+            let locations = await Trash.originalLocations(of: items, history: history, records: records)
             let ready = await Self.makeFolders(for: items, at: locations)
             if !ready.moves.isEmpty {
                 let made = CreatedFolders()

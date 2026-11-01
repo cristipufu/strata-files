@@ -68,31 +68,44 @@ final class TestTree {
     func snapshot() -> [String] { Self.listing(of: root) }
 
     /// `snapshot` for any folder (a test server's, say). Files named "._…" are listed too, which FileManager leaves out.
-    /// History is written in the background: what's been written is listed.
+    /// History is written in the background: what's been written is listed. Each item is looked up in the folder opened
+    /// for it, so a name read wrong (by a name reader broken on purpose) names nothing, never that folder again.
     static func listing(of root: URL) -> [String] {
         OperationLog.waitForWrites()
         var items: [String] = []
-        func walk(_ folder: String) {
-            for name in names(in: root.appending(path: folder).path) {
-                let relative = folder.isEmpty ? name : folder + "/" + name
-                let full = root.appending(path: relative).path
+        func walk(_ folder: Int32, _ prefix: String) {
+            for name in names(in: folder) {
+                let relative = prefix + name
                 var info = stat()
-                guard lstat(full, &info) == 0 else { continue }
+                guard fstatat(folder, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { continue }
                 switch info.st_mode & S_IFMT {
                 case S_IFLNK:
-                    let target = (try? FileManager.default.destinationOfSymbolicLink(atPath: full)) ?? "?"
+                    let target = linkTarget(name, in: folder) ?? "?"
                     let shown = target.hasPrefix(root.path + "/") ? String(target.dropFirst(root.path.count + 1)) : target
                     items.append("\(relative) -> \(shown)")
                 case S_IFDIR:
                     items.append(relative + "/")
-                    walk(relative)
+                    let inner = openat(folder, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard inner >= 0 else { continue }
+                    walk(inner, relative + "/")
+                    close(inner)
                 default:
                     items.append(relative)
                 }
             }
         }
-        walk("")
+        let top = open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard top >= 0 else { return [] }
+        walk(top, "")
+        close(top)
         return items.sorted()
+    }
+
+    private static func linkTarget(_ name: String, in folder: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let count = readlinkat(folder, name, &buffer, buffer.count)
+        guard count >= 0 else { return nil }
+        return String(decoding: buffer.prefix(count).map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 
     static func path(of fd: Int32) -> String? {
@@ -104,8 +117,12 @@ final class TestTree {
     /// Read from the folder itself, not through FileManager, which leaves out files named "._…". A directory record is
     /// only as long as its name: `DirectoryEntryName` reads it within that length. A name that isn't text shows as a
     /// marker, so a whole listing still has something there.
-    private static func names(in folder: String) -> [String] {
-        guard let stream = opendir(folder) else { return [] }
+    private static func names(in folder: Int32) -> [String] {
+        let copy = dup(folder)
+        guard copy >= 0, let stream = fdopendir(copy) else {
+            if copy >= 0 { close(copy) }
+            return []
+        }
         defer { closedir(stream) }
         var names: [String] = []
         while let entry = readdir(stream) {

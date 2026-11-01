@@ -36,6 +36,30 @@ import Testing
         #expect(tree.snapshot() == ["docs/", "docs/notes.txt", "docs/report.txt"])
     }
 
+    @Test func aFolderScanStillReadingWhenThePaneGoesBackToItsFolderNeverShows() async throws {
+        let tree = try TestTree("docs/report.txt", "docs/notes.txt")
+        let environment = try IndependentEnvironment()
+        let controller = BrowserWindowController(location: tree.url("docs"), services: environment.services)
+        let pane = controller.pane
+        await pane.browser.directoryReads.task?.value
+        // The scan waits on a queue held here, so the pane leaves while it's still reading. Nothing between holding and
+        // letting go throws: a queue released while held would end the test process.
+        let scans = DispatchQueue(label: "Held folder scan")
+        scans.suspend()
+        pane.search = PaneSearch(pane: pane, services: environment.services, scans: scans)
+        controller.search("report", in: tree.url("docs"))
+        let running = pane.search.task
+        for _ in 0..<500 where pane.search.summary.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        let reading = !pane.search.summary.isEmpty
+        controller.go(.folder(tree.url("docs")), in: pane)
+        await pane.browser.directoryReads.task?.value
+        scans.resume()
+        await running?.value
+        #expect(running != nil && reading)
+        #expect(!pane.browser.isShowingResults && shown(pane) == ["notes.txt", "report.txt"])
+        #expect(tree.snapshot() == ["docs/", "docs/notes.txt", "docs/report.txt"])
+    }
+
     @Test func aSearchTheIndexIsntReadyForNeverShowsOverTheFolderThePaneWentTo() async throws {
         let tree = try TestTree("docs/notes.txt")
         let environment = try IndependentEnvironment()

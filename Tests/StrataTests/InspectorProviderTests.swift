@@ -315,6 +315,8 @@ struct InspectorProviderTests {
 
         let photoEntry = try #require(FileEntry(url: photo))
         inspector.show(entries: [photoEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
+        // Dimensions are read away from the main thread: any read started has landed before the row is looked for.
+        await inspector.dimensionsTask?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == nil)
         #expect(scheduled.isEmpty)
         #expect(!inspector.iconView.isHidden && inspector.preview.isHidden && inspector.preview.previewItem == nil)
@@ -391,6 +393,7 @@ struct InspectorProviderTests {
             kind: "Alias", contentType: .png
         )
         inspector.show(entries: [linkPhoto], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
+        await inspector.dimensionsTask?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == nil)
         #expect(scheduled.isEmpty && inspector.preview.previewItem == nil && inspector.richPreview == nil)
 

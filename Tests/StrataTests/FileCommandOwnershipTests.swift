@@ -165,7 +165,8 @@ struct FileCommandOwnershipTests {
         let trashed = URL(fileURLWithPath: try #require(history.entries.first?.pairs.first?[1]))
         // The folder it was in goes too: Put Back makes it again.
         try FileManager.default.removeItem(at: tree.url("Gone"))
-        await BrowserViewController(services: env.services).putBack(items: [trashed]).value
+        // The Trash's own records can name its folder too: with none, only History can say.
+        await BrowserViewController(services: env.services).putBack(items: [trashed], records: { _ in ([:], .distantPast) }).value
         let job = try #require(env.services.transfers.jobs.compactMap { $0 as? TransferJob }.last)
         await job.finished()
         #expect(tree.snapshot() == ["Gone/", "Gone/a.txt", "keep/", "keep/ab.txt"])

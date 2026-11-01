@@ -24,9 +24,14 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
     private let scanner: IndexScanner
     /// The index's part of the answer, per query: it doesn't change while the folder is read.
     private let indexResults = IndexSearch.ResultCache()
+    private let queue: DispatchQueue
     private let lock = NSLock()
     private var finished = false
     private var finishedAt: Date?
+
+    /// Where a scan reads unless told otherwise: it blocks while it reads, so it runs on a queue rather than in the task
+    /// pool.
+    package static let scanQueue = DispatchQueue.global(qos: .userInitiated)
 
     /// `path`: where the folder searched really is (`FolderSearch.path(of:)`).
     /// Where `folder` really is, its links followed: asked of its disk, away from the main thread.
@@ -34,9 +39,10 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
         folder.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
-    package init(path: String, indexed: IndexedParts? = nil) {
+    package init(path: String, indexed: IndexedParts?, queue: DispatchQueue) {
         folder = path
         self.indexed = indexed
+        self.queue = queue
         // Only the index's own folders are skipped (they still show up as entries). Build and cache folders count as
         // noise, like in the index.
         scanner = IndexScanner(store: store, excluded: Set(indexed?.roots.map(\.path) ?? []), noiseFolders: [])
@@ -65,10 +71,9 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
     }
 
     /// Starts reading the folder on all cores (the scanner doesn't cross into other disks), then totals folder sizes so
-    /// size filters work on folders too. The scan blocks while it reads, so it runs on its own queue rather than in the
-    /// task pool.
+    /// size filters work on folders too.
     package func start() {
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
+        queue.async { [self] in
             let root = store.write { store in store.addRoot(path: folder, mtime: 0) }
             scanner.scan([(id: root, path: folder)], threads: IndexScanner.threadCount(for: folder))
             if !scanner.isCancelled {

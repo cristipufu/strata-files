@@ -119,8 +119,10 @@ struct PreviewCancellationTests {
         }
     }
 
-    private func allowQueuedCommandsToStart() async {
-        await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+    /// Long enough for a command that didn't wait for the one before to reach its provider, which takes hops off the
+    /// main actor and back: a command that does wait never gets there, so this can only bound how long to look.
+    private func allowQueuedCommandsToStart(_ probe: CommandProbe) async {
+        for _ in 0..<50 where probe.starts.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
     }
 
     @Test func aFileCopiedOutForAPreviewOrAnExportStreamsAndOnlyThePreviewTakesFromTheCache() async throws {
@@ -178,7 +180,7 @@ struct PreviewCancellationTests {
         content.export(target, session: session) { delivered.append($0) }
         let last = try #require(content.commandTask)
         await probe.first.waitUntilCancelled()
-        await allowQueuedCommandsToStart()
+        await allowQueuedCommandsToStart(probe)
         #expect(probe.starts == [["a.txt"]] && delivered.isEmpty)
         probe.first.finish(.success(()))
         await first.value; await second.value; await last.value
@@ -226,7 +228,7 @@ struct PreviewCancellationTests {
         content.perform(.copy, target: target, session: session) { _, lease in if let lease { delivered.append(lease) } }
         let last = try #require(content.commandTask)
         await probe.first.waitUntilCancelled()
-        await allowQueuedCommandsToStart()
+        await allowQueuedCommandsToStart(probe)
         #expect(probe.starts == [[tree.url("copy/a").path]] && delivered.isEmpty)
         probe.first.finish(.success(()))
         await first.value; await second.value; await last.value

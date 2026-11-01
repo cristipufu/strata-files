@@ -19,10 +19,12 @@ import AppKit
     private var folderScan: FolderSearch?
     /// The scope `folderScan` was made for, as asked.
     private var folderScanScope: URL?
+    private let scans: DispatchQueue
 
-    init(pane: Pane, services: BrowserServices) {
+    init(pane: Pane, services: BrowserServices, scans: DispatchQueue = FolderSearch.scanQueue) {
         self.pane = pane
         self.services = services
+        self.scans = scans
     }
 
     /// Runs what the pane shows: its query or Recents, or a search for duplicates.
@@ -241,20 +243,19 @@ import AppKit
             let indexed = await services.index.indexedParts(inside: scope)
             guard isCurrent(generation, p, target) else { return }
             folderScan?.cancel()
-            search = FolderSearch(path: path, indexed: indexed)
+            search = FolderSearch(path: path, indexed: indexed, queue: scans)
             folderScan = search
             folderScanScope = scope
             search.start()
         }
         let name = Places.displayName(scope, copies: services.copies, names: services.folderNames)
-        let isCurrent = { generation == self.latest && p.destination == target }
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }
         var shown = -1
-        while isCurrent() {
+        while isCurrent(generation, p, target) {
             let finished = search.isFinished
             let found = await search.search(text)
-            guard isCurrent() else { return }
+            guard isCurrent(generation, p, target) else { return }
             if finished || found.total > 0, finished || found.total != shown {
                 shown = found.total
                 p.browser.showResults(found.hits.map(FileEntry.init(hit:)), total: found.total)

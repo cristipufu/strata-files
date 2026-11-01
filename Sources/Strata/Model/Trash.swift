@@ -125,11 +125,16 @@ package enum Trash {
 
     // MARK: - Put Back
 
+    /// A Trash's Put Back records and when they were written.
+    package typealias RecordReader = @Sendable (_ trash: URL) -> (records: [String: DSStore.PutBack], written: Date)
+
     /// Where each of `items` (directly in a Trash) was before it went there. `history` (the window's History) knows
-    /// what Strata trashed; the Trash's records know what Finder and other apps trashed (Finder writes its records a
-    /// little later). Items whose origin isn't known, or would be unsafe to restore to, are left out.
+    /// what Strata trashed; the Trash's records, as `records` reads them, know what Finder and other apps trashed
+    /// (Finder writes its records a little later). Items whose origin isn't known, or would be unsafe to restore to,
+    /// are left out.
     @concurrent
-    package static func originalLocations(of items: [URL], history: [OperationLog.Entry]) async -> [URL: URL] {
+    package static func originalLocations(of items: [URL], history: [OperationLog.Entry],
+                                          records: RecordReader = finderRecords) async -> [URL: URL] {
         let items = items.filter(contains)
         guard !items.isEmpty else { return [:] }
         let moved = OperationLog.movedFrom(items, in: history)
@@ -145,11 +150,11 @@ package enum Trash {
             }
         }
         for (trash, inTrash) in Dictionary(grouping: needRecords, by: { $0.deletingLastPathComponent().standardizedFileURL }) {
-            let (records, written) = finderRecords(trash)
+            let (kept, written) = records(trash)
             for item in inTrash {
                 // A record older than the item is about something else that once had its name. (Disks that keep no
                 // such dates, like most USB sticks, can't tell: the record is taken.)
-                guard let record = records[item.lastPathComponent],
+                guard let record = kept[item.lastPathComponent],
                       arrived(item).map({ written.timeIntervalSince($0) > -2 }) ?? true,
                       let location = location(record, of: item, onDiskOf: trash) else { continue }
                 result[item] = location
@@ -313,7 +318,7 @@ package enum Trash {
     /// Put Back records for one Trash and when they were written, read again only when the records file changes.
     nonisolated private static let recordCache = Mutex<[String: (modified: Date, records: [String: DSStore.PutBack])]>([:])
 
-    nonisolated private static func finderRecords(_ trash: URL) -> (records: [String: DSStore.PutBack], written: Date) {
+    nonisolated package static func finderRecords(_ trash: URL) -> (records: [String: DSStore.PutBack], written: Date) {
         let file = trash.appending(path: ".DS_Store")
         guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         else { return ([:], .distantPast) }
