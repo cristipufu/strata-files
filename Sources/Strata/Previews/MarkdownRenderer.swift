@@ -8,6 +8,9 @@ import StrataTheme
 nonisolated package final class MarkdownRenderer {
     private let baseURL: URL
     private var imageBudget = 12
+    private(set) var tables: [MarkdownTable] = []
+    private var diagrams = 0
+    static let mermaidSource = NSAttributedString.Key("StrataMermaidSource")
 
     private let bodySize: CGFloat = 13
     private let blockSpacing: CGFloat = 10
@@ -127,6 +130,10 @@ nonisolated package final class MarkdownRenderer {
         let body = text.isEmpty ? " " : text
         let start = output.length
         output.append(NSAttributedString(string: body + "\n", attributes: attributes))
+        if language.lowercased() == "mermaid", diagrams < MermaidRenderer.diagramLimit, text.utf8.count <= MermaidRenderer.textLimit {
+            diagrams += 1
+            output.addAttribute(Self.mermaidSource, value: text, range: NSRange(location: start, length: output.length - start))
+        }
         if let language = Languages.detect(fenceInfo: language) {
             CodeTheme.apply(SyntaxHighlighter.tokens(in: body, lexer: language.lexer), to: output, offset: start, size: size)
         }
@@ -179,9 +186,12 @@ nonisolated package final class MarkdownRenderer {
     private func table(header: [String], alignments: [NSTextAlignment], rows: [[String]],
                        into output: NSMutableAttributedString, context: Context) {
         guard !header.isEmpty else { return }
-        let table = NSTextTable()
+        let table = MarkdownTable()
+        table.indent = context.indent
+        table.preferredWidths = Array(repeating: 28, count: header.count)
+        tables.append(table)
         table.numberOfColumns = header.count
-        table.layoutAlgorithm = .automaticLayoutAlgorithm
+        table.layoutAlgorithm = .fixedLayoutAlgorithm
         table.collapsesBorders = true
         table.hidesEmptyCells = false
         table.setWidth(context.indent, type: .absoluteValueType, for: .margin, edge: .minX)
@@ -190,6 +200,7 @@ nonisolated package final class MarkdownRenderer {
         for (rowIndex, row) in ([header] + rows).enumerated() {
             for (column, text) in row.enumerated() where column < header.count {
                 let cell = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1, startingColumn: column, columnSpan: 1)
+                table.add(cell)
                 cell.setWidth(1, type: .absoluteValueType, for: .border)
                 cell.setBorderColor(.separatorColor)
                 cell.setWidth(5, type: .absoluteValueType, for: .padding)
@@ -201,7 +212,12 @@ nonisolated package final class MarkdownRenderer {
                 style.alignment = alignments.indices.contains(column) ? alignments[column] : .left
                 style.lineHeightMultiple = 1.1
                 let size: CGFloat = 12
-                output.append(inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style))
+                let content = inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style)
+                let measurement = NSMutableAttributedString(attributedString: content)
+                measurement.removeAttribute(.paragraphStyle, range: NSRange(location: 0, length: measurement.length))
+                let measured = measurement.size().width
+                table.preferredWidths[column] = max(table.preferredWidths[column], ceil(measured) + 18)
+                output.append(content)
                 output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
             }
         }

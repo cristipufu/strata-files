@@ -685,6 +685,7 @@
     "Filters loaded items only.": "読み込み済みの項目のみを絞り込みます。",
     "Filters…": "フィルタ…",
     "Find": "検索",
+    "Find text in this document.": "この書類内のテキストを検索します。",
     "Find:": "検索:",
     "Finder tags (via Spotlight)": "Finderタグ（Spotlight経由）",
     "first %lld shown": {

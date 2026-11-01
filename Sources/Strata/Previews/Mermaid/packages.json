@@ -1,0 +1,1071 @@
+{
+  "mermaid": "12.2.0",
+  "bundleSHA256": "a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f",
+  "sourceMapSHA256": "a5b0405411969d4fd8e2301ad6da2f6918ca1a619a6c820eb77b4dfc423376db",
+  "packages": [
+    {
+      "name": "@braintree/sanitize-url",
+      "version": "7.1.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@braintree/sanitize-url/-/sanitize-url-7.1.2.tgz",
+      "integrity": "sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==",
+      "bundledVariants": [
+        "@braintree+sanitize-url@7.1.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "0bc46fcdad091a1d914ff9f7981f467faa976fa7a998796afc512f5b6e13287f"
+        }
+      ]
+    },
+    {
+      "name": "@chevrotain/cst-dts-gen",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@chevrotain/cst-dts-gen/-/cst-dts-gen-13.2.0.tgz",
+      "integrity": "sha512-bA9dvWlhAUcHkNwU+8w9yiUxJPlj/Lm3VqS7MD+NbIR/7LmpNLuK/AWNFdCo/T3SK5ND0/UHf3IJvl/Jn/i6yg==",
+      "bundledVariants": [
+        "@chevrotain+cst-dts-gen@13.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.txt",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "@chevrotain/gast",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@chevrotain/gast/-/gast-13.2.0.tgz",
+      "integrity": "sha512-bCARdAsG+eEbOveSXcOAC7pVxA04I1ionzeMOwIYf5NX7SaS7zgn4Dgug2BSqoL+iyKeMNSorQjsFSHJHsCNwg==",
+      "bundledVariants": [
+        "@chevrotain+gast@13.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.txt",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "@chevrotain/regexp-to-ast",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@chevrotain/regexp-to-ast/-/regexp-to-ast-13.2.0.tgz",
+      "integrity": "sha512-kxpUkLtiaK09ph+dib+Yvm+3sWSnuwlo25gqfKRgTPNmF6H7uW4gVkMjaRdtnN783S9sM6vUNWh9CsxYX4QwKw==",
+      "bundledVariants": [
+        "@chevrotain+regexp-to-ast@13.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.txt",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "@chevrotain/utils",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@chevrotain/utils/-/utils-13.2.0.tgz",
+      "integrity": "sha512-SzKYY68rseOrb9KILVzPsl6SjkQtdWw01SRGB5aCVI5kFcHltQsOYV3JB0Ffst72DgkvHCyDQ0NLwxtmCCf97Q==",
+      "bundledVariants": [
+        "@chevrotain+utils@13.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.txt",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "@iconify/utils",
+      "version": "3.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@iconify/utils/-/utils-3.0.2.tgz",
+      "integrity": "sha512-EfJS0rLfVuRuJRn4psJHtK2A9TqVnkxPpHY6lYHiB9+8eSuudsxbwMiavocG45ujOo6FJ+CIRlRnlOGinzkaGQ==",
+      "bundledVariants": [
+        "@iconify+utils@3.0.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/license.txt",
+          "noticeTextSHA256": "a86793ac023162ce98b91899601c15f6712f44943163c4f92a0a4bf89152b3bf"
+        }
+      ]
+    },
+    {
+      "name": "@upsetjs/venn.js",
+      "version": "2.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/@upsetjs/venn.js/-/venn.js-2.0.0.tgz",
+      "integrity": "sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==",
+      "bundledVariants": [
+        "@upsetjs+venn.js@2.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "7bdac5ba137b8460596d8a7148ddf6e453c662bd22733a333ce4da500b3c889d"
+        }
+      ]
+    },
+    {
+      "name": "chevrotain",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/chevrotain/-/chevrotain-13.2.0.tgz",
+      "integrity": "sha512-GTouk5YzgBxlTPCaDn5q0q2EJKkrYmnPF+HmF8v0Qo4r3iyPG7HJivkN1wthCXZcm3sIcZFpGTRovLPNdJNRCA==",
+      "bundledVariants": [
+        "chevrotain@13.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.txt",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "cose-base",
+      "version": "1.0.3",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cose-base/-/cose-base-1.0.3.tgz",
+      "integrity": "sha512-s9whTXInMSgAp/NVXVNuVxVKzGH2qck3aQlVHxDCdAEPgtMKwc4Wq6/QKhgdEdgbLSi9rBTAcPoRa6JpiG4ksg==",
+      "bundledVariants": [
+        "cose-base@1.0.3"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "90ee3cca58dabf88333de774d3d05509516d5e80cec40e0109ae2717d52b0f94"
+        }
+      ]
+    },
+    {
+      "name": "cose-base",
+      "version": "2.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cose-base/-/cose-base-2.2.0.tgz",
+      "integrity": "sha512-AzlgcsCbUMymkADOJtQm3wO9S3ltPfYOFD5033keQn9NJzIbtnZj+UdBJe7DYml/8TdbtHJW3j58SOnKhWY/5g==",
+      "bundledVariants": [
+        "cose-base@2.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "90ee3cca58dabf88333de774d3d05509516d5e80cec40e0109ae2717d52b0f94"
+        }
+      ]
+    },
+    {
+      "name": "cytoscape",
+      "version": "3.34.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cytoscape/-/cytoscape-3.34.0.tgz",
+      "integrity": "sha512-62rNSrioXw93uliKFBwjukeQyeWwH2PqDrTac31r2P6464u3AUvTk0xS4LVvT251g7IgkFunrI48ZEZGjywSOg==",
+      "bundledVariants": [
+        "cytoscape@3.34.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203"
+        },
+        {
+          "path": "package/license-update.mjs",
+          "noticeTextSHA256": "d4317f690ad0f0ff2b616d608d0514f4f97241a07933151ae63947d0dff19c1b"
+        }
+      ]
+    },
+    {
+      "name": "cytoscape-cose-bilkent",
+      "version": "4.1.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cytoscape-cose-bilkent/-/cytoscape-cose-bilkent-4.1.0.tgz",
+      "integrity": "sha512-wgQlVIUJF13Quxiv5e1gstZ08rnZj2XaLHGoFMYXz7SkNfCDOOteKBE6SYRfA9WxxI/iBc3ajfDoc6hb/MRAHQ==",
+      "bundledVariants": [
+        "cytoscape-cose-bilkent@4.1.0_cytoscape@3.34.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "440fc58a56a12814e417d2b341da89b050da052dc75bdb235607d37ec5fe74ef"
+        }
+      ]
+    },
+    {
+      "name": "cytoscape-fcose",
+      "version": "2.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/cytoscape-fcose/-/cytoscape-fcose-2.2.0.tgz",
+      "integrity": "sha512-ki1/VuRIHFCzxWNrsshHYPs6L7TvLu3DL+TyIGEsRcvVERmxokbf5Gdk7mFxZnTdiGtnA4cfSmjZJMviqSuZrQ==",
+      "bundledVariants": [
+        "cytoscape-fcose@2.2.0_cytoscape@3.34.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "9f5ea8f5a2689d9e0fd255197282d4526fc2219637d7e76c4ef02f1ea289f544"
+        }
+      ]
+    },
+    {
+      "name": "d3",
+      "version": "7.9.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3/-/d3-7.9.0.tgz",
+      "integrity": "sha512-e1U46jVP+w7Iut8Jt8ri1YsPOvFpg46k+K8TpCb0P+zjCkjkPnV7WzfDJzMHy1LnA+wj5pLT1wjO901gLXeEhA==",
+      "bundledVariants": [
+        "d3@7.9.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "f57e3a2cabf2b43ab2fc942a8e9f4b38366ab0d1f859c6439b1fb69e80d9af73"
+        }
+      ]
+    },
+    {
+      "name": "d3-array",
+      "version": "2.12.1",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/d3-array/-/d3-array-2.12.1.tgz",
+      "integrity": "sha512-B0ErZK/66mHtEsR1TkPEEkwdy+WDesimkM5gpZr5Dsg54BiTA5RXtYW5qTLIAcekaS9xfZrzBLF/OAkB3Qn1YQ==",
+      "bundledVariants": [
+        "d3-array@2.12.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "586409690da31408c8348e6acb0bdbabdf4611308778edfc6210eb09492f23a1"
+        }
+      ]
+    },
+    {
+      "name": "d3-array",
+      "version": "3.2.4",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-array/-/d3-array-3.2.4.tgz",
+      "integrity": "sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg==",
+      "bundledVariants": [
+        "d3-array@3.2.4"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "f57e3a2cabf2b43ab2fc942a8e9f4b38366ab0d1f859c6439b1fb69e80d9af73"
+        }
+      ]
+    },
+    {
+      "name": "d3-axis",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-axis/-/d3-axis-3.0.0.tgz",
+      "integrity": "sha512-IH5tgjV4jE/GhHkRV0HiVYPDtvfjHQlQfJHs0usq7M30XcSBvOotpmH1IgkcXsO/5gEQZD43B//fc7SRT5S+xw==",
+      "bundledVariants": [
+        "d3-axis@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-brush",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-brush/-/d3-brush-3.0.0.tgz",
+      "integrity": "sha512-ALnjWlVYkXsVIGlOsuWH1+3udkYFI48Ljihfnh8FZPF2QS9o+PzGLBslO0PjzVoHLZ2KCVgAM8NVkXPJB2aNnQ==",
+      "bundledVariants": [
+        "d3-brush@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-chord",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-chord/-/d3-chord-3.0.1.tgz",
+      "integrity": "sha512-VE5S6TNa+j8msksl7HwjxMHDM2yNK3XCkusIlpX5kwauBfXuyLAtNg9jCp/iHH61tgI4sb6R/EIMWCqEIdjT/g==",
+      "bundledVariants": [
+        "d3-chord@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-color",
+      "version": "3.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-color/-/d3-color-3.1.0.tgz",
+      "integrity": "sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA==",
+      "bundledVariants": [
+        "d3-color@3.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4f4f9997e3d96636b08171484bf3e2b5a8a46745e2b0dd4d4f86b0e5cfa632e8"
+        }
+      ]
+    },
+    {
+      "name": "d3-contour",
+      "version": "4.0.2",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-contour/-/d3-contour-4.0.2.tgz",
+      "integrity": "sha512-4EzFTRIikzs47RGmdxbeUvLWtGedDUNkTcmzoeyg4sP/dvCexO47AaQL7VKy/gul85TOxw+IBgA8US2xwbToNA==",
+      "bundledVariants": [
+        "d3-contour@4.0.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "c8ea45f591c25c2a96e7a59f87ecc5adf64010c10cfd7938f4c1c5c9ff4c1885"
+        }
+      ]
+    },
+    {
+      "name": "d3-delaunay",
+      "version": "6.0.4",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-delaunay/-/d3-delaunay-6.0.4.tgz",
+      "integrity": "sha512-mdjtIZ1XLAM8bm/hx3WwjfHt6Sggek7qH043O8KEjDXN40xi3vx/6pYSVTwLjEgiXQTbvaouWKynLBiUZ6SK6A==",
+      "bundledVariants": [
+        "d3-delaunay@6.0.4"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4f8e381e74d41111b8220c5b93c5c8fd1e5abc9d1a4d963ee6dd679c4631b63c"
+        }
+      ]
+    },
+    {
+      "name": "d3-dispatch",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-dispatch/-/d3-dispatch-3.0.1.tgz",
+      "integrity": "sha512-rzUyPU/S7rwUflMyLc1ETDeBj0NRuHKKAcvukozwhshr6g6c5d8zh4c2gQjY2bZ0dXeGLWc1PF174P2tVvKhfg==",
+      "bundledVariants": [
+        "d3-dispatch@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-drag",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-drag/-/d3-drag-3.0.0.tgz",
+      "integrity": "sha512-pWbUJLdETVA8lQNJecMxoXfH6x+mO2UQo8rSmZ+QqxcbyA3hfeprFgIT//HW2nlHChWeIIMwS2Fq+gEARkhTkg==",
+      "bundledVariants": [
+        "d3-drag@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-dsv",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-dsv/-/d3-dsv-3.0.1.tgz",
+      "integrity": "sha512-UG6OvdI5afDIFP9w4G0mNq50dSOsXHJaRE8arAS5o9ApWnIElp8GZw1Dun8vP8OyHOZ/QJUKUJwxiiCCnUwm+Q==",
+      "bundledVariants": [
+        "d3-dsv@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4c1cd1d0c4f880ec6cc58495f54e57877fccefcf0a4050fe09c9d81b757bf494"
+        }
+      ]
+    },
+    {
+      "name": "d3-ease",
+      "version": "3.0.1",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/d3-ease/-/d3-ease-3.0.1.tgz",
+      "integrity": "sha512-wR/XK3D3XcLIZwpbvQwQ5fK+8Ykds1ip7A2Txe0yxncXSdq1L9skcG7blcedkOX+ZcgxGAmLX1FrRGbADwzi0w==",
+      "bundledVariants": [
+        "d3-ease@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "69af84a0cb486bc97d578ea76f0aea3ad628ad97147551d2a898902941bd6db6"
+        }
+      ]
+    },
+    {
+      "name": "d3-fetch",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-fetch/-/d3-fetch-3.0.1.tgz",
+      "integrity": "sha512-kpkQIM20n3oLVBKGg6oHrUchHM3xODkTzjMoj7aWQFq5QEM+R6E4WkzT5+tojDY7yjez8KgCBRoj4aEr99Fdqw==",
+      "bundledVariants": [
+        "d3-fetch@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "9d00baf34d17d2e5ca9301230b256f1ced369cdb41712daa6f18716d93c6e88c"
+        }
+      ]
+    },
+    {
+      "name": "d3-force",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-force/-/d3-force-3.0.0.tgz",
+      "integrity": "sha512-zxV/SsA+U4yte8051P4ECydjD/S+qeYtnaIyAs9tgHCqfguma/aAQDjo85A9Z6EKhBirHRJHXIgJUlffT4wdLg==",
+      "bundledVariants": [
+        "d3-force@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-format",
+      "version": "3.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-format/-/d3-format-3.1.0.tgz",
+      "integrity": "sha512-YyUI6AEuY/Wpt8KWLgZHsIU86atmikuoOmCfommt0LYHiQSPjvX2AcFc38PX0CBpr2RCyZhjex+NS/LPOv6YqA==",
+      "bundledVariants": [
+        "d3-format@3.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-geo",
+      "version": "3.1.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-geo/-/d3-geo-3.1.1.tgz",
+      "integrity": "sha512-637ln3gXKXOwhalDzinUgY83KzNWZRKbYubaG+fGVuc/dxO64RRljtCTnf5ecMyE1RIdtqpkVcq0IbtU2S8j2Q==",
+      "bundledVariants": [
+        "d3-geo@3.1.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "e87ae4ac338d47ce509af51623763b9a197e6ca26f958be54f67c1a64cd0062c"
+        }
+      ]
+    },
+    {
+      "name": "d3-hierarchy",
+      "version": "3.1.2",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-hierarchy/-/d3-hierarchy-3.1.2.tgz",
+      "integrity": "sha512-FX/9frcub54beBdugHjDCdikxThEqjnR93Qt7PvQTOHxyiNCAlvMrHhclk3cD5VeAaq9fxmfRp+CnWw9rEMBuA==",
+      "bundledVariants": [
+        "d3-hierarchy@3.1.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-interpolate",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-interpolate/-/d3-interpolate-3.0.1.tgz",
+      "integrity": "sha512-3bYs1rOD33uo8aqJfKP3JWPAibgw8Zm2+L9vBKEHJ2Rg+viTR7o5Mmv5mZcieN+FRYaAOWX5SJATX6k1PWz72g==",
+      "bundledVariants": [
+        "d3-interpolate@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-path",
+      "version": "1.0.9",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/d3-path/-/d3-path-1.0.9.tgz",
+      "integrity": "sha512-VLaYcn81dtHVTjEHd8B+pbe9yHWpXKZUC87PzoFmsFrJqgFwDe/qxfp5MlfsfM1V5E/iVt0MmEbWQ7FVIXh/bg==",
+      "bundledVariants": [
+        "d3-path@1.0.9"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4b2513f280f34835efbeaa334f82b04a9a4c7498786828f75c6d1bbcdc88c56d"
+        }
+      ]
+    },
+    {
+      "name": "d3-path",
+      "version": "3.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-path/-/d3-path-3.1.0.tgz",
+      "integrity": "sha512-p3KP5HCf/bvjBSSKuXid6Zqijx7wIfNW+J/maPs+iwR35at5JCbLUT0LzF1cnjbCHWhqzQTIN2Jpe8pRebIEFQ==",
+      "bundledVariants": [
+        "d3-path@3.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "58f959e2911ca1fdd6812a2cebe42193c6137922ecbcce86d8233873706181ab"
+        }
+      ]
+    },
+    {
+      "name": "d3-polygon",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-polygon/-/d3-polygon-3.0.1.tgz",
+      "integrity": "sha512-3vbA7vXYwfe1SYhED++fPUQlWSYTTGmFmQiany/gdbiWgU/iEyQzyymwL9SkJjFFuCS4902BSzewVGsHHmHtXg==",
+      "bundledVariants": [
+        "d3-polygon@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-quadtree",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-quadtree/-/d3-quadtree-3.0.1.tgz",
+      "integrity": "sha512-04xDrxQTDTCFwP5H6hRhsRcb9xxv2RzkcsygFzmkSIOJy3PeRJP7sNk3VRIbKXcog561P9oU0/rVH6vDROAgUw==",
+      "bundledVariants": [
+        "d3-quadtree@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-random",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-random/-/d3-random-3.0.1.tgz",
+      "integrity": "sha512-FXMe9GfxTxqd5D6jFsQ+DJ8BJS4E/fT5mqqdjovykEB2oFbTMDVdg1MGFxfQW+FBOGoB++k8swBrgwSHT1cUXQ==",
+      "bundledVariants": [
+        "d3-random@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-sankey",
+      "version": "0.12.3",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/d3-sankey/-/d3-sankey-0.12.3.tgz",
+      "integrity": "sha512-nQhsBRmM19Ax5xEIPLMY9ZmJ/cDvd1BG3UVvt5h3WRxKg5zGRbvnteTyWAbzeSvlh3tW7ZEmq4VwR5mB3tutmQ==",
+      "bundledVariants": [
+        "d3-sankey@0.12.3"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "38fdb5e42d4842bde17baea7f4bf690c25706ce06c6a90c981c57379f01751b1"
+        }
+      ]
+    },
+    {
+      "name": "d3-scale",
+      "version": "4.0.2",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-scale/-/d3-scale-4.0.2.tgz",
+      "integrity": "sha512-GZW464g1SH7ag3Y7hXjf8RoUuAFIqklOAq3MRl4OaWabTFJY9PN/E1YklhXLh+OQ3fM9yS2nOkCoS+WLZ6kvxQ==",
+      "bundledVariants": [
+        "d3-scale@4.0.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-scale-chromatic",
+      "version": "3.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-scale-chromatic/-/d3-scale-chromatic-3.1.0.tgz",
+      "integrity": "sha512-A3s5PWiZ9YCXFye1o246KoscMWqf8BsD9eRiJ3He7C9OBaxKhAd5TFCdEx/7VbKtxxTsu//1mMJFrEt572cEyQ==",
+      "bundledVariants": [
+        "d3-scale-chromatic@3.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "1549638d9e45cf99379d6e71aa706583e5952cd875a26a02f58c9b26499c94e9"
+        }
+      ]
+    },
+    {
+      "name": "d3-selection",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-selection/-/d3-selection-3.0.0.tgz",
+      "integrity": "sha512-fmTRWbNMmsmWq6xJV8D19U/gw/bwrHfNXxrIN+HfZgnzqTHp9jOmKMhsTUjXOJnZOdZY9Q28y4yebKzqDKlxlQ==",
+      "bundledVariants": [
+        "d3-selection@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-shape",
+      "version": "1.3.7",
+      "license": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/d3-shape/-/d3-shape-1.3.7.tgz",
+      "integrity": "sha512-EUkvKjqPFUAZyOlhY5gzCxCeI0Aep04LwIRpsZ/mLFelJiUfnK56jo5JMDSE7yyP2kLSb6LtF+S5chMk7uqPqw==",
+      "bundledVariants": [
+        "d3-shape@1.3.7"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "50366760ca8535f84b7aee30309f9ec70f78677843b1fc73491e6d1803edea69"
+        }
+      ]
+    },
+    {
+      "name": "d3-shape",
+      "version": "3.2.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-shape/-/d3-shape-3.2.0.tgz",
+      "integrity": "sha512-SaLBuwGm3MOViRq2ABk3eLoxwZELpH6zhl3FbAoJ7Vm1gofKx6El1Ib5z23NUEhF9AsGl7y+dzLe5Cw2AArGTA==",
+      "bundledVariants": [
+        "d3-shape@3.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4f4f9997e3d96636b08171484bf3e2b5a8a46745e2b0dd4d4f86b0e5cfa632e8"
+        }
+      ]
+    },
+    {
+      "name": "d3-time",
+      "version": "3.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-time/-/d3-time-3.1.0.tgz",
+      "integrity": "sha512-VqKjzBLejbSMT4IgbmVgDjpkYrNWUYJnbCGo874u7MMKIWsILRX+OpX/gTk8MqjpT1A/c6HY2dCA77ZN0lkQ2Q==",
+      "bundledVariants": [
+        "d3-time@3.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "4f4f9997e3d96636b08171484bf3e2b5a8a46745e2b0dd4d4f86b0e5cfa632e8"
+        }
+      ]
+    },
+    {
+      "name": "d3-time-format",
+      "version": "4.1.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-time-format/-/d3-time-format-4.1.0.tgz",
+      "integrity": "sha512-dJxPBlzC7NugB2PDLwo9Q8JiTR3M3e4/XANkreKSUxF8vvXKqm1Yfq4Q5dl8budlunRVlUUaDUgFt7eA8D6NLg==",
+      "bundledVariants": [
+        "d3-time-format@4.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-timer",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-timer/-/d3-timer-3.0.1.tgz",
+      "integrity": "sha512-ndfJ/JxxMd3nw31uyKoY2naivF+r29V+Lc0svZxe1JvvIRmi8hUsrMvdOwgS1o6uBHmiz91geQ0ylPP0aj1VUA==",
+      "bundledVariants": [
+        "d3-timer@3.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-transition",
+      "version": "3.0.1",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-transition/-/d3-transition-3.0.1.tgz",
+      "integrity": "sha512-ApKvfjsSR6tg06xrL434C0WydLr7JewBB3V+/39RMHsaXTOG0zmt/OAXeng5M5LBm0ojmxJrpomQVZ1aPvBL4w==",
+      "bundledVariants": [
+        "d3-transition@3.0.1_d3-selection@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "d3-zoom",
+      "version": "3.0.0",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/d3-zoom/-/d3-zoom-3.0.0.tgz",
+      "integrity": "sha512-b8AmV3kfQaqWAuacbPuNbL6vahnOJflOhexLzMMNLga62+/nh0JzvJ0aO/5a5MVgUFGS7Hu1P9P03o3fJkDCyw==",
+      "bundledVariants": [
+        "d3-zoom@3.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6019bf3451952141c4561a8a814c965b71166df316a8c7f3f435f090b3c329c1"
+        }
+      ]
+    },
+    {
+      "name": "dagre-d3-es",
+      "version": "7.0.14",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/dagre-d3-es/-/dagre-d3-es-7.0.14.tgz",
+      "integrity": "sha512-P4rFMVq9ESWqmOgK+dlXvOtLwYg0i7u0HBGJER0LZDJT2VHIPAMZ/riPxqJceWMStH5+E61QxFra9kIS3AqdMg==",
+      "bundledVariants": [
+        "dagre-d3-es@7.0.14"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.md",
+          "noticeTextSHA256": "1521adecf617469732f46e52c8da847796e27763eeec6e45b14522c53032c2f5"
+        }
+      ]
+    },
+    {
+      "name": "dayjs",
+      "version": "1.11.21",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/dayjs/-/dayjs-1.11.21.tgz",
+      "integrity": "sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA==",
+      "bundledVariants": [
+        "dayjs@1.11.21"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "16e34a46fa584c2cc09682bd36edae63e88c4696371b5d95476f676a65763535"
+        }
+      ]
+    },
+    {
+      "name": "dompurify",
+      "version": "3.4.12",
+      "license": "(MPL-2.0 OR Apache-2.0)",
+      "source": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.12.tgz",
+      "integrity": "sha512-zQvGet8Z2sWbQhCmfFz/T5QWH2oBmjnqK3qvOjaqaNLrLEF912WamU+ohnTp0TCep/MFVHpdJuCZEdFOdTnEFg==",
+      "bundledVariants": [
+        "dompurify@3.4.12"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        },
+        {
+          "path": "package/LICENSE-MPL",
+          "noticeTextSHA256": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1"
+        }
+      ]
+    },
+    {
+      "name": "elkjs",
+      "version": "0.9.3",
+      "license": "EPL-2.0",
+      "source": "https://registry.npmjs.org/elkjs/-/elkjs-0.9.3.tgz",
+      "integrity": "sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==",
+      "bundledVariants": [
+        "elkjs@0.9.3"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.md",
+          "noticeTextSHA256": "937e74317a828098505160d49253e3aac07fad512442228922a230a32097d5f3"
+        }
+      ]
+    },
+    {
+      "name": "es-toolkit",
+      "version": "1.45.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/es-toolkit/-/es-toolkit-1.45.1.tgz",
+      "integrity": "sha512-/jhoOj/Fx+A+IIyDNOvO3TItGmlMKhtX8ISAHKE90c4b/k1tqaqEZ+uUqfpU8DMnW5cgNJv606zS55jGvza0Xw==",
+      "bundledVariants": [
+        "es-toolkit@1.45.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "0f1aa7b4194b95c55cb2696fabafbda5b137ef9a59c19251b6c45b429de985ac"
+        }
+      ]
+    },
+    {
+      "name": "fastdom",
+      "version": "1.0.12",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/fastdom/-/fastdom-1.0.12.tgz",
+      "integrity": "sha512-LB+xjSTEbjHE1cWsxu+tN2Xqr1kpi+V9aADI7sVM5ZMaXyYGPHULQMzpJMYqOTULK/73pUkWVzzObFRBkPr+hg==",
+      "bundledVariants": [
+        "fastdom@1.0.12_patch_hash=10bad52c2ff6c742f43492850f2a5a74e9d70a33f42a442cdbda4e174356aa87"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/README.md#License",
+          "noticeTextSHA256": "258e8ff35f4866cf3a53c8855667af5ee7840a816aa000fcc0d388520e2787d7"
+        }
+      ]
+    },
+    {
+      "name": "internmap",
+      "version": "2.0.3",
+      "license": "ISC",
+      "source": "https://registry.npmjs.org/internmap/-/internmap-2.0.3.tgz",
+      "integrity": "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==",
+      "bundledVariants": [
+        "internmap@2.0.3"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "f4bb8f655fdb4d119878a0eea6dfcb871da509d83baa7426794f7c70b9bb9d46"
+        }
+      ]
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.0.tgz",
+      "integrity": "sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==",
+      "bundledVariants": [
+        "js-yaml@4.3.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "bd470a9114ffb0c125553667203e65dce3ed50a339a3f5c43de24e225c040b7a"
+        }
+      ]
+    },
+    {
+      "name": "katex",
+      "version": "0.18.11",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/katex/-/katex-0.18.11.tgz",
+      "integrity": "sha512-yvyz/2VMKqoho/35Hat5w37wIEdWJ5ElVMidTAlWrxr5uW4aBGsEpveTmKh18/zw08v/7lGswCPon4OhqmqrTA==",
+      "bundledVariants": [
+        "katex@0.18.11"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "d3c8c167dfa0a8a7f2ace9fc23ddfb89e609adc13b113e958bede249592b852d"
+        }
+      ]
+    },
+    {
+      "name": "khroma",
+      "version": "2.1.0",
+      "license": null,
+      "source": "https://registry.npmjs.org/khroma/-/khroma-2.1.0.tgz",
+      "integrity": "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw==",
+      "bundledVariants": [
+        "khroma@2.1.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/license",
+          "noticeTextSHA256": "5135f3f7607134fae453693e070d5afb8704957fa2f4388dd4abdc14b99aebfb"
+        }
+      ]
+    },
+    {
+      "name": "layout-base",
+      "version": "1.0.2",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/layout-base/-/layout-base-1.0.2.tgz",
+      "integrity": "sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg==",
+      "bundledVariants": [
+        "layout-base@1.0.2"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6dfc8a41d27c6bfd01a963b61461f22060aa32909f1c0eda6863755cc3aea9a0"
+        }
+      ]
+    },
+    {
+      "name": "layout-base",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/layout-base/-/layout-base-2.0.1.tgz",
+      "integrity": "sha512-dp3s92+uNI1hWIpPGH3jK2kxE2lMjdXdr+DH8ynZHpd6PUlH6x6cbuXnoMmiNumznqaNO31xu9e79F0uuZ0JFg==",
+      "bundledVariants": [
+        "layout-base@2.0.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6dfc8a41d27c6bfd01a963b61461f22060aa32909f1c0eda6863755cc3aea9a0"
+        }
+      ]
+    },
+    {
+      "name": "lodash-es",
+      "version": "4.18.1",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/lodash-es/-/lodash-es-4.18.1.tgz",
+      "integrity": "sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==",
+      "bundledVariants": [
+        "lodash-es@4.18.1"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "2314aa0e2bae2fcbc099b29c8815e26688cef6c2cf76226927a3f24f091f7114"
+        }
+      ]
+    },
+    {
+      "name": "marked",
+      "version": "16.3.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/marked/-/marked-16.3.0.tgz",
+      "integrity": "sha512-K3UxuKu6l6bmA5FUwYho8CfJBlsUWAooKtdGgMcERSpF7gcBUrCGsLH7wDaaNOzwq18JzSUDyoEb/YsrqMac3w==",
+      "bundledVariants": [
+        "marked@16.3.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.md",
+          "noticeTextSHA256": "dd923de9769808b2820f68a2ea9d90b62d9348709e13ee95c234e4acc6d3ee09"
+        }
+      ]
+    },
+    {
+      "name": "roughjs",
+      "version": "4.6.6",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/roughjs/-/roughjs-4.6.6.tgz",
+      "integrity": "sha512-ZUz/69+SYpFN/g/lUlo2FXcIjRkSu3nDarreVdGGndHEBJ6cXPdKguS8JGxwj5HA5xIbVKSmLgr5b3AWxtRfvQ==",
+      "bundledVariants": [
+        "roughjs@4.6.6_patch_hash=3543d47108cb41b68ec6a671c0e1f9d0cfe2ce524fea5b0992511ae84c3c6b64"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "bb62e07404e8d5022ffaa6a7ac60c42b658df09605da52bbb9486825f941b2cc"
+        }
+      ]
+    },
+    {
+      "name": "stylis",
+      "version": "4.3.6",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/stylis/-/stylis-4.3.6.tgz",
+      "integrity": "sha512-yQ3rwFWRfwNUY7H5vpU0wfdkNSnvnJinhF9830Swlaxl03zsOjCfmX0ugac+3LtK0lYSgwL/KXc8oYL3mG4YFQ==",
+      "bundledVariants": [
+        "stylis@4.3.6"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "6821b85df4724cddb1de03c371af9a7cc055839d0331dcd7c2f1b1d025098c49"
+        }
+      ]
+    },
+    {
+      "name": "ts-dedent",
+      "version": "2.2.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/ts-dedent/-/ts-dedent-2.2.0.tgz",
+      "integrity": "sha512-q5W7tVM71e2xjHZTlgfTDoPF/SmqKG5hddq9SzR49CH2hayqRKJtQ4mtRlSxKaJlR/+9rEM+mnBHf7I2/BQcpQ==",
+      "bundledVariants": [
+        "ts-dedent@2.2.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE",
+          "noticeTextSHA256": "1078bbb5b87d77871937a28405a87b556e07ba12f5dbc87e01025925ad68bac9"
+        }
+      ]
+    },
+    {
+      "name": "uuid",
+      "version": "14.0.0",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/uuid/-/uuid-14.0.0.tgz",
+      "integrity": "sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==",
+      "bundledVariants": [
+        "uuid@14.0.0"
+      ],
+      "licenseFiles": [
+        {
+          "path": "package/LICENSE.md",
+          "noticeTextSHA256": "19f9e00b8c981751ab9b00c64c5d573976c192cbfba0937d8ab48777d38bbf9b"
+        }
+      ]
+    }
+  ]
+}

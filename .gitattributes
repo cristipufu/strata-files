@@ -1,0 +1,2 @@
+# Preserve the pinned upstream bundle byte-for-byte for its recorded checksum.
+Sources/Strata/Previews/Mermaid/mermaid.min.js binary linguist-vendored=true

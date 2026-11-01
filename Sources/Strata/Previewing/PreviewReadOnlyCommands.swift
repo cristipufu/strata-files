@@ -62,7 +62,7 @@ extension PreviewBrowserController: NSMenuItemValidation {
         case #selector(copy(_:)): action = .copy
         case #selector(copyPath(_:)): action = .copyPath
         case #selector(openSelection(_:)): action = .open
-        case #selector(focusSearch(_:)): return session.isContainer
+        case #selector(focusSearch(_:)): return controls.search.isEnabled
         case #selector(toggleQuickLook(_:)): return !session.isClosed
         case #selector(goToEnclosingFolder(_:)): return mode == .icons ? gridScope != nil : session.selected != nil
         case #selector(goBack(_:)): return mode == .icons && gridScope != nil

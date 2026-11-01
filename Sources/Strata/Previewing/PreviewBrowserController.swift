@@ -129,6 +129,8 @@ import StrataPreviews
 
     /// The filter, sort, view, icon size, Back and action controls act on this browser.
     private func wireControls() {
+        fileView.onSearchAvailabilityChanged = { [weak self] in self?.updateSearch() }
+        controls.onFindNext = { [weak self] backwards in self?.fileView.documentSearch?.findNext(backwards: backwards) }
         controls.onQuery = { [weak self] query in self?.filter(query) }
         controls.onOrder = { [weak self] key in self?.chooseSort(key) }
         controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
@@ -270,7 +272,7 @@ import StrataPreviews
                 gridScope = nil
             }
             split.showBrowser(session.isContainer)
-            controls.search.isEnabled = session.isContainer
+            updateSearch()
             updateMode()
             refreshTree()
             fileView.show(nil, root: session.root)
@@ -303,7 +305,13 @@ import StrataPreviews
         updateFooter()
     }
 
+    func updateSearch() {
+        controls.configureSearch(document: !session.isContainer, enabled: session.isContainer || fileView.documentSearch != nil)
+        if !session.isContainer { fileView.documentSearch?.find(controls.search.stringValue) }
+    }
+
     func filter(_ query: String) {
+        if !session.isContainer { fileView.documentSearch?.find(query); return }
         listing.query = query
         refreshTree(reorder: false)
         updateFooter()

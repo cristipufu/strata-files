@@ -13,6 +13,8 @@ import StrataPreviews
     private let sizeSummary = NSTextField(labelWithString: "")
     private let summary = NSStackView()
     private var rich: NSView?
+    var onSearchAvailabilityChanged: (() -> Void)?
+    var documentSearch: (any PreviewDocumentSearch)? { rich as? any PreviewDocumentSearch }
     private(set) var shownURL: URL?
     private var generation = 0
     private var isClosed = false
@@ -60,8 +62,10 @@ import StrataPreviews
 
     func show(_ item: PreviewItem?, root: FileEntry?, materialized: URL? = nil) {
         guard !isClosed else { return }
+        defer { onSearchAvailabilityChanged?() }
         generation += 1
         let generation = generation
+        (rich as? PreviewView)?.cancelLoad()
         rich?.removeFromSuperview()
         rich = nil
         native.clear()
@@ -81,9 +85,11 @@ import StrataPreviews
         shownURL = url
         if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, fallback: { [weak self] in
             guard let self, self.generation == generation, shownURL == url else { return }
+            (self.rich as? PreviewView)?.cancelLoad()
             self.rich?.removeFromSuperview()
             self.rich = nil
             showNative(url)
+            onSearchAvailabilityChanged?()
         }) {
             self.rich = rich
             rich.translatesAutoresizingMaskIntoConstraints = false
@@ -105,6 +111,7 @@ import StrataPreviews
         isClosed = true
         generation += 1
         shownURL = nil
+        (rich as? PreviewView)?.cancelLoad()
         rich?.removeFromSuperview()
         rich = nil
         native.close()

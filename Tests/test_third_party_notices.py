@@ -1,5 +1,7 @@
 from pathlib import Path
 import re
+import hashlib
+import json
 import unittest
 
 
@@ -34,6 +36,30 @@ class ThirdPartyNoticeTests(unittest.TestCase):
             return "\n".join(line.rstrip() for line in text.strip().splitlines())
 
         self.assertIn(lines(license.read_text(encoding="utf-8")), lines(self.notices))
+
+    def test_offline_diagram_bundle_matches_the_credited_upstream_release(self):
+        resource = ROOT / "Sources/Strata/Previews/Mermaid"
+        checksum = hashlib.sha256((resource / "mermaid.min.js").read_bytes()).hexdigest()
+        self.assertIn(checksum, self.notices)
+        self.assertIn((resource / "LICENSE").read_text(encoding="utf-8"), self.notices)
+        self.assertIn('resources: [.copy("Mermaid")]', self.manifest)
+        script = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
+        self.assertIn('cp -R "$bins/Strata_StrataPreviews.bundle" "$app/Contents/Resources/Strata_StrataPreviews.bundle"', script)
+
+    def test_every_library_in_the_diagram_inventory_has_its_full_license_text(self):
+        resource = ROOT / "Sources/Strata/Previews/Mermaid"
+        inventory = json.loads((resource / "packages.json").read_text(encoding="utf-8"))
+        self.assertEqual(inventory["bundleSHA256"], hashlib.sha256((resource / "mermaid.min.js").read_bytes()).hexdigest())
+        blocks = re.findall(r"```text\n(.*?)\n```", self.notices, re.S)
+        checksums = {hashlib.sha256(block.rstrip().encode()).hexdigest() for block in blocks}
+        self.assertEqual(len(inventory["packages"]), 66)
+        for package in inventory["packages"]:
+            with self.subTest(package=package["name"], version=package["version"]):
+                self.assertIn(f'### {package["name"]} {package["version"]}\n', self.notices)
+                self.assertIn(package["source"], self.notices)
+                self.assertTrue(package["licenseFiles"])
+                for license in package["licenseFiles"]:
+                    self.assertIn(license["noticeTextSHA256"], checksums)
 
     def test_the_app_carries_the_one_notices_file(self):
         script = (ROOT / "scripts" / "build.sh").read_text(encoding="utf-8")
