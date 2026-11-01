@@ -3168,7 +3168,7 @@
     "tests": "RemoteSessionOwnershipTests/enteringADeeperColumnCancelsAPendingOpeningButReportingTheSameFolderDoesNot"
   },
   {
-    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "file": "Strata/Window/BrowserWindowController+Notices.swift",
     "find": "    @objc func containerCopyProblem(_ notification: Notification) {\n        guard !showPendingOpening() else { return }",
     "replace": "    @objc func containerCopyProblem(_ notification: Notification) {",
     "rule": "Pane opening ownership an old listing failure replaces the Cancel button",
@@ -3808,7 +3808,7 @@
     "tests": "BrowserCopyProviderTests/clipboardStagingCopyPathAndDragDropFollowInjectedCopyProviders"
   },
   {
-    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "file": "Strata/Window/BrowserWindowController+Servers.swift",
     "find": "        controller.onConnected = { [weak self, weak origin] mounted in\n            guard let self, !isClosed, let origin, panes.contains(where: { $0 === origin }) else { return }\n            go(.folder(mounted.lexicallyStandardized), in: origin)\n        }\n        controller.onServer = { [weak self, weak origin] server in\n            guard let self, let origin else { return }\n            openServer(server, in: origin)\n        }",
     "replace": "        controller.onConnected = { [weak self] mounted in\n            self?.navigate(to: mounted)\n        }\n        controller.onServer = { [weak self] server in\n            self?.openServer(server)\n        }",
     "rule": "Async action context ownership Connect to Server sheet navigates the currently focused pane instead of its originating pane",
@@ -3850,7 +3850,7 @@
     "tests": "AsyncActionContextTests/closingAPaneStopsColumnAndGalleryBackgroundWork"
   },
   {
-    "file": "Strata/Window/BrowserWindowController+Trash.swift",
+    "file": "Strata/Window/BrowserWindowController+Notices.swift",
     "find": "        if let root = notification.userInfo?[\"copyRoot\"] as? String {\n            let ownedRoots = [services.copies.remoteCopies.root.path, services.copies.containerCopies.root.path]\n            guard ownedRoots.contains(root) else { return }\n        }",
     "replace": "        // Accept problem notifications from any copy store.",
     "rule": "Async action context ownership container copy problem notifications cross into another window's copy environment",
@@ -7974,5 +7974,19 @@
     "replace": "            addServerSelectionItems(to: menu)\n",
     "rule": "The context menu offers a server's items Cut, Duplicate and Compress, which a server can't do",
     "tests": "BrowserContextMenuTests/aServerOrAnArchiveIsOfferedOnlyWhatItCanDo"
+  },
+  {
+    "file": "Strata/Window/FolderNotice.swift",
+    "find": "        let others = trashes.filter { $0.count > 0 && $0.folder.lexicallyStandardized != shown.lexicallyStandardized }",
+    "replace": "        let others = trashes.filter { $0.folder.lexicallyStandardized != shown.lexicallyStandardized }",
+    "rule": "The notice over a Trash names another disk whose Trash is empty",
+    "tests": "FolderNoticeTests/overATrashOnlyOtherDisksTrashesThatHoldSomethingAreNamed"
+  },
+  {
+    "file": "Strata/Window/FolderNotice.swift",
+    "find": "        let others = trashes.filter { $0.count > 0 && $0.folder.lexicallyStandardized != shown.lexicallyStandardized }",
+    "replace": "        let others = trashes.filter { $0.count > 0 }",
+    "rule": "The notice over a Trash names the Trash shown as another disk's",
+    "tests": "FolderNoticeTests/overATrashOnlyOtherDisksTrashesThatHoldSomethingAreNamed"
   }
 ]

@@ -108,7 +108,7 @@
   "reason": "Folders a sidebar watches are the process's open directories: every window's trees share one limit (AGENTS.md: sidebar watchers)."
  },
  {
-  "file": "Sources/Strata/Window/BrowserWindowController+Trash.swift",
+  "file": "Sources/Strata/Window/BrowserWindowController+Servers.swift",
   "instance": "mounter: .live",
   "count": 1,
   "reason": "Mounting a share is macOS's (NetFS), for the whole Mac; tests inject a ServerMounter into the sheet itself."

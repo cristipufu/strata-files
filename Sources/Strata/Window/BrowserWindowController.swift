@@ -597,6 +597,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func goDownloads(_ sender: Any?) { navigate(to: Places.home.appending(path: "Downloads")) }
     @objc func goApplications(_ sender: Any?) { navigate(to: URL(fileURLWithPath: "/Applications")) }
     @objc func goRecents(_ sender: Any?) { go(.recents) }
+    @objc func goTrash(_ sender: Any?) { navigate(to: Trash.home) }
     func showDuplicates() { go(.duplicates) }
     @objc func goToFolder(_ sender: Any?) {
         if isDualPane && services.preferences.dualPaneAddressBars {
