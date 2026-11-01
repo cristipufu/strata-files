@@ -214,35 +214,58 @@ final class SidebarViewController: NSViewController {
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
             + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
+        sections = [
+            SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites),
+            workspacesSection(), searchesSection(), frequentSection(besides: pinned), insightsSection(),
+            locationsSection(besides: pinned), serversSection(), tagsSection(),
+        ].compactMap { $0 }
+        applyingCollapsed = true
+        outline.reloadData()
+        applyingCollapsed = false
+        applyCollapsed()
+        if let current { highlight(current) }
+    }
+
+    private func workspacesSection() -> SidebarSection? {
+        let workspaces = services.workspaces.all.map { workspace in
+            let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
+            item.help = services.workspaces.help(workspace)
+            return item
+        }
+        guard !workspaces.isEmpty else { return nil }
+        return SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
+                              items: workspaces)
+    }
+
+    private func searchesSection() -> SidebarSection? {
+        let searches = services.savedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
+        guard !searches.isEmpty else { return nil }
+        return SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches)
+    }
+
+    /// The folders opened most, besides the favorites (`pinned`), your home folder, the top and the Trash.
+    private func frequentSection(besides pinned: Set<String>) -> SidebarSection? {
         let home = Places.home.path
         let frequent = services.visits.ranked()
             .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0)
                 && services.places.isFolder($0.path) != false }
             .prefix(5)
             .map { SidebarItem(Place(title: services.places.name($0), url: $0, symbol: "folder")) }
-        sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
-        let workspaces = services.workspaces.all.map { workspace in
-            let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
-            item.help = services.workspaces.help(workspace)
-            return item
-        }
-        if !workspaces.isEmpty {
-            sections.append(SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
-                                           items: workspaces))
-        }
-        let searches = services.savedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
-        if !searches.isEmpty {
-            sections.append(SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches))
-        }
-        if !frequent.isEmpty {
-            sections.append(SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
-                                           items: Array(frequent)))
-        }
-        sections.append(SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
+        guard !frequent.isEmpty else { return nil }
+        return SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
+                              items: Array(frequent))
+    }
+
+    private func insightsSection() -> SidebarSection {
+        SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
             SidebarItem(title: String(localized: "Large Files", comment: "Sidebar item"), target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
             SidebarItem(title: String(localized: "Duplicates", comment: "Sidebar item: identical files"), target: .duplicates, symbol: "square.on.square"),
-        ]))
-        // Containers, like a disk: there while an engine (Docker Desktop, OrbStack…) runs.
+        ])
+    }
+
+    /// Disks, cloud folders that aren't favorites (`pinned`), Containers while an engine (Docker Desktop, OrbStack…)
+    /// runs, like a disk, and the Trash.
+    private func locationsSection(besides pinned: Set<String>) -> SidebarSection {
         let containers = services.containerStore.engine.map { engine -> SidebarItem in
             let item = SidebarItem(title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"), target: .containers,
                                    symbol: "shippingbox")
@@ -252,10 +275,13 @@ final class SidebarViewController: NSViewController {
         let cloud = cloudFolders.filter { !pinned.contains($0.url.standardizedFileURL.path) }.map {
             SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
         }
-        sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                                       items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
-            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: trashSymbol)]))
-        // Servers you've connected to: an SFTP server or a bucket each, green while connected.
+        return SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
+                              items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
+            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: trashSymbol)])
+    }
+
+    /// Servers you've connected to: an SFTP server or a bucket each, green while connected.
+    private func serversSection() -> SidebarSection? {
         let servers = services.remote.servers.all.map { server -> SidebarItem in
             let item = SidebarItem(title: server.name, target: .server(server.id),
                                    symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")
@@ -263,11 +289,13 @@ final class SidebarViewController: NSViewController {
             if services.remote.status.connected.contains(server.id) { item.tint = .systemGreen }
             return item
         }
-        if !servers.isEmpty {
-            sections.append(SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
-                                           items: servers))
-        }
-        // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
+        guard !servers.isEmpty else { return nil }
+        return SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
+                              items: servers)
+    }
+
+    /// Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
+    private func tagsSection() -> SidebarSection? {
         let tags = services.tags.suggestions.prefix(12).map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
@@ -275,12 +303,8 @@ final class SidebarViewController: NSViewController {
             item.tagName = tag.name
             return item
         }
-        if !tags.isEmpty { sections.append(SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))) }
-        applyingCollapsed = true
-        outline.reloadData()
-        applyingCollapsed = false
-        applyCollapsed()
-        if let current { highlight(current) }
+        guard !tags.isEmpty else { return nil }
+        return SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))
     }
 
     /// Every section open except those you've hidden. The sidebar is rebuilt whenever a window comes forward (and
