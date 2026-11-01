@@ -2218,7 +2218,7 @@
     "Connecting to %@…": "A server address follows · WorkspaceSheets.swift:246",
     "Connecting to “%@”…": "A server's name · BrowserWindowController+Trash.swift:44",
     "Container": "Kind of item: a Docker container's files · FileEntry.swift:267",
-    "Containers": "Inspector row: the containers in a Compose project · Sidebar section title: Docker containers · ContainerInspector.swift:244, FolderTreeController.swift:195, PathBar.swift:209",
+    "Containers": "Inspector row: the containers in a Compose project · Sidebar section title: Docker containers · ContainerInspector.swift:244, FolderTreeController.swift:195, PathBar.swift:211",
     "Containers on %@. Each opens as a read-only copy of its files.": "Notice over the Containers folder; placeholder: Docker Desktop, OrbStack… · BrowserWindowController+Trash.swift:63",
     "Contains added files": "Git status of a folder · GitStatusStore.swift:488",
     "Contains conflicted files": "Git status of a folder · GitStatusStore.swift:492",

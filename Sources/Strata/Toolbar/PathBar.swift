@@ -202,47 +202,47 @@ final class PathBar: NSView, NSTextFieldDelegate {
         onNavigate?(destination, nil)
     }
 
-    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders,
-                                   names: FolderNames) -> [(title: String, url: URL, symbol: String?)] {
+    /// One step of the path bar: its title, where it leads, and its symbol, if any.
+    private typealias Crumb = (title: String, url: URL, symbol: String?)
+
+    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders, names: FolderNames) -> [Crumb] {
         // Containers, then a container, then its folders from `/`.
         if let folder = copies.containerCopies.containersFolder(of: url) {
-            var parts: [(title: String, url: URL, symbol: String?)] = [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
-            var current = folder
-            let inner = url.standardizedFileURL.path.dropFirst(folder.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
+                + steps(of: url, below: folder)
         }
         // On a server: the server, then its folders from `/`.
         if let (server, top) = copies.remoteCopies.server(containing: url) {
-            var parts: [(title: String, url: URL, symbol: String?)] = [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
-            var current = top
-            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
+                + steps(of: url, below: top)
         }
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
-            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies,
-                                   names: names)
-            parts.append((archive.lastPathComponent, top, "archivebox"))
-            var current = top
-            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies, names: names)
+                + [(archive.lastPathComponent, top, "archivebox")] + steps(of: url, below: top)
         }
+        return localComponents(of: url, copies: copies, names: names)
+    }
+
+    /// Each folder from `top` (not included) down to `url`, by its own name.
+    private static func steps(of url: URL, below top: URL) -> [Crumb] {
+        var parts: [Crumb] = []
+        var current = top
+        let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
+        for component in inner {
+            current = current.appending(path: String(component))
+            parts.append((String(component), current, nil))
+        }
+        return parts
+    }
+
+    /// Your home folder, another disk or the startup disk, then each folder by the name it's shown with; a Trash as
+    /// one "Trash" step.
+    private static func localComponents(of url: URL, copies: CopyProviders, names: FolderNames) -> [Crumb] {
         let path = url.standardizedFileURL.path
         let home = Places.home.standardizedFileURL.path
-        var parts: [(title: String, url: URL, symbol: String?)] = []
+        var parts: [Crumb] = []
         let root: String
         if path == home || path.hasPrefix(home + "/") {
             root = home
