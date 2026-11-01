@@ -50,58 +50,57 @@ nonisolated package enum MarkdownParser {
 
         while i < lines.count {
             let line = lines[i]
-            let indent = indentation(line)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { flush(); i += 1; continue }
-
-            if indent >= 4, paragraph.isEmpty {
-                blocks.append(indentedCode(lines, from: &i))
-                continue
-            }
-            if let fence = fence(trimmed) {
+            switch start(lines, at: &i, depth: depth, inParagraph: !paragraph.isEmpty) {
+            case .block(let block)?:
                 flush()
-                blocks.append(fencedCode(lines, from: &i, fence: fence, indent: indent))
-                continue
-            }
-            if let (level, text) = atxHeading(trimmed) {
-                flush()
-                blocks.append(.heading(level: level, text: text))
-                i += 1; continue
-            }
-            if !paragraph.isEmpty, trimmed.allSatisfy({ $0 == "=" }) || trimmed.allSatisfy({ $0 == "-" }) {
-                blocks.append(.heading(level: trimmed.first == "=" ? 1 : 2, text: paragraph.joined(separator: "\n")))
+                blocks.append(block)
+            case .underline(let level)?:
+                blocks.append(.heading(level: level, text: paragraph.joined(separator: "\n")))
                 paragraph = []
-                i += 1; continue
+            case nil:
+                paragraph.append(trimmed + (line.hasSuffix("  ") ? "  " : ""))
+                i += 1
             }
-            if isRule(trimmed) {
-                flush()
-                blocks.append(.rule)
-                i += 1; continue
-            }
-            if trimmed.hasPrefix(">") {
-                flush()
-                blocks.append(quote(lines, from: &i, depth: depth))
-                continue
-            }
-            if let marker = listMarker(line), paragraph.isEmpty || marker.canInterruptParagraph {
-                flush()
-                blocks.append(parseList(lines, from: &i, depth: depth))
-                continue
-            }
-            if trimmed.contains("|"), let table = table(lines, from: &i) {
-                flush()
-                blocks.append(table)
-                continue
-            }
-            if paragraph.isEmpty, isHTMLBlockStart(trimmed) {
-                blocks.append(htmlBlock(lines, from: &i))
-                continue
-            }
-            paragraph.append(trimmed + (line.hasSuffix("  ") ? "  " : ""))
-            i += 1
         }
         flush()
         return blocks
+    }
+
+    private enum Start {
+        case block(MarkdownBlock)
+        /// A line of `=` or `-` under a paragraph: the paragraph is a heading of this level.
+        case underline(level: Int)
+    }
+
+    /// What starts at line `i`, which it reads past; nil for a paragraph's text. Indented code and HTML don't
+    /// interrupt a paragraph, nor do most list markers.
+    private static func start(_ lines: [String], at i: inout Int, depth: Int, inParagraph: Bool) -> Start? {
+        let line = lines[i]
+        let indent = indentation(line)
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if indent >= 4, !inParagraph { return .block(indentedCode(lines, from: &i)) }
+        if let fence = fence(trimmed) { return .block(fencedCode(lines, from: &i, fence: fence, indent: indent)) }
+        if let (level, text) = atxHeading(trimmed) {
+            i += 1
+            return .block(.heading(level: level, text: text))
+        }
+        if inParagraph, trimmed.allSatisfy({ $0 == "=" }) || trimmed.allSatisfy({ $0 == "-" }) {
+            i += 1
+            return .underline(level: trimmed.first == "=" ? 1 : 2)
+        }
+        if isRule(trimmed) {
+            i += 1
+            return .block(.rule)
+        }
+        if trimmed.hasPrefix(">") { return .block(quote(lines, from: &i, depth: depth)) }
+        if let marker = listMarker(line), !inParagraph || marker.canInterruptParagraph {
+            return .block(parseList(lines, from: &i, depth: depth))
+        }
+        if trimmed.contains("|"), let table = table(lines, from: &i) { return .block(table) }
+        if !inParagraph, isHTMLBlockStart(trimmed) { return .block(htmlBlock(lines, from: &i)) }
+        return nil
     }
 
     // MARK: - Blocks
