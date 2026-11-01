@@ -139,11 +139,13 @@ import Testing
         // While the job checks its copy of "b.txt", the copy of "a.txt" it made a moment before is swapped for another file.
         let swapped = tree.url("to/a.txt")
         let checked = Self.fixtureLocation(tree.url("to/b.txt"))
+        // Written beside the copy, then renamed over it: a file of its own, which can't take the copy's inode however
+        // quickly it's made.
+        let replacement = tree.url("to/.replacement")
         TransferEngine.hooks.beforeVerify = { copy in
             guard Self.fixtureLocation(copy) == checked else { return }
-            Thread.sleep(forTimeInterval: 0.3)
-            try? FileManager.default.removeItem(at: swapped)
-            try? Data("someone else's".utf8).write(to: swapped)
+            try? Data("someone else's".utf8).write(to: replacement)
+            _ = Darwin.rename(replacement.path, swapped.path)
         }
         defer { TransferEngine.hooks = .init() }
         try unrelatedTransfersKeepTheirFiles(alongside: tree)
