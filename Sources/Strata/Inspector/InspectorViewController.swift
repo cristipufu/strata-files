@@ -549,12 +549,7 @@ final class InspectorViewController: NSViewController {
     private func showRich(_ rich: NSView) {
         rich.translatesAutoresizingMaskIntoConstraints = false
         previewBox.addSubview(rich, positioned: .above, relativeTo: richBackdrop)
-        NSLayoutConstraint.activate([
-            rich.leadingAnchor.constraint(equalTo: previewBox.leadingAnchor),
-            rich.trailingAnchor.constraint(equalTo: previewBox.trailingAnchor),
-            rich.topAnchor.constraint(equalTo: previewBox.topAnchor),
-            rich.bottomAnchor.constraint(equalTo: previewBox.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(rich.fillingConstraints(in: previewBox))
         richPreview = rich
         richBackdrop.isHidden = false
         previewHeight?.constant = 340

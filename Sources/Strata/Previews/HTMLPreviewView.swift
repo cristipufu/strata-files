@@ -54,10 +54,7 @@ package final class HTMLPreviewView: WebPreviewView {
     private func attach(_ view: NSView) {
         view.translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: host.leadingAnchor), view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            view.topAnchor.constraint(equalTo: host.topAnchor), view.bottomAnchor.constraint(equalTo: host.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(view.fillingConstraints(in: host))
     }
 
     package override var isOpen: Bool { document != nil }

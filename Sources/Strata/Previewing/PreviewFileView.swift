@@ -87,10 +87,7 @@ import StrataPreviews
             self.rich = rich
             rich.translatesAutoresizingMaskIntoConstraints = false
             addSubview(rich)
-            NSLayoutConstraint.activate([
-                rich.leadingAnchor.constraint(equalTo: leadingAnchor), rich.trailingAnchor.constraint(equalTo: trailingAnchor),
-                rich.topAnchor.constraint(equalTo: topAnchor), rich.bottomAnchor.constraint(equalTo: bottomAnchor),
-            ])
+            NSLayoutConstraint.activate(rich.fillingConstraints(in: self))
             summary.isHidden = true
         } else {
             showNative(url)

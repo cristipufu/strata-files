@@ -25,12 +25,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate {
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: contentView))
         textView.textContainer?.replaceLayoutManager(layoutManager)
         textView.isEditable = false
         textView.isSelectable = true

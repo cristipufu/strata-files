@@ -96,10 +96,7 @@ package final class PreviewWebPage: NSView {
         self.session = session; webView = web
         web.translatesAutoresizingMaskIntoConstraints = false
         addSubview(web, positioned: .below, relativeTo: spinner)
-        NSLayoutConstraint.activate([web.leadingAnchor.constraint(equalTo: leadingAnchor),
-                                     web.trailingAnchor.constraint(equalTo: trailingAnchor),
-                                     web.topAnchor.constraint(equalTo: topAnchor),
-                                     web.bottomAnchor.constraint(equalTo: bottomAnchor)])
+        NSLayoutConstraint.activate(web.fillingConstraints(in: self))
         // Every document comes through its session, never from a cache.
         web.load(URLRequest(url: document.url, cachePolicy: .reloadIgnoringLocalCacheData))
         let timeLimit = timeLimit

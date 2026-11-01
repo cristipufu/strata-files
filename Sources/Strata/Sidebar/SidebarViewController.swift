@@ -135,12 +135,7 @@ final class SidebarViewController: NSViewController {
         for child in [scroll, tree.view] {
             child.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(child)
-            NSLayoutConstraint.activate([
-                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                child.topAnchor.constraint(equalTo: container.topAnchor),
-                child.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            ])
+            NSLayoutConstraint.activate(child.fillingConstraints(in: container))
         }
         view = container
         reload()

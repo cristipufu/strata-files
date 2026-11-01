@@ -57,12 +57,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: contentView))
     }
 
     package override func layout() {

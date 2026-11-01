@@ -124,10 +124,7 @@ import StrataPreviews
         ThemeStyle.bind(treeHost, to: .content)
         scroll.translatesAutoresizingMaskIntoConstraints = false
         treeHost.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: treeHost.topAnchor), scroll.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(scroll.fillingConstraints(in: treeHost))
     }
 
     /// The filter, sort, view, icon size, Back and action controls act on this browser.

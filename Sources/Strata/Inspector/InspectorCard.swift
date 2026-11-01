@@ -180,12 +180,7 @@ final class InspectorRows: NSView {
         grid.columnSpacing = 10
         grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: trailingAnchor),
-            grid.topAnchor.constraint(equalTo: topAnchor),
-            grid.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(grid.fillingConstraints(in: self))
     }
 
     @available(*, unavailable)
