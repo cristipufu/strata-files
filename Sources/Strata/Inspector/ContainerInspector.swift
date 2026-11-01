@@ -721,6 +721,41 @@ private final class ServiceRow: NSView {
          act: @escaping (ContainerAction, [ContainerInfo]) -> Void) {
         super.init(frame: .zero)
         let running = service.containers.contains(where: \.isRunning)
+        let row = NSStackView(views: Self.parts(of: service, running: running, open: open))
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        var constraints = [
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ]
+        // Start or stop this service's containers.
+        let action: ContainerAction? = service.containers.isEmpty ? nil : running ? .stop : .start
+        if let action {
+            let button = Self.actionButton(action, for: service, act: act)
+            addSubview(button)
+            constraints += [
+                button.trailingAnchor.constraint(equalTo: trailingAnchor),
+                button.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                row.trailingAnchor.constraint(lessThanOrEqualTo: button.leadingAnchor, constant: -6),
+            ]
+        } else {
+            constraints.append(row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor))
+        }
+        NSLayoutConstraint.activate(constraints)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(service.name + ", " + (running ? String(localized: "Running", comment: "Container state")
+            : service.containers.isEmpty ? String(localized: "not created", comment: "Inspector, Compose: a service with no container yet")
+            : String(localized: "Not Running", comment: "Container state: stopped, exited or created")))
+    }
+
+    /// Whether it runs, its name, then each container (opening its files), or that it hasn't been created.
+    private static func parts(of service: ComposeInspectorView.Service, running: Bool,
+                              open: @escaping (String) -> Void) -> [NSView] {
         let dot = NSImageView(image: NSImage(systemSymbolName: running ? "circle.fill" : "circle", accessibilityDescription: nil) ?? NSImage())
         dot.symbolConfiguration = .init(pointSize: 7, weight: .bold)
         dot.contentTintColor = running ? InspectorColors.success : InspectorColors.tertiary
@@ -743,42 +778,19 @@ private final class ServiceRow: NSView {
             link.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
             parts.append(link)
         }
-        let row = NSStackView(views: parts)
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 6
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        // Start or stop this service's containers.
-        let action: ContainerAction? = service.containers.isEmpty ? nil : running ? .stop : .start
-        var constraints = [
-            row.leadingAnchor.constraint(equalTo: leadingAnchor),
-            row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ]
-        if let action {
-            let button = ActionButton("", symbol: ContainerControl.symbol(action)) { act(action, service.containers) }
-            button.isBordered = false
-            button.imagePosition = .imageOnly
-            button.contentTintColor = InspectorColors.secondary
-            button.toolTip = ContainerControl.title(action)
-            button.setAccessibilityLabel(ContainerControl.title(action) + " " + service.name)
-            button.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(button)
-            constraints += [
-                button.trailingAnchor.constraint(equalTo: trailingAnchor),
-                button.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                row.trailingAnchor.constraint(lessThanOrEqualTo: button.leadingAnchor, constant: -6),
-            ]
-        } else {
-            constraints.append(row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor))
-        }
-        NSLayoutConstraint.activate(constraints)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        setAccessibilityLabel(service.name + ", " + (running ? String(localized: "Running", comment: "Container state")
-            : service.containers.isEmpty ? String(localized: "not created", comment: "Inspector, Compose: a service with no container yet")
-            : String(localized: "Not Running", comment: "Container state: stopped, exited or created")))
+        return parts
+    }
+
+    private static func actionButton(_ action: ContainerAction, for service: ComposeInspectorView.Service,
+                                     act: @escaping (ContainerAction, [ContainerInfo]) -> Void) -> ActionButton {
+        let button = ActionButton("", symbol: ContainerControl.symbol(action)) { act(action, service.containers) }
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.contentTintColor = InspectorColors.secondary
+        button.toolTip = ContainerControl.title(action)
+        button.setAccessibilityLabel(ContainerControl.title(action) + " " + service.name)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }
 
     @available(*, unavailable)
