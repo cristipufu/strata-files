@@ -7881,5 +7881,19 @@
     "replace": "",
     "rule": "Undoing a tag change can't be redone",
     "tests": "MetadataEditTests/tagsGoOnTheChosenFilesOnly"
+  },
+  {
+    "file": "Strata/Containers/CopyWriter.swift",
+    "find": "            guard renameat(fd, project, fd, temp) == 0 else { return nil }\n",
+    "replace": "            guard Bool(\"false\") == true else { return nil }\n",
+    "rule": "A container named like its project loses the files already fetched when it moves into the project",
+    "tests": "ContainerTests/aContainerNamedLikeItsProjectMovesInWithItsFiles"
+  },
+  {
+    "file": "Strata/Containers/CopyWriter.swift",
+    "find": "                guard movesIn else {\n                    gone.append(folder.appending(path: project, directoryHint: .isDirectory))\n",
+    "replace": "                guard movesIn else {\n",
+    "rule": "A leftover container folder named like a project stays in the project's way",
+    "tests": "ContainerTests/aLeftoverFolderNamedLikeAProjectMakesWay"
   }
 ]

@@ -401,6 +401,30 @@ struct ContainerTests {
         #expect(try String(contentsOf: folder.appending(path: "shop/web/readme.txt"), encoding: .utf8) == "notes")
     }
 
+    @Test func aContainerNamedLikeItsProjectMovesInWithItsFiles() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
+            ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
+                          compose: project.map { ComposeLabels(project: $0, service: name, workingDirectory: nil) })
+        }
+        let shop = String(repeating: "a", count: 64), db = String(repeating: "b", count: 64)
+        // Its folder is where its project's goes: it moves aside, then into the project's folder, keeping what was
+        // already fetched.
+        _ = try CopyWriter.syncContainers([container("shop", shop)], engine: engine, in: folder, copies: copies)
+        try Data("notes".utf8).write(to: folder.appending(path: "shop/readme.txt"))
+        let gone = try CopyWriter.syncContainers([container("shop", shop, project: "shop"), container("db", db, project: "shop")],
+                                                 engine: engine, in: folder, copies: copies)
+        #expect(gone.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["shop"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "shop"])
+        #expect(try String(contentsOf: folder.appending(path: "shop/shop/readme.txt"), encoding: .utf8) == "notes")
+    }
+
     @Test func aLeftoverFolderNamedLikeAProjectMakesWay() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

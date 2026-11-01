@@ -43,12 +43,28 @@ package nonisolated enum CopyWriter {
         guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
         defer { close(fd) }
         let folded = folding(in: fd)
+        let (loose, byStack) = grouped(containers, folded: folded)
+        var sync = ContainerFolderSync(engine: engine, folder: folder, fd: fd, copies: copies, folded: folded)
+        var keep = Set<String>()
+        for container in loose { sync.place(container, in: fd, at: folder, keeping: &keep) }
+        for (key, stack) in byStack {
+            sync.syncProject(key, named: stack.project, members: stack.members, keeping: &keep)
+        }
+        for name in names(in: fd) where !keep.contains(folded(name)) {
+            sync.gone.append(folder.appending(path: name, directoryHint: .isDirectory))
+        }
+        return sync.gone
+    }
+
+    /// The containers that stay beside the projects, and each project's, by its name as the disk sees it: projects
+    /// whose names differ only in case share one folder (named the first way seen) rather than one of them going
+    /// missing. A project named like a container on its own stays beside the stacks.
+    private static func grouped(_ containers: [ContainerInfo], folded: (String) -> String)
+        -> (loose: [ContainerInfo], byStack: [String: (project: String, members: [ContainerInfo])]) {
         let looseNames = Set(containers.compactMap { container -> String? in
             guard ContainerCopies.stackName(container) == nil, ContainerCopies.isContainerName(container.name) else { return nil }
             return folded(container.name)
         })
-        // By the name as the disk sees it: projects whose names differ only in case share one folder (named the first
-        // way seen) rather than one of them going missing.
         var byStack: [String: (project: String, members: [ContainerInfo])] = [:]
         var loose: [ContainerInfo] = []
         for container in containers where ContainerCopies.isContainerName(container.name) {
@@ -58,9 +74,21 @@ package nonisolated enum CopyWriter {
                 loose.append(container)
             }
         }
-        var keep = Set<String>()
+        return (loose, byStack)
+    }
+
+    /// One pass making the Containers folder (open as `fd`) match its containers: the folders it finds to discard.
+    private struct ContainerFolderSync {
+        let engine: ContainerEngine
+        let folder: URL
+        let fd: Int32
+        let copies: ContainerCopyStore
+        let folded: (String) -> String
         var gone: [URL] = []
-        func place(_ container: ContainerInfo, in parent: Int32, at parentURL: URL, keeping: inout Set<String>) {
+
+        /// Records `container` in `parent` once; a folder of that name holding another container's copy is discarded
+        /// instead, to be made afresh next time.
+        mutating func place(_ container: ContainerInfo, in parent: Int32, at parentURL: URL, keeping: inout Set<String>) {
             guard keeping.insert(folded(container.name)).inserted else { return }
             if let recorded = ContainerCopies.recordedSource(container.name, in: parent), recorded.id != container.id {
                 gone.append(parentURL.appending(path: container.name, directoryHint: .isDirectory))
@@ -68,14 +96,14 @@ package nonisolated enum CopyWriter {
             }
             try? copies.record(container, on: engine, in: parent, folder: parentURL)
         }
-        for container in loose { place(container, in: fd, at: folder, keeping: &keep) }
-        for (key, stack) in byStack {
-            let (project, members) = stack
-            guard keep.insert(key).inserted else { continue }
-            // The project name is already a container folder. Move that container aside when it belongs inside the
-            // project. Otherwise it's a container that's gone, renamed or now in another project (a container with
-            // that name still on its own keeps it: see `looseNames`), so it's discarded and the next pass makes the
-            // project's folder; until then its containers stay beside the stacks.
+
+        /// A project's folder with its containers in it. The project name may already be a container folder: that
+        /// container is moved aside when it belongs inside the project. Otherwise it's a container that's gone,
+        /// renamed or now in another project (a container with that name still on its own keeps it: see `grouped`),
+        /// so it's discarded and the next pass makes the project's folder; until then its containers stay beside the
+        /// stacks.
+        mutating func syncProject(_ key: String, named project: String, members: [ContainerInfo], keeping keep: inout Set<String>) {
+            guard keep.insert(key).inserted else { return }
             var held: String?
             if let recorded = ContainerCopies.recordedSource(project, in: fd) {
                 let movesIn = members.contains { $0.id == recorded.id && $0.name == project }
@@ -84,17 +112,13 @@ package nonisolated enum CopyWriter {
                     for container in members where folded(container.name) != key {
                         place(container, in: fd, at: folder, keeping: &keep)
                     }
-                    continue
+                    return
                 }
-                let temp = ".hold-" + String(UUID().uuidString.prefix(8))
-                if renameat(fd, project, fd, temp) == 0 {
-                    held = temp
-                    copies.forget(folder.appending(path: project).standardizedFileURL.path)
-                }
+                held = moveAside(project)
             }
             mkdirat(fd, project, 0o755)
             let child = openat(fd, project, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-            guard child >= 0 else { continue }
+            guard child >= 0 else { return }
             defer { close(child) }
             let stack = folder.appending(path: project, directoryHint: .isDirectory)
             if let held {
@@ -111,10 +135,15 @@ package nonisolated enum CopyWriter {
                 gone.append(stack.appending(path: name, directoryHint: .isDirectory))
             }
         }
-        for name in names(in: fd) where !keep.contains(folded(name)) {
-            gone.append(folder.appending(path: name, directoryHint: .isDirectory))
+
+        /// The container folder in the project's place, renamed out of the way to go inside the project's folder:
+        /// the name it's held under.
+        private func moveAside(_ project: String) -> String? {
+            let temp = ".hold-" + String(UUID().uuidString.prefix(8))
+            guard renameat(fd, project, fd, temp) == 0 else { return nil }
+            copies.forget(folder.appending(path: project).standardizedFileURL.path)
+            return temp
         }
-        return gone
     }
 
     /// Moves a container's folder from the engine's folder into its project, when an older layout left it there.
