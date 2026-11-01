@@ -3042,7 +3042,7 @@
   },
   {
     "file": "Strata/Remote/RemoteCopyStore.swift",
-    "find": "self.root = Self.rootURL(root)",
+    "find": "self.root = CopyRoot.spelled(root)",
     "replace": "self.root = root.standardizedFileURL",
     "rule": "Remote environment uncreated cache roots survive native path normalization",
     "tests": "RemoteCopyOwnershipTests/aMissingCopyRootKeepsItsIdentityWhenNativeNavigationNormalizesItsPath"

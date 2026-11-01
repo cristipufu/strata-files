@@ -49,22 +49,9 @@ package nonisolated final class ContainerCopyStore: Sendable {
         root: SecureStorage.Context.shared.caches.appending(path: "Containers.noindex", directoryHint: .isDirectory))
 
     package init(root: URL) {
-        let resolved = Self.rootURL(root)
+        let resolved = CopyRoot.spelled(root)
         self.root = resolved
         self.rootPath = resolved.path
-    }
-
-    /// Foundation standardizes system aliases such as /private/var only when their path exists. Normalize an
-    /// existing ancestor first so creating the cache cannot change its identity.
-    private static func rootURL(_ root: URL) -> URL {
-        let root = root.standardizedFileURL
-        guard root.isFileURL, root.path.hasPrefix("/"), root.path != "/" else { return root }
-        var parent = root.deletingLastPathComponent(), missing = [root.lastPathComponent]
-        while parent.path != "/", !FileManager.default.fileExists(atPath: parent.path) {
-            missing.append(parent.lastPathComponent)
-            parent.deleteLastPathComponent()
-        }
-        return missing.reversed().reduce(parent.standardizedFileURL) { $0.appending(path: $1, directoryHint: .isDirectory) }
     }
 
     /// The engine's Containers folder, made if needed.
