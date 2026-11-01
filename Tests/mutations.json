@@ -6869,7 +6869,7 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a root named by CompactID is a revision's root",
-    "find": "            case NodeID.rootObjectReference2 where contents:\n                let id = try table.identity(try cursor.read())\n                revision.roots[try cursor.read()] = id\n",
+    "find": "        case NodeID.rootObjectReference2 where contents:\n            let id = try table.identity(try cursor.read())\n            revision.roots[try cursor.read()] = id\n",
     "replace": "",
     "tests": "OneNoteContentsTests/aTableOfContentsListsItsSectionsInOneNotesOrderWithTheirColors"
   },
@@ -6925,14 +6925,14 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a table of contents' revision copies a range of entries from the one it depends on",
-    "find": "                for offset in 0..<count {",
-    "replace": "                for offset in 0..<count where false {",
+    "find": "            for offset in 0..<count {",
+    "replace": "            for offset in 0..<count where false {",
     "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
   },
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a table of contents' revision copies an entry from the one it depends on",
-    "find": "                table.guids[to] = guid\n",
+    "find": "            table.guids[to] = guid\n",
     "replace": "",
     "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
   },
@@ -6946,7 +6946,7 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a table of contents' object stored other than plainly is refused",
-    "find": "                guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }\n",
+    "find": "            guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }\n",
     "replace": "",
     "tests": "OneNoteContentsTests/onlyATableOfContentsReadsAsOneAndOnlyAsOneOfItsVersion"
   },
@@ -6981,7 +6981,7 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a table of contents' revision gives an object new data",
-    "find": "                revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))\n",
+    "find": "            revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))\n",
     "replace": "",
     "tests": "OneNoteContentsTests/aTableOfContentsSavedAgainCopiesWhatItKeepsFromBefore"
   },
@@ -7002,14 +7002,14 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a range of copied entries is counted before it's copied",
-    "find": "                try copying(count)\n",
+    "find": "            try copying(count)\n",
     "replace": "",
     "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
   },
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: a copied entry is counted",
-    "find": "                try copying(1)\n",
+    "find": "            try copying(1)\n",
     "replace": "",
     "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
   },
@@ -7030,8 +7030,8 @@
   {
     "file": "Strata/Previews/OneStoreRevision.swift",
     "rule": "OneNote: only an object declared before gets new data",
-    "find": "                guard let revised = revision.objects[id] else { throw OneStoreError.malformed }",
-    "replace": "                let revised = revision.objects[id] ?? StoredObject(jcid: 0, content: .fileData(\"\"))",
+    "find": "            guard let revised = revision.objects[id] else { throw OneStoreError.malformed }",
+    "replace": "            let revised = revision.objects[id] ?? StoredObject(jcid: 0, content: .fileData(\"\"))",
     "tests": "OneNoteContentsTests/copiedEntriesMustBeThereToCopyAndAreCountedBeforeTheyAre"
   },
   {

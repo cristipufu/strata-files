@@ -201,74 +201,95 @@ nonisolated extension OneStore {
     private func declare(_ nodes: some Collection<FileNode>, into revision: inout Revision, inGroup: Bool,
                          dependency: GlobalIDTable = GlobalIDTable()) throws -> GlobalIDTable {
         var table = GlobalIDTable()
-        let contents = type == .contents
         for node in nodes {
             var cursor = ByteCursor(node.data)
-            switch node.id {
-            case NodeID.globalIDTableStart where contents, NodeID.globalIDTableStart2:
-                table = GlobalIDTable()
-            case NodeID.globalIDTableEntry:
-                let index: UInt32 = try cursor.read()
-                guard index < 0xFF_FFFF else { throw OneStoreError.malformed }
-                table.guids[index] = try StoredGUID(&cursor)
-            case NodeID.globalIDTableEntry2 where contents:
-                let from: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
-                guard to < 0xFF_FFFF, let guid = dependency.guids[from] else { throw OneStoreError.malformed }
-                try copying(1)
-                table.guids[to] = guid
-            case NodeID.globalIDTableEntry3 where contents:
-                let from: UInt32 = try cursor.read(), count: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
-                // Every entry copied must be there to copy, which bounds how many there are.
-                guard count <= dependency.guids.count, UInt64(to) + UInt64(count) <= 0xFF_FFFF else {
-                    throw OneStoreError.malformed
-                }
-                try copying(count)
-                for offset in 0..<count {
-                    guard from <= UInt32.max - offset, let guid = dependency.guids[from + offset] else {
-                        throw OneStoreError.malformed
-                    }
-                    table.guids[to + offset] = guid
-                }
-            case NodeID.objectGroupListReference:
+            if try readTableEntry(node, &cursor, into: &table, dependency: dependency) { continue }
+            if node.id == NodeID.objectGroupListReference {
                 guard !inGroup, let group = node.reference else { throw OneStoreError.malformed }
                 try declare(try self.nodes(in: group), into: &revision, inGroup: true)
-            case _ where NodeID.propertySetDeclarations.contains(node.id):
-                guard let chunk = node.reference else { throw OneStoreError.malformed }
-                let id = try table.identity(try cursor.read()), jcid: UInt32 = try cursor.read()
-                revision.declare(id, StoredObject(jcid: jcid, content: .properties(chunk, table)))
-            case NodeID.objectDeclarationFileData3, NodeID.objectDeclarationFileData3Large:
-                let id = try table.identity(try cursor.read()), jcid: UInt32 = try cursor.read()
-                try cursor.skip(node.id == NodeID.objectDeclarationFileData3 ? 1 : 4)
-                revision.declare(id, StoredObject(jcid: jcid, content: .fileData(try Self.string(&cursor))))
-            case NodeID.objectDeclarationWithRefCount where contents,
-                 NodeID.objectDeclarationWithRefCount2 where contents:
-                guard let chunk = node.reference else { throw OneStoreError.malformed }
-                let id = try table.identity(try cursor.read())
-                // The type's index, then how its data is encoded, which must be plainly; such an object is always a
-                // property set.
-                let body: UInt16 = try cursor.read()
-                guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }
-                revision.declare(id, StoredObject(jcid: 0x0002_0000 | UInt32(body & 0x3FF),
-                                                  content: .properties(chunk, table)))
-            case NodeID.objectRevisionWithRefCount where contents, NodeID.objectRevisionWithRefCount2 where contents:
-                // New data for an object this revision or one it depends on declared, which keeps its type.
-                guard let chunk = node.reference else { throw OneStoreError.malformed }
-                let id = try table.identity(try cursor.read())
-                guard let revised = revision.objects[id] else { throw OneStoreError.malformed }
-                revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))
-            case NodeID.rootObjectReference2 where contents:
-                let id = try table.identity(try cursor.read())
-                revision.roots[try cursor.read()] = id
-            case NodeID.rootObjectReference3:
-                let id = try ExtendedGUID(&cursor)
-                revision.roots[try cursor.read()] = id
-            case NodeID.objectDataEncryptionKey:
-                throw OneStoreError.encrypted
-            default:
                 continue
             }
+            if try readDeclaration(node, &cursor, table: table, into: &revision) { continue }
+            if node.id == NodeID.objectDataEncryptionKey { throw OneStoreError.encrypted }
         }
         return table
+    }
+
+    /// A node of the table of global IDs the declarations after it use: whether `node` was one. A table of contents'
+    /// revision may copy entries from `dependency`'s.
+    private func readTableEntry(_ node: FileNode, _ cursor: inout ByteCursor, into table: inout GlobalIDTable,
+                                dependency: GlobalIDTable) throws -> Bool {
+        let contents = type == .contents
+        switch node.id {
+        case NodeID.globalIDTableStart where contents, NodeID.globalIDTableStart2:
+            table = GlobalIDTable()
+        case NodeID.globalIDTableEntry:
+            let index: UInt32 = try cursor.read()
+            guard index < 0xFF_FFFF else { throw OneStoreError.malformed }
+            table.guids[index] = try StoredGUID(&cursor)
+        case NodeID.globalIDTableEntry2 where contents:
+            let from: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
+            guard to < 0xFF_FFFF, let guid = dependency.guids[from] else { throw OneStoreError.malformed }
+            try copying(1)
+            table.guids[to] = guid
+        case NodeID.globalIDTableEntry3 where contents:
+            let from: UInt32 = try cursor.read(), count: UInt32 = try cursor.read(), to: UInt32 = try cursor.read()
+            // Every entry copied must be there to copy, which bounds how many there are.
+            guard count <= dependency.guids.count, UInt64(to) + UInt64(count) <= 0xFF_FFFF else {
+                throw OneStoreError.malformed
+            }
+            try copying(count)
+            for offset in 0..<count {
+                guard from <= UInt32.max - offset, let guid = dependency.guids[from + offset] else {
+                    throw OneStoreError.malformed
+                }
+                table.guids[to + offset] = guid
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// A node declaring or revising an object, or naming a root: whether `node` was one.
+    private func readDeclaration(_ node: FileNode, _ cursor: inout ByteCursor, table: GlobalIDTable,
+                                 into revision: inout Revision) throws -> Bool {
+        let contents = type == .contents
+        switch node.id {
+        case _ where NodeID.propertySetDeclarations.contains(node.id):
+            guard let chunk = node.reference else { throw OneStoreError.malformed }
+            let id = try table.identity(try cursor.read()), jcid: UInt32 = try cursor.read()
+            revision.declare(id, StoredObject(jcid: jcid, content: .properties(chunk, table)))
+        case NodeID.objectDeclarationFileData3, NodeID.objectDeclarationFileData3Large:
+            let id = try table.identity(try cursor.read()), jcid: UInt32 = try cursor.read()
+            try cursor.skip(node.id == NodeID.objectDeclarationFileData3 ? 1 : 4)
+            revision.declare(id, StoredObject(jcid: jcid, content: .fileData(try Self.string(&cursor))))
+        case NodeID.objectDeclarationWithRefCount where contents,
+             NodeID.objectDeclarationWithRefCount2 where contents:
+            guard let chunk = node.reference else { throw OneStoreError.malformed }
+            let id = try table.identity(try cursor.read())
+            // The type's index, then how its data is encoded, which must be plainly; such an object is always a
+            // property set.
+            let body: UInt16 = try cursor.read()
+            guard body >> 10 & 0xF == 0 else { throw OneStoreError.malformed }
+            revision.declare(id, StoredObject(jcid: 0x0002_0000 | UInt32(body & 0x3FF),
+                                              content: .properties(chunk, table)))
+        case NodeID.objectRevisionWithRefCount where contents, NodeID.objectRevisionWithRefCount2 where contents:
+            // New data for an object this revision or one it depends on declared, which keeps its type.
+            guard let chunk = node.reference else { throw OneStoreError.malformed }
+            let id = try table.identity(try cursor.read())
+            guard let revised = revision.objects[id] else { throw OneStoreError.malformed }
+            revision.declare(id, StoredObject(jcid: revised.jcid, content: .properties(chunk, table)))
+        case NodeID.rootObjectReference2 where contents:
+            let id = try table.identity(try cursor.read())
+            revision.roots[try cursor.read()] = id
+        case NodeID.rootObjectReference3:
+            let id = try ExtendedGUID(&cursor)
+            revision.roots[try cursor.read()] = id
+        default:
+            return false
+        }
+        return true
     }
 
     /// A StringInStorageBuffer: a count of UTF-16 code units, then the units.
