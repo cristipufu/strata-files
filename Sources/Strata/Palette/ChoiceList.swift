@@ -23,7 +23,6 @@ enum ChoiceList {
 
     /// `scroll` showing `table`, inset by `insets` around its rows.
     static func configure(_ scroll: NSScrollView, showing table: NSTableView, insets: NSEdgeInsets) {
-        scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true

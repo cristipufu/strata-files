@@ -187,6 +187,7 @@ final class CommandPalette: NSObject {
         ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
         table.pressed = { [weak self] row in self?.ranker.press(row) }
         ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0))
+        scroll.translatesAutoresizingMaskIntoConstraints = false
 
         content.addSubview(icon)
         content.addSubview(field)

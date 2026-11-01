@@ -183,6 +183,7 @@ final class PathSuggestionList: NSObject {
         ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
         table.setAccessibilityLabel(String(localized: "Folder suggestions"))
         ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 5, left: 0, bottom: 0, right: 0))
+        scroll.translatesAutoresizingMaskIntoConstraints = false
 
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 10.5)

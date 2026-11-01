@@ -325,6 +325,18 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     // MARK: - Views
 
     private func build() {
+        setUpPanels()
+        boxGlass.cornerRadius = 9
+        boxGlass.contentView = searchRow()
+        box.contentView = boxGlass
+        setUpResults()
+        NotificationCenter.default.addObserver(self, selector: #selector(boxBecameKey), name: NSWindow.didBecomeKeyNotification, object: box)
+        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: box)
+        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: results)
+    }
+
+    /// The box and its results float just above the Dock, on every Space, without a window shadow.
+    private func setUpPanels() {
         let aboveDock = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)) + 1)
         for panel in [box, results] {
             panel.isOpaque = false
@@ -339,7 +351,10 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             panel.isExcludedFromWindowsMenu = true
             panel.isReleasedWhenClosed = false
         }
+    }
 
+    /// A magnifier and the field typed in.
+    private func searchRow() -> NSView {
         let magnifier = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil) ?? NSImage())
         magnifier.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
         magnifier.contentTintColor = .secondaryLabelColor
@@ -364,38 +379,18 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             field.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
             field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
         ])
-        boxGlass.cornerRadius = 9
-        boxGlass.contentView = row
-        box.contentView = boxGlass
+        return row
+    }
 
-        // The results: ⌘K's rows on glass, rising above the box.
-        table.addTableColumn(NSTableColumn(identifier: .init("main")))
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.refusesFirstResponder = true
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
+    /// The results: ⌘K's rows on glass, rising above the box.
+    private func setUpResults() {
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(clickedRow))
         table.pressed = { [weak self] row in self?.ranker.press(row) }
-        table.action = #selector(clickedRow)
         let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0))
         let card = ShadowedGlass(cornerRadius: 18)
         card.glass.contentView = scroll
         results.contentView = card
-
-        NotificationCenter.default.addObserver(self, selector: #selector(boxBecameKey), name: NSWindow.didBecomeKeyNotification, object: box)
-        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: box)
-        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: results)
     }
 }
 
