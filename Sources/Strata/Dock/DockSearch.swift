@@ -60,9 +60,9 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         ranker.lateArrived = { [weak self] keeping in self?.showResults(keeping: keeping) }
         // Index and documents only once typing pauses; names (folders, apps, commands) as you type.
         ranker.lateDelay = .milliseconds(180)
-        ranker.selectedTitle = { [weak self] in
+        ranker.selectedIdentity = { [weak self] in
             guard let self, ranker.results.indices.contains(table.selectedRow) else { return nil }
-            return ranker.results[table.selectedRow].item.title
+            return ranker.results[table.selectedRow].item.id
         }
         // The saved setting stays on for next launch, but the box and its gap only belong to a running Strata.
         notifications.addObserver(self, selector: #selector(disable), name: NSApplication.willTerminateNotification, object: nil)
@@ -194,7 +194,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50), execute: work)
     }
 
-    private func showResults(keeping selectedTitle: String? = nil) {
+    private func showResults(keeping selectedID: PaletteItem.ID? = nil) {
         let rows = ranker.results
         let keys = rows.map { "\($0.item.title)\u{1}\($0.item.subtitle)\u{1}\($0.matches)" }
         // The same rows again (a keystroke that changed nothing shown): no redraw.
@@ -202,12 +202,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             shownRows = keys
             table.reloadData()
         }
-        let keep = selectedTitle.flatMap { title in rows.firstIndex { $0.item.title == title } } ?? 0
+        let keep = selectedID.flatMap { id in rows.firstIndex { $0.item.id == id } } ?? 0
         if !rows.isEmpty, table.selectedRow != keep {
             table.selectRowIndexes([keep], byExtendingSelection: false)
-            table.scrollRowToVisible(keep)
         }
         placeResults()
+        results.contentView?.layoutSubtreeIfNeeded()
+        ChoiceList.reveal(keep, in: table)
     }
 
     private func clear() {

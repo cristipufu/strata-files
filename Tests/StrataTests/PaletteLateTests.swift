@@ -64,7 +64,7 @@ import Testing
                             fixedScore: hit.score, url: hit.url) {}
             }
         }
-        var kept: String?
+        var kept: PaletteItem.ID?
         ranker.lateArrived = { kept = $0 }
         ranker.rank(tree.url("note.txt").path)
         #expect(ranker.results.isEmpty && ranker.pathLookup != nil)
@@ -73,7 +73,7 @@ import Testing
         #expect(ranker.results.first?.item.kind == .path)
         #expect(ranker.results.first?.item.url?.path == tree.url("note.txt").path)
         // The typed path arrives selected: Return goes there.
-        #expect(kept == ranker.results.first?.item.title)
+        #expect(kept == ranker.results.first?.item.id)
         #expect(!ranker.isSearching && ranker.pathLookup == nil)
         // A path that isn't there offers nothing to go to.
         ranker.rank(tree.url("missing").path)
@@ -105,15 +105,16 @@ import Testing
         ranker.rank("something else")
         await dropped.value
         #expect(runs == 1)
-        var kept: String?
+        var kept: PaletteItem.ID?
         ranker.lateArrived = { kept = $0 }
-        ranker.selectedTitle = { "Chosen row" }
+        let chosen = PaletteItem.ID.command("chosen")
+        ranker.selectedIdentity = { chosen }
         ranker.rank(tree.url("note.txt").path)
         ranker.rowChosen = true
         ranker.afterPathLookup { runs += 1 }
         #expect(runs == 2 && ranker.waitingRun == nil)
         await ranker.pathLookup?.value
-        #expect(kept == "Chosen row")
+        #expect(kept == chosen)
         ranker.cancel()
         #expect(tree.snapshot() == ["note.txt"])
     }

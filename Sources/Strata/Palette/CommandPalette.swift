@@ -26,6 +26,18 @@ struct PaletteItem {
         }
     }
 
+    enum ID: Hashable {
+        case location(String), command(String), workspace(String), instance(UUID)
+    }
+
+    let instanceID = UUID()
+    var id: ID {
+        if let url { return .location(url.lexicallyStandardized.path) }
+        if let commandID { return .command(commandID) }
+        if kind == .workspace { return .workspace(title) }
+        return .instance(instanceID)
+    }
+
     let title: String
     let subtitle: String
     let icon: NSImage
@@ -78,7 +90,15 @@ final class CommandPalette: NSObject {
     private weak var parent: NSWindow?
     private var pendingUpdate: DispatchWorkItem?
     /// What the table shows, to leave it alone when an update brings the same rows.
-    private var shownRows: [String] = []
+    private struct ShownRow: Equatable {
+        let id: PaletteItem.ID
+        let title: String
+        let subtitle: String
+        let kind: String
+        let shortcut: String?
+        let matches: [Int]
+    }
+    private var shownRows: [ShownRow]?
     /// Rows the list has room for: while you type it grows but doesn't shrink (no jumping).
     private var listRows = 0
 
@@ -107,9 +127,9 @@ final class CommandPalette: NSObject {
         ranker.lateArrived = { [weak self] keeping in self?.showResults(keeping: keeping) }
         // The index once typing pauses (a keystroke meanwhile cancels it); names as you type.
         ranker.lateDelay = .milliseconds(120)
-        ranker.selectedTitle = { [weak self] in
+        ranker.selectedIdentity = { [weak self] in
             guard let self, table.selectedRow >= 0, table.selectedRow < results.count else { return nil }
-            return results[table.selectedRow].item.title
+            return results[table.selectedRow].item.id
         }
         buildContent()
     }
@@ -140,7 +160,7 @@ final class CommandPalette: NSObject {
         ranker.source = items
         field.stringValue = ""
         pendingUpdate?.cancel()
-        shownRows = []
+        shownRows = nil
         listRows = 0
         update()
         if let content = panel.contentView { ThemeStyle.refresh(content) }
@@ -236,30 +256,34 @@ final class CommandPalette: NSObject {
         if pendingUpdate != nil { update() }
     }
 
-    private func showResults(keeping selectedTitle: String? = nil) {
-        let keys = results.map { "\($0.item.title)\u{1}\($0.item.subtitle)\u{1}\($0.matches)" }
+    private func showResults(keeping selectedID: PaletteItem.ID? = nil) {
+        let keys = results.map { ShownRow(id: $0.item.id, title: $0.item.title, subtitle: $0.item.subtitle,
+                                         kind: $0.item.kind.rawValue, shortcut: $0.item.shortcut, matches: $0.matches) }
         // The same rows again (a keystroke that changed nothing shown): no redraw.
         if keys != shownRows {
             shownRows = keys
             table.reloadData()
         }
-        let keep = selectedTitle.flatMap { title in results.firstIndex { $0.item.title == title } } ?? 0
+        let keep = selectedID.flatMap { id in results.firstIndex { $0.item.id == id } } ?? 0
         if !results.isEmpty, table.selectedRow != keep { table.selectRowIndexes([keep], byExtendingSelection: false) }
-        table.scrollRowToVisible(keep)
 
         let typing = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
         let count = min(results.count, Self.maxVisibleRows)
         listRows = typing ? max(listRows, count) : count
         let rows = CGFloat(listRows)
         let height = Self.fieldHeight + (rows > 0 ? rows * Self.rowHeight + 14 : 0)
-        guard heightConstraint.constant != height || panel.frame.height != height + ShadowedGlass.margin * 2 else { return }
-        heightConstraint.constant = height
-        // The top stays put as the list grows or shrinks.
-        var frame = panel.frame
-        let panelHeight = height + ShadowedGlass.margin * 2
-        frame.origin.y += frame.height - panelHeight
-        frame.size.height = panelHeight
-        panel.setFrame(frame, display: true)
+        if heightConstraint.constant != height || panel.frame.height != height + ShadowedGlass.margin * 2 {
+            heightConstraint.constant = height
+            // The top stays put as the list grows or shrinks.
+            var frame = panel.frame
+            let panelHeight = height + ShadowedGlass.margin * 2
+            frame.origin.y += frame.height - panelHeight
+            frame.size.height = panelHeight
+            panel.setFrame(frame, display: true)
+        }
+        // Resizing changes the clip bounds. Scroll only once the new viewport has its final geometry.
+        panel.contentView?.layoutSubtreeIfNeeded()
+        ChoiceList.reveal(keep, in: table)
     }
 
     /// Set by the owner: navigates to a typed path (folders open, files are revealed).
@@ -481,10 +505,10 @@ final class PaletteRanker {
     var goToPath: ((URL) -> Void)?
     /// What shows with nothing typed (nothing, when not set).
     var emptyResults: (([PaletteItem]) -> [PaletteItem])?
-    /// Late items were merged in; the title of the row to keep selected.
-    var lateArrived: ((String?) -> Void)?
+    /// Late items were merged in; the identity of the row to keep selected.
+    var lateArrived: ((PaletteItem.ID?) -> Void)?
     /// For the selection kept when late items arrive.
-    var selectedTitle: () -> String? = { nil }
+    var selectedIdentity: () -> PaletteItem.ID? = { nil }
     /// How long typing must pause before the slow search starts (the index, documents' text): a keystroke in the
     /// meantime cancels it before it does any work.
     var lateDelay: Duration = .zero
@@ -604,9 +628,9 @@ final class PaletteRanker {
     }
 
     private func merge(_ extra: [PaletteItem]) {
-        guard !extra.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
+        guard !extra.isEmpty else { return }
         // The typed path, once found, is what Return takes, unless a row was chosen meanwhile.
-        let keeping = (rowChosen ? nil : extra.first { $0.kind == .path }?.title) ?? selectedTitle()
+        let keeping = rowChosen ? selectedIdentity() : extra.first { $0.kind == .path }?.id
         scored += extra.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
         scored.sort { $0.score > $1.score }
         publish()

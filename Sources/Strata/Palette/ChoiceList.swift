@@ -30,4 +30,14 @@ enum ChoiceList {
         scroll.contentInsets = insets
         scroll.documentView = table
     }
+
+    static func reveal(_ row: Int, in table: NSTableView) {
+        guard let scroll = table.enclosingScrollView else { return }
+        if row == 0 {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        } else {
+            table.scrollRowToVisible(row)
+        }
+    }
 }

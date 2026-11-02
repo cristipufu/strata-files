@@ -8332,5 +8332,19 @@
     "replace": "// Keep duplicate locations.",
     "rule": "Palette matches deduplicate locations within and across result batches before limiting rows",
     "tests": "PaletteLateTests/pathLookupAndIndexBatchesShowEachLocationOnceWithItsStrongestMatch|PaletteLateTests/repeatedSourceAndLateMatchesDoNotDuplicateRowsOrHideDifferentTargets"
+  },
+  {
+    "file": "Strata/Palette/CommandPalette.swift",
+    "find": "let keeping = rowChosen ? selectedIdentity() : extra.first { $0.kind == .path }?.id",
+    "replace": "let keeping = selectedIdentity()",
+    "rule": "Palette result updates select the best match until the user chooses a row",
+    "tests": "PaletteScrollTests/latePathMatchesStartAtTheTopAfterThePanelGrows"
+  },
+  {
+    "file": "Strata/Palette/CommandPalette.swift",
+    "find": "results.firstIndex { $0.item.id == id }",
+    "replace": "results.firstIndex { _ in true }",
+    "rule": "Palette selection keeps the chosen location when equal titles move during late results",
+    "tests": "PaletteScrollTests/lateResultsKeepTheChosenLocationWhenSeveralRowsHaveTheSameTitle"
   }
 ]
