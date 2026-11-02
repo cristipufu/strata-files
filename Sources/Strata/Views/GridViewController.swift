@@ -278,8 +278,9 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     }
 
     /// Redraws visible items (focus, clipboard dimming, appearance), optionally re-reading their content.
-    func refreshVisibleItems(reconfigure: Bool = false) {
+    func refreshVisibleItems(reconfigure: Bool = false, paths: Set<String>? = nil) {
         for case let item as GridItem in collectionView.visibleItems() {
+            if let paths, !paths.contains(item.entry?.url.path ?? "") { continue }
             if reconfigure, let path = collectionView.indexPath(for: item) {
                 configure(item, at: path.item)
             } else {

@@ -343,9 +343,7 @@ extension BrowserViewController {
     @objc func gitStatusChanged(_ notification: Notification) {
         guard let root = notification.userInfo?["root"] as? URL, let directory,
               directory.path == root.path || directory.path.hasPrefix(root.path + "/") else { return }
-        clipboardChanged()
-        gridController?.refreshVisibleItems()
-        columnController?.refreshVisibleRows()
+        reloadVisibleCells(reconfigure: false)
     }
 
     /// Reads the shown folder's tags again (Finder may have changed them while Strata was in the background).
@@ -365,18 +363,36 @@ extension BrowserViewController {
     /// Items' own icons arrived (an app's, a package's, a special folder's): rows drawn with their kind's draw them.
     @objc func iconsLoaded(_ notification: Notification) {
         guard let paths = notification.userInfo?["paths"] as? Set<String> else { return }
-        presentations.iconsArrived(showing: effectiveMode)
-        guard paths.contains(where: { listing.node(for: URL(fileURLWithPath: $0, isDirectory: false)) != nil })
-                || effectiveMode == .columns && columnController?.showsAny(of: paths) == true else { return }
-        reloadVisibleCells()
+        presentations.decorationsChanged(showing: effectiveMode)
+        switch effectiveMode {
+        case .list:
+            let column = outlineView.column(withIdentifier: .name)
+            guard column >= 0 else { return }
+            let visible = outlineView.rows(in: outlineView.visibleRect)
+            for row in visible.location..<NSMaxRange(visible) {
+                guard let node = outlineView.item(atRow: row) as? FileNode, paths.contains(node.url.path),
+                      let cell = outlineView.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView else { continue }
+                let image = services.thumbnails.icon(for: node.entry)
+                if let name = cell as? NameCellView { name.updateIcon(image) }
+                else if cell.imageView?.image !== image { cell.imageView?.image = image }
+            }
+        case .grid: gridController?.refreshVisibleItems(reconfigure: true, paths: paths)
+        case .columns: columnController?.refreshVisibleRows(paths: paths)
+        case .gallery: galleryController?.refreshVisibleItems(reconfigure: true, paths: paths)
+        case .treemap: break
+        }
     }
 
     /// Every view mode's visible items configured again (icons, badges, thumbnails).
-    func reloadVisibleCells() {
-        clipboardChanged()
-        gridController?.refreshVisibleItems(reconfigure: true)
-        columnController?.refreshVisibleRows()
-        galleryController?.refreshVisibleItems(reconfigure: true)
+    func reloadVisibleCells(reconfigure: Bool = true) {
+        presentations.decorationsChanged(showing: effectiveMode)
+        switch effectiveMode {
+        case .list: clipboardChanged()
+        case .grid: gridController?.refreshVisibleItems(reconfigure: reconfigure)
+        case .columns: columnController?.refreshVisibleRows()
+        case .gallery: galleryController?.refreshVisibleItems(reconfigure: reconfigure)
+        case .treemap: break
+        }
     }
 
     @objc func clipboardChanged() {

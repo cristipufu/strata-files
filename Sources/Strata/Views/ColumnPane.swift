@@ -307,10 +307,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         return icon.convert(icon.bounds, to: tableView)
     }
 
-    func refreshVisibleRows() {
+    func refreshVisibleRows(paths: Set<String>? = nil) {
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.length > 0 else { return }
         var rows = IndexSet(integersIn: visible.location..<NSMaxRange(visible))
+        if let paths { rows = IndexSet(rows.filter { entries.indices.contains($0) && paths.contains(entries[$0].url.path) }) }
         if let renamingRow { rows.remove(renamingRow) }
         tableView.reloadData(forRowIndexes: rows, columnIndexes: [0])
     }

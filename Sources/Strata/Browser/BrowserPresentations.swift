@@ -7,8 +7,7 @@ final class BrowserPresentations {
     private(set) var columnController: ColumnBrowserViewController?
     private(set) var galleryController: GalleryViewController?
     private(set) var treemapController: TreemapViewController?
-    /// Items' own icons arrived while the Columns view was cached but hidden: it draws its rows again when shown.
-    private var columnsMissedIcons = false
+    private var columnsNeedRefresh = false
 
     var cached: [FileCollectionController] {
         [gridController, columnController, galleryController, treemapController].compactMap { $0 }
@@ -24,15 +23,15 @@ final class BrowserPresentations {
         }
     }
 
-    /// Items' own icons arrived while `shown` is the pane's view: a hidden Columns view reads nothing now.
-    func iconsArrived(showing shown: BrowserViewMode) {
-        if shown != .columns, columnController != nil { columnsMissedIcons = true }
+    /// A hidden Columns view keeps deeper columns; refresh their decorations only when it is shown again.
+    func decorationsChanged(showing shown: BrowserViewMode) {
+        if shown != .columns, columnController != nil { columnsNeedRefresh = true }
     }
 
     func install(_ mode: BrowserViewMode, in browser: BrowserViewController) {
         attach(mode, in: browser)
-        if mode == .columns, columnsMissedIcons {
-            columnsMissedIcons = false
+        if mode == .columns, columnsNeedRefresh {
+            columnsNeedRefresh = false
             columnController?.refreshVisibleRows()
         }
     }

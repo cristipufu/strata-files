@@ -335,8 +335,9 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
     @objc private func clipboardChanged() { refreshVisibleItems() }
 
     /// Redraws the thumbnails' dimming, plates and badges (clipboard, git, focus, appearance), optionally re-reading thumbnails.
-    func refreshVisibleItems(reconfigure: Bool = false) {
+    func refreshVisibleItems(reconfigure: Bool = false, paths: Set<String>? = nil) {
         for case let item as GalleryThumbnailItem in strip.visibleItems() {
+            if let paths, !paths.contains(item.entry?.url.path ?? "") { continue }
             if let entry = item.entry {
                 if reconfigure {
                     configure(item, with: entry)
@@ -346,7 +347,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
             }
             item.emphasized = strip.isEmphasized
         }
-        if reconfigure {
+        if reconfigure, paths == nil || previewed.map({ paths?.contains($0.url.path) == true }) == true {
             schedulePreview(now: true, force: true)
         }
     }

@@ -514,10 +514,11 @@ extension IconCache {
             let mark = ContainerIconMark.stack(states: members.map(\.state), anyBusy: members.contains { containerStore.busy[$0.id] != nil })
             return markedIcon(mark.stackSymbol, mark)
         }
-        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType {
+        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType,
+           !type.conforms(to: .application), !type.conforms(to: .bundle) {
             return icon(forType: type)
         }
-        return icon(forPath: entry.url.path, folder: entry.isDirectory, link: entry.isSymlink)
+        return icon(forPath: entry.url.path, folder: entry.isDirectory, link: entry.isSymlink, type: entry.contentType)
     }
 }
 

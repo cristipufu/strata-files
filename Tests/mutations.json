@@ -3549,14 +3549,14 @@
   },
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
-    "find": "if let preview, let entry = preview.entry { preview.show(entry) }",
+    "find": "if let preview, let entry = preview.entry, paths?.contains(entry.url.path) != false { preview.show(entry) }",
     "replace": "",
     "rule": "Provider thumbnail and info ownership column preview does not refresh when a placeholder is fetched",
     "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
   },
   {
     "file": "Strata/Views/GalleryViewController.swift",
-    "find": "if reconfigure {\n            schedulePreview(now: true, force: true)\n        }",
+    "find": "if reconfigure, paths == nil || previewed.map({ paths?.contains($0.url.path) == true }) == true {\n            schedulePreview(now: true, force: true)\n        }",
     "replace": "",
     "rule": "Provider thumbnail and info ownership gallery preview does not refresh when a placeholder is fetched",
     "tests": "ProviderThumbnailInfoTests/allViewsAndQuickLookTransitionUseTheirOwnThumbnailsAndItemInfoAcrossFetch"
@@ -8346,5 +8346,26 @@
     "replace": "results.firstIndex { _ in true }",
     "rule": "Palette selection keeps the chosen location when equal titles move during late results",
     "tests": "PaletteScrollTests/lateResultsKeepTheChosenLocationWhenSeveralRowsHaveTheSameTitle"
+  },
+  {
+    "file": "Strata/Support/IconCache.swift",
+    "rule": "Icon refresh: application bundles never use a folder placeholder",
+    "find": "        if folder, named?.conforms(to: .application) == true { return .applicationBundle }",
+    "replace": "",
+    "tests": "IconLoadingTests/applicationsShowAnApplicationWhileTheirOwnIconLoads"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "rule": "Icon refresh: arriving icons keep native cells and edits intact",
+    "find": "        case .list:\n            let column = outlineView.column(withIdentifier: .name)",
+    "replace": "        case .list:\n            clipboardChanged()\n            let column = outlineView.column(withIdentifier: .name)",
+    "tests": "IconLoadingTests/iconArrivalsKeepNativeRowsAndEditsInPlace"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "rule": "Icon refresh: background decorations never reconfigure hidden columns",
+    "find": "        case .list: clipboardChanged()",
+    "replace": "        case .list: clipboardChanged(); columnController?.refreshVisibleRows()",
+    "tests": "IconLoadingTests/backgroundDecorationsLeaveCachedColumnsAloneUntilShown"
   }
 ]

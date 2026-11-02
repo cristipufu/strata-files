@@ -458,14 +458,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         refreshVisibleRows()
     }
 
-    func showsAny(of paths: Set<String>) -> Bool {
-        panes.contains { $0.entries.contains { paths.contains($0.url.path) } }
-    }
-
     /// Re-reads what visible rows show (clipboard dimming, git badges, fetched thumbnails and previews).
-    func refreshVisibleRows() {
-        for pane in panes { pane.refreshVisibleRows() }
-        if let preview, let entry = preview.entry { preview.show(entry) }
+    func refreshVisibleRows(paths: Set<String>? = nil) {
+        for pane in panes { pane.refreshVisibleRows(paths: paths) }
+        if let preview, let entry = preview.entry, paths?.contains(entry.url.path) != false { preview.show(entry) }
     }
 
     /// Metadata can arrive after a deeper column was sorted. Keep each column's selection and defer native editing.

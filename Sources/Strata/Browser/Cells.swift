@@ -112,6 +112,10 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         }
     }
 
+    func updateIcon(_ image: NSImage) {
+        if thumbnailURL == nil, icon.image !== image { icon.image = image }
+    }
+
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             gitBadge.backgroundStyle = backgroundStyle
@@ -217,6 +221,7 @@ final class GroupHeaderCellView: NSTableCellView {
         detail.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         detail.textColor = .secondaryLabelColor
         detail.setContentCompressionResistancePriority(.required, for: .horizontal)
+        imageView = icon
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),

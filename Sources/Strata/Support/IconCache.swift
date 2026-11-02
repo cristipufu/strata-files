@@ -113,9 +113,9 @@ package final class IconCache {
     /// says) and is read away from the main thread with the others asked about meanwhile: reading one asks the disk,
     /// and LaunchServices, which on a server takes seconds. `.iconsLoaded` says when ones other than their kind's
     /// arrive.
-    package func icon(forPath path: String, folder: Bool, link: Bool = false) -> NSImage {
+    package func icon(forPath path: String, folder: Bool, link: Bool = false, type: UTType? = nil) -> NSImage {
         if let cached = byPath.object(forKey: path as NSString) { return cached }
-        let kind = link ? .symbolicLink : Self.kind(ofPath: path, folder: folder)
+        let kind = link ? .symbolicLink : type ?? Self.kind(ofPath: path, folder: folder)
         shownKinds[path] = kind
         reads.request(path)
         return icon(forType: kind)
@@ -128,6 +128,8 @@ package final class IconCache {
     /// What the name says, for an item whose own icon isn't known yet: a folder unless it's a package, such as an app.
     private static func kind(ofPath path: String, folder: Bool) -> UTType {
         let named = UTType(filenameExtension: (path as NSString).pathExtension)
+        // The extension “app” describes an application file, not a package. A directory with that extension is a bundle.
+        if folder, named?.conforms(to: .application) == true { return .applicationBundle }
         if folder { return named.flatMap { $0.conforms(to: .package) ? $0 : nil } ?? .folder }
         return named ?? .data
     }
