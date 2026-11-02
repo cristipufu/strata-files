@@ -48,7 +48,6 @@ final class InspectorViewController: NSViewController {
     /// The image size read for the item on show, by its path and modification date, and the read under way.
     private var dimensions: (key: String, text: String?)?
     private(set) var dimensionsTask: Task<Void, Never>?
-    private var shownRows: [(String, NSView)] = []
     /// A native preview for code, Markdown, JSON, CSV, SQLite and archives; Quick Look covers everything else.
     private(set) var richPreview: NSView?
     private let richBackdrop = NSBox()
@@ -605,7 +604,6 @@ final class InspectorViewController: NSViewController {
     }
 
     private func setRows(_ rows: [(String, NSView)]) {
-        shownRows = rows
         infoRows.set(rows)
         infoCard.isHidden = rows.isEmpty
     }
@@ -625,8 +623,8 @@ final class InspectorViewController: NSViewController {
             let text = await Self.readDimensions(url)
             guard !Task.isCancelled, let self, self.shownURLs == [url] else { return }
             self.dimensions = (key, text)
-            guard let text, index <= self.shownRows.count else { return }
-            var rows = self.shownRows
+            guard let text, index <= self.infoRows.shown.count else { return }
+            var rows = self.infoRows.shown.map { ($0.title, $0.value) }
             rows.insert((Self.dimensionsTitle, InspectorRows.text(text)), at: index)
             self.setRows(rows)
         }

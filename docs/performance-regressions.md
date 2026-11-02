@@ -113,7 +113,7 @@ checks that the running disk stays attached and a symlink cannot redirect cleanu
 All seven fixture tests passed in debug and under Address Sanitizer. Disabling the mount-to-image guard failed the
 mapping regression, after which the original source was restored.
 
-## Final validation — 2 November 2026
+## Validation of the first six fixes — 2 November 2026
 
 - Full debug suite: 1,596 tests in 214 suites passed.
 - Full Address Sanitizer suite: 1,596 tests in 214 suites passed, including native disk-image cleanup.
@@ -125,3 +125,32 @@ mapping regression, after which the original source was restored.
 
 These checks cover the reported defects and the audited paths above. They do not establish that every path in the
 app is free of bugs or performance limits.
+
+## Inspector refreshes
+
+The Where flicker came from `56b6c20`: it made Finder's name and icon asynchronous but retained a comparison of the
+loaded name with a fresh row's stored filename. Applications with no selection shows the disk root, whose Finder
+name differs from its initial path component. App extensions, colon names and localized folders can differ too.
+Every metadata refresh then replaced the loaded row with a placeholder. The comparison now uses the requested
+folder, path and explicit presentation overrides, preserving the loaded view while updating its selection action.
+
+The review also found that `8532439` kept a separate array of requested rows. `InspectorRows` could retain a visible
+row while that array held its discarded replacement. Adding image dimensions used the replacement and changed
+Where again. Dimension updates now use the rows actually displayed; the duplicate array is gone.
+
+Four native regressions cover repeated refreshes after names and icons load, text and click-action updates, genuine
+location changes, and dimension insertion after a refresh. Both reported replacement paths failed before their
+fixes. The retained-view checks include the disk root, a fixture app and a colon-named folder. Seventy Inspector,
+icon, Columns, Gallery, thumbnail, Open With and Quick Look tests pass in debug and under Address Sanitizer. The
+existing provider-name mutation was updated, and a new mutation restores the loaded-name comparison.
+
+The related-view review checked Columns' cached thumbnail/dimension updates, Gallery's same-item preview refresh,
+the Inspector's icon-only notifications, and the Project, Compose, container and Summary cards' change guards.
+Those paths do not compare a loaded Finder name with a placeholder to decide view identity. Thumbnail images are
+bounded by a 128 MiB/1,500-image cache, path icons by 4,000 entries, and path display names by 5,000 entries.
+
+Read-only measurements of dev PID 14593 during the active session showed 2.5–20.4% CPU across five two-second
+intervals, about 756–905 MiB physical footprint, and a 1.0 GiB peak. A separate three-second sample reported 912 MiB;
+most main-thread samples were waiting for events. The VM summary showed roughly 605 MiB allocated on the default
+heap, but does not attribute those allocations to app features or establish a leak. These are observations of an
+interactive session, not a controlled idle-memory benchmark.

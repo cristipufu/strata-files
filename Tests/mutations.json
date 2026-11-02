@@ -3661,10 +3661,17 @@
   },
   {
     "file": "Strata/Inspector/InspectorCard.swift",
-    "find": "folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText",
+    "find": "folder == other.folder && path == other.path && shownName == other.shownName && locationText == other.locationText",
     "replace": "folder == other.folder && path == other.path",
     "rule": "Inspector provider ownership Where row keeps stale server name on in-place refresh",
     "tests": "InspectorProviderTests/inspectorAndWindowFollowTheirOwnServerAndCopyProvider"
+  },
+  {
+    "file": "Strata/Inspector/InspectorCard.swift",
+    "find": "shownName == other.shownName",
+    "replace": "nameText == other.nameText",
+    "rule": "Inspector Where refresh replaces a loaded row with a placeholder",
+    "tests": "InspectorLocationTests/refreshingWhereKeepsItsLoadedNameIconAndNativeRows|InspectorLocationTests/inspectorRefreshesKeepWhereAndItsCurrentSelection"
   },
   {
     "file": "Strata/Inspector/InfoEditorView.swift",

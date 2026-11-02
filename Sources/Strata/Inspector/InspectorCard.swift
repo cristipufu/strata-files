@@ -383,7 +383,8 @@ final class InspectorLocationView: NSView {
 
     /// Shows the same folder, the same way (its action shows the same place too).
     func showsSamePlace(as other: InspectorLocationView) -> Bool {
-        folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText
+        // Finder's asynchronously loaded name must not change a row's identity.
+        folder == other.folder && path == other.path && shownName == other.shownName && locationText == other.locationText
             && locationLeadsHere == other.locationLeadsHere
     }
 

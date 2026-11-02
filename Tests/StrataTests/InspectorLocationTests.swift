@@ -64,6 +64,132 @@ struct InspectorLocationTests {
         #expect(tree.snapshot() == ["Tool.app/", "a/", "a/b/", "a:b/"])
     }
 
+    @Test func refreshingWhereKeepsItsLoadedNameIconAndNativeRows() async throws {
+        let tree = try TestTree("Tool.app/", "a:b/")
+        let looks = FinderLooks()
+        // Applications with no selection shows the disk root. Finder also changes app and colon names.
+        for folder in [URL(fileURLWithPath: "/"), tree.url("Tool.app"), tree.url("a:b")] {
+            var selected = -1
+            let location = InspectorLocationView(folder: folder, shownAs: folder, looks: looks) { selected = 0 }
+            let size = InspectorRows.text("Calculating…")
+            let rows = InspectorRows()
+            rows.set([("Size", size), ("Where", location)])
+            await location.reading?.value
+            try #require(location.nameText != folder.lastPathComponent)
+            let text = location.pathLabel.attributedStringValue
+            let accessibleName = location.accessibilityLabel()
+            let icon = try #require(location.subviews.compactMap { $0 as? NSImageView }.first)
+            let image = try #require(icon.image)
+
+            for refresh in 1...3 {
+                let next = InspectorLocationView(folder: folder, shownAs: folder, looks: looks) { selected = refresh }
+                rows.set([("Size", InspectorRows.text("\(refresh) MB")), ("Where", next)])
+                #expect(rows.shown[0].value === size)
+                #expect(size.stringValue == "\(refresh) MB")
+                #expect(rows.shown[1].value === location, "A refresh keeps the loaded Where row attached.")
+                #expect(location.superview != nil)
+                #expect(location.pathLabel.attributedStringValue.isEqual(to: text))
+                #expect(location.accessibilityLabel() == accessibleName)
+                #expect(icon.image === image)
+                (rows.shown[1].value as? InspectorLocationView)?.action()
+                #expect(selected == refresh, "The retained row uses the newest selection's action.")
+                await next.reading?.value
+                #expect(rows.shown[1].value === location)
+            }
+        }
+        #expect(tree.snapshot() == ["Tool.app/", "a:b/"])
+    }
+
+    @Test func changingWhereReplacesItsFolderOrPresentation() async throws {
+        let tree = try TestTree("first/", "second/")
+        let looks = FinderLooks()
+        let folder = tree.url("first"), other = tree.url("second")
+        let rows = InspectorRows()
+        let original = InspectorLocationView(folder: folder, shownAs: folder, name: "Cloud", location: "host",
+                                             locationLeadsHere: false, looks: looks) {}
+        let changed = [
+            InspectorLocationView(folder: other, shownAs: folder, name: "Cloud", location: "host", locationLeadsHere: false, looks: looks) {},
+            InspectorLocationView(folder: folder, shownAs: other, name: "Cloud", location: "host", locationLeadsHere: false, looks: looks) {},
+            InspectorLocationView(folder: folder, shownAs: folder, name: "Other cloud", location: "host", locationLeadsHere: false, looks: looks) {},
+            InspectorLocationView(folder: folder, shownAs: folder, name: "Cloud", location: "other host", locationLeadsHere: false, looks: looks) {},
+            InspectorLocationView(folder: folder, shownAs: folder, name: "Cloud", location: "host", locationLeadsHere: true, looks: looks) {},
+        ]
+        for next in changed {
+            rows.set([("Where", original)])
+            rows.set([("Where", next)])
+            #expect(rows.shown.first?.value === next)
+            #expect(original.superview == nil)
+            await next.reading?.value
+        }
+        await original.reading?.value
+        #expect(tree.snapshot() == ["first/", "second/"])
+    }
+
+    @Test func inspectorRefreshesKeepWhereAndItsCurrentSelection() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("Tool.app/first/", "Tool.app/second/", "Other.app/first/")
+        let environment = try IndependentEnvironment()
+        defer { withExtendedLifetime(environment) {} }
+        let inspector = InspectorViewController(services: environment.services, previewScheduler: { _ in })
+        _ = inspector.view
+        var opened: (folder: URL, item: URL)?
+        inspector.onShowFolder = { opened = ($0, $1) }
+        let title = String(localized: "Where", comment: "Inspector row: the folder the item is in")
+        func show(_ path: String, bytes: Int64? = nil) throws -> InspectorLocationView {
+            let entry = try #require(FileEntry(url: tree.url(path)))
+            inspector.show(entries: [entry], folder: nil,
+                           folderSize: { _ in bytes.map { FolderSize(bytes: $0, files: 1) } }, canMeasure: { _ in true })
+            return try #require(inspector.infoRows.shown.first { $0.title == title }?.value as? InspectorLocationView)
+        }
+
+        let original = try show("Tool.app/first")
+        await original.reading?.value
+        #expect(original.nameText == "Tool")
+        #expect(try show("Tool.app/first", bytes: 4096) === original)
+        #expect(try show("Tool.app/second", bytes: 8192) === original)
+        original.action()
+        #expect(opened?.folder.path == tree.url("Tool.app").path)
+        #expect(opened?.item == tree.url("Tool.app/second"))
+
+        let other = try show("Other.app/first")
+        #expect(other !== original)
+        other.action()
+        #expect(opened?.folder.path == tree.url("Other.app").path)
+        #expect(opened?.item == tree.url("Other.app/first"))
+        await other.reading?.value
+        #expect(tree.snapshot() == ["Other.app/", "Other.app/first/", "Tool.app/", "Tool.app/first/", "Tool.app/second/"])
+    }
+
+    @Test func arrivingImageDimensionsKeepTheWhereRowAlreadyOnScreen() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("photo.png")
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 8,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0))
+        try #require(bitmap.representation(using: .png, properties: [:])).write(to: tree.url("photo.png"))
+        let environment = try IndependentEnvironment()
+        defer { withExtendedLifetime(environment) {} }
+        let inspector = InspectorViewController(services: environment.services, previewScheduler: { _ in })
+        _ = inspector.view
+        let entry = try #require(FileEntry(url: tree.url("photo.png")))
+        func show() {
+            inspector.show(entries: [entry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
+        }
+        func whereRow() throws -> InspectorLocationView {
+            try #require(inspector.infoRows.shown.compactMap { $0.value as? InspectorLocationView }.first)
+        }
+        show()
+        let original = try whereRow()
+        show()
+        #expect(try whereRow() === original)
+        let before = inspector.infoRows.shown.count
+        await inspector.dimensionsTask?.value
+        #expect(inspector.infoRows.shown.count == before + 1)
+        #expect(try whereRow() === original, "Adding a metadata row keeps the visible folder's name and icon.")
+        await original.reading?.value
+        #expect(tree.snapshot() == ["photo.png"])
+    }
+
     @Test func rightToLeftNamesKeepThePathReadingLeftToRight() throws {
         let folder = URL(fileURLWithPath: "/")
         // A Hebrew name, a Latin name behind an invisible right-to-left mark, and an override left open in the path.
