@@ -8325,5 +8325,12 @@
     "replace": "        runSearch()",
     "rule": "Search refreshes let the current request finish instead of repeatedly restarting it",
     "tests": "SearchRefreshTests/indexChangesLetTheCurrentSearchLandAndJoinOneDelayedRefresh"
+  },
+  {
+    "file": "Strata/Palette/CommandPalette.swift",
+    "find": "if let url = row.item.url, !paths.insert(url.lexicallyStandardized.path).inserted { continue }",
+    "replace": "// Keep duplicate locations.",
+    "rule": "Palette matches deduplicate locations within and across result batches before limiting rows",
+    "tests": "PaletteLateTests/pathLookupAndIndexBatchesShowEachLocationOnceWithItsStrongestMatch|PaletteLateTests/repeatedSourceAndLateMatchesDoNotDuplicateRowsOrHideDifferentTargets"
   }
 ]

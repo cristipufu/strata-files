@@ -12,6 +12,47 @@ import Testing
 /// ⌘K looks up a typed path, and `github/acme`-style paths, away from the main thread: they join the results when
 /// they arrive, and the search ends once they have.
 @MainActor struct PaletteLateTests {
+    @Test func pathLookupAndIndexBatchesShowEachLocationOnceWithItsStrongestMatch() async {
+        let ranker = PaletteRanker()
+        let target = URL(filePath: "/private/var/synthetic/GitHub/strata/Sources")
+        let alias = URL(filePath: "/var/synthetic/GitHub/strata/Sources")
+        let other = URL(filePath: "/var/synthetic/GitHub/strata/Sources/Tools/Sources")
+        var actions: [String] = []
+        let duplicate = PaletteItem(title: "Sources", subtitle: "Folder lookup", icon: NSImage(), kind: .folder,
+                                    fixedScore: 100, url: target) { actions.append("lookup") }
+        let best = PaletteItem(title: "Sources", subtitle: "Exact indexed path", icon: NSImage(), kind: .folder,
+                               fixedScore: 500, url: alias) { actions.append("index") }
+        let distinct = PaletteItem(title: "Sources", subtitle: "Another folder", icon: NSImage(), kind: .folder,
+                                   fixedScore: 200, url: other) { actions.append("other") }
+        ranker.lateItems = { _ in Array(repeating: duplicate, count: 100) + [best, distinct] }
+        ranker.rank("github/strata/sources")
+        await ranker.late?.value
+        #expect(ranker.results.count == 2)
+        #expect(ranker.results.map(\.item.subtitle) == ["Exact indexed path", "Another folder"])
+        #expect(actions.isEmpty)
+        ranker.results.first?.item.run()
+        #expect(actions == ["index"])
+        ranker.cancel()
+    }
+
+    @Test func repeatedSourceAndLateMatchesDoNotDuplicateRowsOrHideDifferentTargets() async {
+        let ranker = PaletteRanker()
+        let urls = [URL(filePath: "/private/var/synthetic/Sources"), URL(filePath: "/var/synthetic/Sources"),
+                    URL(filePath: "/var/synthetic/another/Sources")]
+        let items = urls.map { PaletteItem(title: "Sources", subtitle: "Folder", icon: NSImage(), kind: .folder, url: $0) {} }
+        ranker.source = items
+        ranker.lateItems = { _ in items }
+        ranker.rank("sources")
+        #expect(ranker.results.count == 2)
+        await ranker.late?.value
+        #expect(ranker.results.count == 2)
+        #expect(Set(ranker.results.compactMap { $0.item.url?.lexicallyStandardized.path }).count == 2)
+        ranker.emptyResults = { $0 }
+        ranker.rank("")
+        #expect(ranker.results.count == 2)
+        ranker.cancel()
+    }
+
     @Test func typedPathsAndPathLookupsArriveFromAwayFromTheMainThread() async throws {
         let tree = try TestTree("Projects/strata/", "note.txt")
         let ranker = PaletteRanker()

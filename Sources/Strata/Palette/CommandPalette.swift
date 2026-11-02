@@ -514,7 +514,8 @@ final class PaletteRanker {
         rowChosen = false
         scored = []
         guard !query.isEmpty else {
-            results = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int]()) }
+            scored = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int](), score: 0) }
+            publish()
             return
         }
         let query = self.query
@@ -528,7 +529,7 @@ final class PaletteRanker {
             }
         }
         scored.sort { $0.score > $1.score }
-        results = scored.prefix(60).map { ($0.item, $0.matches) }
+        publish()
         let asked = query
         // A typed path is looked up away from the main thread: a folder on a server may not answer.
         if goToPath != nil, asked.hasPrefix("/") || asked.hasPrefix("~") {
@@ -603,15 +604,26 @@ final class PaletteRanker {
     }
 
     private func merge(_ extra: [PaletteItem]) {
-        let known = Set(scored.compactMap { $0.item.url?.lexicallyStandardized.path })
-        let fresh = extra.filter { item in item.url.map { !known.contains($0.lexicallyStandardized.path) } ?? true }
-        guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
+        guard !extra.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
         // The typed path, once found, is what Return takes, unless a row was chosen meanwhile.
-        let keeping = (rowChosen ? nil : fresh.first { $0.kind == .path }?.title) ?? selectedTitle()
-        scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
+        let keeping = (rowChosen ? nil : extra.first { $0.kind == .path }?.title) ?? selectedTitle()
+        scored += extra.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
         scored.sort { $0.score > $1.score }
-        results = scored.prefix(60).map { ($0.item, $0.matches) }
+        publish()
         lateArrived?(keeping)
+    }
+
+    private func publish() {
+        var paths: Set<String> = []
+        // Deduplicate after ranking and before limiting: the strongest match represents each location, including
+        // duplicates within a single folder-lookup/index batch. Equal names in different folders remain distinct.
+        var rows: [(item: PaletteItem, matches: [Int])] = []
+        for row in scored {
+            if let url = row.item.url, !paths.insert(url.lexicallyStandardized.path).inserted { continue }
+            rows.append((row.item, row.matches))
+            if rows.count == 60 { break }
+        }
+        results = rows
     }
 
     /// Typing a path (`~/…` or `/…`) offers to go straight there.
