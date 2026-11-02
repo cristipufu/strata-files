@@ -4,6 +4,7 @@ Choose View → Customize Toolbar, or use the toolbar's native context menu. Dra
 order. New Folder, New File, Move to Trash, Copy To, Move To, Sync, Connect, Open in Terminal, Quick Look, Reload
 and Command Palette are optional. Sync opens Compare with Other Pane so you can review differences before syncing.
 The default set is unchanged; dragging the default set from the native palette restores it.
+Reload appears only when added through customization, and is disabled in search results, Recents and Duplicates.
 
 AppKit owns buttons, overflow, labels, spacing and the customization palette. Layout and display mode persist in
 `Prefs` through observable public toolbar properties, with native automatic saving disabled. Toolbar identifiers

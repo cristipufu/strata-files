@@ -10,6 +10,17 @@ import Testing
     private typealias Pane = BrowserViewController
     private let here = URL(fileURLWithPath: "/strata-availability-fixture/a.txt")
 
+    @Test func reloadNeedsAFolderRatherThanAResultsView() {
+        let reload = #selector(Pane.reloadFolder(_:))
+        var pane = FakePane()
+        #expect(answer(reload, pane).isEnabled)
+        pane.isShowingResults = true
+        #expect(!answer(reload, pane).isEnabled)
+        pane.isShowingResults = false
+        pane.hasFolder = false
+        #expect(!answer(reload, pane).isEnabled)
+    }
+
     @Test func moveToTrashIsOnlyOfferedWhereItCanHappenAndInATrashItPutsBack() {
         let local = answer(#selector(Pane.moveToTrash(_:)), FakePane(selectedEntries: [entry(here)]))
         #expect(local.isEnabled)
