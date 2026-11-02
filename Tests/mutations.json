@@ -8578,5 +8578,19 @@
     "replace": "return Answer(isEnabled: true)",
     "rule": "Optional Reload stays enabled in results or without a folder",
     "tests": "PaneCommandAvailabilityTests/reloadNeedsAFolderRatherThanAResultsView|ToolbarCustomizationTests/reloadIsAvailableForAFolderAndDisabledWhileShowingResults"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "let urls = browser.selectedURLs\n        guard !urls.isEmpty else { return }\n        switch OtherPaneTransfer.route",
+    "replace": "let urls = panes[0].browser.selectedURLs\n        guard !urls.isEmpty else { return }\n        switch OtherPaneTransfer.route",
+    "rule": "Optional other-pane toolbar commands take the first panes selection instead of the active one",
+    "tests": "ToolbarCustomizationTests/toolbarCopyAndMoveSendOnlyTheActivePanesSelectionToTheOtherPane"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,",
+    "replace": "let job = services.transfers.enqueue(urls, to: target, mode: .copy,",
+    "rule": "Optional other-pane toolbar Move copies instead of moving the selected item",
+    "tests": "ToolbarCustomizationTests/toolbarCopyAndMoveSendOnlyTheActivePanesSelectionToTheOtherPane"
   }
 ]

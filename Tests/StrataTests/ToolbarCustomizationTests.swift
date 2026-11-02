@@ -197,34 +197,63 @@ struct ToolbarCustomizationTests {
     }
 
     @Test func toolbarCopyAndMoveSendOnlyTheActivePanesSelectionToTheOtherPane() async throws {
-        for index in 0...1 {
-            let (from, to) = index == 0 ? ("left", "right") : ("right", "left")
-            let tree = try TestTree("left/", "right/", "\(from)/a.txt", "\(from)/b.txt", "\(from)/c.txt")
-            let state = try TestTree(), environment = try PreviewEnvironment(state)
-            let owner = controller(tree, environment)
-            defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
-            for pane in owner.panes { await pane.browser.directoryReads.task?.value }
-            let source = owner.panes[index].browser
-            owner.window?.makeFirstResponder(source.focusView)
-            let toolbar = try #require(owner.window?.toolbar)
-            toolbar.itemIdentifiers = [BrowserToolbar.identifier(.copyToOtherPane), BrowserToolbar.identifier(.moveToOtherPane)]
-            let copy = toolbar.items[0], move = toolbar.items[1]
-            #expect(copy.label == "Copy To" && copy.paletteLabel == "Copy to Other Pane" && move.label == "Move To")
-            source.select([], scroll: false)
-            #expect(!owner.validateToolbarItem(copy) && !owner.validateToolbarItem(move))
+        for mode in BrowserViewMode.ordered {
+            for index in 0...1 {
+                let (from, to) = index == 0 ? ("left", "right") : ("right", "left")
+                let tree = try TestTree("left/", "right/", "\(from)/a.txt", "\(from)/ab.txt", "\(from)/b.txt", "\(from)/c.txt")
+                let state = try TestTree(), environment = try PreviewEnvironment(state)
+                let owner = controller(tree, environment)
+                var landedIdentities: [FileIdentity] = []
+                defer {
+                    owner.window?.contentViewController = nil
+                    owner.panes.forEach { $0.stopBackgroundWork() }
+                    TestTree.removeFromTrash(matching: landedIdentities)
+                }
+                for pane in owner.panes { await pane.browser.directoryReads.task?.value }
+                let source = owner.panes[index].browser
+                source.setMode(.list, remember: false)
+                owner.window?.makeFirstResponder(source.focusView)
+                let toolbar = try #require(owner.window?.toolbar)
+                toolbar.itemIdentifiers = [BrowserToolbar.identifier(.copyToOtherPane), BrowserToolbar.identifier(.moveToOtherPane)]
+                let copy = toolbar.items[0], move = toolbar.items[1]
+                #expect(copy.label == "Copy To" && copy.paletteLabel == "Copy to Other Pane" && move.label == "Move To")
+                source.select([], scroll: false)
+                #expect(!owner.validateToolbarItem(copy) && !owner.validateToolbarItem(move))
+                source.setMode(mode, remember: false)
+                owner.window?.makeFirstResponder(source.focusView)
 
-            source.select([tree.url("\(from)/a.txt")], scroll: false)
-            #expect(owner.validateToolbarItem(copy))
-            owner.performToolbarCommand(copy)
-            for _ in 0..<300 where !tree.snapshot().contains("\(to)/a.txt") { try await Task.sleep(for: .milliseconds(20)) }
-            #expect(tree.snapshot().sorted() == ["\(from)/", "\(from)/a.txt", "\(from)/b.txt", "\(from)/c.txt", "\(to)/", "\(to)/a.txt"].sorted())
+                let before = tree.snapshot(), queue = environment.services.transfers, history = queue.history
+                source.select([tree.url("\(from)/a.txt")], scroll: false)
+                #expect(owner.validateToolbarItem(copy))
+                owner.performToolbarCommand(copy)
+                let copyJob = try #require(queue.jobs.last as? TransferJob)
+                owner.focusOtherPane(nil)
+                await copyJob.finished()
+                #expect(copyJob.state == .finished && copyJob.failures.isEmpty)
+                #expect(copyJob.sources.map(\.lexicallyStandardized) == [tree.url("\(from)/a.txt").lexicallyStandardized])
+                let copied = try #require(history.entries.last)
+                landedIdentities.append(try #require(FileIdentity.read(tree.url("\(to)/a.txt").path)))
+                let afterCopy = (before + ["\(to)/a.txt"]).sorted()
+                #expect(tree.snapshot() == afterCopy)
 
-            source.select([tree.url("\(from)/b.txt")], scroll: false)
-            #expect(owner.validateToolbarItem(move))
-            owner.performToolbarCommand(move)
-            for _ in 0..<300 where !tree.snapshot().contains("\(to)/b.txt") { try await Task.sleep(for: .milliseconds(20)) }
-            #expect(tree.snapshot().sorted() == ["\(from)/", "\(from)/a.txt", "\(from)/c.txt", "\(to)/", "\(to)/a.txt", "\(to)/b.txt"].sorted())
-            withExtendedLifetime((environment, state)) {}
+                owner.window?.makeFirstResponder(source.focusView)
+                source.select([tree.url("\(from)/b.txt")], scroll: false)
+                #expect(owner.validateToolbarItem(move))
+                owner.performToolbarCommand(move)
+                let moveJob = try #require(queue.jobs.last as? TransferJob)
+                owner.focusOtherPane(nil)
+                await moveJob.finished()
+                #expect(moveJob.state == .finished && moveJob.failures.isEmpty)
+                #expect(moveJob.sources.map(\.lexicallyStandardized) == [tree.url("\(from)/b.txt").lexicallyStandardized])
+                let moved = try #require(history.entries.last)
+                landedIdentities.append(try #require(FileIdentity.read(tree.url("\(to)/b.txt").path)))
+                #expect(tree.snapshot() == (afterCopy.filter { $0 != "\(from)/b.txt" } + ["\(to)/b.txt"]).sorted())
+                try await history.undo(moved, undoManager: nil)
+                #expect(tree.snapshot() == afterCopy)
+                try await history.undo(copied, undoManager: nil)
+                #expect(tree.snapshot() == before)
+                withExtendedLifetime((environment, state)) {}
+            }
         }
     }
 
