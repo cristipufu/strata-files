@@ -3674,6 +3674,13 @@
     "tests": "InspectorLocationTests/refreshingWhereKeepsItsLoadedNameIconAndNativeRows|InspectorLocationTests/inspectorRefreshesKeepWhereAndItsCurrentSelection"
   },
   {
+    "file": "Strata/Browser/OpenWithMenu.swift",
+    "find": "        guard reading[key]?.id == request.id else { return look }",
+    "replace": "",
+    "rule": "Finder looks: an abandoned read overwrites a reopened folder or clears its pending read",
+    "tests": "FinderLooksTests/anOldReadCannotOverwriteAReopenedFoldersLook"
+  },
+  {
     "file": "Strata/Inspector/InfoEditorView.swift",
     "find": "if let previous = url, comments.currentEditor() != nil {\n            pendingCommentSave?.cancel()\n            saveComment(comments.stringValue, at: previous.path, choice: commentChoice ?? shownCommentChoice)\n            window?.makeFirstResponder(nil)\n        }",
     "replace": "if false {}",

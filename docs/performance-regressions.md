@@ -154,3 +154,29 @@ intervals, about 756–905 MiB physical footprint, and a 1.0 GiB peak. A separat
 most main-thread samples were waiting for events. The VM summary showed roughly 605 MiB allocated on the default
 heap, but does not attribute those allocations to app features or establish a leak. These are observations of an
 interactive session, not a controlled idle-memory benchmark.
+
+## Folder look cache ownership
+
+`fd1f1c6` introduced the shared `FinderLooks` reads. Evicting a folder later removed only its completed value; an
+in-flight read could finish after navigation and cache it again. Multiple waiters also independently cleared the
+request and published the value, allowing an old waiter to clear or overwrite a replacement.
+
+Each read now has an identity. Eviction detaches the request before cancelling it, and only the current request may
+clear its slot or cache its result. Completed values stay limited to the folders the Inspector currently retains.
+Already-cancelled callers start no read, and active callers still share one request. The reader is injected so tests
+can hold I/O without real disks or LaunchServices. A held-read regression failed before the fix; further tests
+exercise leaving and reopening a folder in both completion orders, coalescing and cancellation. The request-identity
+guard has a negative-control entry. Both mutations for the preceding Where fix were also caught.
+
+The complete debug and Address Sanitizer suites each passed 1,603 tests in 215 suites after these changes. All 99
+Python checks, the four architecture audits and complete localization checks also passed.
+
+The runtime index contains 7,186,592 records: its ten fixed-width columns alone occupy about 267 MiB, before names
+and spare capacity. The replacement dev process (37566) measured 640 MiB in its first 30-second sample, then about
+950–969 MiB during and after the user's browsing, previews and search, with a 1.1 GiB peak. These observations are
+not a controlled before/after memory comparison. The interactive 45-second trace had the main thread waiting for
+events in about 96% of samples and no watchdog stalls recorded within that interval. The log did record a 422 ms
+startup stall and a separate 589 ms stall before that trace, without a matching sampled stack. CPU reached 70–99%
+after the run; the trace's sustained work was a deep index refresh on its background queue. Builds and tests were
+also producing filesystem changes. Repeated refresh coverage and the unmatched stalls need separate investigation;
+the Where fixes alone do not establish that this workload is now fully smooth.

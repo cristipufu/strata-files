@@ -6,6 +6,11 @@ nonisolated struct FinderLook: Sendable {
     let name: String
     let icon: CGImage?
 
+    init(name: String, icon: CGImage? = nil) {
+        self.name = name
+        self.icon = icon
+    }
+
     init(_ url: URL) {
         name = FileManager.default.displayName(atPath: url.path)
         var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
@@ -21,24 +26,44 @@ nonisolated struct FinderLook: Sendable {
 /// same folder (the Inspector's, on each refresh) waits for the read under way instead of starting another a slow disk
 /// would hold up.
 final class FinderLooks {
+    private struct Read {
+        let id = UUID()
+        let task: Task<FinderLook, Never>
+    }
+
+    private let read: @Sendable (URL) async -> FinderLook
     private var known: [String: FinderLook] = [:]
-    private var reading: [String: Task<FinderLook, Never>] = [:]
+    private var reading: [String: Read] = [:]
+    private var wanted: Set<String>?
+
+    init(read: @escaping @Sendable (URL) async -> FinderLook = FinderLook.read) {
+        self.read = read
+    }
+
+    isolated deinit { for request in reading.values { request.task.cancel() } }
 
     func look(_ url: URL) async -> FinderLook {
         let key = url.path
+        guard !Task.isCancelled else { return FinderLook(name: url.lastPathComponent) }
         if let known = known[key] { return known }
-        let task = reading[key] ?? Task { await FinderLook.read(url) }
-        reading[key] = task
-        let look = await task.value
+        let request = reading[key] ?? Read(task: Task { [read] in await read(url) })
+        reading[key] = request
+        let look = await request.task.value
+        guard reading[key]?.id == request.id else { return look }
         reading[key] = nil
-        known[key] = look
+        if wanted?.contains(key) != false { known[key] = look }
         return look
     }
 
     /// Forgets all but the looks of `urls` (what's shown now), so one shown again later is read as it is then.
     func keep(only urls: [URL]) {
         let kept = Set(urls.map(\.path))
+        wanted = kept
         known = known.filter { kept.contains($0.key) }
+        for (key, request) in reading where !kept.contains(key) {
+            reading[key] = nil
+            request.task.cancel()
+        }
     }
 }
 
