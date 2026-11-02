@@ -43,6 +43,9 @@ enum PaneCommandAvailability {
     private typealias Pane = BrowserViewController
 
     static func answer(for action: Selector, represented: Any?, in pane: some PaneCommandState) -> Answer {
+        if action == #selector(Pane.reloadFolder(_:)) {
+            return Answer(isEnabled: pane.hasFolder && !pane.isShowingResults)
+        }
         // While a name is being edited, ⌘⌫, ⌘D, ⇧⌘N and ⌥⌘N belong to the text, not the file. While another folder loads,
         // the rows on screen are the previous folder's.
         if fileCommands.contains(action), pane.isEditingText || pane.isLoadingFolder { return Answer(isEnabled: false) }

@@ -3,6 +3,7 @@
 Choose View → Customize Toolbar, or use the toolbar's native context menu. Drag commands in, out or into another
 order. New Folder, New File, Move to Trash, Open in Terminal, Quick Look, Reload and Command Palette are optional.
 The default set is unchanged; dragging the default set from the native palette restores it.
+Reload appears only when added through customization, and is disabled in search results, Recents and Duplicates.
 
 AppKit owns buttons, overflow, labels, spacing and the customization palette. Layout and display mode persist in
 `Prefs` through observable public toolbar properties, with native automatic saving disabled. Toolbar identifiers

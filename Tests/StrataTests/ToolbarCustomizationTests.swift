@@ -10,6 +10,12 @@ import Testing
 @testable import StrataSearch
 
 struct ToolbarCustomizationTests {
+    @Test func reloadBelongsOnlyToTheCustomizationItems() {
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        #expect(!BrowserToolbar.defaults.contains(reload))
+        #expect(BrowserToolbar.allowed.filter { $0 == reload }.count == 1)
+    }
+
     @Test func nativeContextMenuKeepsItsWrenchAndTextInTheDisplayOptionsColumns() throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
@@ -66,6 +72,9 @@ struct ToolbarCustomizationTests {
         #expect(toolbar.allowsUserCustomization && !toolbar.autosavesConfiguration)
         #expect(first.toolbarDefaultItemIdentifiers(toolbar) == BrowserToolbar.defaults)
         #expect(BrowserToolbar.defaults.count == 15)
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        #expect(!BrowserToolbar.defaults.contains(reload))
+        #expect(BrowserToolbar.allowed.filter { $0 == reload }.count == 1)
         for command in BrowserToolbar.commands { #expect(first.toolbarAllowedItemIdentifiers(toolbar).contains(BrowserToolbar.identifier(command))) }
         let ids: [NSToolbarItem.Identifier] = [.toggleSidebar, BrowserToolbar.identifier(.newFolder), .flexibleSpace, .pathBar]
         toolbar.itemIdentifiers = ids
@@ -213,6 +222,43 @@ struct ToolbarCustomizationTests {
         #expect(!owner.validateToolbarItem(item))
         owner.performToolbarCommand(item)
         #expect(tree.snapshot() == ["left/", "left/a", "right/", "right/a"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+    @Test func reloadAppearsOnlyWhenAddedAndRestoringDefaultsRemovesIt() throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        let toolbar = try #require(owner.window?.toolbar)
+        #expect(!toolbar.itemIdentifiers.contains(reload))
+        toolbar.insertItem(withItemIdentifier: reload, at: 1)
+        let reopened = controller(tree, environment)
+        defer { reopened.window?.contentViewController = nil; reopened.panes.forEach { $0.stopBackgroundWork() } }
+        let saved = try #require(reopened.window?.toolbar)
+        #expect(saved.itemIdentifiers.contains(reload))
+        saved.itemIdentifiers = BrowserToolbar.defaults
+        let reset = controller(tree, environment)
+        defer { reset.window?.contentViewController = nil; reset.panes.forEach { $0.stopBackgroundWork() } }
+        #expect(reset.window?.toolbar?.itemIdentifiers.contains(reload) == false)
+        #expect(tree.snapshot() == ["left/", "right/"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+    @Test func reloadIsAvailableForAFolderAndDisabledWhileShowingResults() async throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+        for pane in owner.panes { await pane.browser.directoryReads.task?.value }
+        let toolbar = try #require(owner.window?.toolbar)
+        let id = BrowserToolbar.identifier(.reloadFolder)
+        toolbar.itemIdentifiers = [id]
+        let item = try #require(toolbar.items.first)
+        #expect(item.image?.name() == NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)?.name())
+        #expect(owner.validateToolbarItem(item))
+        owner.browser.showResults([], total: 0)
+        #expect(!owner.validateToolbarItem(item))
+        #expect(tree.snapshot() == ["left/", "right/"])
         withExtendedLifetime((environment, state)) {}
     }
 }

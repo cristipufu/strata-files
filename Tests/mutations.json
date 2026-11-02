@@ -8564,5 +8564,19 @@
     "replace": "package struct Refusal: Error",
     "rule": "Read-only removal native errors lose their specific explanation",
     "tests": "RemovalVolumeTests/aNativeAlertExplainsTheSystemRestriction"
+  },
+  {
+    "file": "Strata/Toolbar/BrowserToolbar.swift",
+    "find": ".flexibleSpace, .viewMode, .dualPane,",
+    "replace": ".flexibleSpace, .viewMode, identifier(.reloadFolder), .dualPane,",
+    "rule": "Optional Reload appears in the default toolbar without being added",
+    "tests": "ToolbarCustomizationTests/reloadBelongsOnlyToTheCustomizationItems"
+  },
+  {
+    "file": "Strata/Browser/PaneCommandAvailability.swift",
+    "find": "return Answer(isEnabled: pane.hasFolder && !pane.isShowingResults)",
+    "replace": "return Answer(isEnabled: true)",
+    "rule": "Optional Reload stays enabled in results or without a folder",
+    "tests": "PaneCommandAvailabilityTests/reloadNeedsAFolderRatherThanAResultsView|ToolbarCustomizationTests/reloadIsAvailableForAFolderAndDisabledWhileShowingResults"
   }
 ]

@@ -11,7 +11,10 @@ final class BrowserToolbar {
     ]
     static func identifier(_ command: StrataCommand) -> NSToolbarItem.Identifier { .init("command." + command.id) }
     static func command(_ id: NSToolbarItem.Identifier) -> StrataCommand? { commands.first { identifier($0) == id } }
-    static var allowed: [NSToolbarItem.Identifier] { defaults + commands.map(identifier) + [.space] }
+    static var allowed: [NSToolbarItem.Identifier] {
+        // AppKit rejects duplicate commands if one is also present in the default set.
+        defaults + commands.map(identifier).filter { !defaults.contains($0) } + [.space]
+    }
 
     /// AppKit creates this menu on demand. Keep the wrench in its existing state column, beside the display-mode
     /// checkmarks, rather than adding an image column that indents only Customize Toolbar.
