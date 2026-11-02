@@ -1,9 +1,20 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 @Suite(.serialized)
 struct SearchViewModeTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func waitForLoad(_ browser: BrowserViewController) async throws {
         for _ in 0..<150 {
             if browser.isLoaded { return }
@@ -33,7 +44,7 @@ struct SearchViewModeTests {
     @Test func searchResultsAndMessagesShowListAndRestoreTheFoldersViewWhenCleared() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("a.zip", "b.zip")
-        let controller = BrowserWindowController(location: tree.root)
+        let controller = BrowserWindowController(location: tree.root, services: testEnvironment.services)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -72,10 +83,10 @@ struct SearchViewModeTests {
     }
 
     @Test func staleViewActionsInResultsKeepTheFolderPreferenceAndExactSelection() throws {
-        let saved = Prefs.shared.viewMode
-        defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
+        let saved = testEnvironment.services.preferences.viewMode
+        defer { if testEnvironment.services.preferences.viewMode != saved { testEnvironment.services.preferences.viewMode = saved } }
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/a.zip")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.loadViewIfNeeded()
         browser.setMode(.columns, remember: false)
         let entries = try ["left/a.zip", "right/a.zip"].map { try #require(FileEntry(url: tree.url($0))) }
@@ -89,12 +100,12 @@ struct SearchViewModeTests {
             menu.tag = mode.rawValue
             browser.setViewMode(menu)
             #expect(browser.mode == .columns && browser.effectiveMode == .list)
-            #expect(Prefs.shared.viewMode == saved)
+            #expect(testEnvironment.services.preferences.viewMode == saved)
             #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         }
         browser.setMode(.grid, remember: false)
         #expect(browser.mode == .grid && browser.effectiveMode == .list)
-        #expect(Prefs.shared.viewMode == saved)
+        #expect(testEnvironment.services.preferences.viewMode == saved)
         #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         #expect(tree.snapshot() == ["left/", "left/a.zip", "right/", "right/a.zip"])
     }
@@ -102,7 +113,7 @@ struct SearchViewModeTests {
     @Test func availabilityFollowsTheFocusedPaneAndIgnoresResultsInTheOtherPane() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/b.zip")
-        let controller = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+        let controller = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: testEnvironment.services)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -135,10 +146,10 @@ struct SearchViewModeTests {
 
     @Test func resultsHideViewCommandsAndIgnoreAPaletteActionCapturedInTheFolder() async throws {
         let _ = NSApplication.shared
-        let saved = Prefs.shared.viewMode
-        defer { if Prefs.shared.viewMode != saved { Prefs.shared.viewMode = saved } }
+        let saved = testEnvironment.services.preferences.viewMode
+        defer { if testEnvironment.services.preferences.viewMode != saved { testEnvironment.services.preferences.viewMode = saved } }
         let tree = try TestTree("a.zip")
-        let controller = BrowserWindowController(location: tree.root)
+        let controller = BrowserWindowController(location: tree.root, services: testEnvironment.services)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -154,7 +165,7 @@ struct SearchViewModeTests {
         #expect(!controller.commandItems().contains { titles.contains($0.title) })
         for command in viewCommands { command.run() }
         #expect(controller.browser.mode == .gallery)
-        #expect(Prefs.shared.viewMode == saved)
+        #expect(testEnvironment.services.preferences.viewMode == saved)
         #expect(controller.browser.selectedURLs == [tree.url("a.zip")])
         controller.navigate(to: tree.root)
         try await waitForLoad(controller.browser)

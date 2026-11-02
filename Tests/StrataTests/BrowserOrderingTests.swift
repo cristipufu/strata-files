@@ -1,31 +1,16 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct BrowserOrderingTests {
-    private final class Environment {
-        let name = "StrataBrowserOrderingTests.\(UUID().uuidString)"
-        let state: TestTree
-        let defaults: UserDefaults
-        let preferences: Prefs
-        let services: BrowserServices
-        init(reader: DirectoryReader = .live) throws {
-            state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
-            preferences.showIconPreviews = false
-            services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
-                visits: Frecency(preferences: defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
-                directories: reader)
-        }
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
-    }
+    private typealias Environment = IndependentEnvironment
 
     private func entry(_ path: String, size: Int64? = 0, label: String? = nil, folder: Bool = false,
                        package: Bool = false, modified: Date? = nil, created: Date? = nil,
@@ -248,7 +233,7 @@ struct BrowserOrderingTests {
     @Test func nativeHeadersSelectionsAndSavedChoicesFollowResultAndFolderTransitions() async throws {
         let tree = try TestTree("a", "z")
         let entries = [entry("a", size: 1), entry("z", size: 10)]
-        let environment = try Environment(reader: DirectoryReader { _, _, _ in entries })
+        let environment = try Environment(directories: DirectoryReader { _, _, _ in entries })
         for remember in [false, true] {
             environment.preferences.sortColumn = "name"; environment.preferences.sortAscending = true
             let browser = BrowserViewController(services: environment.services)
@@ -329,4 +314,51 @@ struct BrowserOrderingTests {
         withExtendedLifetime(environment) {}
     }
 
+
+    /// A folder's entries are sorted away from the main thread as they're read, in exactly the order the list sorts
+    /// them in; an order by sizes, tags or media, known only on the main thread, stays there.
+    @Test func entriesSortedAsTheyreReadTakeTheListsOrder() async throws {
+        let day = { (n: Double) in Date(timeIntervalSince1970: n * 86_400) }
+        let entries = [
+            entry("Item 10.txt", modified: day(3), created: day(1), added: day(2), kind: "Text"),
+            entry("item 2.md", modified: day(1), created: day(3), added: day(1), kind: "Markdown"),
+            entry("Folder", folder: true, modified: day(2), created: day(2), added: day(3), kind: "Folder"),
+            entry("b.zip", modified: day(2), created: day(2), added: day(2), kind: "Archive"),
+            entry("a.zip", modified: day(2), created: day(2), added: day(2), kind: "Archive"),
+        ]
+        for key in [SortKey.name, .modified, .created, .added, .kind, .fileExtension] {
+            for ascending in [true, false] {
+                for foldersFirst in [true, false] {
+                    let metadata = Metadata()
+                    metadata.foldersFirst = foldersFirst
+                    let ordering = metadata.ordering(key, ascending: ascending)
+                    var nodes = entries.map { FileNode(entry: $0) }
+                    ordering.sort(&nodes)
+                    let snapshot = try #require(ordering.snapshot)
+                    let sorted = await BrowserOrdering.sorted(entries, by: snapshot)
+                    #expect(sorted.map(\.url) == nodes.map(\.url), "\(key) \(ascending) \(foldersFirst)")
+                }
+            }
+        }
+        for key in [SortKey.size, .tags, .dimensions, .width, .height, .duration] {
+            #expect(Metadata().ordering(key).snapshot == nil, "\(key)")
+        }
+    }
+
+    /// Entries read in the order chosen are shown as they come; read in an order since changed, they're sorted again.
+    @Test func aFolderReadInAnOrderSinceChangedIsSortedAgain() throws {
+        let environment = try Environment()
+        let browser = BrowserViewController(services: environment.services)
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        let entries = ["c.txt", "a.txt", "b.txt"].map { entry($0) }
+        browser.ordering.choose(.init(key: .name, ascending: true), remember: false)
+        let current = try #require(browser.ordering.snapshot)
+        browser.apply(entries, preservingState: false, sortedBy: current)
+        #expect(browser.rows.map(\.entry.name) == ["c.txt", "a.txt", "b.txt"])
+        let earlier = BrowserOrdering.Snapshot(choice: .init(key: .name, ascending: false), foldersFirst: current.foldersFirst)
+        browser.apply(entries, preservingState: false, sortedBy: earlier)
+        #expect(browser.rows.map(\.entry.name) == ["a.txt", "b.txt", "c.txt"])
+        browser.apply(entries, preservingState: false)
+        #expect(browser.rows.map(\.entry.name) == ["a.txt", "b.txt", "c.txt"])
+    }
 }

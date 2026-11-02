@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 final class PathQueryTests {
     let root: URL
@@ -66,21 +73,13 @@ final class PathQueryTests {
         let hiddenDir = github.appending(path: ".secret-repo", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: hiddenDir, withIntermediateDirectories: true)
 
-        let domainA = "StrataPathSuggestionsTests.A.\(UUID().uuidString)"
-        let domainB = "StrataPathSuggestionsTests.B.\(UUID().uuidString)"
-        let defaultsA = try #require(UserDefaults(suiteName: domainA))
-        let defaultsB = try #require(UserDefaults(suiteName: domainB))
-        defer {
-            defaultsA.removePersistentDomain(forName: domainA)
-            defaultsB.removePersistentDomain(forName: domainB)
-        }
-        let prefsHiddenOff = Prefs(defaults: defaultsA, domainName: domainA, notifications: NotificationCenter())
-        let prefsHiddenOn = Prefs(defaults: defaultsB, domainName: domainB, notifications: NotificationCenter())
+        let prefsHiddenOff = try Prefs.isolated()
+        let prefsHiddenOn = try Prefs.isolated()
         prefsHiddenOff.showHidden = false
         prefsHiddenOn.showHidden = true
 
-        let suggestOff = PathSuggestions(visits: Frecency(preferences: defaultsA), preferences: prefsHiddenOff)
-        let suggestOn = PathSuggestions(visits: Frecency(preferences: defaultsB), preferences: prefsHiddenOn)
+        let suggestOff = PathSuggestions(prefsHiddenOff)
+        let suggestOn = PathSuggestions(prefsHiddenOn)
 
         let offNames = await suggestOff.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)
         let onNames = await suggestOn.suggestions(for: github.path + "/", in: github).map(\.url.lastPathComponent)
@@ -90,7 +89,16 @@ final class PathQueryTests {
         // Typing a leading dot still reveals hidden folders even when showHidden is off.
         let dotNames = await suggestOff.suggestions(for: github.path + "/.s", in: github).map(\.url.lastPathComponent)
         #expect(dotNames == [".secret-repo"])
-        withExtendedLifetime((defaultsA, defaultsB, prefsHiddenOff, prefsHiddenOn)) {}
+    }
+
+    /// A lookup replaced by the next keystroke reads no more folders.
+    @Test func aStoppedLookupReadsNoMoreFolders() throws {
+        let tree = try TestTree("alpha/beta/")
+        #expect(!PathQuery().resolve("alpha/be", roots: [tree.root], visited: []).isEmpty)
+        let stop = CancelFlag()
+        stop.set()
+        #expect(PathQuery(stop: stop).resolve("alpha/be", roots: [tree.root], visited: []).isEmpty)
+        #expect(tree.snapshot() == ["alpha/", "alpha/beta/"])
     }
 }
 

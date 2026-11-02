@@ -1,8 +1,19 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct FinderNavigationTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test func commandUpOpensTheParentAndSelectsTheFolderInTheOwningPane() async throws {
         for mode in BrowserViewMode.ordered {
             for paneIndex in 0...1 {
@@ -15,8 +26,8 @@ struct FinderNavigationTests {
         _ = NSApplication.shared
         let tree = try TestTree("left/child/item.txt", "left/sibling.txt", "right/child/item.txt", "right/sibling.txt", "late/")
         let before = tree.snapshot()
-        let services = BrowserServices.configured(transfers: .shared, visits: .shared, windows: .headless,
-                                                  remote: .shared, containers: .shared, containerStore: .shared, clipboard: .shared)
+        let services = BrowserServices.configured(transfers: testEnvironment.services.transfers, visits: testEnvironment.services.visits, windows: .headless,
+                                                  remote: testEnvironment.services.remote, containers: testEnvironment.services.containers, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard)
         let controller = BrowserWindowController(location: tree.url(mode == .columns ? "left" : "left/child"),
                                                   secondPane: tree.url(mode == .columns ? "right" : "right/child"), services: services)
         controller.split.splitView.autosaveName = nil

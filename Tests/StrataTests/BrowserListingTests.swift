@@ -1,8 +1,19 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct BrowserListingTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func entry(_ path: String, size: Int64 = 0, label: String? = nil, folder: Bool = false) -> FileEntry {
         let url = URL(fileURLWithPath: "/strata-listing-fixture/" + path, isDirectory: folder)
         return FileEntry(url: url, name: url.lastPathComponent, isDirectory: folder, isPackage: false,
@@ -96,7 +107,7 @@ struct BrowserListingTests {
         listing.replace([a, a], preservingNodes: false, sort: { _ in })
         #expect(listing.updateResults([entry("a.txt", size: 42), b], sorted: false) == nil)
         #expect(listing.nodes.map(\.entry) == [a, a])
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.showResults([a, a], total: 2)
         let changedA = entry("a.txt", size: 42)
@@ -125,7 +136,7 @@ struct BrowserListingTests {
     }
 
     @Test func resultRefreshRetainsNativeSelectionAndResortsChangedValues() throws {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         let a = entry("a.txt", size: 1), b = entry("b.txt", size: 2)
         browser.showResults([a, b], total: 2)
@@ -155,13 +166,13 @@ struct BrowserListingTests {
         let reader = DirectoryReader { _, _, _ in entries }
         for mode in BrowserViewMode.ordered {
             let browser = BrowserViewController(services: BrowserServices.configured(
-                transfers: .shared,
-                visits: .shared,
+                transfers: testEnvironment.services.transfers,
+                visits: testEnvironment.services.visits,
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: reader))
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
@@ -181,6 +192,82 @@ struct BrowserListingTests {
             await browser.directoryReads.task?.value
             #expect(browser.selectedURLs == [tree.url("beta.txt")], "\(mode)")
         }
+        #expect(tree.snapshot() == ["alpha.txt", "beta.txt", "gamma.txt"])
+    }
+
+    /// Rows matched away from the main thread are the same as those matched at once, and are shown only for the very
+    /// rows they were worked out for: after a refresh they're refused, and the filter shown stays as it was.
+    @Test func matchesWorkedOutAwayShowOnlyForTheirRows() async throws {
+        let listing = BrowserListing()
+        let entries = ["alpha.txt", "beta.txt", "alphabet.txt", "gamma.txt"].map { entry($0) }
+        listing.replace(entries, preservingNodes: false, sort: { _ in })
+        let matches = try #require(await listing.matches(for: "alp"))
+        #expect(listing.show(matches))
+        let away = listing.rows.map(\.entry.name)
+        listing.setFilter("")
+        listing.setFilter("alp")
+        #expect(away == listing.rows.map(\.entry.name) && away.count == 2)
+        let stale = try #require(await listing.matches(for: "gam"))
+        listing.replace(entries.reversed(), preservingNodes: true, sort: { _ in })
+        #expect(!listing.show(stale))
+        #expect(listing.filter == "alp" && listing.rows.count == 2)
+    }
+
+    /// In a folder too big to match at once, typed letters are matched away from the main thread: each keystroke
+    /// builds on what was typed, not on what's shown yet; the rows show the newest text's matches; and going to
+    /// another folder drops a match still being worked out.
+    @Test func aBigFolderIsFilteredAsTypedAwayFromTheMainThread() async throws {
+        let tree = try TestTree("other/")
+        let count = BrowserFiltering.matchedAwayAbove + 50
+        let entries = (0..<count).map { entry(String(format: "item %05d.txt", $0)) }
+            + [entry("zebra.txt"), entry("zebu.txt")]
+        let root = tree.root
+        let reader = DirectoryReader { url, _, _ in url.standardizedFileURL == root.standardizedFileURL ? entries : [] }
+        let browser = BrowserViewController(services: BrowserServices.configured(
+            transfers: testEnvironment.services.transfers, visits: testEnvironment.services.visits, windows: .headless, remote: testEnvironment.services.remote, containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, directories: reader))
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        #expect(browser.topLevelEntries.count == count + 2)
+        browser.outlineView.onType?("z")
+        browser.outlineView.onType?("e")
+        #expect(browser.filtering.typed == "ze" && browser.filter.isEmpty)
+        await browser.filtering.matching?.task.value
+        #expect(browser.filter == "ze")
+        #expect(browser.visibleRows.map(\.entry.name).sorted() == ["zebra.txt", "zebu.txt"])
+        browser.outlineView.onType?("b")
+        let pending = browser.filtering.matching?.task
+        browser.load(tree.url("other"))
+        await pending?.value
+        await browser.directoryReads.task?.value
+        #expect(browser.filter.isEmpty && browser.filtering.typed.isEmpty)
+        #expect(tree.snapshot() == ["other/"])
+    }
+
+    @Test func everyViewTypesDeletesAndClearsTheFilterAlike() async throws {
+        let tree = try TestTree("alpha.txt", "beta.txt", "gamma.txt")
+        let environment = try IndependentEnvironment()
+        let browser = BrowserViewController(services: environment.services)
+        defer { browser.stopBackgroundWork() }
+        browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        // The list: the outline's own key callbacks.
+        browser.outlineView.onType?("b")
+        browser.outlineView.onType?("e")
+        #expect(browser.filter == "be" && browser.visibleRows.map(\.entry.name) == ["beta.txt"])
+        #expect(browser.outlineView.onBackspace?() == true && browser.filter == "b")
+        #expect(browser.outlineView.onEscape?() == true && browser.filter.isEmpty)
+        // With nothing typed, Backspace and Esc aren't the filter's.
+        #expect(browser.outlineView.onEscape?() == false && browser.outlineView.onBackspace?() == false)
+        // Icons: the same keys through the view's handler.
+        browser.setMode(.grid, remember: false)
+        #expect(browser.handle(.type("g")) && browser.filter == "g")
+        #expect(browser.handle(.space) && browser.filtering.typed == "g ")
+        #expect(browser.handle(.backspace) && browser.filter == "g")
+        #expect(browser.handle(.escape) && browser.filter.isEmpty)
+        #expect(!browser.handle(.escape) && !browser.handle(.backspace))
         #expect(tree.snapshot() == ["alpha.txt", "beta.txt", "gamma.txt"])
     }
 }

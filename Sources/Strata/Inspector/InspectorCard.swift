@@ -21,7 +21,7 @@ final class InspectorCard: NSView, ColorThemeUpdating {
     static let horizontalPadding: CGFloat = 8
 
     init(id: String, title: String, symbol: String, content: NSView, accessory: NSView? = nil,
-         preferences: Prefs = .shared) {
+         preferences: Prefs) {
         self.id = id
         self.preferences = preferences
         self.content = content
@@ -30,14 +30,26 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         translatesAutoresizingMaskIntoConstraints = false
         card.translatesAutoresizingMaskIntoConstraints = false
         addSubview(card)
+        styleHeader(symbol: symbol, title: title)
+        layOut(header: header(with: accessory))
+        bodyHeightWhenCollapsed = body.heightAnchor.constraint(equalToConstant: 0)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(title)
+        apply(collapsed: isCollapsed, animated: false)
+        updateColorTheme()
+    }
 
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func styleHeader(symbol: String, title: String) {
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage()
         icon.setAccessibilityElement(false)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setAccessibilityElement(false)
-
         chevron.isBordered = false
         chevron.bezelStyle = .accessoryBarAction
         chevron.imagePosition = .imageOnly
@@ -45,7 +57,11 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         chevron.target = self
         chevron.action = #selector(toggle)
         chevron.setAccessibilityLabel(title)
+    }
 
+    /// The icon, the title, the accessory if there's one, and the chevron, in a row that collapses and expands the
+    /// card wherever it's clicked.
+    private func header(with accessory: NSView?) -> NSStackView {
         var headerViews: [NSView] = [icon, titleLabel, NSView()]
         if let accessory {
             // A long accessory (an upstream branch, a size) gives way before the title does.
@@ -58,10 +74,12 @@ final class InspectorCard: NSView, ColorThemeUpdating {
         header.alignment = .centerY
         header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
-        // The whole header row collapses and expands, not just the chevron.
         let click = NSClickGestureRecognizer(target: self, action: #selector(toggle))
         header.addGestureRecognizer(click)
+        return header
+    }
 
+    private func layOut(header: NSStackView) {
         body.translatesAutoresizingMaskIntoConstraints = false
         content.translatesAutoresizingMaskIntoConstraints = false
         body.addSubview(content)
@@ -91,15 +109,8 @@ final class InspectorCard: NSView, ColorThemeUpdating {
             content.topAnchor.constraint(equalTo: body.topAnchor),
             bottom,
         ])
-        bodyHeightWhenCollapsed = body.heightAnchor.constraint(equalToConstant: 0)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        setAccessibilityLabel(title)
-        apply(collapsed: isCollapsed, animated: false)
-        updateColorTheme()
     }
 
-    required init?(coder: NSCoder) { fatalError() }
 
     func updateColorTheme() {
         let themed = ThemeStyle.options.palette != .system && !ThemeStyle.highContrast && !effectiveAppearance.isHighContrast
@@ -169,14 +180,10 @@ final class InspectorRows: NSView {
         grid.columnSpacing = 10
         grid.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: trailingAnchor),
-            grid.topAnchor.constraint(equalTo: topAnchor),
-            grid.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(grid.fillingConstraints(in: self))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Text rows: values wrap in full (long sizes) and can be selected and copied.
@@ -264,75 +271,132 @@ final class InspectorRows: NSView {
     }
 }
 
-/// "Where": the folder's icon and name, with its path on one line underneath (all of it on hover). Clicking shows the
-/// folder.
+/// "Where": the folder's icon and its path, read in order and ending in the folder's name ("/Users/me"). A long path
+/// wraps after a slash rather than losing its start. Clicking shows the folder.
 final class InspectorLocationView: NSView {
     fileprivate(set) var action: () -> Void
     private let folder: URL
     private let path: URL
-    let nameText: String
+    private let shownName: String?
+    /// The folder's name: until Finder's has been read, as it's stored.
+    private(set) var nameText: String
     let locationText: String
+    /// False when the location describes the folder (a server's address) instead of leading to it.
+    let locationLeadsHere: Bool
+    let pathLabel = NSTextField(wrappingLabelWithString: "")
+    private let icon = NSImageView(image: NSWorkspace.shared.icon(for: .folder))
+    /// Reading the folder's name as Finder shows it, and its icon.
+    private(set) var reading: Task<Void, Never>?
 
     /// `name` and `location` replace the folder's own (a container's folder, shown as it is in the container).
-    init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil, action: @escaping () -> Void) {
+    init(folder: URL, shownAs path: URL, name shownName: String? = nil, location shownLocation: String? = nil,
+         locationLeadsHere: Bool = true, looks: FinderLooks, action: @escaping () -> Void) {
         self.action = action
         self.folder = folder
         self.path = path
-        self.nameText = shownName ?? FileManager.default.displayName(atPath: path.path)
-        self.locationText = shownLocation ?? Format.tildePath(path.deletingLastPathComponent())
+        self.shownName = shownName
+        self.nameText = shownName ?? path.lastPathComponent
+        // The top of the disk has nothing above it; its name ("Macintosh HD") is the whole location.
+        self.locationText = shownLocation ?? (path.path == "/" ? "" : Format.tildePath(path.deletingLastPathComponent()))
+        self.locationLeadsHere = locationLeadsHere
         super.init(frame: .zero)
-        let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: folder.path))
         icon.image?.size = NSSize(width: 16, height: 16)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        let name = NSTextField(labelWithString: nameText)
-        name.font = .systemFont(ofSize: 12)
-        name.lineBreakMode = .byTruncatingMiddle
-        let location = NSTextField(labelWithString: locationText)
-        location.font = .systemFont(ofSize: 11)
-        location.textColor = InspectorColors.secondary
-        location.lineBreakMode = .byTruncatingHead
-        for label in [name, location] {
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            label.translatesAutoresizingMaskIntoConstraints = false
-        }
+        showPath()
+        pathLabel.baseWritingDirection = .leftToRight
+        pathLabel.isSelectable = false
+        pathLabel.maximumNumberOfLines = 0
+        pathLabel.lineBreakMode = .byWordWrapping
+        pathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pathLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
-        addSubview(name)
-        addSubview(location)
+        addSubview(pathLabel)
+        // Centred on the path's first line. An image view's baseline is its image's height, so aligning baselines
+        // placed the icon by whatever size the folder's icon image had at the time.
+        let firstLine = NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 12))
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor),
-            icon.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor, constant: 3),
+            icon.centerYAnchor.constraint(equalTo: pathLabel.topAnchor, constant: firstLine / 2),
             icon.widthAnchor.constraint(equalToConstant: 16),
             icon.heightAnchor.constraint(equalToConstant: 16),
-            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 5),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            name.topAnchor.constraint(equalTo: topAnchor),
-            location.leadingAnchor.constraint(equalTo: name.leadingAnchor),
-            location.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            location.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
-            location.bottomAnchor.constraint(equalTo: bottomAnchor),
+            pathLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 5),
+            pathLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            pathLabel.topAnchor.constraint(equalTo: topAnchor),
+            pathLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        toolTip = Format.tildePath(path)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(String(localized: "Show “\(name.stringValue)”", comment: "Inspector: the item’s folder, as a button that shows it"))
+        reading = Task { [weak self, folder, path] in
+            async let named = looks.look(path), drawn = looks.look(folder)
+            let (name, image) = await (named.name, drawn.image)
+            guard let self, !Task.isCancelled else { return }
+            if shownName == nil { nameText = name }
+            if let image { icon.image = image }
+            showPath()
+        }
     }
 
+    isolated deinit { reading?.cancel() }
+
+    /// A path names the folder as it's stored ("Xcode.app", not "Xcode"; "a:b", not "a/b"), so it can't read as
+    /// another place, except the top of the disk, which goes by its name. VoiceOver keeps Finder's display name.
+    private func showPath() {
+        let stored = shownName ?? (path.path == "/" ? nameText : path.lastPathComponent)
+        pathLabel.attributedStringValue = Self.text(name: stored, location: locationText, leadsHere: locationLeadsHere)
+        // The same path as plain text: a server's or a container's own, never Strata's copy of it.
+        toolTip = Self.plain(pathLabel.stringValue)
+        setAccessibilityLabel(String(localized: "Show “\(nameText)”", comment: "Inspector: the item’s folder, as a button that shows it"))
+    }
+
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The path leading to the folder in secondary ink, then the folder's name; a description (a server's address)
+    /// goes on its own line under the name instead. Dynamic ink follows theme and appearance changes.
+    /// A path reads left to right whatever the script of its names. Each part is isolated (U+2066/U+2068…U+2069),
+    /// so a name's direction marks can't reorder the slashes or the other parts.
+    static func text(name: String, location: String, leadsHere: Bool) -> NSAttributedString {
+        let font = NSFont.systemFont(ofSize: 12)
+        let result = NSMutableAttributedString()
+        if leadsHere, !location.isEmpty {
+            let leading = location.hasSuffix("/") ? location : location + "/"
+            result.append(NSAttributedString(string: "\u{2066}" + leading + "\u{2069}",
+                                             attributes: [.font: font, .foregroundColor: InspectorColors.secondary]))
+        }
+        result.append(NSAttributedString(string: "\u{2068}" + name + "\u{2069}",
+                                         attributes: [.font: font, .foregroundColor: InspectorColors.primary]))
+        if !leadsHere, !location.isEmpty {
+            result.append(NSAttributedString(string: "\n\u{2068}" + location + "\u{2069}", attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: InspectorColors.secondary,
+            ]))
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.baseWritingDirection = .leftToRight
+        result.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: result.length))
+        return result
+    }
+
+    /// Shown text without its invisible direction isolates.
+    static func plain(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { !(0x2066...0x2069).contains($0.value) }))
+    }
 
     /// Shows the same folder, the same way (its action shows the same place too).
     func showsSamePlace(as other: InspectorLocationView) -> Bool {
-        folder == other.folder && path == other.path && nameText == other.nameText && locationText == other.locationText
+        // Finder's asynchronously loaded name must not change a row's identity.
+        folder == other.folder && path == other.path && shownName == other.shownName && locationText == other.locationText
+            && locationLeadsHere == other.locationLeadsHere
     }
 
     override var firstBaselineOffsetFromTop: CGFloat {
-        subviews.compactMap { $0 as? NSTextField }.first?.firstBaselineOffsetFromTop ?? 12
+        pathLabel.firstBaselineOffsetFromTop
     }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }
 
-    /// The icon and both lines are one button.
+    /// The icon and the whole path are one button.
     override func hitTest(_ point: NSPoint) -> NSView? {
         frame.contains(point) ? self : nil
     }

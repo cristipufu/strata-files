@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func systemRestoresTheOriginalNativeWindowMaterialsInLightAndDark() throws {
@@ -9,13 +16,13 @@ extension ColorThemeTests {
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             for transparent in [false, true] {
-                let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+                let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
                 split.loadViewIfNeeded()
                 split.splitView.autosaveName = nil
                 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
                                       styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-                let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-                window.appearance = try #require(chosenAppearance)
+                let chosenAppearance = try #require(NSAppearance(named: name))
+                window.appearance = chosenAppearance
                 window.toolbarStyle = .unified
                 window.toolbar = NSToolbar(identifier: "NativeThemeTest")
                 window.titlebarAppearsTransparent = transparent

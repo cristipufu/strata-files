@@ -1,21 +1,24 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ServerConnectionSettingsTests {
     private final class Environment {
-        let domain = "StrataServerConnectionSettings.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let settings: ServerConnectionSettings
 
         init() throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
             settings = ServerConnectionSettings(preferences: preferences)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
@@ -27,14 +30,15 @@ struct ServerConnectionSettingsTests {
         first.defaults.set(["", "smb://one/share", "smb://two/share"], forKey: "recentServers")
         second.defaults.set(["smb://other/share"], forKey: "recentServers")
         second.defaults.set(2, forKey: "connectKind")
-        let other = try #require(second.defaults.persistentDomain(forName: second.domain))
+        let other = try #require(second.defaults.persistentDomain(forName: second.preferences.domainName))
         #expect(first.settings.kind == .share && second.settings.kind == .s3)
         #expect(first.settings.recents == ["smb://one/share", "smb://two/share"])
         for kind in [ServerConnectionSettings.Kind.share, .sftp, .s3] {
             first.settings.kind = kind
             #expect(first.defaults.integer(forKey: "connectKind") == kind.rawValue)
             let reopened = ServerConnectionSettings(preferences: Prefs(
-                defaults: try #require(UserDefaults(suiteName: first.domain)), domainName: first.domain))
+                defaults: try #require(UserDefaults(suiteName: first.preferences.domainName)),
+                domainName: first.preferences.domainName))
             #expect(reopened.kind == kind && reopened.recents == first.settings.recents)
         }
         first.defaults.set(99, forKey: "connectKind")
@@ -43,7 +47,7 @@ struct ServerConnectionSettingsTests {
         first.settings.clearRecents()
         #expect(first.settings.recents.isEmpty && first.defaults.object(forKey: "recentServers") == nil)
         #expect(first.defaults.integer(forKey: "connectKind") == 99)
-        #expect(NSDictionary(dictionary: other).isEqual(to: second.defaults.persistentDomain(forName: second.domain) ?? [:]))
+        #expect(NSDictionary(dictionary: other).isEqual(to: second.defaults.persistentDomain(forName: second.preferences.domainName) ?? [:]))
         withExtendedLifetime((first, second)) {}
     }
 
@@ -68,8 +72,8 @@ struct ServerConnectionSettingsTests {
         let first = try Environment(), second = try Environment()
         first.defaults.set(["smb://one/share"], forKey: "recentServers")
         second.defaults.set(["smb://other/share"], forKey: "recentServers")
-        let left = ConnectToServerController(settings: first.settings)
-        let right = ConnectToServerController(settings: second.settings)
+        let left = ConnectToServerController(settings: first.settings, mounts: ServerMountSession(mounter: .live), connections: .shared)
+        let right = ConnectToServerController(settings: second.settings, mounts: ServerMountSession(mounter: .live), connections: .shared)
         let leftAddress = try #require(views(left.view, of: NSComboBox.self).first)
         let rightAddress = try #require(views(right.view, of: NSComboBox.self).first)
         let picker = try #require(views(left.view, of: NSSegmentedControl.self).first)
@@ -89,7 +93,7 @@ struct ServerConnectionSettingsTests {
         #expect(rightAddress.stringValue == "smb://other/share")
         let server = RemoteServer(id: UUID().uuidString, kind: .s3, name: "Fixture", host: "s3.eu-west-1.amazonaws.com",
                                   bucket: "fixture", region: "eu-west-1", accessKeyID: "fixture")
-        let editing = ConnectToServerController(editing: server, settings: first.settings)
+        let editing = ConnectToServerController(editing: server, settings: first.settings, mounts: ServerMountSession(mounter: .live), connections: .shared)
         let editPicker = try #require(views(editing.view, of: NSSegmentedControl.self).first)
         #expect(editPicker.isHidden && editPicker.selectedSegment == ServerConnectionSettings.Kind.s3.rawValue)
         #expect(first.settings.kind == .share && first.settings.recents.isEmpty)

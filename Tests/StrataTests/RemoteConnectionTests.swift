@@ -3,6 +3,13 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct RemoteConnectionTests {
     private enum Failure: Error { case connect, list, save, unexpected }
@@ -354,12 +361,9 @@ struct RemoteConnectionTests {
 
     @Test func nativeSheetKeepsNewAttemptsBusyWhenOldResultsArrive() async throws {
         _ = NSApplication.shared
-        let domain = "StrataStagedSheet.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let original = s3(), environment = Environment([original], secrets: [original.id: "Saved"])
-        let sheet = ConnectToServerController(editing: original, settings: settings, connections: environment.connections, sshHosts: { [] })
+        let sheet = ConnectToServerController(editing: original, settings: settings, mounts: ServerMountSession(mounter: .live), connections: environment.connections, sshHosts: { [] })
         let secret = try #require(views(sheet.view, of: NSSecureTextField.self).first)
         let buttons = views(sheet.view, of: NSButton.self)
         let connect = try #require(buttons.first { $0.action == NSSelectorFromString("connect:") })
@@ -392,14 +396,11 @@ struct RemoteConnectionTests {
 
     @Test func releasingTheNativeSheetCancelsItsPrivateConnection() async throws {
         _ = NSApplication.shared
-        let domain = "StrataStagedLifetime.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let original = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Fixture", host: "fixture.invalid")
         let environment = Environment([original])
         var sheet: ConnectToServerController? = ConnectToServerController(editing: original, settings: settings,
-            connections: environment.connections, sshHosts: { ["fixture.invalid"] })
+            mounts: ServerMountSession(mounter: .live), connections: environment.connections, sshHosts: { ["fixture.invalid"] })
         weak let weakSheet = sheet
         var callbacks = 0
         sheet!.onServer = { _ in callbacks += 1 }

@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// One thing the palette can do: jump to a folder, open a file, or run a command.
 struct PaletteItem {
@@ -25,6 +26,18 @@ struct PaletteItem {
         }
     }
 
+    enum ID: Hashable {
+        case location(String), command(String), workspace(String), instance(UUID)
+    }
+
+    let instanceID = UUID()
+    var id: ID {
+        if let url { return .location(url.lexicallyStandardized.path) }
+        if let commandID { return .command(commandID) }
+        if kind == .workspace { return .workspace(title) }
+        return .instance(instanceID)
+    }
+
     let title: String
     let subtitle: String
     let icon: NSImage
@@ -44,11 +57,32 @@ struct PaletteItem {
     let run: () -> Void
 }
 
+extension PaletteItem {
+    /// A `github/acme`-style lookup of `query` among `places`, walking folders away from the main thread; `open` gets
+    /// a row's item and whether it's a folder.
+    static func lookupRows(for query: String, in places: PlaceChecks,
+                           open: @escaping (URL, Bool) -> Void) async -> [PaletteItem] {
+        guard PathQuery.isPathQuery(query) else { return [] }
+        let visited = places.visited(limit: 400)
+        let hits = await PathQuery.resolveOffMain(query, roots: places.lookupRoots(visited: visited, servers: true),
+                                                  visited: visited)
+        let folderIcon = NSWorkspace.shared.icon(for: .folder)
+        return hits.map { hit in
+            let url = hit.url
+            let type = UTType(filenameExtension: url.pathExtension) ?? .data
+            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
+                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forType: type),
+                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches,
+                               url: url) { open(url, hit.isFolder) }
+        }
+    }
+}
+
 /// ⌘K: a floating glass panel that fuzzy-searches folders you visit, items in this folder, and every command.
 final class CommandPalette: NSObject {
     let panel: PalettePanel
     private let field = NSTextField()
-    private let table = NSTableView()
+    private let table = PressedRowTable()
     private let scroll = NSScrollView()
     private var heightConstraint: NSLayoutConstraint!
     private let ranker = PaletteRanker()
@@ -56,7 +90,15 @@ final class CommandPalette: NSObject {
     private weak var parent: NSWindow?
     private var pendingUpdate: DispatchWorkItem?
     /// What the table shows, to leave it alone when an update brings the same rows.
-    private var shownRows: [String] = []
+    private struct ShownRow: Equatable {
+        let id: PaletteItem.ID
+        let title: String
+        let subtitle: String
+        let kind: String
+        let shortcut: String?
+        let matches: [Int]
+    }
+    private var shownRows: [ShownRow]?
     /// Rows the list has room for: while you type it grows but doesn't shrink (no jumping).
     private var listRows = 0
 
@@ -85,9 +127,9 @@ final class CommandPalette: NSObject {
         ranker.lateArrived = { [weak self] keeping in self?.showResults(keeping: keeping) }
         // The index once typing pauses (a keystroke meanwhile cancels it); names as you type.
         ranker.lateDelay = .milliseconds(120)
-        ranker.selectedTitle = { [weak self] in
+        ranker.selectedIdentity = { [weak self] in
             guard let self, table.selectedRow >= 0, table.selectedRow < results.count else { return nil }
-            return results[table.selectedRow].item.title
+            return results[table.selectedRow].item.id
         }
         buildContent()
     }
@@ -118,13 +160,16 @@ final class CommandPalette: NSObject {
         ranker.source = items
         field.stringValue = ""
         pendingUpdate?.cancel()
-        shownRows = []
+        shownRows = nil
         listRows = 0
         update()
         if let content = panel.contentView { ThemeStyle.refresh(content) }
     }
 
     func close() {
+        pendingUpdate?.cancel()
+        pendingUpdate = nil
+        ranker.cancel()
         guard panel.isVisible else { return }
         parent?.removeChildWindow(panel)
         panel.orderOut(nil)
@@ -133,17 +178,7 @@ final class CommandPalette: NSObject {
 
     // MARK: - Layout
 
-    private func buildContent() {
-        let chrome = ShadowedGlass(cornerRadius: 22)
-        let glass = chrome.glass
-
-        let content = NSView()
-        ThemeStyle.bind(content, to: .content)
-        let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
-        icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
-        icon.contentTintColor = .secondaryLabelColor
-        icon.translatesAutoresizingMaskIntoConstraints = false
-
+    private func setUpField() {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.isBordered = false
         field.drawsBackground = false
@@ -154,32 +189,25 @@ final class CommandPalette: NSObject {
         field.cell?.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.delegate = self
+    }
 
+    private func buildContent() {
+        let chrome = ShadowedGlass(cornerRadius: 22)
+        let glass = chrome.glass
+        let content = NSView()
+        ThemeStyle.bind(content, to: .content)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
+        icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
+        icon.contentTintColor = .secondaryLabelColor
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        setUpField()
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
-
-        let column = NSTableColumn(identifier: .init("main"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(rowClicked)
-        table.refusesFirstResponder = true
-
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
+        table.pressed = { [weak self] row in self?.ranker.press(row) }
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0))
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
-        scroll.documentView = table
 
         content.addSubview(icon)
         content.addSubview(field)
@@ -228,30 +256,34 @@ final class CommandPalette: NSObject {
         if pendingUpdate != nil { update() }
     }
 
-    private func showResults(keeping selectedTitle: String? = nil) {
-        let keys = results.map { "\($0.item.title)\u{1}\($0.item.subtitle)\u{1}\($0.matches)" }
+    private func showResults(keeping selectedID: PaletteItem.ID? = nil) {
+        let keys = results.map { ShownRow(id: $0.item.id, title: $0.item.title, subtitle: $0.item.subtitle,
+                                         kind: $0.item.kind.rawValue, shortcut: $0.item.shortcut, matches: $0.matches) }
         // The same rows again (a keystroke that changed nothing shown): no redraw.
         if keys != shownRows {
             shownRows = keys
             table.reloadData()
         }
-        let keep = selectedTitle.flatMap { title in results.firstIndex { $0.item.title == title } } ?? 0
+        let keep = selectedID.flatMap { id in results.firstIndex { $0.item.id == id } } ?? 0
         if !results.isEmpty, table.selectedRow != keep { table.selectRowIndexes([keep], byExtendingSelection: false) }
-        table.scrollRowToVisible(keep)
 
         let typing = !field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
         let count = min(results.count, Self.maxVisibleRows)
         listRows = typing ? max(listRows, count) : count
         let rows = CGFloat(listRows)
         let height = Self.fieldHeight + (rows > 0 ? rows * Self.rowHeight + 14 : 0)
-        guard heightConstraint.constant != height || panel.frame.height != height + ShadowedGlass.margin * 2 else { return }
-        heightConstraint.constant = height
-        // The top stays put as the list grows or shrinks.
-        var frame = panel.frame
-        let panelHeight = height + ShadowedGlass.margin * 2
-        frame.origin.y += frame.height - panelHeight
-        frame.size.height = panelHeight
-        panel.setFrame(frame, display: true)
+        if heightConstraint.constant != height || panel.frame.height != height + ShadowedGlass.margin * 2 {
+            heightConstraint.constant = height
+            // The top stays put as the list grows or shrinks.
+            var frame = panel.frame
+            let panelHeight = height + ShadowedGlass.margin * 2
+            frame.origin.y += frame.height - panelHeight
+            frame.size.height = panelHeight
+            panel.setFrame(frame, display: true)
+        }
+        // Resizing changes the clip bounds. Scroll only once the new viewport has its final geometry.
+        panel.contentView?.layoutSubtreeIfNeeded()
+        ChoiceList.reveal(keep, in: table)
     }
 
     /// Set by the owner: navigates to a typed path (folders open, files are revealed).
@@ -259,12 +291,7 @@ final class CommandPalette: NSObject {
         get { ranker.goToPath }
         set { ranker.goToPath = newValue }
     }
-    /// Set by the owner: items computed for the current query, such as `github/acme` path lookups.
-    var queryItems: ((String) -> [PaletteItem])? {
-        get { ranker.queryItems }
-        set { ranker.queryItems = newValue }
-    }
-    /// Set by the owner: slower items (index search) merged in when they arrive.
+    /// Set by the owner: slower items (`github/acme` path lookups, the index search) merged in when they arrive.
     var lateItems: ((String) async -> [PaletteItem])? {
         get { ranker.lateItems }
         set { ranker.lateItems = newValue }
@@ -272,20 +299,33 @@ final class CommandPalette: NSObject {
 
     private func runSelected() {
         finishTyping()
-        let row = table.selectedRow
-        guard row >= 0, row < results.count else { return }
-        let item = results[row].item
-        close()
-        item.run()
+        ranker.afterPathLookup { [weak self] in
+            guard let self else { return }
+            run(row: table.selectedRow)
+        }
     }
 
     @objc private func rowClicked() {
-        runSelected()
+        let activation = table.activation
+        guard activation != .movedAway,
+              let item = ranker.clickedItem(table.clickedRow, byMouse: activation == .click) else { return }
+        run(item)
+    }
+
+    private func run(row: Int) {
+        guard results.indices.contains(row) else { return }
+        run(results[row].item)
+    }
+
+    private func run(_ item: PaletteItem) {
+        close()
+        item.run()
     }
 
     private func moveSelection(_ delta: Int) {
         finishTyping()
         guard !results.isEmpty else { return }
+        ranker.rowChosen = true
         let row = max(0, min(results.count - 1, table.selectedRow + delta))
         table.selectRowIndexes([row], byExtendingSelection: false)
         table.scrollRowToVisible(row)
@@ -318,6 +358,8 @@ extension CommandPalette: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        // Closing empties the results before the table hears of it.
+        guard results.indices.contains(row) else { return nil }
         let id = NSUserInterfaceItemIdentifier("PaletteCell")
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? PaletteCell ?? {
             let cell = PaletteCell()
@@ -393,6 +435,7 @@ final class PaletteCell: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ item: PaletteItem, matches: [Int]) {
@@ -458,40 +501,48 @@ final class PaletteRowView: NSTableRowView {
 /// folders boosted), path lookups (`github/acme`), and slower items (the index) merged in when they arrive.
 final class PaletteRanker {
     var source: [PaletteItem] = []
-    var queryItems: ((String) -> [PaletteItem])?
     var lateItems: ((String) async -> [PaletteItem])?
     var goToPath: ((URL) -> Void)?
     /// What shows with nothing typed (nothing, when not set).
     var emptyResults: (([PaletteItem]) -> [PaletteItem])?
-    /// Late items were merged in; the title of the row to keep selected.
-    var lateArrived: ((String?) -> Void)?
+    /// Late items were merged in; the identity of the row to keep selected.
+    var lateArrived: ((PaletteItem.ID?) -> Void)?
     /// For the selection kept when late items arrive.
-    var selectedTitle: () -> String? = { nil }
+    var selectedIdentity: () -> PaletteItem.ID? = { nil }
     /// How long typing must pause before the slow search starts (the index, documents' text): a keystroke in the
     /// meantime cancels it before it does any work.
     var lateDelay: Duration = .zero
-    /// A slow search is waiting or running.
-    var isSearching: Bool { late != nil }
+    /// A slow search, or the typed path's lookup, is waiting or running.
+    var isSearching: Bool { late != nil || pathLookup != nil }
+    /// A row was chosen (with the arrows or the mouse) since the query: the typed path, arriving, leaves the
+    /// selection alone, and a Return waiting for it doesn't run.
+    var rowChosen = false {
+        didSet { if rowChosen { cancelWaitingRun() } }
+    }
+    private var pressedItem: PaletteItem?
 
     private(set) var results: [(item: PaletteItem, matches: [Int])] = []
     private var scored: [(item: PaletteItem, matches: [Int], score: Int)] = []
-    private var late: Task<Void, Never>?
+    private(set) var late: Task<Void, Never>?
+    private(set) var pathLookup: Task<Void, Never>?
+    private(set) var waitingRun: Task<Void, Never>?
     private var query = ""
 
     func rank(_ text: String) {
         query = text.trimmingCharacters(in: .whitespaces)
         late?.cancel()
         late = nil
+        pathLookup?.cancel()
+        pathLookup = nil
+        cancelWaitingRun()
+        rowChosen = false
         scored = []
         guard !query.isEmpty else {
-            results = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int]()) }
+            scored = (emptyResults?(source) ?? []).map { (item: $0, matches: [Int](), score: 0) }
+            publish()
             return
         }
         let query = self.query
-        if let path = pathItem(for: query) { scored.append((path, [], 1000)) }
-        if PathQuery.isPathQuery(query) {
-            for item in queryItems?(query) ?? [] { scored.append((item, item.titleMatches, item.fixedScore ?? 0)) }
-        }
         for item in source {
             if let match = Fuzzy.match(query, item.title) {
                 scored.append((item, match.indices, match.score + item.boost))
@@ -502,9 +553,18 @@ final class PaletteRanker {
             }
         }
         scored.sort { $0.score > $1.score }
-        results = scored.prefix(60).map { ($0.item, $0.matches) }
-        guard let lateItems else { return }
+        publish()
         let asked = query
+        // A typed path is looked up away from the main thread: a folder on a server may not answer.
+        if goToPath != nil, asked.hasPrefix("/") || asked.hasPrefix("~") {
+            pathLookup = Task { [weak self] in
+                let path = await self?.pathItem(for: asked)
+                guard let self, !Task.isCancelled, self.query == asked else { return }
+                self.pathLookup = nil
+                if let path { self.merge([path]) }
+            }
+        }
+        guard let lateItems else { return }
         let delay = lateDelay
         late = Task { [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
@@ -516,34 +576,96 @@ final class PaletteRanker {
         }
     }
 
+    /// Runs `action` now, or once the typed path's lookup ends while one runs, so Return can go there: one waits at
+    /// most however often it's asked, and a new query or `cancel` drops it.
+    func afterPathLookup(_ action: @escaping () -> Void) {
+        // A row chosen stays chosen when the path arrives: nothing to wait for.
+        guard let lookup = pathLookup, !rowChosen else { return action() }
+        guard waitingRun == nil else { return }
+        let asked = query
+        waitingRun = Task { [weak self] in
+            await lookup.value
+            guard let self, !Task.isCancelled, self.query == asked else { return }
+            self.waitingRun = nil
+            action()
+        }
+    }
+
+    func cancelWaitingRun() {
+        waitingRun?.cancel()
+        waitingRun = nil
+    }
+
+    /// A click went down on `row`: what's there now is what the click runs. -1 forgets it.
+    func press(_ row: Int) {
+        pressedItem = results.indices.contains(row) ? results[row].item : nil
+        if pressedItem != nil { rowChosen = true }
+    }
+
+    /// What a click on `row` runs. A mouse click runs the item it went down on, even if results arrived while the
+    /// button was held, and nothing once they were dismissed; Accessibility's press runs the row itself.
+    func clickedItem(_ row: Int, byMouse: Bool) -> PaletteItem? {
+        defer { pressedItem = nil }
+        if byMouse { return pressedItem }
+        return results.indices.contains(row) ? results[row].item : nil
+    }
+
+    /// The results were put away: nothing waiting or pressed runs.
+    func dropPending() {
+        cancelWaitingRun()
+        pressedItem = nil
+    }
+
     func cancel() {
         late?.cancel()
         late = nil
+        pathLookup?.cancel()
+        pathLookup = nil
+        dropPending()
         query = ""
         scored = []
         results = []
     }
 
     private func merge(_ extra: [PaletteItem]) {
-        let known = Set(scored.compactMap { $0.item.url?.standardizedFileURL.path })
-        let fresh = extra.filter { item in item.url.map { !known.contains($0.standardizedFileURL.path) } ?? true }
-        guard !fresh.isEmpty else { return lateArrived?(selectedTitle()) ?? () }
-        let keeping = selectedTitle()
-        scored += fresh.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
+        guard !extra.isEmpty else { return }
+        // The typed path, once found, is what Return takes, unless a row was chosen meanwhile.
+        let keeping = rowChosen ? selectedIdentity() : extra.first { $0.kind == .path }?.id
+        scored += extra.map { ($0, $0.titleMatches, $0.fixedScore ?? 0) }
         scored.sort { $0.score > $1.score }
-        results = scored.prefix(60).map { ($0.item, $0.matches) }
+        publish()
         lateArrived?(keeping)
     }
 
+    private func publish() {
+        var paths: Set<String> = []
+        // Deduplicate after ranking and before limiting: the strongest match represents each location, including
+        // duplicates within a single folder-lookup/index batch. Equal names in different folders remain distinct.
+        var rows: [(item: PaletteItem, matches: [Int])] = []
+        for row in scored {
+            if let url = row.item.url, !paths.insert(url.lexicallyStandardized.path).inserted { continue }
+            rows.append((row.item, row.matches))
+            if rows.count == 60 { break }
+        }
+        results = rows
+    }
+
     /// Typing a path (`~/…` or `/…`) offers to go straight there.
-    private func pathItem(for query: String) -> PaletteItem? {
+    private func pathItem(for query: String) async -> PaletteItem? {
         guard let goToPath, query.hasPrefix("/") || query.hasPrefix("~") else { return nil }
         let path = (query as NSString).expandingTildeInPath
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        let found = await OwnThread.run { () -> (isFolder: Bool, icon: CGImage?)? in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+            var rect = NSRect(x: 0, y: 0, width: 64, height: 64)
+            let icon = NSWorkspace.shared.icon(forFile: path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
+            return (isDirectory.boolValue, icon)
+        }
+        guard let found else { return nil }
         let url = URL(fileURLWithPath: path)
-        return PaletteItem(title: Format.tildePath(url), subtitle: isDirectory.boolValue ? String(localized: "Open folder") : String(localized: "Reveal file"),
-                           icon: IconCache.shared.icon(forPath: path), kind: .path, url: url) { goToPath(url) }
+        let icon = found.icon.map { NSImage(cgImage: $0, size: NSSize(width: 32, height: 32)) } ?? IconCache.shared.icon(forType: .data)
+        return PaletteItem(title: Format.tildePath(url), subtitle: found.isFolder ? String(localized: "Open folder") : String(localized: "Reveal file"),
+                           icon: icon, kind: .path, fixedScore: 1000, url: url) { goToPath(url) }
     }
 }
 
@@ -576,6 +698,7 @@ final class ShadowedGlass: NSView {
         }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {

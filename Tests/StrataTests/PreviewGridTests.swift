@@ -2,6 +2,13 @@ import AppKit
 import QuickLookThumbnailing
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct PreviewGridTests {
     @Test func nativeGridKeysMoveOpenFoldersAndReturnWithoutNavigatingTheBrowser() async throws {
@@ -185,7 +192,8 @@ struct PreviewGridTests {
         for (index, width) in [4097, 4096].enumerated() {
             let context = try #require(CGContext(data: nil, width: width, height: 1, bitsPerComponent: 8, bytesPerRow: width * 4,
                                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-            generator.pending[index].1(try #require(context.makeImage()), false)
+            let image = try #require(context.makeImage())
+            generator.pending[index].1(image, false)
             if index == 0 { try await wait { generator.pending.count == 2 }; #expect(delivered == 0) }
             else { try await wait { delivered == 1 } }
         }
@@ -219,7 +227,7 @@ struct PreviewGridTests {
         let a = PreviewItem(.file(aEntry))
         let b = PreviewItem(.file(try #require(FileEntry(url: tree.url("b.png")))))
         func configure(_ item: PreviewItem, size: CGFloat) {
-            cell.configure(item, metrics: GridMetrics(iconSize: size), preferences: env.preferences, thumbnails: loader,
+            cell.configure(item, metrics: GridMetrics(iconSize: size, typography: .standard), preferences: env.preferences, thumbnails: loader,
                            requests: requests, scale: 1)
         }
         configure(a, size: 80)

@@ -3,93 +3,113 @@ import UniformTypeIdentifiers
 
 /// A structured file search: what `QueryInterpreter` makes of "pdfs from last week bigger than 10mb about invoices".
 /// Metadata fields are for the filename index; `contentQuery` is for `SemanticIndex`.
-nonisolated struct SearchFilter: Sendable, Hashable, Codable {
-    enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
+package nonisolated struct SearchFilter: Sendable, Hashable, Codable {
+    package enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
         case folder, document, pdf, text, image, movie, audio, archive, code, spreadsheet, presentation, application, diskImage, book, comic
 
-        var title: String {
-            switch self {
-            case .book: String(localized: "Books")
-            case .comic: String(localized: "Comics")
-            case .folder: String(localized: "Folders", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .document: String(localized: "Documents", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .text: String(localized: "Text files", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .image: String(localized: "Images", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .movie: String(localized: "Movies", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .audio: String(localized: "Audio", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .archive: String(localized: "Archives", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .code: String(localized: "Code", comment: "Kind of items: source code files; also a folder name")
-            case .spreadsheet: String(localized: "Spreadsheets", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .presentation: String(localized: "Presentations", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .application: String(localized: "Apps", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .diskImage: String(localized: "Disk images", comment: "Kind of items; also the name of a folder a plan groups them into")
-            }
-        }
+        package var title: String { names.title }
 
         /// The title in English: the name of a folder a plan groups this kind into when the translation can't be one.
-        var englishTitle: String {
-            switch self {
-            case .book: "Books"
-            case .comic: "Comics"
-            case .folder: "Folders"
-            case .document: "Documents"
-            case .pdf: "PDFs"
-            case .text: "Text files"
-            case .image: "Images"
-            case .movie: "Movies"
-            case .audio: "Audio"
-            case .archive: "Archives"
-            case .code: "Code"
-            case .spreadsheet: "Spreadsheets"
-            case .presentation: "Presentations"
-            case .application: "Apps"
-            case .diskImage: "Disk images"
-            }
-        }
+        package var englishTitle: String { names.englishTitle }
 
         /// The kind inside a sentence ("Move into “Archive” — only images named “Screenshot”").
-        var noun: String {
+        package var noun: String { names.noun }
+
+        package var symbol: String { names.symbol }
+
+        private struct Names: Sendable {
+            let title: String
+            let englishTitle: String
+            let noun: String
+            let symbol: String
+        }
+
+        /// Read once: the app's language is chosen at launch.
+        private static let allNames = Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.makeNames()) })
+
+        private var names: Names { Self.allNames[self, default: makeNames()] }
+
+        private func makeNames() -> Names {
             switch self {
-            case .book: String(localized: "books")
-            case .comic: String(localized: "comics")
-            case .folder: String(localized: "folders", comment: "Kind of items, inside a sentence: “only folders named “2024””")
-            case .document: String(localized: "documents", comment: "Kind of items, inside a sentence: “only documents named “Invoice””")
-            case .pdf: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into")
-            case .text: String(localized: "text files", comment: "Kind of items, inside a sentence: “only text files named “notes””")
-            case .image: String(localized: "images", comment: "Kind of items, inside a sentence: “only images named “Screenshot””")
-            case .movie: String(localized: "movies", comment: "Kind of items, inside a sentence: “only movies named “Trip””")
-            case .audio: String(localized: "audio", comment: "Kind of items, inside a sentence: “only audio named “Memo””")
-            case .archive: String(localized: "archives", comment: "Kind of items, inside a sentence: “only archives named “Backup””")
-            case .code: String(localized: "code", comment: "Kind of items (source code files), inside a sentence: “only code named “main””")
-            case .spreadsheet: String(localized: "spreadsheets", comment: "Kind of items, inside a sentence: “only spreadsheets named “Budget””")
-            case .presentation: String(localized: "presentations", comment: "Kind of items, inside a sentence: “only presentations named “Q3””")
-            case .application: String(localized: "apps", comment: "Kind of items, inside a sentence: “only apps named “Notes””")
-            case .diskImage: String(localized: "disk images", comment: "Kind of items, inside a sentence: “only disk images named “Installer””")
+            case .book:
+                Names(title: String(localized: "Books"),
+                      englishTitle: "Books",
+                      noun: String(localized: "books"),
+                      symbol: "book.closed")
+            case .comic:
+                Names(title: String(localized: "Comics"),
+                      englishTitle: "Comics",
+                      noun: String(localized: "comics"),
+                      symbol: "book.pages")
+            case .folder:
+                Names(title: String(localized: "Folders", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Folders",
+                      noun: String(localized: "folders", comment: "Kind of items, inside a sentence: “only folders named “2024””"),
+                      symbol: "folder")
+            case .document:
+                Names(title: String(localized: "Documents", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Documents",
+                      noun: String(localized: "documents", comment: "Kind of items, inside a sentence: “only documents named “Invoice””"),
+                      symbol: "doc.text")
+            case .pdf:
+                Names(title: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "PDFs",
+                      noun: String(localized: "PDFs", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      symbol: "doc.richtext")
+            case .text:
+                Names(title: String(localized: "Text files", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Text files",
+                      noun: String(localized: "text files", comment: "Kind of items, inside a sentence: “only text files named “notes””"),
+                      symbol: "doc.plaintext")
+            case .image:
+                Names(title: String(localized: "Images", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Images",
+                      noun: String(localized: "images", comment: "Kind of items, inside a sentence: “only images named “Screenshot””"),
+                      symbol: "photo")
+            case .movie:
+                Names(title: String(localized: "Movies", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Movies",
+                      noun: String(localized: "movies", comment: "Kind of items, inside a sentence: “only movies named “Trip””"),
+                      symbol: "film")
+            case .audio:
+                Names(title: String(localized: "Audio", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Audio",
+                      noun: String(localized: "audio", comment: "Kind of items, inside a sentence: “only audio named “Memo””"),
+                      symbol: "waveform")
+            case .archive:
+                Names(title: String(localized: "Archives", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Archives",
+                      noun: String(localized: "archives", comment: "Kind of items, inside a sentence: “only archives named “Backup””"),
+                      symbol: "archivebox")
+            case .code:
+                Names(title: String(localized: "Code", comment: "Kind of items: source code files; also a folder name"),
+                      englishTitle: "Code",
+                      noun: String(localized: "code", comment: "Kind of items (source code files), inside a sentence: “only code named “main””"),
+                      symbol: "chevron.left.forwardslash.chevron.right")
+            case .spreadsheet:
+                Names(title: String(localized: "Spreadsheets", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Spreadsheets",
+                      noun: String(localized: "spreadsheets", comment: "Kind of items, inside a sentence: “only spreadsheets named “Budget””"),
+                      symbol: "tablecells")
+            case .presentation:
+                Names(title: String(localized: "Presentations", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Presentations",
+                      noun: String(localized: "presentations", comment: "Kind of items, inside a sentence: “only presentations named “Q3””"),
+                      symbol: "rectangle.on.rectangle.angled")
+            case .application:
+                Names(title: String(localized: "Apps", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Apps",
+                      noun: String(localized: "apps", comment: "Kind of items, inside a sentence: “only apps named “Notes””"),
+                      symbol: "app.dashed")
+            case .diskImage:
+                Names(title: String(localized: "Disk images", comment: "Kind of items; also the name of a folder a plan groups them into"),
+                      englishTitle: "Disk images",
+                      noun: String(localized: "disk images", comment: "Kind of items, inside a sentence: “only disk images named “Installer””"),
+                      symbol: "externaldrive")
             }
         }
 
-        var symbol: String {
-            switch self {
-            case .book: "book.closed"
-            case .comic: "book.pages"
-            case .folder: "folder"
-            case .document: "doc.text"
-            case .pdf: "doc.richtext"
-            case .text: "doc.plaintext"
-            case .image: "photo"
-            case .movie: "film"
-            case .audio: "waveform"
-            case .archive: "archivebox"
-            case .code: "chevron.left.forwardslash.chevron.right"
-            case .spreadsheet: "tablecells"
-            case .presentation: "rectangle.on.rectangle.angled"
-            case .application: "app.dashed"
-            case .diskImage: "externaldrive"
-            }
-        }
-
-        func matches(type: UTType?, isDirectory: Bool, isPackage: Bool, extension ext: String) -> Bool {
+        package func matches(type: UTType?, isDirectory: Bool, isPackage: Bool, extension ext: String) -> Bool {
             if self == .folder { return isDirectory && !isPackage }
             let type = type ?? UTType(filenameExtension: ext)
             func conforms(_ identifiers: [String]) -> Bool {
@@ -129,27 +149,27 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
     }
 
     /// An item matches when it is any of `kinds` or has any of `extensions` (both empty: anything).
-    var kinds: Set<Kind> = []
+    package var kinds: Set<Kind> = []
     /// Lowercased, without the dot.
-    var extensions: Set<String> = []
-    var minSize: Int64?
-    var maxSize: Int64?
+    package var extensions: Set<String> = []
+    package var minSize: Int64?
+    package var maxSize: Int64?
     /// Inclusive.
-    var modifiedAfter: Date?
+    package var modifiedAfter: Date?
     /// Exclusive.
-    var modifiedBefore: Date?
+    package var modifiedBefore: Date?
     /// Every fragment must appear in the name (case- and accent-insensitive).
-    var nameContains: [String] = []
+    package var nameContains: [String] = []
     /// What the documents are about, for `SemanticIndex.search`.
-    var contentQuery: String?
+    package var contentQuery: String?
     /// Words nothing else claimed (no model to place them). An item matches when its name contains at least one of them
     /// (plural-tolerant); a content-aware search can also run `keywords.joined(" ")` through `SemanticIndex`.
-    var keywords: [String] = []
+    package var keywords: [String] = []
 
-    var isEmpty: Bool { self == SearchFilter() }
+    package var isEmpty: Bool { self == SearchFilter() }
 
     /// Matches metadata only (`contentQuery` needs the semantic index).
-    func matches(name: String, contentType: UTType?, isDirectory: Bool, isPackage: Bool = false, size: Int64?, modified: Date?) -> Bool {
+    package func matches(name: String, contentType: UTType?, isDirectory: Bool, isPackage: Bool = false, size: Int64?, modified: Date?) -> Bool {
         let ext = (name as NSString).pathExtension.lowercased()
         if !kinds.isEmpty || !extensions.isEmpty {
             let kindMatch = kinds.contains { $0.matches(type: contentType, isDirectory: isDirectory, isPackage: isPackage, extension: ext) }
@@ -177,20 +197,20 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         return true
     }
 
-    func matches(_ entry: FileEntry) -> Bool {
+    package func matches(_ entry: FileEntry) -> Bool {
         matches(name: entry.name, contentType: entry.contentType, isDirectory: entry.isDirectory, isPackage: entry.isPackage,
                 size: entry.size, modified: entry.modified)
     }
 
     // MARK: - Display
 
-    struct Chip: Sendable, Hashable {
-        let symbol: String
-        let text: String
+    package struct Chip: Sendable, Hashable {
+        package let symbol: String
+        package let text: String
     }
 
     /// One token per constraint, for showing what was understood.
-    var chips: [Chip] {
+    package var chips: [Chip] {
         var chips: [Chip] = []
         for kind in Kind.allCases where kinds.contains(kind) { chips.append(Chip(symbol: kind.symbol, text: kind.title)) }
         for ext in extensions.sorted() { chips.append(Chip(symbol: "doc", text: "." + ext)) }
@@ -209,9 +229,9 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
         return chips
     }
 
-    var summary: String { chips.map(\.text).joined(separator: " · ") }
+    package var summary: String { chips.map(\.text).joined(separator: " · ") }
 
-    var dateDescription: String? {
+    package var dateDescription: String? {
         let day = Date.FormatStyle(date: .abbreviated, time: .omitted)
         switch (modifiedAfter, modifiedBefore) {
         case let (after?, before?):
@@ -231,7 +251,7 @@ nonisolated struct SearchFilter: Sendable, Hashable, Codable {
 }
 
 nonisolated extension SearchFilter: CustomStringConvertible {
-    var description: String {
+    package var description: String {
         var parts: [String] = []
         if !kinds.isEmpty { parts.append("kinds=\(kinds.map(\.rawValue).sorted())") }
         if !extensions.isEmpty { parts.append("ext=\(extensions.sorted())") }

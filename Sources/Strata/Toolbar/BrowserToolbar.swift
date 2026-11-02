@@ -4,8 +4,7 @@ import AppKit
 final class BrowserToolbar {
     static let defaults: [NSToolbarItem.Identifier] = [
         .toggleSidebar, .sidebarMode, .sidebarTrackingSeparator, .back, .forward, .flexibleSpace, .pathBar,
-        .flexibleSpace, .viewMode, identifier(.reloadFolder), .dualPane, .share, .search, .transfers,
-        .inspectorTrackingSeparator, .toggleInspector,
+        .flexibleSpace, .viewMode, .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector,
     ]
     static let commands: [StrataCommand] = [
         .newFolder, .newFile, .moveToTrash, .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
@@ -13,7 +12,7 @@ final class BrowserToolbar {
     static func identifier(_ command: StrataCommand) -> NSToolbarItem.Identifier { .init("command." + command.id) }
     static func command(_ id: NSToolbarItem.Identifier) -> StrataCommand? { commands.first { identifier($0) == id } }
     static var allowed: [NSToolbarItem.Identifier] {
-        // Reload is both a default and an optional command: offer it once in Customize Toolbar.
+        // AppKit rejects duplicate commands if one is also present in the default set.
         defaults + commands.map(identifier).filter { !defaults.contains($0) } + [.space]
     }
 
@@ -110,9 +109,6 @@ extension BrowserWindowController {
 
     func toolbarDidRemoveItem(_ notification: Notification) {
         guard let item = notification.userInfo?[NSToolbarUserInfoKey.itemKey.rawValue] as? NSToolbarItem else { return }
-        if item === searchItem { searchItem = nil }
-        if item === sidebarModeItem { sidebarModeItem = nil }
-        if item === viewModeItem { viewModeItem = nil }
-        if item === dualPaneItem { dualPaneItem = nil }
+        toolbarItems.forget(item)
     }
 }

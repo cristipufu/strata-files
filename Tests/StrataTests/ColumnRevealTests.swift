@@ -2,8 +2,19 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ColumnRevealTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     /// Columns read their folders off the main thread: waits until they show what's expected (or gives up).
     private func wait(until condition: () -> Bool) async {
         for _ in 0..<100 where !condition() { try? await Task.sleep(for: .milliseconds(50)) }
@@ -13,14 +24,15 @@ struct ColumnRevealTests {
     /// item, which reveals it through the folder already selected in the first column. That folder's column has to
     /// come back; it used to stay closed, so the folder and everything in it vanished (issue #9).
     @Test func revealingThroughTheSelectedFolderReopensItsColumn() async throws {
+        let preferences = try Prefs.isolated()
         let made = FileManager.default.temporaryDirectory.appending(path: "strata-columns-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: made) }
         try FileManager.default.createDirectory(at: made.appending(path: "Parent/Old/inner"), withIntermediateDirectories: true)
         try "hi".write(to: made.appending(path: "Parent/notes.txt"), atomically: true, encoding: .utf8)
 
-        let columns = ColumnBrowserViewController()
+        let columns = ColumnBrowserViewController(directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 900, height: 500)
-        let entries = try await DirectoryLoader.load(made, showHidden: false)
+        let entries = try await DirectoryLoader.load(made, showHidden: false, copies: testEnvironment.services.copies).entries
         // Spelled as listed (the temporary folder is reached through a link), like the browser has them.
         let parent = try #require(entries.first { $0.name == "Parent" }).url
         let root = parent.deletingLastPathComponent()
@@ -32,7 +44,7 @@ struct ColumnRevealTests {
 
         try FileManager.default.removeItem(at: deleted)
         // What the browser does after deleting: shows its folder again, then selects what was selected.
-        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false))
+        columns.setRoot(root, entries: try await DirectoryLoader.load(root, showHidden: false, copies: testEnvironment.services.copies).entries)
         columns.select([deleted])
         await wait { columns.location?.fileViewKey == parent.fileViewKey }
         #expect(columns.location?.fileViewKey == parent.fileViewKey)

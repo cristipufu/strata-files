@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct InspectorFolderOpeningTests {
     private actor Calls {
@@ -75,25 +82,24 @@ struct InspectorFolderOpeningTests {
     }
 
     private final class Environment {
-        let domain = "StrataInspectorFolderOpening.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders, reader: DirectoryReader? = nil) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: reader)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func open(_ folder: URL, in window: BrowserWindowController) async throws {
@@ -139,11 +145,11 @@ struct InspectorFolderOpeningTests {
             await calls.started(1)
             window.navigate(to: tree.url("other"))
             window.navigate(to: start)
-            let history = window.pane.backStack
+            let history = window.pane.history.back
             await calls.finish(0, result: result)
             await work.value
             #expect(work.isCancelled && window.location == start)
-            #expect(window.pane.backStack == history && window.window?.attachedSheet == nil)
+            #expect(window.pane.history.back == history && window.window?.attachedSheet == nil)
             window.window?.close()
             #expect(tree.snapshot() == before)
             withExtendedLifetime(environment) {}
@@ -170,7 +176,7 @@ struct InspectorFolderOpeningTests {
             if !oldFirst { await calls.finish(0); await first.value }
             #expect(first.isCancelled && !second.isCancelled)
             #expect(window.location == tree.url("provider/second").standardizedFileURL)
-            #expect(window.pane.backStack == [.folder(tree.url("local").standardizedFileURL)])
+            #expect(window.pane.history.back == [.folder(tree.url("local").standardizedFileURL)])
             window.window?.close()
             #expect(tree.snapshot() == before)
             withExtendedLifetime(environment) {}
@@ -206,6 +212,8 @@ struct InspectorFolderOpeningTests {
         let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), calls: calls)]))
         let window = BrowserWindowController(location: tree.url("local"), services: environment.services)
         defer { window.window?.close(); withExtendedLifetime(environment) {} }
+        // Its first folder counts once it has been listed.
+        await window.browser.directoryReads.task?.value
         let before = tree.snapshot(), remembered = environment.services.preferences.lastLocation
         let visits = environment.services.visits.ranked()
         try await open(target, in: window)
@@ -231,12 +239,12 @@ struct InspectorFolderOpeningTests {
         let first = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("first"), calls: a)]))
         let second = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("second"), calls: b)]))
         let before = tree.snapshot()
-        let entries = try await first.services.directories.load(tree.url("first"), showHidden: false, applications: .standard)
+        let entries = try await first.services.directories.load(tree.url("first"), showHidden: false, applications: .standard).entries
         #expect(entries.map(\.name) == ["visible.txt"])
-        let hidden = try await first.services.directories.load(tree.url("first"), showHidden: true, applications: .standard)
+        let hidden = try await first.services.directories.load(tree.url("first"), showHidden: true, applications: .standard).entries
         #expect(hidden.map(\.name).sorted() == [".hidden.txt", "visible.txt"])
-        _ = try await second.services.directories.load(tree.url("second"), showHidden: false, applications: .standard)
-        let local = try await first.services.directories.load(tree.url("local"), showHidden: false, applications: .standard)
+        _ = try await second.services.directories.load(tree.url("second"), showHidden: false, applications: .standard).entries
+        let local = try await first.services.directories.load(tree.url("local"), showHidden: false, applications: .standard).entries
         #expect(local.map(\.name) == ["item.txt"])
         #expect(await a.refreshed == [tree.url("first"), tree.url("first")])
         #expect(await b.refreshed == [tree.url("second")])
@@ -347,7 +355,7 @@ struct InspectorFolderOpeningTests {
         let before = tree.snapshot(), calls = Calls(held: false, holdInvalidations: true)
         let copies = CopyProviders([Provider(root: tree.url("provider"), calls: calls)])
         var session: DirectoryReadSession? = DirectoryReadSession(reader: DirectoryReader(copies: copies))
-        weak var released = session
+        weak let released = session
         var received = 0
         let work = try #require(session).load(tree.url("provider"), showHidden: false, applications: .standard,
                                              invalidateCopy: true) { _, _ in received += 1 }
@@ -376,7 +384,7 @@ struct InspectorFolderOpeningTests {
             #expect(browser.isLoaded && browser.loadError == nil)
             if mode == .columns {
                 let child = ColumnPane(folder: tree.url("provider/child"), controller: browser.columns)
-                child.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+                child.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences))
                 await child.directoryReads.task?.value
                 #expect(child.entries.map(\.name) == ["item.txt"])
                 child.tearDown()

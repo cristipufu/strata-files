@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
     private let reader: Reader
     private let copies: CopyProviders
 
-    init(copies: CopyProviders = .live, reader: @escaping Reader = MediaInfoLoader.read) {
+    init(copies: CopyProviders, reader: @escaping Reader = MediaInfoLoader.read) {
         self.copies = copies
         self.reader = reader
     }
@@ -29,7 +29,7 @@ import UniformTypeIdentifiers
 
     func canRead(_ entry: FileEntry) -> Bool { Self.canRead(entry, copies: copies) }
 
-    nonisolated static func canRead(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    nonisolated static func canRead(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         !entry.isDirectory && !entry.isSymlink && !copies.isPlaceholder(entry.url)
             && (entry.contentType?.conforms(to: .image) == true || entry.contentType?.conforms(to: .audiovisualContent) == true)
     }

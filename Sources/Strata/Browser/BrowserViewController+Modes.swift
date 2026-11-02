@@ -65,7 +65,7 @@ extension BrowserViewController {
 
     private func stepTextSize(_ delta: Double) {
         let size = min(max(preferences.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
-        guard size != preferences.nameTextSize else { return NSSound.beep() }
+        guard size != preferences.nameTextSize else { return Sounds.beep() }
         preferences.nameTextSize = size
     }
 
@@ -81,6 +81,12 @@ extension BrowserViewController {
         var matches: [URL: [Int]] = [:]
         for node in shown where !node.matchIndices.isEmpty { matches[node.url] = node.matchIndices }
         let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches)
+        let diskSizeReader: (@MainActor (FileEntry) -> DiskSizeMeasurement)?
+        if services.copies.contains(directory) || ArchiveCache.archive(containing: directory) != nil {
+            diskSizeReader = nil
+        } else {
+            diskSizeReader = { [weak self] entry in self?.diskSize(entry) ?? .unavailable }
+        }
         let metadata = FileCollectionMetadata(
             ordered: { [weak self] a, b in
                 self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)
@@ -90,8 +96,20 @@ extension BrowserViewController {
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }
                 return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
-            })
+            },
+            sortedBy: ordering.snapshot,
+            diskSize: diskSizeReader)
         active.apply(content, metadata: metadata, animated: animated)
+    }
+
+    private func diskSize(_ entry: FileEntry) -> DiskSizeMeasurement {
+        if !entry.isDirectory || entry.isSymlink {
+            return entry.allocatedSize.map(DiskSizeMeasurement.measured) ?? .unavailable
+        }
+        guard canMeasure(entry) else { return .unavailable }
+        guard let size = folderSize(entry.url, request: true) else { return .measuring }
+        guard let bytes = size.allocatedBytes else { return .unavailable }
+        return size.allocationComplete ? .measured(bytes) : .partial(bytes)
     }
 
     // MARK: - Lazily created presentations
@@ -130,32 +148,41 @@ extension BrowserViewController: FileCollectionViewDelegate {
         springLoad(folder, drag: drag)
     }
 
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool {
-        SpringLoader.canOpen(folder, browsing: directory)
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool {
+        SpringLoader.canOpen(folder, browsing: directory, during: info)
     }
 
-    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, copy: Bool) -> Bool {
-        guard let target = folder ?? targetDirectory else { return false }
-        moveOrCopy(urls, into: target, move: !copy)
+    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, info: NSDraggingInfo) -> Bool {
+        guard !urls.isEmpty, let target = folder ?? targetDirectory else { return false }
+        FileDrop.drop(urls, into: target, info: info, copies: services.copies) { [weak self] move in
+            self?.moveOrCopy(urls, into: target, move: move)
+        }
         return true
     }
 
-    /// Same keys as the list: typing filters, Return renames (or opens), Space previews, Esc clears the filter.
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool {
+        handle(key)
+    }
+
+    /// The same keys in every view: typing filters, Return renames (or opens), Space previews, Esc clears the filter.
+    /// False when the key isn't the pane's to handle.
+    func handle(_ key: FileViewKey) -> Bool {
+        let typed = filtering.typed
         switch key {
         case .type(let text):
-            setFilter(filter + text)
+            setFilter(typed + text)
         case .backspace:
-            guard !filter.isEmpty else { return false }
-            setFilter(String(filter.dropLast()))
+            guard !typed.isEmpty else { return false }
+            setFilter(String(typed.dropLast()))
         case .escape:
-            guard !filter.isEmpty else { return false }
+            guard !typed.isEmpty else { return false }
             setFilter("")
         case .returnKey:
             // Disk Usage can't rename in place, so Return opens there.
+            filtering.finish()
             if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
         case .space:
-            if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
+            if typed.isEmpty { toggleQuickLook(nil) } else { setFilter(typed + " ") }
         case .tab:
             return onTab?() ?? false
         }

@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func theNativeScrollEdgePreferenceIsPreservedThroughPaletteAndViewChanges() throws {
@@ -8,8 +15,8 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
+        let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
@@ -59,7 +66,7 @@ extension ColorThemeTests {
     @Test func theToolbarKeepsItsNativeHeaderAndGeometryWhenThePaletteChanges() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -109,7 +116,8 @@ extension ColorThemeTests {
         let parent = material.superview
         let nativeOrder = root.subviews
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            host.appearance = try #require(NSAppearance(named: name))
+            let appearance = try #require(NSAppearance(named: name))
+            host.appearance = appearance
             var previous: NSColor?
             for palette in [ColorTheme.blue, .green, .rose, .purple] {
                 ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [], highContrast: false)

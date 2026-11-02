@@ -1,7 +1,15 @@
+@testable import StrataArchives
 import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct PreviewCancellationTests {
     private final class PasswordRequest {
@@ -29,7 +37,7 @@ struct PreviewCancellationTests {
 
     private func session(_ tree: TestTree, environment: PreviewEnvironment,
                          reader: @escaping PreviewArchiveAccess.Reader) async throws -> PreviewSession {
-        let access = PreviewArchiveAccess(reader: reader)
+        let access = PreviewArchiveAccess(copying: reader)
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
         session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: false, applications: .standard)
         await session.task?.value
@@ -37,10 +45,10 @@ struct PreviewCancellationTests {
         return session
     }
 
-    private func records(_ member: [String]?) -> [PreviewArchiveRecord] {
+    private func records(_ member: [String]?) -> [ArchiveRecord] {
         ["a.txt", "ab.txt"].filter { member == nil || member == [$0] }.map {
             let body = Data($0.utf8)
-            return PreviewArchiveRecord(path: [$0], kind: 1, size: Int64(body.count), modified: .distantPast,
+            return ArchiveRecord(path: [$0], kind: 1, size: Int64(body.count), modified: .distantPast,
                                         body: member == nil ? nil : body)
         }
     }
@@ -51,7 +59,7 @@ struct PreviewCancellationTests {
             let environment = try PreviewEnvironment(tree), before = tree.snapshot()
             let prompt = PasswordRequest()
             let session = try await session(tree, environment: environment) { _, member, _, password in
-                if member != nil, password == nil { throw PreviewArchiveError.password }
+                if member != nil, password == nil { throw ArchiveReadError.password }
                 return self.records(member)
             }
             session.archiveAccess.requestPassword = { _ in await prompt.request() }
@@ -59,7 +67,8 @@ struct PreviewCancellationTests {
             let content = PreviewArchiveContent(copies: environment.services.copies)
             var exported: PreviewArchiveLease?
             defer { prompt.cancel(); content.close(); session.close() }
-            session.select(try #require(session.roots.first { $0.name == "a.txt" }))
+            let item = try #require(session.roots.first { $0.name == "a.txt" })
+            session.select(item)
             content.select(in: session)
             let first = try #require(content.task)
             var requests = prompt.started.makeAsyncIterator()
@@ -67,7 +76,8 @@ struct PreviewCancellationTests {
             try #require(prompt.pending != nil)
             switch action {
             case "selection":
-                session.select(try #require(session.roots.first { $0.name == "ab.txt" }))
+                let item = try #require(session.roots.first { $0.name == "ab.txt" })
+                session.select(item)
                 content.select(in: session)
             case "command":
                 content.export(try #require(PreviewCommandTarget(session: session)), session: session) { exported = $0 }
@@ -110,8 +120,44 @@ struct PreviewCancellationTests {
         }
     }
 
-    private func allowQueuedCommandsToStart() async {
-        await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+    /// Long enough for a command that didn't wait for the one before to reach its provider, which takes hops off the
+    /// main actor and back: a command that does wait never gets there, so this can only bound how long to look.
+    private func allowQueuedCommandsToStart(_ probe: CommandProbe) async {
+        for _ in 0..<50 where probe.starts.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    @Test func aFileCopiedOutForAPreviewOrAnExportStreamsAndOnlyThePreviewTakesFromTheCache() async throws {
+        let tree = try TestTree("pack.tar", "outside/keep")
+        let environment = try PreviewEnvironment(tree), before = tree.snapshot()
+        var copies: [Bool] = []
+        let access = PreviewArchiveAccess(reader: { _, member, _, _ in self.records(member) },
+                                          copier: { source, member, folder, password, cached in
+            copies.append(cached)
+            return try await PreviewArchiveLease.stream(member: member, in: folder, source: source, password: password,
+                                                        cached: cached) { _, member, _, open in
+                let body = Data(member.joined().utf8)
+                let sink = try open(Int64(body.count))
+                try body.withUnsafeBytes { try sink($0) }
+            }
+        })
+        let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
+        session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: false, applications: .standard)
+        await session.task?.value
+        let content = PreviewArchiveContent(copies: environment.services.copies)
+        defer { content.close(); session.close() }
+        let item = try #require(session.roots.first { $0.name == "a.txt" })
+        session.select(item)
+        content.select(in: session)
+        await content.task?.value
+        #expect(try String(contentsOf: #require(content.lease).url, encoding: .utf8) == "a.txt")
+        var exported: PreviewArchiveLease?
+        content.export(try #require(PreviewCommandTarget(session: session)), session: session) { exported = $0 }
+        await content.commandTask?.value
+        #expect(try String(contentsOf: #require(exported).url, encoding: .utf8) == "a.txt" && copies == [true, false])
+        exported = nil; content.close(); session.close()
+        let left = tree.snapshot().filter { !$0.hasPrefix("environment/") }
+        #expect(left == before.filter { !$0.hasPrefix("environment/") })
+        withExtendedLifetime(environment) {}
     }
 
     @Test func replacementArchiveCommandsDrainThePreviousCommandBeforeReadingAgain() async throws {
@@ -123,7 +169,8 @@ struct PreviewCancellationTests {
         }
         let content = PreviewArchiveContent(copies: environment.services.copies)
         defer { probe.first.finish(.failure(CancellationError())); content.close(); session.close() }
-        session.select(try #require(session.roots.first { $0.name == "a.txt" }))
+        let item = try #require(session.roots.first { $0.name == "a.txt" })
+        session.select(item)
         let target = try #require(PreviewCommandTarget(session: session))
         var delivered: [PreviewArchiveLease] = []
         content.export(target, session: session) { delivered.append($0) }
@@ -134,7 +181,7 @@ struct PreviewCancellationTests {
         content.export(target, session: session) { delivered.append($0) }
         let last = try #require(content.commandTask)
         await probe.first.waitUntilCancelled()
-        await allowQueuedCommandsToStart()
+        await allowQueuedCommandsToStart(probe)
         #expect(probe.starts == [["a.txt"]] && delivered.isEmpty)
         probe.first.finish(.success(()))
         await first.value; await second.value; await last.value
@@ -182,7 +229,7 @@ struct PreviewCancellationTests {
         content.perform(.copy, target: target, session: session) { _, lease in if let lease { delivered.append(lease) } }
         let last = try #require(content.commandTask)
         await probe.first.waitUntilCancelled()
-        await allowQueuedCommandsToStart()
+        await allowQueuedCommandsToStart(probe)
         #expect(probe.starts == [[tree.url("copy/a").path]] && delivered.isEmpty)
         probe.first.finish(.success(()))
         await first.value; await second.value; await last.value

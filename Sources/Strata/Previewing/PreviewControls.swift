@@ -13,9 +13,11 @@ import AppKit
     var onIconSize: ((Double) -> Void)?
     var onBack: (() -> Void)?
     private var icons = false
+    private var searchesDocument = false
     private var target: PreviewCommandTarget?
     var canPerform: ((PreviewAction, PreviewCommandTarget) -> Bool)?
     var onAction: ((PreviewAction, PreviewCommandTarget) -> Void)?
+    var onFindNext: ((Bool) -> Void)?
     var onQuery: ((String) -> Void)?
     var onOrder: ((PreviewListing.Key) -> Void)?
     var order = PreviewListing.Order()
@@ -80,6 +82,7 @@ import AppKit
         updateView(mode: .list, size: 80, canBrowse: false, canGoBack: false)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func updateView(mode: PreviewViewMode, size: Double, canBrowse: Bool, canGoBack: Bool) {
@@ -116,6 +119,22 @@ import AppKit
         menu.delegate = self
         more.menu = menu
         menuNeedsUpdate(menu)
+    }
+
+    func configureSearch(document: Bool, enabled: Bool) {
+        searchesDocument = document
+        let label = document ? String(localized: "Find") : String(localized: "Filter")
+        search.placeholderString = label
+        search.setAccessibilityLabel(label)
+        search.toolTip = document ? String(localized: "Find text in this document.")
+            : String(localized: "Filters loaded items only.", comment: "Preview filter never searches or downloads entire folders")
+        search.isEnabled = enabled
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)), searchesDocument else { return false }
+        onFindNext?(NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+        return true
     }
 
     func controlTextDidChange(_ notification: Notification) { onQuery?(search.stringValue) }

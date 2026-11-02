@@ -1,9 +1,9 @@
 import Foundation
 
-nonisolated enum TransferOrder: Int, CaseIterable {
+package nonisolated enum TransferOrder: Int, CaseIterable {
     case next, earlier, later
 
-    var title: String {
+    package var title: String {
         switch self {
         case .next: String(localized: "Run Next", comment: "Transfers: give a waiting job first priority without interrupting active work")
         case .earlier: String(localized: "Move Up", comment: "Transfers: move a waiting job earlier in the queue")
@@ -13,8 +13,8 @@ nonisolated enum TransferOrder: Int, CaseIterable {
 }
 
 /// The insertion index after removing the chosen job. Unrelated rows keep their relative order.
-nonisolated enum TransferOrdering {
-    static func destination(for index: Int, among waiting: [Int], order: TransferOrder) -> Int? {
+package nonisolated enum TransferOrdering {
+    package static func destination(for index: Int, among waiting: [Int], order: TransferOrder) -> Int? {
         guard let position = waiting.firstIndex(of: index) else { return nil }
         switch order {
         case .next: return position > 0 ? 0 : nil

@@ -42,7 +42,7 @@ for (const locale of locales) {
         await expect(groups.nth(index).locator('li')).toHaveCount(3);
       }
       await expect(page.locator('#themes .lede')).toHaveText(locale.strings[
-        'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of fourteen themes.']);
+        'Follow the system or choose Light or Dark. Keep native Mac colors, or pick one of seventeen themes.']);
       await expect.poll(() => page.evaluate(() => window.strataLocale?.code)).toBe(locale.code);
       await expect(page.locator('[data-version]').first()).toContainText('0.7.1');
       const version = locale.strings['Version {version} · {size} · Free'].split('{size}')[1];

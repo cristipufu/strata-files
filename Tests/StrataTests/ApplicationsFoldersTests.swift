@@ -1,8 +1,19 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ApplicationsFoldersTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private actor Reads {
         private var pending: [Task<[FileEntry], Error>] = []
 
@@ -13,7 +24,7 @@ struct ApplicationsFoldersTests {
         }
 
         private func load(_ folder: URL, hidden: Bool, applications: ApplicationsFolders) async throws -> [FileEntry] {
-            let work = Task { try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications) }
+            let work = Task { try await DirectoryLoader.load(folder, showHidden: hidden, applications: applications, copies: .live).entries }
             pending.append(work)
             return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
         }
@@ -30,9 +41,9 @@ struct ApplicationsFoldersTests {
     private let reads = Reads()
 
     private func services() -> BrowserServices {
-        BrowserServices.configured(transfers: .shared, visits: .shared, windows: .headless,
-                                   remote: .shared, containers: .shared, containerStore: .shared,
-                                   clipboard: .shared, directories: reads.reader)
+        BrowserServices.configured(transfers: testEnvironment.services.transfers, visits: testEnvironment.services.visits, windows: .headless,
+                                   remote: testEnvironment.services.remote, containers: testEnvironment.services.containers, containerStore: testEnvironment.services.containerStore,
+                                   clipboard: testEnvironment.services.clipboard, directories: reads.reader)
     }
 
     private func fixture() throws -> TestTree {
@@ -74,16 +85,16 @@ struct ApplicationsFoldersTests {
     @Test func includesBothApplicationsFoldersWithRealURLsAndDuplicateNames() async throws {
         let tree = try fixture()
         let before = tree.snapshot(), apps = folders(tree)
-        let entries = try await DirectoryLoader.load(apps.installed, showHidden: false, applications: apps)
+        let entries = try await DirectoryLoader.load(apps.installed, showHidden: false, applications: apps, copies: .live).entries
         #expect(entries.count == 7)
         #expect(Set(entries.filter { $0.name == "Same.app" }.map(\.url.path)) ==
                 [tree.url("Installed/Applications/Same.app").path, tree.url("System/Applications/Same.app").path])
         #expect(Set(entries.filter { $0.name == "Utilities" }.map(\.url.path)) ==
                 [tree.url("Installed/Applications/Utilities").path, tree.url("System/Applications/Utilities").path])
-        #expect(try await DirectoryLoader.load(apps.installed, showHidden: true, applications: apps).count == 8)
-        let direct = try await DirectoryLoader.load(apps.system, showHidden: false, applications: apps)
+        #expect(try await DirectoryLoader.load(apps.installed, showHidden: true, applications: apps, copies: .live).entries.count == 8)
+        let direct = try await DirectoryLoader.load(apps.system, showHidden: false, applications: apps, copies: .live).entries
         #expect(Set(direct.map(\.name)) == ["BuiltIn.app", "Same.app", "SameExtra.app", "Utilities"])
-        let unrelated = try await DirectoryLoader.load(tree.url("Other/Applications"), showHidden: false, applications: apps)
+        let unrelated = try await DirectoryLoader.load(tree.url("Other/Applications"), showHidden: false, applications: apps, copies: .live).entries
         #expect(unrelated.map(\.name) == ["Own.app"])
         #expect(apps.revealChain(to: tree.url("Other/Applications/Own.app"), from: apps.installed, listed: entries) == nil)
         #expect(tree.snapshot() == before)
@@ -93,13 +104,13 @@ struct ApplicationsFoldersTests {
         let tree = try TestTree("Applications/a.app/", "System/Applications/b.app/")
         let before = tree.snapshot()
         let missingSystem = ApplicationsFolders(installed: tree.url("Applications"), system: tree.url("missing"))
-        #expect(try await DirectoryLoader.load(missingSystem.installed, showHidden: false, applications: missingSystem).map(\.name) == ["a.app"])
+        #expect(try await DirectoryLoader.load(missingSystem.installed, showHidden: false, applications: missingSystem, copies: .live).entries.map(\.name) == ["a.app"])
         let missingPrimary = ApplicationsFolders(installed: tree.url("missing"), system: tree.url("System/Applications"))
         await #expect(throws: (any Error).self) {
-            try await DirectoryLoader.load(missingPrimary.installed, showHidden: false, applications: missingPrimary)
+            try await DirectoryLoader.load(missingPrimary.installed, showHidden: false, applications: missingPrimary, copies: .live).entries
         }
         let same = ApplicationsFolders(installed: tree.url("Applications"), system: tree.url("Applications"))
-        #expect(try await DirectoryLoader.load(same.installed, showHidden: false, applications: same).count == 1)
+        #expect(try await DirectoryLoader.load(same.installed, showHidden: false, applications: same, copies: .live).entries.count == 1)
         #expect(tree.snapshot() == before)
     }
 
@@ -122,7 +133,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             undo.endUndoGrouping()
             let renamed = before.map { $0.replacingOccurrences(of: "System/Applications/Same.app/", with: "System/Applications/Renamed.app/") }.sorted()
             #expect(tree.snapshot() == renamed, "\(mode)")
@@ -152,7 +163,7 @@ struct ApplicationsFoldersTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.app", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             undo.endUndoGrouping()
             #expect(tree.snapshot() == before.map {
                 $0.replacingOccurrences(of: "System/Applications/Utilities/Tool.app/", with: "System/Applications/Utilities/Renamed.app/")

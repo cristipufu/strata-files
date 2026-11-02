@@ -1,6 +1,13 @@
 import Foundation
 import Synchronization
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 nonisolated final class PreviewTestProvider: CopyProvider, Sendable {
     let root: URL
@@ -36,7 +43,7 @@ nonisolated final class PreviewTestProvider: CopyProvider, Sendable {
             // Deliberately deliver a held success even after cancellation: callers must reject it.
             guard let bytes = data[url.path] else { throw CocoaError(.fileReadNoSuchFile) }
             try bytes.write(to: url, options: .atomic)
-            state.withLock { $0.missing.remove(url.path) }
+            state.withLock { _ = $0.missing.remove(url.path) }
         }
     }
     func fetchSelection(_ urls: [URL], limit: Int64) async {}

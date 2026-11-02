@@ -2,6 +2,13 @@ import AppKit
 import QuickLookThumbnailing
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct FileThumbnailsTests {
     private final class Generator {
@@ -9,7 +16,7 @@ struct FileThumbnailsTests {
         var cancelled: [QLThumbnailGenerator.Request] = []
 
         func loader(cache: ThumbnailCache = ThumbnailCache(observesMemoryPressure: false)) -> FileThumbnails {
-            FileThumbnails(cache: cache, generate: { [self] in requests.append(($0, $1)) },
+            FileThumbnails(cache: cache, copies: .live, containerStore: .shared, generate: { [self] in requests.append(($0, $1)) },
                            cancel: { [self] in cancelled.append($0) })
         }
     }

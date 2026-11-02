@@ -2,33 +2,16 @@ import AppKit
 import SwiftUI
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct BrowserPreferencesTests {
-    private final class Environment {
-        let name = "StrataBrowserPreferencesTests.\(UUID().uuidString)"
-        let state: TestTree
-        let defaults: UserDefaults
-        let preferences: Prefs
-        let services: BrowserServices
-
-        init(reader: DirectoryReader = .live) throws {
-            state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
-            preferences.showIconPreviews = false
-            services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: SecureStorage.Context(directory: state.root, caches: state.url("Caches"), key: nil))),
-                visits: Frecency(preferences: defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
-                directories: reader)
-        }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
-    }
+    private typealias Environment = IndependentEnvironment
 
     private final class Reads {
         let entries: [FileEntry]
@@ -95,7 +78,7 @@ struct BrowserPreferencesTests {
         let tree = try TestTree("a.txt", "z.txt", "middle/", ".hidden")
         let entries = try ["a.txt", "z.txt", "middle", ".hidden"].map { try #require(FileEntry(url: tree.url($0))) }
         let firstReads = Reads(entries), secondReads = Reads(entries)
-        let first = try Environment(reader: firstReads.reader), second = try Environment(reader: secondReads.reader)
+        let first = try Environment(directories: firstReads.reader), second = try Environment(directories: secondReads.reader)
         first.preferences.sortAscending = false
         first.preferences.foldersFirst = false
         second.preferences.foldersFirst = true
@@ -161,6 +144,39 @@ struct BrowserPreferencesTests {
         #expect(cell.textField?.font?.pointSize == 14)
         #expect(first.preferences.nameTextSize == 14 && second.preferences.nameTextSize == 16)
         #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
+    @Test func columnsStartInTheOrderTheirOwnWindowChooses() throws {
+        let tree = try TestTree("a.txt", "b/")
+        let file = try #require(FileEntry(url: tree.url("a.txt"))), folder = try #require(FileEntry(url: tree.url("b")))
+        let env = try Environment()
+        let columns = ColumnBrowserViewController(directoryReader: env.services.directories, preferences: env.preferences, thumbnails: env.services.thumbnails, itemInfo: env.services.itemInfo, copies: env.services.copies, clipboard: env.services.clipboard, statuses: env.services.statuses, names: env.services.folderNames)
+        env.preferences.foldersFirst = true
+        #expect(columns.sortComparator(folder, file) && !columns.sortComparator(file, folder))
+        env.preferences.foldersFirst = false
+        #expect(columns.sortComparator(file, folder) && !columns.sortComparator(folder, file))
+        #expect(tree.snapshot() == ["a.txt", "b/"])
+    }
+
+    @Test func deeperColumnsOrderFoldersByTheirOwnWindowsPreference() async throws {
+        let tree = try TestTree("top/a.txt", "top/b/")
+        for foldersFirst in [true, false] {
+            let env = try Environment()
+            env.preferences.foldersFirst = foldersFirst
+            let window = BrowserViewController(services: env.services)
+            window.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+            window.setMode(.columns, remember: false)
+            window.load(tree.root)
+            await window.directoryReads.task?.value
+            window.columns.select([tree.url("top")], scroll: false)
+            let pane = try #require(views(window.columns.view, of: ColumnPane.self).first {
+                $0.folder.fileViewKey == tree.url("top").fileViewKey
+            })
+            await pane.directoryReads.task?.value
+            #expect(pane.entries.map(\.name) == (foldersFirst ? ["b", "a.txt"] : ["a.txt", "b"]), "foldersFirst \(foldersFirst)")
+            withExtendedLifetime(env) {}
+        }
+        #expect(tree.snapshot() == ["top/", "top/a.txt", "top/b/"])
     }
 
     @Test func inlineRenameUsesTheOwningPanesTextSize() async throws {
@@ -232,10 +248,12 @@ struct BrowserPreferencesTests {
         aOutline.collapseItem(aFavorites)
         #expect(first.preferences.collapsedSidebarSections.contains("favorites"))
         #expect(!second.preferences.collapsedSidebarSections.contains("favorites") && bOutline.isItemExpanded(bFavorites))
-        Places.addFavorites([tree.url("third")], preferences: first.preferences)
-        Places.removeFavorite(tree.url("left"), preferences: first.preferences)
-        #expect(Places.favorites(preferences: first.preferences).map(\.url.standardizedFileURL.path) == [tree.url("third").standardizedFileURL.path])
-        #expect(Places.favorites(preferences: second.preferences).map(\.url.standardizedFileURL.path) == [tree.url("right").standardizedFileURL.path])
+        await Places.addFavorites([tree.url("third")], preferences: first.preferences, checks: first.services.places)
+        Places.removeFavorite(tree.url("left"), preferences: first.preferences, checks: first.services.places)
+        #expect(Places.favorites(preferences: first.preferences, checks: first.services.places).map(\.url.standardizedFileURL.path)
+            == [tree.url("third").standardizedFileURL.path])
+        #expect(Places.favorites(preferences: second.preferences, checks: second.services.places).map(\.url.standardizedFileURL.path)
+            == [tree.url("right").standardizedFileURL.path])
         a.toggleFolderTree(nil)
         #expect(first.preferences.sidebarShowsTree && !second.preferences.sidebarShowsTree)
         #expect(views(a.split.sidebar.view, of: SidebarOutlineView.self).contains { !$0.isHidden && ($0.dataSource is FolderTreeController) })
@@ -278,22 +296,30 @@ struct BrowserPreferencesTests {
         first.preferences.favoritePaths = []
         second.preferences.favoritePaths = []
         let browser = await browser(first, at: tree.url(unique))
+        // Added once the chosen folders have been read; added favorites stay.
+        func added(_ preferences: Prefs, _ paths: [String]) async throws -> Bool {
+            for _ in 0..<500 where preferences.favoritePaths != paths { try await Task.sleep(for: .milliseconds(10)) }
+            return preferences.favoritePaths == paths
+        }
         browser.addToSidebar(nil)
-        #expect(first.preferences.favoritePaths == [tree.url(unique).standardizedFileURL.path])
+        #expect(try await added(first.preferences, [tree.url(unique).standardizedFileURL.path]))
         #expect(second.preferences.favoritePaths == [])
         browser.select([tree.url("\(unique)/child")], scroll: false)
         browser.addToSidebar(nil)
-        #expect(first.preferences.favoritePaths == [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path))
+        #expect(try await added(first.preferences, [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path)))
 
-        let folderTree = FolderTreeController(preferences: second.preferences)
+        let folderTree = FolderTreeController(places: second.services.places, transfers: second.services.transfers,
+                                              preferences: second.preferences, remote: second.services.remote,
+                                              copies: second.services.copies, containerStore: second.services.containerStore,
+                                              clipboard: second.services.clipboard, watchBudget: .shared)
         let item = NSMenuItem()
         item.representedObject = tree.url("another")
         folderTree.perform(NSSelectorFromString("addFavorite:"), with: item)
-        #expect(second.preferences.favoritePaths == [tree.url("another").standardizedFileURL.path])
+        #expect(try await added(second.preferences, [tree.url("another").standardizedFileURL.path]))
         #expect(first.preferences.favoritePaths?.count == 2)
 
-        let a = PathSuggestions(visits: first.services.visits, preferences: first.preferences)
-        let b = PathSuggestions(visits: second.services.visits, preferences: second.preferences)
+        let a = PathSuggestions(preferences: first.preferences, places: first.services.places, index: first.services.index)
+        let b = PathSuggestions(preferences: second.preferences, places: second.services.places, index: second.services.index)
         a.begin(at: tree.url("elsewhere")); b.begin(at: tree.url("elsewhere"))
         let aMatches = await a.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))
         let bMatches = await b.suggestions(for: "\(unique)/child", in: tree.url("elsewhere"))
@@ -331,15 +357,96 @@ struct BrowserPreferencesTests {
         #expect(first.preferences.newFileExtension == "one" && second.preferences.newFileExtension == "two")
     }
 
-    @Test func serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks() throws {
+    @Test func serverNewFileNamesUseTheirOwnSettingsAndAvoidExistingFilesAndLinks() async throws {
         let tree = try TestTree("UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt")
         let first = try Environment(), second = try Environment()
         first.preferences.newFileExtension = "one"; second.preferences.newFileExtension = "two"
         let a = BrowserViewController(services: first.services), b = BrowserViewController(services: second.services)
-        #expect(a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
-        #expect(b.newFileNameOnServer(in: tree.root) == "untitled.two")
+        #expect(await a.serverCommands.newFileName(in: tree.root) == "untitled 3.one")
+        #expect(await b.serverCommands.newFileName(in: tree.root) == "untitled.two")
         first.preferences.newFileExtension = "../escape"
-        #expect(a.newFileNameOnServer(in: tree.root) == "untitled 3.one")
+        #expect(await a.serverCommands.newFileName(in: tree.root) == "untitled 3.one")
         #expect(tree.snapshot() == ["UNTITLED.one", "untitled 2.one -> ./missing", "untouched.txt"])
+    }
+
+    @Test func dualPaneAddressBarsStayWithTheirEnvironmentAndNavigateEachPaneIndependently() async throws {
+        let tree = try TestTree("left/sub/deep/", "left/sub/a.txt", "right/other/b.txt", "elsewhere/")
+        let first = try Environment(), second = try Environment()
+        _ = NSApplication.shared
+        let a = BrowserWindowController(location: tree.url("left/sub"), secondPane: tree.url("right/other"), services: first.services)
+        let b = BrowserWindowController(location: tree.url("left/sub"), secondPane: tree.url("right/other"), services: second.services)
+        for window in [a, b] { window.split.splitView.autosaveName = nil; window.window?.setFrameAutosaveName("") }
+        defer {
+            for window in [a, b] {
+                window.panes.forEach { $0.stopBackgroundWork() }
+                window.window?.contentViewController = nil
+            }
+        }
+        for p in a.panes + b.panes { await p.browser.directoryReads.task?.value }
+        let leftPane = a.panes[0], rightPane = a.panes[1]
+
+        // Default is off: each pane shows its compact title header and the toolbar path bar stays visible.
+        #expect(!first.preferences.dualPaneAddressBars && !second.preferences.dualPaneAddressBars)
+        #expect(a.toolbarItems.pathBar?.isHidden == false && b.toolbarItems.pathBar?.isHidden == false)
+        #expect(leftPane.host.pathBar.isHidden && rightPane.host.pathBar.isHidden)
+
+        // Turning the setting on in `first` updates `a` live without affecting `b`.
+        first.preferences.dualPaneAddressBars = true
+        #expect(a.toolbarItems.pathBar?.isHidden == true && b.toolbarItems.pathBar?.isHidden == false)
+        #expect(!leftPane.host.pathBar.isHidden && !rightPane.host.pathBar.isHidden)
+        #expect(b.panes.allSatisfy { $0.host.pathBar.isHidden })
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("right/other").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.crumbButtons.last?.title == "sub")
+        #expect(rightPane.host.pathBar.crumbButtons.last?.title == "other")
+
+        // Clicking a parent breadcrumb in the unfocused pane activates that pane and navigates only that pane.
+        #expect(a.pane === leftPane)
+        let rightParentCrumb = try #require(rightPane.host.pathBar.crumbButtons.first { $0.title == "right" })
+        _ = rightParentCrumb.target?.perform(rightParentCrumb.action, with: rightParentCrumb)
+        await rightPane.browser.directoryReads.task?.value
+        #expect(a.pane === rightPane)
+        #expect(rightPane.location.standardizedFileURL.path == tree.url("right").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("right").standardizedFileURL.path)
+        #expect(leftPane.location.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub").standardizedFileURL.path)
+
+        // ⌘L (Go to Folder) edits the focused pane's address bar and navigates that pane on Return.
+        a.goToFolder(nil)
+        #expect(rightPane.host.pathBar.isEditing && !leftPane.host.pathBar.isEditing && !a.pathBar.isEditing)
+        rightPane.host.pathBar.editorField.stringValue = tree.url("elsewhere").path
+        _ = rightPane.host.pathBar.control(rightPane.host.pathBar.editorField, textView: NSTextView(),
+                                           doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        // Return asks the disk what was typed first, away from the main thread.
+        await rightPane.host.pathBar.suggesting?.value
+        await rightPane.browser.directoryReads.task?.value
+        #expect(!rightPane.host.pathBar.isEditing)
+        #expect(rightPane.location.standardizedFileURL.path == tree.url("elsewhere").standardizedFileURL.path)
+        #expect(rightPane.host.pathBar.crumbButtons.last?.title == "elsewhere")
+
+        // Deeper column navigation in an unfocused pane updates that pane's own address bar.
+        leftPane.browser.setMode(.columns, remember: false)
+        a.browser(leftPane.browser, columnLocationChanged: tree.url("left/sub/deep"))
+        #expect(leftPane.host.pathBar.url?.standardizedFileURL.path == tree.url("left/sub/deep").standardizedFileURL.path)
+        #expect(leftPane.host.pathBar.crumbButtons.last?.title == "deep")
+        #expect(rightPane.host.pathBar.url?.standardizedFileURL.path == tree.url("elsewhere").standardizedFileURL.path)
+
+        // Non-folder destinations in one pane show their title crumb while the other pane keeps its folder breadcrumbs.
+        a.go(.recents, in: leftPane)
+        #expect(leftPane.host.pathBar.isShowingTitle)
+        #expect(!rightPane.host.pathBar.isShowingTitle)
+        let recentsCrumb = try #require(leftPane.host.pathBar.crumbButtons.first)
+        _ = recentsCrumb.target?.perform(recentsCrumb.action, with: recentsCrumb)
+        #expect(a.pane === leftPane)
+
+        // Closing dual-pane restores the toolbar path bar; turning the setting off restores compact headers.
+        a.toggleDualPane(nil)
+        #expect(!a.isDualPane && a.toolbarItems.pathBar?.isHidden == false)
+        a.toggleDualPane(at: tree.url("left/sub"))
+        #expect(a.isDualPane && a.toolbarItems.pathBar?.isHidden == true)
+        first.preferences.dualPaneAddressBars = false
+        #expect(a.toolbarItems.pathBar?.isHidden == false && a.panes.allSatisfy { $0.host.pathBar.isHidden })
+        #expect(tree.snapshot() == ["elsewhere/", "left/", "left/sub/", "left/sub/a.txt", "left/sub/deep/",
+                                    "right/", "right/other/", "right/other/b.txt"])
     }
 }

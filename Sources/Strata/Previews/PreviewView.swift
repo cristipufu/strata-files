@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// Why a rich preview couldn't show a file.
 nonisolated package enum PreviewError: Error {
@@ -43,6 +44,7 @@ package class PreviewView: NSView {
         ])
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     deinit { task?.cancel() }
@@ -74,7 +76,7 @@ package class PreviewView: NSView {
             switch result {
             case .success(let value):
                 apply(value)
-            case .failure(PreviewError.unsupported):
+            case .failure(PreviewError.unsupported), .failure(is TextFile.NotText):
                 if let fallback { fallback() } else { showMessage(symbol: "eye.slash", String(localized: "No Preview Available")) }
             case .failure(PreviewError.message(let text, let symbol)):
                 showMessage(symbol: symbol, text)
@@ -184,6 +186,7 @@ package final class PreviewFooter: NSView {
         ])
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     /// Shows the footer with `parts` joined by middots, and an optional right-aligned `note` (such as truncation).
@@ -243,14 +246,10 @@ final class PreviewMessageView: NSView {
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(stack.fillingConstraints(in: self))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 

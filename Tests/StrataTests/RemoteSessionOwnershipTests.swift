@@ -3,6 +3,13 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct RemoteSessionOwnershipTests {
     nonisolated private final class Backend: RemoteBackend {
@@ -416,29 +423,28 @@ struct RemoteSessionOwnershipTests {
     }
 
     private final class BrowserEnvironment {
-        let domain = "StrataServerOpening.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, browsing: RemoteBrowsing,
              openContainer: @escaping @MainActor @Sendable (String) async throws -> URL = { _ in throw Failure.refused }) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
+            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: testEnvironment.services.copies), copies: testEnvironment.services.copies)
             services = BrowserServices.configured(
                 transfers: transfers,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: DirectoryReader { _, _, _ in [] },
                 remoteBrowsing: browsing,
                 openContainer: openContainer)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     @Test func theNativeBrowserCancelButtonPreventsNavigationAfterADeferredReveal() async throws {
@@ -491,8 +497,8 @@ struct RemoteSessionOwnershipTests {
         #expect(window.pane === focused)
         #expect(window.location == focusedLocation)
         #expect(original.location == top.standardizedFileURL)
-        #expect(original.backStack == [.folder(tree.url("local").standardizedFileURL)])
-        #expect(focused.backStack.isEmpty)
+        #expect(original.history.back == [.folder(tree.url("local").standardizedFileURL)])
+        #expect(focused.history.back.isEmpty)
         #expect(tree.snapshot() == before)
     }
 
@@ -511,11 +517,11 @@ struct RemoteSessionOwnershipTests {
         await gate.waitForHeldStatus()
         window.navigate(to: tree.url("other"))
         window.navigate(to: originalLocation)
-        let history = window.pane.backStack
+        let history = window.pane.history.back
         await gate.releaseStatus()
         await opening.value
         #expect(window.location == originalLocation)
-        #expect(window.pane.backStack == history)
+        #expect(window.pane.history.back == history)
         #expect(window.window?.attachedSheet == nil)
         #expect(tree.snapshot() == before)
     }

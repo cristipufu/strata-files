@@ -2,6 +2,13 @@ import AppKit
 import SwiftUI
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func everySettingsPaneThemesItsActualContentAndRestoresTheNativeBackground() async throws {
@@ -91,7 +98,7 @@ extension ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try #require(NSAppearance(named: name))
-            let host = NSHostingView(rootView: ViewOptionsView())
+            let host = NSHostingView(rootView: ViewOptionsView(preferences: .shared))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 410, height: 650),
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.colorSpace = .sRGB

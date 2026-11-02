@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ServerMountSessionTests {
     private actor Mounts {
@@ -146,13 +153,10 @@ struct ServerMountSessionTests {
 
     @Test func nativeSheetIgnoresLateMountResultsAndKeepsItsOwnRecents() async throws {
         _ = NSApplication.shared
-        let domain = "StrataMountSheet.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts()
         let owned = ServerMountSession(mounter: driver.mounter)
-        let sheet = ConnectToServerController(settings: settings, mounts: owned)
+        let sheet = ConnectToServerController(settings: settings, mounts: owned, connections: .shared)
         let addressField = try #require(views(sheet.view, of: NSComboBox.self).first)
         let picker = try #require(views(sheet.view, of: NSSegmentedControl.self).first)
         let buttons = views(sheet.view, of: NSButton.self)
@@ -187,12 +191,9 @@ struct ServerMountSessionTests {
 
     @Test func releasingTheSheetCancelsEvenWhenItsSessionIsRetained() async throws {
         _ = NSApplication.shared
-        let domain = "StrataMountSheetLifetime.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
-        let settings = ServerConnectionSettings(preferences: Prefs(defaults: defaults, domainName: domain))
+        let settings = ServerConnectionSettings(preferences: try Prefs.isolated())
         let driver = Mounts(), owned = ServerMountSession(mounter: driver.mounter)
-        var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned)
+        var sheet: ConnectToServerController? = ConnectToServerController(settings: settings, mounts: owned, connections: .shared)
         weak var weakSheet: ConnectToServerController?
         weakSheet = sheet
         var callbacks = 0

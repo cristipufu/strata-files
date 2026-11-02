@@ -1,32 +1,16 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct BrowserSavedStateTests {
-    private final class Environment {
-        let domain = "StrataSavedStateTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
-        let preferences: Prefs
-        let services: BrowserServices
-
-        init(_ tree: TestTree) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
-            preferences.showIconPreviews = false
-            let storage = SecureStorage.Context(directory: tree.url(domain), caches: tree.url(domain + "/Caches"), key: nil)
-            let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage))
-            services = BrowserServices.configured(
-                transfers: transfers,
-                visits: Frecency(preferences: defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared)
-        }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
-    }
+    private typealias Environment = IndependentEnvironment
 
     private func views<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { views($0, of: type) }
@@ -46,7 +30,7 @@ struct BrowserSavedStateTests {
 
     @Test func sidebarsReadOnlyTheirSavedSearches() throws {
         let tree = try TestTree("files/keep")
-        let a = try Environment(tree), b = try Environment(tree)
+        let a = try Environment(), b = try Environment()
         defer { withExtendedLifetime((a, b)) {} }
         let first = SavedSearch(name: "Photos", query: "kind:image", scopePath: tree.url("files").path)
         let second = SavedSearch(name: "Photos", query: "kind:video", scopePath: nil)
@@ -63,7 +47,7 @@ struct BrowserSavedStateTests {
 
     @Test func comparisonsUseTheOwningShowHiddenSetting() async throws {
         let tree = try TestTree("left/visible.txt", "left/.hidden.txt", "right/")
-        let a = try Environment(tree), b = try Environment(tree)
+        let a = try Environment(), b = try Environment()
         defer { withExtendedLifetime((a, b)) {} }
         a.preferences.showHidden = true
         b.preferences.showHidden = false
@@ -102,7 +86,7 @@ struct BrowserSavedStateTests {
 
     @Test func searchChangesRefreshPeersAndRemoveOnlyTheExactSavedSearch() throws {
         let tree = try TestTree("left/keep", "right/keep")
-        let a = try Environment(tree), b = try Environment(tree)
+        let a = try Environment(), b = try Environment()
         defer { withExtendedLifetime((a, b)) {} }
         let first = SavedSearch(name: "Photos", query: "kind:image", scopePath: tree.url("left").path)
         let otherScope = SavedSearch(name: "Photos", query: "kind:image", scopePath: tree.url("right").path)
@@ -146,7 +130,7 @@ struct BrowserSavedStateTests {
 
     @Test func scopeBarSavesTheActivePanesSearchInItsOwnPreferences() async throws {
         let tree = try TestTree("left/keep", "right/keep")
-        let a = try Environment(tree), b = try Environment(tree)
+        let a = try Environment(), b = try Environment()
         defer { withExtendedLifetime((a, b)) {} }
         let before = tree.snapshot()
         _ = NSApplication.shared
@@ -178,7 +162,7 @@ struct BrowserSavedStateTests {
 
     @Test func unreadableSavedSearchesAreNotRewrittenByReading() throws {
         let tree = try TestTree("keep")
-        let env = try Environment(tree)
+        let env = try Environment()
         defer { withExtendedLifetime(env) {} }
         let before = tree.snapshot()
         for data in [Data("broken".utf8), Data("[{\"name\":\"missing query\"}]".utf8), Data("{}".utf8)] {

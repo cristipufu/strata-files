@@ -2,6 +2,13 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct PreviewMeasurementTests {
     @Test func sparseFilesReportLogicalAndAllocatedBytesWithoutReadingTheirContents() async throws {
@@ -123,7 +130,8 @@ struct PreviewMeasurementTests {
         let oldTask = try #require(measurement.task)
         var iterator = started.makeAsyncIterator()
         #expect(await iterator.next() == true)
-        session.select(try #require(session.roots.first))
+        let item = try #require(session.roots.first)
+        session.select(item)
         measurement.update(session)
         let newTask = try #require(measurement.task)
         #expect(await iterator.next() == false)

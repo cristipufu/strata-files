@@ -1,5 +1,12 @@
 import Foundation
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Blocking fixture tools use a dedicated queue so Process.waitUntilExit cannot pump a nested AppKit run loop
 /// while another test is changing files. Errors return to the test's own task for Swift Testing to report.

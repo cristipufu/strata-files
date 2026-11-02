@@ -24,18 +24,7 @@ final class NoticeBar: NSSplitViewItemAccessoryViewController {
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let stack = NSStackView(views: [icon, label, spacer, button])
         stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = ThemeAccessoryView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.heightAnchor.constraint(equalToConstant: 34),
-        ])
-        view = container
+        view = ThemeAccessoryView.bar(holding: stack)
     }
 
     func show(symbol: String, text: String, button title: String? = nil, action: (() -> Void)? = nil) {

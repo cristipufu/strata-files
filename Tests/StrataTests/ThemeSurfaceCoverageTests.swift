@@ -2,6 +2,13 @@ import AppKit
 import SwiftUI
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 // These share the serialized suite because ThemeStyle is process-wide, just like the app’s appearance.
 extension ColorThemeTests {
@@ -80,7 +87,7 @@ extension ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
         let tree = try TestTree("Photos/", "Projects/", "notes.zip", "report.zip")
-        let first = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let controller = MainSplitViewController(firstPane: first)
         controller.loadViewIfNeeded()
         controller.splitView.autosaveName = nil
@@ -111,8 +118,8 @@ extension ColorThemeTests {
             window.styleMask = fullSize ? [.borderless] : [.titled, .resizable, .fullSizeContentView]
             window.setContentSize(fullSize ? NSSize(width: 1536, height: 960) : NSSize(width: 1240, height: 780))
             for name in [NSAppearance.Name.aqua, .darkAqua] {
-                let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-                window.appearance = try #require(chosenAppearance)
+                let chosenAppearance = try #require(NSAppearance(named: name))
+                window.appearance = chosenAppearance
                 for palette in [ColorTheme.blue, .purple, .green, .rose, .amber, .teal, .sand, .graphite] {
                     ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [window], highContrast: false)
                     for mode in BrowserViewMode.ordered {
@@ -176,7 +183,7 @@ extension ColorThemeTests {
         }
         for scheme in [ColorScheme.light, .dark] {
             let preview = VStack(spacing: 20) {
-                ForEach(0..<((ColorTheme.allCases.count + 2) / 3)) { row in
+                ForEach(0..<((ColorTheme.allCases.count + 2) / 3), id: \.self) { row in
                     HStack(spacing: 20) {
                         ForEach(Array(ColorTheme.allCases[(row * 3)..<min(row * 3 + 3, ColorTheme.allCases.count)]), id: \.self) { palette in
                             ThemePreview(palette: palette, selected: true, options: ColorThemeOptions(palette: palette))

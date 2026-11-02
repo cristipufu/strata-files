@@ -1,8 +1,16 @@
+@testable import StrataArchives
 import AppKit
 import CryptoKit
 import SQLite3
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 @testable import StrataPreviews
 
 struct SecurityReviewTests {
@@ -26,11 +34,8 @@ struct SecurityReviewTests {
         let tree = try TestTree("source/top/", "source/top/file", "source/top/inside -> ./file", "source/top/escape -> ../sibling",
                                 "source/sibling", "out/", "out/sibling", "state/")
         if merge { try tree.add(["out/top/", "out/top/own", "out/top/own-link -> ../sibling"]) }
-        let domain = "strata-security-queue-" + UUID().uuidString
-        let defaults = try #require(UserDefaults(suiteName: domain))
-        defer { defaults.removePersistentDomain(forName: domain) }
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/cache"), key: nil)
-        let queue = TransferQueue(preferences: Prefs(defaults: defaults, domainName: domain), history: OperationLog(storage: storage),
+        let queue = TransferQueue(preferences: try Prefs.isolated(), history: OperationLog(storage: storage, copies: .live),
                                   copies: CopyProviders([Provider(root: tree.url("source"))]))
         let resolver = ConflictResolver { _ in ConflictResolution(decision: .merge, applyToAll: true) }
         let job = queue.enqueue([tree.url("source/top")], to: tree.url("out"), mode: .copy, verify: true, undo: nil, conflicts: resolver)
@@ -85,14 +90,23 @@ struct SecurityReviewTests {
     }
 
     @Test func archiveParsingObservesCancellationAndProcessTimeoutsLeaveLaterRunsAlone() async throws {
-        let run = ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 1 Oct 11 2026 file\n".utf8), status: 0, timedOut: false, truncated: false)
-        let task = Task { try ArchiveLister.parse(run, kind: .tar) }
+        let file = ArchiveRecord(path: ["file"], kind: 1, size: 1, modified: .distantPast, body: nil)
+        let task = Task { try ArchiveLister.tree(ArchiveReadListing(records: [file], end: .complete), compressed: nil, named: "pack.tar") }
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
         let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap '' TERM; while :; do :; done"], timeout: 0.05)
         #expect(stopped.timedOut && stopped.status != 0)
         let healthy = try await ProcessRunner.run("/usr/bin/printf", ["kept"], timeout: 2)
         #expect(healthy.status == 0 && healthy.output == Data("kept".utf8) && !healthy.timedOut)
+    }
+
+    @Test func aToolStoppedAtItsTimeoutKeepsTheOutputItWritesAsItStops() async throws {
+        let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap 'printf flushed; exit 1' TERM; while :; do :; done"],
+                                                  timeout: 0.2)
+        // A machine too busy to run the trap before the delayed SIGKILL shows nothing either way, so only a shell that
+        // got to write is held to its output.
+        #expect(stopped.timedOut)
+        #expect(stopped.status == SIGKILL || (stopped.status == 1 && stopped.output == Data("flushed".utf8)))
     }
 
     @Test func storageFoldersAndCachesArePrivateWithoutChmodThroughLinks() throws {
@@ -133,11 +147,11 @@ struct SecurityReviewTests {
 
     @Test func deletionKeepsReplacementsAcrossTheConfirmation() async throws {
         let tree = try TestTree("chosen/", "chosen/file", "keep")
-        let request = try #require(BrowserViewController.deletionPlan([tree.url("chosen")]).choices.first)
+        let request = try #require(await Deletion.plan([tree.url("chosen")], copies: .live).choices.first)
         _ = try request.chosen.get()
         try FileManager.default.moveItem(at: tree.url("chosen"), to: tree.url("original"))
         try tree.add(["chosen/", "chosen/replacement"])
-        let failures = await BrowserViewController.deleteAll([request])
+        let failures = await Deletion.deleteAll([request])
         #expect(failures.count == 1)
         #expect(tree.snapshot() == ["chosen/", "chosen/replacement", "keep", "original/", "original/file"])
     }
@@ -145,12 +159,12 @@ struct SecurityReviewTests {
     @Test func deletionKeepsAnAncestorReplacedByAnotherDirectoryOrLink() async throws {
         for link in [false, true] {
             let tree = try TestTree("parent/", "parent/file", "outside/", "outside/file")
-            let request = try #require(BrowserViewController.deletionPlan([tree.url("parent/file")]).choices.first)
+            let request = try #require(await Deletion.plan([tree.url("parent/file")], copies: .live).choices.first)
             _ = try request.chosen.get()
             try FileManager.default.moveItem(at: tree.url("parent"), to: tree.url("original"))
             try tree.add(link ? ["parent -> ./outside"] : ["parent/", "parent/file"])
             let before = tree.snapshot()
-            let failures = await BrowserViewController.deleteAll([request])
+            let failures = await Deletion.deleteAll([request])
             #expect(failures.count == 1)
             #expect(tree.snapshot() == before)
         }

@@ -1,9 +1,20 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 @Suite(.serialized)
 struct CommandCatalogTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func waitForLoad(_ browser: BrowserViewController) async throws {
         for _ in 0..<200 {
             if browser.isLoaded && !browser.isLoadingFolder { return }
@@ -14,7 +25,7 @@ struct CommandCatalogTests {
 
     private func window(at folder: URL, other: URL? = nil) throws -> BrowserWindowController {
         let _ = NSApplication.shared
-        let controller = BrowserWindowController(location: folder, secondPane: other)
+        let controller = BrowserWindowController(location: folder, secondPane: other, services: testEnvironment.services)
         controller.split.splitView.autosaveName = nil
         let window = try #require(controller.window)
         window.setFrameAutosaveName("")
@@ -193,10 +204,8 @@ struct CommandCatalogTests {
     @Test func shortcutOverridesAndAlternatesKeepTheirExistingIdentities() throws {
         let app = NSApplication.shared
         let saved = (app.windowsMenu, app.helpMenu, app.servicesMenu)
-        let suite = "Strata.CommandCatalogTests.\(UUID().uuidString)"
-        let preferences = try #require(UserDefaults(suiteName: suite))
+        let preferences = try Prefs.isolated().defaults
         defer {
-            preferences.removePersistentDomain(forName: suite)
             app.windowsMenu = saved.0
             app.helpMenu = saved.1
             app.servicesMenu = saved.2

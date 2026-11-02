@@ -5,63 +5,75 @@ import Foundation
 /// search over that, so the same queries match and rank the same way. Matches can be read while the scan runs.
 ///
 /// One scan serves every search typed in the same folder for a while, so refining a query doesn't read the folder again.
-nonisolated final class FolderSearch: @unchecked Sendable {
+package nonisolated final class FolderSearch: @unchecked Sendable {
     /// Indexed folders inside the searched one (your home folder inside `/Users`): not read again, taken from the index.
-    struct IndexedParts: Sendable {
-        struct Root: Sendable {
-            let path: String
+    package struct IndexedParts: Sendable {
+        package struct Root: Sendable {
+            package let path: String
             /// Levels below the searched folder.
-            let depth: Int
+            package let depth: Int
         }
 
-        let store: IndexStore
-        let roots: [Root]
+        package let store: IndexStore
+        package let roots: [Root]
     }
 
-    let folder: String
+    package let folder: String
     private let indexed: IndexedParts?
     private let store = IndexStore()
     private let scanner: IndexScanner
     /// The index's part of the answer, per query: it doesn't change while the folder is read.
     private let indexResults = IndexSearch.ResultCache()
+    private let queue: DispatchQueue
     private let lock = NSLock()
     private var finished = false
     private var finishedAt: Date?
 
-    init(folder: URL, indexed: IndexedParts? = nil) {
-        self.folder = folder.resolvingSymlinksInPath().standardizedFileURL.path
+    /// Where a scan reads unless told otherwise: it blocks while it reads, so it runs on a queue rather than in the task
+    /// pool.
+    package static let scanQueue = DispatchQueue.global(qos: .userInitiated)
+
+    /// `path`: where the folder searched really is (`FolderSearch.path(of:)`).
+    /// Where `folder` really is, its links followed: asked of its disk, away from the main thread.
+    @concurrent package static func path(of folder: URL) async -> String {
+        folder.resolvingSymlinksInPath().lexicallyStandardized.path
+    }
+
+    package init(path: String, indexed: IndexedParts?, queue: DispatchQueue) {
+        folder = path
         self.indexed = indexed
+        self.queue = queue
         // Only the index's own folders are skipped (they still show up as entries). Build and cache folders count as
         // noise, like in the index.
         scanner = IndexScanner(store: store, excluded: Set(indexed?.roots.map(\.path) ?? []), noiseFolders: [])
     }
 
     /// Items read so far.
-    var scannedCount: Int { scanner.scannedCount }
+    package var scannedCount: Int { scanner.scannedCount }
 
     /// Whether part of the answer comes from the index (an indexed folder inside this one).
-    var usesIndex: Bool { indexed != nil }
+    package var usesIndex: Bool { indexed != nil }
 
-    var isFinished: Bool {
+    package var isFinished: Bool {
         lock.withLock { finished }
     }
 
     /// Whether another search in `folder` can use this scan instead of reading the folder again: while it's still
     /// reading, and for a minute after it's done (counted from the end, so a slow network share stays reusable too).
-    func canServe(_ folder: URL) -> Bool {
-        guard folder.resolvingSymlinksInPath().standardizedFileURL.path == self.folder, !scanner.isCancelled else { return false }
+    /// Whether this scan can answer a search of the folder at `path` (`FolderSearch.path(of:)`).
+    package func canServe(_ path: String) -> Bool {
+        guard path == folder, !scanner.isCancelled else { return false }
         return lock.withLock { finishedAt.map { Date().timeIntervalSince($0) < 60 } ?? true }
     }
 
-    func cancel() {
+    package func cancel() {
         scanner.cancel()
     }
 
     /// Starts reading the folder on all cores (the scanner doesn't cross into other disks), then totals folder sizes so
-    /// size filters work on folders too. The scan blocks while it reads, so it runs on its own queue rather than in the
-    /// task pool.
-    func start() {
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
+    /// size filters work on folders too.
+    package func start() {
+        queue.async { [self] in
             let root = store.write { store in store.addRoot(path: folder, mtime: 0) }
             scanner.scan([(id: root, path: folder)], threads: IndexScanner.threadCount(for: folder))
             if !scanner.isCancelled {
@@ -91,7 +103,7 @@ nonisolated final class FolderSearch: @unchecked Sendable {
 
     /// The best `limit` matches read so far (all of them once `isFinished`), merged with the index's for the parts it
     /// has.
-    func search(_ text: String, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
+    package func search(_ text: String, limit: Int = 500) async -> (hits: [IndexHit], total: Int, interpretation: SearchFilter?) {
         var sources = [IndexSearch.Source(store: store, scopePath: nil, depth: 0)]
         if let indexed {
             sources += indexed.roots.map {

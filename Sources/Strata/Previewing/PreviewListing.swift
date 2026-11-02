@@ -56,6 +56,13 @@ import Foundation
 
     private func sorted(_ items: [PreviewItem]) -> [PreviewItem] {
         items.sorted { a, b in
+            // Sorted by name, a notebook's own items come first, in its order, sections and section groups alike;
+            // what it doesn't list follows as usual.
+            if order.key == .name, a.notebookPosition != nil || b.notebookPosition != nil {
+                guard let first = a.notebookPosition else { return false }
+                guard let second = b.notebookPosition else { return true }
+                if first != second { return order.ascending ? first < second : first > second }
+            }
             if foldersFirst, a.isDirectory != b.isDirectory { return a.isDirectory }
             let result: ComparisonResult
             switch order.key {

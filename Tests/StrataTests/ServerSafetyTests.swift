@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Deleting, moving and renaming on a server: there's no Trash there, so only the chosen items may change. These run
 /// with `RemoteFilesTests`' server (macOS's `sftp-server` over a pipe, in a temporary folder). That server can reach
@@ -55,8 +62,8 @@ extension RemoteFilesTests {
     @Test func theServersTopIsNeverDeletedOrMoved() async throws {
         defer { cleanUp() }
         let recorder = RecordingBackend()
-        let recorded = RemoteFiles(backends: { _ in recorder })
-        let top = RemoteCopies.top(of: remote.id)
+        let recorded = RemoteFiles(copies: copies, backends: { _ in recorder })
+        let top = copies.top(of: remote.id)
         try await recorded.delete([top, top.appending(path: "chosen.txt")])
         _ = try await recorded.move([top], into: top.appending(path: "inside"))
         _ = try? await recorded.rename(top, to: "renamed")
@@ -64,17 +71,17 @@ extension RemoteFilesTests {
     }
 
     @Test func copyingOntoTakenNamesAsksOrLeavesThem() {
-        #expect(BrowserViewController.uploadChoice(clashing: [], canAsk: true) == .upload(skipping: []))
-        #expect(BrowserViewController.uploadChoice(clashing: [], canAsk: false) == .upload(skipping: []))
-        #expect(BrowserViewController.uploadChoice(clashing: ["note.txt"], canAsk: true) == .ask)
+        #expect(ServerCommands.uploadChoice(clashing: [], canAsk: true) == .upload(skipping: []))
+        #expect(ServerCommands.uploadChoice(clashing: [], canAsk: false) == .upload(skipping: []))
+        #expect(ServerCommands.uploadChoice(clashing: ["note.txt"], canAsk: true) == .ask)
         // No window to ask in: what's on the server stays.
-        #expect(BrowserViewController.uploadChoice(clashing: ["note.txt", "docs"], canAsk: false) == .upload(skipping: ["note.txt", "docs"]))
+        #expect(ServerCommands.uploadChoice(clashing: ["note.txt", "docs"], canAsk: false) == .upload(skipping: ["note.txt", "docs"]))
     }
 
     @Test func somethingOnNoServerIsRefused() async throws {
         defer { cleanUp() }
         let recorder = RecordingBackend()
-        let recorded = RemoteFiles(backends: { _ in recorder })
+        let recorded = RemoteFiles(copies: copies, backends: { _ in recorder })
         let tree = try TestTree("local.txt")
         await #expect(throws: RemoteError.unknownServer) { try await recorded.delete([tree.url("local.txt")]) }
         #expect(recorder.changes.isEmpty)

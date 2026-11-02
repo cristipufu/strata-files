@@ -1,13 +1,16 @@
+import StrataArchives
+import StrataSupport
 import AppKit
 import ImageIO
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
+import os
 
 /// Quick Look thumbnails for the file views and the column preview, generated on demand and cached by path,
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
 final class FileThumbnails {
-    static let shared = FileThumbnails()
+    static let shared = FileThumbnails(copies: .live, containerStore: .shared)
 
     typealias Completion = @Sendable (CGImage?, Bool) -> Void
     typealias Generate = (QLThumbnailGenerator.Request, @escaping Completion) -> Void
@@ -28,7 +31,10 @@ final class FileThumbnails {
         var entry: FileEntry
         var request: QLThumbnailGenerator.Request
         var generation: Int
-        var coverSource: PreviewArchiveSource?
+        var coverSource: ArchiveSource?
+        let stopped: OSAllocatedUnfairLock<Bool>
+        var preparing: Task<Void, Never>?
+        var started = false
         var callbacks: [Int: Observer]
     }
 
@@ -38,6 +44,7 @@ final class FileThumbnails {
     }
 
     private let covers: BookCoverThumbnails
+    private let reads = ReadQueue(limit: 4)
     private let cache: ThumbnailCache
     let copies: CopyProviders
     let containerStore: ContainerStore
@@ -49,10 +56,11 @@ final class FileThumbnails {
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders = .live, containerStore: ContainerStore = .shared, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
-            completion(representation?.cgImage, cancelled)
+            let image = representation?.cgImage
+            DispatchQueue.global(qos: .utility).async { completion(image, cancelled) }
         }
     }, cancel: @escaping (QLThumbnailGenerator.Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }) {
         covers = BookCoverThumbnails(reader: coverReader)
@@ -61,6 +69,11 @@ final class FileThumbnails {
         self.containerStore = containerStore
         self.generate = generate
         cancelGeneration = cancel
+    }
+
+    isolated deinit {
+        reads.cancelWaiting()
+        for item in pending.values { stop(item) }
     }
 
     func icon(for entry: FileEntry) -> NSImage {
@@ -78,7 +91,7 @@ final class FileThumbnails {
     /// Whether to ask Quick Look for a thumbnail. Like Finder, every file is asked, so any type with a thumbnail
     /// (including ones an app adds) gets one, and Quick Look's "no thumbnail" keeps the icon. Folders, apps and other
     /// bundles, ordinary archives, disk images and executables are pictured by their icon, and links keep their arrow.
-    static func canThumbnail(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    static func canThumbnail(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         // A container's file not fetched yet has nothing to show.
         guard !entry.isFolder, !entry.isSymlink, !copies.isPlaceholder(entry.url) else { return false }
         if BookFormat.hasCover(entry.url) { return !entry.isPackage }
@@ -105,8 +118,7 @@ final class FileThumbnails {
             cache.remove(forKey: key)
             failed.remove(key)
             if let item = pending.removeValue(forKey: key) {
-                covers.cancel(item.generation)
-                cancelGeneration(item.request)
+                stop(item)
                 for observer in item.callbacks.values { observer.finished?() }
             }
         }
@@ -161,20 +173,50 @@ final class FileThumbnails {
             keysByPath.removeAll(keepingCapacity: true)
         }
         keysByPath[entry.url.path, default: []].insert(key)
-        let coverSource = BookFormat.hasCover(entry.url) ? try? PreviewArchiveSource(entry.url) : nil
-        pending[key] = Pending(entry: entry, request: request, generation: generation, coverSource: coverSource,
+        pending[key] = Pending(entry: entry, request: request, generation: generation,
+                               stopped: OSAllocatedUnfairLock(initialState: false),
                                callbacks: [ticket.id: Observer(image: completion, finished: finished)])
-        generate(request) { [weak self] original, cancelled in
+        reads.enqueue(generation) { [weak self] in self?.start(key, generation: generation) }
+        return ticket
+    }
+
+    private func start(_ key: String, generation: Int) {
+        guard let item = pending[key], item.generation == generation else { reads.finish(generation); return }
+        guard BookFormat.hasCover(item.entry.url) else { generate(key, generation: generation); return }
+        // Pin the book before Quick Look can fail and request its cover, without opening a file on the UI thread.
+        let url = item.entry.url, reads = reads
+        pending[key]?.preparing = Task { [weak self] in
+            let source = await OwnThread.run { try? ArchiveSource(url) }
+            guard !Task.isCancelled, let self, self.pending[key]?.generation == generation else {
+                reads.finish(generation)
+                return
+            }
+            self.pending[key]?.preparing = nil
+            self.pending[key]?.coverSource = source
+            self.generate(key, generation: generation)
+        }
+    }
+
+    private func generate(_ key: String, generation: Int) {
+        guard let item = pending[key], item.generation == generation else { reads.finish(generation); return }
+        guard canThumbnail(item.entry) else { return }
+        pending[key]?.started = true
+        let stopped = item.stopped
+        let entry = item.entry
+        let pixels = Int(min(2048, item.request.size.width * max(item.request.scale, 1)))
+        generate(item.request) { [weak self] original, cancelled in
+            guard !stopped.withLock({ $0 }) else { return }
             let original = original.flatMap { Self.bounded($0) ? $0 : nil }
             // Icon-mode thumbnails sit on a square transparent canvas; trim it so wide images can bottom-align.
-            let image = original.map { FileThumbnails.trimmed($0) }
+            let image = original.map { FileThumbnails.trimmed($0, isCancelled: { stopped.withLock { $0 } }) }
+            guard !stopped.withLock({ $0 }) else { return }
             // A cropped CGImage can retain the original backing, so charge its full decoded size.
             let cost = original.map { $0.bytesPerRow * $0.height } ?? 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self, self.pending[key]?.generation == generation else { return }
                     if image == nil, !cancelled, let source = self.pending[key]?.coverSource, self.canThumbnail(entry) {
-                        self.covers.request(id: generation, source: source, pixels: Int(min(2048, bucket * max(scale, 1)))) { [weak self] cover in
+                        self.covers.request(id: generation, source: source, pixels: pixels) { [weak self] cover in
                             self?.finish(key, generation: generation, cover, cancelled: false, cost: cover.map { $0.bytesPerRow * $0.height } ?? 0)
                         }
                     } else {
@@ -183,7 +225,16 @@ final class FileThumbnails {
                 }
             }
         }
-        return ticket
+    }
+
+    private func stop(_ item: Pending) {
+        item.stopped.withLock { $0 = true }
+        reads.cancel(item.generation)
+        item.preparing?.cancel()
+        covers.cancel(item.generation)
+        if item.started { cancelGeneration(item.request) }
+        // An uninterruptible file open still owns its slot until it actually returns.
+        if item.preparing == nil { reads.finish(item.generation) }
     }
 
     nonisolated private static func bounded(_ image: CGImage) -> Bool {
@@ -197,8 +248,7 @@ final class FileThumbnails {
         entry.callbacks[ticket.id] = nil
         if entry.callbacks.isEmpty {
             pending[ticket.key] = nil
-            covers.cancel(entry.generation)
-            cancelGeneration(entry.request)
+            stop(entry)
         } else {
             pending[ticket.key] = entry
         }
@@ -206,9 +256,9 @@ final class FileThumbnails {
 
     /// Crops the transparent canvas around the thumbnail's opaque body, keeping a margin wide enough for the soft
     /// drop shadow to fade out (no hard edge). Runs on Quick Look's callback thread.
-    nonisolated static func trimmed(_ image: CGImage) -> CGImage {
+    nonisolated static func trimmed(_ image: CGImage, isCancelled: @Sendable () -> Bool = { false }) -> CGImage {
         let width = image.width, height = image.height
-        guard width > 2, height > 2, width <= 4096, height <= 4096,
+        guard !isCancelled(), width > 2, height > 2, width <= 4096, height <= 4096,
               image.alphaInfo != .none, image.alphaInfo != .noneSkipLast,
               image.alphaInfo != .noneSkipFirst else { return image }
         var alpha = [UInt8](repeating: 0, count: width * height)
@@ -223,6 +273,7 @@ final class FileThumbnails {
         let threshold: UInt8 = 128
         var top = height, bottom = -1, left = width, right = -1
         for y in 0..<height {
+            if y & 63 == 0, isCancelled() { return image }
             let row = y * width
             var rowHasInk = false
             for x in 0..<width where alpha[row + x] > threshold {
@@ -253,7 +304,10 @@ final class FileThumbnails {
         // A cancelled request can still complete after a new one for the same key started; ignore it.
         guard let entry = pending[key], entry.generation == generation else { return }
         pending[key] = nil
-        defer { for observer in entry.callbacks.values { observer.finished?() } }
+        defer {
+            for observer in entry.callbacks.values { observer.finished?() }
+            reads.finish(generation)
+        }
         guard canThumbnail(entry.entry) else { return }
         guard let cgImage else {
             if !cancelled {
@@ -275,24 +329,28 @@ final class FileThumbnails {
 
 /// Small facts shown under icons, read off the main thread: a folder's item count, an image's pixel size.
 @MainActor final class ItemInfoLoader {
-    static let shared = ItemInfoLoader()
+    static let shared = ItemInfoLoader(copies: .live, containerStore: .shared)
 
     private var cache: [String: String] = [:]
     private(set) var tasks: [String: Task<Void, Never>] = [:]
     private var waiters: [String: [Int: (String) -> Void]] = [:]
     private var generations: [String: Int] = [:]
+    private let reads = ReadQueue(limit: 4)
     private var nextID = 0
     let copies: CopyProviders
     let containerStore: ContainerStore
     private let mediaReader: MediaInfoLoader.Reader
 
-    init(copies: CopyProviders = .live, containerStore: ContainerStore = .shared, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
+    init(copies: CopyProviders, containerStore: ContainerStore, mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) {
         self.copies = copies
         self.containerStore = containerStore
         self.mediaReader = mediaReader
     }
 
-    isolated deinit { tasks.values.forEach { $0.cancel() } }
+    isolated deinit {
+        reads.cancelWaiting()
+        tasks.values.forEach { $0.cancel() }
+    }
 
     final class Ticket {
         fileprivate let key: String
@@ -307,7 +365,7 @@ final class FileThumbnails {
     func immediate(_ entry: FileEntry, showHidden: Bool) -> String? {
         // A container says whether it runs (its folder only holds what's been browsed, so no count).
         if entry.isDirectory, let (source, top) = copies.containerCopies.copy(containing: entry.url),
-           top.standardizedFileURL == entry.url.standardizedFileURL {
+           top.lexicallyStandardized == entry.url.lexicallyStandardized {
             return switch containerStore.container(id: source.id)?.state {
             case .running?: String(localized: "Running", comment: "Container state")
             case .paused?: String(localized: "Paused", comment: "Container state")
@@ -329,7 +387,7 @@ final class FileThumbnails {
         return true
     }
 
-    nonisolated static func canLoad(_ entry: FileEntry, copies: CopyProviders = .live) -> Bool {
+    nonisolated static func canLoad(_ entry: FileEntry, copies: CopyProviders) -> Bool {
         if entry.isFolder { return !entry.isSymlink && !entry.isVolume && !copies.contains(entry.url) }
         // A container's image not fetched yet: its size for now, its dimensions once it's here (not cached meanwhile).
         if copies.isPlaceholder(entry.url) { return false }
@@ -345,7 +403,7 @@ final class FileThumbnails {
             let key = key(entry, hidden)
             cache[key] = nil
             waiters[key] = nil
-            generations[key] = nil
+            if let generation = generations.removeValue(forKey: key) { reads.cancel(generation) }
             if let task = tasks.removeValue(forKey: key) {
                 task.cancel()
             }
@@ -362,27 +420,32 @@ final class FileThumbnails {
         nextID += 1
         let ticket = Ticket(key: key, id: nextID)
         waiters[key, default: [:]][ticket.id] = completion
-        if tasks[key] == nil {
+        if generations[key] == nil {
             let isFolder = entry.isFolder
             let fallback = entry.size.map(Format.bytes)
             let generation = ticket.id
             generations[key] = generation
-            let copies = copies, mediaReader = mediaReader
-            tasks[key] = Task { [weak self] in
-                guard !Task.isCancelled else { return }
-                guard Self.canLoad(entry, copies: copies) else {
-                    guard let self else { return }
-                    _ = needsLoading(entry)
-                    drop(key, generation: generation)
-                    return
+            let copies = copies, mediaReader = mediaReader, reads = reads
+            reads.enqueue(generation) { [weak self] in
+                guard let self else { reads.finish(generation); return }
+                self.tasks[key] = Task { [weak self] in
+                    // Cancelling cannot interrupt every native read. Keep its slot until the reader returns.
+                    defer { reads.finish(generation) }
+                    guard !Task.isCancelled else { return }
+                    guard Self.canLoad(entry, copies: copies) else {
+                        guard let self else { return }
+                        _ = needsLoading(entry)
+                        drop(key, generation: generation)
+                        return
+                    }
+                    let text = await Self.load(entry, isFolder: isFolder, showHidden: showHidden, mediaReader: mediaReader)
+                    guard let self, !Task.isCancelled, generations[key] == generation else { return }
+                    guard needsLoading(entry) else {
+                        drop(key, generation: generation)
+                        return
+                    }
+                    finish(key, generation: generation, text ?? fallback ?? "")
                 }
-                let text = await Self.load(entry, isFolder: isFolder, showHidden: showHidden, mediaReader: mediaReader)
-                guard let self, !Task.isCancelled, generations[key] == generation else { return }
-                guard needsLoading(entry) else {
-                    drop(key, generation: generation)
-                    return
-                }
-                finish(key, generation: generation, text ?? fallback ?? "")
             }
         }
         return ticket
@@ -393,7 +456,7 @@ final class FileThumbnails {
         waiters[ticket.key]?[ticket.id] = nil
         if waiters[ticket.key]?.isEmpty == true {
             waiters[ticket.key] = nil
-            generations[ticket.key] = nil
+            if let generation = generations.removeValue(forKey: ticket.key) { reads.cancel(generation) }
             tasks.removeValue(forKey: ticket.key)?.cancel()
         }
     }
@@ -435,11 +498,11 @@ final class FileThumbnails {
 }
 
 extension IconCache {
-    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore = ContainerCopies.store, containerStore: ContainerStore = .shared) -> NSImage {
+    func icon(for entry: FileEntry, containerCopies: ContainerCopyStore, containerStore: ContainerStore) -> NSImage {
         // A container is a box, a Compose stack is a stack of boxes. Filled and green while it runs, an outline in
         // grey while it's stopped, orange while it's paused or only partly running.
         if entry.isDirectory, let (source, top) = containerCopies.copy(containing: entry.url),
-           top.standardizedFileURL == entry.url.standardizedFileURL {
+           top.lexicallyStandardized == entry.url.lexicallyStandardized {
             let mark = ContainerIconMark.container(state: containerStore.container(id: source.id)?.state, busy: containerStore.busy[source.id] != nil)
             return markedIcon(mark.containerSymbol, mark)
         }
@@ -451,10 +514,11 @@ extension IconCache {
             let mark = ContainerIconMark.stack(states: members.map(\.state), anyBusy: members.contains { containerStore.busy[$0.id] != nil })
             return markedIcon(mark.stackSymbol, mark)
         }
-        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType {
+        if !entry.isDirectory, !entry.isSymlink, let type = entry.contentType,
+           !type.conforms(to: .application), !type.conforms(to: .bundle) {
             return icon(forType: type)
         }
-        return icon(forPath: entry.url.path)
+        return icon(forPath: entry.url.path, folder: entry.isDirectory, link: entry.isSymlink, type: entry.contentType)
     }
 }
 

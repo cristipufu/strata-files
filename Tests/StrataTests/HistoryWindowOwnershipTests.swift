@@ -2,6 +2,13 @@ import AppKit
 import CryptoKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct HistoryWindowOwnershipTests {
     private final class Environment {
@@ -12,7 +19,7 @@ struct HistoryWindowOwnershipTests {
         init(_ tree: TestTree, name: String) {
             storage = SecureStorage.Context(directory: tree.url("state/" + name),
                 caches: tree.url("state/" + name + "/Caches"), key: SymmetricKey(size: .bits256))
-            history = OperationLog(storage: storage)
+            history = OperationLog(storage: storage, copies: .live)
             undo.groupsByEvent = false
         }
 
@@ -24,12 +31,12 @@ struct HistoryWindowOwnershipTests {
         func record(_ tree: TestTree, name: String) throws -> OperationLog.Entry {
             let destination = tree.url(name + "/to/a.txt")
             history.recordMove("Move", [(from: tree.url(name + "/from/a.txt"), to: destination)],
-                               landed: LandedFiles([destination]))
+                               fileIdentities: LandedFiles([destination]).savedKeys)
             return try #require(history.entries.last)
         }
     }
 
-    @Test func panelsShowAndClearOnlyTheirOwnHistory() throws {
+    @Test func panelsShowAndClearOnlyTheirOwnHistory() async throws {
         let tree = try TestTree("first/from/", "first/to/a.txt", "second/from/", "second/to/a.txt")
         let first = Environment(tree, name: "first"), second = Environment(tree, name: "second")
         let left = first.panel(), right = second.panel(), table = NSTableView()
@@ -38,20 +45,21 @@ struct HistoryWindowOwnershipTests {
         #expect(left.numberOfRows(in: table) == 1 && right.numberOfRows(in: table) == 0)
         let b = try second.record(tree, name: "second")
         #expect(left.numberOfRows(in: table) == 1 && right.numberOfRows(in: table) == 1)
+        await left.checking?.value
         let cell = try #require(left.tableView(table, viewFor: nil, row: 0))
         let button = try #require(cell.subviews.compactMap { $0 as? NSButton }.first)
         #expect(button.isEnabled)
-        let firstSaved = try Data(contentsOf: first.storage.url("history.sealed"))
-        let secondSaved = try Data(contentsOf: second.storage.url("history.sealed"))
+        let firstSaved = try written(first.storage.url("history.sealed"))
+        let secondSaved = try written(second.storage.url("history.sealed"))
         let before = tree.snapshot()
         left.clearHistory(after: .alertSecondButtonReturn)
         #expect(first.history.entries.map(\.id) == [a.id])
-        #expect(try Data(contentsOf: first.storage.url("history.sealed")) == firstSaved)
+        #expect(try written(first.storage.url("history.sealed")) == firstSaved)
         left.clearHistory(after: .alertFirstButtonReturn)
         #expect(first.history.entries.isEmpty && left.numberOfRows(in: table) == 0)
         #expect(second.history.entries.map(\.id) == [b.id] && right.numberOfRows(in: table) == 1)
-        #expect(try Data(contentsOf: second.storage.url("history.sealed")) == secondSaved)
-        #expect(OperationLog(storage: first.storage).entries.isEmpty)
+        #expect(try written(second.storage.url("history.sealed")) == secondSaved)
+        #expect(OperationLog(storage: first.storage, copies: .live).entries.isEmpty)
         #expect(tree.text("first/to/a.txt") == "first/to/a.txt")
         #expect(tree.text("second/to/a.txt") == "second/to/a.txt")
         #expect(tree.snapshot() == before)
@@ -63,7 +71,7 @@ struct HistoryWindowOwnershipTests {
         let first = Environment(tree, name: "first"), second = Environment(tree, name: "second")
         let entry = try first.record(tree, name: "first")
         let other = try second.record(tree, name: "second")
-        let otherSaved = try Data(contentsOf: second.storage.url("history.sealed"))
+        let otherSaved = try written(second.storage.url("history.sealed"))
         var panel: HistoryWindowController? = first.panel()
         weak var weakPanel: HistoryWindowController?
         weakPanel = panel
@@ -91,7 +99,7 @@ struct HistoryWindowOwnershipTests {
         #expect(tree.text("first/to/ab.txt") == "first/to/ab.txt")
         #expect(tree.text("second/to/a.txt") == "second/to/a.txt")
         #expect(second.history.entries.map(\.id) == [other.id] && second.history.entries.first?.undone == false)
-        #expect(try Data(contentsOf: second.storage.url("history.sealed")) == otherSaved)
+        #expect(try written(second.storage.url("history.sealed")) == otherSaved)
         #expect(tree.snapshot() == moved.sorted())
         withExtendedLifetime((first, second, tree)) {}
     }
@@ -110,5 +118,11 @@ struct HistoryWindowOwnershipTests {
         #expect(tree.text("first/to/ab.txt") == "first/to/ab.txt")
         #expect(tree.snapshot() == before)
         withExtendedLifetime((environment, panel, tree)) {}
+    }
+
+    /// A saved History, once what's been asked is written.
+    private func written(_ url: URL) throws -> Data {
+        OperationLog.waitForWrites()
+        return try Data(contentsOf: url)
     }
 }

@@ -1,42 +1,63 @@
+import StrataArchives
 import AppKit
 
 /// Password and source ownership last only as long as this preview's archive. No credential is persisted.
 @MainActor final class PreviewArchiveAccess {
-    typealias Reader = @MainActor (PreviewArchiveSource, [String]?, Bool, String?) async throws -> [PreviewArchiveRecord]
+    typealias Reader = @MainActor (ArchiveSource, [String]?, Bool, String?) async throws -> [ArchiveRecord]
+    /// Its last argument says whether the copy is a preview's, taken from the cache (`PreviewArchiveLease.stream`).
+    typealias Copier = @MainActor (ArchiveSource, [String], URL, String?, Bool) async throws
+        -> PreviewArchiveLease
     private let reader: Reader
-    private(set) var source: PreviewArchiveSource?
+    private let copier: Copier
+    private(set) var source: ArchiveSource?
     private var password: String?
     var requestPassword: ((String) async -> String?)?
     var cancelPassword: (() -> Void)?
 
-    init(reader: @escaping Reader = { try await PreviewArchiveReader.read($0, member: $1, directory: $2, password: $3) }) {
+    init(reader: @escaping Reader = {
+             try await ArchiveReader.read($0, member: $1, directory: $2, password: $3)
+         },
+         copier: @escaping Copier = {
+             try await PreviewArchiveLease.stream(member: $1, in: $2, source: $0, password: $3, cached: $4)
+         }) {
         self.reader = reader
+        self.copier = copier
     }
 
-    func reset(_ source: PreviewArchiveSource? = nil) {
+    func reset(_ source: ArchiveSource? = nil) {
         self.source = source
         password = nil
         cancelPassword?()
     }
 
-    func read(member: [String]? = nil, directory: Bool = false, prompt: Bool = true) async throws -> [PreviewArchiveRecord] {
-        guard let source else { throw PreviewArchiveError.unreadable }
+    func read(member: [String]? = nil, directory: Bool = false, prompt: Bool = true) async throws -> [ArchiveRecord] {
+        try await withPassword(prompt: prompt) { try await self.reader($0, member, directory, $1) }
+    }
+
+    func copy(member: [String], into folder: URL, cached: Bool) async throws -> PreviewArchiveLease {
+        try await withPassword(prompt: true) { try await self.copier($0, member, folder, $1, cached) }
+    }
+
+    /// Runs `read` with the password the archive takes, asking for it when the archive says so.
+    private func withPassword<T>(prompt: Bool, _ read: (ArchiveSource, String?) async throws -> T)
+        async throws -> T {
+        guard let source else { throw ArchiveReadError.unreadable }
         var attempts = 0
         while true {
             try Task.checkCancellation()
             guard self.source === source else { throw CancellationError() }
             do {
-                let result = try await reader(source, member, directory, password)
+                let result = try await read(source, password)
                 try Task.checkCancellation()
                 guard self.source === source else { throw CancellationError() }
                 return result
             }
-            catch PreviewArchiveError.password {
+            catch ArchiveReadError.password {
                 try Task.checkCancellation()
                 guard self.source === source else { throw CancellationError() }
-                guard prompt else { throw PreviewArchiveError.password }
+                guard prompt else { throw ArchiveReadError.password }
                 password = nil
-                guard attempts < 3, let requestPassword else { throw PreviewArchiveError.password }
+                guard attempts < 3, let requestPassword else { throw ArchiveReadError.password }
                 attempts += 1
                 let answer = await requestPassword(source.chosen.url.lastPathComponent)
                 try Task.checkCancellation()

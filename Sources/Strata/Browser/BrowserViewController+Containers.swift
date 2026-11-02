@@ -6,7 +6,7 @@ extension BrowserViewController {
     var selectedContainers: [ContainerInfo] {
         let copies = services.copies.containerCopies, store = services.containerStore
         return selectedURLs.compactMap { url in
-            guard let (source, top) = copies.copy(containing: url), top.standardizedFileURL == url.standardizedFileURL else { return nil }
+            guard let (source, top) = copies.copy(containing: url), top.lexicallyStandardized == url.lexicallyStandardized else { return nil }
             return store.container(id: source.id)
         }
     }
@@ -20,15 +20,16 @@ extension BrowserViewController {
     /// Open in Terminal, in a container's files: a shell in the container, in the folder shown (or at `/` for a
     /// container selected in the Containers folder). False outside containers.
     func openTerminalInContainer() -> Bool {
+        let preferences = preferences
         let copies = services.copies.containerCopies, store = services.containerStore
         guard let engine = store.engine else {
             // Never a shell on this Mac in Strata's copy.
             guard directory.map(copies.contains) == true else { return false }
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
         if let container = selectedContainers.first {
-            if !ContainerControl.openTerminal(in: container, at: "/", engine: engine) { NSSound.beep() }
+            ContainerControl.openTerminalOrBeep(in: container, at: "/", engine: engine, preferences: preferences)
             return true
         }
         let selected = selectedEntries
@@ -36,21 +37,20 @@ extension BrowserViewController {
         guard let folder, let (source, top) = copies.copy(containing: folder) else {
             // The Containers folder itself: there's no container to open a shell in.
             guard directory.map(copies.contains) == true else { return false }
-            NSSound.beep()
+            Sounds.beep()
             return true
         }
-        let path = ContainerCopies.containerPath(of: folder.resolvingSymlinksInPath(), top: top) ?? "/"
-        guard let container = store.container(id: source.id),
-              ContainerControl.openTerminal(in: container, at: path, engine: engine) else {
-            NSSound.beep()
-            return true
+        Task {
+            let path = ContainerCopies.containerPath(of: await RealPath.of(folder), top: top) ?? "/"
+            guard let container = store.container(id: source.id),
+                  await ContainerControl.openTerminal(in: container, at: path, engine: engine, preferences: preferences) else { return Sounds.beep() }
         }
         return true
     }
 
     /// Whether Open in Terminal can open a shell in the container shown (or selected): it has to be running.
     var canOpenTerminalInContainer: Bool? {
-        if isStackContext { return !stackProjectFolders().isEmpty }
+        if isStackContext { return !stackProjectDirectories().isEmpty }
         if let container = selectedContainers.first { return container.isRunning }
         let copies = services.copies.containerCopies, store = services.containerStore
         guard let directory, copies.contains(directory) else { return nil }

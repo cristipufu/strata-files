@@ -1,10 +1,17 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct SemanticMemoryTests {
     private func configuration(_ directory: URL, sentences: Bool = false) -> SemanticIndex.Configuration {
-        var config = SemanticIndex.Configuration(roots: [])
+        var config = SemanticIndex.Configuration(roots: [], storage: .shared)
         config.storeDirectory = directory
         config.sentenceEmbeddings = sentences
         config.throttle = .zero
@@ -66,7 +73,7 @@ struct SemanticMemoryTests {
         #expect(await index.vectorStorageBytes.sentence == 0)
         let saved = try SemanticFixture.read(from: tree.url("store"))
         #expect(saved.files.contains { $0.path == tree.url("new.txt").standardizedFileURL.path })
-        #expect(!saved.files.contains { $0.path == tree.url("document-1.txt").path })
+        #expect(!saved.files.contains { $0.path == tree.url("document-1.txt").lexicallyStandardized.path })
         await index.reset()
         let cleared = await index.vectorStorageBytes
         #expect(cleared.word == 0 && cleared.sentence == 0)

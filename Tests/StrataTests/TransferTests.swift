@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Copies and moves (drag and drop, paste, Copy/Move to Other Pane, Duplicate, sync): each item goes only where it was
 /// sent; an existing item is replaced only when asked, and only once a complete copy is there to take its place; an
@@ -132,11 +139,13 @@ import Testing
         // While the job checks its copy of "b.txt", the copy of "a.txt" it made a moment before is swapped for another file.
         let swapped = tree.url("to/a.txt")
         let checked = Self.fixtureLocation(tree.url("to/b.txt"))
+        // Written beside the copy, then renamed over it: a file of its own, which can't take the copy's inode however
+        // quickly it's made.
+        let replacement = tree.url("to/.replacement")
         TransferEngine.hooks.beforeVerify = { copy in
             guard Self.fixtureLocation(copy) == checked else { return }
-            Thread.sleep(forTimeInterval: 0.3)
-            try? FileManager.default.removeItem(at: swapped)
-            try? Data("someone else's".utf8).write(to: swapped)
+            try? Data("someone else's".utf8).write(to: replacement)
+            _ = Darwin.rename(replacement.path, swapped.path)
         }
         defer { TransferEngine.hooks = .init() }
         try unrelatedTransfersKeepTheirFiles(alongside: tree)
@@ -217,7 +226,7 @@ import Testing
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
         try await FileOps.move([(from: tree.url("a.txt"), to: tree.url("b.txt")), (from: tree.url("c.txt"), to: tree.url("d.txt"))],
-                               actionName: "Rename", undo: undo)
+                               actionName: "Rename", undo: undo, history: .shared, copies: .live)
         undo.endUndoGrouping()
         TransferEngine.hooks = .init()
         undo.undo()

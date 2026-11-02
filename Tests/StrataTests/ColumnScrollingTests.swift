@@ -1,8 +1,19 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ColumnScrollingTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func wheel(x: Int32 = 0, y: Int32 = 0, units: CGScrollEventUnit = .line,
                        phase: CGScrollPhase? = nil, momentum: CGMomentumScrollPhase = .none) throws -> NSEvent {
         let source = try #require(CGEventSource(stateID: .privateState))
@@ -18,11 +29,12 @@ struct ColumnScrollingTests {
 
     @Test(arguments: [CGScrollEventUnit.line, .pixel])
     func horizontalScrollingWorksOverEveryFolderColumn(_ units: CGScrollEventUnit) async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("a/b/c/note.txt")
         let scroll = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: scroll)
+        let columns = ColumnBrowserViewController(scrollView: scroll, directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: testEnvironment.services.copies).entries)
         columns.select([tree.url("a/b/c/note.txt")])
         let strip = try #require(scroll.documentView)
         for _ in 0..<100 {
@@ -55,13 +67,14 @@ struct ColumnScrollingTests {
     }
 
     @Test func verticalScrollingStaysInTheFolderAndKeepsItsSelection() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree()
         let files = (0..<60).map { "file-\($0).txt" }
         try tree.add(files)
         let strip = RecordingScrollView()
-        let columns = ColumnBrowserViewController(scrollView: strip)
+        let columns = ColumnBrowserViewController(scrollView: strip, directoryReader: testEnvironment.services.directories, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         columns.view.frame = NSRect(x: 0, y: 0, width: 500, height: 300)
-        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false))
+        columns.setRoot(tree.root, entries: try await DirectoryLoader.load(tree.root, showHidden: false, copies: testEnvironment.services.copies).entries)
         columns.select([tree.url("file-0.txt")])
         columns.view.layoutSubtreeIfNeeded()
         let table = try #require(columns.focusView as? ColumnTableView)

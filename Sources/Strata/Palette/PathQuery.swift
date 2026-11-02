@@ -7,7 +7,7 @@ import Foundation
 /// folders are found too.
 /// A trailing `/` lists everything inside the matched folder.
 nonisolated final class PathQuery {
-    struct Hit {
+    struct Hit: Sendable {
         let url: URL
         let isFolder: Bool
         let score: Int
@@ -16,6 +16,23 @@ nonisolated final class PathQuery {
     }
 
     private var listings: [URL: [(url: URL, isFolder: Bool)]] = [:]
+    /// Set once the lookup's been replaced: it reads no more folders.
+    private let stop: CancelFlag?
+
+    init(stop: CancelFlag? = nil) {
+        self.stop = stop
+    }
+
+    /// `resolve` away from the main thread, with a fresh cache: listings it reads are its own. Replaced (the task's
+    /// cancelled), it stops reading folders.
+    static func resolveOffMain(_ query: String, roots: [URL], visited: [URL]) async -> [Hit] {
+        let stop = CancelFlag()
+        return await withTaskCancellationHandler {
+            await OwnThread.run { PathQuery(stop: stop).resolve(query, roots: roots, visited: visited) }
+        } onCancel: {
+            stop.set()
+        }
+    }
 
     static func isPathQuery(_ query: String) -> Bool {
         query.contains("/") && !query.hasPrefix("/") && !query.hasPrefix("~")
@@ -42,7 +59,7 @@ nonisolated final class PathQuery {
 
         var seenRoots = Set<URL>()
         var starts: [(url: URL, score: Int)] = []
-        for url in roots where seenRoots.insert(url.standardizedFileURL).inserted {
+        for url in roots where seenRoots.insert(url.lexicallyStandardized).inserted {
             if let match = Self.score(segments[0], url.lastPathComponent) { starts.append((url, match.score)) }
         }
         // The first part may also name a folder one level inside the first few roots (`strata/` inside GitHub).
@@ -80,7 +97,7 @@ nonisolated final class PathQuery {
     /// The last part must match the folder's own name; earlier parts match ancestors right to left, gaps allowed.
     private func matchWithGaps(_ segments: [String], _ url: URL) -> Fuzzy.Match? {
         guard let last = segments.last, !last.isEmpty else { return nil }
-        let components = Array(url.standardizedFileURL.pathComponents.dropFirst())
+        let components = Array(url.lexicallyStandardized.pathComponents.dropFirst())
         guard let name = components.last, let nameMatch = Self.score(last, name) else { return nil }
         var total = nameMatch.score
         var index = components.count - 2
@@ -111,9 +128,12 @@ nonisolated final class PathQuery {
         let all: [(url: URL, isFolder: Bool)]
         if let cached = listings[folder] {
             all = cached
+        } else if stop?.isSet == true {
+            return []
         } else {
             let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey]
             let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys)) ?? []
+            if stop?.isSet == true { return [] }
             all = urls.prefix(5000).map { url in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 return (url, values?.isDirectory == true && values?.isPackage != true)

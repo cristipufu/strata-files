@@ -6,7 +6,6 @@ extension ProjectInfo {
     /// Sizes measured in the last minute, so flipping the selection back to a project doesn't re-walk node_modules.
     private static var sizeCache: [String: (bytes: Int64, files: Int, date: Date)] = [:]
     private static let sizeCacheLifetime: TimeInterval = 60
-    private static let sharedSizer = FolderSizer()
 
     /// Everything the project inspector needs for `folder`, or nil when it's neither a project nor a repository root.
     ///
@@ -14,11 +13,14 @@ extension ProjectInfo {
     /// artifacts git tracks are dropped (a committed `bin/` is not a build artifact). `onUpdate` receives the result
     /// before sizes are known, so the inspector can show it immediately; the return value has sizes. Cancel the
     /// calling task when the selection changes: the size walks stop and nil is returned.
-    static func load(for folder: URL, store: GitStatusStore = .shared,
-                     onUpdate: ((ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
-        let folder = folder.standardizedFileURL
+    /// On the main actor, said so: `ProjectInfo` itself is nonisolated, and compilers have read this extension's
+    /// isolation differently.
+    @MainActor
+    package static func load(for folder: URL, store: GitStatusStore,
+                             onUpdate: (@MainActor (ProjectInfo) -> Void)? = nil) async -> ProjectInfo? {
+        let folder = folder.lexicallyStandardized
         var info = await ProjectDetector.detect(folder)
-        let repository = store.repository(containing: folder)
+        let repository = await store.repositoryFound(containing: folder)
         let isRoot = repository?.rootPath == folder.path
         guard info.isProject || isRoot, !Task.isCancelled else { return nil }
 
@@ -35,7 +37,7 @@ extension ProjectInfo {
             if paths.allSatisfy({ sizeCache[$0].map { now.timeIntervalSince($0.date) < sizeCacheLifetime } ?? false }) {
                 info.artifacts[index].bytes = paths.compactMap { sizeCache[$0]?.bytes }.saturatingSum
                 info.artifacts[index].files = paths.reduce(0) { $0 + (sizeCache[$1]?.files ?? 0) }
-            } else if info.artifacts[index].urls.count == 1, let size = sharedSizer.cached(info.artifacts[index].urls[0]) {
+            } else if info.artifacts[index].urls.count == 1, let size = FolderSizer.cached(info.artifacts[index].urls[0]) {
                 info.artifacts[index].bytes = size.bytes
                 info.artifacts[index].files = size.files
             }
@@ -55,7 +57,7 @@ extension ProjectInfo {
 
     /// The same info with the git summary taken from the store's current snapshot. No I/O: use it when
     /// `.gitStatusDidChange` fires instead of reloading (which could re-measure artifacts).
-    func withCurrentGit(store: GitStatusStore = .shared) -> ProjectInfo {
+    package func withCurrentGit(store: GitStatusStore) -> ProjectInfo {
         guard let repository = store.repository(containing: folder), let snapshot = store.snapshot(for: repository.root) else {
             return self
         }
@@ -65,8 +67,8 @@ extension ProjectInfo {
     }
 
     /// Forgets measured sizes under `folder` (after cleaning, or a reload).
-    static func invalidateSizes(under folder: URL) {
-        let prefix = folder.standardizedFileURL.path + "/"
+    package static func invalidateSizes(under folder: URL) {
+        let prefix = folder.lexicallyStandardized.path + "/"
         sizeCache = sizeCache.filter { !$0.key.hasPrefix(prefix) }
     }
 
@@ -101,11 +103,11 @@ extension ProjectInfo {
 
 // MARK: - Actions
 
-enum ProjectActions {
+package enum ProjectActions {
     /// Asks before moving `artifacts` to the Trash (sheet on `window`), then trashes them with undo. Calls
     /// `completion` with the trashed folders (empty when cancelled or failed).
-    static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
-                             files: BrowserFileCommands,
+    package static func confirmClean(_ artifacts: [ProjectArtifact], window: NSWindow,
+                             files: FileCommands,
                              completion: @escaping ([URL]) -> Void) {
         guard !artifacts.isEmpty else { return completion([]) }
         let total = artifacts.compactMap(\.bytes).saturatingSum
@@ -156,20 +158,30 @@ enum ProjectActions {
 
     /// Opens a terminal in the script's folder and runs it, leaving an interactive shell open afterwards.
     ///
-    /// Writes a self-deleting `.command` file and opens it with the preferred terminal (Ghostty, iTerm, Warp, then
-    /// Terminal) that can open `.command` files. No AppleScript, so no Automation permission prompt. Trade-offs: the
+    /// Writes a self-deleting `.command` file and opens it with the chosen terminal, or the first automatic choice
+    /// that can open `.command` files. No AppleScript, so no Automation permission prompt. Trade-offs: the
     /// window title shows the temporary file's name; the command runs through `$SHELL -lic` so it sees the same PATH
     /// as your interactive shell (nvm, Homebrew), which costs one rc-file load.
     @discardableResult
-    static func runInTerminal(_ script: ProjectScript, projectName: String? = nil) -> Bool {
+    package static func runInTerminal(_ script: ProjectScript, projectName: String? = nil, preferences: Prefs) async -> Bool {
         let project = projectName ?? script.directory.lastPathComponent
-        return openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script))
+        return await openCommandFile(named: "\(project) — \(script.name)", body: commandFile(for: script), preferences: preferences)
     }
 
     /// Writes `body` (a `/bin/sh` script that deletes itself first) to a `.command` file and opens it in the preferred
     /// terminal. `name` is the file's name, which the terminal shows as the window's title.
     @discardableResult
-    static func openCommandFile(named name: String, body: String) -> Bool {
+    package static func openCommandFile(named name: String, body: String, preferences: Prefs) async -> Bool {
+        guard let (file, terminal) = await writeCommandFile(named: name, body: body, selected: preferences.terminal, bundleIDs: preferences.terminalBundleIDs) else { return false }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: configuration, completionHandler: nil)
+        return true
+    }
+
+    /// The file, in Strata's own scratch folder, and the terminal to open it in: written and looked up away from the
+    /// main thread.
+    @concurrent private static func writeCommandFile(named name: String, body: String, selected: String?, bundleIDs: [String]) async -> (file: URL, terminal: URL)? {
         let folder = FileManager.default.temporaryDirectory.appending(path: "Strata Scripts", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
@@ -182,17 +194,13 @@ enum ProjectActions {
             try body.write(to: file, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         } catch {
-            return false
+            return nil
         }
-        guard let terminal = preferredTerminal(for: file) else { return false }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open([file], withApplicationAt: terminal, configuration: configuration)
-        return true
+        return preferredTerminal(for: file, selected: selected, bundleIDs: bundleIDs).map { (file, $0) }
     }
 
     /// The `.command` file body: cd, echo the command, run it in a login+interactive shell, then stay in a shell.
-    static func commandFile(for script: ProjectScript) -> String {
+    package static func commandFile(for script: ProjectScript) -> String {
         let directory = ShellQuote.quote(script.directory.path)
         let invocation = script.invocation
         return """
@@ -207,23 +215,26 @@ enum ProjectActions {
         """
     }
 
-    static let terminalBundleIDs = ["com.mitchellh.ghostty", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.apple.Terminal"]
-
-    /// First installed terminal from `terminalBundleIDs` that declares it can open `file`; Terminal as the fallback.
-    static func preferredTerminal(for file: URL) -> URL? {
-        let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.standardizedFileURL))
-        for id in terminalBundleIDs {
-            if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id), capable.contains(app.standardizedFileURL) {
-                return app
-            }
+    private nonisolated static func preferredTerminal(for file: URL, selected: String?, bundleIDs: [String]) -> URL? {
+        let capable = Set(NSWorkspace.shared.urlsForApplications(toOpen: file).map(\.lexicallyStandardized))
+        return preferredTerminal(bundleIDs: bundleIDs, selected: selected, capable: capable) {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
         }
-        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
+    }
+
+    nonisolated static func preferredTerminal(bundleIDs: [String], selected: String?, capable: Set<URL>,
+                                             lookup: (String) -> URL?) -> URL? {
+        // An explicit choice may handle scripts without declaring their type to LaunchServices.
+        for id in bundleIDs {
+            if let app = lookup(id), id == selected || capable.contains(app.lexicallyStandardized) { return app }
+        }
+        return lookup("com.apple.Terminal")
     }
 
     /// A `.command` file name every terminal can open: plain ASCII letters, digits, spaces, dots, dashes and
     /// underscores. (Ghostty garbles other characters in the path it runs, an em dash included, and then can't find the
     /// file.)
-    static func sanitize(_ name: String) -> String {
+    package nonisolated static func sanitize(_ name: String) -> String {
         let folded = name.folding(options: [.diacriticInsensitive, .widthInsensitive], locale: nil)
         let kept = folded.unicodeScalars.map { scalar -> Character in
             scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || " ._-".unicodeScalars.contains(scalar)) ? Character(scalar) : "-"
@@ -236,7 +247,7 @@ enum ProjectActions {
 
     /// The files delete themselves when they run; this catches any that never ran (each in a folder of its own, left
     /// for an hour). Anything else in `folder` is removed as itself, never through a link.
-    static func removeStaleCommandFiles(in folder: URL) {
+    package nonisolated static func removeStaleCommandFiles(in folder: URL) {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-3600)
         for url in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] {

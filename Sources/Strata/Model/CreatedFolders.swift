@@ -2,60 +2,111 @@ import Foundation
 
 /// Folders made to hold an operation's items. Capture them when created, before a transfer or alert can suspend;
 /// an empty replacement at the same path does not belong to the operation. Redo records any folders it makes again.
-final class CreatedFolders {
-    private(set) var urls: [URL] = []
+package final class CreatedFolders {
+    package private(set) var urls: [URL] = []
     private var paths: Set<String> = []
     private var identities: [String: FileIdentity] = [:]
-    private(set) var historyIdentities: [String: String] = [:]
+    package private(set) var historyIdentities: [String: String] = [:]
 
-    init(_ urls: [URL] = []) { record(urls) }
+    package init(_ urls: [URL] = []) { record(urls) }
 
-    /// Old History may lack folder identities. Restore its files, but leave unidentifiable folders alone.
-    init(paths: [String], recorded: [String: String]) {
-        for path in paths where self.paths.insert(path).inserted { urls.append(URL(fileURLWithPath: path)) }
-        for url in urls {
-            guard let saved = recorded[url.path], let identity = FileIdentity.read(url.path),
-                  FileIdentity.matchesHistory(saved, at: url.path), FileIdentity.read(url.path) == identity else { continue }
-            identities[url.path] = identity
-            historyIdentities[url.path] = saved
-        }
+    /// The folders History recorded at `paths` that are still the ones it made, read away from the main thread.
+    /// A folder without captured ownership is always left alone.
+    package static func recorded(paths: [String], recorded: [String: String]) async -> CreatedFolders {
+        let unique = paths.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        return CreatedFolders(paths: unique, matched: await matching(unique, recorded))
     }
 
-    func record(_ made: [URL]) {
-        for url in made {
-            if paths.insert(url.path).inserted { urls.append(url) }
+    private init(paths: [String], matched: [String: (identity: FileIdentity, saved: String)]) {
+        urls = paths.map { URL(fileURLWithPath: $0) }
+        self.paths = Set(paths)
+        identities = matched.mapValues(\.identity)
+        historyIdentities = matched.mapValues(\.saved)
+    }
+
+    @concurrent private static func matching(_ paths: [String], _ recorded: [String: String]) async
+        -> [String: (identity: FileIdentity, saved: String)] {
+        var matched: [String: (identity: FileIdentity, saved: String)] = [:]
+        for path in paths {
+            guard let saved = recorded[path], let identity = FileIdentity.read(path),
+                  FileIdentity.matchesHistory(saved, at: path), FileIdentity.read(path) == identity else { continue }
+            matched[path] = (identity, saved)
+        }
+        return matched
+    }
+
+    /// A folder just made and what makes it that folder, read where it was made (off the main thread, say).
+    package nonisolated struct Made: Sendable {
+        package let url: URL
+        package let identity: FileIdentity?
+        package let historyIdentity: String?
+
+        package init(_ url: URL) {
             let identity = FileIdentity.read(url.path)
             let saved = FileIdentity.historyKey(at: url.path)
             // A replacement during metadata lookup must not acquire either live or persistent ownership.
             let unchanged = identity != nil && FileIdentity.read(url.path) == identity
-            identities[url.path] = unchanged ? identity : nil
-            historyIdentities[url.path] = unchanged ? saved : nil
+            self.url = url
+            self.identity = unchanged ? identity : nil
+            historyIdentity = unchanged ? saved : nil
         }
     }
 
-    func makeMissing(continueAfterFailure: Bool = false) throws {
-        var firstError: Error?
-        for url in urls.sorted(by: { $0.path.count < $1.path.count }) where !TransferEngine.exists(url) {
+    package func record(_ made: [URL]) { record(made.map(Made.init)) }
+
+    package func record(_ made: [Made]) {
+        for folder in made {
+            if paths.insert(folder.url.path).inserted { urls.append(folder.url) }
+            identities[folder.url.path] = folder.identity
+            historyIdentities[folder.url.path] = folder.historyIdentity
+        }
+    }
+
+    package func makeMissing(continueAfterFailure: Bool = false) async throws {
+        let sorted = urls.sorted { $0.path.count < $1.path.count }
+        let (made, failures) = await Self.make(sorted, intermediates: true, stopAtFailure: !continueAfterFailure,
+                                               isThere: TransferEngine.exists)
+        record(made)
+        if let first = failures.first { throw first.error }
+    }
+
+    /// Makes those of `urls` that aren't there yet (`isThere`), in order, away from the main thread, each read as it's
+    /// made so a replacement can't take its ownership; with `stopAtFailure` the first failure ends it.
+    @concurrent package static func make(_ urls: [URL], intermediates: Bool, stopAtFailure: Bool,
+                                         isThere: @Sendable (URL) -> Bool) async -> (made: [Made], failures: [(url: URL, error: Error)]) {
+        var made: [Made] = [], failures: [(url: URL, error: Error)] = []
+        for url in urls where !isThere(url) {
             do {
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-                record([url])
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: intermediates)
+                made.append(Made(url))
             } catch {
-                if !continueAfterFailure { throw error }
-                if firstError == nil { firstError = error }
+                failures.append((url, error))
+                if stopAtFailure { break }
             }
         }
-        if let firstError { throw firstError }
+        return (made, failures)
     }
 
-    func removeEmpty() { FileOps.removeEmptyFolders(urls, identities: identities) }
+    /// Removes those still empty at once: only where what waits next (a redo) must find them gone.
+    package func removeEmptyNow() { FileOps.removeEmptyFolders(urls, identities: identities) }
+
+    /// Removes those still empty, away from the main thread.
+    package func removeEmpty() async {
+        let urls = urls, identities = identities
+        await Self.removeEmpty(urls, identities)
+    }
+
+    @concurrent private static func removeEmpty(_ urls: [URL], _ identities: [String: FileIdentity]) async {
+        FileOps.removeEmptyFolders(urls, identities: identities)
+    }
 
     /// Kept by both sides of an Undo/Redo pair, so folders recreated by Redo have fresh ownership before Undo runs.
-    enum Change {
+    package enum Change {
         case none
         case make(CreatedFolders)
         case remove(CreatedFolders)
 
-        var inverse: Change {
+        package var inverse: Change {
             switch self {
             case .none: .none
             case .make(let folders): .remove(folders)
@@ -63,12 +114,14 @@ final class CreatedFolders {
             }
         }
 
-        func prepare(continueAfterFailure: Bool = false) throws {
-            if case .make(let folders) = self { try folders.makeMissing(continueAfterFailure: continueAfterFailure) }
+        package func prepare(continueAfterFailure: Bool = false) async throws {
+            if case .make(let folders) = self { try await folders.makeMissing(continueAfterFailure: continueAfterFailure) }
         }
-        func finish() { if case .remove(let folders) = self { folders.removeEmpty() } }
+        package func finish() async { if case .remove(let folders) = self { await folders.removeEmpty() } }
+        /// `finish`, at once: as a job ends, before anything waiting on it resumes.
+        package func finishNow() { if case .remove(let folders) = self { folders.removeEmptyNow() } }
 
-        var historyIdentities: [String: String] {
+        package var historyIdentities: [String: String] {
             if case .make(let folders) = self { folders.historyIdentities } else { [:] }
         }
     }

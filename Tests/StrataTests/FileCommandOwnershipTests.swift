@@ -3,38 +3,24 @@ import CryptoKit
 import Security
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct FileCommandOwnershipTests {
-    private final class Environment {
-        let state: TestTree
-        let domain = "StrataFileCommandOwnership.\(UUID().uuidString)"
-        let defaults: UserDefaults
-        let storage: SecureStorage.Context
-        let services: BrowserServices
-
-        init() throws {
-            state = try TestTree()
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
-            preferences.showIconPreviews = false
-            storage = SecureStorage.Context(directory: state.url("state"), caches: state.url("cache"),
-                                            key: SymmetricKey(size: .bits256))
-            let credentials = RemoteKeychain(access: KeychainAccess(
-                copy: { _ in (errSecItemNotFound, nil) }, add: { _ in errSecNotAvailable },
-                update: { _, _ in errSecNotAvailable }, delete: { _ in errSecItemNotFound }))
-            let containers = ContainerFiles(copies: ContainerCopyStore(root: state.url("containers")),
-                readListing: { _, _ in throw ContainerAPIError.notFound },
-                readFile: { _, _, _, _ in throw ContainerAPIError.notFound },
-                readTree: { _, _, _, _ in throw ContainerAPIError.notFound })
-            services = BrowserServices.isolated(preferences: preferences, storage: storage, credentials: credentials,
-                connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
-                clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers)
-        }
-
-        isolated deinit {
-            services.clipboard.pasteboard.releaseGlobally()
-            defaults.removePersistentDomain(forName: domain)
-        }
+    @Test func anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage() async throws {
+        let environment = try IndependentEnvironment()
+        let services = environment.services, folder = environment.storage.directory.path + "/"
+        #expect(services.index !== FileIndex.shared && services.contentIndex !== SemanticIndex.shared)
+        let config = await services.index.currentConfig()
+        #expect(config.storage === environment.storage && config.file.path.hasPrefix(folder))
+        let content = await services.contentIndex.configuration
+        #expect(content.storage === environment.storage && content.storeDirectory.path.hasPrefix(folder))
+        #expect(content.roots.isEmpty)
     }
 
     private func undoManager() -> UndoManager {
@@ -43,38 +29,25 @@ struct FileCommandOwnershipTests {
         return undo
     }
 
-    /// Undo paths need cleanup even when a mutation moves an unexpected fixture item. Match captured identities,
-    /// never names or a before/after listing of the shared Trash, and keep parked originals alive through cleanup.
-    private func removeOwnedTrash(_ identities: [FileIdentity]) {
-        for folder in Trash.folders() {
-            let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-            for url in entries {
-                guard let identity = FileIdentity.read(url.path), identities.contains(identity),
-                      let saved = identity.historyKey(at: url.path) else { continue }
-                TestTree.removeFromTrash(url, matching: saved)
-            }
-        }
-    }
-
     @Test func renameKeepsHistoryAndRepeatedUndoWithItsOwner() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "other/a.txt", "link -> a.txt")
-        let first = try Environment(), second = try Environment()
+        let first = try IndependentEnvironment(), second = try IndependentEnvironment()
         let undo = undoManager()
         undo.beginUndoGrouping()
         let renamed = try await first.services.files.rename(tree.url("a.txt"), to: "b.txt", undo: undo)
         undo.endUndoGrouping()
         let entry = try #require(first.services.transfers.history.entries.first)
-        #expect(entry.pairs == [[tree.url("a.txt").path, renamed.path]])
+        #expect(entry.moves == [HistoryMove(from: tree.url("a.txt"), to: renamed)])
         #expect(second.services.transfers.history.entries.isEmpty)
         #expect(!OperationLog.shared.entries.contains { $0.id == entry.id })
         for _ in 0..<3 {
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: first.storage).entries.first?.undone == true)
+            #expect(OperationLog(storage: first.storage, copies: .live).entries.first?.undone == true)
             #expect(tree.snapshot() == ["a.txt", "ab.txt", "link -> a.txt", "other/", "other/a.txt"])
             undo.redo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: first.storage).entries.first?.undone == false)
+            #expect(OperationLog(storage: first.storage, copies: .live).entries.first?.undone == false)
             #expect(tree.snapshot() == ["ab.txt", "b.txt", "link -> a.txt", "other/", "other/a.txt"])
         }
         try FileManager.default.moveItem(at: renamed, to: tree.url("original.txt"))
@@ -88,14 +61,14 @@ struct FileCommandOwnershipTests {
     @Test func newItemsKeepHistoryThroughNativeAndHistoryUndo() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt", "peer/keep.txt")
-            let env = try Environment(), peer = try Environment()
+            let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
             let undo = undoManager()
             undo.beginUndoGrouping()
             let url = try folder ? env.services.files.newFolder(in: tree.root, undo: undo)
                                  : env.services.files.newFile(in: tree.root, undo: undo)
             undo.endUndoGrouping()
             let identity = try #require(FileIdentity.read(url.path))
-            defer { withExtendedLifetime(tree) { removeOwnedTrash([identity]) } }
+            defer { withExtendedLifetime(tree) { TestTree.removeFromTrash(matching: [identity]) } }
             let entry = try #require(env.services.transfers.history.entries.first)
             let made = (["keep.txt", "peer/", "peer/keep.txt"] + [url.lastPathComponent + (folder ? "/" : "")]).sorted()
             #expect(entry.created == [url.path])
@@ -104,15 +77,15 @@ struct FileCommandOwnershipTests {
             for _ in 0..<2 {
                 undo.undo()
                 await FileOps.undoWork?.value
-                #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+                #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
                 #expect(tree.snapshot() == ["keep.txt", "peer/", "peer/keep.txt"])
                 undo.redo()
                 await FileOps.undoWork?.value
-                #expect(OperationLog(storage: env.storage).entries.first?.undone == false)
+                #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == false)
                 #expect(tree.snapshot() == made)
             }
             // History has its own persisted entry; undoing it must still restore through the supplied native manager.
-            let reopened = OperationLog(storage: env.storage)
+            let reopened = OperationLog(storage: env.storage, copies: .live)
             let saved = try #require(reopened.entries.first)
             let historyUndo = undoManager()
             historyUndo.beginUndoGrouping()
@@ -128,14 +101,14 @@ struct FileCommandOwnershipTests {
 
     @Test func trashAndPlansUseTheSameCommandHistoryAsCreationAndRename() async throws {
         let tree = try TestTree("a/inner.txt", "ab.txt", "other/a.txt", "link -> a")
-        let env = try Environment(), peer = try Environment()
+        let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
         let history = env.services.transfers.history
         defer {
             // The ownership mutation records in the shared test journal instead; clean only this tree's entries.
             tree.removeFromTrash()
             for entry in history.entries {
-                for pair in entry.pairs + entry.replaced {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves + entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }
@@ -144,11 +117,11 @@ struct FileCommandOwnershipTests {
         try await env.services.files.trash([tree.url("a"), tree.url("a/inner.txt"), tree.url("link")], undo: undo)
         undo.endUndoGrouping()
         let trashed = try #require(history.entries.first)
-        #expect(trashed.pairs.count == 2)
+        #expect(trashed.moves.count == 2)
         #expect(tree.snapshot() == ["ab.txt", "other/", "other/a.txt"])
         undo.undo()
         await FileOps.undoWork?.value
-        #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+        #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
         #expect(tree.snapshot() == ["a/", "a/inner.txt", "ab.txt", "link -> a", "other/", "other/a.txt"])
         let items = await PlanItem.load([tree.url("ab.txt")])
         let request = PlanGenerator.Request(instruction: "Rename", items: items, baseFolder: tree.root)
@@ -164,10 +137,49 @@ struct FileCommandOwnershipTests {
         #expect(tree.snapshot() == ["a/", "a/inner.txt", "link -> a", "other/", "other/a.txt", "renamed.txt"])
     }
 
+    @Test func putBackFindsWhereAnItemCameFromInItsWindowsHistory() async throws {
+        let tree = try TestTree("Gone/a.txt", "keep/ab.txt")
+        let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
+        let history = env.services.transfers.history
+        defer {
+            for entry in history.entries {
+                for pair in entry.moves + entry.replacements {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
+                }
+            }
+        }
+        try await env.services.files.trash([tree.url("Gone/a.txt")], undo: nil)
+        let trashed = URL(fileURLWithPath: try #require(history.entries.first?.moves.first?.to))
+        // The folder it was in goes too: Put Back makes it again.
+        try FileManager.default.removeItem(at: tree.url("Gone"))
+        // The Trash's own records can name its folder too: with none, only History can say.
+        await BrowserViewController(services: env.services).putBack(items: [trashed], records: { _ in ([:], .distantPast) }).value
+        let job = try #require(env.services.transfers.jobs.compactMap { $0 as? TransferJob }.last)
+        await job.finished()
+        #expect(tree.snapshot() == ["Gone/", "Gone/a.txt", "keep/", "keep/ab.txt"])
+        #expect(history.entries.map(\.name) == ["Move to Trash", "Put Back"])
+        #expect(history.entries.last?.containers == [tree.url("Gone").path])
+        #expect(peer.services.transfers.history.entries.isEmpty)
+    }
+
+    /// An item of a window's container or server copy carries no tags from Strata, though the app's copies don't
+    /// know it.
+    @Test func tagsNeverGoOnItemsOfTheirWindowsCopies() async throws {
+        let env = try IndependentEnvironment()
+        try FileManager.default.createDirectory(at: env.state.url("containers"), withIntermediateDirectories: true)
+        let item = env.state.url("containers/item.txt")
+        try Data("item".utf8).write(to: item)
+        #expect(env.services.copies.contains(item) && !CopyProviders.live.contains(item))
+        #expect(!TagStore.canTag(onDisk: item, copies: env.services.copies))
+        try await env.services.tags.update([item], adding: ["Strata Test"], removing: [], undo: nil)
+        #expect(getxattr(item.path, "com.apple.metadata:_kMDItemUserTags", nil, 0, 0, XATTR_NOFOLLOW) < 0)
+        #expect(env.state.text("containers/item.txt") == "item")
+    }
+
     @Test func creationUndoNeverAdoptsAReplacementFromHistoryNotification() async throws {
         for folder in [false, true] {
             let tree = try TestTree("keep.txt")
-            let env = try Environment()
+            let env = try IndependentEnvironment()
             let history = env.services.transfers.history
             let undo = undoManager()
             var replaced = false
@@ -189,11 +201,11 @@ struct FileCommandOwnershipTests {
             undo.endUndoGrouping()
             #expect(replaced)
             let identities = [url, tree.url("original")].compactMap { FileIdentity.read($0.path) }
-            defer { withExtendedLifetime(tree) { removeOwnedTrash(identities) } }
+            defer { withExtendedLifetime(tree) { TestTree.removeFromTrash(matching: identities) } }
             let before = tree.snapshot()
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(!history.canUndo(try #require(history.entries.first)))
+            #expect(await !history.canUndo(try #require(history.entries.first)))
             #expect(tree.snapshot() == before)
             #expect(tree.snapshot() == ["keep.txt", "original" + (folder ? "/" : ""), url.lastPathComponent + (folder ? "/" : "")].sorted())
         }
@@ -202,7 +214,7 @@ struct FileCommandOwnershipTests {
     @Test func everyBrowserViewUsesItsCommandOwner() async throws {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("a.txt", "ab.txt", "other/a.txt", "link -> a.txt")
-            let env = try Environment(), peer = try Environment()
+            let env = try IndependentEnvironment(), peer = try IndependentEnvironment()
             let browser = BrowserViewController(services: env.services)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
@@ -229,7 +241,7 @@ struct FileCommandOwnershipTests {
 
     @Test func renameConfirmationCannotOutliveItsNavigationOrRenameAnotherSelection() async throws {
         let tree = try TestTree("first/a.txt", "first/ab.txt", "other/a.txt")
-        let env = try Environment()
+        let env = try IndependentEnvironment()
         let browser = BrowserViewController(services: env.services)
         _ = browser.view
         browser.load(tree.url("first"))
@@ -263,7 +275,7 @@ struct FileCommandOwnershipTests {
 
     @Test func renameConfirmationRefusesAnItemReplacedWhileTheSheetWaited() async throws {
         let tree = try TestTree("a.txt", "ab.txt")
-        let env = try Environment()
+        let env = try IndependentEnvironment()
         let browser = BrowserViewController(services: env.services)
         _ = browser.view
         browser.load(tree.root)
@@ -281,7 +293,7 @@ struct FileCommandOwnershipTests {
 
     @Test func serviceCompositionKeepsQueueDependenciesAndIndependentFactories() throws {
         let tree = try TestTree("keep.txt")
-        let a = try Environment(), b = try Environment()
+        let a = try IndependentEnvironment(), b = try IndependentEnvironment()
         let queue = a.services.transfers
         let configured = BrowserServices.configured(transfers: queue, visits: a.services.visits, windows: .headless,
             remote: a.services.remote, containers: a.services.containers, containerStore: a.services.containerStore,

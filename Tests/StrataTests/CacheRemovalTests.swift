@@ -1,10 +1,17 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// What Strata deletes of its own: archives' copies, servers' and containers' copies. Each removal stays inside the
 /// cache it's for, takes only what it's meant to, and never follows a link out of it, however the copy's insides were
-/// made (an archive or a container decides them). Tests have caches of their own (`SecureStorage.caches`).
+/// made (an archive or a container decides them). Tests have caches of their own (`SecureStorage.Context.shared.caches`).
 struct CacheRemovalTests {
     private let fm = FileManager.default
 
@@ -47,6 +54,38 @@ struct CacheRemovalTests {
         #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
     }
 
+    /// A copy set aside leaves its place at once and is removed away from the main thread; only a whole copy of the
+    /// cache is ever set aside.
+    @Test func aCopySetAsideLeavesAtOnceAndGoesAfter() async throws {
+        let tree = try TestTree("Trip.zip", "outside/", "outside/keep.txt")
+        let entry = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))
+        for url in [ArchiveCache.root, entry.appending(path: "contents"), tree.url("outside"), tree.root] {
+            #expect(ArchiveCache.setAside(url) == nil, "\(url.path)")
+            #expect(fm.fileExists(atPath: url.path), "\(url.path)")
+        }
+        let aside = try #require(ArchiveCache.setAside(entry))
+        #expect(!fm.fileExists(atPath: entry.path))
+        for _ in 0..<500 where fm.fileExists(atPath: aside.path) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(!fm.fileExists(atPath: aside.path))
+        #expect(ArchiveCache.setAside(entry) == nil)
+        #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
+    }
+
+    /// Which archive a copy came from is kept as it was made: views asking as they draw read no file for it, and a
+    /// copy set aside is forgotten.
+    @Test func aCopysArchiveIsKeptAsItWasMadeAndForgottenOnceSetAside() async throws {
+        let tree = try TestTree("Trip.zip", "outside/", "outside/keep.txt")
+        let entry = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))
+        let top = entry.appending(path: "contents", directoryHint: .isDirectory)
+        try fm.removeItem(at: entry.appending(path: "source"))
+        let archive = tree.url("Trip.zip").resolvingSymlinksInPath().standardizedFileURL
+        #expect(ArchiveCache.archive(containing: top.appending(path: "out"))?.archive == archive)
+        let aside = try #require(ArchiveCache.setAside(entry))
+        #expect(ArchiveCache.archive(containing: top) == nil)
+        for _ in 0..<500 where fm.fileExists(atPath: aside.path) { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(tree.snapshot() == ["Trip.zip", "outside/", "outside/keep.txt"])
+    }
+
     @Test func aNewCopyReplacesOnlyOlderCopiesOfTheSameArchive() throws {
         let tree = try TestTree("Trip.zip", "Trip 2.zip", "outside/", "outside/keep.txt")
         let older = try copy(of: tree.url("Trip.zip"), linkingTo: tree.url("outside"))
@@ -77,10 +116,10 @@ struct CacheRemovalTests {
     // MARK: - Containers' and servers' copies
 
     @Test func aContainersOwnFilesAreNeverRemovedAsAFolder() throws {
-        let tree = try TestTree("outside/", "outside/keep.txt")
-        let engineFolder = ContainerCopies.root.appending(path: "test-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let tree = try TestTree("outside/", "outside/keep.txt"), cache = try TestTree("Containers/")
+        let copies = ContainerCopyStore(root: cache.url("Containers"))
+        let engineFolder = copies.root.appending(path: "test-\(UUID().uuidString)", directoryHint: .isDirectory)
         try fm.createDirectory(at: engineFolder, withIntermediateDirectories: true)
-        defer { ContainerCopies.remove(engineFolder) }
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
@@ -88,20 +127,20 @@ struct CacheRemovalTests {
         }
         _ = try CopyWriter.syncContainers([container("web", String(repeating: "a", count: 64)),
                                            container("db", String(repeating: "b", count: 64), project: "shop")],
-                                          engine: engine, in: engineFolder)
+                                          engine: engine, in: engineFolder, copies: copies)
         // A folder in a container's own files, and a link in them leading out.
         try fm.createDirectory(at: engineFolder.appending(path: "web/etc"), withIntermediateDirectories: false)
         try fm.createSymbolicLink(at: engineFolder.appending(path: "web/etc/out"), withDestinationURL: tree.url("outside"))
-        ContainerCopies.remove(engineFolder.appending(path: "web/etc"))
+        copies.remove(engineFolder.appending(path: "web/etc"))
         #expect(fm.fileExists(atPath: engineFolder.appending(path: "web/etc").path))
         // Too deep, the cache itself, outside it: refused.
-        for url in [engineFolder.appending(path: "web/etc/out"), ContainerCopies.root, tree.url("outside")] {
-            ContainerCopies.remove(url)
+        for url in [engineFolder.appending(path: "web/etc/out"), copies.root, tree.url("outside")] {
+            copies.remove(url)
             #expect((try? fm.destinationOfSymbolicLink(atPath: url.path)) != nil || fm.fileExists(atPath: url.path), "\(url.path)")
         }
         // A container, in a project's folder or not, goes with its files; the link's target stays.
-        ContainerCopies.remove(engineFolder.appending(path: "shop/db"))
-        ContainerCopies.remove(engineFolder.appending(path: "web"))
+        copies.remove(engineFolder.appending(path: "shop/db"))
+        copies.remove(engineFolder.appending(path: "web"))
         #expect(try fm.contentsOfDirectory(atPath: engineFolder.path) == ["shop"])
         #expect(try fm.contentsOfDirectory(atPath: engineFolder.appending(path: "shop").path).isEmpty)
         #expect(tree.snapshot() == ["outside/", "outside/keep.txt"])
@@ -111,7 +150,7 @@ struct CacheRemovalTests {
 
     @Test func resettingTheContentIndexRemovesOnlyItsStore() async throws {
         let tree = try TestTree("store/", "store/notes.txt", "store/index.sealed -> ../outside/keep.txt", "outside/", "outside/keep.txt")
-        var configuration = SemanticIndex.Configuration(roots: [])
+        var configuration = SemanticIndex.Configuration(roots: [], storage: .shared)
         configuration.storeDirectory = tree.url("store")
         let index = SemanticIndex(configuration: configuration)
         await index.reset()
@@ -122,7 +161,7 @@ struct CacheRemovalTests {
 
     @Test func savingAStoreReplacesOnlyItsOwnFile() throws {
         let tree = try TestTree("outside/", "outside/keep.txt")
-        let folder = SecureStorage.url("test-\(UUID().uuidString)", isDirectory: true)
+        let folder = SecureStorage.Context.shared.url("test-\(UUID().uuidString)", isDirectory: true)
         defer { try? fm.removeItem(at: folder) }
         let store = folder.appending(path: "history.sealed")
         // A link planted where the store goes, and temporary files: a crash's (old), a save in progress (new), others.
@@ -133,8 +172,8 @@ struct CacheRemovalTests {
         for name in ["history.sealed.old.tmp", "other.sealed.old.tmp"] {
             try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: folder.appending(path: name).path)
         }
-        try SecureStorage.write(Data("saved".utf8), to: store)
-        #expect(SecureStorage.read(store) == Data("saved".utf8))
+        try SecureStorage.Context.shared.write(Data("saved".utf8), to: store)
+        #expect(SecureStorage.Context.shared.read(store) == Data("saved".utf8))
         #expect((try? fm.destinationOfSymbolicLink(atPath: store.path)) == nil)
         #expect(tree.text("outside/keep.txt") == "outside/keep.txt")
         #expect(TestTree.listing(of: folder) == ["history.sealed", "history.sealed.new.tmp", "history.sealed.notes", "other.sealed.old.tmp"])
@@ -155,12 +194,14 @@ struct CacheRemovalTests {
         let tree = try TestTree("Caches/", "Caches/Containers.noindex/", "Caches/Containers.noindex/web/", "Caches/Containers.noindex/web/out -> ../../../outside",
                                 "Caches/Servers.noindex/", "Caches/Servers.noindex/file.txt", "Caches/Archives/", "Caches/Archives/keep.txt",
                                 "Caches/Containers-removedish/", "Caches/Servers.noindex-old/", "outside/", "outside/keep.txt")
-        ContainerCopies.setAsideForRemoval(tree.url("Caches/Containers.noindex"))
-        RemoteCopies.setAsideForRemoval(tree.url("Caches/Servers.noindex"))
+        let containers = ContainerCopyStore(root: tree.url("Caches/Containers.noindex"))
+        let servers = RemoteCopyStore(root: tree.url("Caches/Servers.noindex"), server: { _ in nil })
+        containers.setAsideForRemoval()
+        servers.setAsideForRemoval()
         let aside = try fm.contentsOfDirectory(atPath: tree.url("Caches").path)
         #expect(aside.filter { $0.hasPrefix("Containers-removed-") || $0.hasPrefix("Servers-removed-") }.count == 2)
-        ContainerCopies.removeSetAside(in: tree.url("Caches"))
-        RemoteCopies.removeSetAside(in: tree.url("Caches"))
+        containers.removeSetAside()
+        servers.removeSetAside()
         // Only what was set aside goes: not the other caches, not folders only named alike, not what a copy linked to.
         #expect(tree.snapshot() == ["Caches/", "Caches/Archives/", "Caches/Archives/keep.txt", "Caches/Containers-removedish/",
                                     "Caches/Servers.noindex-old/", "outside/", "outside/keep.txt"])

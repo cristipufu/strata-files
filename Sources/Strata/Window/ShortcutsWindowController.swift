@@ -154,6 +154,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         NotificationCenter.default.addObserver(self, selector: #selector(shortcutsChanged), name: .shortcutsChanged, object: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func shortcutsChanged() {
@@ -238,6 +239,7 @@ private final class ShortcutRow: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 }
 
@@ -266,6 +268,7 @@ private final class Keycap: NSView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func updateLayer() {

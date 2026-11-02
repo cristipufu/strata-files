@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func opaqueHeadersFollowLiveAppearanceChangesInBothPanesAndRestoreNativeVibrancy() throws {
@@ -8,8 +15,8 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
+        let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
@@ -57,7 +64,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.loadViewIfNeeded()
         let table = browser.outlineView
         let header = try #require(table.headerView)
@@ -116,8 +123,8 @@ extension ColorThemeTests {
         let header = try #require(table.headerView)
         let native = table.tableColumns.map(\.headerCell)
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-            window.appearance = try #require(chosenAppearance)
+            let chosenAppearance = try #require(NSAppearance(named: name))
+            window.appearance = chosenAppearance
             for active in [false, true] {
                 window.drawsAsActive = active
                 for width in [CGFloat(100), 300] {

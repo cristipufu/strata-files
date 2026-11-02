@@ -1,12 +1,15 @@
 import AppKit
-import Quartz
 
 protocol BrowserViewControllerDelegate: AnyObject {
     func browser(_ browser: BrowserViewController, navigateTo url: URL)
+    func browserShowInspector(_ browser: BrowserViewController)
     func browserSelectionDidChange(_ browser: BrowserViewController)
     func browserContentDidChange(_ browser: BrowserViewController)
     /// Column view moved deeper without changing the browser's folder.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL)
+    /// The browser, asked to show `asked`, has listed `folder` for the first time since: `asked` itself, or where a
+    /// link or alias to a folder led.
+    func browser(_ browser: BrowserViewController, landedAt folder: URL, asked: URL)
     /// A drag rested on `url` long enough to spring it open; `drag` is the drag's sequence number.
     func browser(_ browser: BrowserViewController, springLoadTo url: URL, drag: Int)
     /// An archive opened as a folder is ready: show its copy (if this pane is still the one you're using).
@@ -38,17 +41,21 @@ extension NSUserInterfaceItemIdentifier {
 final class BrowserViewController: NSViewController {
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
+    private(set) lazy var listTypography = FileViewTypography(preferences: preferences)
+    func refreshListTypography() { listTypography = FileViewTypography(preferences: preferences) }
     let loading: BrowserLoading
     var directoryReads: DirectoryReadSession { loading.reads }
 
-    init(services: BrowserServices = .shared) {
+    init(services: BrowserServices) {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
-        loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)
+        loading = BrowserLoading(reader: services.directories, capacity: services.volumeSpace)
         mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
+        outlineView = FileOutlineView(copies: services.copies)
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     weak var delegate: BrowserViewControllerDelegate?
@@ -82,7 +89,7 @@ final class BrowserViewController: NSViewController {
     }
 
     /// Name gets whatever the other visible columns leave (it's the column that absorbs width changes).
-    private func fitNameColumn() {
+    func fitNameColumn() {
         guard let name = outlineView.tableColumn(withIdentifier: .name) else { return }
         let others = outlineView.tableColumns.filter { $0 !== name && !$0.isHidden }
         let spacing = outlineView.intercellSpacing.width * CGFloat(others.count + 1)
@@ -90,14 +97,13 @@ final class BrowserViewController: NSViewController {
         name.width = max(name.minWidth, available)
     }
 
-    /// Date and Kind widths from before showing results (they make room for "Where").
-    private var columnWidthsBeforeResults: [(NSUserInterfaceItemIdentifier, CGFloat)] = []
     var filter: String { listing.filter }
-    var availableCapacity: Int64? { loading.availableCapacity }
+    private(set) lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
+    var volumeSpace: VolumeSpace? { loading.volumeSpace }
 
-    let outlineView = FileOutlineView()
+    let outlineView: FileOutlineView
     private let scrollView = NSScrollView()
-    private let emptyState = EmptyStateView()
+    let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
     let sizer = FolderSizer()
     let mediaInfo: MediaInfoLoader
@@ -106,31 +112,28 @@ final class BrowserViewController: NSViewController {
     var nodes: [FileNode] { listing.nodes }
     var rows: [FileNode] { listing.rows }
     var generation: Int { directoryReads.generation }
-    /// Optional provider reads for the current selection (see `prefetchSelection`).
-    var selectionFetch: Task<Void, Never>?
-    /// Explicit file fetch before opening or Quick Look; cancelled when the navigation context changes.
-    var actionFetch: Task<Void, Never>?
+    private(set) lazy var fetches = PaneFetches(services: services, revision: { [weak self] in self?.navigationRevision },
+                                                window: { [weak self] in self?.viewIfLoaded?.window })
     /// Bumped whenever this pane changes folder, column location or results context.
-    var navigationRevision = 0
+    private(set) var navigationRevision = 0
     /// The latest asynchronous file or server command started by this pane.
     var commandWork: Task<Void, Never>?
+    private(set) lazy var serverCommands = ServerCommands(context: self)
+    private(set) lazy var clipboardCommands = ClipboardCommands(context: self)
+    private(set) lazy var localCommands = LocalFileCommands(context: self, files: services.files)
 
-    var watchers: [DirectoryWatcher] = []
-    /// Keeps git status for the shown folder's repository fresh (FSEvents) while this folder is shown.
-    var gitObservation: GitObservation?
-    lazy var ordering = BrowserOrdering(
+    let watching = BrowserWatching()
+    private(set) lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
         metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
-                        childFolderSizes: { FileIndex.shared.childFolderSizes($0).mapValues(\.bytes) },
+                        childFolderSizes: { [index = services.index] in index.childFolderSizes($0).mapValues(\.bytes) },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
-                        tags: { TagStore.shared.cachedTags(for: $0).map(\.name) }))
-    var updatingSortDescriptor = false
-    /// Selected once the folder shows them (after the reload a change brings).
-    var pendingSelection: [URL]?
+                        tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
+    let pending = BrowserPendingActions()
     /// Opens the folder row a drag rests on (only rows still on screen).
-    lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
+    private(set) lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
         let row = outlineView.row(forItem: node)
         return row >= 0 ? outlineView.rect(ofRow: row) : nil
@@ -138,26 +141,11 @@ final class BrowserViewController: NSViewController {
         guard let self, node(for: folder) != nil else { return }
         springLoad(folder, drag: drag)
     })
-    /// A drag is over the list: folders don't expand on hover then (they spring open instead).
-    var isDragOver = false
-    /// Renamed (inline) once the folder shows it: a new folder.
-    var pendingRename: URL?
-    var renaming: FileNode?
-    weak var renamingField: NSTextField?
-    struct DeferredListing {
-        let entries: [FileEntry]
-        let preservingState: Bool
-        let fromTop: Bool
-        let generation: Int
-    }
-    /// The folder read again while a name was being edited in place: shown once the edit ends.
-    var deferredApply: DeferredListing?
-    var resortWork: DispatchWorkItem?
-    var deferredMetadataOrder = false
+    let inlineRename = BrowserRenaming()
+    private(set) lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
-    private var resultsTotal = 0
-    private var resultsSummary: String?
+    let results = PaneResults()
     /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
     private(set) var mode: BrowserViewMode
     let presentations = BrowserPresentations()
@@ -177,9 +165,6 @@ final class BrowserViewController: NSViewController {
 
     isolated deinit {
         services.previews.invalidate(owner: self)
-        selectionFetch?.cancel()
-        actionFetch?.cancel()
-        resortWork?.cancel()
     }
 
     // MARK: - View
@@ -216,21 +201,33 @@ final class BrowserViewController: NSViewController {
         mediaInfo.onUpdate = { [weak self] entry in self?.mediaInfoArrived(entry) }
         installActiveView()
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(alternatingRowsChanged), name: .alternatingRowsChanged, object: preferences)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
         services.clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
+        NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: services.tags)
         NotificationCenter.default.addObserver(self, selector: #selector(containerFilesFetched(_:)), name: .containerFilesFetched, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsLoaded, object: services.tags)
+        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded, object: nil)
         // Cloud badges redraw the same way.
-        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .cloudStatusChanged, object: services.cloud)
     }
 
     private func configureOutline() {
+        setUpOutlineView()
+        addColumns()
+        outlineView.headerView?.menu = columnsMenu()
+        applyColumnVisibility(fitName: false)
+        syncSortDescriptor()
+        wireOutlineKeys()
+    }
+
+    /// A list that selects several items, takes and gives drags, and opens on double-click.
+    private func setUpOutlineView() {
         let ov = outlineView
         ov.style = .inset
         ov.rowHeight = FileViewStyle.listHeight(for: preferences)
@@ -249,12 +246,15 @@ final class BrowserViewController: NSViewController {
         ov.delegate = self
         ov.target = self
         ov.doubleAction = #selector(openSelection(_:))
-        ov.copies = services.copies
         ov.registerForDraggedTypes(FileDrop.types)
-        ov.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        ov.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
+        ov.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: true), forLocal: true)
+        ov.setDraggingSourceOperationMask(FileDrop.sourceOperations(local: false), forLocal: false)
         ov.draggingDestinationFeedbackStyle = .regular
+    }
 
+    /// Name, then each list column, then Where (shown with results).
+    private func addColumns() {
+        let ov = outlineView
         addColumn(.name, String(localized: "Name"), width: 340, min: 160, ascending: true)
         for column in ListColumn.allCases {
             addColumn(NSUserInterfaceItemIdentifier(column.rawValue), column.title, width: column.preferredWidth,
@@ -266,7 +266,11 @@ final class BrowserViewController: NSViewController {
         for column in ov.tableColumns {
             ThemeStyle.bind(column)
         }
-        // Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
+    }
+
+    /// Right-click the column titles to show or hide a column (Name always shows; Where comes with results).
+    private func columnsMenu() -> NSMenu {
+        let ov = outlineView
         let columnsMenu = NSMenu()
         for id in Self.optionalColumns {
             guard let column = ov.tableColumn(withIdentifier: id) else { continue }
@@ -275,38 +279,23 @@ final class BrowserViewController: NSViewController {
             item.representedObject = id.rawValue
             columnsMenu.addItem(item)
         }
-        ov.headerView?.menu = columnsMenu
-        applyColumnVisibility(fitName: false)
-        syncSortDescriptor()
+        return columnsMenu
+    }
 
-        ov.onType = { [weak self] text in self?.setFilter((self?.filter ?? "") + text) }
-        ov.onBackspace = { [weak self] in
-            guard let self, !filter.isEmpty else { return false }
-            setFilter(String(filter.dropLast()))
-            return true
-        }
-        ov.onEscape = { [weak self] in
-            guard let self, !filter.isEmpty else { return false }
-            setFilter("")
-            return true
-        }
-        ov.onReturn = { [weak self] in
-            guard let self else { return }
-            if filter.isEmpty && !preferences.returnOpens { renameSelection(nil) } else { openSelection(nil) }
-        }
+    /// Typing, Backspace, Escape, Return, Space, a click on a name, the context menu and drags' end.
+    private func wireOutlineKeys() {
+        let ov = outlineView
+        ov.onType = { [weak self] text in _ = self?.handle(.type(text)) }
+        ov.onBackspace = { [weak self] in self?.handle(.backspace) ?? false }
+        ov.onEscape = { [weak self] in self?.handle(.escape) ?? false }
+        ov.onReturn = { [weak self] in _ = self?.handle(.returnKey) }
         ov.onNameClick = { [weak self] row in
             guard let self, let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return }
             renameClicked(node.url)
         }
-        ov.onSpace = { [weak self] in
-            guard let self else { return }
-            if filter.isEmpty { toggleQuickLook(nil) } else { setFilter(filter + " ") }
-        }
+        ov.onSpace = { [weak self] in _ = self?.handle(.space) }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
-        ov.onDragEnd = { [weak self] in
-            self?.springLoader.cancel()
-            self?.isDragOver = false
-        }
+        ov.onDragEnd = { [weak self] in self?.springLoader.cancel() }
     }
 
     /// The list columns that can be shown or hidden, in the order of the menu on their titles.
@@ -347,26 +336,25 @@ final class BrowserViewController: NSViewController {
 
     func load(_ url: URL, select: URL? = nil) {
         // Tags may have changed elsewhere (Finder) since they were last read here.
-        TagStore.shared.invalidate(url)
+        services.tags.invalidate(url)
         let isNewDirectory = url != directory || isShowingResults
         if isShowingResults { leaveResults() }
         loading.navigate(to: url, newFolder: isNewDirectory)
+        var watched: Task<Void, Never>?
         if isNewDirectory {
             cancelPendingActions()
-            deferredApply = nil
-            listing.setFilter("")
-            filterPill.update(query: "", matches: 0)
+            inlineRename.dropHeldListing()
+            clearFilter()
+            resorting.cancel()
             sizer.cancelPending()
             mediaInfo.cancelPending()
-            watchers = applicationFolders.directories(for: FileEntry.openedFolder(url)).compactMap { folder in
-                DirectoryWatcher(url: folder) { [weak self] in self?.refresh() }
-            }
-            gitObservation = GitStatusStore.shared.observe(url)
-            pendingSelection = select.map { [$0] } ?? []
+            // Watched before it's read, so no change made while it's read is missed.
+            watched = watch(url)
+            pending.selection = select.map { [$0] } ?? []
         }
         // Revealing an item in the folder already showing selects it too.
-        if !isNewDirectory, let select { pendingSelection = [select] }
-        reload(scrollToTop: isNewDirectory && select == nil)
+        if !isNewDirectory, let select { pending.selection = [select] }
+        reload(scrollToTop: isNewDirectory && select == nil, after: isNewDirectory ? watched : nil)
         // Keep the old rows briefly for fast reads; slow folders show a native loading state.
         if isNewDirectory {
             let loading = generation
@@ -391,25 +379,29 @@ final class BrowserViewController: NSViewController {
 
     func refresh(invalidateCopy: Bool) {
         guard directory != nil, !isShowingResults else { return }
-        TagStore.shared.invalidate(directory)
+        services.tags.invalidate(directory)
         // FSEvents normally keeps git status current; without it, entries changing is our cue.
-        if let observation = gitObservation, !observation.isWatching {
-            GitStatusStore.shared.invalidate(root: observation.repository.root)
+        if let observation = watching.git, !observation.isWatching {
+            services.git.invalidate(root: observation.repository.root)
         }
         reload(scrollToTop: false, invalidateCopy: invalidateCopy)
     }
 
-    private func reload(scrollToTop: Bool, invalidateCopy: Bool = false) {
+    private func reload(scrollToTop: Bool, invalidateCopy: Bool = false, after watched: Task<Void, Never>? = nil) {
         guard let url = directory else { return }
+        // A read of the watched folder waits for its watchers, however it was asked for.
+        let watched = watched ?? (watching.folder == url ? watching.ready : nil)
         loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
-                       invalidateCopy: invalidateCopy) { [weak self] result in
+                       invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let delivery):
-                TagStore.shared.load(delivery.entries, in: url)
-                CloudStore.shared.load(delivery.entries.map(\.url), in: url)
-                Privacy.markAccessible(url)
-                apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop)
+                settle(at: delivery.folder, asked: url, landed: delivery.landed)
+                services.tags.load(delivery.entries)
+                services.cloud.load(delivery.entries.map(\.url), in: delivery.folder)
+                if Privacy.markAccessible(delivery.folder) { services.index.refreshConfig() }
+                apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
+                      sortedBy: delivery.sortedBy)
             case .failure:
                 showLoadError()
             }
@@ -419,18 +411,52 @@ final class BrowserViewController: NSViewController {
         }
     }
 
+    /// Where a read of `asked` found the browser to be: `folder`, where a link or alias led, or `asked` itself. What's
+    /// waiting to be selected follows it there, and the window hears where it has `landed`. A folder elsewhere is
+    /// watched in its place and read once more when it is, so a change made before that isn't missed.
+    private func settle(at folder: URL, asked: URL, landed: Bool) {
+        if folder != asked {
+            pending.selection = pending.selection?.map { item in
+                PathSpelling.short(item.deletingLastPathComponent()) == PathSpelling.short(asked)
+                    ? folder.appending(path: item.lastPathComponent) : item
+            }
+        }
+        if landed { delegate?.browser(self, landedAt: folder, asked: asked) }
+        guard watching.folder != folder else { return }
+        // Owned by the folder shown, not the navigation: a deeper column chosen meanwhile keeps the first column's.
+        let watched = watch(folder)
+        Task { [weak self] in
+            await watched.value
+            guard let self, directory == folder else { return }
+            refresh()
+        }
+    }
+
+    /// Watches `folder` (both Applications folders for Applications), and finds its repository, away from the main
+    /// thread: the watchers are open when the task it returns ends.
+    private func watch(_ folder: URL) -> Task<Void, Never> {
+        watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
+                       changed: { [weak self] in self?.refresh() },
+                       isCurrent: { [weak self] in self?.directory == folder })
+    }
+
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
-    func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false) {
+    /// `sortedBy`: the order `entries` were sorted in as they were read, if any; they're sorted here unless it's still
+    /// the order chosen.
+    func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false,
+               sortedBy: BrowserOrdering.Snapshot? = nil) {
         // Reloading the list would end a rename in progress, half typed.
-        if isRenamingInPlace {
-            deferredApply = DeferredListing(entries: entries, preservingState: preservingState, fromTop: fromTop, generation: generation)
+        if inlineRename.isEditing {
+            inlineRename.hold(.init(entries: entries, preservingState: preservingState, fromTop: fromTop,
+                                    sortedBy: sortedBy, generation: generation))
             return
         }
-        deferredApply = nil
+        inlineRename.dropHeldListing()
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
-        let selection = pendingSelection ?? (preservingState ? selectedURLs : [])
+        let selection = pending.selection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
-        listing.replace(entries, preservingNodes: preservingState, sort: sort)
+        let presorted = sortedBy != nil && sortedBy == ordering.snapshot
+        listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
         loading.applied()
         outlineView.reloadData()
         if fromTop { scrollToTop() }
@@ -442,11 +468,8 @@ final class BrowserViewController: NSViewController {
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
         select(selection)
-        pendingSelection = nil
-        if let rename = pendingRename, node(for: rename) != nil {
-            pendingRename = nil
-            beginRename(rename)
-        }
+        pending.selection = nil
+        beginPendingRename()
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -455,8 +478,8 @@ final class BrowserViewController: NSViewController {
     func loadChildren(of node: FileNode, selecting: [URL] = []) {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
-            TagStore.shared.load(entries, in: node.url)
-            CloudStore.shared.load(entries.map(\.url), in: node.url)
+            services.tags.load(entries)
+            services.cloud.load(entries.map(\.url), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
             if !selecting.isEmpty, activeView == nil {
@@ -470,11 +493,13 @@ final class BrowserViewController: NSViewController {
                     outlineView.selectRowIndexes(rows, byExtendingSelection: !outlineView.selectedRowIndexes.isEmpty)
                 }
             }
-            if let rename = pendingRename, self.node(for: rename) != nil {
-                pendingRename = nil
-                beginRename(rename)
-            }
+            beginPendingRename()
         }
+    }
+
+    /// The new item waiting to be renamed, once its row is shown.
+    private func beginPendingRename() {
+        if let rename = pending.takeRename(ifShown: { node(for: $0) != nil }) { beginRename(rename) }
     }
 
     static func key(_ url: URL) -> String { BrowserListing.key(url) }
@@ -485,11 +510,16 @@ final class BrowserViewController: NSViewController {
     /// reached through a symlink doesn't spell them like the folder does ("/tmp/x" lists "/private/tmp/x/a").
     func rowURL(_ url: URL) -> URL { node(for: url)?.url ?? url }
 
+    /// What Quick Look shows of a selection: its files, and links (a link to a folder previews as the link).
+    static func quickLookItems(_ entries: [FileEntry]) -> [URL] {
+        entries.filter { !$0.isDirectory || $0.isSymlink }.map(\.url)
+    }
+
     private func showLoadError() {
         cancelPendingActions()
         sizer.cancelPending()
         mediaInfo.cancelPending()
-        deferredApply = nil
+        inlineRename.dropHeldListing()
         listing.clear()
         outlineView.reloadData()
         // Icons, Columns, Gallery and Disk Usage keep their own copy of the items: clear it too.
@@ -499,7 +529,7 @@ final class BrowserViewController: NSViewController {
         delegate?.browserSelectionDidChange(self)
     }
 
-    private func updateEmptyState() {
+    func updateEmptyState() {
         if let error = loadError as NSError? {
             let posix = (error.userInfo[NSUnderlyingErrorKey] as? NSError)?.code
             if error.code == NSFileReadNoPermissionError || posix == Int(EPERM) || posix == Int(EACCES) {
@@ -540,172 +570,46 @@ final class BrowserViewController: NSViewController {
         scrollView.reflectScrolledClipView(clip)
     }
 
-    // MARK: - Results
-
-    /// Shows `entries` (search results or recent files) in place of the folder, keeping their order until a column
-    /// header is clicked. `total` is how many matched before the list was capped.
-    func showResults(_ entries: [FileEntry], total: Int) {
-        // A search refreshed because the index changed nearly always finds the same files: the list, its selection
-        // and the Inspector stay as they are, and only rows whose size or date moved are redrawn.
-        if isShowingResults, pendingSelection == nil, resultsSummary == nil, loadError == nil, updateResultsInPlace(entries) {
-            localizeResultNames()
-            if resultsTotal != total {
-                resultsTotal = total
-                delegate?.browserContentDidChange(self)
-            }
-            return
-        }
-        // Read before switching to the list: in other views the list's own selection is stale and could point at a file
-        // nobody picked.
-        let selection = pendingSelection ?? selectedURLs
-        enterResults()
-        loading.showResults()
-        sizer.cancelPending()
-        mediaInfo.cancelPending()
-        resultsTotal = total
-        resultsSummary = nil
-        listing.replace(entries, preservingNodes: false, sort: sort)
-        localizeResultNames()
-        outlineView.reloadData()
-        select(selection, scroll: false)
-        pendingSelection = nil
-        updateEmptyState()
-        delegate?.browserContentDidChange(self)
-        delegate?.browserSelectionDidChange(self)
-    }
-
-    /// When `entries` are the files already listed (in any order: a clicked column header sorts them), takes their new
-    /// sizes and dates and returns true. Otherwise changes nothing and returns false.
-    private func updateResultsInPlace(_ entries: [FileEntry]) -> Bool {
-        guard let changed = listing.updateResults(entries, sorted: ordering.choice != nil) else { return false }
-        guard !changed.isEmpty else { return true }
-        var rowsToReload = IndexSet()
-        for node in changed {
-            let row = outlineView.row(forItem: node)
-            if row >= 0 { rowsToReload.insert(row) }
-        }
-        outlineView.reloadData(forRowIndexes: exceptRenaming(rowsToReload), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
-        delegate?.browserContentDidChange(self)
-        if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0)) }) {
-            delegate?.browserSelectionDidChange(self)
-        }
-        return true
-    }
-
-    /// Shows groups of files under header rows, all expanded (duplicate sets).
-    func showGroups(_ groups: [ResultGroup], summary: String) {
-        enterResults()
-        loading.showResults()
-        sizer.cancelPending()
-        mediaInfo.cancelPending()
-        resultsTotal = groups.count
-        resultsSummary = summary
-        listing.replaceGroups(groups)
-        localizeResultNames()
-        outlineView.reloadData()
-        outlineView.expandItem(nil, expandChildren: true)
-        if let pendingSelection { select(pendingSelection, scroll: true) }
-        pendingSelection = nil
-        updateEmptyState()
-        delegate?.browserContentDidChange(self)
-        delegate?.browserSelectionDidChange(self)
-    }
-
-    func showGroups(_ groups: [(title: String, detail: String, entries: [FileEntry])], summary: String) {
-        showGroups(groups.map { ResultGroup(title: $0.title, detail: $0.detail, entries: $0.entries) }, summary: summary)
-    }
-
-    /// Resolve index hits' visible names without blocking search or changing their file identities.
-    private func localizeResultNames() {
-        let gen = generation
-        let targets = nodes.flatMap { $0.children ?? [$0] }.filter { $0.entry.isDirectory || $0.entry.isPackage }
-        guard !targets.isEmpty else { return }
-        let entries = targets.map(\.entry)
-        Task { [weak self] in
-            let localized = await FileEntry.localizedNames(entries)
-            guard let self, isShowingResults, gen == generation, !isRenamingInPlace else { return }
-            let selection = selectedURLs
-            let expanded = nodes.filter { outlineView.isItemExpanded($0) }
-            var changed = false
-            for (node, pair) in zip(targets, zip(entries, localized)) where node.entry == pair.0 && pair.0 != pair.1 {
-                node.entry = pair.1
-                changed = true
-            }
-            guard changed else { return }
-            listing.sort { nodes in
-                if resultsSummary == nil { sort(&nodes) }
-            }
-            outlineView.reloadData()
-            for node in expanded { outlineView.expandItem(node) }
-            select(selection, scroll: false)
-            delegate?.browserSelectionDidChange(self)
-        }
-    }
-
-    /// Replaces the list with a message while results are being computed.
-    func showMessage(symbol: String, title: String, message: String = "") {
-        noteNavigationContextChanged()
-        enterResults()
-        loading.showResults(loaded: false)
-        sizer.cancelPending()
-        mediaInfo.cancelPending()
-        listing.clear()
-        resultsSummary = ""
-        outlineView.reloadData()
-        emptyState.show(symbol: symbol, title: title, message: message)
-        delegate?.browserContentDidChange(self)
-    }
-
-    private func enterResults() {
-        if !isShowingResults {
-            cancelPendingActions()
-            deferredApply = nil
-            ordering.enterResults()
-            installActiveView()
-            syncSortDescriptor()
-            // Make room for "Where" from Date and Kind, not from Name (the only column that gives up width on its own).
-            columnWidthsBeforeResults = [.modified, .created, .kind].compactMap { id in outlineView.tableColumn(withIdentifier: id).map { (id, $0.width) } }
-            outlineView.tableColumn(withIdentifier: .modified)?.width = 130
-            outlineView.tableColumn(withIdentifier: .created)?.width = 130
-            outlineView.tableColumn(withIdentifier: .kind)?.width = 120
-            outlineView.tableColumn(withIdentifier: .location)?.isHidden = false
-            fitNameColumn()
-            listing.setFilter("")
-            filterPill.update(query: "", matches: 0)
-        }
-    }
-
-    private func leaveResults() {
-        if let remembered = ordering.leaveResults() {
-            preferences.sortColumn = remembered.key.rawValue
-            preferences.sortAscending = remembered.ascending
-        }
-        installActiveView()
-        outlineView.tableColumn(withIdentifier: .location)?.isHidden = true
-        for (id, width) in columnWidthsBeforeResults { outlineView.tableColumn(withIdentifier: id)?.width = width }
-        columnWidthsBeforeResults = []
-        fitNameColumn()
-        syncSortDescriptor()
-    }
-
     // MARK: - Sorting and filtering
 
     func sort(_ list: inout [FileNode]) { _ = ordering.sort(&list) }
 
+    /// Rows already in order: only the folders open in them are left to sort.
+    private func sortOpenFolders(_ list: inout [FileNode]) {
+        for node in list {
+            guard var children = node.children else { continue }
+            sort(&children)
+            node.children = children
+        }
+    }
+
     /// The same order feeds the native list and deeper columns.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool { ordering.ordered(a, b) }
+
+    func noteNavigationContextChanged() {
+        navigationRevision += 1
+        services.previews.invalidate(owner: self)
+        fetches.cancelAction()
+    }
 
     func syncSortDescriptor() {
         let descriptors = ordering.choice.map { [NSSortDescriptor(key: $0.key.rawValue, ascending: $0.ascending)] } ?? []
         guard outlineView.sortDescriptors != descriptors else { return }
-        updatingSortDescriptor = true
-        defer { updatingSortDescriptor = false }
         outlineView.sortDescriptors = descriptors
     }
 
     func setFilter(_ text: String) {
-        guard text != filter else { return }
-        listing.setFilter(text)
+        filtering.set(text)
+    }
+
+    func clearFilter() {
+        filtering.clear()
+        filterPill.update(query: "", matches: 0)
+    }
+
+    private func showFilter(_ text: String) {
+        // Metadata that arrived while filtered (sizes, say) orders the rows now.
+        if text.isEmpty { scheduleResort() }
         outlineView.reloadData()
         if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
             outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)
@@ -721,15 +625,12 @@ final class BrowserViewController: NSViewController {
     /// Re-sorts after folder sizes arrive while sorting by size, animating rows into place.
     func scheduleResort() {
         guard ordering.choice != nil else { return }
-        resortWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.resortAfterMetadata() } }
-        resortWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        resorting.schedule()
     }
 
     func resortAfterMetadata() {
-        guard ordering.choice != nil, filter.isEmpty else { return }
-        if isRenamingInPlace { deferredMetadataOrder = true; return }
+        guard ordering.choice != nil, filtering.typed.isEmpty else { return }
+        if inlineRename.isEditing { return resorting.holdForEditing() }
         if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
         let selection = selectedURLs
         var sorted = nodes
@@ -765,8 +666,8 @@ final class BrowserViewController: NSViewController {
         guard let node = node(for: url) else { return }
         let row = outlineView.row(forItem: node)
         let column = outlineView.column(withIdentifier: .size)
-        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: [column]) }
-        treemapController?.updateSize(folderSize(url)?.bytes, for: url)
+        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column]) }
+        if effectiveMode == .treemap { treemapController?.updateFolderSize(folderSize(url), for: url) }
         if mode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
@@ -779,7 +680,7 @@ final class BrowserViewController: NSViewController {
             let column = outlineView.tableColumns[$0]
             return !column.isHidden && ListColumn(rawValue: column.identifier.rawValue)?.isMedia == true
         })
-        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: exceptRenaming([row]), columnIndexes: columns) }
+        if row >= 0, !columns.isEmpty { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: columns) }
         if ordering.choice?.key.isMedia == true { scheduleResort() }
     }
 
@@ -794,13 +695,12 @@ final class BrowserViewController: NSViewController {
     var selectedURLs: [URL] { selectedEntries.map(\.url) }
     var itemCount: Int { nodes.count }
     var topLevelEntries: [FileEntry] { nodes.map(\.entry) }
-    var visibleCount: Int { rows.count }
 
     /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
         if services.copies.contains(url) { return nil }
-        if let size = FileIndex.shared.folderSize(url) { return size }
-        if let size = sizer.cached(url) { return size }
+        if let size = services.index.folderSize(url) { return size }
+        if let size = FolderSizer.cached(url) { return size }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
         return nil
     }
@@ -823,12 +723,8 @@ final class BrowserViewController: NSViewController {
     var statusText: String {
         guard isLoaded, loadError == nil else { return "" }
         var parts: [String]
-        if let resultsSummary, isShowingResults {
-            parts = resultsSummary.isEmpty ? [] : [resultsSummary]
-        } else if isShowingResults {
-            let shown = filter.isEmpty ? nodes.count : rows.count
-            parts = [resultsTotal > shown ? String(localized: "Top \(shown.formatted()) of \(resultsTotal) results", comment: "plural")
-                                          : String(localized: "\(shown) results", comment: "plural")]
+        if isShowingResults {
+            parts = results.status(shown: filter.isEmpty ? nodes.count : rows.count)
         } else {
             parts = [filter.isEmpty
                 ? String(localized: "\(nodes.count) items", comment: "plural")
@@ -842,64 +738,22 @@ final class BrowserViewController: NSViewController {
                 ? String(localized: "\(selected.count) selected, \(Format.bytes(known.saturatingSum))", comment: "plural")
                 : String(localized: "\(selected.count) selected", comment: "plural"))
         }
-        if let availableCapacity, !isShowingResults {
-            parts.append(String(localized: "\(Format.bytes(availableCapacity)) available", comment: "Status bar: free space on the folder’s disk"))
+        if let volumeSpace, !isShowingResults {
+            parts.append(String(localized: "\(Format.bytes(volumeSpace.free)) free", comment: "Status bar: physically free space on the folder’s disk"))
         }
         return parts.joined(separator: "  ·  ")
     }
 
-    // MARK: - Quick Look
-
-    @objc func toggleQuickLook(_ sender: Any?) {
-        guard !isRenamingInPlace else { return }
-        if services.previews.isOpen {
-            services.previews.close()
-            return
+    var volumeSpaceDescription: String? {
+        guard !isShowingResults, let space = volumeSpace else { return nil }
+        var lines: [String] = []
+        if let total = space.total, total >= space.free {
+            lines.append(String(localized: "\(Format.bytes(total - space.free)) used of \(Format.bytes(total))", comment: "Drive storage: actual occupied space and capacity"))
         }
-        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
-            panel.orderOut(nil)
-            return
+        lines.append(String(localized: "\(Format.bytes(space.free)) physically free", comment: "Drive storage: unallocated space"))
+        if let available = space.availableIncludingReclaimable {
+            lines.append(String(localized: "\(Format.bytes(available)) available including reclaimable space", comment: "Drive storage: macOS availability includes purgeable files"))
         }
-        if selectedEntries.count == 1, let entry = selectedEntries.first {
-            services.previews.show(entry, from: self)
-        } else if let panel = QLPreviewPanel.shared() {
-            openQuickLook { [weak self] in
-                guard let self else { return }
-                _ = services.windows.preview(panel, focusView)
-            }
-        }
-    }
-
-    func openQuickLook(showPanel: @escaping () -> Void = { QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil) }) {
-        let urls = selectedURLs.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true }
-        let selectedKeys = Set(selectedURLs.map(Self.key))
-        guard !selectedKeys.isEmpty else { return }
-        let revision = navigationRevision
-        let hadWindow = viewIfLoaded?.window != nil
-        actionFetch?.cancel()
-        // A container's file being fetched: show it once it's here.
-        actionFetch = afterFetching(urls) { [weak self] in
-            guard let self, navigationRevision == revision,
-                  (!hadWindow || viewIfLoaded?.window?.isVisible == true),
-                  !Set(selectedURLs.map(Self.key)).isDisjoint(with: selectedKeys) else { return }
-            showPanel()
-        }
-    }
-
-    // Quick Look calls these on the main thread; the SDK just doesn't annotate them.
-    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
-
-    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated {
-            panel.dataSource = self
-            panel.delegate = self
-        }
-    }
-
-    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated {
-            panel.dataSource = nil
-            panel.delegate = nil
-        }
+        return lines.joined(separator: "\n")
     }
 }

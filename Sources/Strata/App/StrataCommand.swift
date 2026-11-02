@@ -68,6 +68,7 @@ struct StrataCommand {
     static let showInFinder = Self(String(localized: "Show in Finder"), #selector(BrowserViewController.showInFinder(_:)), .browser, symbol: "macwindow")
     static let addToSidebar = Self(String(localized: "Add to Sidebar"), #selector(BrowserViewController.addToSidebar(_:)), .browser, symbol: "sidebar.left")
     static let toggleQuickLook = Self(String(localized: "Quick Look"), #selector(BrowserViewController.toggleQuickLook(_:)), .browser, "y", symbol: "eye")
+    static let getInfo = Self(String(localized: "Get Info"), #selector(BrowserViewController.getInfo(_:)), .browser, symbol: "info.circle")
     static let renameSelection = Self(String(localized: "Rename"), #selector(BrowserViewController.renameSelection(_:)), .browser, symbol: "pencil")
     static let editTags = Self(String(localized: "Tags…"), #selector(BrowserViewController.editTags(_:)), .browser, symbol: "tag")
     static let compress = Self(String(localized: "Compress"), #selector(BrowserViewController.compress(_:)), .browser, symbol: "doc.zipper")

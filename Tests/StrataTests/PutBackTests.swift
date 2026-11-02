@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Put Back: where an item goes back to comes from Finder's records in the Trash, which anything could have written.
 /// It must stay on the Trash's disk, under plain names, through real folders only, keep the item's extension, and
@@ -45,6 +52,22 @@ struct PutBackTests {
             #expect(Trash.location(.init(folder: folder, name: "a.txt"), of: item, onDiskOf: trash) == nil, "\(folder)")
         }
         #expect(tree.snapshot().contains("Disk/door -> ../outside"))
+    }
+
+    /// History says where an item in a Trash came from only while it's the file Strata put there; the latest move
+    /// there wins.
+    @Test func historyKnowsOnlyTheFileItPutThere() throws {
+        let tree = try TestTree("T/a.txt", "T/ab.txt", "T/new.txt")
+        let item = tree.url("T/a.txt")
+        var older = OperationLog.Entry(name: "Move to Trash", kind: .move, moves: [HistoryMove(from: tree.url("Old/a.txt"), to: item)])
+        older.date = .distantPast
+        let newer = OperationLog.Entry(name: "Move to Trash", kind: .move, moves: [HistoryMove(from: tree.url("Docs/a.txt"), to: item)])
+        let found = OperationLog.movedFrom([item, tree.url("T/ab.txt")], in: [newer, older])
+        #expect(found.mapValues(\.from.path) == [item.standardizedFileURL.path: tree.url("Docs/a.txt").path])
+        // Another file takes its place: History knows nothing about that one.
+        #expect(rename(tree.url("T/new.txt").path, item.path) == 0)
+        #expect(OperationLog.movedFrom([item], in: [newer, older]).isEmpty)
+        #expect(tree.snapshot() == ["T/", "T/a.txt", "T/ab.txt"])
     }
 
     @Test func neverBackIntoATrash() {

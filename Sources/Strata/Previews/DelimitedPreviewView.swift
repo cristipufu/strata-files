@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// CSV and TSV as a grid: the first row is the header, then up to `DelimitedLoader.rowLimit` rows.
 package final class DelimitedPreviewView: PreviewView {
@@ -9,17 +10,13 @@ package final class DelimitedPreviewView: PreviewView {
         super.init(frame: .zero)
         grid.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            grid.topAnchor.constraint(equalTo: contentView.topAnchor),
-            grid.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(grid.fillingConstraints(in: contentView))
         load({ try await DelimitedLoader.load(url, separator: separator) }) { [weak self] table in
             self?.show(table)
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func show(_ table: DelimitedTable) {

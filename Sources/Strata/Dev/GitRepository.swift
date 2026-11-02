@@ -1,19 +1,19 @@
 import Foundation
 
 /// A git work tree found by walking up from a folder.
-nonisolated struct GitRepository: Sendable, Hashable {
+package nonisolated struct GitRepository: Sendable, Hashable {
     /// Top of the work tree (the folder holding `.git`).
-    let root: URL
+    package let root: URL
     /// Where HEAD, the index and in-progress operation markers live: `.git`, or the folder a `.git` file points to.
-    let gitDirectory: URL
+    package let gitDirectory: URL
     /// `.git` is a file: a linked worktree (`git worktree add`) or a submodule.
-    let isLinked: Bool
+    package let isLinked: Bool
     /// A linked worktree rather than a submodule (its git directory has a `commondir`).
-    let isWorktree: Bool
+    package let isWorktree: Bool
     /// `root.path`, kept as a string for the per-row lookups (URL.path isn't free).
-    let rootPath: String
+    package let rootPath: String
 
-    init(root: URL, gitDirectory: URL, isLinked: Bool, isWorktree: Bool) {
+    package init(root: URL, gitDirectory: URL, isLinked: Bool, isWorktree: Bool) {
         self.root = root
         self.gitDirectory = gitDirectory
         self.isLinked = isLinked
@@ -21,17 +21,17 @@ nonisolated struct GitRepository: Sendable, Hashable {
         rootPath = root.path
     }
 
-    var isSubmodule: Bool { isLinked && !isWorktree }
+    package var isSubmodule: Bool { isLinked && !isWorktree }
 
     /// Folders never treated as a work tree root even when they hold `.git`. A dotfiles repo in the home folder
     /// would otherwise make every folder you browse "untracked" and run status over your whole home.
-    static let excludedRoots: Set<String> = ["/", FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path]
+    package static let excludedRoots: Set<String> = ["/", FileManager.default.homeDirectoryForCurrentUser.lexicallyStandardized.path]
 
     /// The repository containing `url` (a folder, or a file whose folder is used), or nil. A few `lstat`s per level,
     /// no git process.
-    static func locate(from url: URL) -> GitRepository? {
+    package static func locate(from url: URL) -> GitRepository? {
         let fm = FileManager.default
-        var path = url.standardizedFileURL.path
+        var path = url.lexicallyStandardized.path
         var isDirectory: ObjCBool = false
         if fm.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue {
             path = (path as NSString).deletingLastPathComponent
@@ -74,7 +74,7 @@ nonisolated struct GitRepository: Sendable, Hashable {
 
     /// The branch HEAD names, read straight from the file: instant, so the branch pill can appear before status
     /// finishes. Nil when HEAD is detached or unreadable.
-    func currentBranchName() -> String? {
+    package func currentBranchName() -> String? {
         guard let (data, _) = try? TextFile.readPrefix(gitDirectory.appending(path: "HEAD"), limit: 64 * 1024),
               let head = String(data: data, encoding: .utf8) else { return nil }
         let line = head.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -83,7 +83,7 @@ nonisolated struct GitRepository: Sendable, Hashable {
     }
 
     /// A merge, rebase, cherry-pick… in progress, from the marker files git leaves in the git directory.
-    func operationInProgress() -> GitOperation? {
+    package func operationInProgress() -> GitOperation? {
         let fm = FileManager.default
         func exists(_ name: String) -> Bool { fm.fileExists(atPath: gitDirectory.appending(path: name).path) }
         func number(_ name: String) -> Int? {
@@ -104,7 +104,7 @@ nonisolated struct GitRepository: Sendable, Hashable {
     }
 
     /// During a rebase HEAD is detached; the branch being rebased is recorded separately.
-    func rebasingBranchName() -> String? {
+    package func rebasingBranchName() -> String? {
         for file in ["rebase-merge/head-name", "rebase-apply/head-name"] {
             if let (data, _) = try? TextFile.readPrefix(gitDirectory.appending(path: file), limit: 64 * 1024),
                let text = String(data: data, encoding: .utf8) {
@@ -118,21 +118,21 @@ nonisolated struct GitRepository: Sendable, Hashable {
 
 // MARK: - Running git
 
-nonisolated struct GitRunResult: Sendable {
-    let exitCode: Int32
-    let output: Data
-    let errorOutput: String
-    let timedOut: Bool
-    let duration: TimeInterval
+package nonisolated struct GitRunResult: Sendable {
+    package let exitCode: Int32
+    package let output: Data
+    package let errorOutput: String
+    package let timedOut: Bool
+    package let duration: TimeInterval
 
-    var succeeded: Bool { !timedOut && exitCode == 0 }
+    package var succeeded: Bool { !timedOut && exitCode == 0 }
 }
 
-nonisolated enum GitRunner {
+package nonisolated enum GitRunner {
     /// The git binary, resolved once. Prefers the active developer directory's git over the `/usr/bin/git` shim: it
     /// skips the xcrun lookup, and on a Mac without developer tools the shim pops an "install command line developer
     /// tools" dialog, while this simply finds nothing and git features stay off.
-    static let executable: String? = {
+    package static let executable: String? = {
         var candidates: [String] = []
         if let developer = try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link") {
             candidates.append((developer as NSString).appendingPathComponent("usr/bin/git"))
@@ -146,11 +146,11 @@ nonisolated enum GitRunner {
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }()
 
-    static var isAvailable: Bool { executable != nil }
+    package static var isAvailable: Bool { executable != nil }
 
     /// Runs `git --no-optional-locks -C <directory> <arguments>` on a background queue. Never blocks a Swift
     /// concurrency thread: the blocking wait happens on a GCD utility thread. Killed after `timeout` seconds.
-    static func run(_ arguments: [String], in directory: URL, timeout: TimeInterval) async -> GitRunResult {
+    package static func run(_ arguments: [String], in directory: URL, timeout: TimeInterval) async -> GitRunResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 continuation.resume(returning: runBlocking(arguments, in: directory, timeout: timeout))
@@ -166,7 +166,7 @@ nonisolated enum GitRunner {
     private static let hardening = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
                                     "-c", "protocol.allow=never"]
 
-    static func runBlocking(_ arguments: [String], in directory: URL, timeout: TimeInterval) -> GitRunResult {
+    package static func runBlocking(_ arguments: [String], in directory: URL, timeout: TimeInterval) -> GitRunResult {
         let start = Date()
         // Fail closed: if the repository's filter drivers can't be listed, don't run git there at all.
         guard let overrides = repositoryFilterOverrides(in: directory, timeout: timeout) else {
@@ -188,7 +188,7 @@ nonisolated enum GitRunner {
         return filterOverrides(run.output)
     }
 
-    static func filterOverrides(_ output: Data) -> [String]? {
+    package static func filterOverrides(_ output: Data) -> [String]? {
         let rawFields = output.split(separator: 0, omittingEmptySubsequences: false)
         var fields: [String] = []
         for field in rawFields {
@@ -221,6 +221,36 @@ nonisolated enum GitRunner {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = ["--no-optional-locks", "-C", directory.path] + arguments
         process.currentDirectoryURL = directory
+        process.environment = hardenedEnvironment()
+        let stdout = PipeCollector()
+        let stderr = PipeCollector()
+        process.standardOutput = stdout.pipe
+        process.standardError = stderr.pipe
+        process.standardInput = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return GitRunResult(exitCode: -1, output: Data(), errorOutput: error.localizedDescription, timedOut: false,
+                                duration: Date().timeIntervalSince(start))
+        }
+        let (timer, timedOut) = stopAfter(timeout, process)
+        process.waitUntilExit()
+        timer.cancel()
+        // Output is collected as it arrives (so a full pipe never stalls git). After exit, wait briefly for the pipes
+        // to reach EOF; a lingering grandchild holding them open can't keep us here.
+        stdout.finish(within: 1)
+        stderr.finish(within: 0.2)
+
+        let readError = stdout.readError ?? stderr.readError
+        return GitRunResult(exitCode: readError == nil ? process.terminationStatus : -1, output: stdout.data,
+                            errorOutput: readError ?? String(decoding: stderr.data, as: UTF8.self), timedOut: timedOut.isSet,
+                            duration: Date().timeIntervalSince(start))
+    }
+
+    /// This process's environment, without what could point git at another repository or undo the hardening of its
+    /// arguments, and with no locks, fetches, transports or prompts, in plain C.
+    private static func hardenedEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         // Never let an inherited GIT_DIR (Strata launched from a hook or a git alias) point us at another repository.
         // Nor inherited config overrides that could undo the hardening above.
@@ -235,20 +265,12 @@ nonisolated enum GitRunner {
         environment["GIT_ALLOW_PROTOCOL"] = ""
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_ALL"] = "C"
-        process.environment = environment
-        let stdout = PipeCollector()
-        let stderr = PipeCollector()
-        process.standardOutput = stdout.pipe
-        process.standardError = stderr.pipe
-        process.standardInput = FileHandle.nullDevice
+        return environment
+    }
 
-        do {
-            try process.run()
-        } catch {
-            return GitRunResult(exitCode: -1, output: Data(), errorOutput: error.localizedDescription, timedOut: false,
-                                duration: Date().timeIntervalSince(start))
-        }
-
+    /// Ends `process` once `timeout` passes: SIGTERM, then SIGKILL if it's stuck in uninterruptible I/O. The timer to
+    /// cancel when it's done, and whether it timed out.
+    private static func stopAfter(_ timeout: TimeInterval, _ process: Process) -> (DispatchSourceTimer, TimeoutFlag) {
         let flag = TimeoutFlag()
         let pid = process.processIdentifier
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
@@ -257,37 +279,26 @@ nonisolated enum GitRunner {
             guard process.isRunning else { return }
             flag.set()
             process.terminate()
-            // SIGTERM is enough for git; escalate if it's stuck in uninterruptible I/O.
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
                 if process.isRunning { kill(pid, SIGKILL) }
             }
         }
         timer.resume()
-        process.waitUntilExit()
-        timer.cancel()
-        // Output is collected as it arrives (so a full pipe never stalls git). After exit, wait briefly for the pipes
-        // to reach EOF; a lingering grandchild holding them open can't keep us here.
-        stdout.finish(within: 1)
-        stderr.finish(within: 0.2)
-
-        let readError = stdout.readError ?? stderr.readError
-        return GitRunResult(exitCode: readError == nil ? process.terminationStatus : -1, output: stdout.data,
-                            errorOutput: readError ?? String(decoding: stderr.data, as: UTF8.self), timedOut: flag.isSet,
-                            duration: Date().timeIntervalSince(start))
+        return (timer, flag)
     }
 }
 
 /// Accumulates one pipe's output on a background queue until EOF.
-nonisolated final class PipeCollector: @unchecked Sendable {
-    static let limit = 64 << 20
-    let pipe = Pipe()
+package nonisolated final class PipeCollector: @unchecked Sendable {
+    package static let limit = 64 << 20
+    package let pipe = Pipe()
     private let lock = NSLock()
     private var buffer = Data()
     private var reachedEOF = false
     private var failure: String?
     private let eof = DispatchSemaphore(value: 0)
 
-    init() {
+    package init() {
         // The owned pipe stays open for every callback; don't ask a closed FileHandle for its descriptor.
         let descriptor = pipe.fileHandleForReading.fileDescriptor
         pipe.fileHandleForReading.readabilityHandler = { [weak self] _ in
@@ -295,7 +306,7 @@ nonisolated final class PipeCollector: @unchecked Sendable {
         }
     }
 
-    func receive(_ descriptor: Int32) {
+    package func receive(_ descriptor: Int32) {
         let chunk: Data
         do {
             chunk = try PipeRead.availableData(from: descriptor)
@@ -326,13 +337,13 @@ nonisolated final class PipeCollector: @unchecked Sendable {
         }
     }
 
-    func finish(within seconds: TimeInterval) {
+    package func finish(within seconds: TimeInterval) {
         _ = eof.wait(timeout: .now() + seconds)
         pipe.fileHandleForReading.readabilityHandler = nil
     }
 
-    var data: Data { lock.withLock { buffer } }
-    var readError: String? { lock.withLock { failure } }
+    package var data: Data { lock.withLock { buffer } }
+    package var readError: String? { lock.withLock { failure } }
 }
 
 nonisolated private final class TimeoutFlag: @unchecked Sendable {
@@ -344,10 +355,10 @@ nonisolated private final class TimeoutFlag: @unchecked Sendable {
 
 // MARK: - Loading status
 
-nonisolated enum GitStatusLoader {
+package nonisolated enum GitStatusLoader {
     /// Runs `git status` for `repository` off the main thread and parses it into a snapshot.
     @concurrent
-    static func load(_ repository: GitRepository, mode: GitIgnoredMode, timeout: TimeInterval) async -> GitStatusSnapshot {
+    package static func load(_ repository: GitRepository, mode: GitIgnoredMode, timeout: TimeInterval) async -> GitStatusSnapshot {
         let arguments = [
             "status", "--porcelain=v2", "-z", "--branch", "--show-stash",
             "--untracked-files=normal", "--ignored=\(mode.rawValue)",
@@ -388,7 +399,7 @@ nonisolated enum GitStatusLoader {
 
     /// Root-relative paths among `paths` that contain at least one tracked file (one `git ls-files` call).
     @concurrent
-    static func trackedPaths(_ paths: [String], in repository: GitRepository, timeout: TimeInterval) async -> Set<String>? {
+    package static func trackedPaths(_ paths: [String], in repository: GitRepository, timeout: TimeInterval) async -> Set<String>? {
         guard !paths.isEmpty else { return [] }
         let run = await GitRunner.run(["ls-files", "-z", "--"] + paths.map { ":(literal)" + $0 },
                                       in: repository.root, timeout: timeout)

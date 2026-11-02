@@ -8,7 +8,8 @@ final class BrowserServices {
     private static func application() -> BrowserServices {
         BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
                         containers: .shared, containerStore: .shared, clipboard: .shared,
-                        cloudFolders: CloudFolders.discover)
+                        cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
+                        contentIndex: .shared)
     }
 
     /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
@@ -22,7 +23,8 @@ final class BrowserServices {
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
         let containers = containers ?? ContainerFiles(copies: ContainerCopyStore(root: storage.caches.appending(path: "Containers")))
         let copies = CopyProviders(servers: remote.files, containers: containers)
-        let transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
+        let history = OperationLog(storage: storage, copies: copies)
+        let transfers = TransferQueue(preferences: preferences, history: history, copies: copies)
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
                           directories: directories, mediaReader: mediaReader)
@@ -33,17 +35,20 @@ final class BrowserServices {
     static func configured(transfers: TransferQueue, visits: Frecency, windows: BrowserWindows,
                            remote: RemoteServices, containers: ContainerFiles, containerStore: ContainerStore,
                            clipboard: Clipboard, directories: DirectoryReader? = nil,
-                           availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                           volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                            remoteBrowsing: RemoteBrowsing? = nil,
                            mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
-                           openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) -> BrowserServices {
+                           openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
+                           tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil,
+                           index: FileIndex? = nil, contentIndex: SemanticIndex? = nil) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
-                        availableCapacity: availableCapacity, remote: remote, remoteBrowsing: remoteBrowsing,
+                        volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
                         mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo,
-                        cloudFolders: cloudFolders, openContainer: openContainer)
+                        cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
+                        index: index, contentIndex: contentIndex)
     }
 
     let preferences: Prefs
@@ -56,8 +61,10 @@ final class BrowserServices {
                                           presentPanel: windows.preview)
 
     let transfers: TransferQueue
-    let files: BrowserFileCommands
+    let files: FileCommands
     let visits: Frecency
+    let places: PlaceChecks
+    let folderNames: FolderNames
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
     let containers: ContainerFiles
@@ -70,21 +77,31 @@ final class BrowserServices {
     let mediaReader: MediaInfoLoader.Reader
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
-    let availableCapacity: @Sendable (URL) async -> Int64?
+    let volumeSpace: @Sendable (URL) async -> VolumeSpace?
     let windows: BrowserWindows
+    let tags: TagStore
+    let cloud: CloudStore
+    let git: GitStatusStore
+    let index: FileIndex
+    let contentIndex: SemanticIndex
+    var statuses: FileStatuses { FileStatuses(tags: tags, cloud: cloud, git: git) }
 
     private init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, windows: BrowserWindows,
-                 availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                 volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                  remote: RemoteServices, remoteBrowsing: RemoteBrowsing? = nil,
                  containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
                  mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
-                 openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil) {
+                 openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
+                 tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil,
+                 contentIndex: SemanticIndex? = nil) {
         self.preferences = transfers.preferences
         self.transfers = transfers
-        self.files = BrowserFileCommands(transfers: transfers)
+        self.files = FileCommands(transfers: transfers)
         self.visits = visits
+        self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: PlaceChecks.read)
+        self.folderNames = FolderNames(read: FolderNames.read)
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing
         self.containers = containers
@@ -100,7 +117,14 @@ final class BrowserServices {
         self.mediaReader = mediaReader
         self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore)
         self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
-        self.availableCapacity = availableCapacity
+        self.volumeSpace = volumeSpace
         self.windows = windows
+        // An environment of its own reads its own: unstarted indexes in its History's storage, and stores no other window
+        // shares.
+        self.tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
+        self.cloud = cloud ?? CloudStore()
+        self.git = git ?? GitStatusStore()
+        self.index = index ?? FileIndex(storage: transfers.history.storage, copies: transfers.copies)
+        self.contentIndex = contentIndex ?? SemanticIndex(configuration: .init(roots: [], storage: transfers.history.storage))
     }
 }

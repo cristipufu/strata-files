@@ -28,11 +28,19 @@ nonisolated struct InstalledApp: Sendable, Equatable {
     /// CFBundleVersion, what Sparkle compares.
     let build: String?
     let source: Source
+    /// The Strata that's running, which its own updater installs.
+    var isThisStrata = false
 
     /// Reads the bundle at `url`. Info.plist is read from disk each time (Bundle caches it, and an app updated since would
     /// still show its old version), and only when it's a regular file of a sensible size: a bundle is someone else's
     /// folder, and its "Info.plist" could be a pipe or a link to an endless device.
     static func read(_ url: URL) -> InstalledApp {
+        var app = readBundle(url)
+        app.isThisStrata = AppUpdatesController.isThisCopyOfStrata(url)
+        return app
+    }
+
+    private static func readBundle(_ url: URL) -> InstalledApp {
         let name = FileManager.default.displayName(atPath: url.path)
         // iPhone and iPad apps on a Mac keep their own bundle inside a wrapper.
         let wrapped = url.appending(components: "WrappedBundle", "Info.plist")

@@ -1,7 +1,16 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
+@Suite(.archiveWorkerApp)
 struct PreviewArchiveRootTests {
     @Test func tarRootDirectoriesAreSkippedWhileChosenMembersRemainExact() async throws {
         for root in [".", "./.", "./", "././."] {
@@ -10,10 +19,10 @@ struct PreviewArchiveRootTests {
                             + ContainerTests.tarFile("./a.txt", "chosen") + ContainerTests.tarFile("./ab.txt", "other")
                             + [UInt8](repeating: 0, count: 1024))
             try data.write(to: tree.url("pack.tar"))
-            let before = tree.snapshot(), source = try PreviewArchiveSource(tree.url("pack.tar"))
-            let listed = try await PreviewArchiveReader.read(source)
+            let before = tree.snapshot(), source = try ArchiveSource(tree.url("pack.tar"))
+            let listed = try await ArchiveReader.read(source)
             #expect(listed.map(\.path) == [["a.txt"], ["ab.txt"]])
-            let selected = try await PreviewArchiveReader.read(source, member: ["a.txt"])
+            let selected = try await ArchiveReader.read(source, member: ["a.txt"])
             #expect(selected.count == 1 && selected.first?.path == ["a.txt"] && selected.first?.body == Data("chosen".utf8))
             #expect(try Data(contentsOf: tree.url("pack.tar")) == data && tree.snapshot() == before)
         }
@@ -29,9 +38,9 @@ struct PreviewArchiveRootTests {
                 let data = Data(ContainerTests.tarHeader(name, type: type, link: "../outside/keep")
                                 + ContainerTests.tarFile("a.txt", "chosen") + [UInt8](repeating: 0, count: 1024))
                 try data.write(to: tree.url("pack.tar"))
-                let source = try PreviewArchiveSource(tree.url("pack.tar")), before = tree.snapshot()
-                await #expect(throws: PreviewArchiveError.unsafe) { try await PreviewArchiveReader.read(source) }
-                await #expect(throws: PreviewArchiveError.unsafe) { try await PreviewArchiveReader.read(source, member: ["a.txt"]) }
+                let source = try ArchiveSource(tree.url("pack.tar")), before = tree.snapshot()
+                await #expect(throws: ArchiveReadError.unsafe) { try await ArchiveReader.read(source) }
+                await #expect(throws: ArchiveReadError.unsafe) { try await ArchiveReader.read(source, member: ["a.txt"]) }
                 #expect(try Data(contentsOf: tree.url("pack.tar")) == data && tree.snapshot() == before)
             }
         }
@@ -42,9 +51,9 @@ struct PreviewArchiveRootTests {
         let data = Data(ContainerTests.tarHeader("./") + ContainerTests.tarFile("a.txt", "chosen")
                         + [UInt8](repeating: 0, count: 1024))
         try data.write(to: tree.url("pack.tar"))
-        let source = try PreviewArchiveSource(tree.url("pack.tar")), before = tree.snapshot()
-        #expect(try await PreviewArchiveReader.read(source).map(\.path) == [["a.txt"]])
-        let selected = try await PreviewArchiveReader.read(source, member: ["a.txt"])
+        let source = try ArchiveSource(tree.url("pack.tar")), before = tree.snapshot()
+        #expect(try await ArchiveReader.read(source).map(\.path) == [["a.txt"]])
+        let selected = try await ArchiveReader.read(source, member: ["a.txt"])
         #expect(selected.first?.body == Data("chosen".utf8))
         #expect(try Data(contentsOf: tree.url("pack.tar")) == data && tree.snapshot() == before)
     }
@@ -54,10 +63,10 @@ struct PreviewArchiveRootTests {
             let tree = try TestTree("source/a.txt", "source/ab.txt", "pack.cpio", "outside/keep")
             let archive = try await cpio(in: tree.url("source"), root: root)
             try archive.write(to: tree.url("pack.cpio"))
-            let before = tree.snapshot(), source = try PreviewArchiveSource(tree.url("pack.cpio"))
-            let listed = try await PreviewArchiveReader.read(source)
+            let before = tree.snapshot(), source = try ArchiveSource(tree.url("pack.cpio"))
+            let listed = try await ArchiveReader.read(source)
             #expect(listed.map(\.path) == [["a.txt"], ["ab.txt"]])
-            let selected = try await PreviewArchiveReader.read(source, member: ["a.txt"])
+            let selected = try await ArchiveReader.read(source, member: ["a.txt"])
             #expect(selected.count == 1 && selected.first?.body == Data("source/a.txt".utf8))
             #expect(try Data(contentsOf: tree.url("pack.cpio")) == archive && tree.snapshot() == before)
         }

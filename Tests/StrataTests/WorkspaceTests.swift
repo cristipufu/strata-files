@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct WorkspaceTests {
     private func plan(_ workspace: Workspace, existing: Set<String>) -> WorkspacePlan {
@@ -88,10 +95,37 @@ struct WorkspaceTests {
     }
 
     @Test func volumeOfAPath() {
-        #expect(WorkspacePlan.volume(of: "/Volumes/Backup/2026") == "/Volumes/Backup")
-        #expect(WorkspacePlan.volume(of: "/Volumes/Backup") == "/Volumes/Backup")
-        #expect(WorkspacePlan.volume(of: "/Volumes") == nil)
-        #expect(WorkspacePlan.volume(of: "/Users/me") == nil)
+        #expect(DiskOfPath.volume(of: "/Volumes/Backup/2026") == "/Volumes/Backup")
+        #expect(DiskOfPath.volume(of: "/Volumes/Backup") == "/Volumes/Backup")
+        #expect(DiskOfPath.volume(of: "/Volumes") == nil)
+        #expect(DiskOfPath.volume(of: "/Users/me") == nil)
+    }
+
+    /// Reads are kept apart by disk; a cloud storage account in your home's Library, or iCloud Drive, answers through
+    /// its own provider, so it counts as one, and a folder elsewhere that's merely named so doesn't.
+    @Test func diskOfAPath() {
+        let home = "/Users/me"
+        #expect(DiskOfPath.of("/Volumes/Share/a/b", home: home) == "/Volumes/Share")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/OneDrive-Work/Docs/a.docx", home: home)
+            == "/Users/me/Library/CloudStorage/OneDrive-Work")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Dropbox", home: home)
+            == "/Users/me/Library/CloudStorage/Dropbox")
+        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/com~apple~CloudDocs/a", home: home)
+            == "/Users/me/Library/Mobile Documents")
+        #expect(DiskOfPath.of("/Users/me/Library/Mobile Documents/iCloud~com~app/b", home: home)
+            == "/Users/me/Library/Mobile Documents")
+        #expect(DiskOfPath.of("/Users/me/src/Library/CloudStorage/x", home: home) == "/")
+        #expect(DiskOfPath.of("/Users/me/Documents/a", home: home) == "/")
+        #expect(DiskOfPath.of("/Users/me/Library/CloudStorage/Box/a", home: "/Users/me/")
+            == "/Users/me/Library/CloudStorage/Box")
+        #expect(DiskOfPath.of("/Volumes", home: home) == "/")
+        // A disk mounted outside /Volumes counts as its own, by the innermost mount point it's under, never a look-alike.
+        let mounts: Set<String> = ["/", "/Users/me/mnt/server", "/Users/me/mnt/server/inner", "/net/nas"]
+        #expect(DiskOfPath.of("/Users/me/mnt/server/a", home: home, mounts: mounts) == "/Users/me/mnt/server")
+        #expect(DiskOfPath.of("/Users/me/mnt/server/inner/b", home: home, mounts: mounts) == "/Users/me/mnt/server/inner")
+        #expect(DiskOfPath.of("/Users/me/mnt/serverless/a", home: home, mounts: mounts) == "/")
+        #expect(DiskOfPath.of("/net/nas", home: home, mounts: mounts) == "/net/nas")
+        #expect(DiskOfPath.of("/Volumes/Share/a", home: home, mounts: mounts) == "/Volumes/Share")
     }
 
     @Test func theInnermostShareWins() {

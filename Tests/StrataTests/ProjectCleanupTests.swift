@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Clean (the project inspector's "free up space"): only build folders the project's own tools regenerate are offered
 /// for the Trash, only inside the project, never through a link, and never a folder that merely has such a name.

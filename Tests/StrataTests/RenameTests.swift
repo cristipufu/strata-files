@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 @MainActor
 final class RenameTests {
@@ -127,7 +134,7 @@ final class RenameTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let outcome = await PlanExecutor.apply(plan, actionName: "Rename 2 Items", undo: undo)
+        let outcome = await PlanExecutor.apply(plan, actionName: "Rename 2 Items", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(outcome.failures.isEmpty)
         #expect(try text("one.txt") == "two.txt" && text("two.txt") == "one.txt")
@@ -156,7 +163,7 @@ final class RenameTests {
         let plan = try rules.plan(for: items, baseFolder: folder).get()
         #expect(plan.excluded.contains { $0.source?.lastPathComponent == "0.txt" && $0.problem?.contains("Album") == true })
         #expect(!plan.steps.contains { $0.source?.lastPathComponent == "0.txt" })
-        let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undo: nil)
+        let outcome = await PlanExecutor.apply(plan, actionName: "Rename", undo: nil, copies: .live, history: .shared)
         #expect(outcome.failures.isEmpty)
         let inside = try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: plan.steps.first {
             $0.source?.lastPathComponent == "Album" }?.destination?.lastPathComponent ?? "Album").path)
@@ -195,6 +202,28 @@ final class RenameTests {
         #expect(Date().timeIntervalSince(start) < 3)
     }
 
+    /// A parked item comes back by its name, or beside it, keeping its own extension, when something has taken that
+    /// (a file or a folder): never left hidden, and nothing in the way is replaced.
+    @Test func aParkedItemComesBackBesideWhatTookItsName() async throws {
+        for newcomerIsFolder in [false, true] {
+            let tree = try TestTree("photo.jpg", "photo 2.txt")
+            let original = tree.url("photo.jpg")
+            let parked = FileOps.parkingName(for: original)
+            try FileManager.default.moveItem(at: original, to: parked)
+            #expect(try await FileOps.unpark(parked, as: original) == original)
+            try FileManager.default.moveItem(at: original, to: parked)
+            if newcomerIsFolder {
+                try FileManager.default.createDirectory(at: original, withIntermediateDirectories: false)
+            } else {
+                try Data("someone else's".utf8).write(to: original)
+            }
+            let now = try await FileOps.unpark(parked, as: original)
+            #expect(now.lastPathComponent == "photo 2.jpg", "\(newcomerIsFolder)")
+            #expect(tree.snapshot() == ["photo 2.jpg", "photo 2.txt", newcomerIsFolder ? "photo.jpg/" : "photo.jpg"])
+            #expect(tree.text("photo 2.jpg") == "photo.jpg")
+        }
+    }
+
     @Test func chainsMoveInOrderAndOnlyCyclesPark() {
         let url = { (name: String) in self.folder.appending(path: name) }
         let chain = FileOps.chainSteps([(url("1"), url("2")), (url("2"), url("3")), (url("3"), url("4"))])
@@ -211,9 +240,21 @@ final class RenameTests {
         // A locked file can't be renamed: the swap fails halfway and is undone.
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: b.path)
         defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: b.path) }
-        let (done, error) = await FileOps.moveAll([(a, b), (b, a)])
+        let (done, error, _) = await FileOps.moveAll([(a, b), (b, a)])
         #expect(done.isEmpty && error != nil)
         #expect(try contents() == ["a.txt", "b.txt"])
         #expect(try text("a.txt") == "a.txt" && text("b.txt") == "b.txt")
+    }
+
+    @Test func aChainThatFailsAfterItsFirstStepPutsThatOneBack() async throws {
+        _ = try await make(["1.txt", "2.txt"])
+        let one = folder.appending(path: "1.txt"), two = folder.appending(path: "2.txt"), three = folder.appending(path: "3.txt")
+        // "2" moves to "3" first, making room; a locked "1" then can't take its place, so "2" comes back.
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: one.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: one.path) }
+        let (done, error, _) = await FileOps.moveAll([(one, two), (two, three)])
+        #expect(done.isEmpty && error != nil)
+        #expect(try contents() == ["1.txt", "2.txt"])
+        #expect(try text("1.txt") == "1.txt" && text("2.txt") == "2.txt")
     }
 }

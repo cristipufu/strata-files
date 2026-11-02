@@ -18,6 +18,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
@@ -28,7 +29,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         hint.textColor = .secondaryLabelColor
 
         name.placeholderString = String(localized: "Name", comment: "Placeholder: the new workspace's name")
-        name.stringValue = controllers.first?.groupWorkspaceName ?? controllers.first.map { Places.displayName($0.location) } ?? ""
+        name.stringValue = controllers.first?.groupWorkspaceName ?? controllers.first.map { Places.displayName($0.location, copies: $0.services.copies, names: $0.services.folderNames) } ?? ""
         name.delegate = self
         name.setAccessibilityLabel(String(localized: "Workspace name"))
 
@@ -54,22 +55,8 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
         stack.setCustomSpacing(14, after: hint)
         stack.setCustomSpacing(12, after: name)
         stack.setCustomSpacing(16, after: note)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        ThemeStyle.bind(container, to: .content)
-        container.addSubview(stack)
-        var constraints = [
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 460),
-        ]
-        for view in [hint, name, tabs, note, footer] {
-            constraints.append(view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40))
-        }
-        NSLayoutConstraint.activate(constraints)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [hint, name, tabs, note, footer])
+        NSLayoutConstraint.activate(constraints + [container.widthAnchor.constraint(equalToConstant: 460)])
         view = container
         ThemeStyle.refresh(container)
         nameChanged()
@@ -115,11 +102,11 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
     private func row(for controller: BrowserWindowController) -> NSView {
         let panes = zip(controller.snapshot, controller.snapshotModes).map { path, mode -> NSView in
             let url = URL(fileURLWithPath: path)
-            let icon = NSImageView(image: IconCache.shared.icon(forPath: path))
+            let icon = NSImageView(image: IconCache.shared.icon(forPath: path, folder: true))
             icon.imageScaling = .scaleProportionallyUpOrDown
             icon.widthAnchor.constraint(equalToConstant: 16).isActive = true
             icon.heightAnchor.constraint(equalToConstant: 16).isActive = true
-            let label = NSTextField(labelWithString: Places.displayName(url))
+            let label = NSTextField(labelWithString: Places.displayName(url, copies: controller.services.copies, names: controller.services.folderNames))
             label.lineBreakMode = .byTruncatingMiddle
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let viewMode = BrowserViewMode(rawValue: mode) ?? .list
@@ -183,7 +170,7 @@ final class SaveWorkspaceController: NSViewController, NSTextFieldDelegate {
 
     @objc private func save(_ sender: Any?) {
         let typed = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !typed.isEmpty else { return NSSound.beep() }
+        guard !typed.isEmpty else { return Sounds.beep() }
         // Saving over one keeps its name as it was written.
         let saved = workspaces.named(typed)?.name ?? typed
         let current = window.map(workspaces.ownedControllers(of:)) ?? []

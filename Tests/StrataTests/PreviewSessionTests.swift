@@ -1,21 +1,30 @@
+@testable import StrataArchives
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
+@Suite(.archiveWorkerApp)
 struct PreviewSessionTests {
     @Test func theNativePreviewReaderIsBoundedAndDoesNotWalkNestedOrHiddenFolders() async throws {
         let tree = try TestTree("folder/sub/inside", "folder/a", "folder/.hidden", "installed/app", "system/tool")
         let before = tree.snapshot(), copies = CopyProviders([])
         let entries = try await DirectoryLoader.loadPreview(tree.url("folder"), showHidden: false,
-                                                           applications: .standard, copies: copies, limit: 2)
+                                                           applications: .standard, copies: copies, limit: 2).entries
         #expect(Set(entries.map(\.name)) == ["sub", "a"])
         await #expect(throws: (any Error).self) {
             try await DirectoryLoader.loadPreview(tree.url("folder"), showHidden: true,
-                                                   applications: .standard, copies: copies, limit: 2)
+                                                   applications: .standard, copies: copies, limit: 2).entries
         }
         let applications = ApplicationsFolders(installed: tree.url("installed"), system: tree.url("system"))
         let merged = try await DirectoryLoader.loadPreview(tree.url("installed"), showHidden: false,
-                                                           applications: applications, copies: copies, limit: 2)
+                                                           applications: applications, copies: copies, limit: 2).entries
         #expect(Set(merged.map(\.url)) == [tree.url("installed/app"), tree.url("system/tool")])
         #expect(tree.snapshot() == before)
     }
@@ -133,8 +142,8 @@ struct PreviewSessionTests {
         let before = tree.snapshot()
         let link = try #require(FileEntry(url: tree.url("folder/link")))
         let session = PreviewSession(reader: DirectoryReader { _, _, _ in [link] }, archiveReader: { _, _ in
-            try ArchiveLister.parse(ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 7 Oct 11 2026 nested/readme.txt\n".utf8),
-                                                         status: 0, timedOut: false, truncated: false), kind: .tar)
+            let readme = ArchiveRecord(path: ["nested", "readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+            return try ArchiveLister.tree(ArchiveReadListing(records: [readme], end: .complete), compressed: nil, named: "pack.tar")
         })
         session.show(try #require(FileEntry(url: tree.url("folder"))), showHidden: true, applications: .standard)
         await session.task?.value
@@ -156,7 +165,7 @@ struct PreviewSessionTests {
         let before = tree.snapshot(), reads = ControlledDirectoryReads()
         defer { reads.stop() }
         var session: PreviewSession? = PreviewSession(reader: reads.reader)
-        weak var released = session
+        weak let released = session
         session?.show(try #require(FileEntry(url: tree.url("folder"))), showHidden: false, applications: .standard)
         let task = try #require(session?.task), request = try await reads.request(0)
         session = nil
@@ -199,7 +208,7 @@ struct PreviewSessionTests {
         let environment = try PreviewEnvironment(tree, reader: reads.reader)
         let before = tree.snapshot()
         var browser: BrowserViewController? = BrowserViewController(services: environment.services)
-        weak var released = browser
+        weak let released = browser
         environment.services.previews.show(try #require(FileEntry(url: tree.url("folder"))), from: try #require(browser), present: false)
         let content = try #require(environment.services.previews.content)
         let task = try #require(content.session.task), request = try await reads.request(0)
@@ -216,8 +225,8 @@ struct PreviewSessionTests {
         let tree = try TestTree("pack.tar")
         let environment = try PreviewEnvironment(tree)
         let before = tree.snapshot()
-        let listing = try ArchiveLister.parse(ProcessRunner.Result(output: Data("-rw-r--r--  0 user staff 7 Oct 11 2026 readme.txt\n".utf8),
-                                                                   status: 0, timedOut: true, truncated: false), kind: .tar)
+        let readme = ArchiveRecord(path: ["readme.txt"], kind: 1, size: 7, modified: .distantPast, body: nil)
+        let listing = try ArchiveLister.tree(ArchiveReadListing(records: [readme], end: .stopped(.limit)), compressed: nil, named: "pack.tar")
         let session = PreviewSession(reader: environment.services.directories, archiveReader: { _, _ in listing })
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
                                                thumbnails: environment.services.thumbnails, copies: environment.services.copies)

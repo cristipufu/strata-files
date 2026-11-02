@@ -3,6 +3,13 @@ import Security
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct RemoteKeychainTests {
     nonisolated private struct Identity: Hashable, Sendable {

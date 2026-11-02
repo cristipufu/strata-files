@@ -3,6 +3,13 @@ import Foundation
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct StorageContextTests {
     private let key = SymmetricKey(data: Data(repeating: 7, count: 32))
@@ -15,22 +22,22 @@ struct StorageContextTests {
         let tree = try TestTree("first/", "second/", "a.txt", "b.txt")
         let first = context(tree, "first", key: key)
         let second = context(tree, "second", key: SymmetricKey(data: Data(repeating: 8, count: 32)))
-        let a = OperationLog(storage: first)
-        let b = OperationLog(storage: second)
-        let firstID = try #require(a.recordCreate("Copy", [tree.url("a.txt")]))
-        let secondID = try #require(b.recordCreate("Copy", [tree.url("b.txt")]))
+        let a = OperationLog(storage: first, copies: .live)
+        let b = OperationLog(storage: second, copies: .live)
+        let firstID = try #require(a.recordCreate("Copy", [tree.url("a.txt")], fileIdentities: LandedFiles([tree.url("a.txt")]).savedKeys))
+        let secondID = try #require(b.recordCreate("Copy", [tree.url("b.txt")], fileIdentities: LandedFiles([tree.url("b.txt")]).savedKeys))
         #expect(a.entries.map(\.id) == [firstID])
         #expect(b.entries.map(\.id) == [secondID])
-        #expect(OperationLog(storage: first).entries.map(\.id) == [firstID])
-        #expect(OperationLog(storage: second).entries.map(\.id) == [secondID])
+        #expect(OperationLog(storage: first, copies: .live).entries.map(\.id) == [firstID])
+        #expect(OperationLog(storage: second, copies: .live).entries.map(\.id) == [secondID])
         #expect(!OperationLog.shared.entries.contains { $0.id == firstID || $0.id == secondID })
         let saved = try Data(contentsOf: second.url("history.sealed"))
         a.clear()
-        #expect(OperationLog(storage: first).entries.isEmpty)
+        #expect(OperationLog(storage: first, copies: .live).entries.isEmpty)
         #expect(try Data(contentsOf: second.url("history.sealed")) == saved)
         // Same relative store name, different key: authentication must still refuse it without rewriting it.
         try saved.write(to: first.url("history.sealed"))
-        #expect(OperationLog(storage: first).entries.isEmpty)
+        #expect(OperationLog(storage: first, copies: .live).entries.isEmpty)
         #expect(try Data(contentsOf: first.url("history.sealed")) == saved)
         #expect(tree.snapshot() == ["a.txt", "b.txt", "first/", "first/Caches/", "first/history.sealed", "second/", "second/Caches/", "second/history.sealed"])
     }
@@ -113,41 +120,31 @@ struct StorageContextTests {
         #expect(tree.snapshot() == ["store/", "store/Caches/", "store/history.sealed"])
     }
 
-    @Test func historyRemovesOnlyItsOwnLegacyStore() throws {
-        let tree = try TestTree("first/", "first/history.json -> ../outside.txt", "first/history.json.tmp",
-                                "second/", "second/history.json", "outside.txt")
-        let storage = context(tree, "first", key: key)
-        #expect(OperationLog(storage: storage).entries.isEmpty)
-        #expect(tree.text("outside.txt") == "outside.txt")
-        #expect(tree.text("second/history.json") == "second/history.json")
-        #expect(tree.snapshot() == ["first/", "first/Caches/", "outside.txt", "second/", "second/history.json"])
-    }
-
     @Test func historyUndoAndRedoKeepTheOwningStore() async throws {
         let tree = try TestTree("state/", "a.txt", "ab.txt", "nested/", "nested/a.txt", "link -> a.txt")
         let storage = context(tree, "state", key: key)
-        let history = OperationLog(storage: storage)
+        let history = OperationLog(storage: storage, copies: .live)
         let moves = [(from: tree.url("a.txt"), to: tree.url("b.txt"))]
-        try await FileOps.move(moves, actionName: "Rename", undo: nil, record: false)
-        let id = try #require(history.recordMove("Rename", moves))
+        try await FileOps.moveAsPart(moves, copies: .live)
+        let id = try #require(history.recordMove("Rename", moves, fileIdentities: LandedFiles(moves.map(\.to)).savedKeys))
         let entry = try #require(history.entries.first)
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
         try await history.undo(entry, undoManager: undo)
         undo.endUndoGrouping()
-        #expect(OperationLog(storage: storage).entries.first?.undone == true)
+        #expect(OperationLog(storage: storage, copies: .live).entries.first?.undone == true)
         let restored = ["a.txt", "ab.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/Caches/", "state/history.sealed"]
         let renamed = ["ab.txt", "b.txt", "link -> a.txt", "nested/", "nested/a.txt", "state/", "state/Caches/", "state/history.sealed"]
         #expect(tree.snapshot() == restored)
         for _ in 0..<2 {
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: storage).entries.first?.undone == false)
+            #expect(OperationLog(storage: storage, copies: .live).entries.first?.undone == false)
             #expect(tree.snapshot() == renamed)
             undo.redo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: storage).entries.first?.undone == true)
+            #expect(OperationLog(storage: storage, copies: .live).entries.first?.undone == true)
             #expect(tree.snapshot() == restored)
         }
         #expect(!OperationLog.shared.entries.contains { $0.id == id })

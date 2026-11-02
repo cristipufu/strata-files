@@ -30,7 +30,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func outlineView(_ outlineView: NSOutlineView, shouldExpandItem item: Any) -> Bool {
         // A drag resting on a folder springs it open; the outline's own expand-on-hover would compete.
-        !isDragOver
+        !self.outlineView.isReceivingDrag
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -40,7 +40,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         return node.entry.isFolder
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { ThemeRowView() }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        ThemeRowView(alternatingRows: preferences.alternatingRows)
+    }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? FileNode else { return nil }
@@ -55,7 +57,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         guard let column = tableColumn else { return nil }
         let entry = node.entry
-        let git = GitStatusStore.shared
+        let git = services.git
         let dimmed = entry.isHidden || services.clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         if column.identifier == .name {
             let cell = outlineView.makeView(withIdentifier: .nameCell, owner: nil) as? NameCellView ?? {
@@ -64,10 +66,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 return cell
             }()
             cell.configure(name: entry.displayName, icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
-                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: TagStore.shared.tags(for: entry.url),
-                           cloud: CloudStore.shared.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
+                           git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: services.tags.tags(for: entry.url),
+                           cloud: services.cloud.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
-                           typography: FileViewTypography(preferences: preferences))
+                           typography: listTypography)
             return cell
         }
         let cell = outlineView.makeView(withIdentifier: .textCell, owner: nil) as? TextCellView ?? {
@@ -92,7 +94,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             }
             cell.configure(text ?? (info == nil && mediaInfo.canRead(entry) ? "…" : "—"),
                            alignment: column.headerCell.alignment, dimmed: dimmed)
-        case .tags: cell.configure(TagStore.shared.tags(for: entry.url).map(\.name).joined(separator: ", "),
+        case .tags: cell.configure(services.tags.tags(for: entry.url).map(\.name).joined(separator: ", "),
                                    alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
@@ -105,7 +107,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
         if services.copies.contains(node.url) { return "—" }
-        if let size = FileIndex.shared.folderSize(node.url) ?? sizer.cached(node.url) { return Format.bytes(size.bytes) }
+        if let size = services.index.folderSize(node.url) ?? FolderSizer.cached(node.url) {
+            return Format.bytes(size.bytes)
+        }
         guard canMeasure(node.entry) else { return "—" }
         sizer.request(node.url)
         return "…"
@@ -114,7 +118,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
         guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
-        if FileIndex.shared.folderSize(entry.url) != nil { return true }
+        if services.index.folderSize(entry.url) != nil { return true }
         return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
     }
 
@@ -135,13 +139,14 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !updatingSortDescriptor, let descriptor = outlineView.sortDescriptors.first,
-              let key = SortKey(rawValue: descriptor.key ?? "") else { return }
+        // The header follows the pane's choice (`syncSortDescriptor`): only a click that picks another order applies it.
+        guard let descriptor = outlineView.sortDescriptors.first, let key = SortKey(rawValue: descriptor.key ?? ""),
+              ordering.choice != .init(key: key, ascending: descriptor.ascending) else { return }
         applySort(key, ascending: descriptor.ascending)
     }
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
-        if key == .tags, isShowingResults { TagStore.shared.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
+        if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
         syncSortDescriptor()
         if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
@@ -157,73 +162,28 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
 extension BrowserViewController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField, let node = renaming else { return }
-        let newName = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        renaming = nil
-        renamingField = nil
-        field.isEditable = false
-        field.isSelectable = false
-        field.drawsBackground = false
-        if let deferred = deferredApply, deferred.generation == generation {
-            apply(deferred.entries, preservingState: deferred.preservingState, fromTop: deferred.fromTop)
+        guard let field = notification.object as? NSTextField, let ended = inlineRename.end(field) else { return }
+        let node = ended.node, newName = ended.name
+        if let held = inlineRename.takeHeldListing(generation: generation) {
+            apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy)
         } else {
-            deferredApply = nil
             let row = outlineView.row(forItem: node)
             if row >= 0 {
                 outlineView.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
             }
         }
         view.window?.makeFirstResponder(outlineView)
-        if deferredMetadataOrder {
-            deferredMetadataOrder = false
-            resortAfterMetadata()
-        }
+        resorting.editingEnded()
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let node = renaming {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)), let node = inlineRename.node {
             (control as? NSTextField)?.stringValue = node.entry.name
             view.window?.makeFirstResponder(outlineView)
             return true
         }
         return false
-    }
-}
-
-// MARK: - Quick Look panel
-
-extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        selectedURLs.count
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        let urls = selectedURLs
-        return urls.indices.contains(index) ? (urls[index] as NSURL) : nil
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        guard let event, event.type == .keyDown, !isRenamingInPlace, view.window?.attachedSheet == nil,
-              !(view.window?.firstResponder is NSText) else { return false }
-        focusView.keyDown(with: event)
-        return true
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
-        guard let url = (item as? NSURL) as URL? else { return .zero }
-        return iconScreenRect(for: url) ?? .zero
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
-                      contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
-        guard let url = (item as? NSURL) as URL? else { return nil }
-        guard let entry = selectedEntries.first(where: { Self.key($0.url) == Self.key(url) }) ?? node(for: url)?.entry else { return nil }
-        // The thumbnail the row shows, so the zoom starts from what's on screen.
-        let scale = view.window?.backingScaleFactor ?? 2
-        if preferences.showIconPreviews, services.thumbnails.canThumbnail(entry),
-           let thumbnail = services.thumbnails.cached(entry, size: NameCellView.iconSide, scale: scale) { return thumbnail.image }
-        return services.thumbnails.icon(for: entry)
     }
 }

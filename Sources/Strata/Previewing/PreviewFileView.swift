@@ -1,6 +1,6 @@
+import StrataArchives
 import AppKit
 import StrataPreviews
-import UniformTypeIdentifiers
 
 /// The same native and rich file renderers used by Get Info, owned by this preview window's lifetime.
 @MainActor final class PreviewFileView: NSView {
@@ -13,6 +13,8 @@ import UniformTypeIdentifiers
     private let sizeSummary = NSTextField(labelWithString: "")
     private let summary = NSStackView()
     private var rich: NSView?
+    var onSearchAvailabilityChanged: (() -> Void)?
+    var documentSearch: (any PreviewDocumentSearch)? { rich as? any PreviewDocumentSearch }
     private(set) var shownURL: URL?
     private var generation = 0
     private var isClosed = false
@@ -55,12 +57,15 @@ import UniformTypeIdentifiers
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ item: PreviewItem?, root: FileEntry?, materialized: URL? = nil) {
         guard !isClosed else { return }
+        defer { onSearchAvailabilityChanged?() }
         generation += 1
         let generation = generation
+        (rich as? PreviewView)?.cancelLoad()
         rich?.removeFromSuperview()
         rich = nil
         native.clear()
@@ -72,31 +77,24 @@ import UniformTypeIdentifiers
         let entry = materialized.flatMap(FileEntry.init(url:)) ?? item?.entry ?? (item == nil ? root : nil)
         title.stringValue = item?.name ?? root.displayName
         detail.stringValue = item?.kind ?? root.kind
-        if let entry {
-            icon.image = thumbnails.icon(for: entry)
-        } else {
-            let type: UTType = item?.isDirectory == true ? .folder
-                : UTType(filenameExtension: ((item?.name ?? "") as NSString).pathExtension) ?? .data
-            icon.image = IconCache.shared.icon(forType: type)
-        }
-        guard let entry, !entry.isDirectory, !entry.isSymlink, !copies.isPlaceholder(entry.url), Self.isRegularFile(entry.url) else { return }
+        icon.image = entry.map(thumbnails.icon) ?? item?.icon(thumbnails)
+        guard let entry, entry.isRegular, !copies.isPlaceholder(entry.url), Self.isStillRegular(entry.url) else { return }
         // The session already lists a root archive. Its side pane stays a summary until a member is selected.
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }
         let url = entry.url
         shownURL = url
         if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, fallback: { [weak self] in
             guard let self, self.generation == generation, shownURL == url else { return }
+            (self.rich as? PreviewView)?.cancelLoad()
             self.rich?.removeFromSuperview()
             self.rich = nil
             showNative(url)
+            onSearchAvailabilityChanged?()
         }) {
             self.rich = rich
             rich.translatesAutoresizingMaskIntoConstraints = false
             addSubview(rich)
-            NSLayoutConstraint.activate([
-                rich.leadingAnchor.constraint(equalTo: leadingAnchor), rich.trailingAnchor.constraint(equalTo: trailingAnchor),
-                rich.topAnchor.constraint(equalTo: topAnchor), rich.bottomAnchor.constraint(equalTo: bottomAnchor),
-            ])
+            NSLayoutConstraint.activate(rich.fillingConstraints(in: self))
             summary.isHidden = true
         } else {
             showNative(url)
@@ -113,13 +111,14 @@ import UniformTypeIdentifiers
         isClosed = true
         generation += 1
         shownURL = nil
+        (rich as? PreviewView)?.cancelLoad()
         rich?.removeFromSuperview()
         rich = nil
         native.close()
     }
 
     private func showNative(_ url: URL) {
-        guard Self.isRegularFile(url), native.show(url) else {
+        guard Self.isStillRegular(url), native.show(url) else {
             shownURL = nil
             summary.isHidden = false
             return
@@ -128,7 +127,10 @@ import UniformTypeIdentifiers
         summary.isHidden = true
     }
 
-    nonisolated static func isRegularFile(_ url: URL) -> Bool {
+
+    /// Whether `url` is still a plain file, just before a renderer opens it by path: one listed as one may have been
+    /// replaced by a pipe (opening it would hang) or a link since.
+    nonisolated static func isStillRegular(_ url: URL) -> Bool {
         var info = stat()
         return url.isFileURL && lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
     }

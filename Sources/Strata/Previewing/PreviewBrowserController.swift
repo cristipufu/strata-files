@@ -17,6 +17,7 @@ import StrataPreviews
     private(set) var commandTarget: PreviewCommandTarget?
     var onAction: ((PreviewAction, PreviewCommandTarget) -> Void)?
     private let preferences: Prefs
+    private lazy var typography = FileViewTypography(preferences: preferences)
     private let thumbnails: FileThumbnails
     private let copies: CopyProviders
     private let scroll = NSScrollView()
@@ -70,6 +71,7 @@ import StrataPreviews
         }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit {
@@ -90,20 +92,8 @@ import StrataPreviews
         view = NSView()
         ThemeStyle.bind(view, to: .content)
         configureOutline()
-        ThemeStyle.bind(treeHost, to: .content)
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        treeHost.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: treeHost.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: treeHost.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: treeHost.topAnchor), scroll.bottomAnchor.constraint(equalTo: treeHost.bottomAnchor),
-        ])
-        controls.onQuery = { [weak self] query in self?.filter(query) }
-        controls.onOrder = { [weak self] key in self?.chooseSort(key) }
-        controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
-        controls.onIconSize = { [weak self] size in self?.chooseIconSize(size) }
-        controls.onBack = { [weak self] in self?.goToPreviewParent() }
-        controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
-        controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
+        setUpTree()
+        wireControls()
         controls.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controls)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
@@ -111,6 +101,47 @@ import StrataPreviews
         addChild(split)
         split.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(split.view)
+        let footer = footer()
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(footer)
+        view.addSubview(separator)
+        NSLayoutConstraint.activate([
+            split.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), split.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            controls.topAnchor.constraint(equalTo: view.topAnchor), controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            split.view.topAnchor.constraint(equalTo: controls.bottomAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
+            separator.leadingAnchor.constraint(equalTo: view.leadingAnchor), separator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            separator.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footer.heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    /// The outline, scrolling in the tree's place.
+    private func setUpTree() {
+        ThemeStyle.bind(treeHost, to: .content)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        treeHost.addSubview(scroll)
+        NSLayoutConstraint.activate(scroll.fillingConstraints(in: treeHost))
+    }
+
+    /// The filter, sort, view, icon size, Back and action controls act on this browser.
+    private func wireControls() {
+        fileView.onSearchAvailabilityChanged = { [weak self] in self?.updateSearch() }
+        controls.onFindNext = { [weak self] backwards in self?.fileView.documentSearch?.findNext(backwards: backwards) }
+        controls.onQuery = { [weak self] query in self?.filter(query) }
+        controls.onOrder = { [weak self] key in self?.chooseSort(key) }
+        controls.onMode = { [weak self] mode in self?.chooseMode(mode) }
+        controls.onIconSize = { [weak self] size in self?.chooseIconSize(size) }
+        controls.onBack = { [weak self] in self?.goToPreviewParent() }
+        controls.canPerform = { [weak self] action, target in self?.canPerform(action, target: target) == true }
+        controls.onAction = { [weak self] action, target in self?.onAction?(action, target) }
+    }
+
+    /// Where the preview is, what's loading or measured, and Calculate Size and Cancel.
+    private func footer() -> NSStackView {
         path.font = .systemFont(ofSize: 11)
         path.lineBreakMode = .byTruncatingMiddle
         path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -134,21 +165,7 @@ import StrataPreviews
         footer.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         footer.translatesAutoresizingMaskIntoConstraints = false
         ThemeStyle.bind(footer, to: .content)
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(footer)
-        view.addSubview(separator)
-        NSLayoutConstraint.activate([
-            split.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), split.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controls.topAnchor.constraint(equalTo: view.topAnchor), controls.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            split.view.topAnchor.constraint(equalTo: controls.bottomAnchor), split.view.bottomAnchor.constraint(equalTo: separator.topAnchor),
-            separator.leadingAnchor.constraint(equalTo: view.leadingAnchor), separator.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            separator.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor), footer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor), footer.heightAnchor.constraint(equalToConstant: 28),
-        ])
+        return footer
     }
 
     private func configureOutline() {
@@ -204,6 +221,7 @@ import StrataPreviews
     }
 
     @objc private func appearanceChanged() {
+        typography = FileViewTypography(preferences: preferences)
         grid?.updateAppearance()
         outline.rowHeight = FileViewStyle.listHeight(for: preferences)
         let visible = outline.rows(in: outline.visibleRect)
@@ -243,6 +261,8 @@ import StrataPreviews
     private func changed(_ change: PreviewSession.Change) {
         _ = view
         switch change {
+        case .order:
+            refreshTree()
         case .root:
             if shownGeneration != session.generation {
                 shownGeneration = session.generation
@@ -252,7 +272,7 @@ import StrataPreviews
                 gridScope = nil
             }
             split.showBrowser(session.isContainer)
-            controls.search.isEnabled = session.isContainer
+            updateSearch()
             updateMode()
             refreshTree()
             fileView.show(nil, root: session.root)
@@ -285,7 +305,13 @@ import StrataPreviews
         updateFooter()
     }
 
+    func updateSearch() {
+        controls.configureSearch(document: !session.isContainer, enabled: session.isContainer || fileView.documentSearch != nil)
+        if !session.isContainer { fileView.documentSearch?.find(controls.search.stringValue) }
+    }
+
     func filter(_ query: String) {
+        if !session.isContainer { fileView.documentSearch?.find(query); return }
         listing.query = query
         refreshTree(reorder: false)
         updateFooter()
@@ -529,10 +555,8 @@ import StrataPreviews
             let identifier = NSUserInterfaceItemIdentifier("previewNameCell")
             let cell = outline.makeView(withIdentifier: identifier, owner: nil) as? NameCellView ?? NameCellView()
             cell.identifier = identifier
-            let image = item.entry.map { thumbnails.icon(for: $0) }
-                ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : .data)
-            cell.configure(name: item.name, icon: image, matches: [], dimmed: item.entry?.isHidden == true,
-                           thumbnails: thumbnails, typography: FileViewTypography(preferences: preferences))
+            cell.configure(name: item.name, icon: item.icon(thumbnails), matches: [],
+                           dimmed: item.entry?.isHidden == true, thumbnails: thumbnails, typography: typography)
             return cell
         }
         let identifier = NSUserInterfaceItemIdentifier("previewTextCell")

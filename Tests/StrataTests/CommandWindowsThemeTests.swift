@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func commandPaletteThemesItsContentWithoutChangingQuerySelectionOrActions() throws {
@@ -54,7 +61,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let tree = try TestTree("original.txt")
-        let controller = PlanSheetController(urls: [tree.url("original.txt")], baseFolder: tree.root, undoManager: nil, files: BrowserFileCommands(transfers: .shared))
+        let controller = PlanSheetController(urls: [tree.url("original.txt")], baseFolder: tree.root, undoManager: nil, files: FileCommands(transfers: .shared))
         let window = NSPanel(contentRect: NSRect(origin: .zero, size: PlanSheetController.size),
                              styleMask: [.titled], backing: .buffered, defer: false)
         window.contentViewController = controller

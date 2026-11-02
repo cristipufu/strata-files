@@ -51,8 +51,9 @@ final class SpringLoader {
 
     /// Whether springing into `url` is worth it: a folder you can read, that won't pop a privacy prompt mid-drag (one
     /// you couldn't answer while holding the mouse button).
-    static func canOpen(_ url: URL, browsing directory: URL?) -> Bool {
-        guard access(url.path, R_OK | X_OK) == 0 else { return false }
+    /// What the disk says comes from `DragFacts`: this is asked on every move of the pointer.
+    static func canOpen(_ url: URL, browsing directory: URL?, during info: NSDraggingInfo) -> Bool {
+        guard DragFacts.of(info).opens(url) else { return false }
         return !Privacy.measuringWouldPrompt(url, browsing: directory ?? URL(fileURLWithPath: "/"))
     }
 

@@ -64,7 +64,7 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, selectionDidChange urls: [URL])
     func fileView(_ view: NSViewController, menuFor entries: [FileEntry]) -> NSMenu?
     /// `folder` is nil for a drop on the background of the browser's current folder.
-    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, copy: Bool) -> Bool
+    func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, info: NSDraggingInfo) -> Bool
     /// Return true when handled; unhandled keys fall through to the view's default behaviour.
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool
     /// Inline rename finished with a new, non-empty name that differs from the old one.
@@ -73,8 +73,8 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, renameClicked url: URL)
     /// A drag rested on `folder` long enough to spring it open; `drag` is the drag's sequence number.
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int)
-    /// Whether `folder` may spring open (readable, no privacy prompt).
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool
+    /// Whether `folder` may spring open (readable, no privacy prompt) during the drag `info` belongs to.
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool
 }
 
 extension FileCollectionViewDelegate {
@@ -82,7 +82,7 @@ extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {}
     func fileView(_ view: NSViewController, renameClicked url: URL) {}
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int) {}
-    func fileView(_ view: NSViewController, canSpringLoad folder: URL) -> Bool { false }
+    func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool { false }
 }
 
 /// The browser's current folder rows, already sorted and filtered. Views preserve their own selection policy.
@@ -92,12 +92,31 @@ struct FileCollectionContent {
     let matches: [URL: [Int]]
 }
 
+nonisolated enum DiskSizeMeasurement: Sendable, Equatable {
+    case measured(Int64), partial(Int64), measuring, unavailable
+
+    var isPartial: Bool { if case .partial = self { true } else { false } }
+
+    static let partialExplanation = String(localized: "Some sizes are unavailable. “+” marks a lower bound.",
+        comment: "Storage measurement: totals exclude unreadable or unmeasured contents")
+
+    var bytes: Int64? {
+        switch self {
+        case .measured(let bytes), .partial(let bytes): bytes
+        default: nil
+        }
+    }
+}
+
 /// Lookups remain with the browser: a view requests only the metadata it needs. Retained callbacks must not keep
 /// their browser alive (Columns retains the comparator for folders opened later).
 struct FileCollectionMetadata {
     let ordered: @MainActor (FileEntry, FileEntry) -> Bool
     let canMeasure: @MainActor (FileEntry) -> Bool
     let size: @MainActor (FileEntry) -> Int64?
+    /// The same order, for folders sorted away from the main thread as they're read; nil when it can't be.
+    var sortedBy: BrowserOrdering.Snapshot?
+    var diskSize: (@MainActor (FileEntry) -> DiskSizeMeasurement)? = nil
 }
 
 /// What the browser needs from whichever presentation is active.
@@ -216,14 +235,24 @@ enum BrowserViewMode: Int, CaseIterable {
 
 /// Finder drop semantics shared by every presentation: move within a volume, copy across volumes, Option forces a
 /// copy; never into itself or a descendant, and moving into the folder an item already lives in is a no-op.
+/// A drag that says which keys are held (a test's, which mustn't depend on the keyboard of the Mac it runs on).
+protocol DragKeys {
+    var optionHeld: Bool { get }
+}
+
 enum FileDrop {
+    /// What dragging files out of a file view offers: within Strata a copy or a move, elsewhere an alias too.
+    static func sourceOperations(local: Bool) -> NSDragOperation {
+        local ? [.copy, .move, .generic] : [.copy, .move, .link, .generic]
+    }
+
     /// Out of an archive opened as a folder, things are only copied: no move, no alias to a temporary copy, and no
     /// dropping on the Dock's Trash.
-    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders = .live) -> NSDragOperation {
+    static func sourceMask(_ mask: NSDragOperation, _ session: NSDraggingSession, copies: CopyProviders) -> NSDragOperation {
         sourceMask(mask, session.draggingPasteboard, copies: copies)
     }
 
-    static func sourceMask(_ mask: NSDragOperation, _ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> NSDragOperation {
+    static func sourceMask(_ mask: NSDragOperation, _ pasteboard: NSPasteboard, copies: CopyProviders) -> NSDragOperation {
         let urls = urls(pasteboard, copies: copies)
         // A server's items can also move within that server (a rename there); out of it, they're copied.
         if !urls.isEmpty, urls.allSatisfy({ copies.remoteCopies.server(containing: $0) != nil }) {
@@ -232,12 +261,12 @@ enum FileDrop {
         return urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) ? mask.intersection(.copy) : mask
     }
 
-    static func urls(_ info: NSDraggingInfo, copies: CopyProviders = .live) -> [URL] {
+    static func urls(_ info: NSDraggingInfo, copies: CopyProviders) -> [URL] {
         urls(info.draggingPasteboard, copies: copies)
     }
 
     /// Dragged files, and items of containers' files dragged within Strata.
-    static func urls(_ pasteboard: NSPasteboard, copies: CopyProviders = .live) -> [URL] {
+    static func urls(_ pasteboard: NSPasteboard, copies: CopyProviders) -> [URL] {
         ((pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? [])
             + containerItems(pasteboard, copies: copies)
     }
@@ -245,30 +274,65 @@ enum FileDrop {
     /// What file views accept dropped on them.
     static let types: [NSPasteboard.PasteboardType] = [.fileURL, .strataContainerItem]
 
-    /// Whether `target` is one of `urls` or inside one of them, however either is spelled (`/tmp` is `/private/tmp`).
-    static func isInside(_ urls: [URL], _ target: URL) -> Bool {
-        // Resolved once per drag update; items usually share a parent, so theirs are cached too.
-        let resolvedTarget = TransferJob.realPath(target.standardizedFileURL.path)
-        var parents: [String: String] = [:]
-        return urls.contains { url in
-            let parent = url.deletingLastPathComponent().path
-            let real = parents[parent] ?? TransferJob.realPath(parent)
-            parents[parent] = real
-            let item = (real as NSString).appendingPathComponent(url.lastPathComponent)
-            return resolvedTarget == item || resolvedTarget.hasPrefix(item == "/" ? "/" : item + "/")
+    /// Whether `target` is one of `urls` or inside one of them while a drag moves, however either is spelled (`/tmp` is
+    /// `/private/tmp`), from what `DragFacts` has read of the disk.
+    static func isInside(_ urls: [URL], _ target: URL, during info: NSDraggingInfo) -> Bool {
+        DragFacts.of(info).isInside(urls, target)
+    }
+
+    /// Whether path `target` is one of `items` or inside one, as spelled.
+    static func isInside(_ items: [String], _ target: String) -> Bool {
+        items.contains { item in target == item || target.hasPrefix(item == "/" ? "/" : item + "/") }
+    }
+
+    /// What dropping `urls` on `target` would do, while the drag moves: views ask on every move of the pointer, so
+    /// what the disk says comes from `DragFacts`.
+    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders) -> NSDragOperation {
+        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: optionHeld(during: info), copies: copies,
+                  disk: DragFacts.of(info))
+    }
+
+    /// Whether Option is held while `info` moves: what the drag says, else (a drag AppKit made) the keyboard.
+    static func optionHeld(during info: NSDraggingInfo) -> Bool {
+        (info as? DragKeys)?.optionHeld ?? NSEvent.modifierFlags.contains(.option)
+    }
+
+    /// Takes the drop of `urls` on `target` and hands `act` its move (true) or copy once that's decided (`decided`):
+    /// AppKit wants an answer at once, and the disk may not give one. A drop that does nothing calls nothing.
+    static func drop(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders,
+                     then act: @escaping (_ move: Bool) -> Void) {
+        let option = optionHeld(during: info), mask = info.draggingSourceOperationMask
+        let facts = DragFacts.of(info)
+        Task {
+            let operation = await decided(urls, into: target, mask: mask, option: option, copies: copies, facts: facts)
+            if !operation.isEmpty { act(operation == .move) }
         }
     }
 
-    static func operation(_ urls: [URL], into target: URL, info: NSDraggingInfo, copies: CopyProviders = .live) -> NSDragOperation {
-        operation(urls, into: target, mask: info.draggingSourceOperationMask, option: NSEvent.modifierFlags.contains(.option), copies: copies)
+    /// What dropping `urls` on `target` does, from what the disk says of everything it asks about (read away from the
+    /// main thread by `facts`), never from what the paths say: a copy onto another disk taken for a move would remove
+    /// the originals. It waits for those disks alone, as the transfer would: nothing else waits on it.
+    static func decided(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool, copies: CopyProviders,
+                        facts: DragFacts) async -> NSDragOperation {
+        // Each pass asks only about what the last one's answers led to (where the items really are, then which disk
+        // the first is on): the third has nothing left to ask.
+        for _ in 0..<3 {
+            let (operation, unknown) = facts.answer {
+                Self.operation(urls, into: target, mask: mask, option: option, copies: copies, disk: $0)
+            }
+            if unknown.isEmpty { return operation }
+            await facts.read(unknown)
+        }
+        return []
     }
 
-    /// What dropping `urls` on `target` does, given what the source allows and whether Option is held: a move, a copy,
-    /// or nothing (into itself, back where it is, into a copy that can't change).
-    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool, copies: CopyProviders = .live) -> NSDragOperation {
+    /// What dropping `urls` on `target` does, given what the source allows, whether Option is held and what's known of
+    /// the disk: a move, a copy, or nothing (into itself, back where it is, into a copy that can't change).
+    static func operation(_ urls: [URL], into target: URL, mask: NSDragOperation, option: Bool,
+                          copies: CopyProviders, disk: DragFacts) -> NSDragOperation {
         guard let first = urls.first else { return [] }
-        let targetPath = target.standardizedFileURL.path
-        if isInside(urls, target) { return [] }
+        let targetPath = target.lexicallyStandardized.path
+        if disk.isInside(urls, target) { return [] }
         let remoteCopies = copies.remoteCopies
         // Onto a server: copied there, or moved within that server.
         if remoteCopies.contains(target) {
@@ -277,35 +341,24 @@ enum FileDrop {
             if urls.allSatisfy({ remoteCopies.server(containing: $0)?.server.id == sameServer }) {
                 // Within one server: a move there, or a copy with Option, as on this Mac.
                 if option { return .copy }
-                return urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) ? [] : .move
+                return urls.allSatisfy({ $0.deletingLastPathComponent().lexicallyStandardized.path == targetPath }) ? [] : .move
             }
             return mask.contains(.copy) || mask.contains(.generic) ? .copy : []
         }
         // An archive opened as a folder isn't changed; what's dragged out of one is copied.
         if ReadOnlyCopies.contains(target, copies: copies) { return [] }
-        let wantsCopy = option || !sameVolume(first, target) || urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) })
+        let wantsCopy = option || !disk.sameVolume(first, target)
+            || urls.contains(where: { ReadOnlyCopies.contains($0, copies: copies) })
         let operation: NSDragOperation
         if wantsCopy || !mask.contains(.move) {
             operation = mask.contains(.copy) || mask.contains(.generic) ? .copy : []
         } else {
             operation = .move
         }
-        if operation == .move, urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL.path == targetPath }) {
+        if operation == .move, urls.allSatisfy({ $0.deletingLastPathComponent().lexicallyStandardized.path == targetPath }) {
             return []
         }
         return operation
-    }
-
-    private static var volumeCache: (a: URL, b: URL, same: Bool)?
-
-    /// Called on every drag update, so the last answer is remembered.
-    static func sameVolume(_ a: URL, _ b: URL) -> Bool {
-        if let cached = volumeCache, cached.a == a, cached.b == b { return cached.same }
-        let va = try? a.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let vb = try? b.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
-        let same = if let va, let vb { va.isEqual(vb) } else { false }
-        volumeCache = (a, b, same)
-        return same
     }
 }
 
@@ -367,43 +420,45 @@ enum FileKindGroup: Int, CaseIterable, Sendable {
 // MARK: - Shared drawing helpers
 
 struct FileViewTypography: Equatable {
+    /// A placeholder until a view gets its window's settings.
+    static let standard = FileViewTypography(size: Prefs.defaultNameTextSize)
+
     let font: NSFont
     let bold: NSFont
 
-    init(preferences: Prefs = .shared) {
-        (font, bold) = FileViewStyle.fonts(for: preferences.nameTextSize)
+    init(preferences: Prefs) {
+        self.init(size: preferences.nameTextSize)
+    }
+
+    private init(size: Double) {
+        (font, bold) = Self.fonts(for: size)
+    }
+
+    private static var cachedFonts: [Double: (regular: NSFont, bold: NSFont)] = [:]
+    private static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
+        if let cached = cachedFonts[size] { return cached }
+        let made = (regular: NSFont.systemFont(ofSize: size), bold: NSFont.systemFont(ofSize: size, weight: .bold))
+        cachedFonts[size] = made
+        return made
     }
 }
 
 enum FileViewStyle {
-    /// File names, at the size chosen in Settings ▸ Appearance.
-    static var nameFont: NSFont { fonts(for: Prefs.shared.nameTextSize).regular }
-    static var nameBoldFont: NSFont { fonts(for: Prefs.shared.nameTextSize).bold }
     static let detailFont = NSFont.systemFont(ofSize: 11)
 
-    private static var cachedFonts: (size: Double, regular: NSFont, bold: NSFont)?
-    static func fonts(for size: Double) -> (regular: NSFont, bold: NSFont) {
-        if let cached = cachedFonts, cached.size == size { return (cached.regular, cached.bold) }
-        let made = (NSFont.systemFont(ofSize: size), NSFont.systemFont(ofSize: size, weight: .bold))
-        cachedFonts = (size, made.0, made.1)
-        return made
-    }
-
     /// List rows: compact, regular or spacious, and taller for bigger names.
-    static var listRowHeight: CGFloat { listHeight(for: .shared) }
     static func listHeight(for preferences: Prefs) -> CGFloat {
         [22, 26, 32][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
 
     /// Column rows, a little tighter than the list's.
-    static var columnRowHeight: CGFloat { columnHeight(for: .shared) }
     static func columnHeight(for preferences: Prefs) -> CGFloat {
         [20, 24, 30][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)
     }
 
     /// Light, dark, or the system's (Settings ▸ Appearance).
-    static func applyTheme() {
-        switch Prefs.shared.theme {
+    static func applyTheme(_ preferences: Prefs) {
+        switch preferences.theme {
         case 1: NSApp.appearance = NSAppearance(named: .aqua)
         case 2: NSApp.appearance = NSAppearance(named: .darkAqua)
         default: NSApp.appearance = nil
@@ -411,7 +466,7 @@ enum FileViewStyle {
     }
 
     /// `name` with the fuzzy-match characters at `matches` (Character offsets) bold and accent-colored, like the list.
-    static func highlightedName(_ name: String, matches: [Int], font: NSFont = nameFont, boldFont: NSFont = nameBoldFont,
+    static func highlightedName(_ name: String, matches: [Int], font: NSFont, boldFont: NSFont,
                                 color: NSColor, highlight: NSColor, paragraph: NSParagraphStyle? = nil) -> NSAttributedString {
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         if let paragraph { attributes[.paragraphStyle] = paragraph }
@@ -451,7 +506,7 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
     private var cancelled = false
     private var finished = false
 
-    init(name: String, isFolder: Bool, centered: Bool, wraps: Bool? = nil, font: NSFont = FileViewStyle.nameFont) {
+    init(name: String, isFolder: Bool, centered: Bool, wraps: Bool? = nil, font: NSFont) {
         let multiline = wraps ?? centered
         super.init(frame: .zero)
         stringValue = name
@@ -475,6 +530,7 @@ final class InlineRenameField: NSTextField, NSTextFieldDelegate {
 
     private var baseLength = 0
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func begin(in window: NSWindow?) {

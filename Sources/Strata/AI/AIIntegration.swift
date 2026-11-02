@@ -1,76 +1,74 @@
 import AppKit
 
 /// App-wide AI services. Everything runs on this Mac; nothing is sent anywhere.
-enum StrataAI {
-    /// Content index over ~/Documents, ~/Desktop and ~/Downloads, stored in ~/Library/Application Support/Strata/semantic.
-    static let index = SemanticIndex(configuration: SemanticIndex.Configuration(roots: SemanticIndex.standardRoots))
+package enum StrataAI {
 
-    private static var indexing: Task<Void, Never>?
-    private(set) static var progress = SemanticIndexProgress(phase: .done)
+    private static let indexing = SemanticIndexing()
+    package static var progress: SemanticIndexProgress { indexing.progress }
 
     /// Starts a background indexing pass (no-op if one is running). Only roots that can be read without a consent prompt are
     /// indexed, so launching never triggers a wall of privacy dialogs.
-    static func startIndexing(onProgress: (@MainActor @Sendable (SemanticIndexProgress) -> Void)? = nil) {
-        guard indexing == nil else { return }
+    package static func startIndexing(onProgress: (@MainActor @Sendable (SemanticIndexProgress) -> Void)? = nil) {
+        guard !indexing.isRunning else { return }
         let roots = SemanticIndex.standardRoots.filter { !Privacy.measuringWouldPrompt($0, browsing: Places.home) }
         guard !roots.isEmpty else { return }
-        indexing = Task(priority: .utility) {
-            await index.setRoots(roots)
-            try? await index.update { update in
-                Task { @MainActor in
-                    progress = update
-                    onProgress?(update)
-                }
-            }
-            indexing = nil
+        indexing.start(onProgress: onProgress) { report in
+            await SemanticIndex.shared.setRoots(roots)
+            try? await SemanticIndex.shared.update(progress: report)
         }
     }
 
-    static func stopIndexing() {
-        indexing?.cancel()
-        indexing = nil
-    }
-
-    /// Search results as palette rows ("Content" matches, snippet as subtitle).
-    static func paletteItems(for hits: [SemanticHit], open: @escaping (URL) -> Void) -> [PaletteItem] {
-        hits.map { hit in
-            var subtitle = hit.snippet
-            if let page = hit.page {
-                subtitle = String(localized: "p. \(page) · \(hit.snippet)",
-                                  comment: "Content search result: the PDF page the matching text is on, then the text")
-            }
-            let score = hit.score.isFinite ? Int((min(max(hit.score, 0), 100) * 100).rounded()) : 0
-            return PaletteItem(title: hit.title ?? hit.url.lastPathComponent, subtitle: subtitle,
-                               icon: IconCache.shared.icon(forPath: hit.url.path), kind: .match,
-                               fixedScore: score) { open(hit.url) }
-        }
+    package static func stopIndexing() {
+        indexing.stop()
     }
 }
 
-extension BrowserWindowController {
-    /// "Ask Strata…": plan-then-execute on the selection (or everything in the folder when nothing is selected).
-    @objc func askStrata(_ sender: Any?) {
-        presentAskStrata(instruction: nil)
+package final class SemanticIndexing {
+    package typealias Work = @Sendable (@escaping @Sendable (SemanticIndexProgress) -> Void) async -> Void
+    package private(set) var progress = SemanticIndexProgress(phase: .done)
+    private let schedule: LatestUpdate<SemanticIndexProgress>.Schedule
+    private var task: Task<Void, Never>?
+    private var retiring: Task<Void, Never>?
+    private var updates: LatestUpdate<SemanticIndexProgress>?
+    private var onProgress: (@MainActor @Sendable (SemanticIndexProgress) -> Void)?
+    package var isRunning: Bool { task != nil }
+
+    package init(schedule: @escaping LatestUpdate<SemanticIndexProgress>.Schedule = LatestUpdate<SemanticIndexProgress>.onMain) {
+        self.schedule = schedule
     }
 
-    func presentAskStrata(instruction: String?) {
-        guard let window, window.attachedSheet == nil, !browser.isInsideArchive else { return }
-        let urls = browser.selectedURLs.isEmpty ? browser.topLevelEntries.map(\.url) : browser.selectedURLs
-        guard !urls.isEmpty else { return }
-        let folder = location
-        let selectAfterReload = selectionAfterOperation()
-        PlanSheetController.present(on: window, urls: urls, baseFolder: folder, undoManager: window.undoManager,
-                                    instruction: instruction, files: services.files) { [weak self] outcome in
-            guard self != nil, let outcome, !outcome.results.isEmpty else { return }
-            selectAfterReload(outcome.results)
-            Task { for url in outcome.results { await StrataAI.index.refresh(url) } }
+    isolated deinit { stop() }
+
+    package func start(onProgress: (@MainActor @Sendable (SemanticIndexProgress) -> Void)? = nil, work: @escaping Work) {
+        guard task == nil else { return }
+        self.onProgress = onProgress
+        let delivery = LatestUpdate<SemanticIndexProgress>(schedule: schedule) { [weak self] update in
+            guard let self else { return }
+            progress = update
+            self.onProgress?(update)
+        }
+        updates = delivery
+        let previous = retiring
+        retiring = nil
+        task = Task(priority: .utility) { [weak self] in
+            // SemanticIndex admits one pass. Let the cancelled pass leave it before the replacement tries to enter.
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            await work(delivery.send)
+            guard let self, updates === delivery else { return }
+            task = nil
+            delivery.finish()
+            guard updates === delivery else { return }
+            updates = nil
+            self.onProgress = nil
         }
     }
 
-    /// Palette commands for the AI features, to append to `commandItems()`.
-    func aiPaletteItems() -> [PaletteItem] {
-        let subtitle = browser.selectedURLs.isEmpty ? String(localized: "Rename, move or organize everything here")
-            : String(localized: "Rename, move or organize the selection")
-        return paletteCommand(.askStrata, subtitle: subtitle).map { [$0] } ?? []
+    package func stop() {
+        if let task { task.cancel(); retiring = task }
+        task = nil
+        updates?.cancel()
+        updates = nil
+        onProgress = nil
     }
 }

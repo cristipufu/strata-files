@@ -2,18 +2,18 @@ import Foundation
 import FoundationModels
 
 /// What a search phrase was understood as, and by what.
-nonisolated struct QueryInterpretation: Sendable {
-    enum Source: String, Sendable {
+package nonisolated struct QueryInterpretation: Sendable {
+    package enum Source: String, Sendable {
         /// The deterministic parser understood everything.
         case rules
         /// The on-device model filled in what the rules couldn't place.
         case rulesAndModel
     }
 
-    var filter: SearchFilter
-    var source: Source
+    package var filter: SearchFilter
+    package var source: Source
     /// Words the rules couldn't place. Without the model they stay in `filter.keywords` (matched against names).
-    var unrecognized: [String]
+    package var unrecognized: [String]
 }
 
 /// Turns a natural-language search ("pdfs from last week bigger than 10mb about invoices") into a `SearchFilter`.
@@ -22,10 +22,10 @@ nonisolated struct QueryInterpretation: Sendable {
 /// phrasing (kinds, sizes, "today", "last week", "older than 30 days", "in 2024", "since March", "named …", "about …") with no
 /// model and no latency. Only when words are left over, and Apple Intelligence is available, the on-device model reads the whole
 /// phrase with guided generation (constrained to the filter's shape); the rules' explicit findings always win.
-nonisolated enum QueryInterpreter {
+package nonisolated enum QueryInterpreter {
     // MARK: - Entry points
 
-    static func interpret(_ text: String, now: Date = .now, calendar: Calendar = .current, allowModel: Bool = true,
+    package static func interpret(_ text: String, now: Date = .now, calendar: Calendar = .current, allowModel: Bool = true,
                           timeout: Double = 6) async -> QueryInterpretation {
         let rules = parse(text, now: now, calendar: calendar)
         guard allowModel, !rules.unrecognized.isEmpty, AIModel.isAvailable else { return rules }
@@ -38,7 +38,7 @@ nonisolated enum QueryInterpreter {
     }
 
     /// The deterministic fast path: no model, no I/O, a millisecond or so.
-    static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current) -> QueryInterpretation {
+    package static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current) -> QueryInterpretation {
         let parser = Parser(text, now: now, calendar: calendar)
         parser.run()
         var filter = parser.filter
@@ -47,7 +47,7 @@ nonisolated enum QueryInterpreter {
     }
 
     /// Rules first; the model fills only what the rules left empty and takes over the unplaced words.
-    static func merge(_ rules: QueryInterpretation, _ model: SearchFilter) -> QueryInterpretation {
+    package static func merge(_ rules: QueryInterpretation, _ model: SearchFilter) -> QueryInterpretation {
         var filter = rules.filter
         if filter.kinds.isEmpty, filter.extensions.isEmpty {
             filter.kinds = model.kinds
@@ -74,10 +74,10 @@ nonisolated enum QueryInterpreter {
 
     // MARK: - Model
 
-    static let dateRanges = ["any", "today", "yesterday", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "thisYear", "lastYear",
+    package static let dateRanges = ["any", "today", "yesterday", "thisWeek", "lastWeek", "thisMonth", "lastMonth", "thisYear", "lastYear",
                              "lastDays", "olderThanDays", "year", "since", "before", "between"]
 
-    static func schema() throws -> GenerationSchema {
+    package static func schema() throws -> GenerationSchema {
         let kind = Schema.choice("Kind", SearchFilter.Kind.allCases.map(\.rawValue))
         return try Schema.root(Schema.object("FileSearch", "A filter for finding files on a Mac", [
             Schema.field("kinds", "Kinds of files asked for; empty if none named", Schema.array(kind, max: 4)),
@@ -95,7 +95,7 @@ nonisolated enum QueryInterpreter {
         ]))
     }
 
-    static func instructions(now: Date, calendar: Calendar) -> String {
+    package static func instructions(now: Date, calendar: Calendar) -> String {
         let today = now.formatted(Date.ISO8601FormatStyle(timeZone: calendar.timeZone).year().month().day())
         let weekday = now.formatted(Date.FormatStyle(timeZone: calendar.timeZone).weekday(.wide))
         return """
@@ -107,15 +107,15 @@ nonisolated enum QueryInterpreter {
         """
     }
 
-    static func askModel(_ text: String, now: Date, calendar: Calendar) async throws -> SearchFilter {
+    package static func askModel(_ text: String, now: Date, calendar: Calendar) async throws -> SearchFilter {
         let session = LanguageModelSession(model: SystemLanguageModel(useCase: .general), instructions: instructions(now: now, calendar: calendar))
         let response = try await session.respond(to: "Request: \(text)", schema: try schema(),
-                                                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 220))
+                                                 options: .greedy(maximumResponseTokens: 220))
         return decode(response.content, now: now, calendar: calendar)
     }
 
     /// Model output → filter. Relative dates are computed here, not by the model (small models get date arithmetic wrong).
-    static func decode(_ content: GeneratedContent, now: Date, calendar: Calendar) -> SearchFilter {
+    package static func decode(_ content: GeneratedContent, now: Date, calendar: Calendar) -> SearchFilter {
         var filter = SearchFilter()
         filter.kinds = Set(content["kinds"]?.strings.compactMap(SearchFilter.Kind.init(rawValue:)) ?? [])
         filter.extensions = Set((content["extensions"]?.strings ?? []).map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". ")) }
@@ -154,48 +154,48 @@ nonisolated enum QueryInterpreter {
 // MARK: - Dates
 
 /// Calendar ranges relative to "now". Ranges are [after, before).
-nonisolated struct Dates {
-    let now: Date
-    let calendar: Calendar
+package nonisolated struct Dates {
+    package let now: Date
+    package let calendar: Calendar
 
-    func startOfDay(_ date: Date) -> Date { calendar.startOfDay(for: date) }
-    func today() -> (Date?, Date?) { (startOfDay(now), nil) }
-    func yesterday() -> (Date?, Date?) {
+    package func startOfDay(_ date: Date) -> Date { calendar.startOfDay(for: date) }
+    package func today() -> (Date?, Date?) { (startOfDay(now), nil) }
+    package func yesterday() -> (Date?, Date?) {
         let today = startOfDay(now)
         return (calendar.date(byAdding: .day, value: -1, to: today), today)
     }
-    func current(_ unit: Calendar.Component) -> (Date?, Date?) { (calendar.dateInterval(of: unit, for: now)?.start, nil) }
-    func previous(_ unit: Calendar.Component) -> (Date?, Date?) {
+    package func current(_ unit: Calendar.Component) -> (Date?, Date?) { (calendar.dateInterval(of: unit, for: now)?.start, nil) }
+    package func previous(_ unit: Calendar.Component) -> (Date?, Date?) {
         guard let current = calendar.dateInterval(of: unit, for: now),
               let previous = calendar.dateInterval(of: unit, for: current.start.addingTimeInterval(-1)) else { return (nil, nil) }
         return (previous.start, current.start)
     }
-    func ago(_ count: Int, _ unit: Calendar.Component) -> Date? {
+    package func ago(_ count: Int, _ unit: Calendar.Component) -> Date? {
         let bounded = boundedCount(Double(count))
         if unit == .weekOfYear { return calendar.date(byAdding: .day, value: -7 * bounded, to: now) }
         return calendar.date(byAdding: unit, value: -bounded, to: now)
     }
     /// The whole calendar unit that contained "N units ago" ("3 days ago" = that day).
-    func unit(containing count: Int, _ unit: Calendar.Component) -> (Date?, Date?) {
+    package func unit(containing count: Int, _ unit: Calendar.Component) -> (Date?, Date?) {
         guard let date = ago(count, unit) else { return (nil, nil) }
         let component: Calendar.Component = unit == .hour || unit == .minute ? .day : unit
         guard let interval = calendar.dateInterval(of: component, for: date) else { return (nil, nil) }
         return (interval.start, interval.end)
     }
-    func year(_ year: Int) -> (Date?, Date?) {
+    package func year(_ year: Int) -> (Date?, Date?) {
         let y = min(max(year, 1), 99_999)
         return (calendar.date(from: DateComponents(year: y, month: 1, day: 1)),
                 calendar.date(from: DateComponents(year: y + 1, month: 1, day: 1)))
     }
     /// A month without a year means the latest one that has started.
-    func month(_ month: Int, year: Int?) -> (Date?, Date?) {
+    package func month(_ month: Int, year: Int?) -> (Date?, Date?) {
         let thisYear = calendar.component(.year, from: now)
         let thisMonth = calendar.component(.month, from: now)
         let y = year ?? (month <= thisMonth ? thisYear : thisYear - 1)
         guard let start = calendar.date(from: DateComponents(year: y, month: month, day: 1)) else { return (nil, nil) }
         return (start, calendar.date(byAdding: .month, value: 1, to: start))
     }
-    func day(year: Int?, month: Int, day: Int) -> (Date?, Date?) {
+    package func day(year: Int?, month: Int, day: Int) -> (Date?, Date?) {
         let thisYear = calendar.component(.year, from: now)
         var y = year ?? thisYear
         guard var start = calendar.date(from: DateComponents(year: y, month: month, day: day)) else { return (nil, nil) }
@@ -206,7 +206,7 @@ nonisolated struct Dates {
         return (start, calendar.date(byAdding: .day, value: 1, to: start))
     }
     /// The latest such weekday on or before today (strictly before with `last`).
-    func weekday(_ weekday: Int, strictlyBefore: Bool) -> (Date?, Date?) {
+    package func weekday(_ weekday: Int, strictlyBefore: Bool) -> (Date?, Date?) {
         var date = startOfDay(now)
         for _ in 0..<8 {
             if calendar.component(.weekday, from: date) == weekday, !(strictlyBefore && calendar.isDate(date, inSameDayAs: now)) {
@@ -217,7 +217,7 @@ nonisolated struct Dates {
         }
         return (nil, nil)
     }
-    func isoDay(_ text: String) -> Date? {
+    package func isoDay(_ text: String) -> Date? {
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
@@ -251,7 +251,8 @@ private nonisolated final class Parser {
     func run() {
         operators()
         sizes()
-        datesPass()
+        relativeDates()
+        calendarDates()
         kindsPass()
         names()
         content()
@@ -321,38 +322,31 @@ private nonisolated final class Parser {
             self.filter.maxSize = saturatingInt64(high * Self.multiplier(unit))
             return true
         }
-        consume("\\b(?:bigger|larger|greater|heavier|more|over|above|exceeding|at least)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
-        consume("\\b(?:smaller|less|lighter|under|below|at most|up to|no more)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
+        consumeSize("\\b(?:bigger|larger|greater|heavier|more|over|above|exceeding|at least)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b", setting: \.minSize)
+        consumeSize("\\b(?:smaller|less|lighter|under|below|at most|up to|no more)\\s*(?:than\\s+|then\\s+)?\(Self.num)\\s*\(Self.sizeUnit)\\b", setting: \.maxSize)
         consume("(?:^|\\s)(>=?|<=?)\\s*(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\b") { m in
             guard let value = Self.number(m[2]) else { return false }
             let bytes = saturatingInt64(value * Self.multiplier(m[3] ?? "mb")) ?? 0
             if m[1]?.hasPrefix(">") == true { self.filter.minSize = bytes } else { self.filter.maxSize = bytes }
             return true
         }
-        consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*(\\+|or (?:more|bigger|larger|above)|and (?:up|above))") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.minSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
-        consume("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*or (?:less|smaller|below)\\b") { m in
-            guard let value = Self.number(m[1]) else { return false }
-            self.filter.maxSize = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
-            return true
-        }
+        consumeSize("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*(\\+|or (?:more|bigger|larger|above)|and (?:up|above))", setting: \.minSize)
+        consumeSize("\\b(\\d+(?:[.,]\\d+)?)\\s*\(Self.sizeUnit)\\s*or (?:less|smaller|below)\\b", setting: \.maxSize)
         // Adjectives, as rough sizes (only if nothing more precise was said).
         consume("\\b(huge|enormous|gigantic|massive)\\b") { _ in self.setMin(1_000_000_000) }
         consume("\\b(large|big|biggest|largest|heavy)\\b") { _ in self.setMin(100_000_000) }
         consume("\\b(tiny)\\b") { _ in self.setMax(100_000) }
         consume("\\b(small|smallest)\\b") { _ in self.setMax(1_000_000) }
         consume("\\b(empty)\\b") { _ in self.setMax(0) }
+    }
+
+    /// A size in `pattern`'s first two groups (a number, then its unit; megabytes when there's none) sets `bound`.
+    private func consumeSize(_ pattern: String, setting bound: WritableKeyPath<SearchFilter, Int64?>) {
+        consume(pattern) { m in
+            guard let value = Self.number(m[1]) else { return false }
+            self.filter[keyPath: bound] = saturatingInt64(value * Self.multiplier(m[2] ?? "mb"))
+            return true
+        }
     }
 
     private func setMin(_ bytes: Int64) -> Bool {
@@ -367,28 +361,14 @@ private nonisolated final class Parser {
 
     // MARK: Dates
 
-    private func datesPass() {
+    /// Spans counted in units ("older than 3 weeks", "in the last 2 days", "3 days ago"), then periods by name ("past
+    /// week", "last month", "today", "on monday").
+    private func relativeDates() {
         let num = Self.num, unit = Self.timeUnit
-        consume("\\b(?:older than|more than|over|at least|not (?:modified|touched|changed|opened|edited|used) (?:in|for)(?: the)?(?: last| past)?)\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b(?:newer|younger|less|fewer) than\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b(?:(?:in|within|during|from|over|for)\\s+)?(?:the\\s+)?(?:last|past|previous)\\s+\(num)\\s+\(unit)\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedAfter = self.dates.ago(boundedCount(count), component)
-            return true
-        }
-        consume("\\b\(num)\\s+\(unit)\\s+old\\b") { m in
-            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
-            self.filter.modifiedBefore = self.dates.ago(boundedCount(count), component)
-            return true
-        }
+        consumeSpan("\\b(?:older than|more than|over|at least|not (?:modified|touched|changed|opened|edited|used) (?:in|for)(?: the)?(?: last| past)?)\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b", setting: \.modifiedBefore)
+        consumeSpan("\\b(?:newer|younger|less|fewer) than\\s+\(num)\\s+\(unit)(?:\\s+(?:old|ago))?\\b", setting: \.modifiedAfter)
+        consumeSpan("\\b(?:(?:in|within|during|from|over|for)\\s+)?(?:the\\s+)?(?:last|past|previous)\\s+\(num)\\s+\(unit)\\b", setting: \.modifiedAfter)
+        consumeSpan("\\b\(num)\\s+\(unit)\\s+old\\b", setting: \.modifiedBefore)
         consume("\\b\(num)\\s+\(unit)\\s+ago\\b") { m in
             guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
             self.setDates(self.dates.unit(containing: boundedCount(count), component))
@@ -416,6 +396,10 @@ private nonisolated final class Parser {
             if m[1] == "since" { self.filter.modifiedAfter = range.0 } else { self.setDates(range) }
             return true
         }
+    }
+
+    /// Dates on the calendar: ISO dates and ranges, months by name, years, and "recently".
+    private func calendarDates() {
         // Two ISO dates make one range ("between 2025-03-03 and 2025-04-09", "from … to …"); before single dates.
         consume("\\b(?:between|from)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\s+(?:and|to|-)\\s+(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b") { m in
             let v = (1...6).compactMap { m[$0].flatMap(Int.init) }
@@ -462,6 +446,15 @@ private nonisolated final class Parser {
         }
     }
 
+    /// A span in `pattern`'s first two groups ("3 weeks") sets `bound` to that long ago.
+    private func consumeSpan(_ pattern: String, setting bound: WritableKeyPath<SearchFilter, Date?>) {
+        consume(pattern) { m in
+            guard let count = Self.number(m[1]), let component = Self.timeComponent(m[2] ?? "") else { return false }
+            self.filter[keyPath: bound] = self.dates.ago(boundedCount(count), component)
+            return true
+        }
+    }
+
     private func setDates(_ range: (Date?, Date?)) {
         filter.modifiedAfter = range.0
         filter.modifiedBefore = range.1
@@ -491,6 +484,28 @@ private nonisolated final class Parser {
     ]
 
     private func kindsPass() {
+        screenKinds()
+        for (pattern, extensions) in Self.extensionGroups {
+            consume(pattern) { _ in
+                self.filter.extensions.formUnion(extensions)
+                return true
+            }
+        }
+        consume("(?:^|\\s)\\.?(png|heic|gif|svg|webp|mp4|mov|m4v|mkv|avi|mp3|wav|m4a|aac|flac|csv|tsv|json|xml|xlsx|xls|docx|pptx|txt|rtf|epub|psd|sketch|zip|rar|7z|tar|gz|dmg|iso|pkg|ics|vcf|srt)s?(?:\\s+files?)?\\b") { m in
+            self.filter.extensions.insert(m[1] ?? "")
+            return true
+        }
+        for (pattern, kind) in Self.kindWords {
+            consume(pattern) { _ in
+                self.filter.kinds.insert(kind)
+                return true
+            }
+        }
+        dropBroaderDocumentKind()
+    }
+
+    /// Screenshots and screen recordings: images or movies named the way macOS names them.
+    private func screenKinds() {
         consume("\\bscreen\\s*shots?\\b") { _ in
             self.filter.kinds.insert(.image)
             self.addName("Screenshot")
@@ -501,62 +516,53 @@ private nonisolated final class Parser {
             self.addName("Screen Recording")
             return true
         }
-        let extensionGroups: [(String, [String])] = [
-            ("\\bword\\s+(?:documents?|docs?|files?)\\b", ["doc", "docx"]),
-            ("\\bexcel(?:\\s+(?:files?|sheets?|spreadsheets?|workbooks?))?\\b", ["xls", "xlsx"]),
-            ("\\b(?:power\\s*points?|ppts?)\\b", ["ppt", "pptx"]),
-            ("\\bkeynotes?\\b", ["key"]),
-            ("\\b(?:pages)\\s+(?:files?|documents?|docs?)\\b", ["pages"]),
-            ("\\b(?:numbers)\\s+(?:files?|spreadsheets?|sheets?)\\b", ["numbers"]),
-            ("\\b(?:swift)\\s+(?:files?|code|sources?)\\b", ["swift"]),
-            ("\\b(?:python)\\s+(?:files?|code|scripts?|sources?)\\b", ["py"]),
-            ("\\b(?:javascript|js)\\s+(?:files?|code|sources?)\\b", ["js", "mjs"]),
-            ("\\b(?:typescript|ts)\\s+(?:files?|code|sources?)\\b", ["ts", "tsx"]),
-            ("\\b(?:markdown)(?:\\s+(?:files?|notes?|docs?))?\\b", ["md", "markdown"]),
-            ("\\b(?:jpe?gs?)\\b", ["jpg", "jpeg"]),
-            ("\\b(?:tiffs?|tifs?)\\b", ["tif", "tiff"]),
-            ("\\b(?:ya?mls?)\\b", ["yaml", "yml"]),
-            ("\\b(?:html?)(?:\\s+files?)?\\b", ["html", "htm"]),
-        ]
-        for (pattern, extensions) in extensionGroups {
-            consume(pattern) { _ in
-                self.filter.extensions.formUnion(extensions)
-                return true
-            }
-        }
-        consume("(?:^|\\s)\\.?(png|heic|gif|svg|webp|mp4|mov|m4v|mkv|avi|mp3|wav|m4a|aac|flac|csv|tsv|json|xml|xlsx|xls|docx|pptx|txt|rtf|epub|psd|sketch|zip|rar|7z|tar|gz|dmg|iso|pkg|ics|vcf|srt)s?(?:\\s+files?)?\\b") { m in
-            self.filter.extensions.insert(m[1] ?? "")
-            return true
-        }
-        let kindWords: [(String, SearchFilter.Kind)] = [
-            ("\\b(?:comic\\s+books?|comics?)\\b", .comic),
-            ("\\b(?:books?|ebooks?)\\b", .book),
-            ("\\b(?:disk\\s+images?|installers?)\\b", .diskImage),
-            ("\\b(?:source\\s+code|source\\s+files?|code\\s+files?|code|scripts?)\\b", .code),
-            ("\\b(?:text\\s+files?|plain\\s+text|txt\\s+files?)\\b", .text),
-            ("\\bpdfs?\\b", .pdf),
-            ("\\b(?:images?|photos?|pictures?|pics|imgs?|graphics|wallpapers?)\\b", .image),
-            ("\\b(?:videos?|movies?|films?|clips?|footage)\\b", .movie),
-            ("\\b(?:audio|music|songs?|tracks?|podcasts?|sounds?|voice\\s+memos?|recordings?)\\b", .audio),
-            ("\\b(?:spreadsheets?|sheets|workbooks?)\\b", .spreadsheet),
-            ("\\b(?:presentations?|slides?|slide\\s+decks?|decks?)\\b", .presentation),
-            ("\\b(?:archives?|zips?|zip\\s+files?|compressed\\s+files?|tarballs?)\\b", .archive),
-            ("\\b(?:folders?|directories|directory|dirs?)\\b", .folder),
-            ("\\b(?:apps?|applications?|programs?)\\b", .application),
-            ("\\b(?:documents?|docs?|paperwork|notes)\\b", .document),
-        ]
-        for (pattern, kind) in kindWords {
-            consume(pattern) { _ in
-                self.filter.kinds.insert(kind)
-                return true
-            }
-        }
-        // "PDFs" plus "documents" means PDFs: the broader kind adds nothing.
+    }
+
+    /// "PDFs" plus "documents" means PDFs: the broader kind adds nothing.
+    private func dropBroaderDocumentKind() {
         if filter.kinds.contains(.document), filter.kinds.count > 1 || !filter.extensions.isEmpty,
            filter.kinds.subtracting([.document]).allSatisfy({ [.pdf, .text, .spreadsheet, .presentation].contains($0) }) {
             filter.kinds.remove(.document)
         }
     }
+
+    /// Apps' and formats' names, as the extensions they mean.
+    private static let extensionGroups: [(String, [String])] = [
+        ("\\bword\\s+(?:documents?|docs?|files?)\\b", ["doc", "docx"]),
+        ("\\bexcel(?:\\s+(?:files?|sheets?|spreadsheets?|workbooks?))?\\b", ["xls", "xlsx"]),
+        ("\\b(?:power\\s*points?|ppts?)\\b", ["ppt", "pptx"]),
+        ("\\bkeynotes?\\b", ["key"]),
+        ("\\b(?:pages)\\s+(?:files?|documents?|docs?)\\b", ["pages"]),
+        ("\\b(?:numbers)\\s+(?:files?|spreadsheets?|sheets?)\\b", ["numbers"]),
+        ("\\b(?:swift)\\s+(?:files?|code|sources?)\\b", ["swift"]),
+        ("\\b(?:python)\\s+(?:files?|code|scripts?|sources?)\\b", ["py"]),
+        ("\\b(?:javascript|js)\\s+(?:files?|code|sources?)\\b", ["js", "mjs"]),
+        ("\\b(?:typescript|ts)\\s+(?:files?|code|sources?)\\b", ["ts", "tsx"]),
+        ("\\b(?:markdown)(?:\\s+(?:files?|notes?|docs?))?\\b", ["md", "markdown"]),
+        ("\\b(?:jpe?gs?)\\b", ["jpg", "jpeg"]),
+        ("\\b(?:tiffs?|tifs?)\\b", ["tif", "tiff"]),
+        ("\\b(?:ya?mls?)\\b", ["yaml", "yml"]),
+        ("\\b(?:html?)(?:\\s+files?)?\\b", ["html", "htm"]),
+    ]
+
+    /// Everyday words for a kind of file, the more specific first.
+    private static let kindWords: [(String, SearchFilter.Kind)] = [
+        ("\\b(?:comic\\s+books?|comics?)\\b", .comic),
+        ("\\b(?:books?|ebooks?)\\b", .book),
+        ("\\b(?:disk\\s+images?|installers?)\\b", .diskImage),
+        ("\\b(?:source\\s+code|source\\s+files?|code\\s+files?|code|scripts?)\\b", .code),
+        ("\\b(?:text\\s+files?|plain\\s+text|txt\\s+files?)\\b", .text),
+        ("\\bpdfs?\\b", .pdf),
+        ("\\b(?:images?|photos?|pictures?|pics|imgs?|graphics|wallpapers?)\\b", .image),
+        ("\\b(?:videos?|movies?|films?|clips?|footage)\\b", .movie),
+        ("\\b(?:audio|music|songs?|tracks?|podcasts?|sounds?|voice\\s+memos?|recordings?)\\b", .audio),
+        ("\\b(?:spreadsheets?|sheets|workbooks?)\\b", .spreadsheet),
+        ("\\b(?:presentations?|slides?|slide\\s+decks?|decks?)\\b", .presentation),
+        ("\\b(?:archives?|zips?|zip\\s+files?|compressed\\s+files?|tarballs?)\\b", .archive),
+        ("\\b(?:folders?|directories|directory|dirs?)\\b", .folder),
+        ("\\b(?:apps?|applications?|programs?)\\b", .application),
+        ("\\b(?:documents?|docs?|paperwork|notes)\\b", .document),
+    ]
 
     // MARK: Names and content
 

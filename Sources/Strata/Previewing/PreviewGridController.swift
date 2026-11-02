@@ -27,6 +27,7 @@ import AppKit
         layout.metrics = GridMetrics(iconSize: preferences.previewIconSize, typography: FileViewTypography(preferences: preferences))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {

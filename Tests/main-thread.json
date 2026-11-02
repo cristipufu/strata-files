@@ -1,0 +1,200 @@
+[
+ {
+  "file": "Sources/Strata/Browser/BrowserRename.swift",
+  "call": ".resourceValues(forKeys",
+  "count": 1,
+  "reason": "Renaming the one item you chose (a change asked for on one item may stay synchronous): whether it's a folder decides the extension confirmation."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileManager.default.createDirectory",
+  "count": 1,
+  "reason": "New Folder: a change asked for on one item, which AGENTS.md lets stay synchronous."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileManager.default.trashItem",
+  "count": 1,
+  "reason": "Only the undo of New Folder and New File, with the one item it made: it runs inside the UndoManager callback, where its redo must be registered."
+ },
+ {
+  "file": "Sources/Strata/Settings/SettingsWindowController.swift",
+  "call": "FileManager.default.createSymbolicLink",
+  "count": 1,
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Settings/SettingsWindowController.swift",
+  "call": "FileManager.default.destinationOfSymbolicLink",
+  "count": 2,
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Settings/SettingsWindowController.swift",
+  "call": "lstat(",
+  "count": 1,
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Settings/SettingsWindowController.swift",
+  "call": "unlink(",
+  "count": 1,
+  "reason": "Installing the strata command (Settings ▸ Install): a change asked for on one item, /usr/local/bin/strata on the startup disk."
+ },
+ {
+  "helper": "ArchiveCache.archive(containing:)",
+  "reason": "Which archive a copy came from is kept in memory as copies are made, looked up or pruned at launch (off the main thread); only a copy none of those has seen yet reads its bookkeeping file, once a launch: Strata's own small file in its caches on the startup disk, never on a share."
+ },
+ {
+  "helper": "ContainerDragItem(source:)",
+  "reason": "As a drag of a server's or container's item begins: the content type of Strata's own copy of it, in its caches on the startup disk (never on the server or a share), once per item dragged."
+ },
+ {
+  "helper": "SecureStorage.removeLegacy(_:)",
+  "reason": "Strata's own store left over from before encryption, in its own storage folder on the startup disk: removed once, when the store opens."
+ },
+ {
+  "file": "Sources/Strata/Model/LandedFiles.swift",
+  "call": "LandedFiles.holds(_:)",
+  "count": 2,
+  "reason": "In `owns`, the closure made for workers (transfers, Undo's Trash steps), which call it item by item as each is about to change; and in `holdsNow`, for the one item New Folder's or New File's undo trashes inside the UndoManager callback, where its redo must be registered."
+ },
+ {
+  "file": "Sources/Strata/Model/LandedFiles.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "`record`, only for New Folder and New File: the one item made, read as it lands (a change asked for on one item), and where the undo of either put it in the Trash."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewFileView.swift",
+  "call": "PreviewFileView.isStillRegular(_:)",
+  "count": 2,
+  "reason": "The one item about to be previewed, checked just before a renderer opens it by path (it can't be handed a descriptor): a pipe swapped in for it would hang the renderer, a link would show what it points to."
+ },
+ {
+  "helper": "Prefs.registerTestCleanup()",
+  "reason": "Only in its `atexit` callback, as the process ends: the test preference domain's own file."
+ },
+ {
+  "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 2,
+  "reason": "Rename, the one item you renamed: what it is before its confirmation, checked again as the name is committed (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "FileInfoEditing.comment(at:)",
+  "count": 2,
+  "reason": "Get Info's comment, of the one item shown, as you finish editing it: read to see whether it changed (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "ChosenFile(_:)",
+  "count": 1,
+  "reason": "Get Info's comment: the one item shown, chosen as you begin editing it, so the comment is saved on that item (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "FileInfoEditing.setComment(_:)",
+  "count": 1,
+  "reason": "Get Info's comment, saved on the one item you edited it for (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "TransferEngine.exists(_:)",
+  "count": 1,
+  "reason": "Rename: whether the one new name is taken (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileOps.available(_:)",
+  "count": 1,
+  "reason": "New Folder: a free name for the one folder made (a change asked for on one item)."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "FileOps.canTrash(_:)",
+  "count": 1,
+  "reason": "Only the undo of New Folder and New File, with the one item it made: inside the UndoManager callback, where its redo must be registered."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewCommands.swift",
+  "call": "ChosenFile(_:)",
+  "count": 1,
+  "reason": "A preview command on the one item you chose: what it is when the command is chosen, so the command acts on that item."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewCommands.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "A preview command on the one item you chose: its preview's root checked again just before the command acts."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewFileView.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "A member copied out of an archive for its preview: Strata's own private copy, just written, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Queue/TransferJob.swift",
+  "call": "TransferJob.isInside(_:)",
+  "count": 1,
+  "reason": "Applying the decision you made in the conflict sheet to its one item: whether the item would go inside itself."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InspectorViewController.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "An item of a server's or container's copy, just fetched, read for its preview: Strata's own copy of it, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewBrowserController.swift",
+  "call": "FileEntry(url:)",
+  "count": 1,
+  "reason": "A previewed item of a server's or container's copy, just fetched: Strata's own copy of it, in its caches on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Inspector/InfoEditorView.swift",
+  "call": "InfoEditor.status(of:)",
+  "count": 1,
+  "reason": "Get Info, after a change you made to the one item shown (or one refused): its lock and permissions as they are now."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewSession.swift",
+  "call": "FileIdentity.read(_:)",
+  "count": 1,
+  "reason": "Space on the one item you chose: what it is, pinned as you choose it, so preview commands act only while it's still that item (an identity read later could be a replacement's)."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewSession.swift",
+  "call": "ArchiveSource(_:)",
+  "count": 1,
+  "reason": "Space on the one archive you chose: its file opened (pinned) as you choose it, so what's listed is that very file, never one swapped in before the listing starts."
+ },
+ {
+  "file": "Sources/Strata/Previewing/PreviewMeasurement.swift",
+  "call": "FootprintSource(_:)",
+  "count": 1,
+  "reason": "Measuring the one item shown in Space: opened (pinned) as it's chosen and checked against the preview's root, so the size shown is that item's."
+ },
+ {
+  "file": "Sources/Strata/Model/CreatedFolders.swift",
+  "call": "FileOps.removeEmptyFolders(_:)",
+  "count": 1,
+  "reason": "`removeEmptyNow`, only as an undo's job across disks ends: the few folders that undo made for its items, removed while still empty and still its own (nonrecursive), before a redo waiting on the job resumes and must find them gone."
+ },
+ {
+  "helper": "Trash.homeIgnoresCase",
+  "reason": "Whether the home folder's disk ignores case, read once a launch (the first time a Trash is asked about): one volume flag of the startup disk."
+ },
+ {
+  "helper": "GitRunner.executable",
+  "reason": "Where git is installed, found once a launch (the first time a git store is made) among the system's own folders on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "RemovalVolume.refusal(in:)",
+  "count": 1,
+  "reason": "The synchronous Undo of New File or New Folder checks the one item it made before moving it to Trash; its inverse must be registered inside the UndoManager callback. User selections and History read volumes in their background workers."
+ }
+]

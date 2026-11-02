@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct IndexPersistenceSafetyTests {
     private func fixture() -> IndexStore {
@@ -17,7 +24,7 @@ struct IndexPersistenceSafetyTests {
     }
 
     @Test(arguments: ["parentRange", "parentCycle", "childRange", "siblingCycle", "nameRange",
-                      "rootRange", "duplicateRoot", "missingChild", "wrongParent", "negativeSize", "duplicateSibling"])
+                      "rootRange", "duplicateRoot", "missingChild", "wrongParent", "negativeSize", "negativeAllocation", "duplicateSibling"])
     func malformedAuthenticatedIndexesAreRejected(_ damage: String) throws {
         let tree = try TestTree("state/", "kept.txt")
         let store = fixture()
@@ -32,14 +39,15 @@ struct IndexPersistenceSafetyTests {
             case "duplicateRoot": store.roots.append(store.roots[0])
             case "missingChild": store.firstChild[0] = -1
             case "wrongParent": store.parent[2] = 1
+            case "negativeAllocation": store.allocated[1] = -1
             case "duplicateSibling": store.nameStart[2] = store.nameStart[1]
             default: store.size[1] = -1
             }
         }
         let url = tree.url("state/index.sealed")
-        try IndexPersistence.save(store, eventID: 1, excluded: [], to: url)
+        try IndexPersistence.save(store, eventID: 1, excluded: [], to: url, storage: .shared)
         let before = try Data(contentsOf: url)
-        #expect(throws: (any Error).self) { try IndexPersistence.load(from: url) }
+        #expect(throws: (any Error).self) { try IndexPersistence.load(from: url, storage: .shared) }
         #expect(try Data(contentsOf: url) == before)
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
     }
@@ -48,8 +56,8 @@ struct IndexPersistenceSafetyTests {
         let tree = try TestTree("state/")
         let store = fixture()
         store.write { $0.remove(1) }
-        try IndexPersistence.save(store, eventID: 1, excluded: [], to: tree.url("state/index.sealed"))
-        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"))
+        try IndexPersistence.save(store, eventID: 1, excluded: [], to: tree.url("state/index.sealed"), storage: .shared)
+        let (loaded, _) = try IndexPersistence.load(from: tree.url("state/index.sealed"), storage: .shared)
         #expect(loaded.read { $0.lookup("/synthetic/a") } == nil)
         #expect(loaded.read { $0.lookup("/synthetic/b") } == 2)
         #expect(loaded.read { $0.deletedCount() } == 1)

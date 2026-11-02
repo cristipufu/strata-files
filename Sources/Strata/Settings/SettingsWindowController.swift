@@ -40,6 +40,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ThemeStyle.bind(window)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show() {
@@ -112,6 +113,9 @@ private struct GeneralSettings: View {
                            get: { Prefs.shared.showHidden }, set: { Prefs.shared.showHidden = $0 })
                 PrefToggle(title: "Keep folders on top", caption: nil,
                            get: { Prefs.shared.foldersFirst }, set: { Prefs.shared.foldersFirst = $0 })
+                PrefToggle(title: "Address bar in each pane",
+                           caption: "In Dual Pane, each side has its own path bar instead of just the folder name.",
+                           get: { Prefs.shared.dualPaneAddressBars }, set: { Prefs.shared.dualPaneAddressBars = $0 })
                 PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
                            get: { Prefs.shared.reopenWindows }, set: { Prefs.shared.reopenWindows = $0 })
                 PrefToggle(title: "Open archives like folders",
@@ -253,27 +257,6 @@ private struct IndexSettings: View {
         case .scanning(let items): status = String(localized: "Indexing… \(items) items so far", comment: "plural")
         case .ready: status = String(localized: "\(FileIndex.shared.itemCount) items · up to date", comment: "plural")
         }
-    }
-}
-
-private struct TerminalSettings: View {
-    @State private var selection = Prefs.shared.terminal ?? ""
-
-    var body: some View {
-        Form {
-            Picker("Open in Terminal uses", selection: Binding(get: { selection }, set: { selection = $0; Prefs.shared.terminal = $0.isEmpty ? nil : $0 })) {
-                Text("Automatic").tag("")
-                ForEach(Prefs.shared.terminals.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil },
-                        id: \.bundleID) { terminal in
-                    Text(terminal.name).tag(terminal.bundleID)
-                }
-            }
-            Text("Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .formStyle(.grouped)
-        .modifier(ThemedFormBackground())
     }
 }
 

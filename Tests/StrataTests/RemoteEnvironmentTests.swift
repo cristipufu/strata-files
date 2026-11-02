@@ -3,6 +3,13 @@ import Security
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct RemoteEnvironmentTests {
     nonisolated private final class Backend: RemoteBackend {
@@ -41,8 +48,8 @@ struct RemoteEnvironmentTests {
     }
 
     private final class Environment {
-        let domain = "StrataRemoteEnvironment.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let network = Network()
         let remote: RemoteServices
@@ -50,25 +57,25 @@ struct RemoteEnvironmentTests {
 
         init(_ tree: TestTree, folder: String, notifications: NotificationCenter, saved: [RemoteServer] = [],
              reader: DirectoryReader? = DirectoryReader { _, _, _ in [] }) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
+            preferences.defaults.set(try JSONEncoder().encode(saved), forKey: "remoteServers")
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             remote = RemoteServices(preferences: preferences, credentials: network.credentials(folder),
                 copyRoot: tree.url(folder + "/cache"), connector: network.connector, notifications: notifications)
             let storage = SecureStorage.Context(directory: tree.url(folder + "/state"), caches: tree.url(folder + "/state/Caches"), key: nil)
+            let copies = CopyProviders(servers: remote.files, containers: testEnvironment.services.containers)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: CopyProviders(servers: remote.files, containers: .shared)),
-                visits: Frecency(preferences: defaults),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies),
+                                         copies: copies),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 directories: reader)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func server(_ id: String = UUID().uuidString, name: String) -> RemoteServer {
@@ -98,10 +105,10 @@ struct RemoteEnvironmentTests {
         let before = tree.snapshot()
         #expect(left.services.copies.contains(lt) && !left.services.copies.contains(rt))
         #expect(right.services.copies.contains(rt) && !right.services.copies.contains(lt))
-        #expect(try await left.services.directories.load(lt, showHidden: false, applications: .standard).isEmpty)
+        #expect(try await left.services.directories.load(lt, showHidden: false, applications: .standard).entries.isEmpty)
         #expect(left.network.logins.withLock { $0.count } == 1)
         #expect(right.network.logins.withLock { $0.isEmpty })
-        #expect(try await right.services.directories.load(rt, showHidden: false, applications: .standard).isEmpty)
+        #expect(try await right.services.directories.load(rt, showHidden: false, applications: .standard).entries.isEmpty)
         #expect(right.network.logins.withLock { $0.count } == 1)
         #expect(left.network.logins.withLock { $0.map(\.0) } == [a])
         #expect(right.network.logins.withLock { $0.map(\.0) } == [b])
@@ -157,11 +164,11 @@ struct RemoteEnvironmentTests {
         let tree = try TestTree("left/keep"), center = NotificationCenter()
         let server = server(name: "Fixture")
         var environment: Environment? = try Environment(tree, folder: "left", notifications: center, saved: [server])
-        weak var remote = environment?.remote
-        weak var store = remote?.servers
-        weak var sessions = remote?.sessions
-        weak var status = remote?.status
-        weak var connections = remote?.connections
+        weak let remote = environment?.remote
+        weak let store = remote?.servers
+        weak let sessions = remote?.sessions
+        weak let status = remote?.status
+        weak let connections = remote?.connections
         weak var sidebar: SidebarViewController?
         try autoreleasepool {
             let native = SidebarViewController(services: try #require(environment?.services))
@@ -204,7 +211,7 @@ struct RemoteEnvironmentTests {
         #expect(tree.snapshot() == before.filter { !$0.hasPrefix("left/cache/" + a.id + "/") })
     }
 
-    @Test func workspacePlansAndTooltipsUseTheirOwnServerPaths() throws {
+    @Test func workspacePlansAndTooltipsUseTheirOwnServerPaths() async throws {
         let tree = try TestTree("left/keep", "right/keep"), center = NotificationCenter()
         let a = server(name: "Left"), b = server(a.id, name: "Right")
         let left = try Environment(tree, folder: "left", notifications: center, saved: [a])
@@ -213,10 +220,10 @@ struct RemoteEnvironmentTests {
         let before = tree.snapshot()
         let path = left.remote.copies.top(of: a.id).path
         let workspace = Workspace(name: "Work", tabs: [[path]], modes: [[BrowserViewMode.gallery.rawValue]])
-        let plan = left.services.workspaces.plan(workspace)
+        let plan = await left.services.workspaces.plan(workspace)
         #expect(plan.tabs.first?.first?.waiting == WaitingFolder(path: path, mode: BrowserViewMode.gallery.rawValue, server: a.id))
         #expect(plan.missing.isEmpty)
-        #expect(right.services.workspaces.plan(workspace).missing == [path])
+        #expect(await right.services.workspaces.plan(workspace).missing == [path])
         #expect(left.services.workspaces.help(workspace) == "Left")
         #expect(right.services.workspaces.help(workspace) == a.id)
         #expect(left.network.logins.withLock { $0.isEmpty } && right.network.logins.withLock { $0.isEmpty })

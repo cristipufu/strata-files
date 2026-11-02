@@ -20,12 +20,16 @@ final class AppUpdatesController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Whether `url` is the Strata that's running, which its own updater installs.
-    static func isThisCopyOfStrata(_ url: URL) -> Bool {
-        url.resolvingSymlinksInPath().standardizedFileURL == Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL
+    /// Whether `url` is the Strata that's running, which its own updater installs: its links followed, so read away from
+    /// the main thread.
+    nonisolated static func isThisCopyOfStrata(_ url: URL) -> Bool {
+        url.resolvingSymlinksInPath().lexicallyStandardized == Bundle.main.bundleURL.resolvingSymlinksInPath().lexicallyStandardized
     }
+
+    @concurrent static func isRunningCopy(_ url: URL) async -> Bool { isThisCopyOfStrata(url) }
 
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "App Updates", comment: "Title of the sheet that checks the selected apps for updates"))
@@ -33,7 +37,29 @@ final class AppUpdatesController: NSViewController {
         summary.font = .systemFont(ofSize: 12)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
+        let scroll = scrollView(showing: rowList())
+        let footer = footer()
+        let stack = NSStackView(views: [title, summary, scroll, footer])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.setCustomSpacing(12, after: summary)
+        stack.setCustomSpacing(16, after: scroll)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [scroll, footer], themed: false)
+        container.addSubview(escapeButton())
+        let separators = CGFloat(max(0, urls.count - 1))
+        let height = min(CGFloat(urls.count) * Self.rowHeight + separators, 6.5 * Self.rowHeight)
+        NSLayoutConstraint.activate(constraints + [
+            container.widthAnchor.constraint(equalToConstant: 520),
+            scroll.heightAnchor.constraint(equalToConstant: height),
+            summary.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -40),
+        ])
+        view = container
+        updateSummary()
+    }
 
+    /// A row per app, with a line between rows.
+    private func rowList() -> NSStackView {
         let list = NSStackView()
         list.orientation = .vertical
         list.alignment = .leading
@@ -52,6 +78,10 @@ final class AppUpdatesController: NSViewController {
             row.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
             row.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
         }
+        return list
+    }
+
+    private func scrollView(showing list: NSStackView) -> NSScrollView {
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(list)
@@ -61,10 +91,26 @@ final class AppUpdatesController: NSViewController {
         scroll.autohidesScrollers = true
         scroll.documentView = document
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            list.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            list.topAnchor.constraint(equalTo: document.topAnchor),
+            list.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+        ])
+        return scroll
+    }
 
+    private func footer() -> NSStackView {
         let done = NSButton(title: String(localized: "Done"), target: self, action: #selector(close(_:)))
         done.keyEquivalent = "\r"
-        // Escape closes the sheet too. A hidden button gets no key equivalents, so this one is there but invisible.
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        return NSStackView(views: [spacer, done])
+    }
+
+    /// Escape closes the sheet too. A hidden button gets no key equivalents, so this one is there but invisible.
+    private func escapeButton() -> NSButton {
         let escape = NSButton(frame: .zero)
         escape.isTransparent = true
         escape.refusesFirstResponder = true
@@ -72,41 +118,7 @@ final class AppUpdatesController: NSViewController {
         escape.target = self
         escape.action = #selector(close(_:))
         escape.keyEquivalent = "\u{1b}"
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let footer = NSStackView(views: [spacer, done])
-
-        let stack = NSStackView(views: [title, summary, scroll, footer])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-        stack.setCustomSpacing(12, after: summary)
-        stack.setCustomSpacing(16, after: scroll)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(stack)
-        container.addSubview(escape)
-        let separators = CGFloat(max(0, urls.count - 1))
-        let height = min(CGFloat(urls.count) * Self.rowHeight + separators, 6.5 * Self.rowHeight)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 520),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            scroll.heightAnchor.constraint(equalToConstant: height),
-            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            summary.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -40),
-            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            list.leadingAnchor.constraint(equalTo: document.leadingAnchor),
-            list.trailingAnchor.constraint(equalTo: document.trailingAnchor),
-            list.topAnchor.constraint(equalTo: document.topAnchor),
-            list.bottomAnchor.constraint(equalTo: document.bottomAnchor),
-        ])
-        view = container
-        updateSummary()
+        return escape
     }
 
     /// Starts once, the first time the sheet shows (hiding the window and showing it again doesn't restart or stop it).
@@ -148,7 +160,7 @@ final class AppUpdatesController: NSViewController {
     private func show(_ result: AppUpdateResult, at index: Int) {
         results[index] = result
         guard let app = apps[index] else { return }
-        rows[index].show(result, of: app, isThisStrata: Self.isThisCopyOfStrata(app.url) && Updates.shared.canCheck) { [weak self] in
+        rows[index].show(result, of: app, isThisStrata: app.isThisStrata && Updates.shared.canCheck) { [weak self] in
             // Strata's own updater takes over from here.
             self?.close(nil)
             Updates.shared.checkNow(nil)
@@ -193,7 +205,12 @@ final class AppUpdatesController: NSViewController {
 /// One app: icon, name, what the check found, and a button for what to do about it.
 private final class AppUpdateRow: NSView {
     private let url: URL
-    private let name: String
+    /// As it's stored until the app's been read.
+    private var name: String
+    private let icon = NSImageView(image: NSWorkspace.shared.icon(for: .application))
+    private let nameLabel = NSTextField(labelWithString: "")
+    /// Reading the app's icon as it is now.
+    private(set) var reading: Task<Void, Never>?
     private let version = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let symbol = NSImageView()
@@ -205,12 +222,28 @@ private final class AppUpdateRow: NSView {
 
     init(_ url: URL) {
         self.url = url
-        name = FileManager.default.displayName(atPath: url.path)
+        name = url.deletingPathExtension().lastPathComponent
         super.init(frame: .zero)
-        let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: url.path))
+        styleLabels()
+        styleButtons()
+        layOut()
+        spinner.startAnimation(nil)
+        symbol.isHidden = true
+        status.stringValue = String(localized: "Checking…", comment: "App Updates: one app is being checked")
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        updateAccessibility()
+        reading = Task { [weak self, url] in
+            let image = await IconCache.shared.currentIcon(forPath: url.path)
+            guard let self, let image else { return }
+            icon.image = image
+        }
+    }
+
+    private func styleLabels() {
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.setAccessibilityElement(false)
-        let nameLabel = NSTextField(labelWithString: name)
+        nameLabel.stringValue = name
         nameLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -228,6 +261,9 @@ private final class AppUpdateRow: NSView {
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
+    }
+
+    private func styleButtons() {
         for button in [action, notes] {
             button.bezelStyle = .push
             button.controlSize = .small
@@ -239,7 +275,10 @@ private final class AppUpdateRow: NSView {
         action.action = #selector(performAction)
         notes.target = self
         notes.action = #selector(openNotes)
+    }
 
+    /// The icon, the name over what the check found, and the buttons at the end.
+    private func layOut() {
         let nameLine = NSStackView(views: [nameLabel, version])
         nameLine.spacing = 6
         nameLine.alignment = .firstBaseline
@@ -268,17 +307,17 @@ private final class AppUpdateRow: NSView {
             buttons.centerYAnchor.constraint(equalTo: centerYAnchor),
             symbol.widthAnchor.constraint(equalToConstant: 14),
         ])
-        spinner.startAnimation(nil)
-        symbol.isHidden = true
-        status.stringValue = String(localized: "Checking…", comment: "App Updates: one app is being checked")
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        updateAccessibility()
     }
 
+    isolated deinit { reading?.cancel() }
+
+
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func showDetails(_ app: InstalledApp) {
+        name = app.name
+        nameLabel.stringValue = app.name
         version.stringValue = app.version ?? ""
         version.toolTip = app.build.map { String(localized: "Build \($0)", comment: "Tooltip: an app's build number") }
     }

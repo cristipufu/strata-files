@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct DirectoryEntryNameTests {
     /// Allocate only the packed record, never a full imported dirent with its 1,024-byte name tuple.
@@ -44,11 +51,12 @@ struct DirectoryEntryNameTests {
         let folder = tree.url("chosen"), fd = try ChosenFile.openDirectory(folder.path)
         defer { close(fd) }
         let expected = (names + ["link"]).sorted()
-        #expect(Archiver.entries(fd).sorted() == expected)
-        #expect(CopyWriter.names(in: fd).sorted() == expected)
+        #expect(DirectoryEntryName.names(inFolder: fd).sorted() == expected)
         switch kind {
         case "archive": Archiver.removeTree(folder)
-        case "trash": #expect(Trash.empty([folder]).isEmpty)
+        case "trash":
+            let emptied = Trash.empty([folder])
+            #expect(emptied.failures.isEmpty && emptied.removed == expected.count)
         default:
             let parent = try ChosenFile.openDirectory(tree.root.path)
             defer { close(parent) }

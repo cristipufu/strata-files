@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct GridLayoutSafetyTests {
     @Test func anUnboundedLayoutRequestIncludesEveryItem() {
@@ -31,7 +38,7 @@ struct GridLayoutSafetyTests {
 
     @Test func invalidIconSizesHaveFiniteMetrics() {
         for size: CGFloat in [CGFloat.nan, CGFloat.infinity, -CGFloat.infinity] {
-            let metrics = GridMetrics(iconSize: size)
+            let metrics = GridMetrics(iconSize: size, typography: .standard)
             #expect(metrics.iconSize.isFinite)
             #expect(metrics.minCellWidth.isFinite)
             #expect(metrics.itemHeight.isFinite)

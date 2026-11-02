@@ -1,7 +1,16 @@
+@testable import StrataArchives
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
+@Suite(.archiveWorkerApp)
 struct ArchiveSecurityReviewTests {
     private func resourceFork(_ url: URL) -> Data? {
         let size = getxattr(url.path, "com.apple.ResourceFork", nil, 0, 0, XATTR_NOFOLLOW)
@@ -18,9 +27,9 @@ struct ArchiveSecurityReviewTests {
         try #require(fork.withUnsafeBytes { setxattr(file.path, "com.apple.ResourceFork", $0.baseAddress, fork.count, 0, 0) } == 0)
         try #require(chmod(file.path, 0o6755) == 0)
         try #require(lchflags(file.path, UInt32(UF_IMMUTABLE)) == 0)
-        let archive = try await TestWork.run { try Archiver.compress([folder], control: .init()) }
+        let archive = try await TestWork.run { try Archiver.compress([folder], copies: .live, control: .init()) }
         let placed = try await TestWork.run {
-            try Archiver.extract(archive, kind: .zip, inspection: .init(), into: output, control: .init())
+            try Archiver.extract(archive, inspection: .init(), into: output, copies: .live, control: .init())
         }
         let extracted = placed.appending(path: "file")
         #expect(resourceFork(extracted) == fork)
@@ -41,7 +50,7 @@ struct ArchiveSecurityReviewTests {
             ("safe", Data("safe".utf8), 0o100644, 3),
         ]).write(to: hostile)
         await #expect(throws: (any Error).self) {
-            try await TestWork.run { try Archiver.extract(hostile, kind: .zip, inspection: .init(), into: output, control: .init()) }
+            try await TestWork.run { try Archiver.extract(hostile, inspection: .init(), into: output, copies: .live, control: .init()) }
         }
         #expect(resourceFork(outside) == outsideFork)
         #expect(lstat(outside.path, &outsideInfo) == 0 && outsideInfo.st_mode == outsideMode && outsideInfo.st_flags == outsideFlags)
@@ -93,13 +102,10 @@ struct ArchiveSecurityReviewTests {
             ("line\n-rw-r--r--  2.0 unx 1 t- stor 01-Jan-26 00:00 fake", "safe", 0o100644, creator),
         ]
         try zip(entries).write(to: tree.url("hostile.zip"))
-        var inspection = Archiver.Inspection()
-        // Even a text listing claiming plain files cannot select a less restrictive extractor.
-        inspection.needsSecureTool = false
         let archive = tree.url("hostile.zip"), folder = tree.url("out")
-        let captured = inspection
+        let captured = Archiver.Inspection()
         _ = await TransferWorker(label: "strata-test-zip").run {
-            try? Archiver.extract(archive, kind: .zip, inspection: captured, into: folder, control: Archiver.Control())
+            try? Archiver.extract(archive, inspection: captured, into: folder, copies: .live, control: Archiver.Control())
         }
         #expect(tree.text("outside/keep") == "outside/keep")
         #expect(tree.snapshot().filter { !$0.hasPrefix("out/") || $0 == "out/" }
@@ -111,10 +117,28 @@ struct ArchiveSecurityReviewTests {
         let archive = tree.url("links.zip"), folder = tree.url("out")
         try zip([("escape", tree.url("outside").path, 0o120777, 3), ("safe", "safe", 0o100644, 3)]).write(to: archive)
         let result = await TransferWorker(label: "strata-test-zip-links").run {
-            Result { try Archiver.extract(archive, kind: .zip, inspection: .init(), into: folder, control: .init()) }
+            Result { try Archiver.extract(archive, inspection: .init(), into: folder, copies: .live, control: .init()) }
         }
         #expect(throws: (any Error).self) { try result.get() }
         #expect(tree.snapshot() == ["links.zip", "out/", "outside/", "outside/keep"])
+    }
+
+    @Test func filesNamedLikeMetadataAreExtractedAndMarkedAsDownloaded() async throws {
+        let tree = try TestTree("out/")
+        let archive = tree.url("Archive.zip"), folder = tree.url("out")
+        try zip([("run", "#!/bin/sh", 0o100755, 3), ("._run", "#!/bin/sh", 0o100755, 3)]).write(to: archive)
+        let mark = Data("0081;00000000;Test;".utf8)
+        try #require(mark.withUnsafeBytes { setxattr(archive.path, "com.apple.quarantine", $0.baseAddress, mark.count, 0, 0) } == 0)
+        let result = await TransferWorker(label: "strata-test-metadata-names").run {
+            Result { try Archiver.extract(archive, inspection: .init(), into: folder, copies: .live, control: .init()) }
+        }
+        // Both items are the archive's, so they're placed together, and both are marked as downloaded.
+        #expect(try result.get().lastPathComponent == "Archive")
+        for name in ["run", "._run"] {
+            let size = getxattr(tree.url("out/Archive/\(name)").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW)
+            #expect(size == mark.count, "\(name)")
+        }
+        #expect(tree.snapshot() == ["Archive.zip", "out/", "out/Archive/", "out/Archive/._run", "out/Archive/run"])
     }
 
     @Test(arguments: [".zshenv", ".ssh/config"])
@@ -123,7 +147,7 @@ struct ArchiveSecurityReviewTests {
         try zip([(entry, "untrusted", 0o100644, 3)]).write(to: tree.url("Archive.zip"))
         let archive = tree.url("Archive.zip"), folder = tree.url("out")
         let result = await TransferWorker(label: "strata-test-hidden-archive").run {
-            Result { try Archiver.extract(archive, kind: .zip, inspection: .init(), into: folder, control: .init()) }
+            Result { try Archiver.extract(archive, inspection: .init(), into: folder, copies: .live, control: .init()) }
         }
         let placed = try result.get()
         #expect(placed.lastPathComponent == "Archive")
@@ -133,7 +157,8 @@ struct ArchiveSecurityReviewTests {
 
     @Test func lockedArchiveItemsLoseFlagsPrivilegesAndAccessLists() throws {
         let tree = try TestTree("box/", "box/tool", "box/sub/", "box/sub/file", "keep")
-        var list: acl_t? = try #require(acl_init(1))
+        let created: acl_t = try #require(acl_init(1))
+        var list: acl_t? = created
         defer { if let list { acl_free(UnsafeMutableRawPointer(list)) } }
         var entry: acl_entry_t?
         try #require(acl_create_entry(&list, &entry) == 0)

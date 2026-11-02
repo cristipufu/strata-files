@@ -3,7 +3,15 @@ import Security
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
+@Suite(.archiveWorkerApp)
 struct AsyncActionContextTests {
     nonisolated private final class DummyBackend: RemoteBackend {
         var isAlive: Bool { true }
@@ -95,8 +103,6 @@ struct AsyncActionContextTests {
     }
 
     private final class Environment {
-        let domain = "StrataAsyncActionContext.\(UUID().uuidString)"
-        let defaults: UserDefaults
         let preferences: Prefs
         let storage: SecureStorage.Context
         let transfers: TransferQueue
@@ -109,8 +115,7 @@ struct AsyncActionContextTests {
         init(_ tree: TestTree, folder: String = "env", providers: [any CopyProvider] = [],
              browsing: RemoteBrowsing? = nil, engine: ContainerEngine? = nil,
              containers: [ContainerInfo] = []) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+            preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
             storage = SecureStorage.Context(
                 directory: tree.url(folder + "/state"),
@@ -130,6 +135,7 @@ struct AsyncActionContextTests {
                 preferences: preferences,
                 credentials: keychain,
                 copyRoot: tree.url(folder + "/servers"),
+                connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
                 notifications: NotificationCenter()
             )
             if providers.isEmpty {
@@ -146,21 +152,17 @@ struct AsyncActionContextTests {
                     clipboardRoot: tree.url(folder + "/clipboard")
                 )
             }
-            transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies)
-            let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName())
+            transfers = TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies)
+            let clipboard = Clipboard(pasteboard: NSPasteboard.withUniqueName(), notifications: NotificationCenter())
             services = BrowserServices.configured(
                 transfers: transfers,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
                 containers: containerFiles,
                 containerStore: containerStore,
                 clipboard: clipboard,
                 remoteBrowsing: browsing)
-        }
-
-        isolated deinit {
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 
@@ -246,22 +248,25 @@ struct AsyncActionContextTests {
         #expect(tree.snapshot() == before)
     }
 
-    @Test func archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges() async throws {
+    @Test(.timeLimit(.minutes(3)))
+    func archiveBrowsingOpensInItsOriginatingPaneAndStopsWhenNavigationContextChanges() async throws {
         _ = NSApplication.shared
         let tree = try TestTree("left/", "right/", "other/", "sub/")
         let cachedArchive = tree.url("left/cached.tar")
         let freshArchive = tree.url("left/fresh.tar")
         let movedAwayArchive = tree.url("left/moved.tar")
         let columnArchive = tree.url("left/column.tar")
-        for archive in [cachedArchive, freshArchive, movedAwayArchive, columnArchive] {
+        let droppedArchive = tree.url("left/dropped.tar")
+        for archive in [cachedArchive, freshArchive, movedAwayArchive, columnArchive, droppedArchive] {
             try Self.writeTarArchive(to: archive)
         }
         let cachedCopy = try #require(ArchiveCache.folder(for: cachedArchive))
         let freshCopy = try #require(ArchiveCache.folder(for: freshArchive))
         let movedCopy = try #require(ArchiveCache.folder(for: movedAwayArchive))
         let columnCopy = try #require(ArchiveCache.folder(for: columnArchive))
+        let droppedCopy = try #require(ArchiveCache.folder(for: droppedArchive))
         defer {
-            for copy in [cachedCopy, freshCopy, movedCopy, columnCopy] {
+            for copy in [cachedCopy, freshCopy, movedCopy, columnCopy, droppedCopy] {
                 ArchiveCache.remove(copy.deletingLastPathComponent())
             }
         }
@@ -281,6 +286,8 @@ struct AsyncActionContextTests {
         window.focusOtherPane(nil)
         #expect(window.pane === rightPane)
         leftPane.browser.browseArchive(cachedArchive)
+        // Where its copy is is looked up away from the main thread first.
+        await leftPane.browser.fetches.action?.value
         #expect(leftPane.location == cachedCopy.standardizedFileURL)
         #expect(rightPane.location == tree.url("right").standardizedFileURL)
         #expect(window.pane === rightPane)
@@ -295,12 +302,21 @@ struct AsyncActionContextTests {
         #expect(rightPane.location == tree.url("right").standardizedFileURL)
         #expect(window.pane === rightPane)
 
+        // Once made, the copy opens again as it is: nothing is unpacked twice.
+        window.go(.folder(tree.url("left")), in: leftPane)
+        await leftPane.browser.directoryReads.task?.value
+        leftPane.browser.browseArchive(freshArchive)
+        await leftPane.browser.fetches.action?.value
+        #expect(leftPane.location == freshCopy.standardizedFileURL)
+        #expect(!env.transfers.jobs.contains { $0 !== freshJob && ($0 as? ArchiveJob)?.sources == [freshArchive] })
+
         // 3. Navigating away and returning to the same folder before extraction finishes suppresses opening the archive copy.
         window.focusOtherPane(nil)
         #expect(window.pane === leftPane)
         window.go(.folder(tree.url("left")), in: leftPane)
         await leftPane.browser.directoryReads.task?.value
         leftPane.browser.browseArchive(movedAwayArchive)
+        await leftPane.browser.fetches.action?.value
         window.navigate(to: tree.url("other"))
         window.navigate(to: tree.url("left"))
         let movedJob = try await waitForArchiveJob(for: movedAwayArchive, in: env.transfers)
@@ -309,15 +325,25 @@ struct AsyncActionContextTests {
 
         // 4. Moving to a deeper column in the same pane invalidates the pending archive browse.
         leftPane.browser.browseArchive(columnArchive)
+        await leftPane.browser.fetches.action?.value
         window.browser(leftPane.browser, columnLocationChanged: tree.url("sub"))
         let columnJob = try await waitForArchiveJob(for: columnArchive, in: env.transfers)
         await columnJob.finished()
         #expect(leftPane.location == tree.url("left").standardizedFileURL)
+
+        // 5. Going elsewhere while the archive is still being looked up drops it: nothing is unpacked.
+        leftPane.browser.browseArchive(droppedArchive)
+        let lookup = try #require(leftPane.browser.fetches.action)
+        window.navigate(to: tree.url("other"))
+        #expect(lookup.isCancelled)
+        await lookup.value
+        #expect(!env.transfers.jobs.contains { ($0 as? ArchiveJob)?.sources == [droppedArchive] })
+        #expect(!FileManager.default.fileExists(atPath: droppedCopy.deletingLastPathComponent().path))
     }
 
     @Test func deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges() async throws {
         _ = NSApplication.shared
-        let tree = try TestTree("provider/a.txt", "provider/b.txt", "provider/pack.tar", "other/")
+        let tree = try TestTree("provider/a.txt", "provider/b.txt", "provider/big.bin", "provider/pack.tar", "other/")
         try Self.writeTarArchive(to: tree.url("provider/pack.tar"))
         let itemA = tree.url("provider/a.txt")
         let itemB = tree.url("provider/b.txt")
@@ -337,7 +363,7 @@ struct AsyncActionContextTests {
         let entryA = try #require(FileEntry(url: itemA))
         var openedFiles: [URL] = []
         browser1.open([entryA]) { openedFiles.append($0) }
-        let fetchTask1 = try #require(browser1.actionFetch)
+        let fetchTask1 = try #require(browser1.fetches.action)
         await gate1.started(1)
         browser1.load(tree.url("other"))
         browser1.load(tree.url("provider"))
@@ -345,6 +371,22 @@ struct AsyncActionContextTests {
         await gate1.finish()
         await fetchTask1.value
         #expect(openedFiles.isEmpty)
+
+        // A big fetch goes on in Transfers once the pane has gone elsewhere, but nothing opens.
+        let big = tree.url("provider/big.bin")
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: UInt64(8 << 20) + 1)
+        try handle.close()
+        _ = state1.placeholders.withLock { $0.insert(big.standardizedFileURL.path) }
+        browser1.open([try #require(FileEntry(url: big))]) { openedFiles.append($0) }
+        await browser1.fetches.action?.value
+        let bigFetch = try #require(env1.transfers.jobs.compactMap { $0 as? CopyFetchJob }.first)
+        await gate1.started(2)
+        browser1.load(tree.url("other"))
+        browser1.load(tree.url("provider"))
+        await gate1.finish()
+        await bigFetch.finished()
+        #expect(bigFetch.state == .finished && openedFiles.isEmpty)
 
         // 2. `open(_:withApplicationAt:opener:)` and `openArchiveAsFolder` suppress completion when entering results or messages.
         let gate2 = Gate()
@@ -357,7 +399,7 @@ struct AsyncActionContextTests {
         var openedWithApp: [([URL], URL)] = []
         let appURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
         browser2.open([itemA], withApplicationAt: appURL) { urls, app in openedWithApp.append((urls, app)) }
-        let fetchTask2 = try #require(browser2.actionFetch)
+        let fetchTask2 = try #require(browser2.fetches.action)
         await gate2.started(1)
         browser2.showMessage(symbol: "magnifyingglass", title: "Searching…")
         #expect(fetchTask2.isCancelled)
@@ -371,7 +413,7 @@ struct AsyncActionContextTests {
         await browser2.directoryReads.task?.value
         browser2.select([pack])
         browser2.openArchiveAsFolder(nil)
-        let archiveFetchTask = try #require(browser2.actionFetch)
+        let archiveFetchTask = try #require(browser2.fetches.action)
         await gate2.started(2)
         browser2.showResults([entryA], total: 1)
         #expect(archiveFetchTask.isCancelled)
@@ -390,7 +432,7 @@ struct AsyncActionContextTests {
         browser3.select([itemA])
         var quickLookShown = 0
         browser3.openQuickLook { quickLookShown += 1 }
-        let qlTask1 = try #require(browser3.actionFetch)
+        let qlTask1 = try #require(browser3.fetches.action)
         await gate3.started(1)
         browser3.select([itemB])
         await gate3.finish()
@@ -399,13 +441,35 @@ struct AsyncActionContextTests {
 
         // When itemB stays selected and navigation does not change, `openQuickLook` invokes `showPanel`.
         browser3.openQuickLook { quickLookShown += 1 }
-        let qlTask2 = try #require(browser3.actionFetch)
+        let qlTask2 = try #require(browser3.fetches.action)
         await gate3.started(2)
         await gate3.finish()
         await qlTask2.value
         #expect(quickLookShown == 1)
 
         withExtendedLifetime((env1, env2, env3, browser1, browser2, browser3)) {}
+    }
+
+    /// A copy its job didn't finish (it was stopped) is set aside by the job before it says it has finished: only that
+    /// job was making it, and the next open starts afresh.
+    @Test func anArchiveCopyItsJobDidntFinishIsSetAsideByTheJob() async throws {
+        let tree = try TestTree("pack.tar", "pack 2.tar")
+        try Self.writeTarArchive(to: tree.url("pack.tar"))
+        try Self.writeTarArchive(to: tree.url("pack 2.tar"))
+        let env = try Environment(tree)
+        let folder = try #require(ArchiveCache.folder(for: tree.url("pack.tar")))
+        let other = try #require(ArchiveCache.folder(for: tree.url("pack 2.tar")))
+        defer { [folder, other].forEach { ArchiveCache.remove($0.deletingLastPathComponent()) } }
+        for made in [folder, other] { try FileManager.default.createDirectory(at: made, withIntermediateDirectories: true) }
+        let job = ArchiveJob(.browse(tree.url("pack.tar"), at: folder), undo: nil)
+        job.onChange = { job in if job.state == .scanning { job.cancel() } }
+        job.start(on: env.transfers)
+        await job.finished()
+        #expect(job.state == .cancelled)
+        #expect(!FileManager.default.fileExists(atPath: folder.deletingLastPathComponent().path))
+        // Another archive's copy stays.
+        #expect(FileManager.default.fileExists(atPath: other.path))
+        #expect(tree.snapshot().filter { !$0.hasPrefix("env/") } == ["pack 2.tar", "pack.tar"])
     }
 
     @Test func closingAPaneStopsColumnAndGalleryBackgroundWork() async throws {
@@ -466,11 +530,11 @@ struct AsyncActionContextTests {
         #expect(!ReadOnlyCopies.contains(webFolderA, copies: second.copies))
         #expect(ReadOnlyCopies.contains(dbFolderB, copies: second.copies))
         #expect(!ReadOnlyCopies.contains(dbFolderB, copies: first.copies))
-        #expect(StackProjects.existingFolder(of: stackFolderA, copies: first.containerCopies, store: first.containerStore)?.standardizedFileURL.path
+        #expect(StackProjects.workingDirectory(of: stackFolderA, copies: first.containerCopies, store: first.containerStore)?.standardizedFileURL.path
             == tree.url("shared").standardizedFileURL.path)
-        #expect(StackProjects.existingFolder(of: stackFolderA, copies: second.containerCopies, store: second.containerStore) == nil)
-        #expect(Places.displayName(engineFolderA, copies: first.copies) == "Containers")
-        #expect(Places.displayName(engineFolderA, copies: second.copies) != "Containers")
+        #expect(StackProjects.workingDirectory(of: stackFolderA, copies: second.containerCopies, store: second.containerStore) == nil)
+        #expect(Places.displayName(engineFolderA, copies: first.copies, names: first.services.folderNames) == "Containers")
+        #expect(Places.displayName(engineFolderA, copies: second.copies, names: second.services.folderNames) != "Containers")
 
         // `.containerCopyProblem` from first's copy store never shows an error bar in second's window, even at the same folder path.
         let windowA = BrowserWindowController(location: webFolderA, services: first.services)
@@ -506,14 +570,14 @@ struct AsyncActionContextTests {
         let runningContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.running.containerSymbol, .running)
         let stoppedContainerIcon = IconCache.shared.markedIcon(ContainerIconMark.stopped.containerSymbol, .stopped)
         let runningStackIcon = IconCache.shared.markedIcon(ContainerIconMark.running.stackSymbol, .running)
-        let plainFolderIcon = IconCache.shared.icon(forPath: webFolderA.path)
+        let plainFolderIcon = IconCache.shared.icon(forPath: webFolderA.path, folder: true)
 
         #expect(first.services.thumbnails.icon(for: webEntryA) === runningContainerIcon)
         #expect(second.services.thumbnails.icon(for: webEntryA) === plainFolderIcon)
         #expect(first.services.thumbnails.icon(for: stackEntryA) === runningStackIcon)
-        #expect(second.services.thumbnails.icon(for: stackEntryA) === IconCache.shared.icon(forPath: stackFolderA.path))
+        #expect(second.services.thumbnails.icon(for: stackEntryA) === IconCache.shared.icon(forPath: stackFolderA.path, folder: true))
         #expect(second.services.thumbnails.icon(for: dbEntryB) === stoppedContainerIcon)
-        #expect(first.services.thumbnails.icon(for: dbEntryB) === IconCache.shared.icon(forPath: dbFolderB.path))
+        #expect(first.services.thumbnails.icon(for: dbEntryB) === IconCache.shared.icon(forPath: dbFolderB.path, folder: true))
 
         #expect(first.services.itemInfo.immediate(webEntryA, showHidden: false) == String(localized: "Running", comment: "Container state"))
         #expect(second.services.itemInfo.immediate(webEntryA, showHidden: false) == nil)

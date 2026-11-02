@@ -2,12 +2,22 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataSearch
 @testable import StrataIndex
 @testable import StrataModel
 @testable import StrataPreviews
 @testable import StrataSupport
 
 struct EdgeCaseSafetyTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     @Test func extremeSpotlightAndNaturalQueriesNeverOverflowOrTrap() {
         for raw in [
             "width:99999999999999999999999",
@@ -79,7 +89,7 @@ struct EdgeCaseSafetyTests {
                               styleMask: [.titled], backing: .buffered, defer: true)
         weak var weakController: TreemapViewController?
         do {
-            let controller = TreemapViewController()
+            let controller = TreemapViewController(copies: .live)
             weakController = controller
             window.contentView = controller.view
             controller.view.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
@@ -124,7 +134,7 @@ struct EdgeCaseSafetyTests {
     @Test func previewPanelAndPreviewPaneHandleBoundaryInputsSafely() throws {
         let tree = try TestTree("a.txt")
         let entry = try #require(FileEntry(url: tree.url("a.txt")))
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         #expect(browser.previewPanel(nil, previewItemAt: -1) == nil)
         #expect(browser.previewPanel(nil, previewItemAt: 0) == nil)
@@ -133,7 +143,7 @@ struct EdgeCaseSafetyTests {
         #expect((browser.previewPanel(nil, previewItemAt: 0) as? URL) == entry.url)
         #expect(browser.previewPanel(nil, previewItemAt: 1) == nil)
 
-        let pane = ColumnPreviewPane()
+        let pane = ColumnPreviewPane(thumbnails: .shared, itemInfo: .shared)
         pane.frame = NSRect(x: 0, y: 0, width: 10, height: 200)
         pane.show(entry)
         pane.layoutSubtreeIfNeeded()
@@ -233,11 +243,8 @@ struct EdgeCaseSafetyTests {
     }
 
     @Test func emptyPathDecodeGuardsNeverAbortOnEmptyStrings() throws {
-        let suiteName = "strata.edgecase.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set("", forKey: "lastLocation")
-        let prefs = Prefs(defaults: defaults, domainName: suiteName)
+        let prefs = try Prefs.isolated()
+        prefs.defaults.set("", forKey: "lastLocation")
         #expect(prefs.lastLocation == nil)
 
         let ws = Workspace(name: "Empty", tabs: [[""]])
@@ -283,9 +290,9 @@ struct EdgeCaseSafetyTests {
             interpretation: ""
         )
         #expect(chainPlan.steps.count == 2)
-        let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil, files: BrowserFileCommands(transfers: .shared))
+        let sheet = PlanSheetController(urls: [tree.url("a.txt"), tree.url("b.txt")], baseFolder: tree.root, undoManager: nil, files: FileCommands(transfers: .shared))
         _ = sheet.view
-        sheet.phase = .review(chainPlan)
+        #expect(await sheet.review(chainPlan))
         sheet.toggle(chainPlan.steps[0].id, on: false)
         guard case let .review(updatedPlan) = sheet.phase else {
             Issue.record("Expected review phase")
@@ -298,7 +305,7 @@ struct EdgeCaseSafetyTests {
     @Test func inlineRenameFieldCancelDiscardsEditsWithoutCommitting() {
         var committed: String?
         var ended = false
-        let field = InlineRenameField(name: "original.txt", isFolder: false, centered: false)
+        let field = InlineRenameField(name: "original.txt", isFolder: false, centered: false, font: .systemFont(ofSize: 13))
         field.onCommit = { committed = $0 }
         field.onEnd = { ended = true }
         field.stringValue = "half-typed.txt"
@@ -311,23 +318,30 @@ struct EdgeCaseSafetyTests {
         let tree = try TestTree("doc.txt", "replacement.txt")
         let doc = tree.url("doc.txt")
         let replacement = tree.url("replacement.txt")
-        let store = TagStore()
+        let store = TagStore(preferences: try Prefs.isolated(), copies: .live)
         defer { store.forget("Strata Edge Test") }
+        // Tags are read in the background: what's there once that read is done.
+        func current(_ url: URL) async -> [String] {
+            _ = store.tags(for: url)
+            await store.settled()
+            return store.tags(for: url).map(\.name)
+        }
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        try store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
+        try await store.update([doc], adding: ["Strata Edge Test"], removing: [], undo: undo)
         undo.endUndoGrouping()
-        #expect(store.tags(for: doc).map(\.name) == ["Strata Edge Test"])
+        #expect(await current(doc) == ["Strata Edge Test"])
 
         try FileManager.default.removeItem(at: doc)
         try FileManager.default.moveItem(at: replacement, to: doc)
         store.invalidate(tree.root)
-        #expect(store.tags(for: doc).isEmpty)
+        #expect(await current(doc).isEmpty)
 
         undo.undo()
+        await FileOps.undoWork?.value
         store.invalidate(tree.root)
-        #expect(store.tags(for: doc).isEmpty)
+        #expect(await current(doc).isEmpty)
         #expect(tree.snapshot() == ["doc.txt"])
     }
 

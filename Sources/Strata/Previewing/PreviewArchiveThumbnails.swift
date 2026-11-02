@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// Virtual pages are decoded in memory; contact sheets never create export leases or ask for passwords.
@@ -8,13 +9,13 @@ import AppKit
         let path: [String]
         let pixels: Int
         let key: String
-        let source: PreviewArchiveSource
+        let source: ArchiveSource
         let finished: (() -> Void)?
         let completion: (NSImage) -> Void
     }
     private let cache = ThumbnailCache(costLimit: 32 << 20, countLimit: 128)
     private let access: PreviewArchiveAccess
-    private var source: PreviewArchiveSource?
+    private var source: ArchiveSource?
     private var waiting: [Request] = []
     private var active: [UUID: Task<Void, Never>] = [:]
     private var current: [ObjectIdentifier: UUID] = [:]
@@ -76,6 +77,6 @@ import AppKit
     }
     @concurrent private static func decode(_ data: Data, pixels: Int) async throws -> CGImage {
         try Task.checkCancellation()
-        return try BookFormat.thumbnail(data, pixels: pixels)
+        return try PreviewPicture(data).thumbnail(pixels: pixels)
     }
 }

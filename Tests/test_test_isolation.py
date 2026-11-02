@@ -1,0 +1,66 @@
+from pathlib import Path
+import re
+import unittest
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from swift_source import code_only
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SWIFT_TESTS = ROOT / "Tests" / "StrataTests"
+HELPER = SWIFT_TESTS / "Support" / "IsolatedPreferences.swift"
+
+
+class TestIsolationTests(unittest.TestCase):
+    """Swift tests make settings suites only through Prefs.isolated(), which removes each suite and its file."""
+
+    def sources(self):
+        return [(path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8"))
+                for path in sorted(SWIFT_TESTS.rglob("*.swift")) if path != HELPER]
+
+    def test_no_test_cleans_up_a_suite_by_hand(self):
+        offenders = [name for name, text in self.sources() if "removePersistentDomain" in text]
+        self.assertEqual(offenders, [], "Use Prefs.isolated(): emptying a suite by hand leaves its file behind.")
+
+    def test_only_existing_suites_are_reopened_by_name(self):
+        # Reopening an isolated suite to check persistence names it by its `domainName`.
+        new_suite = re.compile(r"UserDefaults(?:\.init)?\(suiteName: (?![\w.]+\.domainName\))")
+        offenders = [name for name, text in self.sources() if new_suite.search(text)]
+        self.assertEqual(offenders, [], "Use Prefs.isolated() for a new suite.")
+
+    def test_native_fixtures_never_borrow_application_services_or_clipboard(self):
+        shared = re.compile(r"\b(?:services|clipboard):\s*\.shared\b|\bBrowserServices\.shared\b|\bClipboard\.shared\b"
+                            r"|\bclipboard:\s*Clipboard\??\s*=\s*\.shared\b")
+        offenders = [name for name, text in self.sources() if shared.search(code_only(text))]
+        self.assertEqual(offenders, [], "Use IndependentEnvironment for native browser fixtures.")
+
+    def test_custom_browser_compositions_keep_independent_dependencies(self):
+        offenders = []
+        for name, source in self.sources():
+            code = code_only(source)
+            for match in re.finditer(r"\bBrowserServices\.configured\(", code):
+                depth, end = 1, match.end()
+                while end < len(code) and depth:
+                    depth += (code[end] == "(") - (code[end] == ")")
+                    end += 1
+                if re.search(r"\b\w+:\s*\.(?:shared|live)\b", code[match.end():end]):
+                    offenders.append(name)
+        self.assertEqual(offenders, [], "Compose fixtures from IndependentEnvironment or explicit isolated dependencies.")
+
+
+class SoundTests(unittest.TestCase):
+    """Strata plays sounds only through Sounds, which stays silent until the app turns it on, so tests play none."""
+
+    PLAYING = re.compile(r"\bNSSound\b|\bNSBeep\b|\bAudioServicesPlay\w*")
+
+    def test_sounds_play_only_through_sounds(self):
+        allowed = ROOT / "Sources" / "Strata" / "Support" / "Sounds.swift"
+        swift = sorted((ROOT / "Sources").rglob("*.swift")) + sorted(SWIFT_TESTS.rglob("*.swift"))
+        offenders = [path.relative_to(ROOT).as_posix() for path in swift
+                     if path != allowed and self.PLAYING.search(path.read_text(encoding="utf-8"))]
+        self.assertEqual(offenders, [], "Play sounds through Sounds, which keeps tests silent.")
+
+
+if __name__ == "__main__":
+    unittest.main()

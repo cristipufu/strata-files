@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// One row in the list. Children load the first time a folder is expanded.
 final class FileNode {
@@ -31,14 +32,17 @@ final class BrowserListing {
     private(set) var nodes: [FileNode] = []
     private(set) var rows: [FileNode] = []
     private(set) var filter = ""
+    /// Counts changes to `nodes`: matches worked out for older ones don't fit them.
+    private var generation = 0
     /// Folder URLs may have a trailing slash; commands and restored selections may omit it.
     private var nodesByPath: [String: FileNode] = [:]
 
-    static func key(_ url: URL) -> String { url.standardizedFileURL.path }
+    static func key(_ url: URL) -> String { PathSpelling.short(url) }
 
     func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
 
     func clear() {
+        generation += 1
         nodes = []
         rows = []
         nodesByPath = [:]
@@ -54,6 +58,7 @@ final class BrowserListing {
             return FileNode(entry: entry)
         }
         sort(&replacement)
+        generation += 1
         nodes = replacement
         rebuildIndex()
         applyFilter()
@@ -74,6 +79,7 @@ final class BrowserListing {
     }
 
     func replaceGroups(_ groups: [ResultGroup]) {
+        generation += 1
         nodes = groups.compactMap { group in
             guard let first = group.entries.first else { return nil }
             let header = FileNode(entry: first)
@@ -105,6 +111,7 @@ final class BrowserListing {
             if entry != node.entry { changed.append((node, entry)) }
         }
         if !changed.isEmpty, sorted { return nil }
+        if !changed.isEmpty { generation += 1 }
         for (node, entry) in changed { node.entry = entry }
         return changed.map { $0.0 }
     }
@@ -122,8 +129,60 @@ final class BrowserListing {
 
     /// Applies an order already calculated for native row-move animation. The nodes themselves are unchanged.
     func reorderRoots(_ sorted: [FileNode]) {
+        generation += 1
         nodes = sorted
         applyFilter()
+    }
+
+    /// What `text` matches, best first, worked out away from the main thread (a folder of a hundred thousand items
+    /// takes a while per keystroke); nil once cancelled. `show` it while the nodes are still the ones it was for.
+    func matches(for text: String) async -> Matches? {
+        let entries = nodes.map(\.entry), generation = generation
+        return await Self.matches(text, in: entries).map { Matches(text: text, generation: generation, order: $0) }
+    }
+
+    /// Shows `matches` as the rows; false when the nodes have changed since they were worked out.
+    func show(_ matches: Matches) -> Bool {
+        guard matches.generation == generation else { return false }
+        filter = matches.text
+        show(matches.order)
+        return true
+    }
+
+    nonisolated struct Matches: Sendable {
+        let text: String
+        fileprivate let generation: Int
+        fileprivate let order: [(index: Int, indices: [Int])]
+    }
+
+    @concurrent
+    private static func matches(_ text: String, in entries: [FileEntry]) async -> [(index: Int, indices: [Int])]? {
+        rank(text, entries, isCancelled: { Task.isCancelled })
+    }
+
+    /// Indices of the entries `text` matches, best first, with the matched letters; nil when `isCancelled`.
+    nonisolated private static func rank(_ text: String, _ entries: [FileEntry],
+                                         isCancelled: () -> Bool) -> [(index: Int, indices: [Int])]? {
+        var scored: [(index: Int, score: Int, indices: [Int])] = []
+        for (index, entry) in entries.enumerated() {
+            if index % 1024 == 0, isCancelled() { return nil }
+            if let match = entry.nameMatch(text) { scored.append((index, match.score, match.indices)) }
+        }
+        scored.sort {
+            guard $0.score == $1.score else { return $0.score > $1.score }
+            return entries[$0.index].displayName.localizedStandardCompare(entries[$1.index].displayName) == .orderedAscending
+        }
+        return scored.map { ($0.index, $0.indices) }
+    }
+
+    private func show(_ order: [(index: Int, indices: [Int])]) {
+        for node in nodes { node.matchIndices = [] }
+        rows = order.compactMap { match in
+            guard nodes.indices.contains(match.index) else { return nil }
+            let node = nodes[match.index]
+            node.matchIndices = match.indices
+            return node
+        }
     }
 
     private func rebuildIndex() {
@@ -141,18 +200,6 @@ final class BrowserListing {
             rows = nodes
             return
         }
-        var scored: [(node: FileNode, score: Int)] = []
-        for node in nodes {
-            if let match = node.entry.nameMatch(filter) {
-                node.matchIndices = match.indices
-                scored.append((node, match.score))
-            } else {
-                node.matchIndices = []
-            }
-        }
-        rows = scored.sorted {
-            $0.score != $1.score ? $0.score > $1.score
-                : $0.node.entry.displayName.localizedStandardCompare($1.node.entry.displayName) == .orderedAscending
-        }.map(\.node)
+        show(Self.rank(filter, nodes.map(\.entry), isCancelled: { false }) ?? [])
     }
 }

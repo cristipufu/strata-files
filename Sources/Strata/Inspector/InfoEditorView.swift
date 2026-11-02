@@ -20,10 +20,10 @@ import AppKit
     let permissionsContent = NSStackView()
     /// Whether the item has an app to open it with (folders and packages open as themselves).
     private(set) var hasOpenWith = false
-    /// What the permission rows were filled from (see `loadPermissions`).
+    /// What the permission rows were filled from (see `showPermissions`).
     private var permissionsShown: [String]?
 
-    private let comments = NSTextField()
+    let comments = NSTextField()
     private let openWith = NSPopUpButton()
     private let changeAll = NSButton(title: String(localized: "Change All…", comment: "Inspector button: open every document of this kind with the chosen app"),
                                      target: nil, action: nil)
@@ -35,7 +35,20 @@ import AppKit
     private let commentsMessage = InfoEditor.messageLabel()
     private let openWithMessage = InfoEditor.messageLabel()
     private let permissionsMessage = InfoEditor.messageLabel()
-    private var apps: [URL] = []
+    private var apps: [OpenWithApp] = []
+    /// The app the item opens with now, and its type's name, as last read.
+    private var currentApp: URL?
+    private var typeName: String?
+    private(set) var factsTask: Task<Void, Never>?
+    /// The item whose settings the cards show: until the item on show's arrive, no change may be made, since it
+    /// would be made from what another item has.
+    private var loadedURL: URL?
+    private var isLoaded: Bool { loadedURL != nil && loadedURL == url }
+    /// The item whose settings are shown, held open as it was read: access changes go to it, never to one put in its
+    /// place since.
+    private var shownItem: Result<ChosenFile, any Error>?
+    private let readFacts: (URL, Bool) async -> Facts
+    private var appsTask: Task<Void, Never>?
     /// Whether `apps` lists every app that can open the item (read when the menu opens: it's slow to work out on every
     /// selection change).
     private var appsComplete = false
@@ -45,10 +58,45 @@ import AppKit
     isolated deinit {
         pendingCommentSave?.cancel()
         savedNoteHide?.cancel()
+        factsTask?.cancel()
+        appsTask?.cancel()
     }
 
-    override init() {
+    /// What the cards show for an item, read away from the main thread: moving through a folder on a slow disk or a
+    /// server mustn't wait on each item's metadata, nor on LaunchServices.
+    nonisolated struct Facts: Sendable {
+        let choice: Result<ChosenFile, any Error>
+        let comment: String
+        let isLocked: Bool
+        let names: (owner: String, group: String, ownedByYou: Bool)?
+        let mode: mode_t?
+        let app: OpenWithApp?
+        let typeName: String?
+
+        @concurrent static func read(_ url: URL, opensWithApps: Bool) async -> Facts {
+            let path = url.path
+            let choice = Result { try ChosenFile(url) }
+            let info = InfoEditor.status(of: choice, at: path)
+            return Facts(choice: choice, comment: FileInfoEditing.comment(at: path),
+                         isLocked: info.map(FileInfoEditing.isLocked) ?? false,
+                         names: info.map(FileInfoEditing.names(of:)),
+                         mode: info?.st_mode,
+                         app: opensWithApps ? NSWorkspace.shared.urlForApplication(toOpen: url).map(OpenWithApp.init) : nil,
+                         typeName: opensWithApps ? InfoEditor.typeName(of: url) : nil)
+        }
+    }
+
+    init(readFacts: @escaping (URL, Bool) async -> Facts) {
+        self.readFacts = readFacts
         super.init()
+        setUpComments()
+        setUpOpenWith()
+        setUpPermissions()
+        layOutContents()
+    }
+
+    /// Spotlight comments: a few wrapping lines.
+    private func setUpComments() {
         comments.placeholderString = String(localized: "Add Comments", comment: "Placeholder of the Inspector’s Spotlight comments field")
         comments.font = .systemFont(ofSize: 12)
         comments.bezelStyle = .roundedBezel
@@ -60,7 +108,10 @@ import AppKit
         comments.delegate = self
         comments.setAccessibilityLabel(String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"))
         ThemeStyle.bind(comments, to: .preview)
+    }
 
+    /// The app that opens the item, and Change All for every document like it.
+    private func setUpOpenWith() {
         openWith.target = self
         openWith.action = #selector(openWithChanged(_:))
         openWith.setAccessibilityLabel(String(localized: "Open With"))
@@ -74,7 +125,10 @@ import AppKit
         openWithNote.font = .systemFont(ofSize: 11)
         openWithNote.textColor = InspectorColors.secondary
         openWithNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
 
+    /// Locked, and a menu of access for each of owner, group and everyone.
+    private func setUpPermissions() {
         locked.controlSize = .mini
         locked.target = self
         locked.action = #selector(lockedChanged(_:))
@@ -90,7 +144,9 @@ import AppKit
             menu.tag = who.rawValue
             accessMenus[who] = menu
         }
+    }
 
+    private func layOutContents() {
         for stack in [commentsContent, openWithContent, permissionsContent] {
             stack.orientation = .vertical
             stack.alignment = .leading
@@ -138,16 +194,56 @@ import AppKit
         }
         url = entry.url
         isFolder = entry.isDirectory
-        if !same { [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true } }
-        let path = entry.url.path
-        if !same || comments.currentEditor() == nil {
-            shownCommentChoice = Result { try ChosenFile(entry.url) }
-            comments.stringValue = FileInfoEditing.comment(at: path)
+        // Folders open in Strata; apps and other packages open as themselves.
+        hasOpenWith = !entry.isDirectory
+        if !same {
+            [commentsMessage, openWithMessage, permissionsMessage].forEach { $0.isHidden = true }
+            // Until the new item's settings arrive, nothing here may be changed: it would change the old one.
+            loadedURL = nil
+            shownItem = nil
+            shownCommentChoice = nil
+            comments.stringValue = ""
+            showPermissions(nil, nil)
+            apps = []
+            currentApp = nil
+            typeName = nil
+            appsTask?.cancel()
+            appsTask = nil
+            setEnabled(false)
         }
-        locked.state = FileInfoEditing.isLocked(at: path) ? .on : .off
-        loadApps(entry, same: same)
-        loadPermissions(path, onlyIfChanged: true)
-        updateEnabled(path)
+        readSettings(of: entry.url, same: same)
+    }
+
+    private func readSettings(of url: URL, same: Bool) {
+        factsTask?.cancel()
+        let opensWithApps = hasOpenWith, readFacts = readFacts
+        factsTask = Task { [weak self] in
+            let facts = await readFacts(url, opensWithApps)
+            guard !Task.isCancelled, let self, self.url == url else { return }
+            self.apply(facts, same: same)
+        }
+    }
+
+    /// What the switch and menus show: the opened item's own status, as changes go to it (nil once another has taken
+    /// its place). An item that couldn't be opened (the startup disk) shows what's at its path, and refuses changes.
+    nonisolated static func status(of item: Result<ChosenFile, any Error>, at path: String) -> stat? {
+        switch item {
+        case .success(let chosen): try? chosen.withParent { _, _, info in info }
+        case .failure: FileInfoEditing.status(at: path)
+        }
+    }
+
+    private func apply(_ facts: Facts, same: Bool) {
+        loadedURL = url
+        shownItem = facts.choice
+        if !same || comments.currentEditor() == nil {
+            shownCommentChoice = facts.choice
+            comments.stringValue = facts.comment
+        }
+        locked.state = facts.isLocked ? .on : .off
+        if hasOpenWith, !same || apps.isEmpty { showApps(current: facts.app, typeName: facts.typeName) }
+        showPermissions(facts.names, facts.mode, onlyIfChanged: true)
+        setEnabled(facts.names?.ownedByYou ?? false)
     }
 
     func hide() {
@@ -158,87 +254,104 @@ import AppKit
         }
         pendingCommentSave?.cancel()
         savedNoteHide?.cancel()
+        factsTask?.cancel()
+        appsTask?.cancel()
+        appsTask = nil
+        loadedURL = nil
+        shownItem = nil
         shownCommentChoice = nil
         commentChoice = nil
         url = nil
     }
 
     /// A locked item takes no changes but unlocking; only its owner can lock or unlock it.
-    private func updateEnabled(_ path: String) {
+    private func setEnabled(_ ownedByYou: Bool) {
         let isLocked = locked.state == .on
-        comments.isEditable = !isLocked
-        comments.isEnabled = !isLocked
-        openWith.isEnabled = !isLocked && !apps.isEmpty
-        changeAll.isEnabled = !isLocked && !apps.isEmpty
-        locked.isEnabled = FileInfoEditing.names(at: path)?.ownedByYou ?? false
+        let loaded = isLoaded
+        comments.isEditable = loaded && !isLocked
+        comments.isEnabled = loaded && !isLocked
+        openWith.isEnabled = loaded && !isLocked && !apps.isEmpty
+        changeAll.isEnabled = loaded && !isLocked && !apps.isEmpty
+        locked.isEnabled = loaded && ownedByYou
+        for menu in accessMenus.values { menu.isEnabled = loaded && ownedByYou && !isLocked }
     }
 
     // MARK: - Open With
 
-    private func loadApps(_ entry: FileEntry, same: Bool) {
-        // Folders open in Strata; apps and other packages open as themselves.
-        hasOpenWith = !entry.isDirectory
-        guard hasOpenWith, !same || apps.isEmpty else { return }
+    private func showApps(current: OpenWithApp?, typeName: String?) {
         // Just the current app for now; the rest when the menu opens.
-        apps = NSWorkspace.shared.urlForApplication(toOpen: entry.url).map { [$0] } ?? []
+        apps = current.map { [$0] } ?? []
+        currentApp = current?.url
+        self.typeName = typeName
         appsComplete = false
         fillAppMenu()
-        // Nothing opens it: the menu says so, and Change All has nothing to change to.
-        changeAll.isEnabled = !apps.isEmpty
-        let kind = (try? entry.url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
-        openWithNote.stringValue = kind.map {
+        openWithNote.stringValue = typeName.map {
             String(localized: "For this file. Change All… sets it for every “\($0)”.", comment: "Inspector, under Open With: a kind of document")
         } ?? String(localized: "For this file. Change All… sets it for every document like it.")
     }
 
+    /// The rest of the apps load while the menu is open, and appear in it when they arrive.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === openWith.menu, !appsComplete, let url else { return }
-        appsComplete = true
-        let current = apps.first
-        apps = Array(NSWorkspace.shared.urlsForApplications(toOpen: url).prefix(40))
-        if let current, !apps.contains(current) { apps.insert(current, at: 0) }
-        fillAppMenu()
+        guard menu === openWith.menu, !appsComplete, appsTask == nil, let url else { return }
+        appsTask = Task { [weak self] in
+            let found = await OpenWithApp.all(opening: url, limit: 40)
+            guard !Task.isCancelled, let self, self.url == url else { return }
+            self.appsTask = nil
+            self.appsComplete = true
+            self.apps = self.apps.filter { app in !found.contains { $0.url == app.url } } + found
+            self.fillAppMenu()
+        }
     }
 
     private func fillAppMenu() {
-        guard let url else { return }
-        let current = NSWorkspace.shared.urlForApplication(toOpen: url)
         openWith.removeAllItems()
         if apps.isEmpty {
             openWith.addItem(withTitle: String(localized: "No App", comment: "Inspector Open With menu: no app can open the item"))
             openWith.isEnabled = false
+            changeAll.isEnabled = false
             return
         }
         for app in apps {
-            let item = NSMenuItem(title: FileManager.default.displayName(atPath: app.path), action: nil, keyEquivalent: "")
-            let icon = NSWorkspace.shared.icon(forFile: app.path)
-            icon.size = NSSize(width: 16, height: 16)
-            item.image = icon
-            item.representedObject = app
+            let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
+            item.image = app.image
+            item.representedObject = app.url
             openWith.menu?.addItem(item)
         }
-        if let current, let index = apps.firstIndex(of: current) { openWith.selectItem(at: index) }
-        openWith.isEnabled = true
+        if let currentApp, let index = apps.firstIndex(where: { $0.url == currentApp }) {
+            openWith.selectItem(at: index)
+        }
+        let enabled = isLoaded && locked.state == .off
+        openWith.isEnabled = enabled
+        changeAll.isEnabled = enabled
     }
 
     @objc private func openWithChanged(_ sender: NSPopUpButton) {
-        guard let url, let app = sender.selectedItem?.representedObject as? URL else { return }
+        guard isLoaded, let url, let app = sender.selectedItem?.representedObject as? URL else { return }
         // Picking the app it already opens with changes nothing (and mustn't pin this file to it).
-        guard app != NSWorkspace.shared.urlForApplication(toOpen: url) else { return }
+        guard app != currentApp else { return }
         let targetURL = url
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenFileAt: url) { [weak self] error in
             DispatchQueue.main.async {
                 guard let self, self.url == targetURL else { return }
+                if error == nil { self.currentApp = app }
                 self.finish(error, in: self.openWithMessage)
             }
         }
     }
 
+    /// Strata's name for a document it knows, as its Kind says; otherwise the system's, since Change All acts on the
+    /// file's type and a Kind of Strata's own, such as a small `.ts` file's TypeScript, names no type.
+    nonisolated static func typeName(of url: URL) -> String? {
+        let values = try? url.resourceValues(forKeys: [.localizedTypeDescriptionKey, .contentTypeKey])
+        return KnownDocument.kind(extension: url.pathExtension, type: values?.contentType)?.name
+            ?? values?.localizedTypeDescription
+    }
+
     @objc private func changeAllClicked(_ sender: Any?) {
-        guard let url, let app = openWith.selectedItem?.representedObject as? URL, let window else { return }
-        let kind = (try? url.resourceValues(forKeys: [.localizedTypeDescriptionKey]))?.localizedTypeDescription
+        guard isLoaded, let url, let app = openWith.selectedItem?.representedObject as? URL, let window else { return }
+        let kind = typeName
         let alert = NSAlert()
-        let appName = FileManager.default.displayName(atPath: app.path)
+        let appName = apps.first { $0.url == app }?.name ?? app.deletingPathExtension().lastPathComponent
         alert.messageText = kind.map { String(localized: "Open every “\($0)” with “\(appName)”?", comment: "A kind of document (“PDF document”), then an app") }
             ?? String(localized: "Open every document like this one with “\(appName)”?")
         alert.informativeText = String(localized: "This changes the app macOS uses for every document of this kind, in Finder too.")
@@ -263,9 +376,9 @@ import AppKit
     // shows briefly after each save.
 
     func controlTextDidBeginEditing(_ notification: Notification) {
-        guard let url else { return }
+        guard url != nil else { return }
         commentChoice = shownCommentChoice
-        commentBeforeEditing = FileInfoEditing.comment(at: url.path)
+        commentBeforeEditing = comments.stringValue
     }
 
     func controlTextDidChange(_ notification: Notification) {
@@ -335,23 +448,31 @@ import AppKit
     // MARK: - Locked and permissions
 
     @objc private func lockedChanged(_ sender: NSSwitch) {
-        guard let url else { return }
+        guard isLoaded, let item = shownItem else { return }
         do {
-            try FileInfoEditing.setLocked(sender.state == .on, at: url.path)
+            try FileInfoEditing.setLocked(sender.state == .on, of: item.get())
             finish(nil, in: permissionsMessage)
         } catch {
             finish(error, in: permissionsMessage)
         }
-        locked.state = FileInfoEditing.isLocked(at: url.path) ? .on : .off
-        loadPermissions(url.path)
-        updateEnabled(url.path)
+        showSettings(of: item)
     }
 
-    /// Fills the Locked switch and the access menus. `onlyIfChanged` (a refresh) leaves them alone when the owner,
-    /// group, mode and lock are what they show already; after a change they're always filled again, so a refused
-    /// change puts the menu back.
-    private func loadPermissions(_ path: String, onlyIfChanged: Bool = false) {
-        guard let names = FileInfoEditing.names(at: path), let mode = FileInfoEditing.mode(at: path) else {
+    /// After a change, made or refused: the switch and menus show the item as it is now, so a refused change puts
+    /// them back. If another item has taken its place, they show nothing until that one's settings are read.
+    private func showSettings(of item: Result<ChosenFile, any Error>) {
+        guard let url else { return }
+        let info = Self.status(of: item, at: url.path)
+        locked.state = info.map(FileInfoEditing.isLocked) == true ? .on : .off
+        let names = info.map(FileInfoEditing.names(of:))
+        showPermissions(names, info?.st_mode)
+        setEnabled(names?.ownedByYou ?? false)
+        if info == nil { readSettings(of: url, same: true) }
+    }
+
+    private func showPermissions(_ names: (owner: String, group: String, ownedByYou: Bool)?, _ mode: mode_t?,
+                                 onlyIfChanged: Bool = false) {
+        guard let path = url?.path, let names, let mode else {
             permissionsShown = nil
             rows.set([])
             return
@@ -385,7 +506,7 @@ import AppKit
     }
 
     @objc private func accessChanged(_ sender: NSPopUpButton) {
-        guard let url, let who = FileInfoEditing.Who(rawValue: sender.tag),
+        guard isLoaded, let url, let item = shownItem, let who = FileInfoEditing.Who(rawValue: sender.tag),
               let access = FileInfoEditing.Access(rawValue: sender.selectedTag()) else { return }
         // Taking your own access away from a folder shuts you out of it: ask first.
         if who == .owner, isFolder, access == .none || access == .writeOnly, let window {
@@ -395,22 +516,28 @@ import AppKit
             alert.addButton(withTitle: String(localized: "Remove Access"))
             alert.addButton(withTitle: String(localized: "Cancel"))
             alert.beginSheetModal(for: window) { [weak self] response in
-                guard let self else { return }
-                if response == .alertFirstButtonReturn { apply(access, for: who, to: url) } else { loadPermissions(url.path) }
+                // Answered for the item asked about: if another is on show by now, its own settings stay as they are.
+                guard let self, self.url == url, isLoaded else { return }
+                if response == .alertFirstButtonReturn {
+                    apply(access, for: who, to: item)
+                } else {
+                    showSettings(of: item)
+                }
             }
             return
         }
-        apply(access, for: who, to: url)
+        apply(access, for: who, to: item)
     }
 
-    private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who, to url: URL) {
+    private func apply(_ access: FileInfoEditing.Access, for who: FileInfoEditing.Who,
+                       to item: Result<ChosenFile, any Error>) {
         do {
-            try FileInfoEditing.setAccess(access, for: who, at: url.path)
+            try FileInfoEditing.setAccess(access, for: who, of: item.get())
             finish(nil, in: permissionsMessage)
         } catch {
             finish(error, in: permissionsMessage)
         }
-        loadPermissions(url.path)
+        showSettings(of: item)
     }
 
     /// Clears or shows the last change's problem, in the card it happened in.
@@ -419,8 +546,8 @@ import AppKit
         label.textColor = InspectorColors.error
         label.stringValue = error.map { String(localized: "Couldn’t change that: \($0.localizedDescription)", comment: "Inspector: a change was refused, then why") } ?? ""
         label.isHidden = error == nil
-        if error != nil, label === openWithMessage, let url, let app = NSWorkspace.shared.urlForApplication(toOpen: url),
-           let index = apps.firstIndex(of: app) {
+        if error != nil, label === openWithMessage, let currentApp,
+           let index = apps.firstIndex(where: { $0.url == currentApp }) {
             openWith.selectItem(at: index)
         }
     }

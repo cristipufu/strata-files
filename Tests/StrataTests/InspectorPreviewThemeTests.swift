@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func inspectorPreviewsFollowThePaletteWithoutReloadingOrLosingTextSelection() async throws {
@@ -10,7 +17,7 @@ extension ColorThemeTests {
         try Data("# Heading\n\nA selected paragraph.\n".utf8).write(to: tree.url("note.md"))
         try Data("A plain text preview.\n".utf8).write(to: tree.url("note.txt"))
         try Data("let value = 42\n".utf8).write(to: tree.url("sample.swift"))
-        let inspector = InspectorViewController()
+        let inspector = InspectorViewController(services: testEnvironment.services)
         inspector.view.frame = NSRect(x: 0, y: 0, width: 320, height: 700)
         func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
         for file in ["note.md", "note.txt", "sample.swift"] {
@@ -50,7 +57,7 @@ extension ColorThemeTests {
     @Test func theInspectorPreviewSurroundMatchesThePanelWithoutChangingItsImages() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let inspector = InspectorViewController()
+        let inspector = InspectorViewController(services: testEnvironment.services)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 700),
                               styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentViewController = inspector

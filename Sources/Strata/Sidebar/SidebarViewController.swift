@@ -1,82 +1,23 @@
 import AppKit
 
-final class SidebarSection {
-    /// Names the section in code ("favorites"); `title` is what's shown, in your language.
-    let id: String
-    let title: String
-    var items: [SidebarItem]
-
-    init(id: String, title: String, items: [SidebarItem]) {
-        self.id = id
-        self.title = title
-        self.items = items
-    }
-}
-
-extension NSPasteboard.PasteboardType {
-    /// A favorite being reordered inside the sidebar (never a file URL: dropping it elsewhere mustn't move the folder).
-    static let sidebarFavorite = NSPasteboard.PasteboardType("dev.strata.sidebar-favorite")
-}
-
-/// Where a sidebar row takes you.
-enum SidebarTarget: Equatable {
-    case folder(URL)
-    case recents
-    case search(SavedSearch)
-    case duplicates
-    case largeFiles
-    /// The containers of the engine Strata found.
-    case containers
-    /// A saved workspace, by name: opens its window (it's never where you are, so it's never selected).
-    case workspace(String)
-    /// A saved SFTP server or bucket, by ID: connects and shows its files.
-    case server(String)
-}
-
-final class SidebarItem {
-    let title: String
-    let target: SidebarTarget
-    var symbol: String
-    var isEjectable = false
-    /// A Finder tag's color for its dot (Tags section).
-    var tint: NSColor?
-    /// A Finder tag's stored name (Tags section): `title` shows it in your language, this is what's matched and removed.
-    var tagName: String?
-    /// Shown on hover and read by VoiceOver.
-    var help: String?
-
-    init(_ place: Place) {
-        title = place.title
-        target = .folder(place.url.standardizedFileURL)
-        symbol = place.symbol
-        isEjectable = place.isEjectable
-    }
-
-    init(title: String, target: SidebarTarget, symbol: String) {
-        self.title = title
-        self.target = target
-        self.symbol = symbol
-    }
-
-    var url: URL? {
-        if case .folder(let url) = target { return url }
-        return nil
-    }
-}
-
 final class SidebarViewController: NSViewController {
+    /// The home Trash's symbol as last read (`Trash.homeSymbol`), and which read that was.
+    private var trashSymbol = "trash"
+    private var trashReads = 0
     let services: BrowserServices
     var preferences: Prefs { services.preferences }
 
-    init(services: BrowserServices = .shared) {
+    init(services: BrowserServices) {
         self.services = services
-        tree = FolderTreeController(transfers: services.transfers, preferences: services.preferences,
+        tree = FolderTreeController(places: services.places,
+                                    transfers: services.transfers, preferences: services.preferences,
                                     remote: services.remote, copies: services.copies,
-                                    containerStore: services.containerStore)
-        tree.clipboard = services.clipboard
+                                    containerStore: services.containerStore, clipboard: services.clipboard,
+                                    watchBudget: .shared)
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit { cloudRead?.cancel() }
@@ -85,7 +26,7 @@ final class SidebarViewController: NSViewController {
     /// "Open in New Tab" from the context menu.
     var onOpenInNewTab: ((URL) -> Void)?
 
-    private let outline = SidebarOutlineView()
+    let outline = SidebarOutlineView()
     private let placesScroll = NSScrollView()
     /// Folders mode (preferences.sidebarShowsTree): the tree instead of the sections.
     private let tree: FolderTreeController
@@ -106,13 +47,14 @@ final class SidebarViewController: NSViewController {
         }
         return nil
     }
-    private var sections: [SidebarSection] = []
+    private(set) var sections: [SidebarSection] = []
     private var cloudFolders: [CloudFolder] = []
     private(set) var cloudRead: Task<Void, Never>?
     /// Sections being opened and closed to match what you chose, not by you.
     private var applyingCollapsed = false
     private var suppressSelection = false
     private var current: SidebarTarget?
+    private var chosenRow: (section: String, target: SidebarTarget)?
     /// Whether the current drag may go on the Trash, worked out once per drag.
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
@@ -121,6 +63,27 @@ final class SidebarViewController: NSViewController {
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        setUpOutline()
+        scroll.documentView = outline
+        ThemeStyle.bind(scroll, to: .sidebar)
+        ThemeStyle.bind(outline, to: .sidebar)
+        setUpTree()
+        let container = ThemeSurfaceView()
+        for child in [scroll, tree.view] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(child)
+            NSLayoutConstraint.activate(child.fillingConstraints(in: container))
+        }
+        view = container
+        reload()
+        refreshCloudFolders()
+        showMode()
+        observeChanges()
+        trashMayHaveChanged()
+    }
+
+    /// Places as a source list: rows open, take drops and are dragged to reorder favorites.
+    private func setUpOutline() {
         let column = NSTableColumn(identifier: .init("main"))
         outline.addTableColumn(column)
         outline.outlineTableColumn = column
@@ -146,31 +109,20 @@ final class SidebarViewController: NSViewController {
         let menu = NSMenu()
         menu.delegate = self
         outline.menu = menu
-        scroll.documentView = outline
-        ThemeStyle.bind(scroll, to: .sidebar)
-        ThemeStyle.bind(outline, to: .sidebar)
+    }
+
+    /// The folder tree, shown instead of Places when chosen.
+    private func setUpTree() {
         tree.onSelect = { [weak self] target in self?.onSelect?(target) }
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
-        tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies) }
+        tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
         addChild(tree)
-        let container = ThemeSurfaceView()
-        for child in [scroll, tree.view] {
-            child.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(child)
-            NSLayoutConstraint.activate([
-                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                child.topAnchor.constraint(equalTo: container.topAnchor),
-                child.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            ])
-        }
-        view = container
-        reload()
-        refreshCloudFolders()
-        showMode()
-        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+    }
 
+    /// What changes the sidebar's sections: settings, disks, servers, tags, places, containers and the Trash.
+    private func observeChanges() {
+        preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         let center = NSWorkspace.shared.notificationCenter
         NotificationCenter.default.addObserver(self, selector: #selector(refreshCloudFolders), name: NSApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
@@ -180,8 +132,9 @@ final class SidebarViewController: NSViewController {
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: services.remote.servers)
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: services.remote.status)
         // A tag used for the first time joins the Tags section.
-        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: nil)
-        preferences.notifications.addObserver(self, selector: #selector(volumesChanged), name: .favoritesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: services.tags)
+        preferences.notifications.addObserver(self, selector: #selector(favoritesChanged), name: .favoritesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: services.places)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
         preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
@@ -190,50 +143,80 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload() {
+        let wasSuppressed = suppressSelection
+        suppressSelection = true
+        defer { suppressSelection = wasSuppressed }
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
-            + Places.favorites(preferences: preferences).map(SidebarItem.init)
+            + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
-        let home = Places.home.path
-        let frequent = services.visits.ranked()
-            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0) }
-            .prefix(5)
-            .map { SidebarItem(Place(title: FileManager.default.displayName(atPath: $0.path), url: $0, symbol: "folder")) }
-        sections = [SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites)]
+        sections = [
+            SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites),
+            workspacesSection(), searchesSection(), frequentSection(besides: pinned), insightsSection(),
+            locationsSection(besides: pinned), serversSection(), tagsSection(),
+        ].compactMap { $0 }
+        applyingCollapsed = true
+        outline.reloadData()
+        applyingCollapsed = false
+        applyCollapsed()
+        if let current { highlight(current) }
+    }
+
+    private func workspacesSection() -> SidebarSection? {
         let workspaces = services.workspaces.all.map { workspace in
             let item = SidebarItem(title: workspace.name, target: .workspace(workspace.name), symbol: Workspaces.symbol(workspace))
             item.help = services.workspaces.help(workspace)
             return item
         }
-        if !workspaces.isEmpty {
-            sections.append(SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
-                                           items: workspaces))
-        }
+        guard !workspaces.isEmpty else { return nil }
+        return SidebarSection(id: "workspaces", title: String(localized: "Workspaces", comment: "Sidebar section title: saved sets of tabs and panes"),
+                              items: workspaces)
+    }
+
+    private func searchesSection() -> SidebarSection? {
         let searches = services.savedSearches.all.map { SidebarItem(title: $0.name, target: .search($0), symbol: "magnifyingglass") }
-        if !searches.isEmpty {
-            sections.append(SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches))
-        }
-        if !frequent.isEmpty {
-            sections.append(SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
-                                           items: Array(frequent)))
-        }
-        sections.append(SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
+        guard !searches.isEmpty else { return nil }
+        return SidebarSection(id: "searches", title: String(localized: "Searches", comment: "Sidebar section title: saved searches"), items: searches)
+    }
+
+    /// The folders opened most, besides the favorites (`pinned`), your home folder, the top and the Trash.
+    private func frequentSection(besides pinned: Set<String>) -> SidebarSection? {
+        let home = Places.home.path
+        let frequent = services.visits.ranked()
+            .filter { !pinned.contains($0.path) && $0.path != home && $0.path != "/" && !Trash.isTrash($0)
+                && services.places.isFolder($0.path) != false }
+            .prefix(5)
+            .map { SidebarItem(Place(title: services.places.name($0), url: $0, symbol: "folder")) }
+        guard !frequent.isEmpty else { return nil }
+        return SidebarSection(id: "frequent", title: String(localized: "Frequent", comment: "Sidebar section title: folders you open often"),
+                              items: Array(frequent))
+    }
+
+    private func insightsSection() -> SidebarSection {
+        SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
             SidebarItem(title: String(localized: "Large Files", comment: "Sidebar item"), target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
             SidebarItem(title: String(localized: "Duplicates", comment: "Sidebar item: identical files"), target: .duplicates, symbol: "square.on.square"),
-        ]))
-        // Containers, like a disk: there while an engine (Docker Desktop, OrbStack…) runs.
+        ])
+    }
+
+    /// Disks, cloud folders that aren't favorites (`pinned`), Containers while an engine (Docker Desktop, OrbStack…)
+    /// runs, like a disk, and the Trash.
+    private func locationsSection(besides pinned: Set<String>) -> SidebarSection {
         let containers = services.containerStore.engine.map { engine -> SidebarItem in
             let item = SidebarItem(title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"), target: .containers,
                                    symbol: "shippingbox")
             item.help = engine.name
             return item
         }
-        let cloud = cloudFolders.filter { !pinned.contains($0.url.standardizedFileURL.path) }.map {
+        let cloud = cloudFolders.filter { !pinned.contains($0.url.lexicallyStandardized.path) }.map {
             SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
         }
-        sections.append(SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                                       items: Places.volumes().map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
-            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: Self.trashSymbol)]))
-        // Servers you've connected to: an SFTP server or a bucket each, green while connected.
+        return SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
+                              items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
+            + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: trashSymbol)])
+    }
+
+    /// Servers you've connected to: an SFTP server or a bucket each, green while connected.
+    private func serversSection() -> SidebarSection? {
         let servers = services.remote.servers.all.map { server -> SidebarItem in
             let item = SidebarItem(title: server.name, target: .server(server.id),
                                    symbol: server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")
@@ -241,24 +224,22 @@ final class SidebarViewController: NSViewController {
             if services.remote.status.connected.contains(server.id) { item.tint = .systemGreen }
             return item
         }
-        if !servers.isEmpty {
-            sections.append(SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
-                                           items: servers))
-        }
-        // Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
-        let tags = TagStore.shared.suggestions.prefix(12).map { tag in
+        guard !servers.isEmpty else { return nil }
+        return SidebarSection(id: "servers", title: String(localized: "Servers", comment: "Sidebar section title: SFTP servers and S3 buckets"),
+                              items: servers)
+    }
+
+    /// Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
+    private func tagsSection() -> SidebarSection? {
+        let tags = services.tags.suggestions.prefix(12).map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
             item.tint = tag.displayColor ?? .secondaryLabelColor
             item.tagName = tag.name
             return item
         }
-        if !tags.isEmpty { sections.append(SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))) }
-        applyingCollapsed = true
-        outline.reloadData()
-        applyingCollapsed = false
-        applyCollapsed()
-        if let current { highlight(current) }
+        guard !tags.isEmpty else { return nil }
+        return SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))
     }
 
     /// Every section open except those you've hidden. The sidebar is rebuilt whenever a window comes forward (and
@@ -297,20 +278,27 @@ final class SidebarViewController: NSViewController {
     func highlight(_ target: SidebarTarget?) {
         current = target
         if case .folder(let url)? = target { tree.reveal(url) } else { tree.reveal(nil) }
-        var row = -1
-        for section in sections {
-            if let item = section.items.first(where: { matches($0.target, target) }) {
-                row = outline.row(forItem: item)
-                break
-            }
+        let preferred = chosenRow.flatMap { chosen in
+            matches(chosen.target, target) ? sections.first { $0.id == chosen.section } : nil
         }
+        let row = preferred.flatMap { matchingRow(for: target, in: $0) }
+            ?? sections.lazy.compactMap { self.matchingRow(for: target, in: $0) }.first
+        let wasSuppressed = suppressSelection
         suppressSelection = true
-        if row >= 0 {
+        defer { suppressSelection = wasSuppressed }
+        if let row {
             outline.selectRowIndexes([row], byExtendingSelection: false)
         } else {
             outline.deselectAll(nil)
         }
-        suppressSelection = false
+    }
+
+    private func matchingRow(for target: SidebarTarget?, in section: SidebarSection) -> Int? {
+        for item in section.items where matches(item.target, target) {
+            let row = outline.row(forItem: item)
+            if row >= 0 { return row }
+        }
+        return nil
     }
 
     @objc func refreshCloudFolders() {
@@ -327,6 +315,11 @@ final class SidebarViewController: NSViewController {
 
     @objc private func volumesChanged() { reload(); refreshCloudFolders() }
 
+    @objc private func favoritesChanged() {
+        services.places.refresh()
+        volumesChanged()
+    }
+
     /// The Containers item comes and goes with the engine; containers starting and stopping don't touch the sidebar.
     private var showsContainers = false
 
@@ -340,7 +333,7 @@ final class SidebarViewController: NSViewController {
 
     private func matches(_ a: SidebarTarget, _ b: SidebarTarget?) -> Bool {
         switch (a, b) {
-        case (.folder(let x), .folder(let y)?): x.standardizedFileURL.path == y.standardizedFileURL.path
+        case (.folder(let x), .folder(let y)?): x.lexicallyStandardized.path == y.lexicallyStandardized.path
         case (.recents, .recents?), (.duplicates, .duplicates?), (.largeFiles, .largeFiles?): true
         case (.search(let x), .search(let y)?): x == y
         case (.containers, .containers?): true
@@ -354,7 +347,7 @@ final class SidebarViewController: NSViewController {
         }
     }
 
-    @objc private func removeSearch(_ sender: NSMenuItem) {
+    @objc func removeSearch(_ sender: NSMenuItem) {
         guard let search = sender.representedObject as? SavedSearchBox else { return }
         services.savedSearches.remove(search.search)
     }
@@ -442,6 +435,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelection, let item = outline.item(atRow: outline.selectedRow) as? SidebarItem else { return }
         if case .workspace = item.target { return }
+        if let section = sections.first(where: { $0.items.contains { $0 === item } }) {
+            chosenRow = (section.id, item.target)
+        }
         onSelect?(item.target)
     }
 
@@ -455,7 +451,7 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     private var favoritesSection: SidebarSection? { sections.first { $0.id == "favorites" } }
 
-    private func isFavorite(_ item: SidebarItem) -> Bool {
+    func isFavorite(_ item: SidebarItem) -> Bool {
         item.url != nil && favoritesSection?.items.contains { $0 === item } == true
     }
 
@@ -477,8 +473,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let resting = index == NSOutlineViewDropOnItemIndex ? (item as? SidebarItem)?.url : nil
         springLoader.hover(resting.flatMap { folder in
             // A favorite can be a package (an app): springing would open its insides. Dropping on the Trash trashes.
-            urls.isEmpty || FileDrop.isInside(urls, folder) || NSWorkspace.shared.isFilePackage(atPath: folder.path)
-                || Trash.isTrash(folder) || !SpringLoader.canOpen(folder, browsing: nil) ? nil : folder
+            urls.isEmpty || FileDrop.isInside(urls, folder, during: info) || DragFacts.of(info).isPackage(folder)
+                || Trash.isTrash(folder) || !SpringLoader.canOpen(folder, browsing: nil, during: info) ? nil : folder
         }, drag: info.draggingSequenceNumber)
         if isReorder {
             if favoriteIndex(item, index) != nil { return .move }
@@ -492,13 +488,14 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         }
         if favoriteIndex(item, index) != nil {
             // Not a read-only copy's folders: they're gone when Strata quits.
-            let folders = urls.filter { !ReadOnlyCopies.contains($0, copies: copies) && (TransferEngine.isPlainFolder($0) || $0.hasDirectoryPath) }
+            let facts = DragFacts.of(info)
+            let folders = urls.filter { !ReadOnlyCopies.contains($0, copies: copies) && (facts.isPlainFolder($0) || $0.hasDirectoryPath) }
             return folders.isEmpty ? [] : .link
         }
         guard let target = (item as? SidebarItem)?.url, index == NSOutlineViewDropOnItemIndex else { return [] }
         if Trash.isTrash(target) {
             if let verdict = trashVerdict, verdict.drag == info.draggingSequenceNumber { return verdict.operation }
-            let operation: NSDragOperation = Self.canTrash(urls, copies: copies) ? .delete : []
+            let operation: NSDragOperation = Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) ? .delete : []
             trashVerdict = (info.draggingSequenceNumber, operation)
             return operation
         }
@@ -510,23 +507,25 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
-                Places.addFavorites([URL(fileURLWithPath: path)], at: at, preferences: preferences)
+                addFavorites([URL(filePath: path, directoryHint: .isDirectory)], at: at)
             } else {
-                Places.addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at, preferences: preferences)
+                addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at)
             }
             return true
         }
         guard let target = (item as? SidebarItem)?.url else { return false }
         let urls = FileDrop.urls(info, copies: copies)
         if Trash.isTrash(target) {
-            guard Self.canTrash(urls, copies: copies) else { return false }
+            guard Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) else { return false }
             moveToTrash(urls)
             return true
         }
-        let operation = FileDrop.operation(urls, into: target, info: info, copies: copies)
-        guard !urls.isEmpty, !operation.isEmpty else { return false }
-        services.transfers.enqueue(urls, to: target, mode: operation == .move ? .move : .copy,
-                                     undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        guard !urls.isEmpty else { return false }
+        FileDrop.drop(urls, into: target, info: info, copies: copies) { [weak self] move in
+            guard let self else { return }
+            services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
+                                       undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        }
         return true
     }
 }
@@ -578,6 +577,7 @@ final class SidebarCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private var tint: NSColor?
@@ -603,62 +603,8 @@ final class SidebarCellView: NSTableCellView {
     }
 }
 
-/// Right-click: folders and volumes open in a new tab, copy their path or eject; saved searches can be removed.
-extension SidebarViewController: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
-        if case .containers = item.target { return }
-        if case .workspace(let name) = item.target {
-            addWorkspaceItems(name, to: menu)
-            return
-        }
-        if case .server(let id) = item.target, let server = services.remote.servers.server(id: id) {
-            addServerItems(server, to: menu)
-            return
-        }
-        // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
-        if item.tint != nil {
-            let name = item.tagName ?? item.title
-            let isStandard = FinderTag.standard.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
-            if !isStandard {
-                let remove = NSMenuItem(title: String(localized: "Remove “\(item.title)” from Sidebar"), action: #selector(forgetTag(_:)), keyEquivalent: "")
-                remove.target = self
-                remove.representedObject = name
-                menu.addItem(remove)
-            }
-            return
-        }
-        if case .search(let search) = item.target {
-            let remove = NSMenuItem(title: String(localized: "Remove “\(search.name)”", comment: "Sidebar menu: remove a saved search"), action: #selector(removeSearch(_:)), keyEquivalent: "")
-            remove.target = self
-            remove.representedObject = SavedSearchBox(search: search)
-            menu.addItem(remove)
-            return
-        }
-        guard let url = item.url else { return }
-        if Trash.isTrash(url) {
-            add("Open in New Tab", #selector(openInNewTab(_:)), url)
-            menu.addItem(.separator())
-            let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
-            menu.addItem(empty)
-            return
-        }
-        let favorite = isFavorite(item)
-        add("Open in New Tab", #selector(openInNewTab(_:)), url)
-        add("Copy Path", #selector(copyItemPath(_:)), url)
-        menu.addItem(.separator())
-        if favorite {
-            add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
-        } else if !item.isEjectable {
-            add("Add to Favorites", #selector(addFavorite(_:)), url)
-        }
-        if item.isEjectable {
-            menu.addItem(.separator())
-            add("Eject “\(item.title)”", #selector(ejectItem(_:)), url)
-        }
-    }
-
+/// Clicks on a workspace row, the Trash's symbol and what's dropped on it, and adding favorites.
+extension SidebarViewController {
     @objc private func rowClicked() {
         guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem, case .workspace = item.target else { return }
         openWorkspaceRow(item)
@@ -672,118 +618,32 @@ extension SidebarViewController: NSMenuDelegate {
         services.workspaces.open(workspace, from: view.window)
     }
 
-    /// Disconnect (while connected), edit, copy its address, remove.
-    private func addServerItems(_ server: RemoteServer, to menu: NSMenu) {
-        func entry(_ title: String, _ action: Selector) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = server.id
-            menu.addItem(item)
-        }
-        if services.remote.status.connected.contains(server.id) {
-            entry(String(localized: "Disconnect", comment: "Button: end the connection to the server"), #selector(disconnectServer(_:)))
-            menu.addItem(.separator())
-        }
-        entry(String(localized: "Edit…", comment: "Sidebar menu: change a saved server's settings"), #selector(editServer(_:)))
-        entry(String(localized: "Copy Address", comment: "Sidebar menu: copy a server's address"), #selector(copyServerAddress(_:)))
-        menu.addItem(.separator())
-        entry(String(localized: "Remove “\(server.name)”…", comment: "Sidebar menu: forget a saved server"), #selector(removeServer(_:)))
-    }
-
-    private var windowController: BrowserWindowController? { view.window?.windowController as? BrowserWindowController }
-
-    @objc private func disconnectServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
-        windowController?.disconnectServer(server)
-    }
-
-    @objc private func editServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
-        windowController?.editServer(server)
-    }
-
-    @objc private func copyServerAddress(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id) else { return }
-        services.clipboard.pasteboard.clearContents()
-        services.clipboard.pasteboard.setString(server.address, forType: .string)
-    }
-
-    @objc private func removeServer(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String, let server = services.remote.servers.server(id: id), let window = view.window else { return }
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Remove “\(server.name)” from Strata?", comment: "A saved server's name")
-        alert.informativeText = server.kind == .s3
-            ? String(localized: "Its secret key is deleted from your keychain. Nothing in the bucket changes.")
-            : String(localized: "Nothing on the server changes.")
-        alert.addButton(withTitle: String(localized: "Remove", comment: "Alert button: forget the saved server"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { [remote = services.remote] response in
-            guard response == .alertFirstButtonReturn else { return }
-            MainActor.assumeIsolated { _ = remote.remove(server) }
-        }
-    }
-
-    /// Open, save this window into it (only the window it belongs to), rename or delete.
-    private func addWorkspaceItems(_ name: String, to menu: NSMenu) {
-        func entry(_ title: String, _ action: Selector) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = name
-            menu.addItem(item)
-        }
-        entry(String(localized: "Open", comment: "Sidebar menu: open the saved workspace"), #selector(openWorkspace(_:)))
-        menu.addItem(.separator())
-        if (view.window?.windowController as? BrowserWindowController)?.groupWorkspaceName == name {
-            entry(String(localized: "Update with This Window", comment: "Sidebar menu: save this window's tabs and panes into the workspace"),
-                  #selector(updateWorkspace(_:)))
-        }
-        entry(String(localized: "Rename…"), #selector(renameWorkspace(_:)))
-        menu.addItem(.separator())
-        entry(String(localized: "Delete Workspace"), #selector(deleteWorkspace(_:)))
-    }
-
-    @objc private func openWorkspace(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String, let workspace = services.workspaces.named(name) else { return }
-        services.workspaces.open(workspace, from: view.window)
-    }
-
-    @objc private func updateWorkspace(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String, let window = view.window else { return }
-        services.workspaces.update(name, from: window)
-    }
-
-    @objc private func renameWorkspace(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        services.workspaces.askToRename(name, in: view.window)
-    }
-
-    @objc private func deleteWorkspace(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        services.workspaces.confirmDelete(name, in: view.window)
-    }
-
-    private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {
-        let entry = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: "")
-        entry.target = self
-        entry.representedObject = url
-        outline.menu?.addItem(entry)
-    }
-
-    /// Full or empty, like the Dock's (empty when Strata can't look: that needs Full Disk Access).
-    private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
-
     @objc private func trashMayHaveChanged() {
-        guard let item = sections.lazy.flatMap(\.items).first(where: { $0.url == Trash.home }),
-              item.symbol != Self.trashSymbol else { return }
-        item.symbol = Self.trashSymbol
-        outline.reloadItem(item)
+        trashReads += 1
+        let read = trashReads
+        Task { [weak self] in
+            let symbol = await Trash.homeSymbol()
+            guard let self, read == trashReads else { return }
+            trashSymbol = symbol
+            guard let item = sections.lazy.flatMap(\.items).first(where: { $0.url == Trash.home }), item.symbol != symbol else { return }
+            item.symbol = symbol
+            outline.reloadItem(item)
+        }
     }
 
     /// Files dropped on the Trash go there like ⌘⌫: undoable, in History, and Put Back knows where they came from.
-    /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk.
-    static func canTrash(_ urls: [URL], copies: CopyProviders = .live) -> Bool {
+    /// Not what's already in a Trash, a Trash itself, a read-only copy or a whole disk (`mounts`: where disks are
+    /// mounted, which the kernel says without asking any of them).
+    static func canTrash(_ urls: [URL], copies: CopyProviders, mounts: Set<String>) -> Bool {
         !urls.isEmpty && !urls.contains { url in
-            !FileOps.canTrash(url, copies: copies) || (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+            !FileOps.canTrash(spelled: url, copies: copies) || isMountPoint(url, in: mounts)
+        }
+    }
+
+    /// As spelled and standardized: standardizing drops a leading /private that a mount point keeps.
+    private static func isMountPoint(_ url: URL, in mounts: Set<String>) -> Bool {
+        [url.path, url.lexicallyStandardized.path].contains { path in
+            mounts.contains(path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path)
         }
     }
 
@@ -796,42 +656,16 @@ extension SidebarViewController: NSMenuDelegate {
             do {
                 try await files.trash(urls, undo: window?.undoManager)
             } catch let noTrash as FileOps.NoTrash {
-                BrowserViewController.confirmDelete(noTrash.urls, in: window, noTrash: true, copies: copies) {}
+                Deletion.confirm(noTrash.urls, in: window, noTrash: true, copies: copies) {}
             } catch {
                 if let window { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }
         }
     }
 
-    @objc private func forgetTag(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        TagStore.shared.forget(name)
-    }
-
-    @objc private func openInNewTab(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        onOpenInNewTab?(url)
-    }
-
-    @objc private func copyItemPath(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        services.clipboard.pasteboard.clearContents()
-        services.clipboard.pasteboard.setString(url.path, forType: .string)
-    }
-
-    @objc private func removeFavorite(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        Places.removeFavorite(url, preferences: preferences)
-    }
-
-    @objc private func addFavorite(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        Places.addFavorites([url], preferences: preferences)
-    }
-
-    @objc private func ejectItem(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        Places.eject(url, from: view.window)
+    func addFavorites(_ urls: [URL], at index: Int?) {
+        let preferences = preferences, places = services.places
+        Task { await Places.addFavorites(urls, at: index, preferences: preferences, checks: places) }
     }
 }
 

@@ -119,14 +119,10 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: self))
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     package func show(_ data: GridData) {
@@ -199,6 +195,7 @@ final class GridCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// `leading` marks the first column, which keeps clear of the preview's rounded corner; `secondary` dims the text.

@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct PreviewProviderListingTests {
     private actor Backend: RemoteBackend {
@@ -30,8 +37,10 @@ struct PreviewProviderListingTests {
             let store = RemoteCopyStore(root: tree.url(root), server: { $0 == id ? server : nil })
             let top = try store.prepare(server), backend = Backend([entry("public.txt")])
             let files = RemoteFiles(copies: store, backends: { _ in backend })
-            let copies = CopyProviders([ServerCopyProvider(files: files)], remoteCopies: store)
-            let listed = try await DirectoryLoader.loadPreview(top, showHidden: true, applications: .standard, copies: copies, limit: 10)
+            let copies = CopyProviders([ServerCopyProvider(files: files)], remoteCopies: store,
+                                       containerCopies: ContainerCopyStore(root: tree.url(root + "-containers")),
+                                       clipboardRoot: tree.url(root + "-clipboard"))
+            let listed = try await DirectoryLoader.loadPreview(top, showHidden: true, applications: .standard, copies: copies, limit: 10).entries
             #expect(listed.map(\.name) == ["public.txt"] && copies.isPlaceholder(top.appendingPathComponent("public.txt")))
             #expect(await backend.downloads == 0)
         }

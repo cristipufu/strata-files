@@ -1,24 +1,28 @@
 import AppKit
 
 /// The icon view: a justified grid of large icons and Quick Look thumbnails, fed by the browser.
-final class GridViewController: NSViewController, FileCollectionController {
+final class GridViewController: NSViewController, FileItemCollection, FileCollectionHost {
     let preferences: Prefs
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
     let copies: CopyProviders
     let clipboard: Clipboard
+    let statuses: FileStatuses
 
-    init(preferences: Prefs = .shared, thumbnails: FileThumbnails = .shared, itemInfo: ItemInfoLoader = .shared,
-         copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
+    init(preferences: Prefs, thumbnails: FileThumbnails, itemInfo: ItemInfoLoader,
+         copies: CopyProviders, clipboard: Clipboard, statuses: FileStatuses) {
         self.preferences = preferences
+        self.statuses = statuses
         self.thumbnails = thumbnails
         self.itemInfo = itemInfo
         self.copies = copies
         self.clipboard = clipboard
+        collectionView = GridCollectionView(copies: copies)
         super.init(nibName: nil, bundle: nil)
         layout.metrics = GridMetrics(iconSize: 64, typography: FileViewTypography(preferences: preferences))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     weak var fileDelegate: FileCollectionViewDelegate?
@@ -45,12 +49,12 @@ final class GridViewController: NSViewController, FileCollectionController {
     private var matches: [String: [Int]] = [:]
     private var indexByKey: [String: Int] = [:]
 
-    let collectionView = GridCollectionView()
+    let collectionView: GridCollectionView
     private let scrollView = NSScrollView()
     private let layout = GridLayout()
-    private let dropHighlight = DropHighlightView()
+    let dropHighlight = DropHighlightView()
     /// Opens the folder a drag rests on (only one still shown).
-    private lazy var springLoader = SpringLoader(view: collectionView, frame: { [weak self] folder in
+    lazy var springLoader = SpringLoader(view: collectionView, frame: { [weak self] folder in
         guard let self, let index = indexByKey[folder.fileViewKey] else { return nil }
         return collectionView.frameForItem(at: index)
     }, open: { [weak self] folder, drag in
@@ -59,8 +63,10 @@ final class GridViewController: NSViewController, FileCollectionController {
     })
     private var lead: Int?
     private var anchor: Int?
-    private var selectionReportPending = false
-    private var lastReportedSelection: [URL] = []
+    private lazy var selectionReports = SelectionReports(selection: { [weak self] in self?.selectedURLs ?? [] }) { [weak self] urls in
+        guard let self else { return }
+        fileDelegate?.fileView(self, selectionDidChange: urls)
+    }
     private var renameField: InlineRenameField?
     private var deferredEntries: ([FileEntry], [URL: [Int]])?
     private var thumbnailRefresh: DispatchWorkItem?
@@ -78,11 +84,8 @@ final class GridViewController: NSViewController, FileCollectionController {
         cv.backgroundColors = [.controlBackgroundColor]
         ThemeStyle.bind(cv, to: .content)
         cv.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
-        cv.registerForDraggedTypes(FileDrop.types)
-        cv.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        cv.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         cv.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
-        cv.controller = self
+        cv.host = self
 
         scrollView.documentView = cv
         scrollView.hasVerticalScroller = true
@@ -178,7 +181,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     }
 
     func screenRect(for url: URL) -> NSRect? {
-        guard let index = indexByKey[url.fileViewKey], let window = view.window,
+        guard let index = index(of: url), let window = view.window,
               let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return nil }
         let rect = item.itemView.convert(item.itemView.iconRect, to: nil)
         guard collectionView.visibleRect.intersects(collectionView.convert(rect, from: nil)) else { return nil }
@@ -252,11 +255,11 @@ final class GridViewController: NSViewController, FileCollectionController {
         guard entries.indices.contains(index) else { return }
         let entry = entries[index]
         item.emphasis = { [weak self] in self?.collectionView.isEmphasized ?? false }
-        let git = GitStatusStore.shared
+        let git = statuses.git
         let dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
         let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
-        let tags = TagStore.shared.tags(for: entry.url)
-        let cloud = CloudStore.shared.status(for: entry.url)
+        let tags = statuses.tags.tags(for: entry.url)
+        let cloud = statuses.cloud.status(for: entry.url)
         if refreshImage {
             item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
                            dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
@@ -275,13 +278,14 @@ final class GridViewController: NSViewController, FileCollectionController {
     }
 
     /// Redraws visible items (focus, clipboard dimming, appearance), optionally re-reading their content.
-    func refreshVisibleItems(reconfigure: Bool = false) {
+    func refreshVisibleItems(reconfigure: Bool = false, paths: Set<String>? = nil) {
         for case let item as GridItem in collectionView.visibleItems() {
+            if let paths, !paths.contains(item.entry?.url.path ?? "") { continue }
             if reconfigure, let path = collectionView.indexPath(for: item) {
                 configure(item, at: path.item)
             } else {
                 if let entry = item.entry {
-                    let git = GitStatusStore.shared
+                    let git = statuses.git
                     item.dimmed = entry.isHidden || clipboard.isCut(entry.url) || git.isIgnored(entry.url)
                     item.itemView.gitBadge.badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
                 }
@@ -295,18 +299,7 @@ final class GridViewController: NSViewController, FileCollectionController {
     // MARK: - Selection
 
     fileprivate func reportSelection() {
-        guard !selectionReportPending else { return }
-        selectionReportPending = true
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.selectionReportPending = false
-                let urls = self.selectedURLs
-                guard urls != self.lastReportedSelection else { return }
-                self.lastReportedSelection = urls
-                self.fileDelegate?.fileView(self, selectionDidChange: urls)
-            }
-        }
+        selectionReports.soon()
     }
 
     private func scrollToItem(_ index: Int) {
@@ -374,12 +367,11 @@ final class GridViewController: NSViewController, FileCollectionController {
         }
         reportSelection()
         // Report synchronously too, so the browser builds the menu for the new selection.
-        lastReportedSelection = selectedURLs
-        fileDelegate?.fileView(self, selectionDidChange: lastReportedSelection)
+        selectionReports.now()
         return fileDelegate?.fileView(self, menuFor: selectedEntries)
     }
 
-    fileprivate func handleKey(_ key: FileViewKey) -> Bool {
+    func handleKey(_ key: FileViewKey) -> Bool {
         if fileDelegate?.fileView(self, handle: key) == true { return true }
         if key == .returnKey { openSelection(); return true }
         return false
@@ -406,7 +398,7 @@ final class GridViewController: NSViewController, FileCollectionController {
         fileDelegate?.fileView(self, renameClicked: url)
     }
 
-    fileprivate func focusChanged() { refreshVisibleItems() }
+    func focusChanged() { refreshVisibleItems() }
 
     fileprivate func noteClickSelection() {
         // Mouse selection moves the keyboard lead to the clicked item.
@@ -417,6 +409,8 @@ final class GridViewController: NSViewController, FileCollectionController {
         }
     }
 
+    func index(of url: URL) -> Int? { indexByKey[url.fileViewKey] }
+
     // MARK: - Rename
 
     func cancelRename() {
@@ -425,12 +419,7 @@ final class GridViewController: NSViewController, FileCollectionController {
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
-        if let existing = renameField {
-            existing.cancel()
-        }
-        guard let index = indexByKey[url.fileViewKey] else { return false }
-        let entry = entries[index]
-        select([url], scroll: true)
+        guard let (index, entry) = prepareRename(url) else { return false }
         collectionView.layoutSubtreeIfNeeded()
         guard let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem else { return false }
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, font: layout.metrics.typography.font)
@@ -484,10 +473,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
-        if let lead, indexPaths.contains(IndexPath(item: lead, section: 0)),
-           !collectionView.selectionIndexPaths.contains(IndexPath(item: lead, section: 0)) {
-            self.lead = collectionView.selectionIndexPaths.map(\.item).max()
-        }
+        lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths)
         reportSelection()
     }
 
@@ -498,8 +484,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        guard indexPath.count == 2, entries.indices.contains(indexPath.item) else { return nil }
-        return ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies)
+        pasteboardWriter(at: indexPath)
     }
 
     // Dropping in
@@ -507,53 +492,12 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let proposed = proposedIndexPath.pointee as IndexPath
-        let index = proposed.count == 2 ? proposed.item : -1
-        // A folder the drag rests on springs open (never one of the dragged items or inside one).
-        let resting = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url) && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
-        springLoader.hover(resting ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
-        guard !urls.isEmpty else { return hideDropHighlight() }
-        if dropOperation.pointee == .on, entries.indices.contains(index), entries[index].isFolder,
-           !urls.contains(entries[index].url) {
-            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
-            if !operation.isEmpty {
-                dropHighlight.isHidden = true
-                return operation
-            }
-        }
-        // Anywhere else drops into the folder being shown.
-        guard let directory else { return hideDropHighlight() }
-        proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
-        dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo, copies: copies)
-        dropHighlight.isHidden = operation.isEmpty
-        return operation
-    }
-
-    private func hideDropHighlight() -> NSDragOperation {
-        dropHighlight.isHidden = true
-        return []
+        validateDrop(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        dropHighlight.isHidden = true
-        springLoader.cancel()
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let index = indexPath.count == 2 ? indexPath.item : -1
-        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
-            ? entries[index].url : nil
-        guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
-        guard !operation.isEmpty else { return false }
-        return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
-    }
-
-    fileprivate func dragExited() {
-        dropHighlight.isHidden = true
-        springLoader.cancel()
+        acceptDrop(draggingInfo, indexPath: indexPath, dropOperation: dropOperation)
     }
 }
 
@@ -561,40 +505,29 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
 
 /// Routes keys like the list does (typing filters, Space previews, Return renames) and adds double-click,
 /// context-menu selection and focus-aware highlighting.
-final class GridCollectionView: NSCollectionView {
+final class GridCollectionView: FileCollectionView {
     enum Direction { case left, right, up, down, home, end }
 
-    fileprivate weak var controller: GridViewController?
+    fileprivate var controller: GridViewController? { host as? GridViewController }
     fileprivate var lastMouseDownPoint: NSPoint?
     private let clickToRename = ClickToRename()
 
-    var isEmphasized: Bool {
-        guard let window else { return false }
-        return window.isKeyWindow && window.firstResponder === self
-    }
-
     override func keyDown(with event: NSEvent) {
         clickToRename.cancel()
-        guard let controller else { return super.keyDown(with: event) }
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let plain = mods.isDisjoint(with: [.command, .control])
-        let extend = mods.contains(.shift)
-        switch event.keyCode {
-        case KeyCode.leftArrow where plain: controller.move(.left, extend: extend); return
-        case KeyCode.rightArrow where plain: controller.move(.right, extend: extend); return
-        case KeyCode.downArrow where plain: controller.move(.down, extend: extend); return
-        case KeyCode.upArrow where plain: controller.move(.up, extend: extend); return
-        default: break
-        }
-        if let key = FileViewKey.from(event) {
-            if case .type = key {
-                if controller.handleKey(key) { return }
-            } else {
-                if !controller.handleKey(key) { super.keyDown(with: event) }
-                return
-            }
-        }
         super.keyDown(with: event)
+    }
+
+    override func move(for keyCode: UInt16, plain: Bool, extend: Bool) -> Bool {
+        let direction: Direction? = switch keyCode {
+        case KeyCode.leftArrow where plain: .left
+        case KeyCode.rightArrow where plain: .right
+        case KeyCode.downArrow where plain: .down
+        case KeyCode.upArrow where plain: .up
+        default: nil
+        }
+        guard let direction, let controller else { return false }
+        controller.move(direction, extend: extend)
+        return true
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -615,49 +548,9 @@ final class GridCollectionView: NSCollectionView {
         return controller?.contextMenu(at: convert(event.locationInWindow, from: nil))
     }
 
-    override func becomeFirstResponder() -> Bool {
-        let result = super.becomeFirstResponder()
-        controller?.focusChanged()
-        return result
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let result = super.resignFirstResponder()
-        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.controller?.focusChanged() } }
-        return result
-    }
-
-    private var windowObservers: [NSObjectProtocol] = []
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
-        windowObservers = []
-        guard let window else { return }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.controller?.focusChanged() }
-            })
-        }
-    }
-
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         controller?.refreshVisibleItems()
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        super.draggingExited(sender)
-        controller?.dragExited()
-    }
-
-    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
-        controller?.dragExited()
     }
 
     override func scrollToBeginningOfDocument(_ sender: Any?) { scroll(.zero) }

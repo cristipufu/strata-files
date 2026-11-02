@@ -21,8 +21,7 @@ let appOnlySources = [
     "AppDelegate+Trash.swift",
     "AppDelegate.swift",
     "MainMenu.swift",
-    "NewWindowLocation.swift",
-    "Prefs.swift",
+    "MainThreadWatchdog.swift",
     "ShortcutStore.swift",
     "StrataCommand.swift",
     "Updates.swift",
@@ -45,37 +44,47 @@ let themeSources = [
 let appModelSources = [
     "ApplicationsFolders.swift",
     "ArchiveCache.swift",
-    "CloudFolders.swift",
-    "CloudStatus.swift",
     "CreatedFolders.swift",
-    "DSStore.swift",
     "FileEntry.swift",
+    "FileLayerImports.swift",
     "FileOps.swift",
     "FolderCompare.swift",
     "Frecency.swift",
-    "LandedFiles.swift",
     "OperationLog.swift",
+    "HistoryEntry.swift",
+    "PlaceChecks.swift",
     "Places.swift",
+    "Prefs.swift",
     "Privacy.swift",
     "SavedSearches.swift",
-    "SavedNavigation.swift",
     "ServerConnectionSettings.swift",
     "TagStore.swift",
     "Trash.swift",
-    "Workspace.swift",
 ]
 
 let modelSources = [
+    "BookFormat.swift",
     "ChosenFile.swift",
+    "CloudFolders.swift",
+    "CloudStatus.swift",
+    "DSStore.swift",
+    "FileFootprint.swift",
     "FileIdentity.swift",
     "FileInfoEditing.swift",
-    "FileFootprint.swift",
+    "FolderNames.swift",
     "FolderSizer.swift",
+    "LandedFiles.swift",
     "MediaInfo.swift",
+    "NewWindowLocation.swift",
     "PipeRead.swift",
+    "PreviewLayout.swift",
+    "RemovalVolume.swift",
+    "SavedNavigation.swift",
     "SecureStorage.swift",
     "ServerConnection.swift",
     "ServerMountSession.swift",
+    "ViewSettings.swift",
+    "Workspace.swift",
 ]
 
 let indexSources = [
@@ -98,8 +107,27 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
-        .target(name: "CArchivePreview", linkerSettings: [.linkedLibrary("archive.2")]),
-        .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"]),
+        .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
+                linkerSettings: [.linkedFramework("AppKit")]),
+        .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
+        .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
+        // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
+        // read, which inherits that sandbox (scripts/archive-service.sh assembles and signs both). The service links only
+        // CArchiveSandbox, never the parser.
+        .executableTarget(
+            name: "StrataArchiveService",
+            dependencies: ["CArchiveSandbox"],
+            exclude: ["Info.plist", "ArchiveService.entitlements"]
+        ),
+        .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"], exclude: ["ArchiveWorker.entitlements"]),
+        .target(name: "StrataArchiveClient", path: "Sources/StrataArchiveClient", swiftSettings: strataSwiftSettings),
+        // Test and development builds reach the service through this host, inside an app built around it.
+        .executableTarget(
+            name: "StrataArchiveHarness",
+            dependencies: ["StrataArchiveClient"],
+            path: "Sources/StrataArchiveHarness",
+            swiftSettings: strataSwiftSettings
+        ),
         .target(
             name: "StrataSupport",
             path: "Sources/Strata/Support",
@@ -122,17 +150,74 @@ let package = Package(
             swiftSettings: strataSwiftSettings
         ),
         .target(
+            name: "StrataArchives",
+            dependencies: ["StrataSupport", "StrataModel", "StrataArchiveClient"],
+            path: "Sources/Strata/Archives",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText"],
             path: "Sources/Strata/Previews",
+            resources: [.copy("Mermaid")],
             swiftSettings: strataSwiftSettings
         ),
         .target(
             name: "StrataIndex",
             dependencies: ["StrataSupport", "StrataModel"],
             path: "Sources/Strata/Index",
-            exclude: ["FileIndex.swift", "FolderSearch.swift", "NaturalQuery.swift"],
+            exclude: ["FileIndex.swift", "FolderSearch.swift", "NaturalQuery.swift", "LayerImports.swift"],
             sources: indexSources,
+            swiftSettings: strataSwiftSettings
+        ),
+        // The transfer queue and its jobs (copies, moves, uploads, archives, fetches), one disk at a time and journaled
+        // for History, and the window's file command owner: above the file layer they run.
+        .target(
+            name: "StrataQueue",
+            dependencies: ["StrataFiles", "StrataArchives"],
+            path: "Sources/Strata/Queue",
+            swiftSettings: strataSwiftSettings
+        ),
+        // Ask Strata (plans, the content index, summaries), project detection and cleanup, and the app's file index and
+        // searches: above the file layer, below the interface.
+        .target(
+            name: "StrataAI",
+            dependencies: ["StrataQueue"],
+            path: "Sources/Strata/AI",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataDev",
+            dependencies: ["StrataQueue"],
+            path: "Sources/Strata/Dev",
+            swiftSettings: strataSwiftSettings
+        ),
+        .target(
+            name: "StrataSearch",
+            dependencies: ["StrataFiles", "StrataAI"],
+            path: "Sources/Strata/Index",
+            exclude: indexSources,
+            swiftSettings: strataSwiftSettings
+        ),
+        // Talking to servers and container engines: their definitions and credentials, SFTP, Docker's API over its
+        // socket, tar streams, and the downloads and listings their copies share.
+        .target(
+            name: "StrataConnections",
+            dependencies: ["StrataSupport", "StrataModel"],
+            path: "Sources/Strata/Connections",
+            swiftSettings: strataSwiftSettings
+        ),
+        // The file layer: files, History, transfers, servers and containers. It names nothing of the interface.
+        .target(
+            name: "StrataFiles",
+            dependencies: ["StrataSupport", "StrataModel", "StrataArchives", "StrataIndex",
+                           "StrataArchiveClient", "StrataConnections"],
+            path: "Sources/Strata",
+            exclude: ["Archives", "AI", "App", "AppUpdates", "Browser", "Connections", "Dev", "Dock", "Index", "Inspector", "main.swift",
+                      "Palette", "Queue",
+                      "Previewing", "Previews", "Settings", "Sidebar", "Support", "Toolbar", "Views", "Window"]
+                + modelSources.map { "Model/\($0)" },
+            sources: ["Transfers", "Remote", "Containers"] + appModelSources.map { "Model/\($0)" },
             swiftSettings: strataSwiftSettings
         ),
         .executableTarget(
@@ -143,12 +228,20 @@ let package = Package(
                 "StrataTheme",
                 "StrataModel",
                 "StrataPreviews",
+                "StrataArchives",
                 "StrataIndex",
+                "StrataFiles",
+                "StrataQueue",
+                "StrataAI",
+                "StrataDev",
+                "StrataSearch",
             ],
             path: "Sources/Strata",
-            exclude: ["Support", "Previews", "App/Themes"]
+            exclude: ["Archives", "Support", "Previews", "App/Themes", "Transfers", "Remote", "Containers", "Connections", "Queue", "AI",
+                      "Dev", "Index"]
                 + themeSources.map { "App/\($0)" }
                 + modelSources.map { "Model/\($0)" }
+                + appModelSources.map { "Model/\($0)" }
                 + indexSources.map { "Index/\($0)" },
             swiftSettings: strataSwiftSettings,
             linkerSettings: [
@@ -161,6 +254,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "StrataCLI",
+            dependencies: ["StrataSupport"],
             path: "Sources/StrataCLI",
             linkerSettings: [.linkedFramework("AppKit")]
         ),
@@ -172,7 +266,16 @@ let package = Package(
                 "StrataTheme",
                 "StrataModel",
                 "StrataPreviews",
+                "CPreviewText",
+                "StrataArchives",
                 "StrataIndex",
+                "StrataConnections",
+                "StrataFiles",
+                "StrataQueue",
+                "StrataAI",
+                "StrataDev",
+                "StrataSearch",
+                "StrataArchiveClient",
             ],
             path: "Tests/StrataTests",
             swiftSettings: [.defaultIsolation(MainActor.self)]

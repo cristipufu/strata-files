@@ -2,11 +2,22 @@ import AppKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// The commands that change files (Delete Immediately, Move to Trash, Rename, Cut, Compress…) act on the browser's
 /// `selectedURLs`. In every view that's exactly what's selected, and it stays the same items when the folder is read
 /// again, whatever moves around them.
 struct SelectionTargetsTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private static let modes: [BrowserViewMode] = [.list, .grid, .columns, .gallery, .treemap]
 
     private func wait(until condition: () -> Bool) async {
@@ -14,7 +25,7 @@ struct SelectionTargetsTests {
     }
 
     private func browser(_ tree: TestTree, _ mode: BrowserViewMode, items: Int) async -> BrowserViewController {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(mode, remember: false)
         browser.load(tree.root)
@@ -101,7 +112,7 @@ struct SelectionTargetsTests {
     // MARK: - Results (search, Recents, Large Files, Duplicates)
 
     private func results(_ tree: TestTree) -> BrowserViewController {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         return browser
     }

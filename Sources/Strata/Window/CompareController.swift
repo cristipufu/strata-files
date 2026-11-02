@@ -4,6 +4,7 @@ import AppKit
 /// per row), and Sync. Copies run in the Transfers list, verified, with undo and History; what a mirror removes goes to
 /// the Trash.
 final class CompareController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    typealias Reader = @Sendable (URL, URL, Bool, Bool, FolderCompare.Control, @escaping @Sendable (Int) -> Void) async -> FolderCompare.Result
     private let transfers: TransferQueue
     private let preferences: Prefs
     private let left: URL
@@ -15,6 +16,10 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     private var actions: [String: FolderCompare.Action] = [:]
     private var control: FolderCompare.Control?
     private var lastResult: FolderCompare.Result?
+    private let read: Reader
+    private let scheduleProgress: LatestUpdate<Int>.Schedule
+    private var comparison: Task<Void, Never>?
+    private var progress: LatestUpdate<Int>?
 
     private let contents = NSButton(checkboxWithTitle: String(localized: "Compare contents"), target: nil, action: nil)
     private let filter = NSPopUpButton()
@@ -50,21 +55,33 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
 
-    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue = .shared, preferences: Prefs? = nil) {
+    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue, preferences: Prefs? = nil,
+         read: @escaping Reader = { await FolderCompare.compare($0, $1, contents: $2, includeHidden: $3, control: $4, progress: $5) },
+         scheduleProgress: @escaping LatestUpdate<Int>.Schedule = LatestUpdate<Int>.onMain) {
         self.transfers = transfers
         self.preferences = preferences ?? transfers.preferences
         self.left = left
         self.right = right
         self.undo = undo
+        self.read = read
+        self.scheduleProgress = scheduleProgress
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit { stopComparison() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "Compare Folders"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        // The folders by name (both always visible); where they are, on hover.
+        view = layOut(title: title, sides: makeSides(), options: makeOptions(), list: makeList(), footer: makeFooter())
+        runComparison()
+    }
+
+    /// The folders by name (both always visible); where they are, on hover.
+    private func makeSides() -> NSTextField {
         let sides = NSTextField(labelWithString: String(localized: "“\(left.lastPathComponent)” (left)   ⇄   “\(right.lastPathComponent)” (right)",
                                                          comment: "The two folders being compared, by name"))
         sides.font = .systemFont(ofSize: 12)
@@ -73,7 +90,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         sides.toolTip = String(localized: "Left: \(Format.tildePath(left))\nRight: \(Format.tildePath(right))",
                                comment: "Tooltip: where the two compared folders are")
         sides.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return sides
+    }
 
+    /// What's listed, whether contents are compared, and which way a sync goes.
+    private func makeOptions() -> NSStackView {
         contents.target = self
         contents.action = #selector(rescan(_:))
         contents.toolTip = String(localized: "Read files of the same size to find ones whose contents differ (slower)")
@@ -95,7 +116,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let options = NSStackView(views: [showLabel, filter, contents, spacer, syncLabel, direction, mirror])
         options.spacing = 8
+        return options
+    }
 
+    /// The differences, one row each, with a menu setting what the selected rows do.
+    private func makeList() -> NSScrollView {
         for (id, title, width) in [("status", "", 26.0),
                                    ("path", String(localized: "Item", comment: "Compare column: the item's path"), 280.0),
                                    ("left", String(localized: "Left: \(left.lastPathComponent)", comment: "Compare column: the left folder"), 150.0),
@@ -124,7 +149,11 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .bezelBorder
+        return scroll
+    }
 
+    /// The summary, Close and Sync.
+    private func makeFooter() -> NSStackView {
         summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         summary.textColor = .secondaryLabelColor
         summary.lineBreakMode = .byTruncatingTail
@@ -143,35 +172,28 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         footerSpacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [spinner, summary, footerSpacer, closeButton, syncButton])
         footer.spacing = 8
+        return footer
+    }
 
+    private func layOut(title: NSTextField, sides: NSTextField, options: NSStackView, list scroll: NSScrollView,
+                        footer: NSStackView) -> NSView {
         let stack = NSStackView(views: [title, sides, options, scroll, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(4, after: title)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [options, scroll, footer], themed: false)
+        NSLayoutConstraint.activate(constraints + [
             container.widthAnchor.constraint(greaterThanOrEqualToConstant: 800),
             sides.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -40),
-            options.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 320),
-            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
-        view = container
-        runComparison()
+        return container
     }
 
     override func viewDidDisappear() {
         super.viewDidDisappear()
-        control?.cancel()
+        stopComparison()
     }
 
     // MARK: - Comparing
@@ -181,7 +203,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     }
 
     private func runComparison() {
-        control?.cancel()
+        stopComparison()
         let control = FolderCompare.Control()
         self.control = control
         differences = []
@@ -191,18 +213,28 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         spinner.startAnimation(nil)
         summary.stringValue = String(localized: "Comparing…")
         let left = left, right = right, contents = contents.state == .on, hidden = preferences.showHidden
-        let progress: @Sendable (Int) -> Void = { [weak self] count in
-            Task { @MainActor in
-                guard let self, self.control === control else { return }
-                self.summary.stringValue = String(localized: "Comparing… \(count) items", comment: "plural")
-            }
+        let updates = LatestUpdate<Int>(schedule: scheduleProgress) { [weak self] count in
+            guard let self, self.control === control, !control.isCancelled else { return }
+            self.summary.stringValue = String(localized: "Comparing… \(count) items", comment: "plural")
         }
-        Task { [weak self] in
-            let result = await FolderCompare.compare(left, right, contents: contents, includeHidden: hidden, control: control,
-                                                     progress: progress)
-            guard let self, self.control === control, !result.cancelled else { return }
+        progress = updates
+        let read = read
+        comparison = Task { [weak self] in
+            let result = await read(left, right, contents, hidden, control, updates.send)
+            updates.cancel()
+            guard let self, self.control === control, !control.isCancelled, !Task.isCancelled, !result.cancelled else { return }
+            progress = nil
+            comparison = nil
             show(result)
         }
+    }
+
+    private func stopComparison() {
+        control?.cancel()
+        comparison?.cancel()
+        comparison = nil
+        progress?.cancel()
+        progress = nil
     }
 
     private func show(_ result: FolderCompare.Result) {
@@ -380,18 +412,28 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     // MARK: - Syncing
 
     @objc private func close(_ sender: Any?) {
-        control?.cancel()
+        stopComparison()
         dismiss(nil)
     }
 
     @objc private func sync(_ sender: Any?) {
         guard lastResult?.isComplete == true else { return }
         let plan = FolderCompare.syncPlan(differences, actions: actions, left: left, right: right)
+        guard !plan.isEmpty, let window = view.window else { return }
+        confirmation(for: plan).beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let undo = undo, left = left, right = right, parent = window.sheetParent
+            dismiss(nil)
+            Task { @MainActor in
+                await self.apply(plan, undo: undo, left: left, right: right, errorsIn: parent)
+            }
+        }
+    }
+
+    /// What the sync copies each way and moves to the Trash, in numbers, before anything changes.
+    private func confirmation(for plan: FolderCompare.SyncPlan) -> NSAlert {
         let (toRight, toLeft, trashLeft, trashRight) = (plan.toRight, plan.toLeft, plan.trashLeft, plan.trashRight)
-        let replacesOtherKind = plan.replacesOtherKind
-        let trash = trashLeft + trashRight
-        guard !(toRight.isEmpty && toLeft.isEmpty && trash.isEmpty), let window = view.window else { return }
-        let count = toRight.count + toLeft.count + trash.count
+        let count = toRight.count + toLeft.count + trashLeft.count + trashRight.count
         let leftName = left.lastPathComponent, rightName = right.lastPathComponent
         let alert = NSAlert()
         alert.messageText = String(localized: "Sync \(count) items?", comment: "plural")
@@ -408,8 +450,8 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         if !trashLeft.isEmpty {
             lines.append(String(localized: "\(trashLeft.count) items in “\(leftName)” on the left moved to the Trash", comment: "plural"))
         }
-        if replacesOtherKind > 0 {
-            lines.append(String(localized: "\(replacesOtherKind) items replace a file with a folder or a folder with a file", comment: "plural"))
+        if plan.replacesOtherKind > 0 {
+            lines.append(String(localized: "\(plan.replacesOtherKind) items replace a file with a folder or a folder with a file", comment: "plural"))
         }
         let hidden = differences.count - shown.count
         if hidden > 0 { lines.append(String(localized: "(This includes rows the Show menu hides.)")) }
@@ -417,33 +459,33 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
             + String(localized: "Whatever a copy replaces goes to the Trash first. Copies are checked after they’re written. Edit ▸ Undo undoes the copies and the Trash step separately.")
         alert.addButton(withTitle: String(localized: "Sync", comment: "Button: sync the two folders"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            let undo = undo, left = left, right = right, parent = window.sheetParent
-            dismiss(nil)
-            Task { @MainActor in
-                // Extras go first, so nothing a copy writes can be trashed after it.
-                if !trash.isEmpty {
-                    do {
-                        try await FileOps.trashInBackground(trash, undo: undo, copies: transfers.copies, history: transfers.history)
-                    } catch {
-                        let failed = NSAlert(error: error)
-                        failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")
-                        if let parent { failed.beginSheetModal(for: parent, completionHandler: nil) }
-                        return
-                    }
-                }
-                var options = TransferEngine.Options()
-                options.verify = true
-                if !toRight.isEmpty {
-                    transfers.enqueue(moves: toRight, destination: right, mode: .copy, options: options, undo: undo,
-                                                 conflicts: .replace, actionName: "Sync")
-                }
-                if !toLeft.isEmpty {
-                    transfers.enqueue(moves: toLeft, destination: left, mode: .copy, options: options, undo: undo,
-                                                 conflicts: .replace, actionName: "Sync")
-                }
+        return alert
+    }
+
+    /// Extras go to the Trash first, so nothing a copy writes can be trashed after it; then the copies are queued,
+    /// checked after they're written. A Trash that fails stops the sync there.
+    private func apply(_ plan: FolderCompare.SyncPlan, undo: UndoManager?, left: URL, right: URL,
+                       errorsIn parent: NSWindow?) async {
+        let trash = plan.trashLeft + plan.trashRight
+        if !trash.isEmpty {
+            do {
+                try await FileOps.trashInBackground(trash, undo: undo, copies: transfers.copies, history: transfers.history)
+            } catch {
+                let failed = NSAlert(error: error)
+                failed.messageText = String(localized: "Some items couldn’t be moved to the Trash, so the sync stopped there.")
+                if let parent { failed.beginSheetModal(for: parent, completionHandler: nil) }
+                return
             }
+        }
+        var options = TransferEngine.Options()
+        options.verify = true
+        if !plan.toRight.isEmpty {
+            transfers.enqueue(moves: plan.toRight, destination: right, mode: .copy, options: options, undo: undo,
+                              conflicts: .replace, actionName: "Sync")
+        }
+        if !plan.toLeft.isEmpty {
+            transfers.enqueue(moves: plan.toLeft, destination: left, mode: .copy, options: options, undo: undo,
+                              conflicts: .replace, actionName: "Sync")
         }
     }
 }

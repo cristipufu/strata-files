@@ -2,33 +2,41 @@ import Foundation
 import UniformTypeIdentifiers
 
 /// A snapshot of one directory entry, read off the main thread.
-nonisolated struct FileEntry: Sendable, Hashable {
-    let url: URL
-    let name: String
+package nonisolated struct FileEntry: Sendable, Hashable {
+    package let url: URL
+    package let name: String
     /// Finder's localized label. Names used to rename, identify extensions or form paths stay in `name` and `url`.
-    let displayName: String
-    let isDirectory: Bool
-    let isPackage: Bool
-    let isHidden: Bool
-    let isSymlink: Bool
-    let isVolume: Bool
-    let size: Int64?
-    let modified: Date?
-    let created: Date?
-    let added: Date?
-    let kind: String
-    let contentType: UTType?
+    package let displayName: String
+    package let isDirectory: Bool
+    package let isPackage: Bool
+    package let isHidden: Bool
+    package let isSymlink: Bool
+    /// A Finder alias (not a symbolic link): opening it goes where it points.
+    package let isAlias: Bool
+    /// A plain file, as listed: not a folder, link, pipe or device. Previews read only these.
+    package let isRegular: Bool
+    /// Its facts were read from the disk (a listing, or the item itself); an index hit's weren't, so whether it's an
+    /// alias isn't known.
+    package let isListed: Bool
+    package let isVolume: Bool
+    package let size: Int64?
+    package let allocatedSize: Int64?
+    package let modified: Date?
+    package let created: Date?
+    package let added: Date?
+    package let kind: String
+    package let contentType: UTType?
 
     /// A folder you navigate into (packages such as apps open instead).
-    var isFolder: Bool { isDirectory && !isPackage }
+    package var isFolder: Bool { isDirectory && !isPackage }
 
     /// The folder opening `url` should show. A symlink or Finder alias to a folder opens that folder:
     /// listing the link itself fails, because the link is not a directory.
-    static func openedFolder(_ url: URL) -> URL {
+    package static func openedFolder(_ url: URL) -> URL {
         guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isAliasFileKey]) else { return url }
         if values.isSymbolicLink == true {
             let resolved = url.resolvingSymlinksInPath()
-            if resolved.standardizedFileURL.path != url.standardizedFileURL.path, isNavigableFolder(resolved) {
+            if resolved.lexicallyStandardized.path != url.lexicallyStandardized.path, isNavigableFolder(resolved) {
                 return resolved
             }
         } else if values.isAliasFile == true, let resolved = try? URL(resolvingAliasFileAt: url), isNavigableFolder(resolved) {
@@ -37,14 +45,40 @@ nonisolated struct FileEntry: Sendable, Hashable {
         return url
     }
 
+    /// What opening a path does: goes into a folder, or a link to one, that isn't a package; shows anything else
+    /// selected in its folder.
+    package enum Opening: Sendable {
+        case folder, item, missing
+    }
+
+    /// Read on a thread of its own: on a server each step of the path is a round trip, and one that stopped answering
+    /// holds only that thread.
+    package static func opening(_ url: URL) async -> Opening {
+        await OwnThread.run { readOpening(url) }
+    }
+
+    /// What a typed or handed path opens as, and where it is: its `..` taken after the links on the way, as the kernel
+    /// takes them when it checks what the path opens, so the place shown is the place checked.
+    package static func locate(_ url: URL) async -> (opening: Opening, url: URL) {
+        await OwnThread.run { (readOpening(url), TypedPath.location(of: url)) }
+    }
+
+    /// The same, read where it's called.
+    package static func readOpening(_ url: URL) -> Opening {
+        guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else {
+            return .missing
+        }
+        return values.isDirectory == true && values.isPackage != true ? .folder : .item
+    }
+
     /// A directory the browser lists. Apps and other packages open instead.
-    static func isNavigableFolder(_ url: URL) -> Bool {
+    package static func isNavigableFolder(_ url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }
         return values.isDirectory == true && values.isPackage != true
     }
 
     /// macOS calls `.ts` an MPEG-2 stream and has no names for many source files; developers expect these.
-    static let developerKinds: [String: String] = [
+    package static let developerKinds: [String: String] = [
         "ts": String(localized: "TypeScript source", comment: "Kind of file"),
         "tsx": String(localized: "TypeScript JSX source", comment: "Kind of file"),
         "jsx": String(localized: "JavaScript JSX source", comment: "Kind of file"),
@@ -63,11 +97,14 @@ nonisolated struct FileEntry: Sendable, Hashable {
         "proto": String(localized: "Protocol Buffers definition", comment: "Kind of file"),
     ]
 
-    /// The Kind shown everywhere (list, inspector, conflict sheet, AI plans): the system's description, except for
-    /// source files macOS names wrong or not at all. `.ts` is ambiguous: small ones are TypeScript, large ones are
-    /// almost always MPEG transport-stream video.
-    static func kind(extension ext: String, isDirectory: Bool, isPackage: Bool, size: Int64?, system: String?) -> String {
+    /// The Kind shown everywhere (list, inspector, conflict sheet, Space, AI plans): the system's description, except
+    /// for source files macOS names wrong or not at all and the documents it has no type for (`KnownDocument`, by the
+    /// item's own `type`). `.ts` is ambiguous: small ones are TypeScript, large ones are almost always MPEG
+    /// transport-stream video.
+    package static func kind(extension ext: String, isDirectory: Bool, isPackage: Bool, size: Int64?, system: String?,
+                     type: UTType?) -> String {
         let ext = ext.lowercased()
+        if !isDirectory, let document = KnownDocument.kind(extension: ext, type: type) { return document.name }
         if !isDirectory, let developer = developerKinds[ext], !(ext == "ts" || ext == "mts") || (size ?? 0) < 4_000_000 {
             return developer
         }
@@ -75,14 +112,15 @@ nonisolated struct FileEntry: Sendable, Hashable {
                                                     : String(localized: "Document", comment: "Kind of item"))
     }
 
-    static let resourceKeys: [URLResourceKey] = [
-        .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey,
+    package static let resourceKeys: [URLResourceKey] = [
+        .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey,
         .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey, .localizedTypeDescriptionKey,
-        .contentTypeKey, .isVolumeKey,
+        .contentTypeKey, .isVolumeKey, .isAliasFileKey, .isRegularFileKey,
     ]
 
-    init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
-         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil) {
+    package init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
+         size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
+         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true, allocatedSize: Int64? = nil) {
         self.url = url
         self.name = name
         self.displayName = displayName ?? name
@@ -90,8 +128,13 @@ nonisolated struct FileEntry: Sendable, Hashable {
         self.isPackage = isPackage
         self.isHidden = isHidden
         self.isSymlink = isSymlink
+        self.isAlias = isAlias
+        // Made without a listing (an index hit, say): a file that isn't a folder or a link.
+        self.isRegular = isRegular ?? (!isDirectory && !isSymlink)
+        self.isListed = isListed
         self.isVolume = isVolume
         self.size = size
+        self.allocatedSize = allocatedSize
         self.modified = modified
         self.created = created
         self.added = added
@@ -99,11 +142,15 @@ nonisolated struct FileEntry: Sendable, Hashable {
         self.contentType = contentType
     }
 
-    init(url: URL, values: URLResourceValues) {
+    package init(url: URL, values: URLResourceValues) {
         self.url = url
         name = values.name ?? url.lastPathComponent
         displayName = values.localizedName ?? name
         isSymlink = values.isSymbolicLink ?? false
+        // The key says yes for symbolic links too.
+        isAlias = values.isAliasFile == true && !isSymlink
+        isRegular = values.isRegularFile == true
+        isListed = true
         isVolume = values.isVolume ?? false
         var isDirectory = values.isDirectory ?? false
         var isPackage = values.isPackage ?? false
@@ -115,29 +162,32 @@ nonisolated struct FileEntry: Sendable, Hashable {
         self.isPackage = isPackage
         isHidden = values.isHidden ?? name.hasPrefix(".")
         size = isDirectory ? nil : values.fileSize.map(Int64.init)
+        allocatedSize = isDirectory && !isSymlink ? nil : values.totalFileAllocatedSize.map(Int64.init)
         modified = values.contentModificationDate
         created = values.creationDate
         added = values.addedToDirectoryDate
         kind = Self.kind(extension: url.pathExtension, isDirectory: isDirectory, isPackage: isPackage,
-                         size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription)
+                         size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription,
+                         type: values.contentType)
         contentType = values.contentType
     }
 
     /// The same item described as another kind.
-    func with(kind: String? = nil, displayName: String? = nil) -> FileEntry {
+    package func with(kind: String? = nil, displayName: String? = nil) -> FileEntry {
         FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
                   isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind ?? self.kind,
-                  contentType: contentType, displayName: displayName ?? self.displayName)
+                  contentType: contentType, displayName: displayName ?? self.displayName, isAlias: isAlias,
+                  isRegular: isRegular, isListed: isListed)
     }
 
     /// Filtering accepts both the name on disk and the visible label, without highlighting offsets from another name.
-    func nameMatch(_ query: String) -> Fuzzy.Match? {
+    package func nameMatch(_ query: String) -> Fuzzy.Match? {
         if let match = Fuzzy.match(query, displayName) { return match }
         return Fuzzy.match(query, name).map { Fuzzy.Match(score: $0.score, indices: []) }
     }
 
     /// Index hits keep disk work out of the main thread. Resolve folder and bundle labels once results arrive.
-    @concurrent static func localizedNames(_ entries: [Self]) async -> [Self] {
+    @concurrent package static func localizedNames(_ entries: [Self]) async -> [Self] {
         entries.map { entry in
             guard !Task.isCancelled, entry.isDirectory || entry.isPackage,
                   let values = try? entry.url.resourceValues(forKeys: [.localizedNameKey]), let name = values.localizedName else { return entry }
@@ -145,27 +195,44 @@ nonisolated struct FileEntry: Sendable, Hashable {
         }
     }
 
-    init?(url: URL) {
+    package init?(url: URL) {
         guard let values = try? url.resourceValues(forKeys: Set(Self.resourceKeys)) else { return nil }
         self.init(url: url, values: values)
     }
+
+    @concurrent package static func read(_ url: URL) async -> FileEntry? {
+        FileEntry(url: url)
+    }
 }
 
-nonisolated enum DirectoryLoader {
+/// What reading a folder found: the folder it listed (a link or Finder alias to a folder is listed as that folder, by
+/// its own path, so the folder and its items always agree) and the items in it.
+package nonisolated struct Listing: Sendable {
+    package let folder: URL
+    package let entries: [FileEntry]
+
+    package init(folder: URL, entries: [FileEntry]) {
+        self.folder = folder
+        self.entries = entries
+    }
+}
+
+package nonisolated enum DirectoryLoader {
     /// A preview reads one level and stops before allocating an unbounded URL array. Expanded children have their
     /// own request; hidden files, Applications merging and provider routing match the main browser.
     @concurrent
-    static func loadPreview(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
-                            copies: CopyProviders, limit: Int) async throws -> [FileEntry] {
+    package static func loadPreview(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
+                            copies: CopyProviders, limit: Int) async throws -> Listing {
         try Task.checkCancellation()
         if copies.contains(directory) { try await copies.previewFolder(directory) }
         try Task.checkCancellation()
-        return try previewEntries(directory, showHidden: showHidden, applications: applications, limit: limit)
+        let folder = FileEntry.openedFolder(directory)
+        return Listing(folder: folder, entries: try previewEntries(folder, showHidden: showHidden, applications: applications,
+                                                                   limit: limit))
     }
 
     private static func previewEntries(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders,
                                        limit: Int) throws -> [FileEntry] {
-        let directory = FileEntry.openedFolder(directory)
         let options: FileManager.DirectoryEnumerationOptions = showHidden
             ? [.skipsSubdirectoryDescendants, .skipsPackageDescendants]
             : [.skipsSubdirectoryDescendants, .skipsPackageDescendants, .skipsHiddenFiles]
@@ -190,12 +257,18 @@ nonisolated enum DirectoryLoader {
     }
 
     @concurrent
-    static func load(_ directory: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
-                     copies: CopyProviders = .live) async throws -> [FileEntry] {
+    package static func load(_ requested: URL, showHidden: Bool, applications: ApplicationsFolders = .standard,
+                     copies: CopyProviders) async throws -> Listing {
         // A container's files: list the folder from the container first (every view loads folders here).
-        if copies.contains(directory) { await copies.refresh(directory) }
+        if copies.contains(requested) { await copies.refresh(requested) }
         // Follow a symlink or Finder alias. FileManager will not list the link itself.
-        let directory = FileEntry.openedFolder(directory)
+        let directory = FileEntry.openedFolder(requested)
+        return Listing(folder: directory, entries: try entries(of: directory, showHidden: showHidden,
+                                                               applications: applications, copies: copies))
+    }
+
+    private static func entries(of directory: URL, showHidden: Bool, applications: ApplicationsFolders,
+                                copies: CopyProviders) throws -> [FileEntry] {
         let isContainersFolder = copies.containerCopies.engineFolder(directory) != nil
         let keys = FileEntry.resourceKeys
         let urls = try applications.contents(of: directory, keys: keys, options: showHidden ? [] : [.skipsHiddenFiles])

@@ -4,17 +4,23 @@ import StrataSupport
 /// A chosen name and its parent held open across a confirmation or metadata change. Opening each component
 /// without following links prevents a replaced ancestor from redirecting the operation.
 nonisolated package final class ChosenFile: Sendable {
+    /// `url` chosen away from the main thread (nil when it can't be).
+    @concurrent package static func choosing(_ url: URL) async -> ChosenFile? { try? ChosenFile(url) }
+
     package let url: URL
     package let identity: FileIdentity
     private let parentPath: String
     private let parentIdentity: FileIdentity
     private let parent: Int32
 
+    /// The same, opened away from the main thread.
+    @concurrent package static func choose(_ url: URL) async throws -> ChosenFile { try ChosenFile(url) }
+
     package init(_ url: URL, resolveParent: Bool = true) throws {
         self.url = url
         guard !url.lastPathComponent.isEmpty, ![".", "..", "/"].contains(url.lastPathComponent) else { throw POSIXError(.EINVAL) }
         let path = url.deletingLastPathComponent().path
-        parentPath = resolveParent ? try Self.resolvedDirectory(path) : Self.systemSpelling(path)
+        parentPath = resolveParent ? try Self.resolvedDirectory(path) : PathSpelling.system(path)
         parent = try Self.openDirectory(parentPath)
         var info = stat()
         guard fstat(parent, &info) == 0 else { close(parent); throw POSIXError(.ESTALE) }
@@ -29,15 +35,6 @@ nonisolated package final class ChosenFile: Sendable {
 
     deinit { close(parent) }
 
-    package static func systemSpelling(_ path: String) -> String {
-        // Foundation shortens /private/var back to /var. These root-owned aliases are fixed by macOS;
-        // user-controlled directory components below them are still opened with O_NOFOLLOW.
-        for alias in ["/var", "/tmp", "/etc"] where path == alias || path.hasPrefix(alias + "/") {
-            return "/private" + path
-        }
-        return path
-    }
-
     private static func resolvedDirectory(_ path: String) throws -> String {
         guard let resolved = realpath(path, nil) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { free(resolved) }
@@ -47,7 +44,7 @@ nonisolated package final class ChosenFile: Sendable {
     package static func openDirectory(_ path: String) throws -> Int32 {
         var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard fd >= 0 else { throw POSIXError(.EIO) }
-        for component in systemSpelling(path).split(separator: "/") {
+        for component in PathSpelling.system(path).split(separator: "/") {
             guard component != ".", component != ".." else { close(fd); throw POSIXError(.EINVAL) }
             let next = openat(fd, String(component), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             let code = errno
@@ -119,27 +116,43 @@ nonisolated package final class ChosenFile: Sendable {
         }
     }
 
-    /// Capture both names and identities. A failed listing refuses this directory before deleting its children.
+    /// Capture both names and identities, each identity as its name is read. A failed listing refuses this directory
+    /// before deleting its children.
     package static func entries(in fd: Int32) throws -> [(name: String, identity: FileIdentity)] {
-        let copy = dup(fd)
-        guard copy >= 0, let entries = fdopendir(copy) else {
-            if copy >= 0 { close(copy) }
-            throw POSIXError(.EIO)
-        }
-        defer { closedir(entries) }
-        rewinddir(entries)
         var children: [(name: String, identity: FileIdentity)] = []
-        while true {
-            errno = 0
-            guard let entry = readdir(entries) else {
-                guard errno == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-                return children
-            }
-            guard let child = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
-            guard child != ".", child != ".." else { continue }
+        try forEachName(in: fd) { child in
             var info = stat()
             guard fstatat(fd, child, &info, AT_SYMLINK_NOFOLLOW) == 0 else { throw POSIXError(.ESTALE) }
             children.append((child, .from(info)))
+        }
+        return children
+    }
+
+    /// The names in an open folder, read without looking at the items.
+    package static func names(in fd: Int32) throws -> [String] {
+        var names: [String] = []
+        try forEachName(in: fd) { names.append($0) }
+        return names
+    }
+
+    /// A listing that fails partway, or holds a name that isn't text, fails whole.
+    private static func forEachName(in fd: Int32, _ body: (String) throws -> Void) throws {
+        let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
+        guard copy >= 0, let stream = fdopendir(copy) else {
+            let failure = errno
+            if copy >= 0 { close(copy) }
+            throw POSIXError(POSIXErrorCode(rawValue: failure) ?? .EIO)
+        }
+        defer { closedir(stream) }
+        rewinddir(stream)
+        while true {
+            errno = 0
+            guard let entry = readdir(stream) else {
+                guard errno == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                return
+            }
+            guard let name = DirectoryEntryName.read(entry) else { throw POSIXError(.EILSEQ) }
+            if name != ".", name != ".." { try body(name) }
         }
     }
 }

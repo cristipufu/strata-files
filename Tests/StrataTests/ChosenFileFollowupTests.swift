@@ -1,13 +1,32 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ChosenFileFollowupTests {
     private func descriptors(for path: String) -> [Int32] {
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        return (0..<getdtablesize()).filter { fd in
-            fcntl(fd, F_GETPATH, &buffer) == 0 && String(cString: buffer) == path
-        }
+        (0..<getdtablesize()).filter { TestTree.path(of: $0) == path }
+    }
+
+    @Test func namesAreListedWithoutLookingAtTheItemsAndCloseTheirStream() throws {
+        let tree = try TestTree("chosen/file", "chosen/folder/", "chosen/link -> ../outside", "outside")
+        let folder = tree.url("chosen"), fd = try ChosenFile.openDirectory(folder.path)
+        defer { close(fd) }
+        #expect(try ChosenFile.names(in: fd).sorted() == ["file", "folder", "link"])
+        #expect(try ChosenFile.names(in: fd).sorted() == ChosenFile.entries(in: fd).map(\.name).sorted())
+        // A file isn't a folder to list, and the listing says so.
+        let file = open(tree.url("outside").path, O_RDONLY | O_CLOEXEC)
+        try #require(file >= 0)
+        defer { close(file) }
+        #expect(throws: POSIXError(.ENOTDIR)) { try ChosenFile.names(in: file) }
+        #expect(descriptors(for: folder.path) == [fd])
+        #expect(tree.snapshot() == ["chosen/", "chosen/file", "chosen/folder/", "chosen/link -> ../outside", "outside"])
     }
 
     @Test func snapshotsCloseTheirStreamAndKeepExactChildIdentities() throws {

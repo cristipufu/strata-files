@@ -1,8 +1,8 @@
 import Foundation
 
 /// Remembers which folders you visit, ranked by frequency weighted toward recent visits (like `zoxide`).
-final class Frecency {
-    static let shared = Frecency()
+package final class Frecency {
+    package static let shared = Frecency(preferences: Prefs.shared.defaults)
 
     private struct Visit: Codable {
         var count: Double
@@ -14,7 +14,7 @@ final class Frecency {
     private let now: () -> Date
     private var visits: [String: Visit] = [:]
 
-    init(preferences: UserDefaults = Prefs.shared.defaults, now: @escaping () -> Date = Date.init) {
+    package init(preferences: UserDefaults, now: @escaping () -> Date = Date.init) {
         self.preferences = preferences
         self.now = now
         if let data = preferences.data(forKey: key),
@@ -23,8 +23,8 @@ final class Frecency {
         }
     }
 
-    func record(_ url: URL) {
-        let path = url.standardizedFileURL.path
+    package func record(_ url: URL) {
+        let path = url.lexicallyStandardized.path
         var visit = visits[path] ?? Visit(count: 0, last: now())
         visit.count += 1
         visit.last = now()
@@ -36,15 +36,14 @@ final class Frecency {
         if let data = try? JSONEncoder().encode(visits) { preferences.set(data, forKey: key) }
     }
 
-    /// Visited folders, best first, skipping ones that no longer exist.
-    func ranked() -> [URL] {
+    /// Visited folders, best first. Whether each is still there is `PlaceChecks`' to say: this reads no disk.
+    package func ranked() -> [URL] {
         let now = now()
         return visits
             .filter { !$0.key.isEmpty }
             .map { (path: $0.key, score: score($0.value, now: now)) }
             .sorted { $0.score > $1.score }
             .map { URL(fileURLWithPath: $0.path, isDirectory: true) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     private func score(_ visit: Visit, now: Date) -> Double {

@@ -16,4 +16,23 @@ nonisolated package enum DirectoryEntryName {
         guard !bytes.contains(0), !bytes.contains(47) else { return nil }
         return String(bytes: bytes, encoding: .utf8)
     }
+
+    /// The names in the folder open at `fd` (without `.` and `..`), read from a copy of it, from the start whoever
+    /// read it before. A name that isn't text is left out, and a folder that can't be read lists nothing: for
+    /// cleanups that leave alone what they can't name.
+    package static func names(inFolder fd: Int32) -> [String] {
+        let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
+        guard copy >= 0, let dir = fdopendir(copy) else {
+            if copy >= 0 { close(copy) }
+            return []
+        }
+        defer { closedir(dir) }
+        rewinddir(dir)
+        var names: [String] = []
+        while let entry = readdir(dir) {
+            guard let name = read(entry) else { continue }
+            if name != ".", name != ".." { names.append(name) }
+        }
+        return names
+    }
 }

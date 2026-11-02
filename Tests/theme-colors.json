@@ -1,30 +1,30 @@
 [
   {
-    "file": "Sources/Strata/AI/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetViews.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.5).setFill()",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
   },
   {
-    "file": "Sources/Strata/AI/PlanSheetController.swift",
+    "file": "Sources/Strata/Window/PlanSheetViews.swift",
     "code": "layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor",
     "count": 1,
     "reason": "Native proposal cards, separator lines and badges preserve the standard control and status treatment."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "dot.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.85).cgColor",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "for bar in bars { bar.backgroundColor = NSColor.quaternaryLabelColor.cgColor }",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."
   },
   {
-    "file": "Sources/Strata/AI/SummaryView.swift",
+    "file": "Sources/Strata/Inspector/SummaryView.swift",
     "code": "piece.backgroundColor = NSColor.black.cgColor",
     "count": 1,
     "reason": "The summary loading skeleton uses semantic ink and accent colors; the black layer is an alpha mask, not a visible surface."
@@ -78,7 +78,7 @@
     "reason": "Leaving or canceling a full-screen transition restores the auxiliary window's exact captured native background, including when AppKit returns to a departing host."
   },
   {
-    "file": "Sources/Strata/Browser/BrowserViewController+Actions.swift",
+    "file": "Sources/Strata/Browser/BrowserRenaming.swift",
     "code": "field.backgroundColor = .textBackgroundColor",
     "count": 1,
     "reason": "The active inline rename editor keeps the native text-field editing background and text colors."
@@ -156,49 +156,49 @@
     "reason": "The breadcrumb hover fill is translucent semantic ink over the existing toolbar surface."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.quaternarySystemFill.setFill()",
     "count": 2,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.setStroke()",
     "count": 2,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.5).setStroke()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.separatorColor.withAlphaComponent(0.6).setFill()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/ConflictSheetController.swift",
+    "file": "Sources/Strata/Window/ConflictSheetController.swift",
     "code": "NSColor.textBackgroundColor.setFill()",
     "count": 1,
     "reason": "Comparison cards use neutral document and separator colors so red/green diff marks and file previews keep their meaning."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersToolbarItem.swift",
+    "file": "Sources/Strata/Window/TransfersToolbarItem.swift",
     "code": "NSColor.controlAccentColor.setStroke()",
     "count": 1,
     "reason": "The progress ring uses semantic label and system accent colors, not a window background."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersToolbarItem.swift",
+    "file": "Sources/Strata/Window/TransfersToolbarItem.swift",
     "code": "NSColor.labelColor.withAlphaComponent(0.2).setStroke()",
     "count": 1,
     "reason": "The progress ring uses semantic label and system accent colors, not a window background."
   },
   {
-    "file": "Sources/Strata/Transfers/TransfersViewController.swift",
+    "file": "Sources/Strata/Window/TransfersViewController.swift",
     "code": "NSColor.separatorColor.setFill()",
     "count": 1,
     "reason": "A native separator distinguishes transfer groups without recoloring their progress or warning states."
@@ -222,7 +222,7 @@
     "reason": "Native browser colors are captured by ThemeStyle.bind; the remaining separator marks the boundary between columns."
   },
   {
-    "file": "Sources/Strata/Views/ColumnBrowserViewController.swift",
+    "file": "Sources/Strata/Views/ColumnPane.swift",
     "code": "tableView.backgroundColor = .controlBackgroundColor",
     "count": 1,
     "reason": "Native browser colors are captured by ThemeStyle.bind; the remaining separator marks the boundary between columns."

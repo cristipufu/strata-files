@@ -3,27 +3,27 @@ import AppKit
 /// A capsule after the repository's crumb in the path bar: branch symbol, branch name, ↑ahead ↓behind, and a dot when
 /// the work tree has changes (or the operation in progress, like "Merging"). Click for a menu to copy the branch or
 /// commit. Draws itself; sizes to its content.
-final class GitBranchPill: NSView {
-    struct Model: Equatable {
-        var branch: String
-        var isDetached = false
-        var oid: String?
-        var upstream: String?
-        var ahead = 0
-        var behind = 0
+package final class GitBranchPill: NSView {
+    package struct Model: Equatable {
+        package var branch: String
+        package var isDetached = false
+        package var oid: String?
+        package var upstream: String?
+        package var ahead = 0
+        package var behind = 0
         /// Changed paths (excluding ignored), or nil while unknown.
-        var changes: Int?
-        var conflicts = 0
-        var operation: String?
-        var stashCount = 0
-        var isStale = false
+        package var changes: Int?
+        package var conflicts = 0
+        package var operation: String?
+        package var stashCount = 0
+        package var isStale = false
 
-        init(branch: String, isDetached: Bool = false) {
+        package init(branch: String, isDetached: Bool = false) {
             self.branch = branch
             self.isDetached = isDetached
         }
 
-        init(_ snapshot: GitStatusSnapshot) {
+        package init(_ snapshot: GitStatusSnapshot) {
             branch = snapshot.branch.displayName
             isDetached = snapshot.branch.isDetached
             oid = snapshot.branch.oid
@@ -38,13 +38,13 @@ final class GitBranchPill: NSView {
         }
 
         /// Before status arrives: the branch straight from HEAD, so the pill shows up with the crumbs.
-        init?(placeholderFor repository: GitRepository) {
+        package init?(placeholderFor repository: GitRepository) {
             guard let name = repository.currentBranchName() else { return nil }
             self.init(branch: name)
         }
     }
 
-    var model: Model? {
+    package var model: Model? {
         didSet {
             guard model != oldValue else { return }
             isHidden = model == nil
@@ -55,8 +55,9 @@ final class GitBranchPill: NSView {
     }
 
     /// Replaces the built-in menu (copy branch / commit) when set.
-    var onClick: ((GitBranchPill) -> Void)?
+    package var onClick: ((GitBranchPill) -> Void)?
 
+    private let clipboard: Clipboard
     private var hovering = false
     private var tracking: NSTrackingArea?
 
@@ -68,7 +69,8 @@ final class GitBranchPill: NSView {
     private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
     private static let tagFont = NSFont.systemFont(ofSize: 10, weight: .semibold)
 
-    override init(frame: NSRect) {
+    package init(frame: NSRect = .zero, clipboard: Clipboard) {
+        self.clipboard = clipboard
         super.init(frame: frame)
         isHidden = true
         setAccessibilityElement(true)
@@ -77,9 +79,10 @@ final class GitBranchPill: NSView {
         setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    @available(*, unavailable)
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    package override var isFlipped: Bool { true }
 
     // MARK: Layout
 
@@ -133,13 +136,13 @@ final class GitBranchPill: NSView {
         return Layout(symbol: symbol, name: name, nameWidth: nameWidth, counts: counts, tag: tag, dot: dot, width: width)
     }
 
-    override var intrinsicContentSize: NSSize {
+    package override var intrinsicContentSize: NSSize {
         NSSize(width: makeLayout()?.width ?? 0, height: Self.height)
     }
 
     // MARK: Drawing
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         guard let layout = makeLayout() else { return }
         let capsule = NSRect(x: 0, y: (bounds.height - Self.height) / 2, width: bounds.width, height: Self.height)
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -181,7 +184,7 @@ final class GitBranchPill: NSView {
 
     // MARK: Interaction
 
-    override func updateTrackingAreas() {
+    package override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
         let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self)
@@ -189,15 +192,15 @@ final class GitBranchPill: NSView {
         tracking = area
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
-    override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
+    package override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
+    package override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
 
     // Handled here so a click on the pill doesn't fall through to the path bar and start editing.
-    override func mouseDown(with event: NSEvent) {
+    package override func mouseDown(with event: NSEvent) {
         activate()
     }
 
-    override func accessibilityPerformPress() -> Bool {
+    package override func accessibilityPerformPress() -> Bool {
         activate()
         return true
     }
@@ -255,8 +258,7 @@ final class GitBranchPill: NSView {
     }
 
     private func copy(_ string: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(string, forType: .string)
+        clipboard.copyText(string)
     }
 
     private func updateAccessibility() {

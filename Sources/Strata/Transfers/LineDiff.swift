@@ -1,32 +1,38 @@
 import Foundation
 
 /// Unified line diff (Myers' O(ND) algorithm) for previewing small text files side by side in the conflict sheet.
-nonisolated enum LineDiff {
-    enum Kind: Sendable { case same, added, removed }
+package nonisolated enum LineDiff {
+    package enum Kind: Sendable { case same, added, removed }
 
-    struct Line: Sendable {
-        let kind: Kind
-        let text: String
-        let oldNumber: Int?
-        let newNumber: Int?
+    package struct Line: Sendable {
+        package let kind: Kind
+        package let text: String
+        package let oldNumber: Int?
+        package let newNumber: Int?
     }
 
-    enum Row: Sendable {
+    package enum Row: Sendable {
         case line(Line)
         /// Unchanged lines left out between hunks.
         case gap(Int)
     }
 
-    struct Result: Sendable {
-        let rows: [Row]
-        let added: Int
-        let removed: Int
-        var isIdentical: Bool { added == 0 && removed == 0 }
+    package struct Result: Sendable {
+        package let rows: [Row]
+        package let added: Int
+        package let removed: Int
+        package var isIdentical: Bool { added == 0 && removed == 0 }
+
+        package init(rows: [Row], added: Int, removed: Int) {
+            self.rows = rows
+            self.added = added
+            self.removed = removed
+        }
     }
 
     /// Diff of `old` → `new` with `context` unchanged lines around each change. Nil when the inputs are too large
     /// or too different to show usefully.
-    static func compute(old: String, new: String, context: Int = 3, maxLines: Int = 50_000,
+    package static func compute(old: String, new: String, context: Int = 3, maxLines: Int = 50_000,
                         maxEdits: Int = 2_000) -> Result? {
         let a = lines(old), b = lines(new)
         guard a.count + b.count <= maxLines else { return nil }
@@ -63,7 +69,7 @@ nonisolated enum LineDiff {
         return Result(rows: hunks(lines, context: context), added: added, removed: removed)
     }
 
-    static func lines(_ text: String) -> [String] {
+    package static func lines(_ text: String) -> [String] {
         var result = text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
             line.hasSuffix("\r") ? String(line.dropLast()) : String(line)
         }
@@ -95,7 +101,7 @@ nonisolated enum LineDiff {
 
     /// Shortest edit script from `a` to `b`. Common prefix and suffix are peeled off first, so typical edits to
     /// large files stay cheap; the trace keeps only the 2d+3 live diagonals per step (O(D²) memory).
-    static func edits(_ a: [Int], _ b: [Int], maxEdits: Int) -> [Kind]? {
+    package static func edits(_ a: [Int], _ b: [Int], maxEdits: Int) -> [Kind]? {
         var prefix = 0
         while prefix < a.count, prefix < b.count, a[prefix] == b[prefix] { prefix += 1 }
         var suffix = 0
@@ -107,14 +113,18 @@ nonisolated enum LineDiff {
         let tail = [Kind](repeating: .same, count: suffix)
         if a.isEmpty { return head + [Kind](repeating: .added, count: b.count) + tail }
         if b.isEmpty { return head + [Kind](repeating: .removed, count: a.count) + tail }
+        guard let trace = trace(a, b, limit: min(a.count + b.count, maxEdits)) else { return nil }
+        return head + script(from: trace, n: a.count, m: b.count) + tail
+    }
 
+    /// Myers' forward search: the furthest reaching point on each live diagonal, saved before each step, until one
+    /// reaches the end. Nil when that takes more than `limit` edits.
+    private static func trace(_ a: [Int], _ b: [Int], limit: Int) -> [[Int]]? {
         let n = a.count, m = b.count
-        let limit = min(n + m, maxEdits)
         let offset = limit + 1
         var v = [Int](repeating: 0, count: 2 * limit + 3)
         var trace: [[Int]] = []
-        var found = false
-        search: for d in 0...limit {
+        for d in 0...limit {
             trace.append(Array(v[(offset - d - 1)...(offset + d + 1)]))
             for k in stride(from: -d, through: d, by: 2) {
                 var x = (k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])) ? v[offset + k + 1] : v[offset + k - 1] + 1
@@ -124,14 +134,14 @@ nonisolated enum LineDiff {
                     y += 1
                 }
                 v[offset + k] = x
-                if x >= n, y >= m {
-                    found = true
-                    break search
-                }
+                if x >= n, y >= m { return trace }
             }
         }
-        guard found else { return nil }
+        return nil
+    }
 
+    /// Walks `trace` back from the end of both: the edit script, first edit first.
+    private static func script(from trace: [[Int]], n: Int, m: Int) -> [Kind] {
         var script: [Kind] = []
         var x = n, y = m
         for d in stride(from: trace.count - 1, through: 0, by: -1) {
@@ -158,6 +168,6 @@ nonisolated enum LineDiff {
             x = previousX
             y = previousY
         }
-        return head + script.reversed() + tail
+        return script.reversed()
     }
 }

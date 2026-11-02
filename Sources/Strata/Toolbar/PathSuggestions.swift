@@ -12,12 +12,14 @@ nonisolated struct PathSuggestion: Equatable, Sendable {
 /// relative one walks down from where you are and from folders you use (`github/acme`); a name alone finds folders with
 /// that name anywhere, from the index, those you open most first.
 final class PathSuggestions {
-    private let visits: Frecency
     private let preferences: Prefs
+    private let places: PlaceChecks
+    private let index: FileIndex
 
-    init(visits: Frecency = .shared, preferences: Prefs = .shared) {
-        self.visits = visits
+    init(preferences: Prefs, places: PlaceChecks, index: FileIndex) {
         self.preferences = preferences
+        self.places = places
+        self.index = index
     }
 
     static let limit = 12
@@ -31,9 +33,10 @@ final class PathSuggestions {
     /// (Desktop, Documents… without Full Disk Access) or live on another machine are left out.
     func begin(at current: URL?) {
         listings.removeAll()
-        visited = Array(visits.ranked().prefix(400))
+        places.refresh()
+        visited = places.visited(limit: 400)
         let here = current ?? Places.home
-        let candidates = (Places.favorites(preferences: preferences).map(\.url) + Places.volumes().filter { $0.symbol != "network" }.map(\.url)) + [Places.home] + visited.prefix(100)
+        let candidates = places.lookupRoots(visited: visited, servers: false)
         roots = candidates.filter { !Privacy.measuringWouldPrompt($0, browsing: here) }
     }
 
@@ -47,7 +50,7 @@ final class PathSuggestions {
         }
         var found: [String: PathSuggestion] = [:]
         func keep(_ suggestion: PathSuggestion) {
-            let key = suggestion.url.standardizedFileURL.path
+            let key = suggestion.url.lexicallyStandardized.path
             if found[key].map({ $0.score < suggestion.score }) ?? true { found[key] = suggestion }
         }
         if typed.contains("/") {
@@ -59,7 +62,7 @@ final class PathSuggestions {
             }
             // Walking folders reads the disk: off the main thread, with a fresh cache each time.
             let roots = roots, visited = visited
-            let hits = await Self.offMain { PathQuery().resolve(typed, roots: roots, visited: visited) }
+            let hits = await PathQuery.resolveOffMain(typed, roots: roots, visited: visited)
             for hit in hits where hit.isFolder {
                 keep(PathSuggestion(url: hit.url, score: hit.score, matches: hit.nameMatches))
             }
@@ -74,7 +77,7 @@ final class PathSuggestions {
                 guard let match = Fuzzy.match(typed, url.lastPathComponent) else { continue }
                 keep(PathSuggestion(url: url, score: match.score + max(0, 24 - rank / 2) + 10, matches: match.indices))
             }
-            if typed.count >= 2, let result = await FileIndex.shared.search("kind:folder " + typed, limit: 30) {
+            if typed.count >= 2, let result = await index.search("kind:folder " + typed, limit: 30) {
                 for hit in result.hits where !hit.isPackage {
                     let url = URL(fileURLWithPath: hit.path, isDirectory: true)
                     let matches = Fuzzy.match(typed, url.lastPathComponent)?.indices ?? []
@@ -101,7 +104,7 @@ final class PathSuggestions {
         if let cached = listings[key] {
             folders = cached
         } else {
-            folders = await Self.offMain { Self.subfolders(of: directory, showHidden: showHidden) }
+            folders = await OwnThread.run { Self.subfolders(of: directory, showHidden: showHidden) }
             listings[key] = folders
         }
         var hits: [PathSuggestion] = []
@@ -131,14 +134,6 @@ final class PathSuggestions {
         }
     }
 
-    private static let reads = DispatchQueue(label: "dev.strata.path-suggestions", qos: .userInitiated)
-
-    /// Runs `work` (file system reads) on a queue of its own, never on the main thread or Swift's shared threads.
-    private static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            reads.async { continuation.resume(returning: work()) }
-        }
-    }
 }
 
 /// The list under the path bar while you edit it: a glass panel, one line per folder (its name, then where it is).
@@ -160,8 +155,12 @@ final class PathSuggestionList: NSObject {
     private static let rowHeight: CGFloat = 30
     private static let maxVisibleRows = 9
     private static let footerHeight: CGFloat = 26
+    private let copies: CopyProviders
+    private let names: FolderNames
 
-    override init() {
+    init(copies: CopyProviders, names: FolderNames) {
+        self.copies = copies
+        self.names = names
         super.init()
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -181,28 +180,10 @@ final class PathSuggestionList: NSObject {
         glass.cornerRadius = 14
         let content = NSView()
 
-        let column = NSTableColumn(identifier: .init("main"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(rowClicked)
-        table.refusesFirstResponder = true
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(rowClicked))
         table.setAccessibilityLabel(String(localized: "Folder suggestions"))
-
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 5, left: 0, bottom: 0, right: 0))
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 5, left: 0, bottom: 0, right: 0)
-        scroll.documentView = table
 
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 10.5)
@@ -304,7 +285,7 @@ extension PathSuggestionList: NSTableViewDataSource, NSTableViewDelegate {
             cell.identifier = id
             return cell
         }()
-        cell.configure(items[row])
+        cell.configure(items[row], copies: copies, names: names)
         cell.isRowSelected = row == tableView.selectedRow
         return cell
     }
@@ -333,6 +314,7 @@ private final class SuggestionCell: NSTableCellView {
     private let name = NSTextField(labelWithString: "")
     private let location = NSTextField(labelWithString: "")
     private var suggestion: PathSuggestion?
+    private var title = ""
     var isRowSelected = false {
         didSet { if isRowSelected != oldValue { render() } }
     }
@@ -363,11 +345,13 @@ private final class SuggestionCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ suggestion: PathSuggestion) {
+    func configure(_ suggestion: PathSuggestion, copies: CopyProviders, names: FolderNames) {
         self.suggestion = suggestion
-        icon.image = IconCache.shared.icon(forPath: suggestion.url.path)
+        title = Places.displayName(suggestion.url, copies: copies, names: names)
+        icon.image = IconCache.shared.icon(forPath: suggestion.url.path, folder: true)
         location.stringValue = Format.tildePath(suggestion.url.deletingLastPathComponent())
         setAccessibilityLabel(Format.tildePath(suggestion.url))
         render()
@@ -375,7 +359,6 @@ private final class SuggestionCell: NSTableCellView {
 
     private func render() {
         guard let suggestion else { return }
-        let title = Places.displayName(suggestion.url)
         let text = NSMutableAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor,
         ])

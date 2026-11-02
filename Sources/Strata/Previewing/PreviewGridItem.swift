@@ -1,7 +1,4 @@
 import AppKit
-import UniformTypeIdentifiers
-
-enum PreviewViewMode: Int { case list, icons }
 
 /// Reuse the app's icon drawing and typography for real files and virtual archive members alike.
 @MainActor final class PreviewGridItem: NSCollectionViewItem {
@@ -34,7 +31,7 @@ enum PreviewViewMode: Int { case list, icons }
                    requests: PreviewThumbnails, scale: CGFloat, archiveRequests: PreviewArchiveThumbnails? = nil) {
         let entry = item.entry
         let canRequestFile = preferences.showIconPreviews && entry.map {
-            PreviewFileView.isRegularFile($0.url) && thumbnails.canThumbnail($0)
+            $0.isRegular && thumbnails.canThumbnail($0)
         } == true
         let canRequestArchive = preferences.showIconPreviews && archiveRequests?.canRequest(item) == true
         let sourceID = canRequestArchive ? archiveRequests?.sourceID : nil
@@ -50,9 +47,7 @@ enum PreviewViewMode: Int { case list, icons }
         itemView.setAccessibilityHelp(item.kind)
         updateState()
         if keep { return }
-        let icon = item.entry.map(thumbnails.icon)
-            ?? IconCache.shared.icon(forType: item.isDirectory ? .folder : UTType(filenameExtension: (item.name as NSString).pathExtension) ?? .data)
-        itemView.setImage(icon, animated: false)
+        itemView.setImage(item.icon(thumbnails), animated: false)
         if canRequestArchive {
             thumbnailBucket = bucket; thumbnailScale = scale; archiveSourceID = sourceID
             var delivered = false

@@ -3,8 +3,8 @@ import FoundationModels
 
 /// The on-device Apple Intelligence model: whether it can be used right now, and how to explain it when it can't.
 /// Every AI feature checks this first and falls back to deterministic behaviour (rules, key sentences) or hides itself.
-nonisolated enum AIModel {
-    enum Status: Sendable, Equatable {
+package nonisolated enum AIModel {
+    package enum Status: Sendable, Equatable {
         case available
         case deviceNotEligible
         case appleIntelligenceNotEnabled
@@ -16,7 +16,7 @@ nonisolated enum AIModel {
 
     /// Apple Intelligence runs only natively on Apple silicon. An Intel build (or one running under Rosetta) never
     /// asks for the model: every AI feature takes its built-in path and says nothing about Apple Intelligence.
-    static var isAppleSilicon: Bool {
+    package static var isAppleSilicon: Bool {
         #if arch(arm64)
         true
         #else
@@ -24,7 +24,7 @@ nonisolated enum AIModel {
         #endif
     }
 
-    static var status: Status {
+    package static var status: Status {
         if ProcessInfo.processInfo.environment["STRATA_AI_DISABLED"] == "1" { return .disabled }
         guard isAppleSilicon else { return .deviceNotEligible }
         let model = SystemLanguageModel.default
@@ -37,17 +37,17 @@ nonisolated enum AIModel {
         }
     }
 
-    static var isAvailable: Bool { status == .available }
+    package static var isAvailable: Bool { status == .available }
 
     /// This Mac can run Apple Intelligence at all (it may still be off or downloading). When it can't, the app never
     /// mentions it: no "turn it on" hints, no status captions, just the built-in behaviour.
-    static var isSupported: Bool { status != .deviceNotEligible }
+    package static var isSupported: Bool { status != .deviceNotEligible }
 
     /// Tokens the model can see at once (instructions, prompt and response together).
-    static var contextSize: Int { isAvailable ? SystemLanguageModel.default.contextSize : 0 }
+    package static var contextSize: Int { isAvailable ? SystemLanguageModel.default.contextSize : 0 }
 
     /// One sentence for UI, or nil when the model is available.
-    static var explanation: String? {
+    package static var explanation: String? {
         switch status {
         case .available: nil
         case .deviceNotEligible: String(localized: "This Mac doesn’t support Apple Intelligence.")
@@ -59,7 +59,7 @@ nonisolated enum AIModel {
     }
 
     /// A short phrase for captions: what to do (or why not) when the model isn't available.
-    static var shortStatus: String {
+    package static var shortStatus: String {
         switch status {
         case .available: String(localized: "Apple Intelligence · On this Mac", comment: "Caption: summaries and plans are made by Apple Intelligence on this Mac")
         case .appleIntelligenceNotEnabled: String(localized: "Apple Intelligence is off")
@@ -71,21 +71,21 @@ nonisolated enum AIModel {
     }
 
     /// Whether opening System Settings can fix it.
-    static var canOpenSettings: Bool { status == .appleIntelligenceNotEnabled }
+    package static var canOpenSettings: Bool { status == .appleIntelligenceNotEnabled }
 
-    static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!
+    package static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!
 
-    @MainActor static func openSettings() {
+    @MainActor package static func openSettings() {
         NSWorkspace.shared.open(settingsURL)
     }
 
     /// A short label for where a result came from.
-    static let onDeviceLabel = "Apple Intelligence"
+    package static let onDeviceLabel = "Apple Intelligence"
 }
 
 /// Turns FoundationModels errors into a sentence for the UI.
-nonisolated enum AIErrorText {
-    static func describe(_ error: Error) -> String {
+package nonisolated enum AIErrorText {
+    package static func describe(_ error: Error) -> String {
         if let error = error as? LanguageModelSession.GenerationError {
             switch error {
             case .exceededContextWindowSize: return String(localized: "The document is too long for the on-device model.")
@@ -103,8 +103,8 @@ nonisolated enum AIErrorText {
 }
 
 /// Wording helpers usable off the main actor (`Format` is main-actor isolated).
-nonisolated enum AIText {
-    static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
+package nonisolated enum AIText {
+    package static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
         "\(n.formatted()) \(n == 1 ? singular : plural)"
     }
 }

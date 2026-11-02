@@ -7,6 +7,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// Folder to show, plus an item inside it to select (when a file path was typed).
     var onNavigate: ((URL, URL?) -> Void)?
     var onFinishEditing: (() -> Void)?
+    var onActivate: (() -> Void)?
 
     var url: URL? {
         didSet {
@@ -17,6 +18,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     /// A title shown instead of breadcrumbs (Search, Recents…), kept across editing.
     private var title: (text: String, symbol: String)?
+    var isShowingTitle: Bool { title != nil }
 
     /// Root of the git work tree being shown, if any; the branch pill follows its crumb.
     var gitRoot: URL? {
@@ -24,33 +26,62 @@ final class PathBar: NSView, NSTextFieldDelegate {
     }
 
     /// Set its `model` from the git status; hidden while the model is nil.
-    let branchPill = GitBranchPill()
+    let branchPill: GitBranchPill
 
     private let crumbs = NSStackView()
     private let field = NSTextField()
     private(set) var isEditing = false
     private let suggestions: PathSuggestions
-    private let suggestionList = PathSuggestionList()
-    private var suggesting: Task<Void, Never>?
+    private let suggestionList: PathSuggestionList
+    /// The field's lookup in progress: suggestions, or what Return or Tab finds on disk.
+    private(set) var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
+    private let names: FolderNames
+    private let embedded: Bool
 
-    init(frame: NSRect = .zero, visits: Frecency = .shared, preferences: Prefs = .shared, copies: CopyProviders = .live) {
+    var editorField: NSTextField { field }
+
+    var crumbButtons: [CrumbButton] {
+        crumbs.arrangedSubviews.flatMap { view -> [CrumbButton] in
+            if let button = view as? CrumbButton { return [button] }
+            if let stack = view as? NSStackView { return stack.arrangedSubviews.compactMap { $0 as? CrumbButton } }
+            return []
+        }
+    }
+
+    init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, index: FileIndex, copies: CopyProviders,
+         names: FolderNames, clipboard: Clipboard, embedded: Bool = false) {
+        branchPill = GitBranchPill(clipboard: clipboard)
         self.copies = copies
-        suggestions = PathSuggestions(visits: visits, preferences: preferences)
+        self.names = names
+        self.embedded = embedded
+        suggestionList = PathSuggestionList(copies: copies, names: names)
+        suggestions = PathSuggestions(preferences: preferences, places: places, index: index)
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
+        NotificationCenter.default.addObserver(self, selector: #selector(namesRead(_:)), name: .folderNamesRead,
+                                               object: names)
 
+        setUpCrumbs()
+        setUpField()
+        suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
+        layOut()
+    }
+
+    private func setUpCrumbs() {
         crumbs.orientation = .horizontal
         crumbs.spacing = 0
         crumbs.alignment = .centerY
         crumbs.detachesHiddenViews = true
         // Let a deep path squeeze into the bar by dropping middle crumbs (their visibility priorities below) instead of
         // forcing the bar wider: past the toolbar's room, AppKit would move every toolbar item into the overflow menu.
-        crumbs.setClippingResistancePriority(.defaultLow, for: .horizontal)
+        crumbs.setClippingResistancePriority(embedded ? .init(230) : .defaultLow, for: .horizontal)
         crumbs.translatesAutoresizingMaskIntoConstraints = false
         addSubview(crumbs)
+    }
 
+    private func setUpField() {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.isBordered = false
         field.drawsBackground = false
@@ -63,136 +94,183 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.delegate = self
         field.isHidden = true
         addSubview(field)
-        suggestionList.onPick = { [weak self] suggestion in self?.go(to: suggestion) }
+    }
 
-        // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
-        let preferred = widthAnchor.constraint(equalToConstant: 520)
-        preferred.priority = .fittingSizeCompression
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 32),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            widthAnchor.constraint(lessThanOrEqualToConstant: 720),
-            preferred,
+    /// Embedded in a pane, the bar gives way to what's beside it; in the toolbar, it wishes for a width it gives up
+    /// before other items overflow.
+    private func layOut() {
+        var constraints = [
             crumbs.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             crumbs.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
             crumbs.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             field.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+        ]
+        if embedded {
+            setContentCompressionResistancePriority(.init(199), for: .horizontal)
+            setContentHuggingPriority(.init(199), for: .horizontal)
+            field.setContentCompressionResistancePriority(.init(199), for: .horizontal)
+            branchPill.setContentCompressionResistancePriority(.init(220), for: .horizontal)
+        } else {
+            // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
+            let preferred = widthAnchor.constraint(equalToConstant: 520)
+            preferred.priority = .fittingSizeCompression
+            constraints += [
+                heightAnchor.constraint(equalToConstant: 32),
+                widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+                widthAnchor.constraint(lessThanOrEqualToConstant: 720),
+                preferred,
+            ]
+        }
+        NSLayoutConstraint.activate(constraints)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func mouseDown(with event: NSEvent) {
+        onActivate?()
         beginEditing()
     }
 
     /// Shows a single non-navigating crumb, for places that aren't folders (Search, Recents).
     func showTitle(_ title: String, symbol: String) {
-        self.title = (title, symbol)
         if isEditing { endEditing(restoreFocus: false) }
+        if self.title?.text == title, self.title?.symbol == symbol, !crumbs.arrangedSubviews.isEmpty { return }
+        self.title = (title, symbol)
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let crumb = CrumbButton(title: title, symbol: symbol, emphasized: true)
+        if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
+        crumb.target = self
+        crumb.action = #selector(titleCrumbClicked)
         crumb.isEnabled = true
         crumbs.addArrangedSubview(crumb)
+    }
+
+    @objc private func titleCrumbClicked() {
+        onActivate?()
     }
 
     // MARK: - Breadcrumbs
 
     private func rebuild() {
-        if let title {
-            showTitle(title.text, symbol: title.symbol)
+        if let currentTitle = title {
+            title = nil
+            showTitle(currentTitle.text, symbol: currentTitle.symbol)
             return
         }
         crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let url else { return }
-        let parts = Self.components(of: url, copies: copies)
-        let repoRootPath = gitRoot?.standardizedFileURL.path
+        let parts = Self.components(of: url, copies: copies, names: names)
+        let repoRootPath = gitRoot?.lexicallyStandardized.path
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
             let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast)
+            if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
             crumb.toolTip = Format.tildePath(part.url)
             crumb.target = self
             crumb.action = #selector(crumbClicked(_:))
             crumb.destination = part.url
             let group = NSStackView(views: [crumb])
             group.spacing = 0
-            let isRepoRoot = part.url.standardizedFileURL.path == repoRootPath
+            let isRepoRoot = part.url.lexicallyStandardized.path == repoRootPath
             if isRepoRoot {
                 group.addArrangedSubview(branchPill)
                 group.setCustomSpacing(2, after: crumb)
                 group.setCustomSpacing(2, after: branchPill)
             }
             if !isLast {
-                let chevron = ChevronButton(folder: part.url) { [weak self] target in self?.onNavigate?(target, nil) }
+                let name = part.title.isEmpty ? part.url.lastPathComponent : part.title
+                let chevron = ChevronButton(folder: part.url, name: name) { [weak self] target in
+                    self?.onActivate?()
+                    self?.onNavigate?(target, nil)
+                }
                 group.addArrangedSubview(chevron)
             }
             crumbs.addArrangedSubview(group)
             // When space runs out, middle folders go first; the root and the current folder stay.
-            let priority: Float = index == 0 || isLast ? 1000 : isRepoRoot ? 900 : Float(500 + index)
+            let priority: Float
+            if embedded {
+                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 180 : Float(100 + min(index, 70))
+            } else {
+                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 900 : Float(500 + index)
+            }
             crumbs.setVisibilityPriority(NSStackView.VisibilityPriority(rawValue: priority), for: group)
         }
     }
 
+    /// Finder's names arrived for folders along the path: the crumbs show them.
+    @objc private func namesRead(_ notification: Notification) {
+        guard !isEditing, title == nil, let path = url?.path,
+              let paths = notification.userInfo?["paths"] as? Set<String>,
+              paths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else { return }
+        rebuild()
+    }
+
     @objc private func crumbClicked(_ sender: CrumbButton) {
+        onActivate?()
         guard let destination = sender.destination else { return }
         onNavigate?(destination, nil)
     }
 
-    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders = .live) -> [(title: String, url: URL, symbol: String?)] {
+    /// One step of the path bar: its title, where it leads, and its symbol, if any.
+    private typealias Crumb = (title: String, url: URL, symbol: String?)
+
+    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders, names: FolderNames) -> [Crumb] {
         // Containers, then a container, then its folders from `/`.
         if let folder = copies.containerCopies.containersFolder(of: url) {
-            var parts: [(title: String, url: URL, symbol: String?)] = [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
-            var current = folder
-            let inner = url.standardizedFileURL.path.dropFirst(folder.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
+                + steps(of: url, below: folder)
         }
         // On a server: the server, then its folders from `/`.
         if let (server, top) = copies.remoteCopies.server(containing: url) {
-            var parts: [(title: String, url: URL, symbol: String?)] = [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
-            var current = top
-            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
+                + steps(of: url, below: top)
         }
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
-            var parts = components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies)
-            parts.append((archive.lastPathComponent, top, "archivebox"))
-            var current = top
-            let inner = url.standardizedFileURL.path.dropFirst(top.standardizedFileURL.path.count).split(separator: "/")
-            for component in inner {
-                current = current.appending(path: String(component))
-                parts.append((String(component), current, nil))
-            }
-            return parts
+            return components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies, names: names)
+                + [(archive.lastPathComponent, top, "archivebox")] + steps(of: url, below: top)
         }
-        let path = url.standardizedFileURL.path
-        let home = Places.home.standardizedFileURL.path
-        var parts: [(title: String, url: URL, symbol: String?)] = []
+        return localComponents(of: url, copies: copies, names: names)
+    }
+
+    /// Each folder from `top` (not included) down to `url`, by its own name.
+    private static func steps(of url: URL, below top: URL) -> [Crumb] {
+        var parts: [Crumb] = []
+        var current = top
+        let inner = url.lexicallyStandardized.path.dropFirst(top.lexicallyStandardized.path.count).split(separator: "/")
+        for component in inner {
+            current = current.appending(path: String(component))
+            parts.append((String(component), current, nil))
+        }
+        return parts
+    }
+
+    /// Your home folder, another disk or the startup disk, then each folder by the name it's shown with; a Trash as
+    /// one "Trash" step.
+    private static func localComponents(of url: URL, copies: CopyProviders, names: FolderNames) -> [Crumb] {
+        let path = url.lexicallyStandardized.path
+        let home = Places.home.lexicallyStandardized.path
+        var parts: [Crumb] = []
         let root: String
         if path == home || path.hasPrefix(home + "/") {
             root = home
             // Icon only, unless home is the folder being shown.
-            parts.append((path == home ? NSUserName() : "", URL(fileURLWithPath: home), "house.fill"))
+            let homeURL = URL(filePath: home, directoryHint: .isDirectory)
+            parts.append((path == home ? names.name(homeURL) : "", homeURL, "house.fill"))
         } else if path.hasPrefix("/Volumes/"), let name = path.split(separator: "/").dropFirst().first {
             root = "/Volumes/\(name)"
-            parts.append((String(name), URL(fileURLWithPath: root), "externaldrive.fill"))
+            parts.append((String(name), URL(filePath: root, directoryHint: .isDirectory), "externaldrive.fill"))
         } else {
             root = "/"
-            let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeLocalizedNameKey])
-            parts.append((values?.volumeLocalizedName ?? "Macintosh HD", URL(fileURLWithPath: "/"), "internaldrive.fill"))
+            let startup = URL(filePath: "/", directoryHint: .isDirectory), name = names.name(startup)
+            parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill"))
         }
-        var current = URL(fileURLWithPath: root)
+        // Each step's URL is spelled with what's known, never asking the disk.
+        var current = URL(filePath: root, directoryHint: .isDirectory)
         for component in path.dropFirst(root.count).split(separator: "/") {
             current = current.appending(path: String(component))
             // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
@@ -200,7 +278,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
             if Trash.isTrash(current) {
                 parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
             } else {
-                parts.append((Places.displayName(current, copies: copies), current, nil))
+                parts.append((Places.displayName(current, copies: copies, names: names), current, nil))
             }
         }
         return parts
@@ -209,8 +287,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
     // MARK: - Editing
 
     func beginEditing() {
+        guard url != nil, !isEditing else { return }
+        onActivate?()
         guard let url, !isEditing else { return }
         isEditing = true
+        alphaValue = 1
         suggestions.begin(at: url)
         if let window {
             for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
@@ -224,6 +305,14 @@ final class PathBar: NSView, NSTextFieldDelegate {
         field.stringValue = text
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+    }
+
+    func cancelEditing() {
+        if isEditing {
+            endEditing(restoreFocus: false)
+        } else {
+            closeSuggestions()
+        }
     }
 
     private func endEditing(restoreFocus: Bool) {
@@ -295,11 +384,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
             guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             // Nothing to add when the only suggestion is the folder already typed.
             let typed = resolvedPath()
-            if found.count == 1, found[0].url.standardizedFileURL.path == URL(fileURLWithPath: typed).standardizedFileURL.path {
+            if found.count == 1, found[0].url.lexicallyStandardized.path == URL(filePath: typed, directoryHint: .inferFromPath).lexicallyStandardized.path {
                 return closeSuggestions()
             }
-            var isFolder: ObjCBool = false
-            let typedIsThere = FileManager.default.fileExists(atPath: typed, isDirectory: &isFolder)
+            let typedIsThere = await FileEntry.opening(URL(filePath: typed, directoryHint: .inferFromPath)) != .missing
+            guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
             suggestionList.show(found, for: text, highlightFirst: !typedIsThere, below: self)
         }
     }
@@ -317,7 +406,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
 
     private func go(to suggestion: PathSuggestion) {
         endEditing(restoreFocus: true)
-        onNavigate?(suggestion.url.standardizedFileURL, nil)
+        onNavigate?(suggestion.url.lexicallyStandardized, nil)
     }
 
     /// Tab on a chosen suggestion: its path goes in the field, to keep typing inside it.
@@ -338,48 +427,60 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// typed now (looked up first if the list is for older text).
     private func commit() {
         if suggestionList.hasChosen, let chosen = suggestionList.selected { return go(to: chosen) }
-        let path = resolvedPath()
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            let text = field.stringValue
-            if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
-            suggesting?.cancel()
-            let current = url
-            suggesting = Task { [weak self] in
-                guard let self else { return }
+        let path = resolvedPath(), text = field.stringValue, current = url
+        suggesting?.cancel()
+        suggesting = Task { [weak self] in
+            let (opening, located) = await FileEntry.locate(URL(filePath: path, directoryHint: .inferFromPath))
+            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
+            guard opening != .missing else {
+                if suggestionList.forText == text, let best = suggestionList.items.first { return go(to: best) }
                 let found = await suggestions.suggestions(for: text, in: current)
                 guard !Task.isCancelled, isEditing, field.stringValue == text else { return }
                 if let best = found.first { go(to: best) } else { shake() }
+                return
             }
-            return
-        }
-        let target = URL(fileURLWithPath: path).standardizedFileURL
-        let isFolder = isDirectory.boolValue && !NSWorkspace.shared.isFilePackage(atPath: path)
-        endEditing(restoreFocus: true)
-        if isFolder {
-            onNavigate?(target, nil)
-        } else {
-            onNavigate?(target.deletingLastPathComponent(), target)
+            let target = URL(filePath: located.path, directoryHint: opening == .folder ? .isDirectory : .notDirectory)
+            endEditing(restoreFocus: true)
+            if opening == .folder {
+                onNavigate?(target, nil)
+            } else {
+                onNavigate?(target.deletingLastPathComponent(), target)
+            }
         }
     }
 
     /// Completes the last path component against the folders on disk, as far as it's unambiguous.
     private func complete() {
-        let path = resolvedPath()
+        let path = resolvedPath(), text = field.stringValue
         let directory = path.hasSuffix("/") ? path : (path as NSString).deletingLastPathComponent
         let prefix = path.hasSuffix("/") ? "" : (path as NSString).lastPathComponent
-        let fm = FileManager.default
-        guard let names = try? fm.contentsOfDirectory(atPath: directory) else {
-            shake()
-            return
+        suggesting?.cancel()
+        suggesting = Task { [weak self] in
+            let matches = await Self.folders(in: directory, startingWith: prefix)
+            guard let self, !Task.isCancelled, isEditing, field.stringValue == text else { return }
+            guard let matches else { return shake() }
+            complete(prefix, in: directory, from: matches)
         }
-        let matches = names.filter { name in
-            guard name.lowercased().hasPrefix(prefix.lowercased()), !name.hasPrefix(".") || prefix.hasPrefix(".") else { return false }
-            var isDir: ObjCBool = false
-            return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
-        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// The folders in `directory` whose names start with `prefix` (any case; hidden ones only for a hidden prefix), in
+    /// Finder's order; nil when `directory` can't be read.
+    nonisolated static func folders(in directory: String, startingWith prefix: String) async -> [String]? {
+        await OwnThread.run {
+            let fm = FileManager.default
+            guard let names = try? fm.contentsOfDirectory(atPath: directory) else { return nil }
+            return names.filter { name in
+                guard name.lowercased().hasPrefix(prefix.lowercased()), !name.hasPrefix(".") || prefix.hasPrefix(".") else { return false }
+                var isDir: ObjCBool = false
+                return fm.fileExists(atPath: (directory as NSString).appendingPathComponent(name), isDirectory: &isDir) && isDir.boolValue
+            }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+    }
+
+    /// Completes `prefix` as far as `matches` (the folders of `directory` starting with it) agree.
+    private func complete(_ prefix: String, in directory: String, from matches: [String]) {
         guard let first = matches.first else {
-            NSSound.beep()
+            Sounds.beep()
             return
         }
         let completed: String
@@ -397,7 +498,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
                 }
             }
             completed = String(first[..<end])
-            if completed.count == prefix.count { NSSound.beep() }
+            if completed.count == prefix.count { Sounds.beep() }
         }
         let newPath = (directory as NSString).appendingPathComponent(completed)
         field.stringValue = (newPath as NSString).abbreviatingWithTildeInPath + (matches.count == 1 ? "/" : "")
@@ -410,7 +511,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
         animation.values = [0, -9, 9, -6, 6, -3, 3, 0]
         animation.duration = 0.4
         layer?.add(animation, forKey: "shake")
-        NSSound.beep()
+        Sounds.beep()
     }
 }
 
@@ -440,6 +541,7 @@ final class CrumbButton: NSButton {
         (cell as? NSButtonCell)?.lineBreakMode = .byTruncatingTail
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
@@ -472,8 +574,10 @@ final class ChevronButton: NSButton {
     private let folder: URL
     private let navigate: (URL) -> Void
     private var tracking: NSTrackingArea?
+    /// Its subfolders being read for the menu.
+    private var reading: Task<Void, Never>?
 
-    init(folder: URL, navigate: @escaping (URL) -> Void) {
+    init(folder: URL, name: String, navigate: @escaping (URL) -> Void) {
         self.folder = folder
         self.navigate = navigate
         super.init(frame: .zero)
@@ -487,10 +591,11 @@ final class ChevronButton: NSButton {
         target = self
         action = #selector(showMenu)
         toolTip = String(localized: "Folders in \(folder.lastPathComponent)", comment: "Menu of a folder's subfolders; the folder's name")
-        setAccessibilityLabel(String(localized: "Folders in \(FileManager.default.displayName(atPath: folder.path))",
+        setAccessibilityLabel(String(localized: "Folders in \(name)",
                                      comment: "Menu of a folder's subfolders; the folder's name"))
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 14, height: 22) }
@@ -512,19 +617,34 @@ final class ChevronButton: NSButton {
     override func mouseExited(with event: NSEvent) { layer?.backgroundColor = nil }
 
     @objc private func showMenu() {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
-        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-        let folders = urls.filter {
-            let values = try? $0.resourceValues(forKeys: Set(keys))
-            return values?.isDirectory == true && values?.isPackage != true
-        }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        reading?.cancel()
+        reading = Task { [weak self, folder] in
+            let folders = await Self.subfolders(of: folder)
+            guard let self, !Task.isCancelled, window != nil else { return }
+            popUpMenu(listing: folders)
+        }
+    }
 
+    /// The folders in `folder` a click on the chevron lists: visible ones, not packages, in Finder's order.
+    nonisolated static func subfolders(of folder: URL) async -> [URL] {
+        await OwnThread.run {
+            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+            let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+            return urls.filter {
+                let values = try? $0.resourceValues(forKeys: Set(keys))
+                return values?.isDirectory == true && values?.isPackage != true
+            }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }
+    }
+
+    private func popUpMenu(listing folders: [URL]) {
         let menu = NSMenu()
         for url in folders.prefix(400) {
             let item = NSMenuItem(title: url.lastPathComponent, action: #selector(pick(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = url
-            let icon = (IconCache.shared.icon(forPath: url.path).copy() as? NSImage) ?? IconCache.shared.icon(forPath: url.path)
+            let folderIcon = IconCache.shared.icon(forPath: url.path, folder: true)
+            let icon = (folderIcon.copy() as? NSImage) ?? folderIcon
             icon.size = NSSize(width: 16, height: 16)
             item.image = icon
             menu.addItem(item)

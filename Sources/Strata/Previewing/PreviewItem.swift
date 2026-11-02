@@ -1,6 +1,5 @@
 import AppKit
 import StrataPreviews
-import UniformTypeIdentifiers
 
 /// A preview row is either an existing file or an archive member. Archive paths never masquerade as local URLs.
 @MainActor final class PreviewItem {
@@ -12,6 +11,8 @@ import UniformTypeIdentifiers
     private(set) var source: Source
     weak var parent: PreviewItem?
     var children: [PreviewItem]?
+    /// Where it comes in the order of the OneNote notebook its folder or archive holds.
+    var notebookPosition: Int?
 
     init(_ source: Source, parent: PreviewItem? = nil) {
         self.source = source
@@ -54,9 +55,17 @@ import UniformTypeIdentifiers
     var kind: String {
         switch source {
         case .file(let entry): return entry.kind
-        case .member:
-            let type: UTType = isDirectory ? .folder : UTType(filenameExtension: (name as NSString).pathExtension) ?? .data
-            return type.localizedDescription ?? name
+        case .member(let node, _):
+            let type = node.contentType
+            return FileEntry.kind(extension: (node.name as NSString).pathExtension, isDirectory: node.isDirectory,
+                                  isPackage: false, size: size, system: type.localizedDescription, type: type)
+        }
+    }
+
+    func icon(_ thumbnails: FileThumbnails) -> NSImage {
+        switch source {
+        case .file(let entry): thumbnails.icon(for: entry)
+        case .member(let node, _): IconCache.shared.icon(forType: node.contentType)
         }
     }
 

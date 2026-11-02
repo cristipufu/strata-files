@@ -7,6 +7,8 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     let name: String
     /// Nil while a folder is still being measured; such items aren't drawn until their size arrives.
     var bytes: Int64?
+    var sizeUnavailable = false
+    var sizeIncomplete = false
     let isFolder: Bool
     let contentType: UTType?
 
@@ -21,6 +23,13 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     init(entry: FileEntry, bytes: Int64?) {
         self.init(url: entry.url, name: entry.displayName, bytes: bytes ?? (entry.isDirectory ? nil : entry.size ?? 0),
                   isFolder: entry.isFolder, contentType: entry.contentType)
+    }
+
+    init(entry: FileEntry, measurement: DiskSizeMeasurement) {
+        self.init(url: entry.url, name: entry.displayName, bytes: measurement.bytes,
+                  isFolder: entry.isFolder, contentType: entry.contentType)
+        sizeUnavailable = measurement == .unavailable
+        sizeIncomplete = measurement.isPartial
     }
 
     var group: FileKindGroup { FileKindGroup.of(isFolder: isFolder, type: contentType) }
@@ -82,70 +91,82 @@ nonisolated enum Treemap {
     /// rect per value, tiling `rect` exactly, in a top-left-origin (flipped) coordinate space.
     static func squarify(_ values: [Double], in rect: CGRect) -> [CGRect] {
         guard !values.isEmpty else { return [] }
-        guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0,
-              values.allSatisfy({ $0.isFinite && $0 > 0 }) else {
-            return values.map { _ in .zero }
-        }
-        let total = values.reduce(0, +)
-        guard total > 0, total.isFinite else { return values.map { _ in .zero } }
-        let scale = Double(rect.width * rect.height) / total
-        guard scale.isFinite, scale > 0 else { return values.map { _ in .zero } }
-        let areas = values.map { $0 * scale }
+        guard let areas = areas(values, filling: rect) else { return values.map { _ in .zero } }
         var result = [CGRect](repeating: .zero, count: values.count)
         var remaining = rect
         var i = 0
-
-        func worst(_ sum: Double, _ minArea: Double, _ maxArea: Double, _ side: Double) -> Double {
-            let s2 = sum * sum, w2 = side * side
-            return max(w2 * maxArea / s2, s2 / (w2 * minArea))
-        }
-
         while i < areas.count {
             guard remaining.width > 0, remaining.height > 0 else {
                 let edge = CGRect(x: remaining.minX, y: remaining.minY, width: 0, height: 0)
                 for k in i..<areas.count { result[k] = edge }
                 break
             }
-            let side = Double(min(remaining.width, remaining.height))
-            var sum = areas[i], lo = areas[i], hi = areas[i]
-            var current = worst(sum, lo, hi, side)
-            var j = i + 1
-            while j < areas.count {
-                let a = areas[j]
-                let candidate = worst(sum + a, min(lo, a), max(hi, a), side)
-                if candidate > current { break }
-                sum += a
-                lo = min(lo, a)
-                hi = max(hi, a)
-                current = candidate
-                j += 1
-            }
-            let isLast = j >= areas.count
-            if remaining.width >= remaining.height {
-                // A column along the left edge.
-                let width = isLast ? Double(remaining.width) : min(Double(remaining.width), sum / Double(remaining.height))
-                var y = Double(remaining.minY)
-                for k in i..<j {
-                    let height = k == j - 1 ? max(0, Double(remaining.maxY) - y) : (width > 0 ? min(max(0, Double(remaining.maxY) - y), areas[k] / width) : 0)
-                    result[k] = CGRect(x: Double(remaining.minX), y: y, width: width, height: height)
-                    y += height
-                }
-                remaining = CGRect(x: remaining.minX + CGFloat(width), y: remaining.minY,
-                                   width: max(remaining.width - CGFloat(width), 0), height: remaining.height)
-            } else {
-                // A row along the top edge.
-                let height = isLast ? Double(remaining.height) : min(Double(remaining.height), sum / Double(remaining.width))
-                var x = Double(remaining.minX)
-                for k in i..<j {
-                    let width = k == j - 1 ? max(0, Double(remaining.maxX) - x) : (height > 0 ? min(max(0, Double(remaining.maxX) - x), areas[k] / height) : 0)
-                    result[k] = CGRect(x: x, y: Double(remaining.minY), width: width, height: height)
-                    x += width
-                }
-                remaining = CGRect(x: remaining.minX, y: remaining.minY + CGFloat(height),
-                                   width: remaining.width, height: max(remaining.height - CGFloat(height), 0))
-            }
+            let (j, sum) = rowEnd(from: i, areas, side: Double(min(remaining.width, remaining.height)))
+            remaining = layOutRow(i..<j, sum: sum, areas, isLast: j >= areas.count, in: remaining, into: &result)
             i = j
         }
         return result
+    }
+
+    /// Each value's area once they fill `rect`, or nil when they can't (an empty or endless rect, a value that isn't
+    /// positive and finite, or a total too large).
+    private static func areas(_ values: [Double], filling rect: CGRect) -> [Double]? {
+        guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0,
+              values.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        let total = values.reduce(0, +)
+        guard total > 0, total.isFinite else { return nil }
+        let scale = Double(rect.width * rect.height) / total
+        guard scale.isFinite, scale > 0 else { return nil }
+        return values.map { $0 * scale }
+    }
+
+    /// Where the row starting at `i` ends, and its area: it takes the next area while that doesn't make its worst
+    /// aspect ratio along `side` worse.
+    private static func rowEnd(from i: Int, _ areas: [Double], side: Double) -> (end: Int, sum: Double) {
+        func worst(_ sum: Double, _ minArea: Double, _ maxArea: Double) -> Double {
+            let s2 = sum * sum, w2 = side * side
+            return max(w2 * maxArea / s2, s2 / (w2 * minArea))
+        }
+        var sum = areas[i], lo = areas[i], hi = areas[i]
+        var current = worst(sum, lo, hi)
+        var j = i + 1
+        while j < areas.count {
+            let a = areas[j]
+            let candidate = worst(sum + a, min(lo, a), max(hi, a))
+            if candidate > current { break }
+            sum += a
+            lo = min(lo, a)
+            hi = max(hi, a)
+            current = candidate
+            j += 1
+        }
+        return (j, sum)
+    }
+
+    /// Lays the row out along the longer side's edge of `remaining` (the last row fills it) and returns what's left.
+    private static func layOutRow(_ row: Range<Int>, sum: Double, _ areas: [Double], isLast: Bool, in remaining: CGRect,
+                                  into result: inout [CGRect]) -> CGRect {
+        if remaining.width >= remaining.height {
+            // A column along the left edge.
+            let width = isLast ? Double(remaining.width) : min(Double(remaining.width), sum / Double(remaining.height))
+            var y = Double(remaining.minY)
+            for k in row {
+                let height = k == row.upperBound - 1 ? max(0, Double(remaining.maxY) - y) : (width > 0 ? min(max(0, Double(remaining.maxY) - y), areas[k] / width) : 0)
+                result[k] = CGRect(x: Double(remaining.minX), y: y, width: width, height: height)
+                y += height
+            }
+            return CGRect(x: remaining.minX + CGFloat(width), y: remaining.minY,
+                          width: max(remaining.width - CGFloat(width), 0), height: remaining.height)
+        }
+        // A row along the top edge.
+        let height = isLast ? Double(remaining.height) : min(Double(remaining.height), sum / Double(remaining.width))
+        var x = Double(remaining.minX)
+        for k in row {
+            let width = k == row.upperBound - 1 ? max(0, Double(remaining.maxX) - x) : (height > 0 ? min(max(0, Double(remaining.maxX) - x), areas[k] / height) : 0)
+            result[k] = CGRect(x: x, y: Double(remaining.minY), width: width, height: height)
+            x += width
+        }
+        return CGRect(x: remaining.minX, y: remaining.minY + CGFloat(height),
+                      width: remaining.width, height: max(remaining.height - CGFloat(height), 0))
     }
 }

@@ -102,12 +102,12 @@ with a keystroke, or compare and sync them.
 
 ## Your colors. Still your Mac.
 
-<p align="center"><img src="docs/screenshots/appearance.webp" alt="Appearance settings showing all fourteen color themes and System" width="632"></p>
+<p align="center"><img src="docs/screenshots/appearance.webp" alt="Appearance settings showing the color themes and System" width="632"></p>
 
-Choose **System** for the Mac’s own colors, or one of fourteen presets: **Graphite, Blue, Green, Purple, Sand, Teal,
-Rose, Amber, Slate, Sage, Coral, Plum, Ice and Midnight**. Each has a light and dark palette, with coordinated colors
-across the file views, sidebar, inspector, toolbar and secondary windows. Native macOS controls and familiar behavior
-stay intact.
+Choose **System** for the Mac’s own colors, or one of seventeen presets: **Graphite, Blue, Green, Purple, Sand, Teal,
+Rose, Amber, Slate, Sage, Coral, Plum, Ice, Midnight, Catppuccin, Dracula and Tokyo Night**. Each has a light and dark
+palette, with coordinated colors across the file views, sidebar, inspector, toolbar and secondary windows. Native macOS
+controls and familiar behavior stay intact.
 
 Find them in **Settings ▸ Appearance ▸ Color theme**. Turn **Window tint** off to keep native backgrounds while
 using the palette for selections and accents. You can also adjust row density and the size of file names.
@@ -213,6 +213,12 @@ Download the latest version from [GitHub Releases](https://github.com/cristipufu
 image and drag Strata to Applications. It needs an Apple silicon Mac running **macOS 26**. Releases are signed and
 notarized by Apple, so Strata opens like any other app. It updates itself: **Strata ▸ Check for Updates…**, or
 automatically if you allow it (updates are signed and checked before they're installed).
+
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
 
 Or build it yourself with the Swift toolchain (Xcode or the Command Line Tools):
 

@@ -1,3 +1,4 @@
+import StrataArchives
 import AppKit
 
 /// Compress (Finder's File ▸ Compress) and Extract, run as jobs in the Transfers list.
@@ -47,8 +48,8 @@ extension BrowserViewController {
             job.onFinish = { [weak self] job in
                 guard let self, let result = job.result else { return }
                 made.urls.append(result)
-                let shown = (targetDirectory ?? directory)?.standardizedFileURL
-                let here = made.urls.filter { $0.deletingLastPathComponent().standardizedFileURL == shown }
+                let shown = (targetDirectory ?? directory)?.lexicallyStandardized
+                let here = made.urls.filter { $0.deletingLastPathComponent().lexicallyStandardized == shown }
                 if !here.isEmpty { selectWhenShown(here) }
             }
             services.transfers.add(job)

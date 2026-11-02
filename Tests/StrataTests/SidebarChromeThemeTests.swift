@@ -1,13 +1,20 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func themesPreserveTheNativeSidebarToolbarButtonAlignment() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -56,7 +63,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -113,7 +120,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),

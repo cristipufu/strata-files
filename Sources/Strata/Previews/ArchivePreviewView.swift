@@ -1,13 +1,12 @@
+import StrataArchives
 import AppKit
 import StrataSupport
-import UniformTypeIdentifiers
 
 /// The contents of a zip or tar archive as an expandable tree, without extracting anything.
 package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private var root = ArchiveNode(name: "", isDirectory: true)
-    private var icons: [String: NSImage] = [:]
     private let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     private let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("size"))
     private let dateColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("date"))
@@ -20,6 +19,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
@@ -58,12 +58,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
+        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: contentView))
     }
 
     package override func layout() {
@@ -132,12 +127,7 @@ package final class ArchivePreviewView: PreviewView, NSOutlineViewDataSource, NS
     }
 
     private func icon(for node: ArchiveNode) -> NSImage {
-        let ext = node.isDirectory ? "/" : (node.name as NSString).pathExtension.lowercased()
-        if let cached = icons[ext] { return cached }
-        let type: UTType = node.isDirectory ? .folder : UTType(filenameExtension: ext) ?? .data
-        let image = NSWorkspace.shared.icon(for: type)
-        icons[ext] = image
-        return image
+        IconCache.shared.icon(forType: node.contentType)
     }
 }
 
@@ -169,6 +159,7 @@ final class ArchiveNameCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(name: String, icon image: NSImage) {

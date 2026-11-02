@@ -2,11 +2,11 @@ import Foundation
 
 /// Batch rename (Finder's Rename N Items…): one rule applied to every selected item's name. Pure, so the sheet can
 /// preview it on every keystroke; the validator and executor shared with Ask Strata check and apply the result.
-nonisolated struct RenameRules: Sendable, Equatable {
-    enum Mode: Int, Sendable, CaseIterable {
+package nonisolated struct RenameRules: Sendable, Equatable {
+    package enum Mode: Int, Sendable, CaseIterable {
         case replace, add, format, changeCase
 
-        var title: String {
+        package var title: String {
             switch self {
             case .replace: String(localized: "Replace Text", comment: "Batch rename rule")
             case .add: String(localized: "Add Text", comment: "Batch rename rule")
@@ -16,37 +16,39 @@ nonisolated struct RenameRules: Sendable, Equatable {
         }
     }
 
-    var mode: Mode = .replace
+    package var mode: Mode = .replace
     // Replace Text
-    var find = ""
-    var replacement = ""
-    var useRegex = false
-    var matchCase = false
+    package var find = ""
+    package var replacement = ""
+    package var useRegex = false
+    package var matchCase = false
     // Add Text
-    var addition = ""
-    var addAtEnd = true
+    package var addition = ""
+    package var addAtEnd = true
     // Format: Ask Strata's tokens ({name}, {n}, {date}, {camera}…)
-    var template = "{name} {n}"
-    var startNumber = 1
-    static let startRange = 0...999_999
+    package var template = "{name} {n}"
+    package var startNumber = 1
+    package static let startRange = 0...999_999
     // Change Case
-    var transform: PlanRecipe.NameTransform = .titlecase
+    package var transform: PlanRecipe.NameTransform = .titlecase
     /// The rule sees (and may change) the extension too; otherwise it applies to the name before it. Format always
     /// keeps extensions (its {name} is the name without one).
-    var includeExtension = false
+    package var includeExtension = false
+
+    package init() {}
 
     /// Whether extensions are part of what the rule changes.
-    var changesExtensions: Bool { includeExtension && mode != .format }
+    package var changesExtensions: Bool { includeExtension && mode != .format }
 
     /// A regular expression gets this long for the whole preview: some patterns take exponentially long on some names.
-    static let regexBudget: TimeInterval = 0.5
+    package static let regexBudget: TimeInterval = 0.5
 
-    struct Problem: Error, Equatable {
-        let message: String
+    package struct Problem: Error, Equatable {
+        package let message: String
     }
 
     /// The new full name of each item, in order, or why the rule can't be applied (a bad or too slow regular expression).
-    func names(for items: [PlanItem]) -> Result<[String], Problem> {
+    package func names(for items: [PlanItem]) -> Result<[String], Problem> {
         let includeExtension = changesExtensions
         let startNumber = min(max(startNumber, Self.startRange.lowerBound), Self.startRange.upperBound)
         let deadline = Date().addingTimeInterval(Self.regexBudget)
@@ -114,7 +116,7 @@ nonisolated struct RenameRules: Sendable, Equatable {
 
     /// The rule as a plan: the same checks as Ask Strata (clashes, invalid names, replacing something), with swaps and
     /// chains allowed (they're moved through temporary names).
-    func plan(for items: [PlanItem], baseFolder: URL) -> Result<Plan, Problem> {
+    package func plan(for items: [PlanItem], baseFolder: URL) -> Result<Plan, Problem> {
         names(for: items).map { names in
             let operations = zip(items, names).map { ProposedOperation.rename($0.url, to: $1) }
             let request = PlanGenerator.Request(instruction: mode.title, items: items, baseFolder: baseFolder)

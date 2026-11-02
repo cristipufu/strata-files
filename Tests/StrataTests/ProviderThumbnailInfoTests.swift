@@ -3,8 +3,80 @@ import QuickLookThumbnailing
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ProviderThumbnailInfoTests {
+    @Test func thumbnailsBoundWorkSkipCancelledRequestsAndIgnoreOldCompletions() async throws {
+        let tree = try TestTree((0..<10).map { "\($0).png" })
+        let before = tree.snapshot(), generator = Generator()
+        let environment = try IndependentEnvironment()
+        let loader = generator.loader(copies: environment.services.copies)
+        let entries = try (0..<10).map { try #require(FileEntry(url: tree.url("\($0).png"))) }
+        var delivered: [Int] = []
+        let tickets = entries.enumerated().map { index, entry in
+            loader.request(entry, size: 64, scale: 1) { _ in delivered.append(index) }
+        }
+        #expect(generator.requests.count == 4)
+        loader.cancel(tickets[9])
+        loader.cancel(tickets[0])
+        #expect(generator.requests.count == 5 && generator.cancelled.count == 1)
+        generator.requests[0].1(try bitmap(red: 0.2), false)
+        await flushMainQueue()
+        #expect(delivered.isEmpty && generator.requests.count == 5)
+        // Finishing real requests advances the queue; cancelled work never reaches Quick Look.
+        for index in 1..<9 {
+            try #require(generator.requests.count > index)
+            generator.requests[index].1(try bitmap(red: 0.5), false)
+            await flushMainQueue()
+        }
+        #expect(generator.requests.count == 9)
+        #expect(Set(delivered) == Set(1..<9))
+        #expect(loader.cached(entries[0], size: 64, scale: 1) == nil)
+        #expect(loader.cached(entries[9], size: 64, scale: 1) == nil)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
+
+    @Test func metadataReadsKeepTheirSlotsUntilCancelledReadersActuallyReturn() async throws {
+        let tree = try TestTree((0..<8).map { "\($0).png" })
+        let before = tree.snapshot(), reads = Reads(held: true)
+        let environment = try IndependentEnvironment()
+        let loader = ItemInfoLoader(copies: environment.services.copies, containerStore: environment.services.containerStore,
+                                    mediaReader: { await reads.read($0) })
+        let entries = try (0..<8).map { try #require(FileEntry(url: tree.url("\($0).png"))) }
+        var delivered: Set<Int> = []
+        let tickets = entries.enumerated().map { index, entry in
+            loader.request(entry, showHidden: false) { _ in delivered.insert(index) }
+        }
+        await reads.started(4)
+        #expect(await reads.entries.count == 4 && loader.tasks.count == 4)
+        loader.cancel(tickets[7])
+        // Hold all four readers after cancelling. The next request must wait for a physical reader to end.
+        for index in 0..<4 { loader.cancel(tickets[index]) }
+        #expect(loader.tasks.isEmpty)
+        #expect(await reads.entries.count == 4)
+        await reads.finish(0)
+        await reads.started(5)
+        #expect(await reads.entries.count == 5)
+        for index in 1..<4 { await reads.finish(index) }
+        await reads.started(7)
+        let active = Array(loader.tasks.values)
+        for index in 4..<7 { await reads.finish(index) }
+        for task in active { await task.value }
+        #expect(await reads.entries.count == 7)
+        #expect(delivered == Set(4..<7))
+        #expect(loader.immediate(entries[0], showHidden: false) == nil)
+        #expect(loader.immediate(entries[7], showHidden: false) == nil)
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
+
     @Test func placeholderInvalidationFinishesBoundedThumbnailObserversWithoutDeliveringLateImages() async throws {
         let tree = try TestTree("provider/a.png")
         let state = State([]), generator = Generator()
@@ -65,7 +137,7 @@ struct ProviderThumbnailInfoTests {
 
         func loader(copies: CopyProviders = .live,
                     cache: ThumbnailCache = ThumbnailCache(observesMemoryPressure: false)) -> FileThumbnails {
-            FileThumbnails(cache: cache, copies: copies, generate: { [self] request, completion in
+            FileThumbnails(cache: cache, copies: copies, containerStore: .shared, generate: { [self] request, completion in
                 requests.append((request, completion))
                 if let immediateImage { completion(immediateImage, false) }
             }, cancel: { [self] in cancelled.append($0) })
@@ -103,36 +175,34 @@ struct ProviderThumbnailInfoTests {
     }
 
     private final class Environment {
-        let domain = "StrataProviderThumbnails.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let generator: Generator
         let services: BrowserServices
 
         init(_ tree: TestTree, copies: CopyProviders, image: CGImage? = nil,
              reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            preferences = Prefs(defaults: defaults, domainName: domain)
+            preferences = try Prefs.isolated()
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             preferences.showIconPreviews = true
             generator = Generator(immediateImage: image)
             let thumbnails = generator.loader(copies: copies)
-            let itemInfo = ItemInfoLoader(copies: copies, mediaReader: reader)
-            let storage = SecureStorage.Context(directory: tree.url("state/\(domain)"),
-                                                caches: tree.url("state/\(domain)/Caches"), key: nil)
+            let itemInfo = ItemInfoLoader(copies: copies, containerStore: testEnvironment.services.containerStore, mediaReader: reader)
+            let state = tree.url("state/\(UUID().uuidString)")
+            let storage = SecureStorage.Context(directory: state, caches: state.appending(path: "Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 mediaReader: reader,
                 thumbnails: thumbnails,
                 itemInfo: itemInfo)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     private func bitmap(side: Int = 4, red: CGFloat = 0.2) throws -> CGImage {
@@ -172,7 +242,7 @@ struct ProviderThumbnailInfoTests {
         let node = try #require(browser.allRows.first { $0.url == sub })
         #expect(!browser.canMeasure(node.entry))
         #expect(browser.folderSize(sub, request: true) == nil)
-        #expect(FolderSizer().cached(sub) == nil)
+        #expect(FolderSizer.cached(sub) == nil)
         #expect(browser.iconFolderSizeText(node.entry) == "—")
         let column = try #require(browser.outlineView.tableColumn(withIdentifier: .init("size")))
         let cell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
@@ -183,7 +253,7 @@ struct ProviderThumbnailInfoTests {
             sizer.onUpdate = { _ in done.resume() }
             sizer.request(sub)
         }
-        #expect(sizer.cached(sub) != nil)
+        #expect(FolderSizer.cached(sub) != nil)
         #expect(browser.folderSize(sub, request: true) == nil)
         let cachedCell = try #require(browser.outlineView(browser.outlineView, viewFor: column, item: node) as? TextCellView)
         #expect(cachedCell.textField?.stringValue == "—")
@@ -256,7 +326,7 @@ struct ProviderThumbnailInfoTests {
         let entry = try #require(FileEntry(url: item)), folder = try #require(FileEntry(url: sub))
         let state = State([item]), reads = Reads()
         let copies = CopyProviders([Provider(root: tree.url("provider"), state: state)])
-        let loader = ItemInfoLoader(copies: copies, mediaReader: { await reads.read($0) }), before = tree.snapshot()
+        let loader = ItemInfoLoader(copies: copies, containerStore: .shared, mediaReader: { await reads.read($0) }), before = tree.snapshot()
 
         // Provider folders are never counted locally.
         #expect(!loader.needsLoading(folder))
@@ -293,6 +363,7 @@ struct ProviderThumbnailInfoTests {
         // Scheduled work whose copy becomes a placeholder before execution starts does not invoke the reader.
         let earlyState = State([]), earlyReads = Reads()
         let earlyLoader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: earlyState)]),
+                                    containerStore: .shared,
                                          mediaReader: { await earlyReads.read($0) })
         _ = earlyLoader.request(entry, showHidden: false) { _ in Issue.record("Invalidated copy must not publish") }
         let earlyTask = try #require(earlyLoader.tasks.values.first)
@@ -305,6 +376,7 @@ struct ProviderThumbnailInfoTests {
         // Running work whose copy becomes a placeholder before completion does not cache fallback size or dimensions.
         let midState = State([]), midReads = Reads(held: true)
         let midLoader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: midState)]),
+                                    containerStore: .shared,
                                        mediaReader: { await midReads.read($0) })
         _ = midLoader.request(entry, showHidden: false) { _ in Issue.record("Invalidated copy must not publish") }
         let midTask = try #require(midLoader.tasks.values.first)
@@ -319,6 +391,7 @@ struct ProviderThumbnailInfoTests {
         for oldFirst in [false, true] {
             let state = State([]), reads = Reads(held: true)
             let loader = ItemInfoLoader(copies: CopyProviders([Provider(root: tree.url("provider"), state: state)]),
+                                    containerStore: .shared,
                                         mediaReader: { await reads.read($0) })
             var delivered: [String] = []
             _ = loader.request(entry, showHidden: false) { delivered.append($0) }
@@ -339,7 +412,7 @@ struct ProviderThumbnailInfoTests {
 
         // Releasing the loader cancels its outstanding task without retaining it.
         let releaseReads = Reads(held: true)
-        var loader: ItemInfoLoader? = ItemInfoLoader(mediaReader: { await releaseReads.read($0) })
+        var loader: ItemInfoLoader? = ItemInfoLoader(copies: .live, containerStore: .shared, mediaReader: { await releaseReads.read($0) })
         weak let released = loader
         _ = loader?.request(entry, showHidden: false) { _ in Issue.record("Released loader must not publish") }
         let task = try #require(loader?.tasks.values.first)
@@ -376,7 +449,7 @@ struct ProviderThumbnailInfoTests {
         let nodeA = try #require(a.allRows.first { $0.url == item })
         let nameCol = try #require(a.outlineView.tableColumn(withIdentifier: .init("name")))
         let listCellBefore = try #require(a.outlineView(a.outlineView, viewFor: nameCol, item: nodeA) as? NameCellView)
-        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry)
+        let fallbackIcon = IconCache.shared.icon(for: nodeA.entry, containerCopies: .shared, containerStore: .shared)
         #expect(listCellBefore.imageView?.image === fallbackIcon)
         #expect((a.previewPanel(nil, transitionImageFor: item as NSURL, contentRect: nil) as? NSImage) === fallbackIcon)
 

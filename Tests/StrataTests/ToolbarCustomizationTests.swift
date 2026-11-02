@@ -1,8 +1,21 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ToolbarCustomizationTests {
+    @Test func reloadBelongsOnlyToTheCustomizationItems() {
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        #expect(!BrowserToolbar.defaults.contains(reload))
+        #expect(BrowserToolbar.allowed.filter { $0 == reload }.count == 1)
+    }
+
     @Test func nativeContextMenuKeepsItsWrenchAndTextInTheDisplayOptionsColumns() throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
@@ -58,14 +71,10 @@ struct ToolbarCustomizationTests {
         let toolbar = try #require(first.window?.toolbar)
         #expect(toolbar.allowsUserCustomization && !toolbar.autosavesConfiguration)
         #expect(first.toolbarDefaultItemIdentifiers(toolbar) == BrowserToolbar.defaults)
-        #expect(BrowserToolbar.defaults.count == 16)
-        // Reload belongs beside the view controls: a visible refresh button, without opening Customize Toolbar.
+        #expect(BrowserToolbar.defaults.count == 15)
         let reload = BrowserToolbar.identifier(.reloadFolder)
-        #expect(BrowserToolbar.defaults.contains(reload))
+        #expect(!BrowserToolbar.defaults.contains(reload))
         #expect(BrowserToolbar.allowed.filter { $0 == reload }.count == 1)
-        #expect(BrowserToolbar.defaults.firstIndex(of: reload).flatMap { index in
-            BrowserToolbar.defaults.firstIndex(of: .viewMode).map { $0 < index }
-        } == true)
         for command in BrowserToolbar.commands { #expect(first.toolbarAllowedItemIdentifiers(toolbar).contains(BrowserToolbar.identifier(command))) }
         let ids: [NSToolbarItem.Identifier] = [.toggleSidebar, BrowserToolbar.identifier(.newFolder), .flexibleSpace, .pathBar]
         toolbar.itemIdentifiers = ids
@@ -92,18 +101,18 @@ struct ToolbarCustomizationTests {
         defer { owner.window?.contentViewController = nil }
         let toolbar = try #require(owner.window?.toolbar)
         toolbar.itemIdentifiers = BrowserToolbar.defaults
-        let search = try #require(owner.searchItem), mode = try #require(owner.viewModeItem)
+        let search = try #require(owner.toolbarItems.search), mode = try #require(owner.toolbarItems.viewMode)
         let path = try #require(toolbar.items.first { $0.itemIdentifier == .pathBar })
         #expect(path.view === owner.pathBar)
         for id in BrowserToolbar.allowed {
             _ = owner.toolbar(toolbar, itemForItemIdentifier: id, willBeInsertedIntoToolbar: false)
         }
-        #expect(owner.searchItem === search && owner.viewModeItem === mode)
+        #expect(owner.toolbarItems.search === search && owner.toolbarItems.viewMode === mode)
         #expect(path.view === owner.pathBar)
         toolbar.itemIdentifiers = []
-        #expect(owner.searchItem == nil && owner.viewModeItem == nil)
+        #expect(owner.toolbarItems.search == nil && owner.toolbarItems.viewMode == nil)
         owner.focusSearch(nil)
-        #expect(toolbar.itemIdentifiers.contains(.search) && owner.searchItem != nil)
+        #expect(toolbar.itemIdentifiers.contains(.search) && owner.toolbarItems.search != nil)
         owner.goToFolder(nil)
         #expect(toolbar.itemIdentifiers.contains(.pathBar))
         #expect(owner.pathBar.superview != nil)
@@ -151,8 +160,8 @@ struct ToolbarCustomizationTests {
                     owner.window?.contentViewController = nil
                     owner.panes.forEach { $0.stopBackgroundWork() }
                     for entry in environment.services.transfers.history.entries {
-                        for pair in entry.pairs where pair[0].hasPrefix(tree.root.path + "/") {
-                            TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                        for pair in entry.moves where pair.from.hasPrefix(tree.root.path + "/") {
+                            TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                         }
                     }
                 }
@@ -179,7 +188,7 @@ struct ToolbarCustomizationTests {
                 #expect(tree.snapshot() == before.filter { $0 != (index == 0 ? "left/a" : "right/a") })
                 let history = environment.services.transfers.history
                 let recorded = try #require(history.entries.last)
-                #expect(recorded.pairs.map { URL(fileURLWithPath: $0[0]).lastPathComponent } == ["a"])
+                #expect(recorded.moves.map { URL(fileURLWithPath: $0.from).lastPathComponent } == ["a"])
                 try await history.undo(recorded, undoManager: nil)
                 #expect(tree.snapshot() == before)
                 withExtendedLifetime((environment, state)) {}
@@ -205,14 +214,34 @@ struct ToolbarCustomizationTests {
         owner.browser.setMode(.list, remember: false)
         owner.browser.select([tree.url("left/a")])
         owner.browser.renameSelection(nil)
-        #expect(owner.browser.isRenamingInPlace)
+        #expect(owner.browser.inlineRename.isEditing)
         #expect(!owner.validateToolbarItem(item))
         owner.performToolbarCommand(item)
-        owner.browser.cancelOutlineRename()
+        owner.browser.inlineRename.cancel()
         owner.browser.showResults([], total: 0)
         #expect(!owner.validateToolbarItem(item))
         owner.performToolbarCommand(item)
         #expect(tree.snapshot() == ["left/", "left/a", "right/", "right/a"])
+        withExtendedLifetime((environment, state)) {}
+    }
+
+    @Test func reloadAppearsOnlyWhenAddedAndRestoringDefaultsRemovesIt() throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+        let reload = BrowserToolbar.identifier(.reloadFolder)
+        let toolbar = try #require(owner.window?.toolbar)
+        #expect(!toolbar.itemIdentifiers.contains(reload))
+        toolbar.insertItem(withItemIdentifier: reload, at: 1)
+        let reopened = controller(tree, environment)
+        defer { reopened.window?.contentViewController = nil; reopened.panes.forEach { $0.stopBackgroundWork() } }
+        let saved = try #require(reopened.window?.toolbar)
+        #expect(saved.itemIdentifiers.contains(reload))
+        saved.itemIdentifiers = BrowserToolbar.defaults
+        let reset = controller(tree, environment)
+        defer { reset.window?.contentViewController = nil; reset.panes.forEach { $0.stopBackgroundWork() } }
+        #expect(reset.window?.toolbar?.itemIdentifiers.contains(reload) == false)
+        #expect(tree.snapshot() == ["left/", "right/"])
         withExtendedLifetime((environment, state)) {}
     }
 

@@ -3,6 +3,7 @@ import Foundation
 import Security
 import Synchronization
 import os
+import StrataSupport
 
 /// Strata's saved state (the file index, the content index, the operation history) reveals what is inside folders that
 /// macOS guards with privacy prompts, like Documents, Desktop and Downloads. A plain copy would let anything running as
@@ -25,32 +26,27 @@ nonisolated package enum SecureStorage {
         }
     }
 
-    package static var current: Context {
-        selected.withLock { context in
-            if let context { return context }
-            let directory = FileManager.default.temporaryDirectory
-                .appending(path: "strata-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
-            let made = Context(directory: directory, caches: directory.appending(path: "Caches", directoryHint: .isDirectory),
-                               key: SymmetricKey(size: .bits256), temporary: true)
-            context = made
-            atexit { try? FileManager.default.removeItem(at: SecureStorage.directory) }
-            return made
-        }
-    }
-
-    package static var isTestRun: Bool { current.temporary }
-    package static var directory: URL { current.directory }
-    package static var caches: URL { current.caches }
-    package static func url(_ relative: String, isDirectory: Bool = false) -> URL {
-        current.url(relative, isDirectory: isDirectory)
-    }
-
     /// An immutable storage dependency. Separate contexts can coexist without changing the process defaults or
     /// each other's keys. The key provider is evaluated once, on first use, even when readers run concurrently.
     package final class Context: Sendable {
+        /// The process's: the user's stores once `useApplicationStorage` chose them, else a private temporary one.
+        package static var shared: Context {
+            selected.withLock { context in
+                if let context { return context }
+                let directory = FileManager.default.temporaryDirectory
+                    .appending(path: "strata-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+                let made = Context(directory: directory,
+                                   caches: directory.appending(path: "Caches", directoryHint: .isDirectory),
+                                   key: SymmetricKey(size: .bits256), temporary: true)
+                context = made
+                atexit { try? FileManager.default.removeItem(at: SecureStorage.Context.shared.directory) }
+                return made
+            }
+        }
+
         package let directory: URL
         package let caches: URL
-        fileprivate let temporary: Bool
+        let temporary: Bool
         private enum KeyState { case pending, resolved(SymmetricKey?) }
         private let keyState = Mutex<KeyState>(.pending)
         private let keyProvider: @Sendable () -> SymmetricKey?
@@ -77,7 +73,7 @@ nonisolated package enum SecureStorage {
             var fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             guard fd >= 0 else { return }
             defer { close(fd) }
-            let path = ChosenFile.systemSpelling(directory.path)
+            let path = PathSpelling.system(directory.path)
             for component in path.split(separator: "/") {
                 let name = String(component)
                 if mkdirat(fd, name, 0o700) != 0, errno != EEXIST { return }
@@ -102,8 +98,13 @@ nonisolated package enum SecureStorage {
         package func url(_ relative: String, isDirectory: Bool = false) -> URL {
             let url = directory.appending(path: relative, directoryHint: isDirectory ? .isDirectory : .notDirectory)
             let folder = isDirectory ? url : url.deletingLastPathComponent()
-            if folder.standardizedFileURL != directory.standardizedFileURL { Self.prepare(folder) }
+            if folder.lexicallyStandardized != directory.lexicallyStandardized { Self.prepare(folder) }
             return url
+        }
+
+        /// Makes `folder` where it's missing (0700, never through a link), as naming one with `url` does.
+        package func makeFolder(_ folder: URL) {
+            Self.prepare(folder)
         }
 
         package func write(_ data: Data, to url: URL) throws {
@@ -161,11 +162,6 @@ nonisolated package enum SecureStorage {
         }
         return key
     }
-
-    // MARK: Whole files
-
-    package static func write(_ data: Data, to url: URL) throws { try current.write(data, to: url) }
-    package static func read(_ url: URL) -> Data? { current.read(url) }
 
     // MARK: Streams
 
@@ -233,7 +229,7 @@ nonisolated package enum SecureStorage {
         private let salt: Data
         private let name: Data
 
-        package init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context) throws {
             guard let key = storage.key else { throw Failure() }
             self.url = url
             self.key = key
@@ -327,7 +323,7 @@ nonisolated package enum SecureStorage {
         /// Upper bound on the plaintext, for sanity-checking lengths before allocating.
         package let maximumLength: Int
 
-        package init(url: URL, storage: Context = SecureStorage.current) throws {
+        package init(url: URL, storage: Context) throws {
             guard let key = storage.key else { throw Failure() }
             let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .ENOENT) }
@@ -339,13 +335,13 @@ nonisolated package enum SecureStorage {
             handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             self.key = key
             maximumLength = Int(info.st_size)
-            guard let header = try handle.read(upToCount: 8), header.count == 8,
+            guard let header = try FileRead.chunk(handle, upToCount: 8), header.count == 8,
                   header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }) == magic
             else { throw Failure() }
             let version = header.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
             switch version {
             case formatVersion:
-                guard let salt = try handle.read(upToCount: saltSize), salt.count == saltSize else { throw Failure() }
+                guard let salt = try FileRead.chunk(handle, upToCount: saltSize), salt.count == saltSize else { throw Failure() }
                 self.salt = salt
                 isLegacy = false
             case 1:
@@ -390,14 +386,14 @@ nonisolated package enum SecureStorage {
         /// Confirms everything was consumed, through the final chunk (which is empty when the data filled the last one).
         package func finish() throws {
             if position == chunk.count && !sawFinal { try nextChunk() }
-            guard sawFinal, position == chunk.count, try handle.read(upToCount: 1)?.isEmpty ?? true else { throw Failure() }
+            guard sawFinal, position == chunk.count, try FileRead.chunk(handle, upToCount: 1)?.isEmpty ?? true else { throw Failure() }
         }
 
         private func nextChunk() throws {
-            guard !sawFinal, let prefix = try handle.read(upToCount: 4), prefix.count == 4 else { throw Failure() }
+            guard !sawFinal, let prefix = try FileRead.chunk(handle, upToCount: 4), prefix.count == 4 else { throw Failure() }
             let length = Int(prefix.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) })
             guard length >= boxOverhead, length <= chunkSize + boxOverhead,
-                  let combined = try handle.read(upToCount: length), combined.count == length else { throw Failure() }
+                  let combined = try FileRead.chunk(handle, upToCount: length), combined.count == length else { throw Failure() }
             let box = try AES.GCM.SealedBox(combined: combined)
             // The last chunk is the only one sealed as final; try that only when a full-size chunk didn't open.
             func data(final: Bool) -> Data {

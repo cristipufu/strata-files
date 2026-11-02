@@ -1,7 +1,15 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
+@Suite(.archiveWorkerApp)
 struct PreviewProviderContentTests {
     @Test func folderBrowsingListsOnlyMetadataAndSelectionFetchesExactlyOneFile() async throws {
         let tree = try TestTree("copy/folder/a.txt", "copy/folder/b.txt", "copy/folder/sub/inside.txt", "outside/keep")
@@ -111,7 +119,8 @@ struct PreviewProviderContentTests {
         coordinator.show(try #require(FileEntry(url: tree.url("copy"))), from: browser, present: false)
         let content = try #require(coordinator.content)
         await content.session.task?.value
-        content.session.select(try #require(content.session.roots.first { $0.name == "a" }))
+        let item = try #require(content.session.roots.first { $0.name == "a" })
+        content.session.select(item)
         coordinator.perform(.copy, target: try #require(PreviewCommandTarget(session: content.session)))
         await content.providerContent.commandTask?.value
         let staged = try #require(environment.services.clipboard.read().urls.first)
@@ -220,7 +229,8 @@ struct PreviewProviderContentTests {
         await content.providerContent.task?.value
         await content.session.task?.value
         #expect(content.session.roots.map(\.name) == ["a.txt", "b.txt"] && content.session.error == nil)
-        content.session.select(try #require(content.session.roots.first))
+        let item = try #require(content.session.roots.first)
+        content.session.select(item)
         await content.archiveContent.task?.value
         let shown = try #require(content.fileView.shownURL)
         #expect(try String(contentsOf: shown, encoding: .utf8) == "chosen")

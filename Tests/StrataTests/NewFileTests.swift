@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// File ▸ New File: an empty "untitled.txt", the next free name when that's taken, never over anything.
 @MainActor
@@ -17,20 +24,20 @@ final class NewFileTests {
     }
 
     @Test func makesAnEmptyFileThenTheNextFreeName() throws {
-        let first = try FileOps.newFile(in: folder, extension: "txt", undo: nil)
+        let first = try FileOps.newFile(in: folder, extension: "txt", undo: nil, copies: .live, history: .shared)
         #expect(first.lastPathComponent == "untitled.txt")
         #expect(try Data(contentsOf: first).isEmpty)
-        let second = try FileOps.newFile(in: folder, extension: "txt", undo: nil)
+        let second = try FileOps.newFile(in: folder, extension: "txt", undo: nil, copies: .live, history: .shared)
         #expect(second.lastPathComponent == "untitled 2.txt")
-        let other = try FileOps.newFile(in: folder, extension: "md", undo: nil)
+        let other = try FileOps.newFile(in: folder, extension: "md", undo: nil, copies: .live, history: .shared)
         #expect(other.lastPathComponent == "untitled.md")
-        let bare = try FileOps.newFile(in: folder, extension: "", undo: nil)
+        let bare = try FileOps.newFile(in: folder, extension: "", undo: nil, copies: .live, history: .shared)
         #expect(bare.lastPathComponent == "untitled")
     }
 
     @Test func newFolderNeverTakesAnExistingOne() throws {
         let tree = try TestTree("untitled folder/", "untitled folder/mine.txt")
-        let made = try FileOps.newFolder(in: tree.root, undo: nil)
+        let made = try FileOps.newFolder(in: tree.root, undo: nil, copies: .live, history: .shared)
         #expect(made.lastPathComponent == "untitled folder 2")
         #expect(tree.snapshot() == ["untitled folder 2/", "untitled folder/", "untitled folder/mine.txt"])
     }
@@ -40,7 +47,7 @@ final class NewFileTests {
         // A link to nothing still takes the name, and nothing is made where it points.
         try FileManager.default.createSymbolicLink(atPath: folder.appending(path: "untitled 2.txt").path,
                                                    withDestinationPath: folder.appending(path: "target.txt").path)
-        let made = try FileOps.newFile(in: folder, extension: "txt", undo: nil)
+        let made = try FileOps.newFile(in: folder, extension: "txt", undo: nil, copies: .live, history: .shared)
         #expect(made.lastPathComponent == "untitled 3.txt")
         #expect(try String(contentsOf: folder.appending(path: "untitled.txt"), encoding: .utf8) == "keep")
         #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "target.txt").path))

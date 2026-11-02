@@ -1,72 +1,73 @@
+import StrataArchives
 import Foundation
+import os
+import StrataArchiveClient
 
 /// Compress (zip, like Finder) and extract (like Archive Utility), with the care an archive from anywhere needs:
-/// - Extraction happens in a private folder on the destination's disk, with tools that refuse to write outside it
-///   (bsdtar's defaults: no absolute paths, no "..", nothing written through a symlink).
+/// - The archive is parsed only by a sandboxed worker of the archive service. Strata writes what it sends into a private
+///   folder on the destination's disk, never outside it or through a link (see `ArchiveWriter`).
 /// - The result is checked before it's moved into place: links must stay inside what's placed, special files are dropped,
 ///   setuid bits cleared, and anything that can't be checked stops the extraction.
 /// - The disk's free space is checked first and watched while extracting, so an archive bomb can't fill it.
-nonisolated enum Archiver {
-    struct Failure: LocalizedError {
-        let message: String
-        var errorDescription: String? { message }
+package nonisolated enum Archiver {
+    private static let log = Logger(subsystem: "dev.strata.app", category: "archives")
+
+    package struct Failure: LocalizedError, Equatable {
+        package let message: String
+        package var errorDescription: String? { message }
+
+        package init(message: String) {
+            self.message = message
+        }
     }
 
-    /// What a listing says about an archive before it's extracted.
-    struct Inspection: Sendable {
-        var entries = 0
-        /// Files outside `__MACOSX`.
-        var files = 0
-        var bytes: Int64 = 0
-        /// Anything but plain files and folders, absolute paths, "..", or a listing not fully understood: only bsdtar's
-        /// secure extraction may unpack it.
-        var needsSecureTool = false
-        /// Password-protected entries.
-        var encrypted = false
-        /// The listing finished (no timeout, readable).
-        var complete = false
-
-        /// Entries the extraction will report, for progress.
-        var progressTotal: Int { entries }
-    }
+    /// What a survey of an archive says before it's extracted; its counts are lower bounds when it didn't finish.
+    package typealias Inspection = ArchiveSurvey
 
     /// Progress and cancellation, shared with the job that runs it.
-    final class Control: @unchecked Sendable {
+    package final class Control: @unchecked Sendable {
         private let lock = NSLock()
         private var process: Process?
+        private var reader: PipeReader?
         private var cancelled = false
         private var done = 0
 
-        var isCancelled: Bool { lock.withLock { cancelled } }
-        /// Entries written so far.
-        var entriesDone: Int { lock.withLock { done } }
+        package init() {}
 
-        func cancel() {
-            let process = lock.withLock { () -> Process? in
+        package var isCancelled: Bool { lock.withLock { cancelled } }
+        /// Entries written so far.
+        package var entriesDone: Int { lock.withLock { done } }
+
+        package func cancel() {
+            let (process, reader) = lock.withLock { () -> (Process?, PipeReader?) in
                 cancelled = true
-                return self.process
+                return (self.process, self.reader)
             }
             if let process, process.isRunning { process.terminate() }
+            reader?.stop()
         }
 
         fileprivate func attach(_ process: Process?) { lock.withLock { self.process = process } }
-        fileprivate func advance(_ count: Int) { lock.withLock { done += count } }
+        /// The read Extract writes from, which cancelling stops.
+        fileprivate func attach(reader: PipeReader?) { lock.withLock { self.reader = reader } }
+        package func advance(_ count: Int) { lock.withLock { done += count } }
     }
 
     /// Kept free while extracting: a tenth of what's free, at most 1 GB, so small disks can still take small archives.
-    static func reserve(free: Int64) -> Int64 {
+    package static func reserve(free: Int64) -> Int64 {
         min(1 << 30, max(0, free) / 10)
     }
 
-    /// Space actually free on `url`'s disk right now (not counting what the system could purge), for the watchdog.
-    static func freeSpace(onDiskOf url: URL) -> Int64? {
+    /// The disk holding `fd` right now, for the watchdog: the space actually free (not counting what the system could
+    /// purge), and its allocation block, the least anything written there takes up.
+    package static func space(of fd: Int32) -> (free: Int64, block: Int64)? {
         var info = statfs()
-        guard statfs(url.path, &info) == 0 else { return nil }
-        return Int64(clamping: info.f_bavail).saturatingMultiply(Int64(info.f_bsize))
+        guard fstatfs(fd, &info) == 0 else { return nil }
+        return (Int64(clamping: info.f_bavail).saturatingMultiply(Int64(info.f_bsize)), Int64(info.f_bsize))
     }
 
     /// Free space on `url`'s disk, read fresh each time (a URL caches what it was first told).
-    static func availableSpace(onDiskOf url: URL) -> Int64? {
+    package static func availableSpace(onDiskOf url: URL) -> Int64? {
         let fresh = URL(fileURLWithPath: url.path)
         let values = try? fresh.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
         if let important = values?.volumeAvailableCapacityForImportantUsage, important > 0 { return important }
@@ -77,12 +78,12 @@ nonisolated enum Archiver {
 
     /// Zips `items` next to the first one: `Name.zip` for one item, `Archive.zip` for several (a taken name gets a
     /// number). Returns the zip.
-    static func compress(_ items: [URL], control: Control) throws -> URL {
+    package static func compress(_ items: [URL], copies: CopyProviders, control: Control) throws -> URL {
         guard let first = items.first else { throw Failure(message: String(localized: "Nothing to compress.")) }
         let fm = FileManager.default
         let folder = first.deletingLastPathComponent()
         try requireWritable(folder)
-        try requireOutsideCopies(folder)
+        try requireOutsideCopies(folder, copies: copies)
         let name = items.count == 1 ? first.lastPathComponent + ".zip"
             // The name is translated; the extension stays .zip whatever the translation.
             : FileOps.nameText(String(localized: "Archive", comment: "Name of the zip made from several items, as Finder names it (“Archive.zip”); the .zip is added"),
@@ -92,7 +93,7 @@ nonisolated enum Archiver {
         let zip = work.appending(path: name)
         if items.count == 1, !isSymlink(first) {
             try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", "-V", first.path, zip.path],
-                    control: control, counts: { $0.hasPrefix("copying file") })
+                    control: control)
         } else {
             // ditto takes one source (and would follow a lone link): gather the items in a folder first. On APFS these
             // copies are clones, instant and free; links stay links; the folder's own name isn't stored.
@@ -103,92 +104,35 @@ nonisolated enum Archiver {
                 try fm.copyItem(at: item, to: uniqueURL(staging.appending(path: item.lastPathComponent)))
             }
             try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "-V", staging.path, zip.path],
-                    control: control, counts: { $0.hasPrefix("copying file") })
+                    control: control)
         }
         return try place(zip, in: folder, as: name)
     }
 
     // MARK: - Extract
 
-    /// Lists `archive` to learn its size and whether it holds anything risky. Doesn't throw: an unreadable listing
-    /// just comes back incomplete, and extraction then uses the secure tool. Runs off the main thread.
+    /// Surveys `archive` in the archive service's sandboxed worker to learn its size and whether it's encrypted. A
+    /// link to an archive surveys the archive, which is what is extracted. Doesn't throw: a survey that didn't finish
+    /// comes back incomplete, with what it counted so far. Runs off the main thread.
     @concurrent
-    static func inspect(_ archive: URL, kind: ArchiveKind) async -> Inspection {
-        let (tool, arguments) = switch kind {
-        case .zip: ("/usr/bin/zipinfo", ["-s", archive.path])
-        case .tar: ("/usr/bin/tar", ["-tvf", archive.path])
-        }
-        guard let run = try? await ProcessRunner.run(tool, arguments, timeout: 60) else { return Inspection() }
-        var result = Inspection()
-        // Fails closed: any line that isn't the header, the totals or a fully understood entry sends the archive to
-        // bsdtar's secure extraction, and so does an entry count that differs from zipinfo's own totals.
-        var unexplained = 0
-        var reportedEntries: Int?
-        var headerEntries: Int?
-        for line in String(decoding: run.output, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.isEmpty { continue }
-            if kind == .zip, line.hasPrefix("Archive:") { continue }
-            // "Zip file size: 3923 bytes, number of entries: 20"
-            if kind == .zip, line.hasPrefix("Zip file size:"), let count = line.split(separator: " ").last.flatMap({ Int($0) }) {
-                headerEntries = count
-                continue
-            }
-            if kind == .zip, let total = zipTotal(line) {
-                reportedEntries = total
-                continue
-            }
-            // zipinfo -s: attributes version os size type method date time name (attributes: "-rw-r--r--", or
-            //             "-rw-a--" for zips made on Windows)
-            // tar -tv:    perms links owner group size month day time name [-> target]
-            let fields = line.split(separator: " ", maxSplits: 8, omittingEmptySubsequences: true)
-            guard fields.count == 9, fields[0].count == 10 || (kind == .zip && fields[0].count == 7),
-                  let size = Int64(fields[kind == .zip ? 3 : 4]) else {
-                unexplained += 1
-                continue
-            }
-            result.entries += 1
-            // A crafted listing can claim sizes that overflow: such an archive can't fit anyway.
-            let (sum, overflow) = result.bytes.addingReportingOverflow(max(0, size))
-            result.bytes = overflow ? .max : sum
-            if overflow { result.needsSecureTool = true }
-            var name = fields[8]
-            if kind == .tar, let arrow = name.range(of: " -> ") { name = name[..<arrow.lowerBound] }
-            // Unknown creator types stay unknown; the listing must never reinterpret them as plain files.
-            let type = fields[0].first
-            if type == "-", !name.hasPrefix("__MACOSX/") { result.files += 1 }
-            // zipinfo marks encrypted entries with a capital T or B ("TX", "Bx").
-            if kind == .zip, let flag = fields[4].first, flag == "T" || flag == "B" { result.encrypted = true }
-            if type != "-" && type != "d" || name.hasPrefix("/") || name.split(separator: "/").contains("..") {
-                result.needsSecureTool = true
-            }
-        }
-        result.complete = run.status == 0 && !run.timedOut && !run.truncated && result.entries > 0
-        if !result.complete || unexplained > 0
-            || (kind == .zip && (reportedEntries != result.entries || headerEntries != result.entries)) {
-            result.needsSecureTool = true
-        }
-        return result
-    }
-
-    /// zipinfo's closing line, "20 files, 1335 bytes uncompressed, 760 bytes compressed:  42.9%": the entry count.
-    private static func zipTotal(_ line: Substring) -> Int? {
-        let words = line.split(separator: " ", maxSplits: 2)
-        guard words.count == 3, words[1] == "file," || words[1] == "files,", words[2].contains("uncompressed") else { return nil }
-        return Int(words[0])
+    package static func inspect(_ archive: URL) async -> Inspection {
+        guard let source = try? ArchiveSource(archive.resolvingSymlinksInPath()),
+              let survey = try? await ArchiveReader.survey(source, timeout: 30) else { return Inspection() }
+        return survey
     }
 
     /// Extracts `archive` into `folder` like Archive Utility: one top-level item keeps its name; several go in a folder
     /// named after the archive. Taken names get a number. Returns what was created.
-    static func extract(_ archive: URL, kind: ArchiveKind, inspection: Inspection, into folder: URL,
+    package static func extract(_ archive: URL, inspection: Inspection, into folder: URL, copies: CopyProviders,
                         control: Control) throws -> URL {
         let fm = FileManager.default
         try requireWritable(folder)
-        try requireOutsideCopies(folder)
+        try requireOutsideCopies(folder, copies: copies)
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true)
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
-        try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
-        let top = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        try unpack(archive, inspection: inspection, into: root, control: control)
+        let top = try listed(root.path, keepingAttributes: keepsAttributes(root.path)).map { root.appending(path: $0) }
         guard let only = top.first else { throw Failure(message: String(localized: "“\(archive.lastPathComponent)” is empty.")) }
         if top.count == 1, !only.lastPathComponent.hasPrefix(".") {
             // What's placed is that one item, so links inside it must stay inside it, and it can't be a link itself.
@@ -203,7 +147,7 @@ nonisolated enum Archiver {
     }
 
     /// Extracts `archive`'s contents into the new folder `destination` (for browsing an archive as a folder).
-    static func extractContents(_ archive: URL, kind: ArchiveKind, inspection: Inspection, to destination: URL,
+    package static func extractContents(_ archive: URL, inspection: Inspection, to destination: URL,
                                 control: Control) throws {
         let fm = FileManager.default
         let parent = destination.deletingLastPathComponent()
@@ -211,7 +155,7 @@ nonisolated enum Archiver {
         let work = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: parent, create: true)
         defer { removeTree(work) }
         let root = work.appending(path: "contents", directoryHint: .isDirectory)
-        try unpack(archive, kind: kind, inspection: inspection, into: root, control: control)
+        try unpack(archive, inspection: inspection, into: root, control: control)
         try check(root, control: control, quarantine: quarantine(of: archive))
         // The copy's place is new: never replace what's there.
         guard renamex_np(root.path, destination.path, UInt32(RENAME_EXCL)) == 0 else {
@@ -220,7 +164,7 @@ nonisolated enum Archiver {
     }
 
     /// The archive's name without its archive extensions ("Photos.tar.gz" → "Photos").
-    static func baseName(_ archive: URL) -> String {
+    package static func baseName(_ archive: URL) -> String {
         let name = archive.lastPathComponent
         let lower = name.lowercased()
         var base = (name as NSString).deletingPathExtension
@@ -236,36 +180,69 @@ nonisolated enum Archiver {
                                 english: "Archive")
     }
 
-    private static func unpack(_ archive: URL, kind: ArchiveKind, inspection: Inspection, into root: URL,
+    private static func unpack(_ archive: URL, inspection: Inspection, into root: URL,
                                control: Control) throws {
-        let fm = FileManager.default
         if inspection.encrypted { throw passwordProtected(archive) }
         let disk = root.deletingLastPathComponent()
-        if inspection.complete, let free = availableSpace(onDiskOf: disk), inspection.bytes > free - reserve(free: free) {
+        // If even what the survey knows the archive holds doesn't fit, the archive won't.
+        if let atLeast = inspection.lowerBound, let free = availableSpace(onDiskOf: disk),
+           atLeast > free - reserve(free: free) {
             let format = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
             let needed = format(inspection.bytes), usable = format(max(0, free - reserve(free: free)))
             throw Failure(message: String(localized: "There isn’t enough space to extract “\(archive.lastPathComponent)”: it needs \(needed), and \(usable) can be used."))
         }
-        // `root`'s parent is a private folder; `root` itself becomes the extracted folder, so it gets usual permissions.
-        try fm.createDirectory(at: root, withIntermediateDirectories: false)
+        // `root`'s parent is a private folder; `root` itself becomes the extracted folder, so it gets usual permissions,
+        // which bound what anything inside gets.
+        guard mkdir(root.path, 0o777) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let folder = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard folder >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(folder) }
+        var info = stat()
+        guard fstat(folder, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        var complete = false
+        let status: ArchiveService.Status
         do {
-            // Listings are only estimates. Creator flags, AppleDouble metadata and filenames can disagree with
-            // a text listing, so every format uses the extractor that refuses to write through archive symlinks.
-            // Mac metadata carries resource forks; check still strips locks, privileged modes and ACLs before publication.
-            try run("/usr/bin/tar", ["-x", "-v", "--no-fflags", "--no-same-owner", "--no-same-permissions", "--mac-metadata",
-                                    "--passphrase", "-", "-f", archive.path, "-C", root.path],
-                    control: control, counts: { $0.hasPrefix("x ") }, watching: disk)
-            try checkedPermissions(root.path, 0o700)
-            if kind == .zip { removeTree(root.appending(path: "__MACOSX")) }
-        } catch let failure as Failure where failure.message == passwordMarker {
-            throw passwordProtected(archive)
+            // A link to an archive extracts the archive, which mustn't change while it's read.
+            let source = try ArchiveSource(archive.resolvingSymlinksInPath())
+            let file = try source.open()
+            defer { try? file.close() }
+            let reader = try PipeReader()
+            control.attach(reader: reader)
+            defer { control.attach(reader: nil) }
+            // A Stop that came before the reader was attached would have found nothing to stop.
+            guard !control.isCancelled else { throw CancellationError() }
+            status = try ArchiveReader.unpack(file, reader: reader) { output in
+                complete = try ArchiveWriter.write(into: folder, permissions: info.st_mode, control: control) {
+                    try reader.readSome(output, into: $0)
+                }
+            }
+            try source.verify(file)
+        } catch let error as POSIXError {
+            log.info("An archive couldn't be extracted: \(error.localizedDescription, privacy: .public)")
+            throw Failure(message: ArchiveReadError.unreadable.localizedDescription)
+        }
+        if let failure = failure(complete: complete, status: status, archive: archive) { throw failure }
+        try checkedPermissions(root.path, 0o700)
+    }
+
+    /// Why Extract's read of `archive` failed, if it did. A stream that reached its end mark is complete whatever the
+    /// service could still say about its worker, which sends that mark only once it has read everything.
+    package static func failure(complete: Bool, status: ArchiveService.Status, archive: URL) -> Failure? {
+        guard !complete else { return nil }
+        switch ArchiveReader.error(for: status) {
+        case .password: return passwordProtected(archive)
+        case .limit: return pastLimits(archive)
+        case let error?: return Failure(message: error.localizedDescription)
+        case nil: return Failure(message: ArchiveReadError.unreadable.localizedDescription)
         }
     }
 
-    private static let passwordMarker = "\u{1}password"
+    private static func pastLimits(_ archive: URL) -> Failure {
+        Failure(message: String(localized: "“\(archive.lastPathComponent)” goes past the limits Strata sets for reading archives, so it wasn’t extracted."))
+    }
 
     private static func passwordProtected(_ archive: URL) -> Failure {
-        Failure(message: String(localized: "“\(archive.lastPathComponent)” is password-protected. Open it with Archive Utility to enter the password."))
+        Failure(message: ArchiveReadError.passwordProtected(archive.lastPathComponent))
     }
 
     /// Everything in `boundary` (a folder, or a single file) must stay inside it: a link may only point within it,
@@ -277,7 +254,7 @@ nonisolated enum Archiver {
     /// `quarantine`: the archive's own quarantine mark (it was downloaded). Every extracted item gets exactly that mark,
     /// replacing any the archive itself carried (a crafted one could claim an app was already approved), so Gatekeeper
     /// checks whatever came inside. If an item can't be marked, nothing is extracted.
-    static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
+    package static func check(_ boundary: URL, control: Control? = nil, quarantine: Data? = nil) throws {
         let rootPath = boundary.path
         var info = stat()
         guard lstat(rootPath, &info) == 0 else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
@@ -295,55 +272,116 @@ nonisolated enum Archiver {
         default:
             throw Failure(message: String(localized: "The archive holds nothing that can be extracted safely."))
         }
-        let fm = FileManager.default
-        var walkError: Error?
-        let base = URL(fileURLWithPath: rootPath, isDirectory: true)
-        guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil, options: [.producesRelativePathURLs],
-                                         errorHandler: { _, error in
-                                             walkError = error
-                                             return false
-                                         }) else { throw Failure(message: String(localized: "The extracted files couldn’t be checked.")) }
-        var seen = 0
-        while let url = walker.nextObject() as? URL {
-            seen += 1
-            if seen % 256 == 0, control?.isCancelled == true { throw CancellationError() }
-            let relative = url.relativePath
-            let path = rootPath + "/" + relative
-            guard lstat(path, &info) == 0 else {
-                throw Failure(message: String(localized: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted."))
-            }
-            try clearFlagsAndAccessList(path)
-            switch info.st_mode & S_IFMT {
-            case S_IFLNK:
-                let parent = relative.split(separator: "/").dropLast().map(String.init)
-                var budget = 4096
-                guard let target = try? fm.destinationOfSymbolicLink(atPath: path),
-                      resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {
-                    throw Failure(message: String(localized: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted."))
-                }
-                if let quarantine { try markQuarantined(path, quarantine) }
-            case S_IFDIR:
-                // Readable and enterable, so the walk sees what's inside (and the folder can be removed later).
-                try checkedPermissions(path, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID | S_ISVTX)) | S_IRWXU)
-                if let quarantine { try markQuarantined(path, quarantine) }
-            case S_IFREG:
-                if info.st_mode & (S_ISUID | S_ISGID | S_ISVTX) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
-                    try checkedPermissions(path, (info.st_mode & ~(S_ISUID | S_ISGID | S_ISVTX) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
-                }
-                if let quarantine { try markQuarantined(path, quarantine) }
-            default:
-                try fm.removeItem(atPath: path)
+        var seen = 0, folders = [""]
+        let keepingAttributes = keepsAttributes(rootPath)
+        while let folder = folders.popLast() {
+            for name in try listed(folder.isEmpty ? rootPath : rootPath + "/" + folder, keepingAttributes: keepingAttributes) {
+                seen += 1
+                if seen % 256 == 0, control?.isCancelled == true { throw CancellationError() }
+                let relative = folder.isEmpty ? name : folder + "/" + name
+                if try checkItem(relative, in: rootPath, quarantine: quarantine) { folders.append(relative) }
             }
         }
-        if let walkError {
-            throw Failure(message: String(localized: "The extracted files couldn’t all be checked (\(walkError.localizedDescription)), so nothing was extracted."))
+    }
+
+    /// Every name in a folder being checked, or the check fails. On a disk that doesn't keep extended attributes itself
+    /// (FAT, exFAT, some shares), the system keeps an item's in a "._name" file beside it: those are the system's, not
+    /// the archive's, and can't even take a quarantine mark.
+    private static func listed(_ path: String, keepingAttributes: Bool) throws -> [String] {
+        let names: [String]
+        do {
+            names = try self.names(inFolderAt: path)
+        } catch {
+            throw Failure(message: String(localized: "The extracted files couldn’t all be checked (\(error.localizedDescription)), so nothing was extracted."))
         }
+        guard !keepingAttributes else { return names }
+        let attributeFiles = attributeFiles(in: names) { name in
+            var info = stat()
+            return lstat(path + "/" + name, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
+        }
+        return names.filter { !attributeFiles.contains($0) }
+    }
+
+    /// Of `names`, those the system would keep another's extended attributes in: a plain file named for an item beside it.
+    package static func attributeFiles(in names: [String], isFile: (String) -> Bool) -> Set<String> {
+        let all = Set(names.map { Array($0.utf8) })
+        return Set(names.filter { name in attributedItem(of: name.utf8).map { all.contains($0) } == true && isFile(name) })
+    }
+
+    /// The item whose attributes a disk that keeps them in "._" files keeps in a file called `name`: "x" for "._x",
+    /// spelled with the very same bytes, as the system names the file after its item. Nil for any other name: no "._"
+    /// file takes attributes, so "._._x" is never one, and neither are "._." and "._..".
+    package static func attributedItem(of name: some Collection<UInt8>) -> [UInt8]? {
+        let prefix = Array("._".utf8)
+        guard name.starts(with: prefix) else { return nil }
+        let item = Array(name.dropFirst(2))
+        return item.isEmpty || item.starts(with: prefix) || item == Array(".".utf8) || item == Array("..".utf8) ? nil : item
+    }
+
+    /// Whether the disk holding `path` keeps extended attributes itself; one it can't tell counts as keeping them, so
+    /// that every name is checked.
+    private static func keepsAttributes(_ path: String) -> Bool {
+        attributesKept { getattrlist(path, &$0, $1, $2, 0) } ?? true
+    }
+
+    /// A disk that can't tell counts as keeping them in files, so that Extract's writer numbers what could be taken for
+    /// them.
+    package static func attributesInFiles(of fd: Int32) -> Bool {
+        !(attributesKept { fgetattrlist(fd, &$0, $1, $2, 0) } ?? false)
+    }
+
+    /// Nil when the disk can't tell.
+    private static func attributesKept(reading: (inout attrlist, UnsafeMutableRawPointer?, Int) -> Int32) -> Bool? {
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.volattr = attrgroup_t(ATTR_VOL_INFO) | attrgroup_t(ATTR_VOL_CAPABILITIES)
+        // The returned length, then the volume's capabilities and which of them it reports.
+        var reply = [UInt32](repeating: 0, count: 9)
+        let size = reply.count * MemoryLayout<UInt32>.size
+        guard reply.withUnsafeMutableBytes({ reading(&request, $0.baseAddress, size) }) == 0 else { return nil }
+        let interfaces = Int(VOL_CAPABILITIES_INTERFACES), native = UInt32(VOL_CAP_INT_EXTENDED_ATTR)
+        let capabilities = reply[1 + interfaces], valid = reply[5 + interfaces]
+        guard valid & native != 0 else { return nil }
+        return capabilities & native != 0
+    }
+
+    /// Checks one item inside the boundary at `rootPath`; whether it's a folder to check inside.
+    private static func checkItem(_ relative: String, in rootPath: String, quarantine: Data?) throws -> Bool {
+        let path = rootPath + "/" + relative
+        var info = stat()
+        guard lstat(path, &info) == 0 else {
+            throw Failure(message: String(localized: "“\(relative)” in the archive couldn’t be checked, so nothing was extracted."))
+        }
+        try clearFlagsAndAccessList(path)
+        switch info.st_mode & S_IFMT {
+        case S_IFLNK:
+            let parent = relative.split(separator: "/").dropLast().map(String.init)
+            var budget = 4096
+            guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: path),
+                  resolve(target, from: parent, in: rootPath, hops: 0, budget: &budget) != nil else {
+                throw Failure(message: String(localized: "This archive contains a link that points outside it (“\(relative)”), so it wasn’t extracted."))
+            }
+            if let quarantine { try markQuarantined(path, quarantine) }
+        case S_IFDIR:
+            // Readable and enterable, so the walk sees what's inside (and the folder can be removed later).
+            try checkedPermissions(path, (info.st_mode & 0o7777 & ~(S_ISUID | S_ISGID | S_ISVTX)) | S_IRWXU)
+            if let quarantine { try markQuarantined(path, quarantine) }
+            return true
+        case S_IFREG:
+            if info.st_mode & (S_ISUID | S_ISGID | S_ISVTX) != 0 || (quarantine != nil && info.st_mode & S_IWUSR == 0) {
+                try checkedPermissions(path, (info.st_mode & ~(S_ISUID | S_ISGID | S_ISVTX) & 0o7777) | (quarantine != nil ? S_IWUSR : 0))
+            }
+            if let quarantine { try markQuarantined(path, quarantine) }
+        default:
+            try FileManager.default.removeItem(atPath: path)
+        }
+        return false
     }
 
     /// Where a link's `target` leads, as path components inside `root`, following links on the way; nil when it would
     /// leave `root` (an absolute target, a ".." past the top), loops, can't be checked, or takes more than `budget`
     /// steps in all (links made of links can't multiply the work). `parent`: the link's folder inside `root`.
-    static func resolve(_ target: String, from parent: [String], in root: String, hops: Int, budget: inout Int) -> [String]? {
+    package static func resolve(_ target: String, from parent: [String], in root: String, hops: Int, budget: inout Int) -> [String]? {
         guard hops < 32, !target.hasPrefix("/") else { return nil }
         var stack = parent
         for part in target.split(separator: "/") {
@@ -419,13 +457,12 @@ nonisolated enum Archiver {
     /// Moves `item` into `folder` as `name`, or `name 2`, `name 3`… when taken, claiming the name atomically (nothing
     /// that appears meanwhile is ever replaced). Disks without exclusive renames (exFAT) claim the name first with an
     /// empty placeholder.
-    static func place(_ item: URL, in folder: URL, as name: String, supportsExclusiveRename: Bool = true) throws -> URL {
+    package static func place(_ item: URL, in folder: URL, as name: String, supportsExclusiveRename: Bool = true) throws -> URL {
         let isFolder = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true && !isSymlink(item)
         // Folders have no extension to keep, except packages ("Foo.app" → "Foo 2.app").
-        let ext = !isFolder || (try? item.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true ? (name as NSString).pathExtension : ""
-        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        let keepsExtension = !isFolder || (try? item.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true
         for n in 1...10_000 {
-            let candidate = n == 1 ? name : ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
+            let candidate = n == 1 ? name : FileOps.name(name, adding: " \(n)", keepingExtension: keepsExtension)
             let destination = folder.appending(path: candidate, directoryHint: isFolder ? .isDirectory : .notDirectory)
             if !supportsExclusiveRename { errno = ENOTSUP } else
             if renamex_np(item.path, destination.path, UInt32(RENAME_EXCL)) == 0 { return destination }
@@ -464,18 +501,16 @@ nonisolated enum Archiver {
 
     /// `url`, or `name 2.ext`, `name 3.ext`… when it's taken (a dangling link counts as taken). For staging only:
     /// final names are claimed by `place`.
-    static func uniqueURL(_ url: URL) -> URL {
+    package static func uniqueURL(_ url: URL) -> URL {
         func taken(_ url: URL) -> Bool {
             var info = stat()
             return lstat(url.path, &info) == 0
         }
         guard taken(url) else { return url }
         let folder = url.deletingLastPathComponent()
-        let name = url.lastPathComponent
-        let ext = url.hasDirectoryPath ? "" : (name as NSString).pathExtension
-        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
         for n in 2... {
-            let candidate = folder.appending(path: ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)",
+            let candidate = folder.appending(path: FileOps.name(url.lastPathComponent, adding: " \(n)",
+                                                                keepingExtension: !url.hasDirectoryPath),
                                              directoryHint: url.hasDirectoryPath ? .isDirectory : .notDirectory)
             if !taken(candidate) { return candidate }
         }
@@ -483,8 +518,8 @@ nonisolated enum Archiver {
     }
 
     /// Nothing is made inside an archive opened as a folder (a temporary copy).
-    private static func requireOutsideCopies(_ folder: URL) throws {
-        guard !ReadOnlyCopies.contains(folder) else {
+    private static func requireOutsideCopies(_ folder: URL, copies: CopyProviders) throws {
+        guard !ReadOnlyCopies.contains(folder, copies: copies) else {
             throw Failure(message: String(localized: "Nothing can be made in a read-only copy (an archive opened as a folder, or a container’s files). Copy what you need out first."))
         }
     }
@@ -503,7 +538,7 @@ nonisolated enum Archiver {
 
     /// Removes `url` even when the archive left folders without permissions or with access lists, and however deep the
     /// tree goes: everything is reached through open folders, never long paths, and never through links.
-    static func removeTree(_ url: URL) {
+    package static func removeTree(_ url: URL) {
         let parent = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard parent >= 0 else { return }
         defer { close(parent) }
@@ -512,14 +547,14 @@ nonisolated enum Archiver {
 
     /// Remove one child of an already opened folder. Cache owners pin their root without following a replacement
     /// symlink; recursive cleanup keeps using descriptor-relative paths below it.
-    static func removeTree(_ name: String, in parent: Int32) {
+    package static func removeTree(_ name: String, in parent: Int32) {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.utf8.contains(0),
               hasEntry(name, in: parent) else { return }
         removeEntry(in: parent, name)
     }
 
-    static func hasEntry(_ name: String, in parent: Int32) -> Bool {
-        entries(parent).contains(name)
+    package static func hasEntry(_ name: String, in parent: Int32) -> Bool {
+        DirectoryEntryName.names(inFolder: parent).contains(name)
     }
 
     private static func removeEntry(in parent: Int32, _ name: String) {
@@ -545,7 +580,7 @@ nonisolated enum Archiver {
                 acl_set_fd_np(fd, empty, ACL_TYPE_EXTENDED)
                 acl_free(UnsafeMutableRawPointer(empty))
             }
-            for child in entries(fd) { removeEntry(in: fd, child) }
+            for child in DirectoryEntryName.names(inFolder: fd) { removeEntry(in: fd, child) }
             close(fd)
             unlinkat(parent, name, AT_REMOVEDIR)
         } else {
@@ -563,29 +598,19 @@ nonisolated enum Archiver {
         }
     }
 
-    /// The names in an open folder.
-    static func entries(_ fd: Int32) -> [String] {
-        let copy = dup(fd)
-        guard copy >= 0, let dir = fdopendir(copy) else {
-            if copy >= 0 { close(copy) }
-            return []
-        }
-        defer { closedir(dir) }
-        rewinddir(dir)
-        var names: [String] = []
-        while let entry = readdir(dir) {
-            guard let name = DirectoryEntryName.read(entry) else { continue }
-            if name != ".", name != ".." { names.append(name) }
-        }
-        return names
+    /// Every name in the folder at `path`, read from the folder itself (FileManager leaves out files named "._…",
+    /// taking them for another file's metadata), never through a link; throws when it can't list them all.
+    package static func names(inFolderAt path: String) throws -> [String] {
+        let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        return try ChosenFile.entries(in: fd).map(\.name)
     }
 
     // MARK: - Running the tools
 
-    /// Runs `tool`, counting output lines that mark one entry done, until it exits or `control` cancels. With
-    /// `watching`, stops when that disk runs low on space.
-    private static func run(_ tool: String, _ arguments: [String], control: Control, counts: @escaping (Substring) -> Bool,
-                            watching folder: URL? = nil) throws {
+    /// Runs ditto, counting the items it copies, until it exits or `control` cancels.
+    private static func run(_ tool: String, _ arguments: [String], control: Control) throws {
         guard !control.isCancelled else { throw CancellationError() }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
@@ -601,35 +626,17 @@ nonisolated enum Archiver {
         // A Stop that came between attaching and starting would have found nothing to stop.
         if control.isCancelled { process.terminate() }
 
-        let lowSpace = LockedFlag()
-        var watchdog: DispatchSourceTimer?
-        if let folder, let free = freeSpace(onDiskOf: folder) {
-            let reserve = reserve(free: free)
-            let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-            // Often: a fast tool writes hundreds of megabytes a second.
-            timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
-            timer.setEventHandler {
-                if let free = freeSpace(onDiskOf: folder), free < reserve {
-                    lowSpace.set()
-                    process.terminate()
-                }
-            }
-            timer.resume()
-            watchdog = timer
-        }
-        defer { watchdog?.cancel() }
-
         var pending = Data()
         var tail: [Substring] = []
         let reader = pipe.fileHandleForReading
-        while let chunk = try? reader.read(upToCount: 1 << 16), !chunk.isEmpty {
+        while let chunk = try? FileRead.chunk(reader, upToCount: 1 << 16), !chunk.isEmpty {
             pending.append(chunk)
             guard let last = pending.lastIndex(of: UInt8(ascii: "\n")) else { continue }
             let text = String(decoding: pending[...last], as: UTF8.self)
             pending.removeSubrange(...last)
             var count = 0
             for line in text.split(separator: "\n") {
-                if counts(line) { count += 1 }
+                if line.hasPrefix("copying file") { count += 1 }
                 // Kept for the error message: the last lines that aren't progress.
                 if !isProgress(line) {
                     tail.append(line.suffix(300))
@@ -642,7 +649,7 @@ nonisolated enum Archiver {
             let text = String(decoding: pending, as: UTF8.self)
             var count = 0
             for line in text.split(separator: "\n") {
-                if counts(line) { count += 1 }
+                if line.hasPrefix("copying file") { count += 1 }
                 if !isProgress(line) {
                     tail.append(line.suffix(300))
                     if tail.count > 20 { tail.removeFirst() }
@@ -652,44 +659,23 @@ nonisolated enum Archiver {
         }
         process.waitUntilExit()
         if control.isCancelled { throw CancellationError() }
-        if lowSpace.isSet {
-            throw Failure(message: String(localized: "Stopped: the disk was running out of space."))
-        }
         guard process.terminationStatus == 0 else {
-            if tail.contains(where: { $0.contains("Incorrect passphrase") || $0.contains("Passphrase required") }) {
-                throw Failure(message: passwordMarker)
-            }
             let status = Int(process.terminationStatus)
             throw Failure(message: reason(tail) ?? String(localized: "It stopped with an error (\(status)).",
                                                           comment: "An archive tool failed; the number is its exit status"))
         }
     }
 
-    /// Lines tools print for each entry as it goes ("copying file ./a ...", ">>> Copying a", "x a"), unless the entry's
-    /// line reports a problem.
+    /// Lines ditto prints for each item as it goes ("copying file ./a ...", ">>> Copying a", "12 bytes for ./a").
     private static func isProgress(_ line: Substring) -> Bool {
-        if line.hasPrefix("copying file") || line.hasPrefix(">>> ") || line.contains(" bytes for ") { return true }
-        return line.hasPrefix("x ") && !line.contains(": ")
+        line.hasPrefix("copying file") || line.hasPrefix(">>> ") || line.contains(" bytes for ")
     }
 
-    /// The tool's last real error, in plain words. bsdtar reports refusals on the entry's own line
-    /// ("x ../../a: Path contains '..'"); its closing "Error exit delayed" line says nothing.
+    /// ditto's last real error, in plain words.
     private static func reason(_ lines: [Substring]) -> String? {
-        // A refusal to write outside the folder explains everything else, wherever it appears.
-        let refusals = ["Path contains '..'", "Cannot extract through symlink", "Absolute path"]
-        if let refusal = lines.first(where: { line in refusals.contains { line.contains($0) } }) {
-            var text = refusal[...]
-            for prefix in ["x ", "tar: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
-            let entry = text.range(of: ": ").map { text[..<$0.lowerBound] } ?? text
-            return String(localized: "This archive tries to write outside its folder (“\(String(entry))”), so it wasn’t extracted.")
-        }
-        for line in lines.reversed() where !line.contains("Error exit delayed") && !line.contains("Removing leading '/'") {
+        for line in lines.reversed() {
             var text = line[...]
-            for prefix in ["x ", "tar: ", "ditto: "] where text.hasPrefix(prefix) { text = text.dropFirst(prefix.count) }
-            if text.contains("Path contains '..'") || text.contains("Cannot extract through symlink") || text.contains("Absolute path") {
-                let entry = text.range(of: ": ").map { text[..<$0.lowerBound] } ?? text
-                return String(localized: "This archive tries to write outside its folder (“\(String(entry))”), so it wasn’t extracted.")
-            }
+            if text.hasPrefix("ditto: ") { text = text.dropFirst("ditto: ".count) }
             // Drop errno noise: "…: Unknown error: -1", "…: Undefined error: 0".
             for noise in [": Unknown error", ": Undefined error"] {
                 if let range = text.range(of: noise) { text = text[..<range.lowerBound] }
@@ -698,12 +684,5 @@ nonisolated enum Archiver {
             if !message.isEmpty { return String(message.suffix(300)) }
         }
         return nil
-    }
-
-    private final class LockedFlag: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value = false
-        var isSet: Bool { lock.withLock { value } }
-        func set() { lock.withLock { value = true } }
     }
 }

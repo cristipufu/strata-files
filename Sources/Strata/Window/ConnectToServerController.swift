@@ -34,31 +34,61 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
     private let cancelButton = NSButton(title: String(localized: "Cancel"), target: nil, action: nil)
     private let mounts: ServerMountSession
     private let connections: RemoteConnections
-    private let sshHosts: @MainActor () -> [String]
+    /// The Host names in ~/.ssh/config, once read.
+    private var hosts: [String] = []
+    private(set) var readingHosts: Task<Void, Never>?
     private var connection: RemoteConnectionRequest?
     private(set) var connecting: Task<Void, Never>?
 
-    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession = ServerMountSession(),
-         connections: RemoteConnections = .shared, sshHosts: @escaping @MainActor () -> [String] = ConnectToServerController.sshConfigHosts) {
+    init(editing server: RemoteServer? = nil, settings: ServerConnectionSettings, mounts: ServerMountSession,
+         connections: RemoteConnections, sshHosts: @escaping @Sendable () async -> [String] = ConnectToServerController.sshConfigHosts) {
         self.connections = connections
-        self.sshHosts = sshHosts
         self.mounts = mounts
         self.settings = settings
         editing = server
         kind = server.map { $0.kind == .s3 ? .s3 : .sftp } ?? settings.kind
         super.init(nibName: nil, bundle: nil)
+        readingHosts = Task { [weak self] in
+            let found = await sshHosts()
+            guard let self, !Task.isCancelled else { return }
+            hosts = found
+            readingHosts = nil
+            if isViewLoaded, kind == .sftp { addHosts() }
+        }
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel() }
+    isolated deinit { mounts.cancel(); connection?.cancel(); connecting?.cancel(); readingHosts?.cancel() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: editing.map {
             String(localized: "Edit “\($0.name)”", comment: "Sheet title: editing a saved server")
         } ?? String(localized: "Connect to Server"))
         title.font = .systemFont(ofSize: 15, weight: .semibold)
+        setUpKindPicker()
+        setUpAddress()
+        buildS3Form()
+        let footer = footer()
 
+        let stack = NSStackView(views: [title, kindPicker, address, s3Form, hint, message, footer])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.setCustomSpacing(14, after: title)
+        stack.setCustomSpacing(14, after: kindPicker)
+        stack.setCustomSpacing(16, after: message)
+        let (container, constraints) = SheetColumn.container(for: stack, spanning: [address, s3Form, hint, message, footer])
+        NSLayoutConstraint.activate(constraints + [container.widthAnchor.constraint(equalToConstant: 480)])
+        view = container
+        showKind()
+        if let editing { fill(editing) }
+        ThemeStyle.refresh(container)
+    }
+
+    /// Network Share, SFTP or S3; not offered while editing a saved server.
+    private func setUpKindPicker() {
         kindPicker.segmentCount = 3
         kindPicker.setLabel(String(localized: "Network Share", comment: "Connect to Server: SMB, AFP, NFS or WebDAV"), forSegment: 0)
         kindPicker.setLabel("SFTP", forSegment: 1)
@@ -68,16 +98,19 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         kindPicker.target = self
         kindPicker.action = #selector(kindChanged(_:))
         kindPicker.isHidden = editing != nil
+    }
 
+    private func setUpAddress() {
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
         address.completes = true
         address.numberOfVisibleItems = 10
         address.delegate = self
         address.setAccessibilityLabel(String(localized: "Server address"))
+    }
 
-        buildS3Form()
-
+    /// The message line's style, then Clear Recents, the spinner, Cancel and Connect (Save while editing).
+    private func footer() -> NSStackView {
         message.font = .systemFont(ofSize: 11)
         message.textColor = .systemRed
         message.isHidden = true
@@ -99,34 +132,7 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [clearRecents, spacer, spinner, cancelButton, connectButton])
         footer.spacing = 8
-
-        let stack = NSStackView(views: [title, kindPicker, address, s3Form, hint, message, footer])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.setCustomSpacing(14, after: title)
-        stack.setCustomSpacing(14, after: kindPicker)
-        stack.setCustomSpacing(16, after: message)
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        ThemeStyle.bind(container, to: .content)
-        container.addSubview(stack)
-        var constraints = [
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            container.widthAnchor.constraint(equalToConstant: 480),
-        ]
-        for view in [address, s3Form, hint, message, footer] as [NSView] {
-            constraints.append(view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40))
-        }
-        NSLayoutConstraint.activate(constraints)
-        view = container
-        showKind()
-        if let editing { fill(editing) }
-        ThemeStyle.refresh(container)
+        return footer
     }
 
     private func buildS3Form() {
@@ -205,8 +211,8 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         case .sftp:
             hint.stringValue = String(localized: "user@host, a Host from ~/.ssh/config, or sftp://user@host:port/folder. Your SSH keys and agent log in; a password is asked for when one is needed.")
             address.placeholderString = "deploy@example.com"
-            let saved = connections.savedServers.filter { $0.kind == .sftp }.map(\.address)
-            address.addItems(withObjectValues: saved + sshHosts().filter { !saved.contains($0) })
+            address.addItems(withObjectValues: connections.savedServers.filter { $0.kind == .sftp }.map(\.address))
+            addHosts()
             if editing == nil { address.stringValue = "" }
             clearRecents.isHidden = true
         case .s3:
@@ -216,8 +222,14 @@ final class ConnectToServerController: NSViewController, NSComboBoxDelegate, NSC
         view.window?.layoutIfNeeded()
     }
 
+    /// The Host names offered after the saved servers, once they're read.
+    private func addHosts() {
+        let listed = Set(address.objectValues.compactMap { $0 as? String })
+        address.addItems(withObjectValues: hosts.filter { !listed.contains($0) })
+    }
+
     /// The Host names in ~/.ssh/config (not patterns), for picking.
-    private static func sshConfigHosts() -> [String] {
+    @concurrent private static func sshConfigHosts() async -> [String] {
         let file = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".ssh/config")
         guard let text = try? String(contentsOf: file, encoding: .utf8), text.utf8.count < 1 << 20 else { return [] }
         var hosts: [String] = []

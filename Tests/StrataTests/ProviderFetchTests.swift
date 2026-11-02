@@ -2,6 +2,13 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ProviderFetchTests {
     private nonisolated enum Failure: Error { case unavailable }
@@ -83,24 +90,23 @@ struct ProviderFetchTests {
     }
 
     private final class Environment {
-        let domain = "StrataProviderFetch.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared)
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     @Test func openingAPlaceholderUsesTheBrowsersProviderBeforeItsAction() async throws {
@@ -110,7 +116,7 @@ struct ProviderFetchTests {
         let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
         var ready = false
         await withCheckedContinuation { continuation in
-            browser.afterFetching([item]) {
+            browser.fetches.afterFetching([item]) {
                 ready = !state.placeholder(item)
                 continuation.resume()
             }
@@ -122,7 +128,7 @@ struct ProviderFetchTests {
 
     @Test func cancellingFromTheStartNotificationPreventsTheCompletionAction() async {
         var actions = 0, completions = 0
-        let job = CopyFetchJob([]) { actions += 1 }
+        let job = CopyFetchJob([], copies: .live) { actions += 1 }
         job.onChange = { job in if job.state == .running { job.cancel() } }
         job.onFinish = { _ in completions += 1 }
         job.start()
@@ -186,13 +192,14 @@ struct ProviderFetchTests {
             let environment = try Environment(tree, copies: copies)
             let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
             var actions = 0
-            let work = browser.afterFetching([item]) { actions += 1 }
+            // The placeholder's size is read away from the main thread; then a small read runs, a big one is queued.
+            let work = try #require(browser.fetches.afterFetching([item]) { actions += 1 })
             if size == 8 << 20 {
-                #expect(work != nil && environment.services.transfers.jobs.isEmpty)
-                await work?.value
-                #expect(state.events == ["fetch"])
+                await work.value
+                #expect(environment.services.transfers.jobs.isEmpty && state.events == ["fetch"])
             } else {
-                #expect(work == nil && environment.services.transfers.jobs.count == 1)
+                await work.value
+                #expect(environment.services.transfers.jobs.count == 1)
                 let job = try #require(environment.services.transfers.jobs.first as? CopyFetchJob)
                 await job.finished()
                 #expect(job.state == .finished && job.sourceName == "Fixture")
@@ -211,7 +218,7 @@ struct ProviderFetchTests {
             let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: outcome)]))
             let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
             var actions = 0
-            let work = try #require(browser.afterFetching([item]) { actions += 1 })
+            let work = try #require(browser.fetches.afterFetching([item]) { actions += 1 })
             await work.value
             #expect(actions == 0 && state.events == ["fetch"])
             #expect(browser.viewIfLoaded?.window == nil)
@@ -227,7 +234,7 @@ struct ProviderFetchTests {
             let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: outcome, gate: gate)]))
             let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
             var actions = 0
-            let work = try #require(browser.afterFetching([item]) { actions += 1 })
+            let work = try #require(browser.fetches.afterFetching([item]) { actions += 1 })
             await gate.started(1)
             work.cancel()
             await gate.finish()
@@ -244,12 +251,14 @@ struct ProviderFetchTests {
         let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: .failure, gate: gate)]))
         let before = tree.snapshot()
         var browser: BrowserViewController? = BrowserViewController(services: environment.services)
-        weak var released = browser
+        weak let released = browser
         var actions = 0
-        let work = try #require(browser?.afterFetching([item]) { actions += 1 })
+        let work = try #require(browser?.fetches.afterFetching([item]) { actions += 1 })
         await gate.started(1)
         browser = nil
         #expect(released == nil)
+        // The pane's fetches went with it, and so did their small read.
+        #expect(work.isCancelled)
         await gate.finish()
         await work.value
         #expect(actions == 0)
@@ -268,16 +277,16 @@ struct ProviderFetchTests {
         browser.load(tree.url("provider"))
         await browser.directoryReads.task?.value
         browser.select(Array(items.prefix(20)) + [tree.url("provider/folder")])
-        await browser.selectionFetch?.value
+        await browser.fetches.selection?.value
         let selections = state.selections
         #expect(!selections.isEmpty)
         #expect(selections.allSatisfy { Set($0.0) == Set(items.prefix(20)) && $0.1 == 256 << 20 })
         browser.select(items)
-        #expect(browser.selectionFetch == nil && state.selections.count == selections.count)
+        #expect(browser.fetches.selection == nil && state.selections.count == selections.count)
         browser.load(tree.url("local"))
         await browser.directoryReads.task?.value
         browser.select([tree.url("local/item.txt")])
-        #expect(browser.selectionFetch == nil && state.selections.count == selections.count)
+        #expect(browser.fetches.selection == nil && state.selections.count == selections.count)
         withExtendedLifetime((browser, environment)) {}
         #expect(tree.snapshot() == before)
     }
@@ -292,24 +301,24 @@ struct ProviderFetchTests {
         browser.load(tree.url("provider"))
         await browser.directoryReads.task?.value
         browser.select([items[0]])
-        let first = try #require(browser.selectionFetch)
+        let first = try #require(browser.fetches.selection)
         await gate.started(1)
         browser.select([items[1]])
-        let second = try #require(browser.selectionFetch)
+        let second = try #require(browser.fetches.selection)
         await gate.started(2)
         #expect(first.isCancelled && !second.isCancelled)
         browser.load(tree.url("other"))
-        #expect(second.isCancelled && browser.selectionFetch == nil)
+        #expect(second.isCancelled && browser.fetches.selection == nil)
         await gate.finish()
         await first.value; await second.value
         await browser.directoryReads.task?.value
         browser.load(tree.url("provider"))
         await browser.directoryReads.task?.value
         browser.select([items[0]])
-        let closing = try #require(browser.selectionFetch)
+        let closing = try #require(browser.fetches.selection)
         await gate.started(3)
         pane.stopBackgroundWork()
-        #expect(closing.isCancelled && browser.selectionFetch == nil)
+        #expect(closing.isCancelled && browser.fetches.selection == nil)
         await gate.finish()
         await closing.value
         withExtendedLifetime((pane, environment)) {}
@@ -323,10 +332,10 @@ struct ProviderFetchTests {
         let left = BrowserViewController(services: a.services), right = BrowserViewController(services: b.services)
         let before = tree.snapshot()
         var actions = 0
-        await left.afterFetching([item]) { actions += 1 }?.value
+        await left.fetches.afterFetching([item]) { actions += 1 }?.value
         #expect(!first.placeholder(item) && second.placeholder(item))
         #expect(first.events == ["fetch"] && second.events.isEmpty)
-        await right.afterFetching([item]) { actions += 1 }?.value
+        await right.fetches.afterFetching([item]) { actions += 1 }?.value
         #expect(!second.placeholder(item) && second.events == ["fetch"] && actions == 2)
         withExtendedLifetime((left, right, a, b)) {}
         #expect(tree.snapshot() == before)
@@ -341,7 +350,7 @@ struct ProviderFetchTests {
             let state = State([item])
             let copies = CopyProviders([Provider(root: tree.url("provider"), state: state, outcome: outcome)])
             var lifetime: Lifetime? = Lifetime()
-            weak var released = lifetime
+            weak let released = lifetime
             let job = CopyFetchJob([item], copies: copies, then: retaining(try #require(lifetime)))
             lifetime = nil
             #expect(released != nil)
@@ -360,7 +369,7 @@ struct ProviderFetchTests {
         let environment = try Environment(tree, copies: CopyProviders([Provider(root: tree.url("provider"), state: state)]))
         let browser = BrowserViewController(services: environment.services), before = tree.snapshot()
         var actions = 0
-        let work = try #require(browser.afterFetching([item]) { actions += 1 })
+        let work = try #require(browser.fetches.afterFetching([item]) { actions += 1 })
         work.cancel()
         await work.value
         #expect(actions == 0 && state.events.isEmpty && state.placeholder(item))
@@ -381,7 +390,7 @@ struct ProviderFetchTests {
             browser.select([item])
             // Icons and Gallery coalesce selection notifications on the main queue. Drain that queued report.
             await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
-            await browser.selectionFetch?.value
+            await browser.fetches.selection?.value
             #expect(browser.selectedURLs == [item])
             #expect(state.selections.last?.0 == [item])
             #expect(state.selections.last?.1 == 256 << 20)

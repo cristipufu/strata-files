@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func scrollingFilesStayBelowTheNativeToolbarAcrossViewsPanesAndWindowModes() async throws {
@@ -9,8 +16,8 @@ extension ColorThemeTests {
         let tree = try TestTree()
         let names = (0..<90).map { "file-\($0).zip" }
         try tree.add(names)
-        let first = PaneHostViewController(browser: BrowserViewController())
-        let second = PaneHostViewController(browser: BrowserViewController())
+        let first = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
+        let second = PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services))
         let split = MainSplitViewController(firstPane: first)
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
@@ -68,7 +75,7 @@ extension ColorThemeTests {
         }
         // Search, Recents and Duplicates share the results list, even when a different folder view is saved.
         split.panes.add(second)
-        let entries = try await DirectoryLoader.load(tree.root, showHidden: false)
+        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: .live).entries
         for host in [first, second] {
             host.setHeader(visible: true, title: "Results", symbol: "magnifyingglass", active: host === first)
             host.browser.showResults(entries, total: names.count)

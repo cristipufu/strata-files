@@ -95,23 +95,25 @@ appearance. GUI checks must not manipulate the installed Strata or change the us
   caught, all 44 Python regressions pass, 22 catalogs remain complete and both source audits pass. The preview
   cannot open the underlying browser's file-command palette while it has focus.
 
-- Selective archive stage implemented and reviewed. A standalone C helper reads a pinned
-  archive descriptor using macOS's libarchive. It has no filesystem, network or subprocess access after entering
-  its sandbox. Passwords arrive through stdin and stay with this preview; they never enter arguments, preferences,
-  logs or the keychain. Encrypted ZIP is supported; unsupported 7z/RAR encryption is reported without repeated prompts.
+- Selective archive stage implemented and reviewed. The archive service, an XPC service in the app with an App Sandbox
+  of its own, starts a worker for each read that inherits that sandbox and reads a pinned archive descriptor using
+  macOS's libarchive, kept from your files, the network and other programs. Passwords reach the worker through its
+  request pipe and stay with this preview; they never enter arguments, messages, preferences, logs or the keychain.
+  Encrypted ZIP is supported; unsupported 7z/RAR encryption is reported without repeated prompts.
 - Selected regular files render through the existing file preview. Explicit Copy stages exactly the chosen member
   or subtree for the owning clipboard and transfer queue; Paste and Move copies temporary sources, and normal Paste
   supplies conflict handling, History and Undo. Open also keeps its exported file alive beyond the preview. A delayed
-  Copy respects a newer clipboard choice. Small completed exports reuse their content for the preview.
+  Copy respects a newer clipboard choice. Completed exports of one file reuse their content for the preview.
 - Materialization uses private modes, clears inherited root ACLs, preserves archive quarantine and records each
   created identity before publication. Cleanup never adopts a replacement or removes foreign children. Closing,
   replacing the source or selection, and Cancel stop work and discard late responses. Copy Path remains the archive
   member's location, never a private staging path.
-- Limits are explicit: 32 MiB per automatic member preview, 60 MiB of worker output per selection, 128 MiB of preview
-  cache including orphaned files, 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a
-  20-second worker deadline. The isolated helper also has a CPU limit and a sampled 256 MiB resident-memory ceiling;
-  this does not guarantee a per-allocation limit inside the system parser. System libarchive itself is not sanitizer
-  instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim space.
+- Limits are explicit: 256 MiB per file copied out, for a preview or an export, streamed to its file as it comes; 60 MiB
+  of worker output per folder copied out; 512 MiB of preview cache including orphaned files and preview copies still
+  being written; 50,000 archive headers, 128 path components, 1 GiB of cumulative input reads, and a 20-second read
+  deadline (the service ends a worker after 25). Each worker also has a CPU limit and a sampled 256 MiB resident-memory
+  ceiling; this does not guarantee a per-allocation limit inside the system parser. System libarchive itself is not
+  sanitizer instrumented. Unknown cache files are counted and left alone rather than deleted to reclaim space.
 - Selective extraction deliberately refuses links, special files, duplicate/ambiguous paths and members with a
   resource fork. Full extraction remains available for those items; selective Copy never silently drops a fork.
   Only file data and quarantine are copied, with safe new permissions; other archive metadata is not applied.
@@ -199,18 +201,25 @@ retain their media condition. No production JavaScript is injected.
 
 WebKit never receives file URLs or broad filesystem access. Its custom scheme reads only the selected document's
 folder, through no-follow descriptors and bounded reads. Selecting HTML in a provider or archive does not fetch its
-surrounding assets. Already-local CSS and raster images can load; images become bounded static PNG thumbnails.
+surrounding assets. Already-local CSS and raster images can load; images become bounded static thumbnails, a JPEG
+staying a JPEG and anything else becoming a PNG.
 External fonts, SVG asset files, data URLs and online resources stay blocked. Inline document markup and authored
 colors are retained. The panel, native controls and Source mode use the existing Strata theme.
 
 The document input limit is 512 KiB. Assets allow 32 distinct attempts and 8 MiB in all, including image conversion;
-CSS is limited to 256 KiB, image input to 4 MiB and eight million pixels each, with sixteen million pixels in all.
-Raster thumbnails are at most 2,048 pixels on an edge. A WebKit session also caps all requests, including repeated
-cached resources, at 32 and total response delivery at 9.5 MiB. A stalled render switches to Source after eight
-seconds. Oversized or unsupported documents use bounded Source with no unrestricted Quick Look fallback.
+CSS is limited to 256 KiB and image input to 4 MiB; images share sixteen million pixels in all, checked from their
+headers before decoding (`PreviewPicture`), and an attempt once counted runs to its end so a later WebKit lifetime
+can still use it. Raster thumbnails are at most 2,048 pixels on an edge. A WebKit session also caps all requests,
+including repeated cached resources, at 32 and total response delivery at 9.5 MiB. A page WebKit hasn't started
+showing within eight seconds switches to Source; once it shows, styles and pictures still coming never end it. A page
+kept behind Source that fails is shown again when Preview is chosen. Oversized or unsupported documents use bounded
+Source with no unrestricted Quick Look fallback.
 
 Cancellation stops the current WebKit lifetime, suppresses late scheme callbacks and rejects changed files.
-Reattachment starts a fresh lifetime. Theme changes preserve the current web view, Source text and selection.
+Reattachment starts a fresh lifetime for the document read at first. A page that can't be shown, its file changed
+since for one, shows its Source as it is now, and choosing Preview reads it again. The HTML, EPUB and OneNote previews
+share this lifecycle (`WebPreviewView`) and their WebKit page (`PreviewWebPage`). Theme changes preserve the current
+web view, Source text and selection.
 The browser action keeps the originally selected file and refuses a replacement; interactive pages run only when
 the user explicitly opens them externally.
 

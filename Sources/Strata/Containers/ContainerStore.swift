@@ -2,19 +2,19 @@ import AppKit
 
 extension Notification.Name {
     /// The container list or the engine changed.
-    static let containersChanged = Notification.Name("StrataContainersChanged")
+    package static let containersChanged = Notification.Name("StrataContainersChanged")
 }
 
 /// The containers of the engine Strata found (see `EngineDiscovery`), kept current from the engine's events. When no
 /// engine is running, it looks again now and then and whenever Strata comes to the front.
-final class ContainerStore {
-    static let shared = ContainerStore()
+package final class ContainerStore {
+    package static let shared = ContainerStore()
 
-    private(set) var engine: ContainerEngine?
+    package private(set) var engine: ContainerEngine?
     /// Running first, then by name.
-    private(set) var containers: [ContainerInfo] = []
+    package private(set) var containers: [ContainerInfo] = []
     /// Containers being started, stopped…, by ID.
-    private(set) var busy: [String: ContainerAction] = [:]
+    package private(set) var busy: [String: ContainerAction] = [:]
     private var watcher: EventWatcher?
     private var discovering = false
     private var refreshing = false
@@ -22,29 +22,36 @@ final class ContainerStore {
     private var refreshScheduled = false
     private var retry: Timer?
     private var started = false
+    /// Strata coming to the front looks again; the store stops listening when it goes.
+    private var activation: NSObjectProtocol?
 
-    init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
+    package init(engine: ContainerEngine? = nil, containers: [ContainerInfo] = [], busy: [String: ContainerAction] = [:]) {
         self.engine = engine
         self.containers = containers
         self.busy = busy
     }
 
-    func start() {
+    isolated deinit {
+        watcher?.cancel()
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+    }
+
+    package func start() {
         guard !started else { return }
         started = true
         discover()
-        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+        activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
     }
 
-    func container(id: String) -> ContainerInfo? {
+    package func container(id: String) -> ContainerInfo? {
         containers.first { $0.id == id }
     }
 
     /// Does `action` to each container (those it applies to), a few at a time. Returns what failed: the container's
     /// name and why.
-    func perform(_ action: ContainerAction, on targets: [ContainerInfo]) async -> [(name: String, message: String)] {
+    package func perform(_ action: ContainerAction, on targets: [ContainerInfo]) async -> [(name: String, message: String)] {
         guard let engine else { return targets.map { ($0.name, String(localized: "No container engine is running.", comment: "Container action failed: no Docker Desktop, OrbStack…")) } }
         let targets = targets.filter { action.applies(to: $0.state) && busy[$0.id] == nil }
         guard !targets.isEmpty else { return [] }
@@ -88,7 +95,7 @@ final class ContainerStore {
     }
 
     /// Fetches the list again (or looks for an engine when there's none).
-    func refresh() {
+    package func refresh() {
         guard let engine else { return discover() }
         guard !refreshing else {
             refreshAgain = true
@@ -202,20 +209,32 @@ final class ContainerStore {
 }
 
 /// Follows an engine's event stream on its own thread (it can stay quiet for hours).
-nonisolated final class EventWatcher: Sendable {
+package nonisolated final class EventWatcher: Sendable {
+    package typealias Reader = @Sendable (ContainerEngine, @escaping @Sendable () -> Bool, @escaping @Sendable () -> Void) throws -> Void
     private let stop = StopFlag()
+    private let updates: LatestUpdate<Void>
 
-    init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void) {
+    package init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void,
+                 read: @escaping Reader = { try ContainerAPI.watchEvents($0, shouldStop: $1, changed: $2) },
+                 schedule: @escaping LatestUpdate<Void>.Schedule = LatestUpdate<Void>.onMain) {
         let stop = self.stop
+        let updates = LatestUpdate<Void>(schedule: schedule) { _ in if !stop.isSet { changed() } }
+        self.updates = updates
         Thread.detachNewThread {
-            try? ContainerAPI.watchEvents(engine, shouldStop: { stop.isSet }) {
-                DispatchQueue.main.async { MainActor.assumeIsolated { changed() } }
+            try? read(engine, { stop.isSet }) {
+                if !stop.isSet { updates.send(()) }
             }
-            if !stop.isSet { DispatchQueue.main.async { MainActor.assumeIsolated { ended() } } }
+            DispatchQueue.main.async {
+                updates.finish()
+                if !stop.isSet { ended() }
+            }
         }
     }
 
-    func cancel() {
+    deinit { cancel() }
+
+    package func cancel() {
         stop.set()
+        updates.cancel()
     }
 }

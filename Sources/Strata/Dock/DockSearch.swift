@@ -1,5 +1,7 @@
 import AppKit
 import ApplicationServices
+import Synchronization
+import UniformTypeIdentifiers
 
 /// Settings ▸ General ▸ Search box in the Dock (off unless you turn it on). Apple's Dock takes no plug-ins, so Strata
 /// keeps a gap of empty spacer tiles in it (see `DockGapTiles`), right after its own icon, and floats its own search box
@@ -14,10 +16,9 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     private let results = DockSearchPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 100),
                                           styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private let field = NSTextField()
-    private let table = NSTableView()
+    private let table = PressedRowTable()
     private let boxGlass = NSGlassEffectView()
     private let ranker = PaletteRanker()
-    private var pathQuery = PathQuery()
     private var follower: Timer?
     private let reader = DockReader()
     private var placed: NSRect?
@@ -43,11 +44,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         self.restartDock = restartDock
         super.init()
         build()
-        ranker.queryItems = { [weak self] query in
-            guard let self else { return [] }
-            return DockSearchItems.pathItems(query, pathQuery)
+        ranker.lateItems = { query in
+            async let found = DockSearchItems.lateItems(query)
+            let rows = await PaletteItem.lookupRows(for: query, in: BrowserServices.shared.places) { url, _ in
+                DockSearchItems.show(url)
+            }
+            return rows + (await found)
         }
-        ranker.lateItems = { query in await DockSearchItems.lateItems(query) }
         ranker.goToPath = { url in DockSearchItems.show(url) }
         ranker.emptyResults = { source in
             let workspaces: [PaletteItem] = Array(source.filter { $0.kind == .workspace }.prefix(3))
@@ -57,9 +60,9 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         ranker.lateArrived = { [weak self] keeping in self?.showResults(keeping: keeping) }
         // Index and documents only once typing pauses; names (folders, apps, commands) as you type.
         ranker.lateDelay = .milliseconds(180)
-        ranker.selectedTitle = { [weak self] in
+        ranker.selectedIdentity = { [weak self] in
             guard let self, ranker.results.indices.contains(table.selectedRow) else { return nil }
-            return ranker.results[table.selectedRow].item.title
+            return ranker.results[table.selectedRow].item.id
         }
         // The saved setting stays on for next launch, but the box and its gap only belong to a running Strata.
         notifications.addObserver(self, selector: #selector(disable), name: NSApplication.willTerminateNotification, object: nil)
@@ -90,6 +93,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
                 restartDock()
             }
         }
+        DockSearchItems.readApps()
         guard follower == nil else { return }
         follower = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.follow() }
@@ -117,7 +121,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     /// Puts the box over the gap, sized and rounded like the icons beside it; hides it while the gap isn't shown (the
     /// Dock hidden, on the left or right, or not open to Accessibility yet).
     private func follow() {
-        guard let layout = reader.layout(anchor: Self.bundleID) else {
+        reader.layout(anchor: Self.bundleID) { [weak self] layout in self?.place(at: layout) }
+    }
+
+    /// Not once it's been turned off meanwhile.
+    private func place(at layout: DockLayout?) {
+        guard follower != nil else { return }
+        guard let layout else {
             if placed != nil {
                 placed = nil
                 clear()
@@ -165,7 +175,6 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     @objc private func boxBecameKey() {
         // What there is to find changes between visits (folders used, workspaces saved, apps installed).
         ranker.source = DockSearchItems.items()
-        pathQuery = PathQuery()
         ranker.rank(field.stringValue)
         showResults()
     }
@@ -185,7 +194,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50), execute: work)
     }
 
-    private func showResults(keeping selectedTitle: String? = nil) {
+    private func showResults(keeping selectedID: PaletteItem.ID? = nil) {
         let rows = ranker.results
         let keys = rows.map { "\($0.item.title)\u{1}\($0.item.subtitle)\u{1}\($0.matches)" }
         // The same rows again (a keystroke that changed nothing shown): no redraw.
@@ -193,12 +202,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             shownRows = keys
             table.reloadData()
         }
-        let keep = selectedTitle.flatMap { title in rows.firstIndex { $0.item.title == title } } ?? 0
+        let keep = selectedID.flatMap { id in rows.firstIndex { $0.item.id == id } } ?? 0
         if !rows.isEmpty, table.selectedRow != keep {
             table.selectRowIndexes([keep], byExtendingSelection: false)
-            table.scrollRowToVisible(keep)
         }
         placeResults()
+        results.contentView?.layoutSubtreeIfNeeded()
+        ChoiceList.reveal(keep, in: table)
     }
 
     private func clear() {
@@ -218,9 +228,13 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         case #selector(NSResponder.moveUp(_:)):
             moveSelection(-1)
         case #selector(NSResponder.insertNewline(_:)):
-            // ⌘Return shows the item in Strata instead of opening it.
+            // ⌘Return shows the item in Strata instead of opening it. A typed path still being looked up goes once found.
             finishTyping()
-            run(table.selectedRow, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+            let reveal = NSApp.currentEvent?.modifierFlags.contains(.command) == true
+            ranker.afterPathLookup { [weak self] in
+                guard let self else { return }
+                run(table.selectedRow, reveal: reveal)
+            }
         case #selector(NSResponder.cancelOperation(_:)):
             if field.stringValue.isEmpty { box.resignKey() }
             clear()
@@ -243,13 +257,17 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         finishTyping()
         let rows = ranker.results.count
         guard rows > 0 else { return }
+        ranker.rowChosen = true
         let row = max(0, min(rows - 1, table.selectedRow + delta))
         table.selectRowIndexes([row], byExtendingSelection: false)
         table.scrollRowToVisible(row)
     }
 
     @objc private func clickedRow() {
-        run(table.clickedRow, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+        let activation = table.activation
+        guard activation != .movedAway,
+              let item = ranker.clickedItem(table.clickedRow, byMouse: activation == .click) else { return }
+        run(item, reveal: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
     }
 
     private func run(_ row: Int, reveal: Bool) {
@@ -273,6 +291,8 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.box.isKeyWindow, !self.results.isKeyWindow else { return }
+                // A Return still waiting for a typed path, or a click, doesn't run once you've moved on.
+                self.ranker.dropPending()
                 self.results.orderOut(nil)
             }
         }
@@ -306,6 +326,18 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     // MARK: - Views
 
     private func build() {
+        setUpPanels()
+        boxGlass.cornerRadius = 9
+        boxGlass.contentView = searchRow()
+        box.contentView = boxGlass
+        setUpResults()
+        NotificationCenter.default.addObserver(self, selector: #selector(boxBecameKey), name: NSWindow.didBecomeKeyNotification, object: box)
+        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: box)
+        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: results)
+    }
+
+    /// The box and its results float just above the Dock, on every Space, without a window shadow.
+    private func setUpPanels() {
         let aboveDock = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)) + 1)
         for panel in [box, results] {
             panel.isOpaque = false
@@ -320,7 +352,10 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             panel.isExcludedFromWindowsMenu = true
             panel.isReleasedWhenClosed = false
         }
+    }
 
+    /// A magnifier and the field typed in.
+    private func searchRow() -> NSView {
         let magnifier = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil) ?? NSImage())
         magnifier.symbolConfiguration = .init(pointSize: 14, weight: .semibold)
         magnifier.contentTintColor = .secondaryLabelColor
@@ -345,37 +380,18 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
             field.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
             field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
         ])
-        boxGlass.cornerRadius = 9
-        boxGlass.contentView = row
-        box.contentView = boxGlass
+        return row
+    }
 
-        // The results: ⌘K's rows on glass, rising above the box.
-        table.addTableColumn(NSTableColumn(identifier: .init("main")))
-        table.headerView = nil
-        table.rowHeight = Self.rowHeight
-        table.intercellSpacing = .zero
-        table.backgroundColor = .clear
-        table.style = .inset
-        table.selectionHighlightStyle = .regular
-        table.refusesFirstResponder = true
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.action = #selector(clickedRow)
+    /// The results: ⌘K's rows on glass, rising above the box.
+    private func setUpResults() {
+        ChoiceList.configure(table, rowHeight: Self.rowHeight, owner: self, action: #selector(clickedRow))
+        table.pressed = { [weak self] row in self?.ranker.press(row) }
         let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
+        ChoiceList.configure(scroll, showing: table, insets: NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0))
         let card = ShadowedGlass(cornerRadius: 18)
         card.glass.contentView = scroll
         results.contentView = card
-
-        NotificationCenter.default.addObserver(self, selector: #selector(boxBecameKey), name: NSWindow.didBecomeKeyNotification, object: box)
-        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: box)
-        NotificationCenter.default.addObserver(self, selector: #selector(focusLeft), name: NSWindow.didResignKeyNotification, object: results)
     }
 }
 
@@ -413,31 +429,38 @@ enum DockSearchItems {
 
     /// Shows a folder in Strata; anything else, selected in its folder.
     static func show(_ url: URL) {
-        guard let delegate = NSApp.delegate as? AppDelegate else { return }
-        if FileEntry.isNavigableFolder(url) { delegate.showFolder(url) } else { delegate.revealInStrata([url]) }
+        Task {
+            let (opening, located) = await FileEntry.locate(url)
+            guard let delegate = NSApp.delegate as? AppDelegate else { return }
+            if opening == .folder { delegate.showFolder(located) } else { delegate.revealInStrata([located]) }
+        }
     }
 
     private static func folders() -> [PaletteItem] {
         let folderIcon = NSWorkspace.shared.icon(for: .folder)
         var seen = Set<String>()
         var items: [PaletteItem] = []
-        for (rank, url) in Frecency.shared.ranked().prefix(400).enumerated() where seen.insert(url.path).inserted {
-            items.append(PaletteItem(title: Places.displayName(url), subtitle: Format.tildePath(url.deletingLastPathComponent()),
+        let services = BrowserServices.shared, places = services.places
+        places.refresh()
+        for (rank, url) in places.visited(limit: 400).enumerated() where seen.insert(url.path).inserted {
+            items.append(PaletteItem(title: Places.displayName(url, copies: services.copies, checks: places), subtitle: Format.tildePath(url.deletingLastPathComponent()),
                                      icon: folderIcon, kind: .folder, boost: max(0, 24 - rank / 2), url: url) { show(url) })
         }
-        for place in Places.favorites() + Places.volumes() where seen.insert(place.url.path).inserted {
-            items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path),
+        for place in Places.favorites(preferences: services.preferences, checks: places) + places.snapshot.volumes
+        where seen.insert(place.url.path).inserted {
+            items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path, folder: true),
                                      kind: .folder, boost: 4, url: place.url) { show(place.url) })
         }
         return items
     }
 
     private static func workspaces() -> [PaletteItem] {
-        Workspaces.shared.all.map { workspace in
+        let names = BrowserServices.shared.folderNames
+        return Workspaces.shared.all.map { workspace in
             let image = NSImage(systemSymbolName: Workspaces.symbol(workspace), accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 15, weight: .regular)) ?? NSImage()
             return PaletteItem(title: workspace.name, subtitle: Workspaces.summary(workspace), icon: image, kind: .workspace,
-                               keywords: workspace.tabs.joined().map { FileManager.default.displayName(atPath: $0) }, boost: 10) {
+                               keywords: workspace.tabs.joined().map { names.name(URL(fileURLWithPath: $0)) }, boost: 10) {
                 NSApp.activate()
                 Workspaces.shared.open(workspace)
             }
@@ -445,10 +468,10 @@ enum DockSearchItems {
     }
 
     private static func apps() -> [PaletteItem] {
-        installedApps.map { url in
-            PaletteItem(title: FileManager.default.displayName(atPath: url.path), subtitle: "", icon: IconCache.shared.icon(forPath: url.path),
-                        kind: .app, boost: 6, url: url) {
-                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        installedApps().map { app in
+            PaletteItem(title: app.name, subtitle: "", icon: IconCache.shared.icon(forPath: app.url.path, folder: true),
+                        kind: .app, boost: 6, url: app.url) {
+                NSWorkspace.shared.openApplication(at: app.url, configuration: NSWorkspace.OpenConfiguration())
             }
         }
     }
@@ -476,18 +499,11 @@ enum DockSearchItems {
         ]
     }
 
-    /// `github/acme`-style lookups among the folders you use and their insides, as ⌘K makes them.
-    static func pathItems(_ query: String, _ pathQuery: PathQuery) -> [PaletteItem] {
-        let visited = Array(Frecency.shared.ranked().prefix(400))
-        let roots = (Places.favorites() + Places.volumes()).map(\.url) + [Places.home] + visited.prefix(100)
-        let folderIcon = NSWorkspace.shared.icon(for: .folder)
-        return pathQuery.resolve(query, roots: roots, visited: visited).map { hit in
-            let url = hit.url
-            return PaletteItem(title: url.lastPathComponent, subtitle: Format.tildePath(url.deletingLastPathComponent()),
-                               icon: hit.isFolder ? folderIcon : IconCache.shared.icon(forPath: url.path),
-                               kind: hit.isFolder ? .folder : .match, fixedScore: hit.score, titleMatches: hit.nameMatches, url: url) {
-                show(url)
-            }
+    /// Of `hits`, those not already found (`known`) that pass `filter`, each hit's item read away from the main thread.
+    @concurrent private static func unseen(_ hits: [SemanticHit], known: Set<String>, passing filter: SearchFilter?) async
+        -> [SemanticHit] {
+        hits.filter { hit in
+            !known.contains(hit.url.path) && (filter.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
         }
     }
 
@@ -502,7 +518,7 @@ enum DockSearchItems {
             let isFolder = entry.isFolder
             let matches = Fuzzy.match(query.split(separator: " ").first.map(String.init) ?? query, entry.name)?.indices ?? []
             return PaletteItem(title: entry.name, subtitle: Format.tildePath(entry.url.deletingLastPathComponent()),
-                               icon: isFolder ? folderIcon : IconCache.shared.icon(for: entry), kind: isFolder ? .folder : .match,
+                               icon: isFolder ? folderIcon : BrowserServices.shared.thumbnails.icon(for: entry), kind: isFolder ? .folder : .match,
                                fixedScore: max(0, hit.score - 1000) / 2 + 8, titleMatches: matches, url: entry.url) {
                 if isFolder { show(entry.url) } else { NSWorkspace.shared.open(entry.url) }
             }
@@ -517,10 +533,9 @@ enum DockSearchItems {
             let known = Set(found.hits.map(\.path))
             // The costliest part (it reads meaning, not just names): not for words already typed over.
             guard !Task.isCancelled else { return [] }
-            let hits = await StrataAI.index.search(contentQuery, limit: 8).filter { hit in
-                !known.contains(hit.url.path) && (structural.map { filter in FileEntry(url: hit.url).map(filter.matches) ?? false } ?? true)
-            }
-            items += StrataAI.paletteItems(for: hits) { NSWorkspace.shared.open($0) }
+            let hits = await Self.unseen(await SemanticIndex.shared.search(contentQuery, limit: 8), known: known,
+                                         passing: structural)
+            items += PaletteItem.contentMatches(hits) { NSWorkspace.shared.open($0) }
         }
         let summary = found.interpretation?.summary
         let magnifier = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
@@ -535,26 +550,38 @@ enum DockSearchItems {
         return items
     }
 
-    private static var cachedApps: (apps: [URL], until: Date)?
+    private static var cachedApps: (apps: [(url: URL, name: String)], until: Date)?
+    private static var readingApps: Task<Void, Never>?
 
-    /// Apps in Applications and the system's, read again at most once a minute.
-    private static var installedApps: [URL] {
-        if let cachedApps, Date() < cachedApps.until { return cachedApps.apps }
+    /// Apps in Applications and the system's, with their names, as last read: read again away from the main thread
+    /// once that's over a minute old, and first when the Dock's box is turned on.
+    private static func installedApps() -> [(url: URL, name: String)] {
+        if cachedApps.map({ Date() >= $0.until }) ?? true { readApps() }
+        return cachedApps?.apps ?? []
+    }
+
+    static func readApps() {
+        guard readingApps == nil else { return }
+        readingApps = Task {
+            cachedApps = (await appsOnDisk(), Date().addingTimeInterval(60))
+            readingApps = nil
+        }
+    }
+
+    @concurrent private static func appsOnDisk() async -> [(url: URL, name: String)] {
         let roots = ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities",
                      NSHomeDirectory() + "/Applications"]
-        let apps = roots.flatMap { root in
+        return roots.flatMap { root in
             ((try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []).filter { $0.hasSuffix(".app") }
                 .map { URL(fileURLWithPath: root).appending(path: $0) }
-        }
-        cachedApps = (apps, Date().addingTimeInterval(60))
-        return apps
+        }.map { ($0, FileManager.default.displayName(atPath: $0.path)) }
     }
 }
 
 // MARK: - Where the Dock draws the gap
 
 /// The gap's place on screen, and the box shaped from the icon tile beside it.
-struct DockLayout: Equatable {
+nonisolated struct DockLayout: Equatable, Sendable {
     /// The spacer tiles, in screen coordinates.
     let gap: NSRect
     /// An app's tile next to them, in screen coordinates: icons sit in the upper part of a tile, the rest is room for
@@ -577,72 +604,113 @@ struct DockLayout: Equatable {
 
 /// Reads the Dock through Accessibility: which of its items are Strata's spacer tiles, and where they are now. The
 /// list of items (and which of them are the gap) is read again every second or so; their frames every time, so the box
-/// keeps up with the Dock sliding in, magnifying or moving to another display.
-final class DockReader {
-    private var pid: pid_t = 0
-    private var list: AXUIElement?
-    private var items: [AXUIElement] = []
-    /// Positions in `items`: the gap, and an app tile beside it to take the icon size from.
-    private var gapItems: Range<Int>?
-    private var tileItem: Int?
-    private var refreshed = Date.distantPast
+/// keeps up with the Dock sliding in, magnifying or moving to another display. Every question to the Dock is asked on
+/// a queue of the reader's own, one at a time: each may take up to `timeout`, and the box asks several times a second.
+nonisolated final class DockReader: Sendable {
+    private struct State {
+        var pid: pid_t = 0
+        var list: AXUIElement?
+        var items: [AXUIElement] = []
+        /// Positions in `items`: the gap, and an app tile beside it to take the icon size from.
+        var gapItems: Range<Int>?
+        var tileItem: Int?
+        var refreshed = Date.distantPast
+        var asking = false
+    }
 
-    /// Nil when the gap isn't on screen: no Accessibility access, no gap in the Dock, the Dock hidden, or on the left or
-    /// right (a text box doesn't fit a column of icons).
-    func layout(anchor bundleID: String) -> DockLayout? {
+    private let state = Mutex(State())
+    private let queue = DispatchQueue(label: "dev.strata.dock-reader", qos: .userInitiated)
+    /// How long a question to the Dock may take: the system's default is six seconds. Set on the Dock and on this app's
+    /// Accessibility as a whole, since what each covers isn't documented.
+    private static let timeout: Float = 0.25
+
+    init() {
+        queue.async { AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Self.timeout) }
+    }
+
+    /// Reads where the gap is and hands it to `found` on the main thread: nil when it isn't on screen (no
+    /// Accessibility access, no gap in the Dock, the Dock hidden, or on the left or right, where a text box doesn't fit
+    /// a column of icons). Nothing is asked while a question is still out.
+    @MainActor
+    func layout(anchor bundleID: String, then found: @escaping @MainActor (DockLayout?) -> Void) {
         guard AXIsProcessTrusted(),
-              let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return nil }
-        // A Dock started again (Strata changed its tiles, or it crashed) has new items; so does one rearranged.
-        if dock.processIdentifier != pid || Date().timeIntervalSince(refreshed) > 1 {
-            refresh(dock.processIdentifier, anchor: bundleID)
+              let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first,
+              let primary = NSScreen.screens.first else { return found(nil) }
+        let pid = dock.processIdentifier, screens = NSScreen.screens.map(\.frame), top = primary.frame.maxY
+        guard startAsking() else { return }
+        queue.async { [self] in
+            let layout = state.withLock { state in
+                defer { state.asking = false }
+                return Self.read(&state, dock: pid, anchor: bundleID, screens: screens, top: top)
+            }
+            Task { @MainActor in found(layout) }
         }
-        guard let list, let listFrame = Self.frame(of: list), listFrame.width > listFrame.height,
-              let gapItems, let tileItem,
-              let first = Self.frame(of: items[gapItems.lowerBound]), let last = Self.frame(of: items[gapItems.upperBound - 1]),
-              let tile = Self.frame(of: items[tileItem]), let primary = NSScreen.screens.first else { return nil }
+    }
+
+    /// True when no question was out; it is now.
+    private func startAsking() -> Bool {
+        state.withLock { state in
+            defer { state.asking = true }
+            return !state.asking
+        }
+    }
+
+    private static func read(_ state: inout State, dock pid: pid_t, anchor bundleID: String, screens: [NSRect],
+                             top: CGFloat) -> DockLayout? {
+        // A Dock started again (Strata changed its tiles, or it crashed) has new items; so does one rearranged.
+        if pid != state.pid || Date().timeIntervalSince(state.refreshed) > 1 {
+            refresh(&state, pid, anchor: bundleID)
+        }
+        guard let list = state.list, let listFrame = frame(of: list), listFrame.width > listFrame.height,
+              let gapItems = state.gapItems, let tileItem = state.tileItem,
+              let first = frame(of: state.items[gapItems.lowerBound]), let last = frame(of: state.items[gapItems.upperBound - 1]),
+              let tile = frame(of: state.items[tileItem]) else { return nil }
         // Accessibility measures down from the top of the main screen, AppKit up from its bottom.
         func flipped(_ rect: CGRect) -> NSRect {
-            NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+            NSRect(x: rect.minX, y: top - rect.maxY, width: rect.width, height: rect.height)
         }
         let gap = flipped(first.union(last))
         // A hidden Dock keeps its tiles just off the edge of the screen.
-        guard NSScreen.screens.contains(where: { $0.frame.contains(NSPoint(x: gap.midX, y: gap.midY)) }) else { return nil }
+        guard screens.contains(where: { $0.contains(NSPoint(x: gap.midX, y: gap.midY)) }) else { return nil }
         return DockLayout(gap: gap, tile: flipped(tile))
     }
 
-    private func refresh(_ dockPID: pid_t, anchor bundleID: String) {
-        refreshed = Date()
-        if dockPID != pid {
-            pid = dockPID
+    private static func refresh(_ state: inout State, _ dockPID: pid_t, anchor bundleID: String) {
+        state.refreshed = Date()
+        if dockPID != state.pid {
+            state.pid = dockPID
             let app = AXUIElementCreateApplication(dockPID)
-            list = (Self.attribute(app, kAXChildrenAttribute) as? [AXUIElement])?
-                .first { Self.attribute($0, kAXRoleAttribute) as? String == "AXList" }
+            AXUIElementSetMessagingTimeout(app, timeout)
+            state.list = (attribute(app, kAXChildrenAttribute) as? [AXUIElement])?
+                .first { attribute($0, kAXRoleAttribute) as? String == "AXList" }
         }
-        items = list.flatMap { Self.attribute($0, kAXChildrenAttribute) as? [AXUIElement] } ?? []
+        let items = state.list.flatMap { attribute($0, kAXChildrenAttribute) as? [AXUIElement] } ?? []
+        state.items = items
         // If the Dock just started again, its list isn't there yet: look again next time.
-        if items.isEmpty { pid = 0 }
-        let subroles = items.map { Self.attribute($0, kAXSubroleAttribute) as? String }
+        if items.isEmpty { state.pid = 0 }
+        let subroles = items.map { attribute($0, kAXSubroleAttribute) as? String }
         let isSpacer = { (index: Int) in subroles[index] == "AXSpacerDockItem" }
         let isApp = { (index: Int) in subroles[index] == "AXApplicationDockItem" }
-        gapItems = nil
+        var gapItems: Range<Int>?
         // The Dock lists Finder, then its kept apps in the order of its settings: Strata's tiles are found by their
         // place there, wherever they've been dragged.
         if let run = DockGapTiles.run(in: DockGapTiles.read() ?? []),
            run.upperBound + 1 <= items.count, (run.lowerBound + 1..<run.upperBound + 1).allSatisfy(isSpacer) {
             gapItems = run.lowerBound + 1..<run.upperBound + 1
-        } else if let anchor = items.firstIndex(where: { Self.bundleID(of: $0) == bundleID }) ?? (items.isEmpty ? nil : 0) {
+        } else if let anchor = items.firstIndex(where: { bundleIDOf($0) == bundleID }) ?? (items.isEmpty ? nil : 0) {
             // Not settled yet (the Dock still starting, or its settings not written yet): the spacers after Strata's
             // tile, where they were put.
             let run = (anchor + 1..<items.count).prefix { isSpacer($0) }
             if let lower = run.first, let upper = run.last { gapItems = lower..<upper + 1 }
         }
-        tileItem = gapItems.flatMap { gap in
+        state.gapItems = gapItems
+        state.tileItem = gapItems.flatMap { gap in
             [gap.lowerBound - 1, gap.upperBound].first { items.indices.contains($0) && isApp($0) }
                 ?? items.indices.first(where: isApp)
         }
     }
 
-    private static func bundleID(of item: AXUIElement) -> String? {
+    private static func bundleIDOf(_ item: AXUIElement) -> String? {
         (attribute(item, kAXURLAttribute) as? URL).flatMap { Bundle(url: $0)?.bundleIdentifier }
     }
 

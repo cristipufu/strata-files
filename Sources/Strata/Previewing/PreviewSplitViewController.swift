@@ -26,6 +26,7 @@ final class PreviewSplitViewController: NSViewController, NSSplitViewDelegate {
         fitPanes()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() { view = splitView }

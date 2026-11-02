@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func navigationSymbolsUseDarkInkOnLightThemesAndLightInkOnDarkThemes() throws {
@@ -46,7 +53,7 @@ extension ColorThemeTests {
     @Test func backAndForwardLoseTheirSharedGlassInColoredThemesAndKeepTheirNativeActions() throws {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
-        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController()))
+        let split = MainSplitViewController(firstPane: PaneHostViewController(browser: BrowserViewController(services: testEnvironment.services)))
         split.loadViewIfNeeded()
         split.splitView.autosaveName = nil
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
@@ -71,8 +78,8 @@ extension ColorThemeTests {
         let icons = [back.image, forward.image]
         let labels = [back.label, forward.label]
         for name in [NSAppearance.Name.aqua, .darkAqua] {
-            let chosenAppearance: NSAppearance? = NSAppearance(named: name)
-            window.appearance = try #require(chosenAppearance)
+            let chosenAppearance = try #require(NSAppearance(named: name))
+            window.appearance = chosenAppearance
             for palette in ColorTheme.allCases {
                 for (tintsWindow, highContrast) in [(true, false), (false, false), (true, true)] {
                     ThemeStyle.apply(ColorThemeOptions(palette: palette, tintsWindow: tintsWindow),

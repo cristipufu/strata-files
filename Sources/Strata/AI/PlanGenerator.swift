@@ -4,8 +4,8 @@ import FoundationModels
 /// A whole-selection transformation ("rename by date taken", "group by year"). The model (or the rules) picks a recipe and
 /// Strata expands it over every item deterministically: this scales past what fits in the model's context, and dates,
 /// numbering and collisions are computed exactly rather than generated.
-nonisolated struct PlanRecipe: Sendable, Hashable {
-    enum Action: Sendable, Hashable {
+package nonisolated struct PlanRecipe: Sendable, Hashable {
+    package enum Action: Sendable, Hashable {
         /// Template tokens: {date} {time} {datetime} {year} {month} {monthname} {day} {name} {n} {camera} {kind} {parent}.
         case rename(template: String, transforms: [NameTransform])
         case move(folder: String)
@@ -13,17 +13,17 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
         case trash
     }
 
-    enum GroupKey: String, Sendable, CaseIterable { case year, month, day, kind, `extension`, camera }
-    enum DateSource: String, Sendable, CaseIterable { case taken, created, modified, best }
-    enum NameTransform: String, Sendable, CaseIterable { case lowercase, uppercase, titlecase, spacesToDashes, spacesToUnderscores, removeSpaces }
+    package enum GroupKey: String, Sendable, CaseIterable { case year, month, day, kind, `extension`, camera }
+    package enum DateSource: String, Sendable, CaseIterable { case taken, created, modified, best }
+    package enum NameTransform: String, Sendable, CaseIterable { case lowercase, uppercase, titlecase, spacesToDashes, spacesToUnderscores, removeSpaces }
 
-    var action: Action
+    package var action: Action
     /// Which selected items it applies to (metadata only; empty = all).
-    var filter = SearchFilter()
-    var dateSource = DateSource.best
+    package var filter = SearchFilter()
+    package var dateSource = DateSource.best
 
     /// "Rename by date taken", "Move into “Archive” — only images named “Screenshot”, modified before Sep 11, 2026".
-    var title: String {
+    package var title: String {
         let dateWord: String = switch dateSource {
         case .taken: String(localized: "date taken", comment: "Which date a plan uses, as in “Group into folders by year (date taken)”")
         case .created: String(localized: "date created", comment: "Which date a plan uses, as in “Group into folders by year (date created)”")
@@ -32,8 +32,10 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
         }
         var text: String
         switch action {
-        case let .rename(template, transforms):
-            let datey = ["{date}", "{time}", "{datetime}", "{year}", "{month}", "{day}"].contains { template.contains($0) }
+        case let .rename(written, transforms):
+            // As the rename reads it: `{Name}` is `{name}`.
+            let template = PlanExpander.normalized(written)
+            let datey = PlanExpander.usesDate(template)
             let changes = transforms.map(\.title).joined(separator: ", ")
             if template == "{name}" {
                 text = String(localized: "Rename: \(changes)", comment: "Plan description; the changes are like “lowercase, spaces → dashes”")
@@ -44,7 +46,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
                 case .modified: String(localized: "Add the date modified after each name")
                 case .best: String(localized: "Add the date after each name")
                 }
-            } else if datey, template.contains("{name}") {
+            } else if datey, PlanExpander.tokens(in: template).contains("name") {
                 text = switch dateSource {
                 case .taken: String(localized: "Add the date taken before each name")
                 case .created: String(localized: "Add the date created before each name")
@@ -52,7 +54,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
                 case .best: String(localized: "Add the date before each name")
                 }
             } else if datey {
-                let withTime = template.contains("{time}") || template.contains("{datetime}")
+                let withTime = PlanExpander.tokens(in: template).contains { $0 == "time" || $0 == "datetime" }
                 text = switch (dateSource, withTime) {
                 case (.taken, false): String(localized: "Rename by date taken")
                 case (.taken, true): String(localized: "Rename by date and time taken")
@@ -85,7 +87,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "Group into folders by year (date taken) inside “Photos”", as one sentence per case.
-    static func groupDescription(_ key: PlanRecipe.GroupKey, date: String?, inside: String?) -> String {
+    package static func groupDescription(_ key: PlanRecipe.GroupKey, date: String?, inside: String?) -> String {
         switch (key, date, inside) {
         case (.year, nil, nil): return String(localized: "Group into folders by year", comment: "Plan description")
         case (.year, nil, let folder?): return String(localized: "Group into folders by year inside “\(folder)”", comment: "Plan description; a folder name")
@@ -113,7 +115,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "{year}-{month} {name}" → "year-month name".
-    static func readable(_ template: String) -> String {
+    package static func readable(_ template: String) -> String {
         let words = ["{date}": String(localized: "date", comment: "A part of a name pattern, as in “Rename to “year-month name””"),
                      "{time}": String(localized: "time", comment: "A part of a name pattern, as in “Rename to “date time””"),
                      "{datetime}": String(localized: "date time", comment: "A part of a name pattern: the date and time"),
@@ -130,7 +132,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
     }
 
     /// "images named “Screenshot”, modified before Sep 11, 2026", or nil for no constraints.
-    static func describe(_ filter: SearchFilter) -> String? {
+    package static func describe(_ filter: SearchFilter) -> String? {
         var things: [String] = []
         if !filter.kinds.isEmpty {
             things.append(ListFormatter.localizedString(byJoining: SearchFilter.Kind.allCases.filter(filter.kinds.contains).map(\.noun)))
@@ -159,7 +161,7 @@ nonisolated struct PlanRecipe: Sendable, Hashable {
 }
 
 nonisolated extension PlanRecipe.NameTransform {
-    var title: String {
+    package var title: String {
         switch self {
         case .lowercase: String(localized: "lowercase", comment: "Name change: make names lowercase")
         case .uppercase: String(localized: "uppercase", comment: "Name change: make names uppercase")
@@ -170,7 +172,7 @@ nonisolated extension PlanRecipe.NameTransform {
         }
     }
 
-    func apply(_ name: String) -> String {
+    package func apply(_ name: String) -> String {
         switch self {
         case .lowercase: name.lowercased()
         case .uppercase: name.uppercased()
@@ -182,11 +184,11 @@ nonisolated extension PlanRecipe.NameTransform {
     }
 }
 
-nonisolated enum PlanError: LocalizedError {
+package nonisolated enum PlanError: LocalizedError {
     case notUnderstood(suggestions: [String])
     case nothingSelected
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .notUnderstood:
             switch AIModel.status {
@@ -207,16 +209,24 @@ nonisolated enum PlanError: LocalizedError {
 }
 
 /// Instruction + selection → validated `Plan`.
-nonisolated enum PlanGenerator {
-    struct Request: Sendable {
-        var instruction: String
-        var items: [PlanItem]
+package nonisolated enum PlanGenerator {
+    package struct Request: Sendable {
+        package var instruction: String
+        package var items: [PlanItem]
         /// The window's folder: new folders and moves stay inside it unless the instruction names another place.
-        var baseFolder: URL
-        var now = Date()
+        package var baseFolder: URL
+        package var now = Date()
+
+        package init(instruction: String, items: [PlanItem], baseFolder: URL, now: Date = Date()) {
+            self.instruction = instruction
+            self.items = items
+            self.baseFolder = baseFolder
+            self.now = now
+        }
     }
 
-    static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
+    /// Away from the main thread: checking a plan looks at every item it would change.
+    @concurrent package static func generate(_ request: Request, allowModel: Bool = true) async throws -> Plan {
         guard !request.items.isEmpty else { throw PlanError.nothingSelected }
         let rules = PlanRules.recipe(for: request.instruction, now: request.now)
         let useModel = allowModel && AIModel.isAvailable && (rules == nil || rules?.fullyUnderstood == false)
@@ -242,7 +252,7 @@ nonisolated enum PlanGenerator {
     }
 
     /// Instructions that fit the selection, for the sheet's suggestion buttons.
-    static func suggestions(for items: [PlanItem]) -> [String] {
+    package static func suggestions(for items: [PlanItem]) -> [String] {
         var result: [String] = []
         let images = items.filter { $0.contentType?.conforms(to: .image) == true }
         if images.contains(where: { $0.captureDate != nil }) { result.append("Rename these photos by date taken") }
@@ -262,82 +272,109 @@ nonisolated enum PlanGenerator {
 // MARK: - Rules
 
 /// Deterministic instruction → recipe for the common requests. Works without Apple Intelligence.
-nonisolated enum PlanRules {
-    struct Result {
-        let recipe: PlanRecipe
+package nonisolated enum PlanRules {
+    package struct Result {
+        package let recipe: PlanRecipe
         /// No meaningful words were left unexplained (otherwise the model, when available, gets a say).
-        let fullyUnderstood: Bool
+        package let fullyUnderstood: Bool
     }
 
-    static func recipe(for instruction: String, now: Date = .now) -> Result? {
+    package static func recipe(for instruction: String, now: Date = .now) -> Result? {
         let text = instruction.lowercased()
         let dateSource = Self.dateSource(text)
         var filter = itemFilter(instruction, now: now)
-
-        var action: PlanRecipe.Action?
-        var explained: [String] = []
-
-        if let group = match(text, "\\b(?:group|sort|organi[sz]e|split|file|arrange|categori[sz]e)\\b.*?\\bby\\s+(year|month|day|date|type|kind|extension|file type|format|camera)") {
-            let key: PlanRecipe.GroupKey = switch group[1] {
-            case "year": .year
-            case "month", "date": .month
-            case "day": .day
-            case "extension", "format": .extension
-            case "camera": .camera
-            default: .kind
-            }
-            let inside = match(instruction, "(?i)\\binside\\s+(?:a\\s+|the\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$")?[1]
-            action = .group(by: key, inside: inside)
-            explained += ["group", "sort", "organize", "organise", "split", "arrange", "into", "folders", "folder", "by", group[1]]
-        } else if let transforms = Optional(nameTransforms(text)),
-                  text.range(of: "\\b(?:rename|name them|name these)\\b", options: .regularExpression) != nil || !transforms.isEmpty
-                    || text.range(of: "\\b(?:add|put|prepend|append|insert)\\b.*\\bdates?\\b", options: .regularExpression) != nil {
-            var template = "{name}"
-            if text.range(of: "\\b(?:suffix|append|at the end|after the name)\\b", options: .regularExpression) != nil, text.contains("date") {
-                template = "{name} {date}"
-            } else if text.range(of: "\\b(?:prefix|prepend|in front|before the name|at the start|add|put|insert)\\b", options: .regularExpression) != nil, text.contains("date") {
-                template = "{date} {name}"
-            } else if text.range(of: "\\bby\\s+(?:the\\s+)?(?:date|day|time|when)|\\b(?:date taken|taken|capture date|creation date|modified date|date created|date modified)\\b|\\bto (?:the )?date", options: .regularExpression) != nil {
-                template = dateSource == .taken ? "{date} {time}" : "{date} {name}"
-            } else if let sequence = match(instruction, "(?i)\\b(?:to|as)\\s+[\"“]?(.+?)[\"”]?\\s*(?:\\d+\\s*,.*|followed by (?:a )?numbers?|with (?:a )?(?:number|numbers|counter)|sequentially|numbered|in order|\\{n\\}|#)?\\s*$"),
-                      transforms.isEmpty {
-                let base = sequence[1].trimmingCharacters(in: .whitespaces)
-                if !base.isEmpty, base.count < 60 { template = base.contains("{") ? base : base + " {n}" }
-            } else if text.range(of: "\\b(?:sequential|number them|numbered|with numbers)\\b", options: .regularExpression) != nil {
-                template = "{parent} {n}"
-            }
-            guard template != "{name}" || !transforms.isEmpty else { return nil }
-            action = .rename(template: template, transforms: transforms)
-            explained += ["rename", "by", "date", "taken", "to", "as", "prefix", "suffix", "with", "lowercase", "uppercase", "replace",
-                          "spaces", "dashes", "underscores", "names", "name", "and", "numbered", "sequentially", "add", "the", "remove",
-                          "time", "capture", "created", "modified", "creation", "when"]
-        } else if text.range(of: "\\b(?:move|put|archive|file|place|drop)\\b", options: .regularExpression) != nil,
-                  let parts = match(instruction, "(?i)^(.*)\\s(?:into|to|in)\\s+(?:an?\\s+|the\\s+|a\\s+new\\s+|my\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$"),
-                  !parts[2].trimmingCharacters(in: .whitespaces).isEmpty {
+        let transforms = nameTransforms(text)
+        let action: PlanRecipe.Action
+        let explained: [String]
+        if let group = groupAction(text, instruction) {
+            (action, explained) = group
+        } else if asksToRename(text, transforms: transforms) {
+            guard let rename = renameAction(text, instruction, transforms: transforms, dateSource: dateSource) else { return nil }
+            (action, explained) = (rename, renameWords)
+        } else if let move = moveAction(text, instruction) {
             // "move screenshots older than 30 days | into an Archive folder": constraints come from the first part.
-            action = .move(folder: parts[2].trimmingCharacters(in: .whitespaces))
-            filter = itemFilter(parts[1], now: now)
-            explained += ["move", "put", "archive", "file", "place", "into", "to", "in", "folder", "a", "an", "new"]
-            explained += parts[2].lowercased().split(separator: " ").map(String.init)
+            (action, explained) = (.move(folder: move.folder), moveWords + move.folder.lowercased().split(separator: " ").map(String.init))
+            filter = itemFilter(move.items, now: now)
         } else if text.range(of: "^\\s*archive\\b", options: .regularExpression) != nil {
-            action = .move(folder: "Archive")
-            explained += ["archive"]
+            (action, explained) = (.move(folder: "Archive"), ["archive"])
         } else if text.range(of: "\\b(?:delete|trash|remove|bin|throw away|get rid of)\\b", options: .regularExpression) != nil {
-            action = .trash
-            explained += ["delete", "trash", "remove", "bin", "throw", "away", "get", "rid", "of", "move", "to"]
+            (action, explained) = (.trash, ["delete", "trash", "remove", "bin", "throw", "away", "get", "rid", "of", "move", "to"])
+        } else {
+            return nil
         }
-        guard let action else { return nil }
-
-        // Anything left that neither the action nor the item filter explains?
-        let interpretation = QueryInterpreter.parse(instruction, now: now)
-        let unexplained = interpretation.unrecognized.filter { word in
-            !explained.contains(word) && !["these", "those", "them", "all", "photos", "files", "items", "selected", "selection",
-                                            "pictures", "images", "folder", "folders", "into", "separate"].contains(word)
-        }
-        return Result(recipe: PlanRecipe(action: action, filter: filter, dateSource: dateSource), fullyUnderstood: unexplained.isEmpty)
+        return Result(recipe: PlanRecipe(action: action, filter: filter, dateSource: dateSource),
+                      fullyUnderstood: isFullyUnderstood(instruction, explained: explained, now: now))
     }
 
-    static func nameTransforms(_ text: String) -> [PlanRecipe.NameTransform] {
+    /// "Group by year", "sort into folders by kind", perhaps "inside a folder called Photos".
+    private static func groupAction(_ text: String, _ instruction: String) -> (PlanRecipe.Action, [String])? {
+        guard let group = match(text, "\\b(?:group|sort|organi[sz]e|split|file|arrange|categori[sz]e)\\b.*?\\bby\\s+(year|month|day|date|type|kind|extension|file type|format|camera)") else {
+            return nil
+        }
+        let key: PlanRecipe.GroupKey = switch group[1] {
+        case "year": .year
+        case "month", "date": .month
+        case "day": .day
+        case "extension", "format": .extension
+        case "camera": .camera
+        default: .kind
+        }
+        let inside = match(instruction, "(?i)\\binside\\s+(?:a\\s+|the\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$")?[1]
+        return (.group(by: key, inside: inside),
+                ["group", "sort", "organize", "organise", "split", "arrange", "into", "folders", "folder", "by", group[1]])
+    }
+
+    private static func asksToRename(_ text: String, transforms: [PlanRecipe.NameTransform]) -> Bool {
+        text.range(of: "\\b(?:rename|name them|name these)\\b", options: .regularExpression) != nil || !transforms.isEmpty
+            || text.range(of: "\\b(?:add|put|prepend|append|insert)\\b.*\\bdates?\\b", options: .regularExpression) != nil
+    }
+
+    /// The new names' template: a date before or after the name, the date taken, a base and a counter, or the
+    /// folder's name and a counter. Nil when nothing about the names would change.
+    private static func renameAction(_ text: String, _ instruction: String, transforms: [PlanRecipe.NameTransform],
+                                     dateSource: PlanRecipe.DateSource) -> PlanRecipe.Action? {
+        var template = "{name}"
+        if text.range(of: "\\b(?:suffix|append|at the end|after the name)\\b", options: .regularExpression) != nil, text.contains("date") {
+            template = "{name} {date}"
+        } else if text.range(of: "\\b(?:prefix|prepend|in front|before the name|at the start|add|put|insert)\\b", options: .regularExpression) != nil, text.contains("date") {
+            template = "{date} {name}"
+        } else if text.range(of: "\\bby\\s+(?:the\\s+)?(?:date|day|time|when)|\\b(?:date taken|taken|capture date|creation date|modified date|date created|date modified)\\b|\\bto (?:the )?date", options: .regularExpression) != nil {
+            template = dateSource == .taken ? "{date} {time}" : "{date} {name}"
+        } else if let sequence = match(instruction, "(?i)\\b(?:to|as)\\s+[\"“]?(.+?)[\"”]?\\s*(?:\\d+\\s*,.*|followed by (?:a )?numbers?|with (?:a )?(?:number|numbers|counter)|sequentially|numbered|in order|\\{n\\}|#)?\\s*$"),
+                  transforms.isEmpty {
+            let base = sequence[1].trimmingCharacters(in: .whitespaces)
+            if !base.isEmpty, base.count < 60 { template = base.contains("{") ? base : base + " {n}" }
+        } else if text.range(of: "\\b(?:sequential|number them|numbered|with numbers)\\b", options: .regularExpression) != nil {
+            template = "{parent} {n}"
+        }
+        guard template != "{name}" || !transforms.isEmpty else { return nil }
+        return .rename(template: template, transforms: transforms)
+    }
+
+    private static let renameWords = ["rename", "by", "date", "taken", "to", "as", "prefix", "suffix", "with", "lowercase", "uppercase", "replace",
+                                      "spaces", "dashes", "underscores", "names", "name", "and", "numbered", "sequentially", "add", "the", "remove",
+                                      "time", "capture", "created", "modified", "creation", "when"]
+
+    /// "Move … into a folder called X": the folder, and the part that says which items.
+    private static func moveAction(_ text: String, _ instruction: String) -> (folder: String, items: String)? {
+        guard text.range(of: "\\b(?:move|put|archive|file|place|drop)\\b", options: .regularExpression) != nil,
+              let parts = match(instruction, "(?i)^(.*)\\s(?:into|to|in)\\s+(?:an?\\s+|the\\s+|a\\s+new\\s+|my\\s+)?(?:folder\\s+(?:called|named)\\s+)?[\"“]?([^\"”]+?)[\"”]?(?:\\s+folder)?\\s*$"),
+              !parts[2].trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return (parts[2].trimmingCharacters(in: .whitespaces), parts[1])
+    }
+
+    private static let moveWords = ["move", "put", "archive", "file", "place", "into", "to", "in", "folder", "a", "an", "new"]
+
+    /// Whether every word is explained by the action or by the item filter.
+    private static func isFullyUnderstood(_ instruction: String, explained: [String], now: Date) -> Bool {
+        let interpretation = QueryInterpreter.parse(instruction, now: now)
+        return interpretation.unrecognized.allSatisfy { word in
+            explained.contains(word) || ["these", "those", "them", "all", "photos", "files", "items", "selected", "selection",
+                                         "pictures", "images", "folder", "folders", "into", "separate"].contains(word)
+        }
+    }
+
+    package static func nameTransforms(_ text: String) -> [PlanRecipe.NameTransform] {
         var transforms: [PlanRecipe.NameTransform] = []
         if text.contains("lowercase") || text.contains("lower case") { transforms.append(.lowercase) }
         if text.contains("uppercase") || text.contains("upper case") { transforms.append(.uppercase) }
@@ -350,7 +387,7 @@ nonisolated enum PlanRules {
 
     /// Which items an instruction is about ("these PDFs", "screenshots older than 30 days"), ignoring its own wording about
     /// destinations ("into folders by year" is not a request for folders).
-    static func itemFilter(_ text: String, now: Date) -> SearchFilter {
+    package static func itemFilter(_ text: String, now: Date) -> SearchFilter {
         var cleaned = text
         for pattern in ["(?i)\\b(?:into|in|to)\\s+(?:separate\\s+|sub|new\\s+)?folders?\\b", "(?i)\\bby\\s+(?:the\\s+)?(?:year|month|day|date|type|kind|extension|file type|format|camera)\\b",
                         "(?i)\\b(?:a|an|the|new)\\s+folder\\s+(?:called|named)\\s+\\S+", "(?i)\\bfolders?\\b(?=\\s+(?:by|for|per))",
@@ -363,7 +400,7 @@ nonisolated enum PlanRules {
         return filter
     }
 
-    static func dateSource(_ text: String) -> PlanRecipe.DateSource {
+    package static func dateSource(_ text: String) -> PlanRecipe.DateSource {
         if text.range(of: "\\b(?:date taken|taken|capture|captured|shot|exif|camera date)\\b", options: .regularExpression) != nil { return .taken }
         if text.range(of: "\\b(?:created|creation|date created)\\b", options: .regularExpression) != nil { return .created }
         if text.range(of: "\\b(?:modified|modification|last changed|date modified|edited)\\b", options: .regularExpression) != nil { return .modified }
@@ -371,7 +408,7 @@ nonisolated enum PlanRules {
     }
 
     /// Capture groups of the first match ([0] = whole match).
-    static func match(_ text: String, _ pattern: String) -> [String]? {
+    package static func match(_ text: String, _ pattern: String) -> [String]? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
         return (0..<m.numberOfRanges).map { m.range(at: $0).location == NSNotFound ? "" : (text as NSString).substring(with: m.range(at: $0)) }
@@ -382,16 +419,16 @@ nonisolated enum PlanRules {
 
 /// Guided generation: the model either picks a recipe (preferred) or, for small selections and one-off requests, lists
 /// explicit operations by item number. Either way the output is constrained by the schema and validated afterwards.
-nonisolated enum ModelPlanner {
-    enum Answer: Sendable {
+package nonisolated enum ModelPlanner {
+    package enum Answer: Sendable {
         case recipe(PlanRecipe)
         case explicit([ProposedOperation], summary: String)
         case unsupported
     }
 
-    static let maxListedItems = 40
+    package static let maxListedItems = 40
 
-    static func schema() throws -> GenerationSchema {
+    package static func schema() throws -> GenerationSchema {
         let kinds = Schema.choice("ItemKind", SearchFilter.Kind.allCases.map(\.rawValue))
         let match = Schema.object("Match", "Which of the listed items the plan applies to; leave empty for all", [
             Schema.field("kinds", nil, Schema.array(kinds, max: 4)),
@@ -421,7 +458,7 @@ nonisolated enum ModelPlanner {
         ]))
     }
 
-    static func listing(_ items: [PlanItem], now: Date) -> String {
+    package static func listing(_ items: [PlanItem], now: Date) -> String {
         let day = Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
         let time = Date.FormatStyle(date: .omitted, time: .shortened)
         var lines: [String] = []
@@ -438,7 +475,7 @@ nonisolated enum ModelPlanner {
         return lines.joined(separator: "\n")
     }
 
-    static func plan(_ request: PlanGenerator.Request) async throws -> Answer {
+    package static func plan(_ request: PlanGenerator.Request) async throws -> Answer {
         let today = request.now.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
         let instructions = """
         You plan file operations in a Mac file manager. Today is \(today). The user selected the numbered items below in the folder \
@@ -448,11 +485,7 @@ nonisolated enum ModelPlanner {
         """
         let session = LanguageModelSession(instructions: instructions)
         let prompt = "Items:\n\(listing(request.items, now: request.now))\n\nInstruction: \(request.instruction)"
-        #if compiler(>=6.4)
-        let options = GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 1200)
-        #else
-        let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 1200)
-        #endif
+        let options = GenerationOptions.greedy(maximumResponseTokens: 1200)
         let content = try await Deadline.run(25) {
             try await session.respond(to: prompt, schema: try schema(), options: options).content
         }
@@ -460,7 +493,7 @@ nonisolated enum ModelPlanner {
     }
 
     /// Model output → recipe or explicit operations. Item numbers outside the list are dropped (and so can't touch anything).
-    static func decode(_ content: GeneratedContent, items: [PlanItem], now: Date) -> Answer {
+    package static func decode(_ content: GeneratedContent, items: [PlanItem], now: Date) -> Answer {
         let dateSource = content["dateSource"]?.string.flatMap(PlanRecipe.DateSource.init(rawValue:)) ?? .best
         var filter = SearchFilter()
         if let match = content["match"] {
@@ -513,14 +546,14 @@ nonisolated enum ModelPlanner {
 // MARK: - Expansion
 
 /// Recipe × selection → proposed operations (plus items it had to skip, with reasons).
-nonisolated enum PlanExpander {
-    struct Output {
-        var operations: [ProposedOperation] = []
-        var skipped: [(item: PlanItem, reason: String)] = []
-        var unaffected = 0
+package nonisolated enum PlanExpander {
+    package struct Output {
+        package var operations: [ProposedOperation] = []
+        package var skipped: [(item: PlanItem, reason: String)] = []
+        package var unaffected = 0
     }
 
-    static func expand(_ recipe: PlanRecipe, items: [PlanItem], baseFolder: URL) -> Output {
+    package static func expand(_ recipe: PlanRecipe, items: [PlanItem], baseFolder: URL) -> Output {
         var output = Output()
         let matching = items.filter { item in
             recipe.filter.isEmpty || recipe.filter.matches(name: item.name, contentType: item.contentType, isDirectory: item.isFolder,
@@ -530,7 +563,7 @@ nonisolated enum PlanExpander {
 
         switch recipe.action {
         case let .rename(template, transforms):
-            let needsDate = ["{date}", "{time}", "{datetime}", "{year}", "{month}", "{monthname}", "{day}"].contains { template.contains($0) }
+            let needsDate = usesDate(template)
             var dated: [PlanItem] = []
             for item in matching {
                 if needsDate, item.date(recipe.dateSource) == nil {
@@ -585,7 +618,47 @@ nonisolated enum PlanExpander {
         }
     }()
 
-    static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
+    /// Whether `template` names items by one of their dates, however it spells the token (`{Date}` is `{date}`).
+    package static func usesDate(_ template: String) -> Bool {
+        tokens(in: template).contains { dateFormatters[$0] != nil }
+    }
+
+    /// `template` with each `{token}` spelled as `render` reads it, and its text as written.
+    package static func normalized(_ template: String) -> String {
+        parts(of: template).map { part in
+            switch part {
+            case .text(let text): String(text)
+            case .token(let token): "{" + token + "}"
+            }
+        }.joined()
+    }
+
+    /// The `{tokens}` in `template`, lowercased, as `render` reads them.
+    package static func tokens(in template: String) -> [String] {
+        parts(of: template).compactMap { part in
+            if case .token(let token) = part { token } else { nil }
+        }
+    }
+
+    private enum Part {
+        case text(Substring)
+        case token(String)
+    }
+
+    /// `template` read once, in order: its text as written, and each `{token}` lowercased.
+    private static func parts(of template: String) -> [Part] {
+        var parts: [Part] = []
+        var rest = Substring(template)
+        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
+            parts.append(.text(rest[..<open]))
+            parts.append(.token(rest[rest.index(after: open)..<close].lowercased()))
+            rest = rest[rest.index(after: close)...]
+        }
+        parts.append(.text(rest))
+        return parts
+    }
+
+    package static func render(_ template: String, item: PlanItem, index: Int, width: Int, source: PlanRecipe.DateSource) -> String {
         // Only what the template uses is worked out (a big selection renders on every keystroke).
         func value(_ token: String) -> String {
             if let formatter = dateFormatters[token] { return formatter.string(from: item.date(source) ?? item.bestDate ?? Date()) }
@@ -600,13 +673,12 @@ nonisolated enum PlanExpander {
             }
         }
         var result = ""
-        var rest = Substring(template)
-        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
-            result += rest[..<open]
-            result += value(rest[rest.index(after: open)..<close].lowercased())
-            rest = rest[rest.index(after: close)...]
+        for part in parts(of: template) {
+            switch part {
+            case .text(let text): result += text
+            case .token(let token): result += value(token)
+            }
         }
-        result += rest
         // A model may include the extension in the template; it is added back separately.
         if !item.ext.isEmpty,
            let range = result.range(of: "." + item.ext, options: [.caseInsensitive, .backwards, .anchored]) {
@@ -615,7 +687,7 @@ nonisolated enum PlanExpander {
         return result
     }
 
-    static func groupName(_ item: PlanItem, key: PlanRecipe.GroupKey, source: PlanRecipe.DateSource) -> String? {
+    package static func groupName(_ item: PlanItem, key: PlanRecipe.GroupKey, source: PlanRecipe.DateSource) -> String? {
         let date = item.date(source) ?? (source == .taken ? nil : item.bestDate)
         let calendar = Calendar.current
         switch key {
@@ -627,8 +699,7 @@ nonisolated enum PlanExpander {
         // Folder names that come from translations are checked like any name (nothing like "../x" or "~/x"), and
         // fall back to English when they can't be one.
         case .extension:
-            return item.isFolder ? FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
-                : item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
+            return item.ext.isEmpty ? FileOps.nameText(String(localized: "No Extension", comment: "Name of a new folder for items without a name extension"),
                                                       english: "No Extension")
                 : item.ext.uppercased()
         case .camera:
@@ -637,9 +708,6 @@ nonisolated enum PlanExpander {
                                             english: "Unknown camera")
             return FileOps.nameText(model.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-"), english: unknown)
         case .kind:
-            if item.isFolder {
-                return FileOps.nameText(String(localized: "Folders", comment: "Name of a new folder that folders are grouped into"), english: "Folders")
-            }
             let order: [SearchFilter.Kind] = [.pdf, .image, .movie, .audio, .archive, .spreadsheet, .presentation, .code, .text, .diskImage, .application, .document]
             let kind = order.first { $0.matches(type: item.contentType, isDirectory: false, isPackage: false, extension: item.ext.lowercased()) }
             return kind.map { FileOps.nameText($0.title, english: $0.englishTitle) }

@@ -1,19 +1,30 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct DirectoryReadSessionTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private typealias Reads = ControlledDirectoryReads
 
     private func browser(_ reads: Reads) -> BrowserViewController {
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: testEnvironment.services.clipboard,
             directories: reads.reader)
         let browser = BrowserViewController(services: services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
@@ -26,15 +37,15 @@ struct DirectoryReadSessionTests {
         let reads = Reads()
         defer { reads.stop() }
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: testEnvironment.services.clipboard,
             directories: reads.reader,
-            availableCapacity: { _ in 123 })
+            volumeSpace: { _ in VolumeSpace(free: 123) })
         let browser = BrowserViewController(services: services)
         _ = browser.view
         browser.load(tree.url("a"))
@@ -42,9 +53,9 @@ struct DirectoryReadSessionTests {
         try await reads.request(0).finish(.success([]))
         await first.value
         await browser.loading.capacityTask?.value
-        #expect(browser.availableCapacity == 123)
+        #expect(browser.volumeSpace?.free == 123)
         browser.load(tree.url("b"))
-        #expect(browser.availableCapacity == nil)
+        #expect(browser.volumeSpace == nil)
         let next = try #require(browser.directoryReads.task)
         try await reads.request(1).finish(.success([]))
         await next.value
@@ -148,6 +159,24 @@ struct DirectoryReadSessionTests {
         #expect(tree.snapshot() == ["a.txt", "b.txt"])
     }
 
+    /// What a read has to wait for (the folder's watchers) comes first: its reader isn't asked until that's done.
+    @Test func aReadWaitsForWhatHasToBeReadyFirst() async throws {
+        let tree = try TestTree("a.txt")
+        let reads = Reads()
+        defer { reads.stop() }
+        let session = DirectoryReadSession(reader: reads.reader)
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        let ready = Task { for await _ in gate { break } }
+        let work = session.load(tree.root, showHidden: false, applications: .standard, after: ready) { _, _ in }
+        for _ in 0..<50 where reads.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(reads.requests.isEmpty)
+        open.yield()
+        let request = try await reads.request(0)
+        request.finish(.success([]))
+        await work.value
+        #expect(tree.snapshot() == ["a.txt"])
+    }
+
     @Test func aRefreshSupersedesAReadOfTheSameFolderAndDeliversItsError() async throws {
         let tree = try TestTree("a.txt")
         let reads = Reads()
@@ -169,17 +198,18 @@ struct DirectoryReadSessionTests {
     }
 
     @Test func columnsRejectStaleReadsAndStopApplyingAfterTeardown() async throws {
+        let preferences = try Prefs.isolated()
         let tree = try TestTree("a.txt", "b.txt")
         let reads = Reads()
         defer { reads.stop() }
-        let controller = ColumnBrowserViewController(directoryReader: reads.reader)
+        let controller = ColumnBrowserViewController(directoryReader: reads.reader, preferences: preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo, copies: testEnvironment.services.copies, clipboard: testEnvironment.services.clipboard, statuses: try .isolated(), names: FolderNames(read: FolderNames.read))
         let pane = ColumnPane(folder: tree.root, controller: controller)
         let a = try #require(FileEntry(url: tree.url("a.txt")))
         let b = try #require(FileEntry(url: tree.url("b.txt")))
-        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let first = try #require(pane.directoryReads.task)
         let old = try await reads.request(0)
-        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let latest = try #require(pane.directoryReads.task)
         let current = try await reads.request(1)
         #expect(current.showHidden && !old.showHidden)
@@ -188,7 +218,7 @@ struct DirectoryReadSessionTests {
         old.finish(.failure(CocoaError(.fileReadNoPermission)))
         await first.value
         #expect(pane.entries.map(\.url) == [b.url])
-        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: true, order: ColumnBrowserViewController.defaultOrder(for: controller.preferences))
         let removed = try #require(pane.directoryReads.task)
         let last = try await reads.request(2)
         pane.tearDown()
@@ -261,7 +291,7 @@ struct DirectoryReadSessionTests {
             await work.value
             // Gallery always keeps an item in front for its preview; the other views allow no selection.
             #expect(browser.selectedURLs == (mode == .gallery ? [entries[0].url] : []), "\(mode)")
-            #expect(browser.pendingSelection == nil)
+            #expect(browser.pending.selection == nil)
             browser.select([entries[1].url])
             browser.refresh()
             work = try #require(browser.directoryReads.task)
@@ -280,16 +310,16 @@ struct DirectoryReadSessionTests {
         let entries = try ["a.txt", "b.txt"].map { try #require(FileEntry(url: tree.url($0))) }
         browser.showResults(entries, total: 2)
         browser.select([entries[0].url])
-        browser.pendingSelection = [entries[1].url]
+        browser.pending.selection = [entries[1].url]
         browser.showResults(entries, total: 2)
         #expect(browser.selectedURLs == [entries[1].url])
-        browser.pendingSelection = []
+        browser.pending.selection = []
         browser.showResults(entries, total: 2)
-        #expect(browser.selectedURLs.isEmpty && browser.pendingSelection == nil)
+        #expect(browser.selectedURLs.isEmpty && browser.pending.selection == nil)
         browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
-        browser.pendingSelection = [entries[0].url]
+        browser.pending.selection = [entries[0].url]
         browser.showGroups([(title: "Files", detail: "", entries: entries)], summary: "")
-        #expect(browser.selectedURLs == [entries[0].url] && browser.pendingSelection == nil)
+        #expect(browser.selectedURLs == [entries[0].url] && browser.pending.selection == nil)
         #expect(tree.snapshot() == ["a.txt", "b.txt"])
     }
 
@@ -353,14 +383,14 @@ struct DirectoryReadSessionTests {
         try await reads.request(3).finish(.success([a]))
         await work.value
         stale([a.url])
-        #expect(first.directoryReads.task == nil && first.pendingSelection == nil)
+        #expect(first.directoryReads.task == nil && first.pending.selection == nil)
         controller.window?.makeFirstResponder(second.focusView)
         let removedPane = controller.pane
         let removed = controller.selectionAfterOperation()
         controller.window?.makeFirstResponder(first.focusView)
         controller.toggleDualPane(at: nil)
         removed([b.url])
-        #expect(removedPane.browser.directoryReads.task == nil && removedPane.browser.pendingSelection == nil)
+        #expect(removedPane.browser.directoryReads.task == nil && removedPane.browser.pending.selection == nil)
         #expect(controller.browser === first && !controller.isDualPane)
         #expect(tree.snapshot() == ["left/", "left/a.txt", "right/", "right/b.txt"])
     }
@@ -379,20 +409,20 @@ struct DirectoryReadSessionTests {
         // All search controls write the pane's destination, including changes that keep the same history entry.
         let original = Destination.search("a", scope: nil)
         for changed in [Destination.search("b", scope: nil), .search("a", scope: tree.root), .search("case:a", scope: nil)] {
-            pane.destination = original
+            pane.navigate(to: original)
             browser.showResults([entry], total: 1)
             let completion = controller.selectionAfterOperation()
             let revision = pane.navigationRevision
-            browser.pendingSelection = [entry.url]
-            pane.destination = changed
-            #expect(pane.navigationRevision == revision + 1 && browser.pendingSelection == nil)
-            pane.destination = original
-            let searchGeneration = pane.searchGeneration
+            browser.pending.selection = [entry.url]
+            pane.navigate(to: changed)
+            #expect(pane.navigationRevision == revision + 1 && browser.pending.selection == nil)
+            pane.navigate(to: original)
+            let searchGeneration = pane.search.latest
             completion([entry.url])
-            #expect(pane.searchGeneration == searchGeneration && browser.pendingSelection == nil)
+            #expect(pane.search.latest == searchGeneration && browser.pending.selection == nil)
             #expect(browser.directoryReads.task == nil)
             let unchanged = pane.navigationRevision
-            pane.destination = original
+            pane.navigate(to: original)
             #expect(pane.navigationRevision == unchanged)
         }
         #expect(tree.snapshot() == ["a.txt"])
@@ -412,7 +442,7 @@ struct DirectoryReadSessionTests {
         try await reads.request(2).finish(.success([old]))
         await work.value
         #expect(views(browser.view, of: InlineRenameField.self).isEmpty)
-        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+        pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences))
         work = try #require(pane.directoryReads.task)
         try await reads.request(3).finish(.success([old, new]))
         await work.value
@@ -497,7 +527,8 @@ struct DirectoryReadSessionTests {
             request.finish(change == 3 ? .failure(CocoaError(.fileReadNoPermission)) : .success(entries))
             await work.value
             if change == 3 {
-                pane.load(showHidden: false, order: ColumnBrowserViewController.defaultOrder)
+                let order = ColumnBrowserViewController.defaultOrder(for: browser.columns.preferences)
+                pane.load(showHidden: false, order: order)
                 let retry = try #require(pane.directoryReads.task)
                 try await reads.request(3).finish(.success(entries))
                 await retry.value
@@ -541,7 +572,7 @@ struct DirectoryReadSessionTests {
         browser.outlineView.tableColumn(withIdentifier: .init("duration"))?.isHidden = false
         browser.select([entry.url])
         browser.renameSelection(nil)
-        let field = try #require(browser.renamingField)
+        let field = try #require(browser.inlineRename.field)
         let editor = try #require(field.currentEditor() as? NSTextView)
         field.stringValue = "partially typed"
         editor.string = "partially typed"
@@ -551,7 +582,7 @@ struct DirectoryReadSessionTests {
         default: browser.sizer.onUpdate?(entry.url)
         }
         #expect(field.currentEditor() === editor)
-        #expect(browser.renamingField === field)
+        #expect(browser.inlineRename.field === field)
         #expect(editor.string == "partially typed")
         field.stringValue = entry.name
         editor.string = entry.name
@@ -588,7 +619,7 @@ struct DirectoryReadSessionTests {
         let oldText = cell.textField?.stringValue
         browser.select([entries[0].url])
         browser.renameSelection(nil)
-        let field = try #require(browser.renamingField)
+        let field = try #require(browser.inlineRename.field)
         let editor = try #require(field.currentEditor() as? NSTextView)
         let expected: String
         if update == "media" {
@@ -616,7 +647,7 @@ struct DirectoryReadSessionTests {
         browser.outlineView.layoutSubtreeIfNeeded()
         let refreshed = try #require(browser.outlineView.view(atColumn: column, row: row, makeIfNecessary: true) as? TextCellView)
         #expect(refreshed.textField?.stringValue == expected)
-        #expect(browser.renamingField == nil)
+        #expect(browser.inlineRename.field == nil)
         await browser.commandWork?.value
         #expect(controller.window?.isVisible == false)
         #expect(tree.snapshot() == before)
@@ -773,16 +804,16 @@ struct DirectoryReadSessionTests {
 
     private func window(_ folder: URL, second: URL?, reads: Reads,
                         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-                        clipboard: Clipboard = .shared) -> BrowserWindowController {
+                        clipboard: Clipboard? = nil) -> BrowserWindowController {
         _ = NSApplication.shared
         let services = BrowserServices.configured(
-            transfers: .shared,
-            visits: .shared,
+            transfers: testEnvironment.services.transfers,
+            visits: testEnvironment.services.visits,
             windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: clipboard,
+            remote: testEnvironment.services.remote,
+            containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore,
+            clipboard: clipboard ?? testEnvironment.services.clipboard,
             directories: reads.reader, mediaReader: mediaReader)
         let controller = BrowserWindowController(location: folder, secondPane: second, services: services)
         controller.split.splitView.autosaveName = nil

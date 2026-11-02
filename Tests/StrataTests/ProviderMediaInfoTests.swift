@@ -2,6 +2,13 @@ import AppKit
 import Synchronization
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ProviderMediaInfoTests {
     private nonisolated final class State: Sendable {
@@ -75,25 +82,24 @@ struct ProviderMediaInfoTests {
     }
 
     private final class Environment {
-        let domain = "StrataProviderMediaInfo.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let services: BrowserServices
         init(_ tree: TestTree, copies: CopyProviders, reader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            let preferences = Prefs(defaults: defaults, domainName: domain)
+            let preferences = try Prefs.isolated()
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
             services = BrowserServices.configured(
-                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage), copies: copies),
-                visits: Frecency(preferences: defaults),
+                transfers: TransferQueue(preferences: preferences, history: OperationLog(storage: storage, copies: copies), copies: copies),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared,
+                remote: testEnvironment.services.remote,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
+                clipboard: testEnvironment.services.clipboard,
                 mediaReader: reader)
         }
-        isolated deinit { defaults.removePersistentDomain(forName: domain) }
     }
 
     @Test func mediaColumnsRecognizeTheirOwnProvidersPlaceholders() async throws {
@@ -231,7 +237,7 @@ struct ProviderMediaInfoTests {
     @Test func cancelledReadsCannotEraseAReplacementForTheSameEntry() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
         for oldFirst in [false, true] {
-            let reads = Reads(held: true), loader = MediaInfoLoader(reader: { await reads.read($0) })
+            let reads = Reads(held: true), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
             var updates = 0
             loader.onUpdate = { _ in updates += 1 }
             loader.request(entry)
@@ -254,8 +260,8 @@ struct ProviderMediaInfoTests {
     @Test func releasingTheLoaderCancelsItsOutstandingReadWithoutRetainingIt() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
         let reads = Reads(held: true)
-        var loader: MediaInfoLoader? = MediaInfoLoader(reader: { await reads.read($0) })
-        weak var released = loader
+        var loader: MediaInfoLoader? = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
+        weak let released = loader
         var updates = 0
         loader?.onUpdate = { _ in updates += 1 }
         loader?.request(entry)
@@ -271,7 +277,7 @@ struct ProviderMediaInfoTests {
 
     @Test func cancellingBeforeAReadStartsPreventsInvokingTheReader() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         loader.request(entry)
         let work = try #require(loader.tasks[entry])
         loader.cancelPending()
@@ -283,7 +289,7 @@ struct ProviderMediaInfoTests {
 
     @Test func emptyMetadataResultsAreCachedWithoutRepeatedReads() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(result: MediaInfo()), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(result: MediaInfo()), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         loader.request(entry)
         await loader.tasks[entry]?.value
         loader.request(entry)
@@ -312,7 +318,7 @@ struct ProviderMediaInfoTests {
 
     @Test func completionMayInvalidateAndRequestTheSameEntryAgain() async throws {
         let tree = try TestTree("photo.jpg"), entry = try #require(FileEntry(url: tree.url("photo.jpg"))), before = tree.snapshot()
-        let reads = Reads(), loader = MediaInfoLoader(reader: { await reads.read($0) })
+        let reads = Reads(), loader = MediaInfoLoader(copies: .live, reader: { await reads.read($0) })
         var updates = 0
         var replacement: Task<Void, Never>?
         loader.onUpdate = { [weak loader] entry in

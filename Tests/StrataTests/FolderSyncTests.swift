@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Compare Folders and Sync: only a one-way sync with "Move extras to the Trash" ever trashes anything, only on the side
 /// being synced to, and only items the other side doesn't have; what couldn't be read is never touched.
@@ -13,6 +20,19 @@ struct FolderSyncTests {
     private func actions(_ result: FolderCompare.Result, _ direction: FolderCompare.Direction, mirror: Bool)
         -> [(FolderCompare.Difference, FolderCompare.Action)] {
         result.differences.map { ($0, FolderCompare.defaultAction(for: $0.kind, direction: direction, mirror: mirror)) }
+    }
+
+    /// A folder and one inside it are never compared for a sync, however a link spells them apart: it would copy a
+    /// folder into itself, or trash one side's own folder.
+    @Test func aFolderAndOneInsideItAreNeverComparedForASync() async throws {
+        let tree = try TestTree("left/", "left/inner/", "left/inner/a.txt", "link -> left")
+        for (a, b) in [("link", "left/inner"), ("left/inner", "link"), ("left", "link")] {
+            let result = await FolderCompare.compare(tree.url(a), tree.url(b), contents: false, includeHidden: false,
+                                                     control: FolderCompare.Control()) { _ in }
+            #expect(result.failure == String(localized: "A folder can’t be copied into itself"), "\(a), \(b)")
+            #expect(result.differences.isEmpty, "\(a), \(b)")
+        }
+        #expect(tree.snapshot() == ["left/", "left/inner/", "left/inner/a.txt", "link -> left"])
     }
 
     @Test func onlyAMirrorTrashesAndOnlyOnTheSideSyncedTo() {
@@ -97,7 +117,7 @@ struct FolderSyncTests {
         })
         let plan = FolderCompare.syncPlan(result.differences, actions: actions, left: tree.url("left"), right: tree.url("right"))
         // What Sync does: extras to the Trash first, then the copies, replacing what they meet.
-        try await FileOps.trashInBackground(plan.trashLeft + plan.trashRight, undo: nil)
+        try await FileOps.trashInBackground(plan.trashLeft + plan.trashRight, undo: nil, copies: .live, history: .shared)
         let job = TransferQueue.shared.enqueue(moves: plan.toRight, destination: tree.url("right"), mode: .copy,
                                                options: .init(verify: true, clone: false), undo: nil, conflicts: .replace)
         await job.finished()

@@ -1,4 +1,9 @@
 import AppKit
+@_exported import StrataAI
+@_exported import StrataDev
+@_exported import StrataFiles
+@_exported import StrataQueue
+@_exported import StrataSearch
 @_exported import StrataIndex
 @_exported import StrataModel
 @_exported import StrataPreviews
@@ -7,7 +12,9 @@ import AppKit
 
 SecureStorage.useApplicationStorage()
 Prefs.useApplicationPreferences()
+Sounds.useApplicationSounds()
 let app = NSApplication.shared
-let delegate = AppDelegate()
+CloudStore.shared.foldersShown = BrowserWindowController.foldersShown
+let delegate = AppDelegate(browserServices: .shared)
 app.delegate = delegate
 app.run()

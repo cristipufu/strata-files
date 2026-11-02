@@ -4,8 +4,19 @@ import ImageIO
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct MediaColumnsTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func image(_ url: URL, width: Int, height: Int, orientation: Int = 1) throws {
         let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
                                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
@@ -39,7 +50,7 @@ struct MediaColumnsTests {
         #expect(await MediaInfo.read(tree.url("broken.jpg"), contentType: .jpeg) == MediaInfo())
         #expect(await MediaInfo.read(tree.url("broken.mov"), contentType: .quickTimeMovie) == MediaInfo())
         #expect(await MediaInfo.read(tree.url("text.txt"), contentType: .plainText) == MediaInfo())
-        #expect(!MediaInfoLoader.canRead(try #require(FileEntry(url: tree.url("link.jpg")))))
+        #expect(!MediaInfoLoader.canRead(try #require(FileEntry(url: tree.url("link.jpg"))), copies: .live))
         #expect(MediaInfo(duration: .infinity).durationText == nil)
         #expect(MediaInfo(duration: -1).durationText == nil)
         #expect(MediaInfo(duration: 3661).durationText == "1:01:01")
@@ -57,7 +68,7 @@ struct MediaColumnsTests {
     }
 
     @Test func optionalColumnsRemainReachableInANarrowPane() throws {
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 450, height: 500)
         browser.setMode(.list, remember: false)
         for column in browser.outlineView.tableColumns where column.identifier.rawValue != "location" { column.isHidden = false }
@@ -76,7 +87,7 @@ struct MediaColumnsTests {
         let tree = try TestTree("other.txt")
         try image(tree.url("wide.jpg"), width: 25, height: 6)
         try image(tree.url("tall.jpg"), width: 9, height: 100)
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         browser.setMode(.list, remember: false)
         browser.load(tree.root)

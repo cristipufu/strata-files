@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Ask Strata: whatever the model or the rules propose, a plan only renames, moves or trashes the selected items, keeps
 /// them inside the window's folder unless you named another place, never replaces anything, and running it does only
@@ -24,7 +31,26 @@ struct PlanSafetyTests {
                                    .move(tree.url("b.txt"), into: "sub"), .trash(tree.url("a.txt"))],
                                   selecting: ["a.txt"], in: tree)
         #expect(described(plan.steps) == ["trash a.txt -"])
-        #expect(plan.excluded.count == 3)
+        // Each left out for what it is: about an item that isn't selected, never taken for one that is.
+        #expect(plan.excluded.map(\.problem) == Array(repeating: "Not part of the selection", count: 3))
+        #expect(plan.excluded.allSatisfy { $0.source?.lastPathComponent == "b.txt" })
+    }
+
+    @Test func aSelectedItemIsChangedByOneStepOnly() async throws {
+        let tree = try TestTree("a.txt", "ab.txt")
+        let plan = await validate([.rename(tree.url("a.txt"), to: "b.txt"), .trash(tree.url("a.txt")),
+                                   .move(tree.url("a.txt"), into: "elsewhere")], selecting: ["a.txt", "ab.txt"], in: tree)
+        #expect(described(plan.steps) == ["rename a.txt b.txt"])
+        #expect(plan.excluded.map(\.problem) == Array(repeating: "Already changed by another step", count: 2))
+        #expect(tree.snapshot() == ["a.txt", "ab.txt"])
+    }
+
+    @Test func aRenameKeepsTheItemsExtension() async throws {
+        let tree = try TestTree("photo.jpg", "notes")
+        let plan = await validate([.rename(tree.url("photo.jpg"), to: "Holiday"), .rename(tree.url("notes"), to: "Ideas")],
+                                  selecting: ["photo.jpg", "notes"], in: tree)
+        #expect(described(plan.steps) == ["rename notes Ideas", "rename photo.jpg Holiday.jpg"])
+        #expect(plan.steps.compactMap(\.note) == ["Kept the .jpg extension"])
     }
 
     @Test func movesStayInTheFolderUnlessYouNamedAnother() async throws {
@@ -84,6 +110,21 @@ struct PlanSafetyTests {
         #expect(described(twice.steps) == ["rename a.txt c.txt"])
     }
 
+    /// A plan's Trash step, redone, takes only the very item it expects: one put in its place since stays.
+    @Test func aRedoneTrashStepLeavesAnItemReplacedSince() async throws {
+        let tree = try TestTree("a.txt", "b.txt")
+        defer { tree.removeFromTrash() }
+        let expected = try #require(FileIdentity.read(tree.url("a.txt").path))
+        try FileManager.default.removeItem(at: tree.url("a.txt"))
+        try Data("replacement".utf8).write(to: tree.url("a.txt"))
+        guard case .gone = try await PlanTransaction.trash(tree.url("a.txt"), expecting: expected) else {
+            Issue.record("A replacement was trashed")
+            return
+        }
+        #expect(tree.text("a.txt") == "replacement")
+        #expect(tree.snapshot() == ["a.txt", "b.txt"])
+    }
+
     @Test func runningAPlanDoesOnlyItsCheckedSteps() async throws {
         let tree = try TestTree("a.txt", "b.txt", "c.txt", "d.txt", "keep.txt", "Old/", "Old/x.txt")
         defer { tree.removeFromTrash() }
@@ -97,7 +138,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo)
+        let outcome = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(outcome.failures.isEmpty)
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Old/", "Old/x.txt", "b.txt", "dee.txt", "keep.txt"])
@@ -114,7 +155,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Organize", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "Later/", "Later/e.txt"])
         // Something is saved into "Done" meanwhile; "Later" only gets Finder's records.
@@ -125,11 +166,25 @@ struct PlanSafetyTests {
         #expect(tree.snapshot() == ["Done/", "Done/mine.txt", "c.txt", "e.txt"])
     }
 
+    /// A plan whose Trash steps hold a whole disk (here reached through a link) is refused before any step runs: no
+    /// folder made, nothing moved or trashed. The disk is never handed to the Trash: each Trash step checks again.
+    @Test func aPlanHoldingADiskChangesNothing() async throws {
+        let tree = try TestTree("a.txt", "b.txt", "volumes -> /System/Volumes")
+        defer { tree.removeFromTrash() }
+        var plan = await validate([.trash(tree.url("a.txt")), .move(tree.url("b.txt"), into: "Done")],
+                                  selecting: ["a.txt", "b.txt"], in: tree)
+        try #require(plan.enabledSteps.count == 3)
+        plan.steps.append(PlanStep(id: 99, kind: .trash, source: tree.url("volumes/Data"), destination: nil))
+        let result = await PlanTransaction(plan: plan, copies: .live).perform()
+        #expect(result.applied == 0 && result.failures.count == 1)
+        #expect(tree.snapshot() == ["a.txt", "b.txt", "volumes -> /System/Volumes"])
+    }
+
     @Test func undoKeepsAReplacementAtACreatedFolderPath() async throws {
         for replacement in ["folder", "file", "link"] {
             let tree = try TestTree("c.txt", "keep.txt", "Done-other/", "outside/", "outside/.DS_Store")
             let plan = await validate([.move(tree.url("c.txt"), into: "Done")], selecting: ["c.txt"], in: tree)
-            let transaction = PlanTransaction(plan: plan)
+            let transaction = PlanTransaction(plan: plan, copies: .live)
             let result = await transaction.perform()
             try #require(result.applied == 1 && result.failures.isEmpty)
             try FileManager.default.moveItem(at: tree.url("Done"), to: tree.url("Saved"))
@@ -153,7 +208,7 @@ struct PlanSafetyTests {
             let tree = try TestTree("c.txt", "keep.txt")
             let plan = await validate([.move(tree.url("c.txt"), into: "Done/Nested")], selecting: ["c.txt"], in: tree)
             if missingSource { try FileManager.default.moveItem(at: tree.url("c.txt"), to: tree.url("Saved.txt")) }
-            let transaction = PlanTransaction(plan: plan)
+            let transaction = PlanTransaction(plan: plan, copies: .live)
             let result = await transaction.perform()
             #expect(result.applied == (missingSource ? 0 : 1))
             #expect(result.failures.count == (missingSource ? 1 : 0))
@@ -186,7 +241,7 @@ struct PlanSafetyTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         undo.beginUndoGrouping()
-        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo)
+        _ = await PlanExecutor.apply(plan, actionName: "AI Changes", undo: undo, copies: .live, history: .shared)
         undo.endUndoGrouping()
         #expect(tree.snapshot() == ["Done/", "Done/c.txt", "dee.txt", "keep.txt"])
         // "dee.txt" is swapped for another file: undo leaves it, and puts back the rest.

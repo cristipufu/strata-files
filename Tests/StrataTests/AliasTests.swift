@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct AliasTests {
     @Test func symlinkToAFolderOpensThatFolder() async throws {
@@ -14,7 +21,7 @@ struct AliasTests {
 
         #expect(FileEntry.openedFolder(link).resolvingSymlinksInPath() == folder.resolvingSymlinksInPath())
         #expect(FileEntry.openedFolder(folder).standardizedFileURL.path == folder.standardizedFileURL.path)
-        let names = try await DirectoryLoader.load(link, showHidden: true).map(\.name)
+        let names = try await DirectoryLoader.load(link, showHidden: true, copies: .live).entries.map(\.name)
         #expect(names == ["note.txt"])
     }
 

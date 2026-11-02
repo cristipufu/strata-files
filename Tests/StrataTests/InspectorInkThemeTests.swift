@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 extension ColorThemeTests {
     @Test func inspectorTextHasReadableContrastAndCachedGitCountsFollowThemeChanges() throws {
@@ -50,7 +57,10 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         let tree = try TestTree(".venv/")
-        let view = ProjectInspectorView(files: BrowserFileCommands(transfers: .shared))
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let view = ProjectInspectorView(files: FileCommands(transfers: .shared), git: GitStatusStore(),
+                                        clipboard: Clipboard(pasteboard: pasteboard, notifications: NotificationCenter()))
         var actions = 0
         view.onRunScript = { _ in actions += 1 }
         view.onClean = { _ in actions += 1 }
@@ -77,6 +87,7 @@ extension ColorThemeTests {
 private final class InspectorInkSample: NSView {
     let color: NSColor
     init(color: NSColor) { self.color = color; super.init(frame: NSRect(x: 0, y: 0, width: 8, height: 8)) }
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
         ThemeStyle.surface(.inspector).setFill()

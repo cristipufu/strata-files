@@ -11,12 +11,13 @@ nonisolated package struct ScannedItem: Sendable {
     package var isHidden: Bool
     package var isMountPoint: Bool
     package var size: Int64
+    package var allocatedSize: Int64?
     package var mtime: UInt32
     /// The file system's ID for the item, folded to 32 bits: tells a folder apart from another swapped into its name.
     package var fileKey: UInt32 = 0
 
     package init(nameOffset: Int, nameLength: Int, isDirectory: Bool, isPackage: Bool, isSymlink: Bool,
-                 isHidden: Bool, isMountPoint: Bool, size: Int64, mtime: UInt32, fileKey: UInt32 = 0) {
+                 isHidden: Bool, isMountPoint: Bool, size: Int64, mtime: UInt32, fileKey: UInt32 = 0, allocatedSize: Int64? = nil) {
         self.nameOffset = nameOffset
         self.nameLength = nameLength
         self.isDirectory = isDirectory
@@ -25,28 +26,32 @@ nonisolated package struct ScannedItem: Sendable {
         self.isHidden = isHidden
         self.isMountPoint = isMountPoint
         self.size = size
+        self.allocatedSize = allocatedSize
         self.mtime = mtime
         self.fileKey = fileKey
     }
 }
 
 /// Every file and folder under the indexed roots, stored column by column so millions of entries stay compact
-/// (about 35 bytes plus the name each) and fast to scan.
+/// (48 bytes plus the name each) and fast to scan.
 ///
 /// Children always get larger ids than their parent, which lets folder sizes be summed in one reverse pass.
 /// Deleted entries are flagged rather than removed; ids stay stable until the next full rebuild.
 /// Columns are private to a readers–writer lock. Read scopes borrow storage; write scopes alone may mutate it.
 nonisolated package final class IndexStore: @unchecked Sendable {
     package enum Flag {
-        package static let directory: UInt8 = 1 << 0
-        package static let package: UInt8 = 1 << 1
-        package static let symlink: UInt8 = 1 << 2
-        package static let hidden: UInt8 = 1 << 3
+        package static let directory: UInt16 = 1 << 0
+        package static let package: UInt16 = 1 << 1
+        package static let symlink: UInt16 = 1 << 2
+        package static let hidden: UInt16 = 1 << 3
         /// Inside build output, caches, VCS internals or ~/Library: indexed for sizes, kept out of search by default.
-        package static let noise: UInt8 = 1 << 4
-        package static let deleted: UInt8 = 1 << 5
+        package static let noise: UInt16 = 1 << 4
+        package static let deleted: UInt16 = 1 << 5
         /// The name has non-ASCII bytes, so search also compares it Unicode-aware (accents, NFC/NFD, non-Latin case).
-        package static let unicodeName: UInt8 = 1 << 6
+        package static let unicodeName: UInt16 = 1 << 6
+        /// The allocated column sums known values; this bit prevents publishing an incomplete total.
+        package static let unknownAllocation: UInt16 = 1 << 7
+        package static let unreadDirectory: UInt16 = 1 << 8
     }
 
     private var storage: Storage
@@ -73,6 +78,13 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         return try body(storage)
     }
 
+    /// UI reads keep their last value while a writer owns or is waiting for the index.
+    package func tryRead<T>(_ body: (borrowing Storage) throws -> T) rethrows -> T? {
+        guard pthread_rwlock_tryrdlock(lock) == 0 else { return nil }
+        defer { pthread_rwlock_unlock(lock) }
+        return try body(storage)
+    }
+
     package func write<T>(_ body: (inout Storage) throws -> T) rethrows -> T {
         pthread_rwlock_wrlock(lock)
         defer { pthread_rwlock_unlock(lock) }
@@ -95,12 +107,13 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package var nameLength = ContiguousArray<UInt16>()
         /// Files: logical size. Folders: total of everything inside (after `aggregate`).
         package var size = ContiguousArray<Int64>()
+        package var allocated = ContiguousArray<Int64>()
         /// Files: 1. Folders: number of files inside.
         package var fileCount = ContiguousArray<UInt32>()
         package var mtime = ContiguousArray<UInt32>()
         /// `ScannedItem.fileKey` (0 for roots and unknown).
         package var fileKey = ContiguousArray<UInt32>()
-        package var flags = ContiguousArray<UInt8>()
+        package var flags = ContiguousArray<UInt16>()
         package var names = ContiguousArray<UInt8>()
         /// Root entries and their absolute paths.
         package var roots: [(id: Int32, path: String)] = []
@@ -126,7 +139,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 return -1
             }
             let id = Int32(parent.count)
-            append(parent: -1, name: bytes[...], flags: Flag.directory, size: 0, files: 0, mtime: mtime)
+            append(parent: -1, name: bytes[...], flags: Flag.directory | Flag.unreadDirectory | Flag.unknownAllocation, size: 0, files: 0, mtime: mtime)
             roots.append((id, path))
             return id
         }
@@ -157,14 +170,16 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             if isOpaquePackage(parentID) { inherited |= Flag.noise }
             for (index, item) in items.enumerated() {
                 let name = UnsafeRawBufferPointer(rebasing: nameBuffer[item.nameOffset..<(item.nameOffset + item.nameLength)])
-                var f: UInt8 = inherited
-                if item.isDirectory { f |= Flag.directory }
+                var f: UInt16 = inherited
+                if item.isDirectory { f |= Flag.directory | Flag.unreadDirectory | Flag.unknownAllocation }
                 if item.isPackage { f |= Flag.package }
                 if item.isSymlink { f |= Flag.symlink }
                 if item.isHidden { f |= Flag.hidden }
                 if noise[index] { f |= Flag.noise }
+                if !item.isDirectory, item.allocatedSize == nil { f |= Flag.unknownAllocation }
                 appendRaw(parent: parentID, name: name, flags: f, size: item.isDirectory ? 0 : item.size,
-                          files: item.isDirectory ? 0 : 1, mtime: item.mtime, key: item.fileKey)
+                          files: item.isDirectory ? 0 : 1, mtime: item.mtime, key: item.fileKey,
+                          allocated: item.isDirectory ? 0 : max(0, item.allocatedSize ?? 0))
             }
             let last = Int32(parent.count)
             guard first < last else { return first..<last }
@@ -175,12 +190,12 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return first..<last
         }
 
-        private mutating func append(parent parentID: Int32, name: ArraySlice<UInt8>, flags f: UInt8, size bytes: Int64, files: UInt32, mtime time: UInt32) {
+        private mutating func append(parent parentID: Int32, name: ArraySlice<UInt8>, flags f: UInt16, size bytes: Int64, files: UInt32, mtime time: UInt32) {
             name.withUnsafeBytes { appendRaw(parent: parentID, name: $0, flags: f, size: bytes, files: files, mtime: time) }
         }
 
-        private mutating func appendRaw(parent parentID: Int32, name: UnsafeRawBufferPointer, flags f: UInt8, size bytes: Int64, files: UInt32,
-                                        mtime time: UInt32, key: UInt32 = 0) {
+        private mutating func appendRaw(parent parentID: Int32, name: UnsafeRawBufferPointer, flags f: UInt16, size bytes: Int64, files: UInt32,
+                                        mtime time: UInt32, key: UInt32 = 0, allocated diskBytes: Int64 = 0) {
             parent.append(parentID)
             firstChild.append(-1)
             nextSibling.append(-1)
@@ -188,6 +203,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             nameLength.append(UInt16(min(name.count, Int(UInt16.max))))
             names.append(contentsOf: name.prefix(Int(UInt16.max)))
             size.append(bytes)
+            allocated.append(diskBytes)
             fileCount.append(files)
             mtime.append(time)
             fileKey.append(key)
@@ -200,6 +216,8 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 let p = parent[i]
                 guard p >= 0, flags[i] & Flag.deleted == 0 else { continue }
                 size[Int(p)] = size[Int(p)].saturatingAdd(size[i])
+                allocated[Int(p)] = allocated[Int(p)].saturatingAdd(allocated[i])
+                flags[Int(p)] |= flags[i] & Flag.unknownAllocation
                 fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
             }
         }
@@ -212,9 +230,13 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 let p = parent[i]
                 if p >= first {
                     size[Int(p)] = size[Int(p)].saturatingAdd(size[i])
+                    allocated[Int(p)] = allocated[Int(p)].saturatingAdd(allocated[i])
+                    flags[Int(p)] |= flags[i] & Flag.unknownAllocation
                     fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
                 } else {
                     propagate(from: Int32(i), bytes: size[i], files: Int64(fileCount[i]))
+                    propagateAllocation(from: Int32(i), bytes: allocated[i])
+                    if flags[i] & Flag.unknownAllocation != 0 { refreshAllocationKnown(from: p) }
                 }
             }
         }
@@ -228,6 +250,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             nameStart.reserveCapacity(entries)
             nameLength.reserveCapacity(entries)
             size.reserveCapacity(entries)
+            allocated.reserveCapacity(entries)
             fileCount.reserveCapacity(entries)
             mtime.reserveCapacity(entries)
             fileKey.reserveCapacity(entries)
@@ -262,7 +285,9 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package mutating func remove(_ id: Int32) {
             guard flags[Int(id)] & Flag.deleted == 0 else { return }
             propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
+            propagateAllocation(from: id, bytes: -allocated[Int(id)])
             unlink(id)
+            if flags[Int(id)] & Flag.unknownAllocation != 0 { refreshAllocationKnown(from: parent[Int(id)]) }
             var stack: [Int32] = [id]
             while let current = stack.popLast() {
                 flags[Int(current)] |= Flag.deleted
@@ -300,6 +325,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 fresh.nameLength.append(nameLength[old])
                 fresh.names.append(contentsOf: names[start..<(start + Int(nameLength[old]))])
                 fresh.size.append(size[old])
+                fresh.allocated.append(allocated[old])
                 fresh.fileCount.append(fileCount[old])
                 fresh.mtime.append(mtime[old])
                 fresh.fileKey.append(fileKey[old])
@@ -329,6 +355,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             guard !gone.isEmpty else { return }
             for id in gone {
                 propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
+                propagateAllocation(from: id, bytes: -allocated[Int(id)])
                 var stack: [Int32] = [id]
                 while let current = stack.popLast() {
                     flags[Int(current)] |= Flag.deleted
@@ -351,6 +378,52 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             }
             if tail >= 0 { nextSibling[Int(tail)] = -1 }
             firstChild[Int(parentID)] = head
+            refreshAllocationKnown(from: parentID)
+        }
+
+        package func allocatedSize(_ id: Int32) -> Int64? {
+            flags[Int(id)] & Flag.unknownAllocation == 0 ? allocated[Int(id)] : nil
+        }
+
+        package mutating func finishedAllocationRead(of directory: Int32) -> Bool {
+            let wasUnknown = allocatedSize(directory) == nil
+            flags[Int(directory)] &= ~Flag.unreadDirectory
+            refreshAllocationKnown(from: directory)
+            return wasUnknown != (allocatedSize(directory) == nil)
+        }
+
+        package mutating func setAllocation(_ bytes: Int64?, of id: Int32) {
+            let i = Int(id)
+            let wasUnknown = flags[i] & Flag.unknownAllocation != 0
+            let next = max(0, bytes ?? 0)
+            propagateAllocation(from: id, bytes: next - allocated[i])
+            allocated[i] = next
+            if bytes == nil { flags[i] |= Flag.unknownAllocation }
+            else { flags[i] &= ~Flag.unknownAllocation }
+            if wasUnknown != (bytes == nil) { refreshAllocationKnown(from: parent[i]) }
+        }
+
+        private mutating func propagateAllocation(from id: Int32, bytes: Int64) {
+            guard bytes != 0 else { return }
+            var p = parent[Int(id)]
+            while p >= 0 {
+                allocated[Int(p)] = allocated[Int(p)].saturatingAdd(bytes)
+                p = parent[Int(p)]
+            }
+        }
+
+        private mutating func refreshAllocationKnown(from id: Int32) {
+            var current = id
+            while current >= 0 {
+                let i = Int(current)
+                let wasUnknown = flags[i] & Flag.unknownAllocation != 0
+                let unknown = flags[i] & Flag.unreadDirectory != 0
+                    || children(of: current).contains { flags[Int($0)] & Flag.unknownAllocation != 0 }
+                if unknown { flags[i] |= Flag.unknownAllocation }
+                else { flags[i] &= ~Flag.unknownAllocation }
+                if unknown == wasUnknown { return }
+                current = parent[i]
+            }
         }
 
         private mutating func unlink(_ id: Int32) {
@@ -465,7 +538,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             package let nameLength: UnsafeBufferPointer<UInt16>
             package let size: UnsafeBufferPointer<Int64>
             package let mtime: UnsafeBufferPointer<UInt32>
-            package let flags: UnsafeBufferPointer<UInt8>
+            package let flags: UnsafeBufferPointer<UInt16>
             package let names: UnsafeBufferPointer<UInt8>
 
             @inline(__always)

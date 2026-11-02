@@ -2,6 +2,13 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct ContainerTests {
     // MARK: HTTP over a Unix socket
@@ -44,7 +51,7 @@ struct ContainerTests {
         return (path, received.get)
     }
 
-    final class Received: @unchecked Sendable {
+    nonisolated final class Received: @unchecked Sendable {
         private let lock = NSLock()
         private var value = ""
         func set(_ text: String) { lock.lock(); value = text; lock.unlock() }
@@ -206,9 +213,10 @@ struct ContainerTests {
         return block
     }
 
-    static func tarFile(_ name: String, _ content: String) -> [UInt8] {
-        let bytes = Array(content.utf8)
-        return tarHeader(name, size: bytes.count) + bytes + [UInt8](repeating: 0, count: (512 - bytes.count % 512) % 512)
+    static func tarFile(_ name: String, _ content: String) -> [UInt8] { tarFile(name, Array(content.utf8)) }
+
+    static func tarFile(_ name: String, _ bytes: [UInt8]) -> [UInt8] {
+        tarHeader(name, size: bytes.count) + bytes + [UInt8](repeating: 0, count: (512 - bytes.count % 512) % 512)
     }
 
     @Test func tarStreamsAreReadInAnyPieces() throws {
@@ -344,10 +352,25 @@ struct ContainerTests {
         #expect(CopyWriter.fetchesEagerly(size: 10, mode: 0o644, bytes: 0, count: 0))
     }
 
+    @Test func aListedFolderTakesThePlaceOfALinkWithoutFollowingIt() throws {
+        let tree = try TestTree("copy/", "copy/apt -> ../outside", "outside/", "outside/keep.txt")
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let before = try FileManager.default.attributesOfItem(atPath: tree.url("outside").path)[.modificationDate] as? Date
+        let entries = [ListedEntry(name: "apt", kind: .directory, size: 0, mode: 0o755, modified: date, linkTarget: "")]
+        _ = try CopyWriter.apply(entries, contents: [:], to: tree.url("copy"), containerPath: "/etc")
+        #expect(tree.snapshot() == ["copy/", "copy/apt/", "outside/", "outside/keep.txt"])
+        // What the link led to is neither marked as downloaded nor given the container folder's date.
+        #expect(getxattr(tree.url("outside").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) < 0)
+        #expect(try FileManager.default.attributesOfItem(atPath: tree.url("outside").path)[.modificationDate] as? Date == before)
+        #expect(getxattr(tree.url("copy/apt").path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) > 0)
+    }
+
     @Test func theContainersFolderFollowsTheEngine() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-containers-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder.appending(path: "removed-one"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: Date(timeIntervalSince1970: 1_700_000_000),
@@ -356,13 +379,13 @@ struct ContainerTests {
         }
         let first = String(repeating: "a", count: 64), second = String(repeating: "b", count: 64)
         let gone = try CopyWriter.syncContainers([container("web", first), container("../escape", second), container(".hidden", second)],
-                                                 engine: engine, in: folder)
+                                                 engine: engine, in: folder, copies: copies)
         #expect(gone.map(\.lastPathComponent) == ["removed-one"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["removed-one", "web"])
         let date = try FileManager.default.attributesOfItem(atPath: folder.appending(path: "web").path)[.modificationDate] as? Date
         #expect(date == Date(timeIntervalSince1970: 1_700_000_000))
         // Made again under the same name: its folder starts over (the old one's files aren't this one's).
-        let again = try CopyWriter.syncContainers([container("web", second)], engine: engine, in: folder)
+        let again = try CopyWriter.syncContainers([container("web", second)], engine: engine, in: folder, copies: copies)
         #expect(again.map(\.lastPathComponent).sorted() == ["removed-one", "web"])
     }
 
@@ -370,6 +393,8 @@ struct ContainerTests {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
@@ -377,22 +402,48 @@ struct ContainerTests {
         }
         let web = String(repeating: "a", count: 64), db = String(repeating: "b", count: 64), redis = String(repeating: "c", count: 64)
         // Where an older layout left it: beside the stacks. Grouping moves it and keeps what was already fetched.
-        _ = try CopyWriter.syncContainers([container("web", web)], engine: engine, in: folder)
+        _ = try CopyWriter.syncContainers([container("web", web)], engine: engine, in: folder, copies: copies)
         try Data("notes".utf8).write(to: folder.appending(path: "web/readme.txt"))
         let gone = try CopyWriter.syncContainers(
             [container("web", web, project: "shop"), container("db", db, project: "shop"), container("redis", redis),
              container("odd", db, project: "../nope")],
-            engine: engine, in: folder)
+            engine: engine, in: folder, copies: copies)
         #expect(gone.isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["odd", "redis", "shop"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "web"])
         #expect(try String(contentsOf: folder.appending(path: "shop/web/readme.txt"), encoding: .utf8) == "notes")
     }
 
+    @Test func aContainerNamedLikeItsProjectMovesInWithItsFiles() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
+            ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
+                          compose: project.map { ComposeLabels(project: $0, service: name, workingDirectory: nil) })
+        }
+        let shop = String(repeating: "a", count: 64), db = String(repeating: "b", count: 64)
+        // Its folder is where its project's goes: it moves aside, then into the project's folder, keeping what was
+        // already fetched.
+        _ = try CopyWriter.syncContainers([container("shop", shop)], engine: engine, in: folder, copies: copies)
+        try Data("notes".utf8).write(to: folder.appending(path: "shop/readme.txt"))
+        let gone = try CopyWriter.syncContainers([container("shop", shop, project: "shop"), container("db", db, project: "shop")],
+                                                 engine: engine, in: folder, copies: copies)
+        #expect(gone.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["shop"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "shop"])
+        #expect(try String(contentsOf: folder.appending(path: "shop/shop/readme.txt"), encoding: .utf8) == "notes")
+    }
+
     @Test func aLeftoverFolderNamedLikeAProjectMakesWay() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String? = nil) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
@@ -400,13 +451,13 @@ struct ContainerTests {
         }
         let old = String(repeating: "a", count: 64), web = String(repeating: "b", count: 64), db = String(repeating: "c", count: 64)
         // A container called "shop", since removed, left its folder; now a project is called "shop".
-        _ = try CopyWriter.syncContainers([container("shop", old)], engine: engine, in: folder)
+        _ = try CopyWriter.syncContainers([container("shop", old)], engine: engine, in: folder, copies: copies)
         let list = [container("web", web, project: "shop"), container("db", db, project: "shop")]
-        let gone = try CopyWriter.syncContainers(list, engine: engine, in: folder)
+        let gone = try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies)
         #expect(gone.map(\.lastPathComponent) == ["shop"])
         // What discarding does; then the next pass makes the project's folder, its containers moved in.
         for url in gone { try FileManager.default.removeItem(at: url) }
-        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder).isEmpty)
+        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies).isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["shop"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.appending(path: "shop").path).sorted() == ["db", "web"])
     }
@@ -415,6 +466,8 @@ struct ContainerTests {
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: folder.deletingLastPathComponent())
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         func container(_ name: String, _ id: String, project: String) -> ContainerInfo {
             ContainerInfo(id: id, name: name, image: "nginx", state: .running, status: "Up", created: nil, mounts: [], ports: [],
@@ -422,9 +475,9 @@ struct ContainerTests {
         }
         let list = [container("api", String(repeating: "a", count: 64), project: "App"),
                     container("worker", String(repeating: "b", count: 64), project: "app")]
-        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder).isEmpty)
+        #expect(try CopyWriter.syncContainers(list, engine: engine, in: folder, copies: copies).isEmpty)
         let top = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
-        if CopyWriter.isCaseSensitive {
+        if tellsCaseApart(folder) {
             #expect(top == ["App", "app"])
         } else {
             // One folder on a disk that can't tell the names apart, with both projects' containers in it.
@@ -437,6 +490,8 @@ struct ContainerTests {
         let engineFolder = FileManager.default.temporaryDirectory.appending(path: "strata-stacks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: engineFolder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: engineFolder) }
+        // A store of its own, holding the folder as the app's holds each engine's.
+        let copies = ContainerCopyStore(root: engineFolder.deletingLastPathComponent())
         let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
         // A container on its own called "db", and a project called "db" too: the project's containers stay beside it,
         // never inside its files.
@@ -445,22 +500,20 @@ struct ContainerTests {
         let member = ContainerInfo(id: String(repeating: "b", count: 64), name: "db-web-1", image: "nginx", state: .running,
                                    status: "Up", created: nil, mounts: [], ports: [],
                                    compose: ComposeLabels(project: "db", service: "web", workingDirectory: nil))
-        _ = try CopyWriter.syncContainers([own, member], engine: engine, in: engineFolder)
-        #expect(try ContainerCopies.stackFolder(for: member, in: engineFolder).standardizedFileURL == engineFolder.standardizedFileURL)
+        _ = try CopyWriter.syncContainers([own, member], engine: engine, in: engineFolder, copies: copies)
+        #expect(try copies.stackFolder(for: member, in: engineFolder).standardizedFileURL == engineFolder.standardizedFileURL)
         #expect(!FileManager.default.fileExists(atPath: engineFolder.appending(path: "db/db-web-1").path))
     }
 
-    @Test func aProjectFolderMustBeAFolder() throws {
+    @Test func aProjectFolderMustBeAFolder() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "strata-project-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let script = root.appending(path: "run.command")
         try Data("#!/bin/sh\n".utf8).write(to: script)
         // Labels on a container (an image can set them) name the folder; Terminal would run a script it's handed.
-        #expect(StackProjects.existing(root) == root)
-        #expect(StackProjects.existing(script) == nil)
-        #expect(StackProjects.existing(root.appending(path: "Tool.app")) == nil)
-        #expect(StackProjects.existing(root.appending(path: "missing")) == nil)
+        let asked = [root, script, root.appending(path: "Tool.app"), root.appending(path: "missing")]
+        #expect(await StackProjects.existing(asked) == [root])
     }
 
     @Test func containerIconsFollowRunning() {
@@ -563,10 +616,10 @@ struct ContainerTests {
     }
 
     @Test func namesTheDiskCantTellApartKeepTheFirst() throws {
-        guard !CopyWriter.isCaseSensitive else { return }
         let folder = FileManager.default.temporaryDirectory.appending(path: "strata-case-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        guard !tellsCaseApart(folder) else { return }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let entries = [
             ListedEntry(name: "README", kind: .file, size: 5, mode: 0o644, modified: date, linkTarget: ""),
@@ -578,6 +631,39 @@ struct ContainerTests {
         // Listed again, the same way: nothing is removed.
         _ = try CopyWriter.apply(entries, contents: [:], to: folder, containerPath: "/")
         #expect(try String(contentsOf: folder.appending(path: "README"), encoding: .utf8) == "upper")
+    }
+
+    @Test func aCopyOnADiskThatTellsCaseApartKeepsBothNames() async throws {
+        // Names fold by the disk a copy is on, not by the disk of the app's own copies.
+        let volume = try await ScratchVolume.make(fileSystem: "Case-sensitive APFS")
+        let folder = volume.url("copy-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        #expect(tellsCaseApart(folder))
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let entries = [
+            ListedEntry(name: "README", kind: .file, size: 5, mode: 0o644, modified: date, linkTarget: ""),
+            ListedEntry(name: "readme", kind: .file, size: 7, mode: 0o644, modified: date, linkTarget: ""),
+        ]
+        _ = try CopyWriter.apply(entries, contents: ["README": Data("upper".utf8), "readme": Data("lowerrr".utf8)], to: folder, containerPath: "/")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["README", "readme"])
+        // Listed again with one gone: only that one goes.
+        _ = try CopyWriter.apply([entries[0]], contents: [:], to: folder, containerPath: "/")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["README"])
+        #expect(try String(contentsOf: folder.appending(path: "README"), encoding: .utf8) == "upper")
+        // Projects whose names differ only in case get a folder each there.
+        let engine = ContainerEngine(socket: "/tmp/strata-test.sock", name: "Docker", apiVersion: "1.41")
+        let engineFolder = volume.url("engine-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: engineFolder, withIntermediateDirectories: false)
+        let copies = ContainerCopyStore(root: volume.root)
+        let list = [ContainerInfo(id: String(repeating: "a", count: 64), name: "api", image: "nginx", state: .running, status: "Up",
+                                  created: nil, mounts: [], ports: [], compose: ComposeLabels(project: "App", service: "api", workingDirectory: nil)),
+                    ContainerInfo(id: String(repeating: "b", count: 64), name: "worker", image: "nginx", state: .running, status: "Up",
+                                  created: nil, mounts: [], ports: [], compose: ComposeLabels(project: "app", service: "worker", workingDirectory: nil))]
+        #expect(try CopyWriter.syncContainers(list, engine: engine, in: engineFolder, copies: copies).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: engineFolder.path).sorted() == ["App", "app"])
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.removeItem(at: engineFolder)
+        await volume.eject()
     }
 }
 

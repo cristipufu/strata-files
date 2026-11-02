@@ -2,10 +2,31 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import StrataModel
+import StrataSupport
 
 nonisolated package struct HTMLPreviewResource: Sendable {
     package let data: Data
     package let mime: String
+
+    /// A picture for a preview's WebKit page, no larger than 2048 pixels a side, within what's left of its document's
+    /// `pixels` and `bytes`: a photo stays a JPEG, anything else becomes a PNG. One refused from its header costs
+    /// nothing; one decoded costs its pixels whether it fits the bytes left or not, since decoding is the work they
+    /// bound.
+    package static func picture(_ data: Data, pixels: inout Int, bytes: inout Int) throws -> HTMLPreviewResource {
+        let picture = try PreviewPicture(data)
+        guard picture.width <= pixels / picture.height else { throw PreviewError.unsupported }
+        pixels -= picture.width * picture.height
+        let image = try picture.thumbnail(pixels: 2048)
+        let type = picture.isJPEG ? UTType.jpeg : .png
+        let output = NSMutableData()
+        guard let writer = CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil) else {
+            throw PreviewError.unsupported
+        }
+        CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        guard CGImageDestinationFinalize(writer), output.length <= bytes else { throw PreviewError.unsupported }
+        bytes -= output.length
+        return HTMLPreviewResource(data: output as Data, mime: type.preferredMIMEType ?? "image/png")
+    }
 }
 
 /// The document and its already-local assets. No provider fetches or file URL loads are handed to WebKit.
@@ -13,6 +34,9 @@ package actor HTMLPreviewDocument {
     package static let scheme = "strata-html"
     package static let assetLimit = 8 << 20
     package static let requestLimit = 32
+    /// What every page Strata hands WebKit starts with: its policy, in the document too, and no DNS prefetching.
+    package static let head = "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" "
+        + "content=\"\(policy)\"><meta http-equiv=\"x-dns-prefetch-control\" content=\"off\">"
     package static let policy = "default-src 'none'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; media-src 'none'; font-src 'none'; worker-src 'none'; manifest-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'"
     nonisolated package let url: URL
     nonisolated package let sourceURL: URL
@@ -58,6 +82,7 @@ package actor HTMLPreviewDocument {
             guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, FileIdentity.from(info) == chosen.identity,
                   info.st_size >= 0, info.st_size <= TextFile.limit else { throw PreviewError.unsupported }
             let bytes = try Self.bytes(fd, limit: TextFile.limit)
+            try Task.checkCancellation()
             guard let text = TextFile.decode(bytes), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw PreviewError.unsupported
             }
@@ -65,7 +90,7 @@ package actor HTMLPreviewDocument {
             guard fstat(fd, &after) == 0, Stamp(info) == Stamp(after) else { throw POSIXError(.ESTALE) }
             let directory = openat(parent, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard directory >= 0 else { throw POSIXError(.EACCES) }
-            let prefix = "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"\(Self.policy)\"><meta http-equiv=\"x-dns-prefetch-control\" content=\"off\">"
+            let prefix = Self.head
             return (directory, Stamp(after), Data((prefix + HTMLPreviewMarkup.prepare(text)).utf8))
         }
         folder = opened.0; stamp = opened.1; document = opened.2
@@ -101,6 +126,10 @@ package actor HTMLPreviewDocument {
 
     package func verify() throws {
         try Task.checkCancellation()
+        try unchanged()
+    }
+
+    private func unchanged() throws {
         try chosen.withParent { _, _, current in
             guard Stamp(current) == stamp else { throw POSIXError(.ESTALE) }
         }
@@ -113,13 +142,15 @@ package actor HTMLPreviewDocument {
         let key = parts.joined(separator: "/")
         let raw = Data(key.utf8)
         if let cached = cache[raw] { return cached }
+        // Once counted, an attempt runs to its end: the next WebKit lifetime reads through this document too, and would
+        // refuse one stopped partway.
         guard attempts.count < Self.requestLimit, attempts.insert(raw).inserted else { throw PreviewError.unsupported }
         let ext = (key as NSString).pathExtension.lowercased()
         let css = ext == "css"
         guard css || ["png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "avif", "tif", "tiff", "ico", "bmp"].contains(ext) else {
             throw PreviewError.unsupported
         }
-        var parent = dup(folder)
+        var parent = fcntl(folder, F_DUPFD_CLOEXEC, 0)
         guard parent >= 0 else { throw POSIXError(.EIO) }
         defer { close(parent) }
         for part in parts.dropLast() {
@@ -145,26 +176,11 @@ package actor HTMLPreviewDocument {
             remainingBytes -= max(0, data.count - bytes.count)
             resource = HTMLPreviewResource(data: data, mime: "text/css; charset=utf-8")
         } else {
-            guard let image = CGImageSourceCreateWithData(bytes as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-                  CGImageSourceGetCount(image) > 0, CGImageSourceGetCount(image) <= 32,
-                  let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
-                  let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
-                  width > 0, height > 0, width <= min(8_000_000, remainingPixels) / height else { throw PreviewError.unsupported }
-            remainingPixels -= width * height
-            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(image, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true, kCGImageSourceThumbnailMaxPixelSize: 2048,
-            ] as CFDictionary) else { throw PreviewError.unsupported }
-            let output = NSMutableData()
-            guard let writer = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else { throw PreviewError.unsupported }
-            CGImageDestinationAddImage(writer, thumbnail, nil)
-            guard CGImageDestinationFinalize(writer), output.length <= remainingBytes else { throw PreviewError.unsupported }
-            remainingBytes -= output.length
-            resource = HTMLPreviewResource(data: output as Data, mime: "image/png")
+            resource = try HTMLPreviewResource.picture(bytes, pixels: &remainingPixels, bytes: &remainingBytes)
         }
         var after = stat()
         guard fstat(fd, &after) == 0, Stamp(info) == Stamp(after) else { throw POSIXError(.ESTALE) }
-        try verify()
+        try unchanged()
         cache[raw] = resource
         return resource
     }
@@ -190,7 +206,6 @@ package actor HTMLPreviewDocument {
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
         let data = try handle.read(upToCount: limit + 1) ?? Data()
         guard data.count <= limit else { throw PreviewError.unsupported }
-        try Task.checkCancellation()
         return data
     }
 }
@@ -198,6 +213,22 @@ package actor HTMLPreviewDocument {
 /// WebKit still parses the document. Remove network hints and competing base/refresh metadata before it does so.
 /// Scanning every tag-like sequence also removes hints hidden in malformed comments, without guessing HTML's repair rules.
 nonisolated package enum HTMLPreviewMarkup {
+    /// Text as HTML shows it, in an element or a quoted attribute.
+    package static func escaped(_ text: String) -> String {
+        var escaped = ""
+        for character in text.unicodeScalars {
+            switch character {
+            case "&": escaped += "&amp;"
+            case "<": escaped += "&lt;"
+            case ">": escaped += "&gt;"
+            case "\"": escaped += "&quot;"
+            case "'": escaped += "&#39;"
+            default: escaped.unicodeScalars.append(character)
+            }
+        }
+        return escaped
+    }
+
     package static func prepare(_ html: String) -> String {
         let bytes = Array(html.utf8)
         var output: [UInt8] = [], i = 0
@@ -220,12 +251,9 @@ nonisolated package enum HTMLPreviewMarkup {
             }
             guard end < bytes.count else { break }
             if name == "link", let sheet = stylesheet(Array(bytes[nameEnd..<end])) {
-                func escape(_ text: String) -> String {
-                    text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;")
-                        .replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
-                }
-                let media = sheet.media.map { " media=\"\(escape($0))\"" } ?? ""
-                output.append(contentsOf: "<link rel=\"stylesheet\" href=\"\(escape(sheet.href))\"\(media)>".utf8)
+                let media = sheet.media.map { " media=\"\(escaped($0))\"" } ?? ""
+                let href = escaped(sheet.href)
+                output.append(contentsOf: "<link rel=\"stylesheet\" href=\"\(href)\"\(media)>".utf8)
             }
             i = max(start + 1, end + 1)
         }

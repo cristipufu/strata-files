@@ -10,17 +10,17 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     private let gitBadge = GitStatusBadge()
     private let tagDots = TagDotsView()
     private let cloudBadge = CloudBadge()
-    private var typography = FileViewTypography()
+    private var typography = FileViewTypography.standard
     private var name = ""
     private var matches: [Int] = []
     private var dimmed = false
-    private var thumbnails: FileThumbnails = .shared
+    private var thumbnails: FileThumbnails?
     private var thumbnailTicket: FileThumbnails.Ticket?
     /// The file whose thumbnail the cell wants, and the one whose thumbnail it shows.
     private var thumbnailEntry: FileEntry?
     private var thumbnailURL: URL?
 
-    isolated deinit { thumbnails.cancel(thumbnailTicket) }
+    isolated deinit { thumbnails?.cancel(thumbnailTicket) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -59,13 +59,14 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// `thumbnail` is the file to show a Quick Look thumbnail of in place of `image`, when Quick Look has one.
     func configure(name: String, icon image: NSImage, matches: [Int], dimmed: Bool, git: GitBadge? = nil,
                    tags: [FinderTag] = [], cloud: CloudStatus? = nil, thumbnail entry: FileEntry? = nil,
-                   thumbnails: FileThumbnails = .shared, scale: CGFloat = 2,
-                   typography: FileViewTypography = FileViewTypography()) {
+                   thumbnails: FileThumbnails, scale: CGFloat = 2,
+                   typography: FileViewTypography) {
         self.typography = typography
         self.name = name
         self.matches = matches
@@ -83,7 +84,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
     /// Quick Look makes it. A file that changed keeps its old thumbnail until the new one is ready, so rows refreshed
     /// while a file is written don't flash back to the icon.
     private func show(_ image: NSImage, thumbnailOf entry: FileEntry?, scale: CGFloat, thumbnails: FileThumbnails) {
-        self.thumbnails.cancel(thumbnailTicket)
+        self.thumbnails?.cancel(thumbnailTicket)
         self.thumbnails = thumbnails
         thumbnailTicket = nil
         thumbnailEntry = entry
@@ -109,6 +110,10 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
             self.icon.image = thumbnail
             self.thumbnailURL = entry.url
         }
+    }
+
+    func updateIcon(_ image: NSImage) {
+        if thumbnailURL == nil, icon.image !== image { icon.image = image }
     }
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -175,6 +180,7 @@ final class TextCellView: NSTableCellView, ColorThemeUpdating {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ text: String, alignment: NSTextAlignment, dimmed: Bool = false) {
@@ -215,6 +221,7 @@ final class GroupHeaderCellView: NSTableCellView {
         detail.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         detail.textColor = .secondaryLabelColor
         detail.setContentCompressionResistancePriority(.required, for: .horizontal)
+        imageView = icon
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -228,6 +235,7 @@ final class GroupHeaderCellView: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(title text: String, detail info: String, icon image: NSImage) {

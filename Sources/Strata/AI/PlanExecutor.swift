@@ -5,27 +5,27 @@ import AppKit
 /// Renames and moves go through `FileOps.move` one pair at a time (so a failure part-way still knows exactly what happened).
 /// New folders and Trash are coordinated here so per-item failures and the plan's ordering stay part of one action.
 /// Undo restores Trash items, reverses moves and removes only the plan's own empty folders; redo applies it again.
-enum PlanExecutor {
-    struct Outcome {
-        var applied = 0
-        var failures: [String] = []
+package enum PlanExecutor {
+    package struct Outcome {
+        package var applied = 0
+        package var failures: [String] = []
         /// Where the changed items are now (for selecting them afterwards).
-        var results: [URL] = []
+        package var results: [URL] = []
     }
 
     /// `actionName` is the English name History records (and translates when it shows it); the Edit menu shows
     /// `undoName` when given ("Rename 3 Items"), else that translation.
-    static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
-                      copies: CopyProviders = .live, history: OperationLog = .shared) async -> Outcome {
+    package static func apply(_ plan: Plan, actionName: String, undoName: String? = nil, undo: UndoManager?,
+                      copies: CopyProviders, history: OperationLog) async -> Outcome {
         // Nothing inside an archive opened as a folder changes (a temporary copy).
         let touched = plan.steps.flatMap { [$0.source, $0.destination].compactMap { $0 } }
         guard !touched.contains(where: { ReadOnlyCopies.contains($0, copies: copies) }) else {
             return Outcome(failures: [FileOps.insideArchiveError.localizedDescription])
         }
-        let transaction = PlanTransaction(plan: plan)
+        let transaction = PlanTransaction(plan: plan, copies: copies)
         let outcome = await transaction.perform()
         // One History entry for the whole plan, named like its undo action.
-        let entry = transaction.hasChanges ? transaction.record(actionName, history: history) : nil
+        let entry = transaction.hasChanges ? await transaction.record(actionName, history: history) : nil
         if let undo, transaction.hasChanges {
             transaction.registerUndo(undo, actionName: undoName ?? OperationLog.displayName(actionName))
             if let entry { FileOps.registerLogMark(entry, undone: true, undo, history: history) }
@@ -35,7 +35,7 @@ enum PlanExecutor {
 
     /// "AI Rename", "AI Move", "AI Organize", "AI Trash". English identifiers: History saves them and picks icons by
     /// them; `OperationLog.displayName` translates them for display.
-    static func actionName(for plan: Plan) -> String {
+    package static func actionName(for plan: Plan) -> String {
         let kinds = Set(plan.enabledSteps.map(\.kind)).subtracting([.createFolder])
         if kinds == [.rename] { return "AI Rename" }
         if kinds == [.trash] { return "AI Move to Trash" }
@@ -44,11 +44,13 @@ enum PlanExecutor {
     }
 }
 
-final class PlanTransaction {
-    typealias Pair = (from: URL, to: URL)
+package final class PlanTransaction {
+    package typealias Pair = (from: URL, to: URL)
 
+    /// The new folders the plan asks for; each run makes only those its moves need.
     private let folders: [URL]
     private let moves: [Pair]
+    private let copies: CopyProviders
     private let trashItems: [URL]
     private var created: [URL] = []
     private var done: [Pair] = []
@@ -61,34 +63,46 @@ final class PlanTransaction {
     private var restored: LandedFiles?
     private var queue: Task<Void, Never>?
 
-    init(plan: Plan) {
+    package init(plan: Plan, copies: CopyProviders) {
+        self.copies = copies
         let enabled = plan.enabledSteps
         let moves = enabled.compactMap { step -> Pair? in
             guard step.kind == .rename || step.kind == .move, let from = step.source, let to = step.destination else { return nil }
             return (from, to)
         }
-        folders = Self.needed(enabled.filter { $0.kind == .createFolder }.compactMap(\.destination), by: moves)
+        folders = enabled.filter { $0.kind == .createFolder }.compactMap(\.destination)
         self.moves = moves
         trashItems = enabled.filter { $0.kind == .trash }.compactMap(\.source)
     }
 
-    /// Of `folders`, only those `moves` need (outermost first, as given).
-    private static func needed(_ folders: [URL], by moves: [Pair]) -> [URL] {
+    /// Of `folders`, only those `moves` need (outermost first, as given): read away from the main thread, since how a
+    /// disk compares names decides it.
+    @concurrent private static func needed(_ folders: [URL], by moves: [Pair]) async -> [URL] {
         let needed = Set(moves.map { PlanValidator.key($0.to.deletingLastPathComponent()) })
         return folders.filter { folder in
             needed.contains { $0 == PlanValidator.key(folder) || $0.hasPrefix(PlanValidator.key(folder) + "/") }
         }
     }
 
-    var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
+    package var hasChanges: Bool { !created.isEmpty || !done.isEmpty || !trashed.isEmpty }
 
-    func record(_ name: String, history: OperationLog = .shared) -> UUID? {
+    package func record(_ name: String, history: OperationLog) async -> UUID? {
         // In the order `perform` did them (Trash first), so undoing from History reverses them correctly.
-        history.recordPlan(name, moved: (trashed + done).map { (from: $0.from, to: $0.to) }, containers: created,
-                           containerIdentities: createdFolders.historyIdentities, landed: applied)
+        let moved = (trashed + done).map { (from: $0.from, to: $0.to) }
+        let keys = await applied.historyKeys(for: moved.map(\.to))
+        return history.recordPlan(name, moved: moved, containers: created,
+                                  containerIdentities: createdFolders.historyIdentities, fileIdentities: keys)
     }
 
-    func perform() async -> PlanExecutor.Outcome {
+    /// The first of `urls` that's a whole disk, asked of each away from the main thread.
+    package static func firstDisk(in urls: [URL]) async -> URL? {
+        await OwnThread.run { urls.first(where: FileOps.isWholeDisk) }
+    }
+
+    /// A folder the plan makes is there already when anything is at its path, a link's target included.
+    nonisolated private static func isThere(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    package func perform() async -> PlanExecutor.Outcome {
         var outcome = PlanExecutor.Outcome()
         created = []
         done = []
@@ -96,115 +110,191 @@ final class PlanTransaction {
         applied = LandedFiles()
         createdFolders = CreatedFolders()
         // Redone: only what undo put back, still there.
-        let moves = restored.map { restored in self.moves.filter { restored.holds($0.from) } } ?? self.moves
-        let trashItems = restored.map { restored in self.trashItems.filter(restored.holds) } ?? self.trashItems
-        let folders = restored == nil ? self.folders : Self.needed(self.folders, by: moves)
-        let fm = FileManager.default
-        for folder in folders where !fm.fileExists(atPath: folder.path) {
-            do {
-                try fm.createDirectory(at: folder, withIntermediateDirectories: false)
-                created.append(folder)
-                createdFolders.record([folder])
-            } catch {
-                outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
-            }
+        let moves = await Self.stillPutBack(self.moves, by: restored)
+        let trashItems = restored.map { restored in self.trashItems.filter { restored.identity(at: $0) != nil } }
+            ?? self.trashItems
+        let folders = await Self.needed(self.folders, by: moves)
+        // A whole disk among what goes to the Trash refuses the plan up front, before any step changes anything.
+        if let disk = await Self.firstDisk(in: trashItems) {
+            outcome.failures.append(String(localized: "“\(disk.lastPathComponent)” couldn’t be moved to the Trash: \(FileOps.HoldsADisk().localizedDescription)"))
+            return outcome
         }
+        await makeFolders(folders, into: &outcome)
         // Trash first: a plan may rename something into a name it frees ("trash X, rename Y to X").
+        await trashAll(trashItems, into: &outcome)
+        // Redone, the Trash steps above waited: what undo put back is checked again before it moves.
+        let movable = await Self.stillPutBack(moves, by: restored)
+        var displacedCount = 0
+        if FileOps.isChain(movable.map { (from: $0.from, to: $0.to) }) {
+            await moveTogether(movable, into: &outcome)
+        } else {
+            displacedCount = await moveEach(movable, into: &outcome)
+        }
+        outcome.applied = done.count - displacedCount + trashed.count
+        return outcome
+    }
+
+    private func makeFolders(_ folders: [URL], into outcome: inout PlanExecutor.Outcome) async {
+        let (made, failures) = await CreatedFolders.make(folders, intermediates: false, stopAtFailure: false, isThere: Self.isThere)
+        created = made.map(\.url)
+        createdFolders.record(made)
+        for (folder, error) in failures {
+            outcome.failures.append(String(localized: "Couldn’t create “\(folder.lastPathComponent)”: \(error.localizedDescription)"))
+        }
+    }
+
+    private func trashAll(_ trashItems: [URL], into outcome: inout PlanExecutor.Outcome) async {
         for url in trashItems {
-            // Already in a Trash: trashing it again would lose where it came from.
-            if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) {
-                outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
-                continue
-            }
             do {
-                var result: NSURL?
-                try fm.trashItem(at: url, resultingItemURL: &result)
-                if let result {
-                    trashed.append((url, result as URL))
-                    applied.record([result as URL])
+                // Redone: only the very item undo put back, checked as it goes.
+                switch try await Self.trash(url, expecting: restored?.identity(at: url)) {
+                case .alreadyInTrash:
+                    outcome.failures.append(String(localized: "“\(url.lastPathComponent)” is already in the Trash."))
+                case let .trashed(result, identity):
+                    trashed.append((url, result))
+                    applied.set(identity, at: result)
+                case .gone:
+                    break
                 }
             } catch {
                 outcome.failures.append(String(localized: "“\(url.lastPathComponent)” couldn’t be moved to the Trash: \(error.localizedDescription)"))
             }
         }
-        if FileOps.isChain(moves.map { (from: $0.from, to: $0.to) }) {
-            // Swaps and chains move together, through temporary names.
-            for pair in moves { applied.expect(pair.from, at: pair.to) }
-            let (moved, error) = await FileOps.moveAll(moves.map { (from: $0.from, to: $0.to) })
-            let arrivedPaths = Set(moved.map(\.to.path))
-            for pair in moves where !arrivedPaths.contains(pair.to.path) { applied.set(nil, at: pair.to) }
-            for pair in moved where applied.identity(at: pair.to) == nil { applied.record([pair.to]) }
-            moved.forEach { applied.arrived($0.to) }
-            done = moved.map { ($0.from, $0.to) }
-            outcome.results += moved.map(\.to)
-            if let error { outcome.failures.append(error.localizedDescription) }
-        } else {
-            for pair in moves {
-                do {
-                    applied.expect(pair.from, at: pair.to)
-                    try await Self.move(pair)
-                    applied.arrived(pair.to)
-                    done.append(pair)
-                    outcome.results.append(pair.to)
-                } catch {
-                    applied.set(nil, at: pair.to)
-                    outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
-                                                   comment: "An item’s name, then why it couldn’t be renamed or moved"))
-                }
-            }
-        }
-        outcome.applied = done.count + trashed.count
-        return outcome
     }
 
-    func revert() async {
+    /// Swaps and chains move together, through temporary names, so they're checked before they start.
+    private func moveTogether(_ movable: [Pair], into outcome: inout PlanExecutor.Outcome) async {
+        let (moved, error, identities) = await FileOps.moveAll(movable.map { (from: $0.from, to: $0.to) })
+        for pair in movable { applied.set(identities[pair.to.path], at: pair.to) }
+        done = moved.map { ($0.from, $0.to) }
+        outcome.results += moved.map(\.to)
+        if let error { outcome.failures.append(error.localizedDescription) }
+    }
+
+    /// Each one waits for the one before, and is checked again as it goes. How many moved, just not where they were
+    /// meant to.
+    private func moveEach(_ movable: [Pair], into outcome: inout PlanExecutor.Outcome) async -> Int {
+        var displacedCount = 0
+        for pair in movable {
+            if let restored, await restored.holding([pair.from]).isEmpty { continue }
+            do {
+                applied.set(try await Self.move(pair, copies: copies), at: pair.to)
+                done.append(pair)
+                outcome.results.append(pair.to)
+            } catch {
+                applied.set(nil, at: pair.to)
+                if let displaced = error as? Displaced {
+                    // It moved, just not where it was meant to: recorded there (a rename keeps what it is), so
+                    // History and Undo follow it. It isn't counted as applied.
+                    applied.set(displaced.identity, at: displaced.now)
+                    done.append((pair.from, displaced.now))
+                    displacedCount += 1
+                    outcome.results.append(displaced.now)
+                }
+                outcome.failures.append(String(localized: "“\(pair.from.lastPathComponent)”: \(error.localizedDescription)",
+                                               comment: "An item’s name, then why it couldn’t be renamed or moved"))
+            }
+        }
+        return displacedCount
+    }
+
+    package func revert() async {
         // The reverse of `perform`: moves back first (freeing names), then the Trash. Only items still where it put
         // them; what's back is recorded as it lands, for redo.
         let restored = LandedFiles()
         self.restored = restored
         func moveBack(_ pairs: [Pair]) async {
-            for pair in pairs { restored.expect(pair.from, at: pair.to) }
-            let moved: [Pair]
             if FileOps.isChain(pairs) {
-                moved = await FileOps.moveAll(pairs).done.map { ($0.from, $0.to) }
-            } else {
-                var done: [Pair] = []
-                for pair in pairs where (try? await Self.move(pair)) != nil { done.append(pair) }
-                moved = done
+                let (moved, _, identities) = await FileOps.moveAll(pairs)
+                for pair in moved { restored.set(identities[pair.to.path], at: pair.to) }
+                return
             }
-            let arrived = Set(moved.map(\.to.path))
+            // One that can't go back by its old name comes back beside it (`Displaced`), never hidden; redo then has
+            // nothing of its own there to move.
             for pair in pairs {
-                if arrived.contains(pair.to.path) { restored.arrived(pair.to) } else { restored.set(nil, at: pair.to) }
+                do { restored.set(try await Self.move(pair, copies: copies), at: pair.to) } catch {}
             }
         }
-        await moveBack(done.filter { applied.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) })
-        await moveBack(trashed.reversed().filter { applied.holds($0.to) }.map { (from: $0.to, to: $0.from) })
+        func held(_ pairs: [Pair]) async -> [Pair] {
+            let held = Set(await applied.holding(pairs.map(\.to)).map(\.path))
+            return pairs.filter { held.contains($0.to.path) }
+        }
+        await moveBack(await held(done).reversed().map { (from: $0.to, to: $0.from) })
+        await moveBack(await held(trashed.reversed()).map { (from: $0.to, to: $0.from) })
         // A name alone does not belong to the plan: the user may have replaced its folder while it was applied.
-        createdFolders.removeEmpty()
+        await createdFolders.removeEmpty()
     }
 
-    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes.
-    private static func move(_ pair: Pair) async throws {
+    package nonisolated enum Trashed: Sendable {
+        case alreadyInTrash
+        /// Where it went, and what it is there, read as it landed.
+        case trashed(URL, FileIdentity?)
+        case gone
+    }
+
+    /// One item to the Trash, away from the main thread, and only if it's still `expecting` when given. One already in
+    /// a Trash isn't: trashing it again would lose where it came from.
+    @concurrent package static func trash(_ url: URL, expecting: FileIdentity?) async throws -> Trashed {
+        if let expecting, FileIdentity.read(url.path) != expecting { return .gone }
+        if Trash.isInTrash(url) || Trash.isInTrash(url.resolvingSymlinksInPath()) { return .alreadyInTrash }
+        // Checked up front for the whole plan, and again here: a disk can be mounted at the path meanwhile.
+        guard !FileOps.isWholeDisk(url) else { throw FileOps.HoldsADisk() }
+        var result: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+        guard let landed = result as URL? else { return .gone }
+        return .trashed(landed, FileIdentity.read(landed.path))
+    }
+
+    /// An item a case-only rename couldn't finish, and something else took its old name meanwhile: it's at `now`,
+    /// beside that name.
+    package struct Displaced: LocalizedError {
+        package let now: URL
+        package let reason: Error
+        /// What the item is: a rename keeps it.
+        package var identity: FileIdentity?
+
+        package var errorDescription: String? {
+            reason.localizedDescription + " "
+                + String(localized: "Something else took its name meanwhile, so it’s now “\(now.lastPathComponent)”.")
+        }
+    }
+
+    /// Those of `moves` whose items are where undo put them back, when this is a redo (`restored`): read away from the
+    /// main thread.
+    private static func stillPutBack(_ moves: [Pair], by restored: LandedFiles?) async -> [Pair] {
+        guard let restored else { return moves }
+        let held = Set(await restored.holding(moves.map(\.from)).map(\.path))
+        return moves.filter { held.contains($0.from.path) }
+    }
+
+    /// Case-only renames ("photo.jpg" → "Photo.jpg") go through a temporary name on case-insensitive volumes; one that
+    /// can't finish brings the item back, by its old name or beside it (`Displaced`). What the item is where it went,
+    /// read as it moves, away from the main thread.
+    private static func move(_ pair: Pair, copies: CopyProviders) async throws -> FileIdentity? {
+        func move(_ from: URL, to: URL) async throws {
+            try await FileOps.moveAsPart([(from: from, to: to)], copies: copies)
+        }
+        let before = await FileOps.identity(beforeMoving: pair.from)
         if pair.from.path != pair.to.path, pair.from.path.lowercased() == pair.to.path.lowercased() {
-            let temporary = pair.from.deletingLastPathComponent().appending(path: ".strata-rename-\(UUID().uuidString)")
-            try await FileOps.move([(from: pair.from, to: temporary)], actionName: "", undo: nil, record: false)
+            let temporary = FileOps.parkingName(for: pair.from)
+            try await move(pair.from, to: temporary)
             do {
-                try await FileOps.move([(from: temporary, to: pair.to)], actionName: "", undo: nil, record: false)
+                try await move(temporary, to: pair.to)
             } catch {
-                // Never leave the item under its hidden temporary name.
-                try? await FileOps.move([(from: temporary, to: pair.from)], actionName: "", undo: nil, record: false)
-                throw error
+                guard let now = try? await FileOps.unpark(temporary, as: pair.from), now != pair.from else { throw error }
+                throw Displaced(now: now, reason: error, identity: before)
             }
         } else {
-            try await FileOps.move([pair], actionName: "", undo: nil, record: false)
+            try await move(pair.from, to: pair.to)
         }
+        return await FileOps.identity(of: before, movedTo: pair.to)
     }
 
     // MARK: - Undo
 
     /// One undo step for the whole plan. Each handler registers its opposite synchronously, so redo works too.
     /// The undo manager is the target (it doesn't retain targets); the closure keeps the transaction alive.
-    func registerUndo(_ undo: UndoManager, actionName: String) {
+    package func registerUndo(_ undo: UndoManager, actionName: String) {
         undo.registerUndo(withTarget: undo) { [self] undo in
             MainActor.assumeIsolated {
                 registerRedo(undo, actionName: actionName)
@@ -234,12 +324,12 @@ final class PlanTransaction {
     }
 
     /// Waits for queued undo/redo work (for tests).
-    func waitForIdle() async {
+    package func waitForIdle() async {
         await queue?.value
     }
 }
 
 extension Notification.Name {
     /// Posted after an undo or redo of an AI plan has finished moving files.
-    static let planTransactionDidFinish = Notification.Name("StrataPlanTransactionDidFinish")
+    package static let planTransactionDidFinish = Notification.Name("StrataPlanTransactionDidFinish")
 }

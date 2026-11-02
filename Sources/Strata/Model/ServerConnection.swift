@@ -102,9 +102,15 @@ nonisolated package enum ServerConnection {
             var id: AsyncRequestID?
             let status = NetFSMountURLAsync(url as CFURL, nil, nil, nil, open, mountOptions, &id, DispatchQueue.main) { code, _, mountpoints in
                 let paths = (mountpoints as? [String]) ?? []
-                // Already mounted: NetFS says so (EEXIST), sometimes with where.
-                if code == 0 || code == EEXIST, let path = paths.first ?? (code == EEXIST ? mounted(url)?.path : nil) {
+                // Already mounted: NetFS says so (EEXIST), sometimes with where; else it's found among the mounted volumes.
+                if code == 0 || code == EEXIST, let path = paths.first {
                     request.finish(.success(URL(fileURLWithPath: path, isDirectory: true)))
+                } else if code == EEXIST {
+                    Task {
+                        let found = await mounted(url)
+                        request.finish(found.map { .success(URL(fileURLWithPath: $0.path, isDirectory: true)) }
+                                       ?? problem(code).map { .failure($0) })
+                    }
                 } else {
                     request.finish(problem(code).map { .failure($0) })
                 }
@@ -118,7 +124,8 @@ nonisolated package enum ServerConnection {
     }
 
     /// Where `url`'s share is mounted already, by the address each mounted volume remounts from.
-    package static func mounted(_ url: URL) -> URL? {
+    /// Asked of every mounted volume (one that doesn't answer holds it up), so away from the main thread.
+    @concurrent package static func mounted(_ url: URL) async -> URL? {
         func key(_ url: URL) -> String? {
             guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false), let host = components.host?.lowercased() else { return nil }
             let scheme = components.scheme?.lowercased() == "cifs" ? "smb" : components.scheme?.lowercased() ?? ""

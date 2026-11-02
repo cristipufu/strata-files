@@ -57,6 +57,9 @@ nonisolated package struct IndexQuery: Sendable {
             || regex != nil || invalidRegex || caseSensitive
     }
 
+    /// A leading dot asks for a filename/extension, not document text or an embedding.
+    package var searchesContent: Bool { !hasFilters && !terms.contains { $0.first == UInt8(ascii: ".") } }
+
     package var isEmpty: Bool {
         terms.isEmpty && pathTerms.isEmpty && extensions.isEmpty && kind == nil && minSize == nil && maxSize == nil
             && modifiedAfter == nil && modifiedBefore == nil && scopeNames.isEmpty && regex == nil && !invalidRegex
@@ -90,69 +93,94 @@ nonisolated package struct IndexQuery: Sendable {
         let tokens = tokenize(text)
         query.caseSensitive = tokens.contains { caseWords.contains($0.lowercased()) }
         var pattern: String?
-        for token in tokens {
-            let lower = token.lowercased()
-            // With case on, words keep their letters (composed the same way names are compared).
-            let folded = query.caseSensitive ? token.precomposedStringWithCanonicalMapping : foldText(token)
-            if caseWords.contains(lower) || noCaseWords.contains(lower) {
-                continue
-            } else if lower.hasPrefix("regex:") || lower.hasPrefix("re:") {
-                let value = String(token.drop(while: { $0 != ":" }).dropFirst())
-                if !value.isEmpty { pattern = value }
-            } else if let value = value(of: lower, keys: ["ext:", "extension:"]) {
-                query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
-            } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
-                // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
-                let suffix = String(lower.dropFirst(2))
-                query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
-                if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
-            } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
-                // "kind:pdf" names an extension; "kind:spreadsheet" a group of them.
-                if let kind = kind(value) {
-                    query.kind = kind
-                } else if let group = extensionGroups[value] {
-                    query.extensions.formUnion(group)
-                } else {
-                    query.extensions.insert(value)
-                }
-            } else if let value = value(of: lower, keys: ["size:"]) {
-                (query.minSize, query.maxSize) = sizeRange(value)
-            } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
-                (query.modifiedAfter, query.modifiedBefore) = dateRange(value, now: now)
-            } else if let value = value(of: token, keys: ["in:", "In:", "IN:"]) {
-                // (Folder names below are matched without case either way.)
-                if value.hasPrefix("/") || value.hasPrefix("~") {
-                    query.scopePath = (value as NSString).expandingTildeInPath
-                } else {
-                    let scope = foldText(value)
-                    if !scope.isEmpty { query.scopeNames.append(Array(scope.utf8)) }
-                }
-            } else if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
-                let term = folded.dropFirst()
-                if !term.isEmpty { query.excludedTerms.append(Array(term.utf8)) }
-            } else if lower == "!" || lower == "-" {
-                continue   // Half-typed exclusion: not a term yet.
-            } else if lower.contains("/") {
-                // Folder parts are matched without case either way; the name (the last part) follows `case:`.
-                var parts = foldText(token).split(separator: "/").map { Array($0.utf8) }
-                if query.caseSensitive, parts.count > 1, let name = folded.split(separator: "/").last {
-                    parts[parts.count - 1] = Array(name.utf8)
-                }
-                if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
-            } else if !folded.isEmpty {
-                query.terms.append(Array(folded.utf8))
+        for token in tokens { read(token, into: &query, pattern: &pattern, now: now) }
+        finish(&query, pattern: pattern)
+        return query
+    }
+
+    /// One word of a query: a case word, a regex, a filter, a scope, or a term.
+    private static func read(_ token: String, into query: inout IndexQuery, pattern: inout String?, now: Date) {
+        let lower = token.lowercased()
+        if caseWords.contains(lower) || noCaseWords.contains(lower) { return }
+        if lower.hasPrefix("regex:") || lower.hasPrefix("re:") {
+            let value = String(token.drop(while: { $0 != ":" }).dropFirst())
+            if !value.isEmpty { pattern = value }
+        } else if readFilter(lower, into: &query, now: now) {
+            return
+        } else if let value = value(of: token, keys: ["in:", "In:", "IN:"]) {
+            // (Folder names below are matched without case either way.)
+            if value.hasPrefix("/") || value.hasPrefix("~") {
+                query.scopePath = (value as NSString).expandingTildeInPath
+            } else {
+                let scope = foldText(value)
+                if !scope.isEmpty { query.scopeNames.append(Array(scope.utf8)) }
             }
+        } else {
+            readTerm(token, into: &query)
         }
+    }
+
+    /// `ext:`, `*.ext`, `kind:`, `size:` or `modified:`: whether `lower` was one.
+    private static func readFilter(_ lower: String, into query: inout IndexQuery, now: Date) -> Bool {
+        if let value = value(of: lower, keys: ["ext:", "extension:"]) {
+            query.extensions.formUnion(value.split(whereSeparator: { ";,|".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) })
+        } else if lower.hasPrefix("*."), lower.count > 2, !lower.dropFirst(2).contains("*") {
+            // "*.tar.gz": the last extension, plus the whole suffix as part of the name.
+            let suffix = String(lower.dropFirst(2))
+            query.extensions.insert(String(suffix.split(separator: ".").last ?? Substring(suffix)))
+            if suffix.contains(".") { query.terms.append(Array(suffix.utf8)) }
+        } else if let value = value(of: lower, keys: ["kind:", "type:", "is:"]) {
+            // "kind:pdf" names an extension; "kind:spreadsheet" a group of them.
+            if let kind = kind(value) {
+                query.kind = kind
+            } else if let group = extensionGroups[value] {
+                query.extensions.formUnion(group)
+            } else {
+                query.extensions.insert(value)
+            }
+        } else if let value = value(of: lower, keys: ["size:"]) {
+            (query.minSize, query.maxSize) = sizeRange(value)
+        } else if let value = value(of: lower, keys: ["modified:", "mod:", "date:", "dm:"]) {
+            (query.modifiedAfter, query.modifiedBefore) = dateRange(value, now: now)
+        } else {
+            return false
+        }
+        return true
+    }
+
+    /// A word to leave out ("-draft"), a path ("projects/app"), or a word the name contains.
+    private static func readTerm(_ token: String, into query: inout IndexQuery) {
+        let lower = token.lowercased()
+        // With case on, words keep their letters (composed the same way names are compared).
+        let folded = query.caseSensitive ? token.precomposedStringWithCanonicalMapping : foldText(token)
+        if (lower.hasPrefix("!") || lower.hasPrefix("-")) && lower.count > 1 {
+            let term = folded.dropFirst()
+            if !term.isEmpty { query.excludedTerms.append(Array(term.utf8)) }
+        } else if lower == "!" || lower == "-" {
+            return   // Half-typed exclusion: not a term yet.
+        } else if lower.contains("/") {
+            // Folder parts are matched without case either way; the name (the last part) follows `case:`.
+            var parts = foldText(token).split(separator: "/").map { Array($0.utf8) }
+            if query.caseSensitive, parts.count > 1, let name = folded.split(separator: "/").last {
+                parts[parts.count - 1] = Array(name.utf8)
+            }
+            if parts.count == 1 { query.terms.append(parts[0]) } else if parts.count > 1 { query.pathTerms.append(parts) }
+        } else if !folded.isEmpty {
+            query.terms.append(Array(folded.utf8))
+        }
+    }
+
+    /// The regex, once every word is read (`case:` may come after it), and whether hidden items and build or cache
+    /// folders are wanted: names that start with a dot, or `in:target` (or another such folder) to look inside them.
+    private static func finish(_ query: inout IndexQuery, pattern: String?) {
         if let pattern {
             if let regex = NameRegex(pattern, caseSensitive: query.caseSensitive) { query.regex = regex } else { query.invalidRegex = true }
         }
         let mentioned = (query.terms + query.pathTerms.flatMap { $0 } + query.scopeNames).map { String(decoding: $0, as: UTF8.self).lowercased() }
-        // `in:target` (or another build/cache folder name) means you want to look inside such folders.
         let scopes = query.scopeNames.map { String(decoding: $0, as: UTF8.self) }
         query.includeHidden = mentioned.contains { $0.hasPrefix(".") } || scopes.contains { noiseWords.contains($0) }
-        query.includeNoise = mentioned.contains { noiseWords.contains($0) || $0.hasPrefix(".") }
+        query.includeNoise = mentioned.contains { noiseWords.contains($0) }
             || scopes.contains { buildFolderWords.contains($0) }
-        return query
     }
 
     private static let extensionGroups: [String: Set<String>] = [
@@ -294,27 +322,59 @@ nonisolated package struct IndexHit: Sendable {
     package let files: UInt32
     package let mtime: UInt32
     package let score: Int
+    package var allocatedSize: Int64? = nil
 
     /// The same hit with another score (results merged from several stores).
     package func scored(_ score: Int) -> IndexHit {
-        IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score)
+        IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score, allocatedSize: allocatedSize)
     }
 }
 
-/// Per-chunk results collected from `concurrentPerform` workers.
-nonisolated private final class Partials: @unchecked Sendable {
-    private var chunks: [[(id: Int32, score: Int32)]]
-    private let lock = NSLock()
+/// Each worker retains only its best rows, while counting every match.
+nonisolated private struct SearchCandidates {
+    typealias Item = (id: Int32, score: Int32)
+    var items: [Item] = []
+    var total = 0
+    let limit: Int
 
-    init(count: Int) { chunks = Array(repeating: [], count: count) }
-
-    func set(_ index: Int, _ value: [(id: Int32, score: Int32)]) {
-        lock.lock()
-        chunks[index] = value
-        lock.unlock()
+    static func worse(_ a: Item, than b: Item) -> Bool {
+        a.score != b.score ? a.score < b.score : a.id > b.id
     }
 
-    var all: [(id: Int32, score: Int32)] { chunks.flatMap { $0 } }
+    mutating func add(_ item: Item) {
+        total += 1
+        guard limit > 0 else { return }
+        if items.count < limit {
+            items.append(item)
+            var child = items.count - 1
+            while child > 0 {
+                let parent = (child - 1) / 2
+                guard Self.worse(items[child], than: items[parent]) else { break }
+                items.swapAt(child, parent)
+                child = parent
+            }
+        } else if Self.worse(items[0], than: item) {
+            items[0] = item
+            var parent = 0
+            while parent * 2 + 1 < items.count {
+                var child = parent * 2 + 1
+                if child + 1 < items.count, Self.worse(items[child + 1], than: items[child]) { child += 1 }
+                guard Self.worse(items[child], than: items[parent]) else { break }
+                items.swapAt(child, parent)
+                parent = child
+            }
+        }
+    }
+}
+
+nonisolated private final class Partials: @unchecked Sendable {
+    private var chunks: [SearchCandidates]
+    private let lock = NSLock()
+
+    init(count: Int) { chunks = Array(repeating: SearchCandidates(limit: 0), count: count) }
+    func set(_ index: Int, _ value: SearchCandidates) { lock.withLock { chunks[index] = value } }
+    var all: [(id: Int32, score: Int32)] { chunks.flatMap(\.items) }
+    var total: Int { chunks.reduce(0) { $0 + $1.total } }
 }
 
 nonisolated package enum IndexSearch {
@@ -333,61 +393,34 @@ nonisolated package enum IndexSearch {
         extensionsByKind[kind] ?? []
     }
 
-    /// Runs `query` over the whole store in parallel and returns the best `limit` hits plus the total match count.
-    ///
-    /// Only matching holds the store's read lock. Ranking happens outside it, because a folder search's scanner waits
-    /// on that lock and "e" can match a million entries; the lock is taken again just to build the `limit` hits. Ids stay
-    /// valid in between: a store only grows (compaction makes a new one).
-    package static func run(_ query: IndexQuery, in store: IndexStore, limit: Int) -> (hits: [IndexHit], total: Int) {
-        let matched = matches(query, in: store)
-        let best = top(matched, limit)
-        let hits = store.read { store in
-            best.map { item -> IndexHit in
+    /// Counts every match, retaining at most `limit` rows per worker. Borrowed columns stay under the read lock.
+    package static func run(_ query: IndexQuery, in store: IndexStore, limit: Int,
+                            isCancelled: @escaping @Sendable () -> Bool = { false }) -> (hits: [IndexHit], total: Int) {
+        guard !isCancelled() else { return ([], 0) }
+        let matched = matches(query, in: store, limit: max(0, limit), isCancelled: isCancelled)
+        guard !isCancelled() else { return ([], 0) }
+        let best = matched.all.sorted { SearchCandidates.worse($1, than: $0) }.prefix(max(0, limit))
+        let hits = store.read { store -> [IndexHit] in
+            guard !isCancelled() else { return [] }
+            return best.map { item -> IndexHit in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
                                 isPackage: store.flags[id] & IndexStore.Flag.package != 0, size: store.size[id],
-                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score))
+                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score),
+                                allocatedSize: store.allocatedSize(item.id))
             }
         }
-        return (hits, matched.count)
+        return isCancelled() ? ([], 0) : (hits, matched.total)
     }
 
-    /// The best `limit` of `all`, by score then id (ties in id order stay put while a folder search's store grows, so
-    /// live results don't reshuffle). Beyond a few thousand it doesn't sort everything: it counts scores to find the one
-    /// that cuts at `limit` and sorts only what's above it.
-    package static func top(_ all: [(id: Int32, score: Int32)], _ limit: Int) -> [(id: Int32, score: Int32)] {
-        let ordered: ((id: Int32, score: Int32), (id: Int32, score: Int32)) -> Bool = {
-            $0.score != $1.score ? $0.score > $1.score : $0.id < $1.id
-        }
-        guard limit > 0 else { return [] }
-        guard all.count / 4 > limit else { return Array(all.sorted(by: ordered).prefix(limit)) }
-        var low = Int32.max, high = Int32.min
-        for item in all {
-            low = min(low, item.score)
-            high = max(high, item.score)
-        }
-        let span = Int(high) - Int(low) + 1
-        guard span <= 1 << 16 else { return Array(all.sorted(by: ordered).prefix(limit)) }
-        var counts = [Int](repeating: 0, count: span)
-        for item in all { counts[Int(item.score - low)] += 1 }
-        // Walk down from the best score until at least `limit` are at or above it.
-        var cut = span - 1
-        var above = 0
-        while cut > 0 && above + counts[cut] < limit {
-            above += counts[cut]
-            cut -= 1
-        }
-        let threshold = low + Int32(cut)
-        return Array(all.filter { $0.score >= threshold }.sorted(by: ordered).prefix(limit))
-    }
-
-    /// Every entry matching `query`, with its score (under the read lock).
-    private static func matches(_ query: IndexQuery, in store: IndexStore) -> [(id: Int32, score: Int32)] {
+    /// Counts matches under the read lock, retaining bounded candidates.
+    private static func matches(_ query: IndexQuery, in store: IndexStore, limit: Int,
+                                isCancelled: @escaping @Sendable () -> Bool) -> Partials {
         store.read { store in
             let count = store.count
-            guard count > 0, !query.isEmpty else { return [] }
+            guard count > 0, !query.isEmpty, !isCancelled() else { return Partials(count: 0) }
             let scopeID: Int32? = query.scopePath.flatMap { store.lookup($0) }
-            if query.scopePath != nil && scopeID == nil { return [] }
+            if query.scopePath != nil && scopeID == nil { return Partials(count: 0) }
             // Searching inside a cache or build folder (in:, or the scope bar while browsing it) includes its contents.
             var scoped = query
             if let scopeID, store.flags[Int(scopeID)] & IndexStore.Flag.noise != 0 { scoped.includeNoise = true }
@@ -398,10 +431,10 @@ nonisolated package enum IndexSearch {
                 ?? query.extensions
             let wantedExtensions = extensions.compactMap { ext in Array(ext.utf8).withUnsafeBufferPointer { packExtension($0) } }
             // Only extensions longer than any real one were asked for: nothing can match (not everything).
-            if !extensions.isEmpty && wantedExtensions.isEmpty { return [] }
+            if !extensions.isEmpty && wantedExtensions.isEmpty { return Partials(count: 0) }
             let now = Int(Date().timeIntervalSince1970)
 
-            let chunks = max(1, min(64, count / 50_000))
+            let chunks = max(1, min(4, count / 50_000))
             let partials = Partials(count: chunks)
             store.withColumns { columns in
                 // `a/b` and `in:name` need folder parts matched by ancestors: work out, in one pass from the roots down,
@@ -409,14 +442,15 @@ nonisolated package enum IndexSearch {
                 // ancestors, which made such searches ~100× slower).
                 let chains = query.pathTerms.map { Array($0.dropLast()) } + query.scopeNames.map { [$0] }
                 func collect<Progress: FixedWidthInteger & Sendable>(_: Progress.Type) {
-                    let progress: [[Progress]] = chains.map { ancestorProgress($0, columns, count) }
+                    let progress: [[Progress]] = chains.map { ancestorProgress($0, columns, count, isCancelled: isCancelled) }
                     DispatchQueue.concurrentPerform(iterations: chunks) { chunk in
                         let lower = count * chunk / chunks
                         let upper = count * (chunk + 1) / chunks
-                        var found: [(id: Int32, score: Int32)] = []
+                        var found = SearchCandidates(limit: limit)
                         for id in lower..<upper {
+                            if (id - lower) % 256 == 0 && isCancelled() { break }
                             if let score = match(id, query, columns, scopeID, wantedExtensions, now, progress) {
-                                found.append((Int32(id), Int32(score)))
+                                found.add((Int32(id), Int32(clamping: score)))
                             }
                         }
                         partials.set(chunk, found)
@@ -426,24 +460,30 @@ nonisolated package enum IndexSearch {
                 if chains.contains(where: { $0.count > Int(UInt8.max) }) { collect(UInt32.self) }
                 else { collect(UInt8.self) }
             }
-            return partials.all
+            return partials
         }
     }
 
     /// Files changed recently, newest first, skipping folders, hidden items and noise such as caches.
-    package static func recent(in store: IndexStore, since: UInt32, limit: Int) -> [IndexHit] {
-        store.read { store in
-            var found: [(id: Int32, mtime: UInt32)] = []
+    package static func recent(in store: IndexStore, since: UInt32, limit: Int,
+                               isCancelled: @Sendable () -> Bool = { Task.isCancelled }) -> [IndexHit] {
+        guard limit > 0, !isCancelled() else { return [] }
+        return store.read { store in
+            var found = SearchCandidates(limit: limit)
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
             // App internals carry the noise flag, so the skip mask already leaves them out.
-            for id in 0..<store.count where store.flags[id] & skip == 0 && store.mtime[id] >= since {
-                found.append((Int32(id), store.mtime[id]))
+            for id in 0..<store.count {
+                if id & 255 == 0, isCancelled() { return [] }
+                guard store.flags[id] & skip == 0, store.mtime[id] >= since else { continue }
+                // Flip the sign bit to preserve the full unsigned timestamp order in the signed score.
+                found.add((Int32(id), Int32(bitPattern: store.mtime[id] ^ 0x8000_0000)))
             }
-            found.sort { $0.mtime > $1.mtime }
-            return found.prefix(limit).map { item in
+            guard !isCancelled() else { return [] }
+            found.items.sort { SearchCandidates.worse($1, than: $0) }
+            return found.items.map { item in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: false, isPackage: false, size: store.size[id],
-                                files: 1, mtime: store.mtime[id], score: 0)
+                                files: 1, mtime: store.mtime[id], score: 0, allocatedSize: store.allocatedSize(item.id))
             }
         }
     }
@@ -452,24 +492,50 @@ nonisolated package enum IndexSearch {
     private static func match<Progress: FixedWidthInteger>(_ i: Int, _ query: IndexQuery, _ c: IndexStore.Columns, _ scopeID: Int32?,
                               _ extensions: [UInt64], _ now: Int, _ progress: [[Progress]]) -> Int? {
         let flags = c.flags[i]
-        if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return nil }
-        if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return nil }
-        if !query.includeHidden && flags & IndexStore.Flag.hidden != 0 { return nil }
+        guard passesFilters(i, flags, query, c) else { return nil }
+        let isDirectory = flags & IndexStore.Flag.directory != 0
+        let isPackage = flags & IndexStore.Flag.package != 0
+        let name = c.name(i)
+        guard var score = nameScore(i, flags, name, query, c, extensions, progress), let depth = depth(of: i, c, in: scopeID)
+        else { return nil }
+        // Prefer shallow paths, recent changes, apps and folders a little.
+        score -= depth * 2 + name.count / 6
+        let age = now - Int(c.mtime[i])
+        if age < 86_400 { score += 12 } else if age < 7 * 86_400 { score += 8 } else if age < 30 * 86_400 { score += 4 }
+        if isPackage { score += 10 } else if isDirectory { score += 4 }
+        return score + 1000
+    }
+
+    /// Whether the item is one the query looks at, by what it is, its size and its date.
+    @inline(__always)
+    private static func passesFilters(_ i: Int, _ flags: UInt16, _ query: IndexQuery, _ c: IndexStore.Columns) -> Bool {
+        if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return false }
+        if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return false }
+        if !query.includeHidden && flags & IndexStore.Flag.hidden != 0 { return false }
         let isDirectory = flags & IndexStore.Flag.directory != 0
         let isPackage = flags & IndexStore.Flag.package != 0
         switch query.kind {
-        case .folder: if !isDirectory || isPackage { return nil }
-        case .file: if isDirectory && !isPackage { return nil }
-        case .app: if !isPackage { return nil }
-        case .book, .comic: if isDirectory { return nil }
+        case .folder: if !isDirectory || isPackage { return false }
+        case .file: if isDirectory && !isPackage { return false }
+        case .app: if !isPackage { return false }
+        case .book, .comic: if isDirectory { return false }
         default: break
         }
-        if let minSize = query.minSize, c.size[i] < minSize { return nil }
-        if let maxSize = query.maxSize, c.size[i] > maxSize { return nil }
-        if let after = query.modifiedAfter, c.mtime[i] < after { return nil }
-        if let before = query.modifiedBefore, c.mtime[i] >= before { return nil }
+        if let minSize = query.minSize, c.size[i] < minSize { return false }
+        if let maxSize = query.maxSize, c.size[i] > maxSize { return false }
+        if let after = query.modifiedAfter, c.mtime[i] < after { return false }
+        if let before = query.modifiedBefore, c.mtime[i] >= before { return false }
+        return true
+    }
 
-        let name = c.name(i)
+    /// How well the item's name (and the folders above it, through `progress`) matches the query's words, or nil when
+    /// it doesn't.
+    @inline(__always)
+    private static func nameScore<Progress: FixedWidthInteger>(_ i: Int, _ flags: UInt16, _ name: UnsafeBufferPointer<UInt8>,
+                                                               _ query: IndexQuery, _ c: IndexStore.Columns,
+                                                               _ extensions: [UInt64], _ progress: [[Progress]]) -> Int? {
+        let isDirectory = flags & IndexStore.Flag.directory != 0
+        let isPackage = flags & IndexStore.Flag.package != 0
         // Names with non-ASCII bytes are compared Unicode-aware (folded once, or just composed with case on); ASCII
         // names take the byte search alone.
         let unicode = flags & IndexStore.Flag.unicodeName != 0
@@ -502,9 +568,33 @@ nonisolated package enum IndexSearch {
             guard let last = parts.last, let position = locate(last) else { return nil }
             guard parts.count == 1 || Int(progress[index][parent]) >= parts.count - 1 else { return nil }
             score += positionScore(min(position, name.count - 1), last.count, name) + 20
+            let length = query.caseSensitive ? (composedName?.count ?? name.count) : (foldedName?.count ?? name.count)
+            score += pathScore(parts, parent: parent, columns: c, exactName: position == 0 && last.count == length)
         }
         for index in query.scopeNames.indices where progress[query.pathTerms.count + index][parent] < 1 { return nil }
-        // Depth doubles as the scope check: walk to the root once.
+        return score
+    }
+
+    /// A contiguous path outranks scattered ancestors; whole components outrank substrings.
+    private static func pathScore(_ parts: [[UInt8]], parent: Int, columns: IndexStore.Columns, exactName: Bool) -> Int {
+        var ancestor = parent
+        var exact = exactName
+        for part in parts.dropLast().reversed() {
+            guard ancestor >= 0 else { return 0 }
+            let name = columns.name(ancestor)
+            let normalized = columns.flags[ancestor] & IndexStore.Flag.unicodeName != 0 ? folded(name) : nil
+            let position = normalized?.withUnsafeBufferPointer { find(part, in: $0) } ?? find(part, in: name)
+            guard let position else { return 0 }
+            exact = exact && position == 0 && part.count == (normalized?.count ?? name.count)
+            ancestor = Int(columns.parent[ancestor])
+        }
+        // Path quality takes priority over recency and ordinary depth bonuses.
+        return exact ? 4096 : 1024
+    }
+
+    /// How deep the item is, or nil when it isn't inside `scopeID`: one walk to the root does both.
+    @inline(__always)
+    private static func depth(of i: Int, _ c: IndexStore.Columns, in scopeID: Int32?) -> Int? {
         var depth = 0
         var inScope = scopeID == nil
         var ancestor = c.parent[i]
@@ -513,13 +603,7 @@ nonisolated package enum IndexSearch {
             depth += 1
             ancestor = c.parent[Int(ancestor)]
         }
-        guard inScope else { return nil }
-        // Prefer shallow paths, recent changes, apps and folders a little.
-        score -= depth * 2 + name.count / 6
-        let age = now - Int(c.mtime[i])
-        if age < 86_400 { score += 12 } else if age < 7 * 86_400 { score += 8 } else if age < 30 * 86_400 { score += 4 }
-        if isPackage { score += 10 } else if isDirectory { score += 4 }
-        return score + 1000
+        return inScope ? depth : nil
     }
 
     private static let appSuffix = Array(".app".utf8)
@@ -546,10 +630,12 @@ nonisolated package enum IndexSearch {
     /// For each entry, how many of `parts` (in order) are found in the names along its path, root first, itself
     /// included. Parents have smaller ids than their children, so one forward pass computes it; only folders can be
     /// ancestors, so files just inherit.
-    private static func ancestorProgress<Progress: FixedWidthInteger>(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int) -> [Progress] {
+    private static func ancestorProgress<Progress: FixedWidthInteger>(_ parts: [[UInt8]], _ c: IndexStore.Columns, _ count: Int,
+                                                                    isCancelled: @Sendable () -> Bool) -> [Progress] {
         var progress = [Progress](repeating: 0, count: count)
         guard !parts.isEmpty else { return progress }
         for i in 0..<count {
+            if i % 256 == 0 && isCancelled() { break }
             let p = Int(c.parent[i])
             var value = p >= 0 ? progress[p] : 0
             if c.flags[i] & IndexStore.Flag.directory != 0, Int(value) < parts.count {

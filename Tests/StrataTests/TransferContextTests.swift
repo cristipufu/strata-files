@@ -2,26 +2,35 @@ import AppKit
 import CryptoKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct TransferContextTests {
     private final class Environment {
-        let name = "StrataTransferContextTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
         let preferences: Prefs
+        var defaults: UserDefaults { preferences.defaults }
         let storage: SecureStorage.Context
         let history: OperationLog
         let queue: TransferQueue
+        lazy var services = BrowserServices.configured(
+            transfers: queue, visits: Frecency(preferences: defaults), windows: .headless,
+            remote: testEnvironment.services.remote, containers: testEnvironment.services.containers,
+            containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard)
 
         init(_ tree: TestTree) throws {
-            defaults = try #require(UserDefaults(suiteName: name))
-            preferences = Prefs(defaults: defaults, domainName: name)
+            preferences = try Prefs.isolated()
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"),
                                              key: SymmetricKey(data: Data(repeating: 9, count: 32)))
-            history = OperationLog(storage: storage)
-            queue = TransferQueue(preferences: preferences, history: history)
+            history = OperationLog(storage: storage, copies: testEnvironment.services.copies)
+            queue = TransferQueue(preferences: preferences, history: history, copies: testEnvironment.services.copies)
         }
-
-        isolated deinit { defaults.removePersistentDomain(forName: name) }
     }
 
     @Test func queueUsesItsOwnCurrentPreferencesAndExplicitOverrides() async throws {
@@ -65,11 +74,11 @@ struct TransferContextTests {
         for _ in 0..<3 {
             undo.undo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: env.storage).entries.first?.undone == true)
+            #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == true)
             #expect(tree.snapshot() == restored)
             undo.redo()
             await FileOps.undoWork?.value
-            #expect(OperationLog(storage: env.storage).entries.first?.undone == false)
+            #expect(OperationLog(storage: env.storage, copies: .live).entries.first?.undone == false)
             #expect(tree.snapshot() == moved)
         }
         #expect(!OperationLog.shared.entries.contains { $0.id == id })
@@ -84,7 +93,54 @@ struct TransferContextTests {
                                    "out/original.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
-    @Test func queuedArchivesRecordInTheirOwnersHistory() async throws {
+    @Test(.archiveWorkerApp) func undoingAnExtractTrashesOnlyWhatItMade() async throws {
+        // A name of its own, so the Trash never has to rename it: the cleanup below finds it by that name.
+        let payload = "payload \(UUID().uuidString)"
+        let tree = try TestTree("\(payload)/", "\(payload)/one.txt", "out/", "out/\(payload)/", "out/\(payload)/one.txt",
+                                "out/\(payload).bak", "state/")
+        let env = try Environment(tree)
+        let compress = ArchiveJob(.compress([tree.url("\(payload)/one.txt")]), undo: nil)
+        env.queue.add(compress)
+        await compress.finished()
+        let archive = try #require(compress.result)
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        undo.beginUndoGrouping()
+        let extract = ArchiveJob(.extract(archive, into: tree.url("out")), undo: undo)
+        env.queue.add(extract)
+        await extract.finished()
+        undo.endUndoGrouping()
+        #expect(extract.state == .finished, "\(extract.errorMessage ?? "No extraction error reported")")
+        // The zip holds the folder with the file; that name is taken, so it lands numbered.
+        let before = ["out/", "out/\(payload).bak", "out/\(payload)/", "out/\(payload)/one.txt", "\(payload)/",
+                      "\(payload)/one.txt", "\(payload)/one.txt.zip", "state/", "state/Caches/", "state/history.sealed"].sorted()
+        let extracted = (before + ["out/\(payload) 2/", "out/\(payload) 2/one.txt"]).sorted()
+        #expect(tree.snapshot() == extracted)
+        // Each Undo's Redo brings the folder back out of the Trash. If a step fails in between, it comes out here: this
+        // History isn't the one `removeFromTrash` reads, so it's found where the Trash puts it, as the folder it was.
+        let identity = try #require(OperationLog.identity(tree.url("out/\(payload) 2").path))
+        let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: tree.url("out"),
+                                                create: false)
+        defer { TestTree.removeFromTrash(trash.appending(path: "\(payload) 2"), matching: identity) }
+        for _ in 0..<2 {
+            undo.undo()
+            await FileOps.undoWork?.value
+            #expect(tree.snapshot() == before)
+            undo.redo()
+            await FileOps.undoWork?.value
+            #expect(tree.snapshot() == extracted && tree.text("out/\(payload) 2/one.txt") == "\(payload)/one.txt")
+        }
+        // What took the extracted folder's place is never what Undo trashes.
+        try FileManager.default.moveItem(at: tree.url("out/\(payload) 2"), to: tree.url("out/extracted"))
+        try tree.add(["out/\(payload) 2"])
+        undo.undo()
+        await FileOps.undoWork?.value
+        #expect(tree.text("out/\(payload) 2") == "out/\(payload) 2")
+        #expect(tree.text("out/\(payload)/one.txt") == "out/\(payload)/one.txt")
+        #expect(tree.snapshot() == (before + ["out/extracted/", "out/extracted/one.txt", "out/\(payload) 2"]).sorted())
+    }
+
+    @Test(.archiveWorkerApp) func queuedArchivesRecordInTheirOwnersHistory() async throws {
         let tree = try TestTree("source/a.txt", "ab.txt", "out/", "state/")
         let env = try Environment(tree)
         let compress = ArchiveJob(.compress([tree.url("source")]), undo: nil)
@@ -98,7 +154,7 @@ struct TransferContextTests {
         #expect(extract.state == .finished, "\(extract.errorMessage ?? "No extraction error reported")")
         #expect(env.history.entries.count == 2)
         let ids = Set(env.history.entries.map(\.id))
-        #expect(Set(OperationLog(storage: env.storage).entries.map(\.id)) == ids)
+        #expect(Set(OperationLog(storage: env.storage, copies: .live).entries.map(\.id)) == ids)
         #expect(!OperationLog.shared.entries.contains { ids.contains($0.id) })
         #expect(tree.text("out/source/a.txt") == "source/a.txt")
         #expect(tree.snapshot() == ["ab.txt", "out/", "out/source/", "out/source/a.txt", "source.zip", "source/", "source/a.txt", "state/", "state/Caches/", "state/history.sealed"].sorted())
@@ -147,7 +203,7 @@ struct TransferContextTests {
     @Test func failedJobsRetryWithTheirHistoryAndCompletedJobsReleaseTheirQueue() async throws {
         let tree = try TestTree("out/", "state/")
         let env = try Environment(tree)
-        var queue: TransferQueue? = TransferQueue(preferences: env.preferences, history: env.history)
+        var queue: TransferQueue? = TransferQueue(preferences: env.preferences, history: env.history, copies: .live)
         weak var owner: TransferQueue?
         owner = queue
         let job = try #require(queue).enqueue([tree.url("a.txt")], to: tree.url("out"), mode: .copy,
@@ -176,14 +232,7 @@ struct TransferContextTests {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("left/a.txt", "left/ab.txt", "right/b.txt", "right/bb.txt", "state/")
             let env = try Environment(tree)
-            let services = BrowserServices.configured(
-                transfers: env.queue,
-                visits: Frecency(preferences: env.defaults),
-                windows: .headless,
-                remote: .shared,
-                containers: .shared,
-                containerStore: .shared,
-                clipboard: .shared)
+            let services = env.services
             let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
             defer { controller.window?.contentViewController = nil }
             let left = controller.browser
@@ -213,14 +262,7 @@ struct TransferContextTests {
     @Test func replacementPanesAndBrowserCommandsKeepTheWindowServices() async throws {
         let tree = try TestTree("left/a.txt", "left/ab.txt", "right/", "third/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
         defer { controller.window?.contentViewController = nil }
         controller.toggleDualPane(at: nil)
@@ -240,22 +282,8 @@ struct TransferContextTests {
         let first = try TestTree("start/", "visited/", "state/")
         let second = try TestTree("start/", "visited/", "state/")
         let a = try Environment(first), b = try Environment(second)
-        let servicesA = BrowserServices.configured(
-            transfers: a.queue,
-            visits: Frecency(preferences: a.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
-        let servicesB = BrowserServices.configured(
-            transfers: b.queue,
-            visits: Frecency(preferences: b.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let servicesA = a.services
+        let servicesB = b.services
         let windowA = makeWindow(first.url("start"), services: servicesA)
         let windowB = makeWindow(second.url("start"), services: servicesB)
         defer {
@@ -269,9 +297,9 @@ struct TransferContextTests {
         #expect(servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(first.url("visited").standardizedFileURL.fileViewKey))
         #expect(!servicesA.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
         #expect(servicesB.visits.ranked().map { $0.standardizedFileURL.fileViewKey }.contains(second.url("visited").standardizedFileURL.fileViewKey))
-        let suggestions = PathSuggestions(visits: servicesA.visits)
+        let suggestions = PathSuggestions(preferences: servicesA.preferences, places: servicesA.places, index: servicesA.index)
         suggestions.begin(at: first.url("start"))
-        // One character intentionally excludes the global index lookup.
+        // One character excludes the index lookup.
         let matches = await suggestions.suggestions(for: "v", in: first.url("start"))
         #expect(matches.contains { $0.url.standardizedFileURL.fileViewKey == first.url("visited").standardizedFileURL.fileViewKey })
         #expect(!matches.contains { $0.url.standardizedFileURL.fileViewKey == second.url("visited").standardizedFileURL.fileViewKey })
@@ -282,14 +310,7 @@ struct TransferContextTests {
     @Test func bothSidebarDropModesUseTheWindowQueue() async throws {
         let tree = try TestTree("a.txt", "ab.txt", "places/", "folders/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let sidebar = SidebarViewController(services: services)
         _ = sidebar.view
         let folderTree = try #require(sidebar.children.compactMap { $0 as? FolderTreeController }.first)
@@ -300,6 +321,8 @@ struct TransferContextTests {
         #expect(sidebar.outlineView(outline, acceptDrop: drag, item: place, childIndex: NSOutlineViewDropOnItemIndex))
         let node = FolderNode(url: tree.url("folders"), title: "folders")
         #expect(folderTree.outlineView(outline, acceptDrop: drag, item: node, childIndex: NSOutlineViewDropOnItemIndex))
+        // Each drop is decided once what it asks of the disk is read, away from the main thread.
+        for _ in 0..<500 where env.queue.jobs.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
         await finishRelatedJobs(env.queue, tree: tree)
         #expect(env.queue.jobs.count == 2 && env.history.entries.count == 2)
         #expect(env.queue.jobs.allSatisfy { $0.state == .finished && $0.failureCount == 0 })
@@ -307,50 +330,73 @@ struct TransferContextTests {
         #expect(tree.snapshot() == ["a.txt", "ab.txt", "folders/", "folders/a.txt", "places/", "places/a.txt", "state/", "state/Caches/", "state/history.sealed"])
     }
 
-    /// A private pasteboard and a copy-only source exercise the native drop delegates without posting a drag or
-    /// depending on the user's modifier keys. No promised files or drag-image callbacks are involved in this drop.
-    private final class FileDrag: NSObject, NSDraggingInfo {
-        let draggingPasteboard = NSPasteboard(name: .init("StrataTransferDropTests.\(UUID().uuidString)"))
-        var draggingDestinationWindow: NSWindow? { nil }
-        var draggingSourceOperationMask: NSDragOperation { .copy }
-        var draggingLocation: NSPoint { .zero }
-        var draggedImageLocation: NSPoint { .zero }
-        nonisolated var draggedImage: NSImage? { nil }
-        var draggingSource: Any? { nil }
-        var draggingSequenceNumber: Int { 1 }
-        var draggingFormation: NSDraggingFormation = .none
-        var animatesToDestination = false
-        var numberOfValidItemsForDrop = 1
-        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
-
-        init(_ url: URL) {
-            super.init()
-            draggingPasteboard.writeObjects([url as NSURL])
+    /// Every view hands a drop to its window's queue for exactly the folder it landed on: a folder item, or the
+    /// background of the folder shown, never the look-alike folder beside it.
+    @Test func everyViewDropsIntoExactlyTheFolderItLandedOn() async throws {
+        for mode in [BrowserViewMode.list, .grid, .columns, .gallery] {
+            let tree = try TestTree("a.txt", "shown/", "shown/inner/", "shown/inner b/", "state/")
+            let env = try Environment(tree)
+            let services = env.services
+            let browser = BrowserViewController(services: services)
+            browser.view.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+            browser.setMode(mode, remember: false)
+            browser.load(tree.url("shown"))
+            try await waitForBrowser(browser)
+            let drag = FileDrag(tree.url("a.txt"))
+            defer { drag.draggingPasteboard.releaseGlobally() }
+            // Each drop lands before the next is made: one in the wrong folder would meet the next as a conflict, which
+            // asks in a window of its own.
+            for (onto, landed, file) in [("inner", 1, "shown/inner/a.txt"), (nil, 2, "shown/a.txt")] as [(String?, Int, String)] {
+                #expect(try drop(drag, onto: onto, in: browser, mode: mode), "\(mode)")
+                for _ in 0..<500 where env.queue.jobs.count < landed { try await Task.sleep(for: .milliseconds(20)) }
+                await finishRelatedJobs(env.queue, tree: tree)
+                try #require(tree.text(file) == "a.txt", "\(mode): \(file)")
+            }
+            #expect(env.queue.jobs.count == 2 && env.queue.jobs.allSatisfy { $0.state == .finished }, "\(mode)")
+            #expect(tree.snapshot() == ["a.txt", "shown/", "shown/a.txt", "shown/inner b/", "shown/inner/", "shown/inner/a.txt",
+                                        "state/", "state/Caches/", "state/history.sealed"], "\(mode)")
+            withExtendedLifetime(env) {}
         }
+    }
 
-        func slideDraggedImage(to screenPoint: NSPoint) {}
-        nonisolated override func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
-        func resetSpringLoading() {}
-        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions, for view: NSView?, classes: [AnyClass],
-                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any],
-                                    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    /// Drops `drag` through `mode`'s own handler: on the folder named `onto`, or on the background of the folder shown.
+    private func drop(_ drag: FileDrag, onto name: String?, in browser: BrowserViewController, mode: BrowserViewMode) throws -> Bool {
+        switch mode {
+        case .list:
+            let node = try name.map { name in try #require(browser.allRows.first { $0.url.lastPathComponent == name }) }
+            return browser.outlineView(browser.outlineView, acceptDrop: drag, item: node, childIndex: NSOutlineViewDropOnItemIndex)
+        case .grid:
+            let grid = try #require(browser.presentations.gridController)
+            let index = try name.map { name in try #require(grid.entries.firstIndex { $0.name == name }) }
+            return grid.collectionView(grid.collectionView, acceptDrop: drag, indexPath: IndexPath(item: index ?? 0, section: 0),
+                                       dropOperation: index == nil ? .before : .on)
+        case .columns:
+            let columns = try #require(browser.presentations.columnController)
+            let pane = try #require(Self.views(of: ColumnPane.self, in: columns.view).first { $0.isRoot })
+            let row = try name.map { name in try #require(pane.entries.firstIndex { $0.name == name }) }
+            return pane.tableView(pane.tableView, acceptDrop: drag, row: row ?? -1, dropOperation: .on)
+        case .gallery:
+            let gallery = try #require(browser.presentations.galleryController)
+            guard let name else { return try #require(gallery.view as? GalleryRootView).performDragOperation(drag) }
+            let index = try #require(gallery.entries.firstIndex { $0.name == name })
+            return gallery.collectionView(gallery.strip, acceptDrop: drag, indexPath: IndexPath(item: index, section: 0), dropOperation: .on)
+        default:
+            return false
+        }
+    }
+
+    private static func views<View: NSView>(of type: View.Type, in root: NSView) -> [View] {
+        root.subviews.flatMap { ([$0 as? View].compactMap { $0 }) + views(of: type, in: $0) }
     }
 
     @Test func completedTransfersDoNotKeepClosedPanesAlive() async throws {
         let tree = try TestTree("left/a.txt", "right/", "state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         let controller = makeWindow(tree.url("left"), second: tree.url("right"), services: services)
         defer { controller.window?.contentViewController = nil }
         var other = controller.otherBrowser
-        weak var closedBrowser = other
+        weak let closedBrowser = other
         try await waitForBrowser(controller.browser)
         try await waitForBrowser(try #require(other))
         controller.browser.setMode(.list, remember: false)
@@ -369,14 +415,7 @@ struct TransferContextTests {
     @Test func fetchJobsReleaseTheirContinuationWhenFinishedOrCancelled() async throws {
         let tree = try TestTree("state/")
         let env = try Environment(tree)
-        let services = BrowserServices.configured(
-            transfers: env.queue,
-            visits: Frecency(preferences: env.defaults),
-            windows: .headless,
-            remote: .shared,
-            containers: .shared,
-            containerStore: .shared,
-            clipboard: .shared)
+        let services = env.services
         for cancelled in [false, true] {
             var browser: BrowserViewController? = BrowserViewController(services: services)
             weak var heldBrowser: BrowserViewController?
@@ -398,7 +437,7 @@ struct TransferContextTests {
     }
 
     private func fetchHolding(_ browser: BrowserViewController, then: @escaping () -> Void) -> CopyFetchJob {
-        CopyFetchJob([]) {
+        CopyFetchJob([], copies: .live) {
             _ = browser.isLoaded
             then()
         }

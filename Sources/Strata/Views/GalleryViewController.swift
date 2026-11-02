@@ -4,34 +4,40 @@ import Quartz
 /// Gallery view, like Finder's: a large preview of the selected item over a strip of thumbnails. ←/→ step through the
 /// folder, Space opens Quick Look, Return renames (or opens, per Settings); typing filters, as everywhere else. Like
 /// Finder's, something is always selected, so the preview always has something to show.
-final class GalleryViewController: NSViewController, FileCollectionController {
+final class GalleryViewController: NSViewController, FileItemCollection, FileCollectionHost {
     let thumbnails: FileThumbnails
     let copies: CopyProviders
     let clipboard: Clipboard
+    let statuses: FileStatuses
     weak var fileDelegate: FileCollectionViewDelegate?
     /// The folder shown; background drops go into it.
     var directory: URL?
 
-    init(thumbnails: FileThumbnails = .shared, copies: CopyProviders = .live, clipboard: Clipboard = .shared) {
+    init(thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard, statuses: FileStatuses) {
         self.thumbnails = thumbnails
+        self.statuses = statuses
         self.copies = copies
         self.clipboard = clipboard
+        strip = GalleryStripView(copies: copies)
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     private(set) var entries: [FileEntry] = []
     private var indexByKey: [String: Int] = [:]
-    let strip = GalleryStripView()
+    let strip: GalleryStripView
     private let stripScroll = NSScrollView()
     private let layout = NSCollectionViewFlowLayout()
     private let previewBox = NSView()
     private let preview = QuickLookPreviewView(frame: .zero, style: .normal)
     let iconView = NSImageView()
+    /// A title, so it ignores the file text size.
+    private static let nameFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
     private let nameLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
-    private let dropHighlight = DropHighlightView()
+    let dropHighlight = DropHighlightView()
     private var stripHeight: NSLayoutConstraint?
     private var lead: Int?
     private var anchor: Int?
@@ -53,12 +59,14 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         preview.clear()
         previewed = nil
     }
-    private var selectionReportPending = false
-    private var lastReportedSelection: [URL] = []
+    private lazy var selectionReports = SelectionReports(selection: { [weak self] in self?.selectedURLs ?? [] }) { [weak self] urls in
+        guard let self else { return }
+        fileDelegate?.fileView(self, selectionDidChange: urls)
+    }
     private var renameField: InlineRenameField?
     private var deferredEntries: [FileEntry]?
     /// Opens the folder a drag rests on.
-    private lazy var springLoader = SpringLoader(view: strip, frame: { [weak self] folder in
+    lazy var springLoader = SpringLoader(view: strip, frame: { [weak self] folder in
         guard let self, let index = indexByKey[folder.fileViewKey] else { return nil }
         return strip.frameForItem(at: index)
     }, open: { [weak self] folder, drag in
@@ -72,6 +80,23 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     var focusView: NSView { strip }
 
     override func loadView() {
+        configureStrip()
+        configurePreview()
+        configureLabels()
+        let root = GalleryRootView()
+        root.controller = self
+        root.wantsLayer = true
+        layOut(in: root)
+        updateStripHeight()
+        view = root
+        root.registerForDraggedTypes(FileDrop.types)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
+                                               object: nil)
+    }
+
+    /// The strip of thumbnails along the bottom, horizontal, selectable and a drag source.
+    private func configureStrip() {
         layout.scrollDirection = .horizontal
         layout.itemSize = NSSize(width: Self.itemSide, height: Self.itemSide)
         layout.minimumInteritemSpacing = 6
@@ -86,11 +111,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         strip.allowsEmptySelection = false
         strip.backgroundColors = [.clear]
         strip.register(GalleryThumbnailItem.self, forItemWithIdentifier: GalleryThumbnailItem.identifier)
-        strip.registerForDraggedTypes(FileDrop.types)
-        strip.setDraggingSourceOperationMask([.copy, .move, .generic], forLocal: true)
-        strip.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
         strip.setAccessibilityLabel(String(localized: "Gallery", comment: "View mode: items in a gallery"))
-        strip.controller = self
+        strip.host = self
 
         stripScroll.documentView = strip
         stripScroll.hasHorizontalScroller = true
@@ -98,7 +120,10 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         stripScroll.drawsBackground = false
         stripScroll.verticalScrollElasticity = .none
         stripScroll.translatesAutoresizingMaskIntoConstraints = false
+    }
 
+    /// The box the chosen item's preview or icon fills.
+    private func configurePreview() {
         previewBox.translatesAutoresizingMaskIntoConstraints = false
         preview.translatesAutoresizingMaskIntoConstraints = false
         preview.isHidden = true
@@ -107,8 +132,11 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         iconView.setAccessibilityElement(false)
         previewBox.addSubview(preview)
         previewBox.addSubview(iconView)
+    }
 
-        nameLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+    /// The chosen item's name and details below its preview.
+    private func configureLabels() {
+        nameLabel.font = Self.nameFont
         nameLabel.alignment = .center
         nameLabel.lineBreakMode = .byTruncatingMiddle
         // Not selectable: a click there mustn't take the keyboard away from the strip.
@@ -126,16 +154,16 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             label.setContentCompressionResistancePriority(.init(200), for: .horizontal)
             label.setContentHuggingPriority(.init(200), for: .horizontal)
         }
+    }
 
+    /// Preview, labels, a separator and the strip from top to bottom, and the drop highlight over them all.
+    private func layOut(in root: GalleryRootView) {
         let separator = NSBox()
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
         dropHighlight.translatesAutoresizingMaskIntoConstraints = false
         dropHighlight.isHidden = true
 
-        let root = GalleryRootView()
-        root.controller = self
-        root.wantsLayer = true
         for subview in [previewBox, nameLabel, detailLabel, separator, stripScroll, dropHighlight] as [NSView] { root.addSubview(subview) }
         let guide = root.safeAreaLayoutGuide
         // The icon fills what it can of the box, square, up to 256 points (above the image's own small size, which
@@ -147,8 +175,8 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         iconView.setContentHuggingPriority(.init(1), for: .vertical)
         iconView.setContentCompressionResistancePriority(.init(1), for: .horizontal)
         iconView.setContentCompressionResistancePriority(.init(1), for: .vertical)
-        let strip = stripScroll.heightAnchor.constraint(equalToConstant: 0)
-        stripHeight = strip
+        let height = stripScroll.heightAnchor.constraint(equalToConstant: 0)
+        stripHeight = height
         NSLayoutConstraint.activate([
             previewBox.topAnchor.constraint(equalTo: guide.topAnchor, constant: 16),
             previewBox.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
@@ -177,18 +205,12 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             stripScroll.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
             stripScroll.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
             stripScroll.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-            strip,
+            height,
             dropHighlight.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 3),
             dropHighlight.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -3),
             dropHighlight.topAnchor.constraint(equalTo: guide.topAnchor, constant: 3),
             dropHighlight.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -3),
         ])
-        updateStripHeight()
-        view = root
-        root.registerForDraggedTypes(FileDrop.types)
-        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
-                                               object: nil)
     }
 
     /// Room for a row of thumbnails, plus a scroller when they're always shown.
@@ -263,11 +285,13 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             let shown: NSView = preview.isHidden ? iconView : preview
             return window.convertToScreen(shown.convert(shown.bounds, to: nil))
         }
-        guard let index = indexByKey[url.fileViewKey], let item = strip.item(at: IndexPath(item: index, section: 0)) else { return nil }
+        guard let index = index(of: url), let item = strip.item(at: IndexPath(item: index, section: 0)) else { return nil }
         let rect = item.view.convert(item.view.bounds, to: nil)
         guard strip.visibleRect.intersects(strip.convert(rect, from: nil)) else { return nil }
         return window.convertToScreen(rect)
     }
+
+    func index(of url: URL) -> Int? { indexByKey[url.fileViewKey] }
 
     // MARK: - Rename (the name under the preview)
 
@@ -277,15 +301,10 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     @discardableResult
     func beginRename(_ url: URL) -> Bool {
-        if let existing = renameField {
-            existing.cancel()
-        }
-        guard let index = indexByKey[url.fileViewKey] else { return false }
-        let entry = entries[index]
-        select([url], scroll: true)
+        guard let (_, entry) = prepareRename(url) else { return false }
         schedulePreview(now: true)
         let field = InlineRenameField(name: entry.name, isFolder: entry.isFolder, centered: true, wraps: false,
-                                      font: nameLabel.font ?? FileViewStyle.nameFont)
+                                      font: Self.nameFont)
         view.layoutSubtreeIfNeeded()
         let frame = nameLabel.frame
         let width = min(max(frame.width * 0.6, 240), frame.width)
@@ -316,8 +335,9 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     @objc private func clipboardChanged() { refreshVisibleItems() }
 
     /// Redraws the thumbnails' dimming, plates and badges (clipboard, git, focus, appearance), optionally re-reading thumbnails.
-    func refreshVisibleItems(reconfigure: Bool = false) {
+    func refreshVisibleItems(reconfigure: Bool = false, paths: Set<String>? = nil) {
         for case let item as GalleryThumbnailItem in strip.visibleItems() {
+            if let paths, !paths.contains(item.entry?.url.path ?? "") { continue }
             if let entry = item.entry {
                 if reconfigure {
                     configure(item, with: entry)
@@ -327,7 +347,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             }
             item.emphasized = strip.isEmphasized
         }
-        if reconfigure {
+        if reconfigure, paths == nil || previewed.map({ paths?.contains($0.url.path) == true }) == true {
             schedulePreview(now: true, force: true)
         }
     }
@@ -343,7 +363,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
     }
 
     private func isDimmed(_ entry: FileEntry) -> Bool {
-        entry.isHidden || clipboard.isCut(entry.url) || GitStatusStore.shared.isIgnored(entry.url)
+        entry.isHidden || clipboard.isCut(entry.url) || statuses.git.isIgnored(entry.url)
     }
 
     // MARK: - Preview
@@ -396,7 +416,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             }
         }
         // Folders and apps show their icon; an item only in the cloud isn't downloaded just to be looked at.
-        guard !entry.isFolder, canThumbnail, CloudStore.shared.status(for: entry.url)?.isPlaceholder != true else { return }
+        guard !entry.isFolder, canThumbnail, statuses.cloud.status(for: entry.url)?.isPlaceholder != true else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.previewed == entry, self.thumbnails.canThumbnail(entry) else { return }
@@ -413,18 +433,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
 
     fileprivate func reportSelection() {
         schedulePreview()
-        guard !selectionReportPending else { return }
-        selectionReportPending = true
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.selectionReportPending = false
-                let urls = self.selectedURLs
-                guard urls != self.lastReportedSelection else { return }
-                self.lastReportedSelection = urls
-                self.fileDelegate?.fileView(self, selectionDidChange: urls)
-            }
-        }
+        selectionReports.soon()
     }
 
     private func scrollToItem(_ index: Int) {
@@ -463,7 +472,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         fileDelegate?.fileView(self, open: selected)
     }
 
-    fileprivate func handleKey(_ key: FileViewKey) -> Bool {
+    func handleKey(_ key: FileViewKey) -> Bool {
         if fileDelegate?.fileView(self, handle: key) == true { return true }
         if key == .returnKey { openSelection(); return true }
         return false
@@ -477,8 +486,7 @@ final class GalleryViewController: NSViewController, FileCollectionController {
             anchor = index
         }
         reportSelection()
-        lastReportedSelection = selectedURLs
-        fileDelegate?.fileView(self, selectionDidChange: lastReportedSelection)
+        selectionReports.now()
         return fileDelegate?.fileView(self, menuFor: selectedEntries)
     }
 
@@ -490,37 +498,18 @@ final class GalleryViewController: NSViewController, FileCollectionController {
         schedulePreview()
     }
 
-    fileprivate func focusChanged() { refreshVisibleItems() }
+    func focusChanged() { refreshVisibleItems() }
 
     // MARK: - Drops
 
     fileprivate func validateBackgroundDrop(_ info: NSDraggingInfo) -> NSDragOperation {
         springLoader.hover(nil, drag: info.draggingSequenceNumber)
-        let urls = FileDrop.urls(info, copies: copies)
-        guard !urls.isEmpty, let directory else { return hideDropHighlight() }
-        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
-        dropHighlight.isHidden = operation.isEmpty
-        return operation
+        return dropIntoFolderShown(FileDrop.urls(info, copies: copies), info: info)
     }
 
     fileprivate func acceptBackgroundDrop(_ info: NSDraggingInfo) -> Bool {
-        dragEnded()
-        let urls = FileDrop.urls(info, copies: copies)
-        guard let directory else { return false }
-        let operation = FileDrop.operation(urls, into: directory, info: info, copies: copies)
-        guard !operation.isEmpty else { return false }
-        return fileDelegate?.fileView(self, drop: urls, onto: nil, copy: operation != .move) ?? false
-    }
-
-    @discardableResult
-    fileprivate func hideDropHighlight() -> NSDragOperation {
-        dropHighlight.isHidden = true
-        return []
-    }
-
-    fileprivate func dragEnded() {
-        dropHighlight.isHidden = true
-        springLoader.cancel()
+        endDrop()
+        return fileDelegate?.fileView(self, drop: FileDrop.urls(info, copies: copies), onto: nil, info: info) ?? false
     }
 }
 
@@ -544,9 +533,7 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
-        if let lead, !strip.selectionIndexPaths.contains(IndexPath(item: lead, section: 0)) {
-            self.lead = strip.selectionIndexPaths.map(\.item).max()
-        }
+        lead = Self.lead(lead, keptIn: strip.selectionIndexPaths)
         reportSelection()
     }
 
@@ -555,48 +542,18 @@ extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDel
     }
 
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
-        indexPath.count == 2 && entries.indices.contains(indexPath.item)
-            ? ContainerDragItem.writer(for: entries[indexPath.item].url, copies: copies) : nil
+        pasteboardWriter(at: indexPath)
     }
 
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo,
                         proposedIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>,
                         dropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let proposed = proposedIndexPath.pointee as IndexPath
-        let index = proposed.count == 2 ? proposed.item : -1
-        let onFolder = !urls.isEmpty && dropOperation.pointee == .on && entries.indices.contains(index) && entries[index].isFolder
-            && !FileDrop.isInside(urls, entries[index].url)
-        // A folder the drag rests on springs open.
-        let springs = onFolder && fileDelegate?.fileView(self, canSpringLoad: entries[index].url) == true
-        springLoader.hover(springs ? entries[index].url : nil, drag: draggingInfo.draggingSequenceNumber)
-        guard !urls.isEmpty else { return hideDropHighlight() }
-        if onFolder {
-            let operation = FileDrop.operation(urls, into: entries[index].url, info: draggingInfo, copies: copies)
-            if !operation.isEmpty {
-                dropHighlight.isHidden = true
-                return operation
-            }
-        }
-        guard let directory else { return hideDropHighlight() }
-        proposedIndexPath.pointee = IndexPath(item: entries.count, section: 0) as NSIndexPath
-        dropOperation.pointee = .before
-        let operation = FileDrop.operation(urls, into: directory, info: draggingInfo, copies: copies)
-        dropHighlight.isHidden = operation.isEmpty
-        return operation
+        validateDrop(draggingInfo, proposedIndexPath: proposedIndexPath, dropOperation: dropOperation)
     }
 
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo,
                         indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        dragEnded()
-        let urls = FileDrop.urls(draggingInfo, copies: copies)
-        let index = indexPath.count == 2 ? indexPath.item : -1
-        let folder: URL? = dropOperation == .on && entries.indices.contains(index) && entries[index].isFolder
-            ? entries[index].url : nil
-        guard let target = folder ?? directory else { return false }
-        let operation = FileDrop.operation(urls, into: target, info: draggingInfo, copies: copies)
-        guard !operation.isEmpty else { return false }
-        return fileDelegate?.fileView(self, drop: urls, onto: folder, copy: operation != .move) ?? false
+        acceptDrop(draggingInfo, indexPath: indexPath, dropOperation: dropOperation)
     }
 }
 
@@ -615,11 +572,11 @@ final class GalleryRootView: NSView {
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        controller?.dragEnded()
+        controller?.endDrop()
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
-        controller?.dragEnded()
+        controller?.endDrop()
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -648,36 +605,20 @@ final class GalleryRootView: NSView {
 }
 
 /// The thumbnail strip: keys go where the list sends them (typing filters, Space previews, Return renames or opens).
-final class GalleryStripView: NSCollectionView {
-    fileprivate weak var controller: GalleryViewController?
-    private var windowObservers: [NSObjectProtocol] = []
+final class GalleryStripView: FileCollectionView {
+    fileprivate var controller: GalleryViewController? { host as? GalleryViewController }
 
-    var isEmphasized: Bool {
-        guard let window else { return false }
-        return window.isKeyWindow && window.firstResponder === self
-    }
-
-    override func keyDown(with event: NSEvent) {
-        guard let controller else { return super.keyDown(with: event) }
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let plain = mods.isDisjoint(with: [.command, .control])
-        let extend = mods.contains(.shift)
-        switch event.keyCode {
-        case KeyCode.leftArrow where plain, KeyCode.upArrow where plain: controller.move(by: -1, extend: extend); return
-        case KeyCode.rightArrow where plain, KeyCode.downArrow where plain: controller.move(by: 1, extend: extend); return
-        case KeyCode.home: controller.move(by: Int.min, extend: extend); return
-        case KeyCode.end: controller.move(by: Int.max, extend: extend); return
-        default: break
+    override func move(for keyCode: UInt16, plain: Bool, extend: Bool) -> Bool {
+        let step: Int? = switch keyCode {
+        case KeyCode.leftArrow where plain, KeyCode.upArrow where plain: -1
+        case KeyCode.rightArrow where plain, KeyCode.downArrow where plain: 1
+        case KeyCode.home: Int.min
+        case KeyCode.end: Int.max
+        default: nil
         }
-        if let key = FileViewKey.from(event) {
-            if case .type = key {
-                if controller.handleKey(key) { return }
-            } else {
-                if !controller.handleKey(key) { super.keyDown(with: event) }
-                return
-            }
-        }
-        super.keyDown(with: event)
+        guard let step, let controller else { return false }
+        controller.move(by: step, extend: extend)
+        return true
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -703,44 +644,6 @@ final class GalleryStripView: NSCollectionView {
         window?.makeFirstResponder(self)
         return controller?.contextMenu(at: indexPathForItem(at: convert(event.locationInWindow, from: nil))?.item)
     }
-
-    override func becomeFirstResponder() -> Bool {
-        let result = super.becomeFirstResponder()
-        controller?.focusChanged()
-        return result
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let result = super.resignFirstResponder()
-        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.controller?.focusChanged() } }
-        return result
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowObservers.forEach(NotificationCenter.default.removeObserver)
-        windowObservers = []
-        guard let window else { return }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.controller?.focusChanged() }
-            })
-        }
-    }
-
-    override func draggingExited(_ sender: NSDraggingInfo?) {
-        super.draggingExited(sender)
-        controller?.dragEnded()
-    }
-
-    override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
-        controller?.dragEnded()
-    }
-
-    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: controller?.copies ?? .live)
-    }
 }
 
 /// One thumbnail in the strip, on a rounded plate when selected (or when a drop would go into it).
@@ -749,11 +652,11 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
 
     private(set) var entry: FileEntry?
     private let thumbnail = NSImageView()
-    private var thumbnails: FileThumbnails = .shared
+    private var thumbnails: FileThumbnails?
     private var ticket: FileThumbnails.Ticket?
     var onThumbnail: ((FileEntry, NSImage) -> Void)?
 
-    isolated deinit { thumbnails.cancel(ticket) }
+    isolated deinit { thumbnails?.cancel(ticket) }
 
     var dimmed = false {
         didSet { thumbnail.alphaValue = dimmed ? 0.45 : 1 }
@@ -794,8 +697,8 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
         imageView = thumbnail
     }
 
-    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat, thumbnails: FileThumbnails = .shared) {
-        self.thumbnails.cancel(ticket)
+    func configure(_ entry: FileEntry, size: CGFloat, scale: CGFloat, thumbnails: FileThumbnails) {
+        self.thumbnails?.cancel(ticket)
         self.thumbnails = thumbnails
         ticket = nil
         self.entry = entry
@@ -815,7 +718,7 @@ final class GalleryThumbnailItem: NSCollectionViewItem {
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        thumbnails.cancel(ticket)
+        thumbnails?.cancel(ticket)
         ticket = nil
         entry = nil
         onThumbnail = nil

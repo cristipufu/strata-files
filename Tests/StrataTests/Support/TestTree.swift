@@ -1,5 +1,12 @@
 import Foundation
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// A folder of files made for one test and removed after it. `snapshot` lists everything in it (links as links, never
 /// followed), so a test can check that an operation changed what it was meant to and nothing else.
@@ -10,7 +17,11 @@ final class TestTree {
     /// Spelled the way folder listings spell it (the temporary folder is reached through `/var`, a link).
     let root: URL
 
-    init(_ items: String...) throws {
+    convenience init(_ items: String...) throws {
+        try self.init(items)
+    }
+
+    init(_ items: [String]) throws {
         let made = FileManager.default.temporaryDirectory.appending(path: "strata-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: made, withIntermediateDirectories: true)
         guard let real = realpath(made.path, nil) else { throw CocoaError(.fileNoSuchFile) }
@@ -56,41 +67,96 @@ final class TestTree {
     /// inside it).
     func snapshot() -> [String] { Self.listing(of: root) }
 
-    /// `snapshot` for any folder (a test server's, say).
+    /// `snapshot` for any folder (a test server's, say). Files named "._…" are listed too, which FileManager leaves out.
+    /// History is written in the background: what's been written is listed. Each item is looked up in the folder opened
+    /// for it, so a name read wrong (by a name reader broken on purpose) names nothing, never that folder again.
     static func listing(of root: URL) -> [String] {
+        OperationLog.waitForWrites()
         var items: [String] = []
-        func walk(_ folder: String) {
-            let names = (try? FileManager.default.contentsOfDirectory(atPath: root.appending(path: folder).path)) ?? []
-            for name in names {
-                let relative = folder.isEmpty ? name : folder + "/" + name
-                let full = root.appending(path: relative).path
+        func walk(_ folder: Int32, _ prefix: String) {
+            for name in names(in: folder) {
+                let relative = prefix + name
                 var info = stat()
-                guard lstat(full, &info) == 0 else { continue }
+                guard fstatat(folder, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else { continue }
                 switch info.st_mode & S_IFMT {
                 case S_IFLNK:
-                    let target = (try? FileManager.default.destinationOfSymbolicLink(atPath: full)) ?? "?"
+                    let target = linkTarget(name, in: folder) ?? "?"
                     let shown = target.hasPrefix(root.path + "/") ? String(target.dropFirst(root.path.count + 1)) : target
                     items.append("\(relative) -> \(shown)")
                 case S_IFDIR:
                     items.append(relative + "/")
-                    walk(relative)
+                    let inner = openat(folder, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard inner >= 0 else { continue }
+                    walk(inner, relative + "/")
+                    close(inner)
                 default:
                     items.append(relative)
                 }
             }
         }
-        walk("")
+        let top = open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard top >= 0 else { return [] }
+        walk(top, "")
+        close(top)
         return items.sorted()
+    }
+
+    private static func linkTarget(_ name: String, in folder: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let count = readlinkat(folder, name, &buffer, buffer.count)
+        guard count >= 0 else { return nil }
+        return String(decoding: buffer.prefix(count).map(UInt8.init(bitPattern:)), as: UTF8.self)
+    }
+
+    static func path(of fd: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(fd, F_GETPATH, &buffer) == 0 else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
+    }
+
+    /// Read from the folder itself, not through FileManager, which leaves out files named "._…". A directory record is
+    /// only as long as its name: `DirectoryEntryName` reads it within that length. A name that isn't text shows as a
+    /// marker, so a whole listing still has something there.
+    private static func names(in folder: Int32) -> [String] {
+        let copy = fcntl(folder, F_DUPFD_CLOEXEC, 0)
+        guard copy >= 0, let stream = fdopendir(copy) else {
+            if copy >= 0 { close(copy) }
+            return []
+        }
+        defer { closedir(stream) }
+        var names: [String] = []
+        while let entry = readdir(stream) {
+            let name = DirectoryEntryName.read(entry) ?? "<a name that isn't text>"
+            if name != ".", name != ".." { names.append(name) }
+        }
+        return names
     }
 
     /// Takes back out of your Trash exactly what this tree's items were moved to it as (History, a test run's own, has
     /// where each went; replaced items too).
     func removeFromTrash() {
-        let prefix = root.path + "/"
-        for entry in OperationLog.shared.entries {
-            for pair in entry.pairs + entry.replaced where pair[0].hasPrefix(prefix) {
-                let trashed = URL(fileURLWithPath: pair[1])
-                Self.removeFromTrash(trashed, matching: entry.identities[pair[1]])
+        removeFromTrash(history: .shared)
+    }
+
+    func removeFromTrash(history: OperationLog) {
+        let prefix = root.lexicallyStandardized.path + "/"
+        for entry in history.entries {
+            for pair in entry.moves + entry.replacements where URL(fileURLWithPath: pair.from).lexicallyStandardized.path.hasPrefix(prefix) {
+                let trashed = URL(fileURLWithPath: pair.to)
+                Self.removeFromTrash(trashed, matching: entry.expectation(at: pair.to).key)
+            }
+        }
+    }
+
+    /// Native Undo does not record where it trashes a created item. Clean only captured runtime identities, keeping
+    /// parked originals alive until cleanup so another fixture cannot reuse their identities.
+    static func removeFromTrash(matching identities: [FileIdentity]) {
+        for folder in Trash.folders() {
+            let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for url in entries {
+                guard let identity = FileIdentity.read(url.path), identities.contains(identity),
+                      let saved = identity.historyKey(at: url.path) else { continue }
+                removeFromTrash(url, matching: saved)
             }
         }
     }

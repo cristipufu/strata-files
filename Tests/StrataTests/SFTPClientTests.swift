@@ -2,6 +2,13 @@ import Foundation
 import os
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// Against macOS's own `sftp-server` (what `ssh -s host sftp` runs on a server), over a pipe: no network, no login.
 struct SFTPClientTests {
@@ -91,6 +98,8 @@ struct SFTPClientTests {
 
     @Test func uploadsExactlyAndKeepsTheDate() throws {
         defer { cleanUp() }
+        let before = TestTree.listing(of: root)
+        let neighbor = try Data(contentsOf: root.appending(path: "docs/hello.txt"))
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let target = root.appending(path: "docs/copy.bin").path
         try client.upload(root.appending(path: "big.bin"), to: target, modificationDate: date)
@@ -99,6 +108,9 @@ struct SFTPClientTests {
         // Replacing a file truncates it.
         try client.upload(root.appending(path: "docs/hello.txt"), to: target)
         #expect(try client.stat(target).size == 5)
+        #expect(try Data(contentsOf: root.appending(path: "docs/hello.txt")) == neighbor)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: target)) == neighbor)
+        #expect(TestTree.listing(of: root) == (before + ["docs/copy.bin"]).sorted())
     }
 
     @Test func foldersRenamesAndRemoval() throws {

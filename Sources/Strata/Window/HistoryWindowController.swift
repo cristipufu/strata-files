@@ -8,6 +8,10 @@ final class HistoryWindowController: NSWindowController {
     private let table = NSTableView()
     private let empty = NSTextField(wrappingLabelWithString: String(localized: "Moves, copies, renames and deletions show up here, so you can undo them later, even after quitting."))
     private var entries: [OperationLog.Entry] = []
+    /// Whether each entry's items still allow undoing it, found out away from the main thread (it looks at every item
+    /// an operation moved); a row's Undo waits for it.
+    private var undoable: [UUID: Bool] = [:]
+    private(set) var checking: Task<Void, Never>?
     private let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
@@ -68,12 +72,21 @@ final class HistoryWindowController: NSWindowController {
         reload()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func reload() {
         entries = history.entries.reversed()
         table.reloadData()
         empty.isHidden = !entries.isEmpty
+        checking?.cancel()
+        let entries = entries
+        checking = Task { [weak self] in
+            let found = await OperationLog.itemsAllowUndo(entries)
+            guard !Task.isCancelled, let self else { return }
+            self.undoable = found
+            self.table.reloadData()
+        }
     }
 
     @objc private func confirmClearHistory() {
@@ -108,19 +121,17 @@ final class HistoryWindowController: NSWindowController {
     }
 
     fileprivate func summary(_ entry: OperationLog.Entry) -> String {
-        let items = entry.kind == .move ? entry.pairs.compactMap { $0.first } : entry.created
+        let items = entry.kind == .move ? entry.moves.map(\.from) : entry.created
         let first = (items.first as NSString?)?.lastPathComponent ?? ""
         let more = max(0, items.count - 1)
         switch entry.kind {
         case .move:
-            let destination = entry.pairs.first.flatMap {
-                $0.count == 2 && !$0[1].isEmpty ? Format.tildePath(URL(fileURLWithPath: $0[1]).deletingLastPathComponent()) : nil
-            } ?? ""
+            let destination = entry.moves.first.map { Format.tildePath(URL(fileURLWithPath: $0.to).deletingLastPathComponent()) } ?? ""
             // Renames (every item stays in its folder) show the new name, not a destination.
-            let inPlace = !entry.pairs.isEmpty && entry.pairs.allSatisfy {
-                $0.count == 2 && ($0[0] as NSString).deletingLastPathComponent == ($0[1] as NSString).deletingLastPathComponent
+            let inPlace = !entry.moves.isEmpty && entry.moves.allSatisfy {
+                ($0.from as NSString).deletingLastPathComponent == ($0.to as NSString).deletingLastPathComponent
             }
-            if inPlace, let to = entry.pairs.first.flatMap({ $0.count == 2 ? ($0[1] as NSString).lastPathComponent : nil }) {
+            if inPlace, let to = entry.moves.first.map({ ($0.to as NSString).lastPathComponent }) {
                 return more > 0 ? String(localized: "“\(first)” → “\(to)” and \(more) more, in \(destination)", comment: "plural")
                     : String(localized: "“\(first)” → “\(to)”", comment: "History: an item renamed from one name to another")
             }
@@ -152,7 +163,8 @@ extension HistoryWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return cell
         }()
         let entry = entries[row]
-        cell.configure(entry, summary: summary(entry), when: when(entry.date), canUndo: history.canUndo(entry)) { [weak self] in
+        let canUndo = history.mayUndo(entry) && undoable[entry.id] == true
+        cell.configure(entry, summary: summary(entry), when: when(entry.date), canUndo: canUndo) { [weak self] in
             self?.undo(entry)
         }
         return cell
@@ -200,6 +212,7 @@ private final class HistoryCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: OperationLog.Entry, summary: String, when: String, canUndo: Bool, undo: @escaping () -> Void) {

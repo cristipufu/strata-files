@@ -83,9 +83,9 @@ Finder 本来够用，直到你需要寻找文件、查明磁盘被什么占满�
 
 ## 你的配色，熟悉的 Mac。
 
-<p align="center"><img src="../screenshots/appearance.webp" alt="外观设置，显示全部十四种颜色主题和“系统”选项" width="632"></p>
+<p align="center"><img src="../screenshots/appearance.webp" alt="外观设置，显示颜色主题和“系统”选项" width="632"></p>
 
-选择 **系统** 保留 Mac 原有配色，或从十四种主题中挑选：**石墨、蓝色、绿色、紫色、沙色、蓝绿色、玫瑰色、琥珀色、岩灰、鼠尾草绿、珊瑚、梅紫、冰蓝和午夜**。每种主题都有浅色和深色配色，协调应用于文件视图、边栏、检查器、工具栏及辅助窗口。macOS 原生控件和熟悉的操作方式保持不变。
+选择 **系统** 保留 Mac 原有配色，或从十七种主题中挑选：**石墨、蓝色、绿色、紫色、沙色、蓝绿色、玫瑰色、琥珀色、岩灰、鼠尾草绿、珊瑚、梅紫、冰蓝、午夜、Catppuccin、Dracula 和 Tokyo Night**。每种主题都有浅色和深色配色，协调应用于文件视图、边栏、检查器、工具栏及辅助窗口。macOS 原生控件和熟悉的操作方式保持不变。
 
 在 **设置 ▸ 外观 ▸ 颜色主题** 中选择。关闭 **窗口色调**，即可保留原生背景，仅在选中区域和强调色中使用主题。还可以调整行间密度与文件名字号。
 
@@ -171,6 +171,12 @@ README 的译文以本英文原稿为源，从翻译目录生成。请参阅 [RE
 ## 获取 Strata
 
 从 [GitHub Releases](https://github.com/cristipufu/strata-files/releases/latest) 下载最新版，打开磁盘映像，将 Strata 拖入“应用程序”。需要搭载 Apple silicon 且运行 **macOS 26** 的 Mac。发行版均经过签名和 Apple 公证，可像普通应用一样打开。通过 **Strata ▸ 检查更新…** 或经你允许自动更新；安装前会检查更新的签名。
+
+Homebrew:
+
+```sh
+brew install --cask cristipufu/tap/strata
+```
 
 也可使用 Swift 工具链（Xcode 或 Command Line Tools）自行构建：
 

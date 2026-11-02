@@ -1,21 +1,21 @@
 import AppKit
 
 extension Notification.Name {
-    static let clipboardChanged = Notification.Name("StrataClipboardChanged")
+    package static let clipboardChanged = Notification.Name("StrataClipboardChanged")
 }
 
 /// File system changes with undo. Moves and copies run off the main thread; undo and redo are registered as the
 /// inverse operation, which registers its own inverse in turn.
-enum FileOps {
-    typealias Move = (from: URL, to: URL)
+package enum FileOps {
+    package typealias Move = (from: URL, to: URL)
 
     /// An archive opened as a folder is a temporary copy: nothing inside it is changed from Strata.
-    static let insideArchiveError = CocoaError(.fileWriteNoPermission, userInfo: [
+    package static let insideArchiveError = CocoaError(.fileWriteNoPermission, userInfo: [
         NSLocalizedDescriptionKey: String(localized: "Items in a read-only copy (an archive opened as a folder, or a container’s files) can’t be changed. Copy them out first."),
     ])
 
-    static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders = .live,
-                       history: OperationLog = .shared) async throws -> URL {
+    package static func rename(_ url: URL, to name: String, undo: UndoManager?, copies: CopyProviders,
+                       history: OperationLog) async throws -> URL {
         guard !ReadOnlyCopies.contains(url, copies: copies) else { throw insideArchiveError }
         // A name, never a path: whatever is typed, the item stays in its folder.
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else {
@@ -36,38 +36,77 @@ enum FileOps {
         return destination
     }
 
-    /// `record: false` for moves that are themselves an undo or redo (or part of a larger logged operation): History
-    /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z.
-    static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, record: Bool = true,
-                     history: OperationLog = .shared, copies: CopyProviders = .live) async throws {
+    package static func move(_ pairs: [Move], actionName: String, undo: UndoManager?, history: OperationLog,
+                     copies: CopyProviders) async throws {
+        try refuseReadOnly(pairs, copies: copies)
+        let landed = LandedFiles()
+        let (done, error, identities) = await moveAll(pairs)
+        for pair in done { landed.set(identities[pair.to.path], at: pair.to) }
+        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
+        let entry = history.recordMove(actionName, done, fileIdentities: await landed.historyKeys(for: done.map(\.to)))
+        registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
+        if let error { throw error }
+    }
+
+    /// Moves that are a step of another operation (an undo or redo, a plan's rename through a temporary name): History
+    /// keeps one entry per operation and marks it undone instead of growing a row per ⌘Z, so nothing is recorded or
+    /// registered.
+    package static func moveAsPart(_ pairs: [Move], copies: CopyProviders) async throws {
+        try refuseReadOnly(pairs, copies: copies)
+        let (done, error, _) = await moveAll(pairs)
+        done.forEach { TransferEngine.hooks.afterLanding?($0.to) }
+        if let error { throw error }
+    }
+
+    /// Nothing inside an archive opened as a folder moves, in or out: it's a temporary copy.
+    private static func refuseReadOnly(_ pairs: [Move], copies: CopyProviders) throws {
         guard !pairs.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
             throw insideArchiveError
         }
-        let landed = LandedFiles()
-        for pair in pairs { landed.expect(pair.from, at: pair.to) }
-        let (done, error) = await moveAll(pairs)
-        let arrivedPaths = Set(done.map(\.to.path))
-        for pair in pairs where !arrivedPaths.contains(pair.to.path) { landed.set(nil, at: pair.to) }
-        for pair in done where landed.identity(at: pair.to) == nil { landed.record([pair.to]) }
-        done.forEach { landed.arrived($0.to); TransferEngine.hooks.afterLanding?($0.to) }
-        let entry = record ? history.recordMove(actionName, done, landed: landed) : nil
-        registerMoveUndo(done, actionName, undo, entry: entry, copies: copies, landed: landed, history: history)
-        if let error { throw error }
     }
 
     /// Moves each pair in order, stopping at the first error, and returns what moved and the error that stopped it.
     /// Swaps and chains ("a → b" with "b → a", or "1 → 2, 2 → 3") are ordered so each item moves only once the one
     /// whose place it takes has left; a cycle parks one item under a hidden name that keeps its own. They succeed or
-    /// fail as a whole: on an error everything moved goes back, and nothing is left under a hidden name.
-    static func moveAll(_ pairs: [Move]) async -> (done: [Move], error: Error?) {
+    /// fail as a whole: on an error everything moved goes back, and nothing is left under a hidden name. `landed` is
+    /// what each moved item is where it went, by that path, read as it moved, away from the main thread.
+    @concurrent
+    package static func moveAll(_ pairs: [Move]) async -> (done: [Move], error: Error?, landed: [String: FileIdentity]) {
         guard isChain(pairs) else {
-            var done: [Move] = []
+            var done: [Move] = [], landed: [String: FileIdentity] = [:]
             for pair in pairs {
-                do { try await moveItem(pair.from, pair.to) } catch { return (done, error) }
+                let before = FileIdentity.read(pair.from.path)
+                do { try await moveItem(pair.from, pair.to) } catch { return (done, error, landed) }
                 done.append(pair)
+                landed[pair.to.path] = arrival(of: before, at: pair.to)
             }
-            return (done, nil)
+            return (done, nil, landed)
         }
+        // A chain's items are known before any moves: once one has, another may stand where it was.
+        let before = Dictionary(pairs.map { ($0.to.path, FileIdentity.read($0.from.path)) }) { first, _ in first }
+        let (done, error) = await moveChain(pairs)
+        var landed: [String: FileIdentity] = [:]
+        for pair in done { landed[pair.to.path] = arrival(of: before[pair.to.path] ?? nil, at: pair.to) }
+        return (done, error, landed)
+    }
+
+    /// What an item that was `before` is at `destination` now it's moved there: a move on one disk keeps what it is, so
+    /// a file swapped in meanwhile is never taken for it; moved across disks it's a new file, read where it went.
+    @concurrent package static func identity(of before: FileIdentity?, movedTo destination: URL) async -> FileIdentity? {
+        arrival(of: before, at: destination)
+    }
+
+    /// What's at `url` now, read away from the main thread: an item about to move.
+    @concurrent package static func identity(beforeMoving url: URL) async -> FileIdentity? { FileIdentity.read(url.path) }
+
+    nonisolated private static func arrival(of before: FileIdentity?, at destination: URL) -> FileIdentity? {
+        let now = FileIdentity.read(destination.path)
+        guard let before else { return now }
+        guard let now, now.device != before.device else { return before }
+        return now
+    }
+
+    nonisolated private static func moveChain(_ pairs: [Move]) async -> (done: [Move], error: Error?) {
         var executed: [(step: ChainStep, completes: Int?)] = []
         for step in chainSteps(pairs) {
             do {
@@ -79,18 +118,18 @@ enum FileOps {
                     NSLocalizedDescriptionKey: String(localized: "“\(pair.from.lastPathComponent)” couldn’t be renamed to “\(pair.to.lastPathComponent)”: \(error.localizedDescription)"),
                     NSUnderlyingErrorKey: error,
                 ])
-                // Back the way it came; whatever can't go back stays where it is, but never hidden.
+                // Back the way it came; whatever can't go back stays where it is, and a parked item comes back beside
+                // its name when something has taken it.
                 var kept: [Move] = []
                 for item in executed.reversed() {
-                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
                     if item.step.isParking {
-                        let fallback = available(item.step.from, copyStyle: false)
-                        if (try? await moveItem(item.step.to, fallback)) != nil {
-                            kept.insert((from: item.step.from, to: fallback), at: 0)
+                        if let now = try? await unpark(item.step.to, as: item.step.from), now != item.step.from {
+                            kept.insert((from: item.step.from, to: now), at: 0)
                         }
-                    } else if let completed = item.completes {
-                        kept.insert(pairs[completed], at: 0)
+                        continue
                     }
+                    if (try? await moveItem(item.step.to, item.step.from)) != nil { continue }
+                    if let completed = item.completes { kept.insert(pairs[completed], at: 0) }
                 }
                 return (kept, named)
             }
@@ -99,19 +138,19 @@ enum FileOps {
     }
 
     /// One rename of a chain: `completes` is the pair it finishes (nil while an item is parked).
-    struct ChainStep {
-        let from: URL
-        let to: URL
+    package nonisolated struct ChainStep: Sendable {
+        package let from: URL
+        package let to: URL
         /// The pair this step belongs to.
-        let pair: Int
-        let completes: Int?
-        var isParking: Bool { completes == nil }
+        package let pair: Int
+        package let completes: Int?
+        package var isParking: Bool { completes == nil }
     }
 
     /// The order to run `pairs` in: each moves after the one whose place it takes (`blocker`); a cycle is broken by
     /// parking its first item and finishing it last.
-    nonisolated static func chainSteps(_ pairs: [Move]) -> [ChainStep] {
-        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+    package nonisolated static func chainSteps(_ pairs: [Move]) -> [ChainStep] {
+        func key(_ url: URL) -> String { url.lexicallyStandardized.path.lowercased() }
         let bySource = Dictionary(pairs.enumerated().map { (key($0.element.from), $0.offset) }, uniquingKeysWith: { first, _ in first })
         var blocked = [Bool](repeating: false, count: pairs.count)
         // waiting[j]: the pair that goes where pair j is now.
@@ -150,9 +189,17 @@ enum FileOps {
         return steps
     }
 
+    /// Brings an item parked under a hidden name (`parkingName`) back by `original`'s name, or by the first free one
+    /// beside it ("Photo 2.jpg") when something has taken that: never replacing anything. Throws when it can't, and
+    /// the item stays parked.
+    @concurrent
+    package static func unpark(_ parked: URL, as original: URL) async throws -> URL {
+        try Archiver.place(parked, in: original.deletingLastPathComponent(), as: original.lastPathComponent)
+    }
+
     /// A hidden name beside `url` that still says what the item was called (".strata-1a2b3c4d-Photo.jpg"), so an
     /// interrupted swap leaves nothing anonymous.
-    nonisolated static func parkingName(for url: URL) -> URL {
+    package nonisolated static func parkingName(for url: URL) -> URL {
         let prefix = ".strata-" + UUID().uuidString.prefix(8).lowercased() + "-"
         var name = url.lastPathComponent
         while !name.isEmpty, (prefix + name).utf8.count > 255 { name.removeLast() }
@@ -160,8 +207,8 @@ enum FileOps {
     }
 
     /// Whether an item goes where another one is now (a swap or a chain of renames).
-    nonisolated static func isChain(_ pairs: [Move]) -> Bool {
-        func key(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+    package nonisolated static func isChain(_ pairs: [Move]) -> Bool {
+        func key(_ url: URL) -> String { url.lexicallyStandardized.path.lowercased() }
         let sources = Set(pairs.map { key($0.from) })
         return pairs.contains { key($0.to) != key($0.from) && sources.contains(key($0.to)) }
     }
@@ -169,7 +216,7 @@ enum FileOps {
     /// A translated piece of a file name ("untitled folder", " copy"), or the English one when the translation can't be
     /// part of a name: translations come from language files anyone can contribute, and a "/" or ".." in one must never
     /// place an item somewhere else (nor a leading "." hide it).
-    nonisolated static func nameText(_ translated: String, english: String) -> String {
+    package nonisolated static func nameText(_ translated: String, english: String) -> String {
         let trimmed = translated.trimmingCharacters(in: .whitespaces)
         let unsafe = translated.contains("/") || translated.contains(":")
             || translated.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || $0 == "\u{0}" }
@@ -178,23 +225,23 @@ enum FileOps {
         return translated
     }
 
-    static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders = .live,
-                          history: OperationLog = .shared) throws -> URL {
+    package static func newFolder(in directory: URL, undo: UndoManager?, copies: CopyProviders,
+                          history: OperationLog) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = nameText(String(localized: "untitled folder", comment: "Name of a new folder, as Finder names it"),
                             english: "untitled folder")
         let url = available(directory.appending(path: name), copyStyle: false)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         let landed = LandedFiles([url])
-        let entry = history.recordCreate("New Folder", [url], landed: landed)
+        let entry = history.recordCreate("New Folder", [url], fileIdentities: landed.historyKeysNow(for: [url]))
         registerTrashUndo([url], "New Folder", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
 
     /// File ▸ New File: an empty "untitled.txt" (`ext` is Settings' extension, "" for none), "untitled 2.txt" when that's
     /// taken. Never over anything: the name is claimed only while nothing is there, not even a link.
-    static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders = .live,
-                        history: OperationLog = .shared) throws -> URL {
+    package static func newFile(in directory: URL, extension ext: String, undo: UndoManager?, copies: CopyProviders,
+                        history: OperationLog) throws -> URL {
         guard !ReadOnlyCopies.contains(directory, copies: copies) else { throw insideArchiveError }
         let name = newFileName(extension: ext)
         var url = available(directory.appending(path: name), copyStyle: false)
@@ -208,13 +255,13 @@ enum FileOps {
             }
         }
         let landed = LandedFiles([url])
-        let entry = history.recordCreate("New File", [url], landed: landed)
+        let entry = history.recordCreate("New File", [url], fileIdentities: landed.historyKeysNow(for: [url]))
         registerTrashUndo([url], "New File", undo, entry: entry, landed: landed, copies: copies, history: history)
         return url
     }
 
     /// What New File calls a file: "untitled.txt", "untitled" with no extension. `stem` replaces "untitled" ("untitled 2").
-    nonisolated static func newFileName(extension ext: String, stem: String? = nil) -> String {
+    package nonisolated static func newFileName(extension ext: String, stem: String? = nil) -> String {
         let base = stem ?? nameText(String(localized: "untitled", comment: "Name of a new empty file, before its extension: “untitled.txt”"),
                                     english: "untitled")
         return ext.isEmpty ? base : base + "." + ext
@@ -222,7 +269,7 @@ enum FileOps {
 
     /// An extension for new files as typed in Settings ("txt", ".md", " TXT "), without its dot; nil when it can't be one.
     /// Letters, digits, "-", "_" and "+" only: no dots, slashes or spaces, so a new file is always one plain name.
-    nonisolated static func newFileExtension(_ typed: String) -> String? {
+    package nonisolated static func newFileExtension(_ typed: String) -> String? {
         var text = typed.trimmingCharacters(in: .whitespaces)
         if text.hasPrefix(".") { text.removeFirst() }
         guard text.utf8.count <= 32,
@@ -233,15 +280,19 @@ enum FileOps {
     /// With `record: false` the trashing is part of another operation (undoing a copy, say): its undo then marks
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
-    static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true, copies: CopyProviders = .live, history: OperationLog = .shared) throws -> [Move] {
+    package static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
+                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog,
+                      volume: RemovalVolume.Reader = RemovalVolume.read) throws -> [Move] {
+        let chosen = Self.outermost(urls).filter { Self.canTrash($0, copies: copies) }
+        if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { throw refusal }
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
-            let logged = record ? history.recordMove("Move to Trash", moved, landed: landed) : entry
+            let logged = record ? history.recordMove("Move to Trash", moved, fileIdentities: landed.historyKeysNow(for: moved.map(\.to))) : entry
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
+            if !moved.isEmpty { Sounds.movedToTrash() }
         }
-        for url in Self.outermost(urls) where Self.canTrash(url, copies: copies) {
+        for url in chosen {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result {
@@ -249,14 +300,12 @@ enum FileOps {
                 landed.record([result as URL])
             }
         }
-        trashSound?.stop()
-        trashSound?.play()
         return moved
     }
 
     /// Removes owned, empty folders innermost first. Read and remove Finder's records relative to the opened folder,
     /// never through a link or a reused path. Failed reads leave the folder alone; removal is always nonrecursive.
-    nonisolated static func removeEmptyFolders(_ folders: [URL], identities: [String: FileIdentity]) {
+    package nonisolated static func removeEmptyFolders(_ folders: [URL], identities: [String: FileIdentity]) {
         for folder in folders.sorted(by: { $0.path.count > $1.path.count }) {
             guard let expected = identities[folder.path] else { continue }
             let parent = open(folder.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
@@ -267,7 +316,7 @@ enum FileOps {
             defer { close(fd) }
             var info = stat()
             guard fstat(fd, &info) == 0, FileIdentity.from(info) == expected else { continue }
-            let copy = dup(fd)
+            let copy = fcntl(fd, F_DUPFD_CLOEXEC, 0)
             guard copy >= 0 else { continue }
             guard let listing = fdopendir(copy) else { close(copy); continue }
             defer { closedir(listing) }
@@ -292,45 +341,105 @@ enum FileOps {
     }
 
     /// Items that couldn't go to the Trash because their disk has none (network shares, some external disks).
-    struct NoTrash: LocalizedError {
-        let urls: [URL]
+    package struct NoTrash: LocalizedError {
+        package let urls: [URL]
 
-        nonisolated var errorDescription: String? {
+        package nonisolated var errorDescription: String? {
             String(localized: "The disk has no Trash.", comment: "Error when a disk cannot move files to the Trash")
         }
     }
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders = .live, history: OperationLog = .shared) async throws {
-        let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
+    package static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog,
+                                         volume: @escaping RemovalVolume.Reader = RemovalVolume.read) async throws {
+        let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies, volume: volume)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
-        let entry = history.recordMove("Move to Trash", moved, landed: landed)
+        let entry = history.recordMove("Move to Trash", moved, fileIdentities: await landed.historyKeys(for: moved.map(\.to)))
         registerMoveUndo(moved, "Move to Trash", undo, entry: entry, copies: copies, landed: landed, history: history)
-        if !moved.isEmpty {
-            trashSound?.stop()
-            trashSound?.play()
-        }
+        if !moved.isEmpty { Sounds.movedToTrash() }
         if let failure { throw failure }
         if !noTrash.isEmpty { throw NoTrash(urls: noTrash) }
+    }
+
+    /// `trash` for part of an undo under way: each item goes to the Trash away from the main thread only if `owns` says
+    /// it's still the one the operation left there, asked just before it goes. It stops at the first failure, a disk
+    /// without a Trash included, and returns what went, what each is in the Trash (read as it lands) and that failure;
+    /// nothing is recorded or registered.
+    package static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool, copies: CopyProviders,
+                                    volume: @escaping RemovalVolume.Reader = RemovalVolume.read) async
+        -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
+        let result = await trashOwned(urls, owns: owns, copies: copies, volume: volume)
+        if !result.moved.isEmpty { Sounds.movedToTrash() }
+        return result
+    }
+
+    @concurrent
+    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool, copies: CopyProviders,
+                                   volume: RemovalVolume.Reader) async
+        -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
+        var moved: [Move] = []
+        var identities: [FileIdentity?] = []
+        // Owned first: a copy inside a folder put in another's place is still the operation's own.
+        let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }
+        if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { return ([], [], refusal) }
+        for url in chosen where owns(url) {
+            var result: NSURL?
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+                if let result {
+                    moved.append((from: url, to: result as URL))
+                    identities.append(FileIdentity.read(result.path ?? ""))
+                }
+            } catch let error as CocoaError where error.code == .featureUnsupported {
+                return (moved, identities, NoTrash(urls: [url]))
+            } catch {
+                return (moved, identities, error)
+            }
+        }
+        return (moved, identities, nil)
+    }
+
+    /// Whether `url` is a whole disk, however it's reached (a link in its path included): asked of the item itself, so
+    /// read where the decision is made, away from the main thread.
+    package nonisolated static func isWholeDisk(_ url: URL) -> Bool {
+        // Asked of a URL of its own: one keeps the values it was told, and a disk may be mounted at the path since.
+        (try? URL(filePath: url.path).resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+    }
+
+    /// A selection holding a whole disk: refused as a whole, before anything moves. Said as the system says an
+    /// operation isn't permitted.
+    package nonisolated struct HoldsADisk: LocalizedError {
+        package init() {}
+        package nonisolated var errorDescription: String? { POSIXError(.EPERM).localizedDescription }
+    }
+
+    /// What Move to Trash takes of `urls`: each once, outermost, those `canTrash` allows; nil when one is a whole disk,
+    /// which refuses them all up front.
+    package nonisolated static func trashable(_ urls: [URL], copies: CopyProviders) -> [URL]? {
+        let chosen = outermost(urls)
+        guard !chosen.contains(where: isWholeDisk) else { return nil }
+        return chosen.filter { canTrash($0, copies: copies) }
     }
 
     /// Whether Move to Trash may take `url`. Never a Trash itself, nor what's already in one (trashing it again would
     /// lose where it came from), however either's path is spelled; nor anything inside an archive opened as a folder
     /// (a temporary copy). A link to a Trash is only a link.
-    nonisolated static func canTrash(_ url: URL) -> Bool {
-        canTrash(url, copies: .live)
-    }
-
-    nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
+    package nonisolated static func canTrash(_ url: URL, copies: CopyProviders) -> Bool {
         !Trash.isTrash(anySpelling: url) && !Trash.isInTrash(url) && !Trash.isInTrash(url.resolvingSymlinksInPath())
             && !ReadOnlyCopies.contains(url, copies: copies)
     }
 
+    /// `canTrash` judged by how `url` is spelled, without the disk: for menus, drags and the Inspector as they're shown.
+    /// Move to Trash checks `canTrash(_:copies:)`, which follows links, as it goes.
+    package nonisolated static func canTrash(spelled url: URL, copies: CopyProviders) -> Bool {
+        !Trash.isTrash(url) && !Trash.isInTrash(url) && !ReadOnlyCopies.contains(url, copies: copies)
+    }
+
     /// `urls` in order without duplicates or items inside another of them, keeping each item's original URL spelling.
-    nonisolated static func outermost(_ urls: [URL]) -> [URL] {
-        let pairs = urls.map { (url: $0, path: $0.standardizedFileURL.path) }
+    package nonisolated static func outermost(_ urls: [URL]) -> [URL] {
+        let pairs = urls.map { (url: $0, path: $0.lexicallyStandardized.path) }
         var seen: Set<String> = []
         return pairs.filter { item in
             guard seen.insert(item.path).inserted else { return false }
@@ -341,12 +450,14 @@ enum FileOps {
     }
 
     @concurrent
-    private static func trashItems(_ urls: [URL], copies: CopyProviders) async -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
+    private static func trashItems(_ urls: [URL], copies: CopyProviders, volume: RemovalVolume.Reader) async
+        -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
-        let urls = Self.outermost(urls)
-        for url in urls where canTrash(url, copies: copies) {
+        guard let urls = trashable(urls, copies: copies) else { return ([], [], [], HoldsADisk()) }
+        if let refusal = RemovalVolume.refusal(in: urls, read: volume) { return ([], [], [], refusal) }
+        for url in urls {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -364,7 +475,7 @@ enum FileOps {
     }
 
     /// `name 2.txt`, `name 3.txt`… or Finder's `name copy.txt`, `name copy 2.txt`… for copies next to the original.
-    static func available(_ url: URL, copyStyle: Bool) -> URL {
+    package nonisolated static func available(_ url: URL, copyStyle: Bool) -> URL {
         let fm = FileManager.default
         // lstat-based: a dangling symlink still takes the name.
         guard TransferEngine.exists(url) else { return url }
@@ -372,9 +483,6 @@ enum FileOps {
         var isDir: ObjCBool = false
         fm.fileExists(atPath: url.path, isDirectory: &isDir)
         let isPlainFolder = isDir.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
-        let rawExt = isPlainFolder ? "" : url.pathExtension
-        let ext = rawExt.utf8.count <= 64 ? rawExt : ""
-        let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
         var n = 1
         while true {
             let suffix = !copyStyle ? " \(n + 1)"
@@ -383,18 +491,23 @@ enum FileOps {
                 // The number stays plain digits ("copy 2"), whatever the region: it's part of a name on disk.
                 : nameText(String(localized: " copy \(String(n))", comment: "Added to a later duplicate’s name like Finder: “Report copy 2.pdf”. Keep the leading space."),
                            english: " copy \(n)")
-            let tail = suffix + (ext.isEmpty ? "" : "." + ext)
-            // Shorten the base so the new name still fits the 255-byte limit.
-            let fitted = TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count))
-            let candidate = directory.appending(path: fitted + tail)
+            let candidate = directory.appending(path: name(url.lastPathComponent, adding: suffix,
+                                                           keepingExtension: !isPlainFolder))
             if !TransferEngine.exists(candidate) { return candidate }
             n += 1
         }
     }
 
-    private static let trashSound = NSSound(
-        contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif",
-        byReference: true)
+    /// `name` with `suffix` before its extension, as Finder names a copy ("Report 2.pdf", "Report copy.pdf"). A plain
+    /// folder's name has no extension to keep, an extension over 64 bytes isn't one, and the part before the suffix gives
+    /// way, whole characters at a time, so the name fits its 255 bytes.
+    package nonisolated static func name(_ name: String, adding suffix: String, keepingExtension: Bool) -> String {
+        let found = keepingExtension ? (name as NSString).pathExtension : ""
+        let ext = found.utf8.count <= 64 ? found : ""
+        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
+        let tail = suffix + (ext.isEmpty ? "" : "." + ext)
+        return TransferEngine.fitting(base, maxBytes: max(1, 255 - tail.utf8.count)) + tail
+    }
 
     /// Undo for something just made: it goes to the Trash; redoing brings it back. History follows both.
     private static func registerTrashUndo(_ created: [URL], _ actionName: String, _ undo: UndoManager?, entry: UUID?,
@@ -402,7 +515,7 @@ enum FileOps {
         guard !created.isEmpty else { return }
         register(actionName, undo) { undo in
             do {
-                let made = created.filter(landed.holds)
+                let made = created.filter(landed.holdsNow)
                 guard !made.isEmpty else { return }
                 try trash(made, undo: undo, record: false, entry: entry, marksUndone: false, copies: copies, history: history)
                 if let entry { history.setUndone(entry, true) }
@@ -414,7 +527,7 @@ enum FileOps {
 
     /// ⌘Z couldn't put things back (something now sits where an item would return, say): say so rather than fail
     /// silently.
-    static func reportUndoFailure(_ actionName: String, _ error: Error) {
+    package static func reportUndoFailure(_ actionName: String, _ error: Error) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Couldn’t undo “\(OperationLog.displayName(actionName))”")
         alert.informativeText = error.localizedDescription
@@ -423,7 +536,7 @@ enum FileOps {
 
     /// Registers, in the current undo group, flipping History entry `id` to `undone` (and back on redo), so the
     /// History window agrees with ⌘Z and ⇧⌘Z.
-    static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager, history: OperationLog = .shared) {
+    package static func registerLogMark(_ id: UUID, undone: Bool, _ undo: UndoManager, history: OperationLog) {
         undo.registerUndo(withTarget: undo) { undo in
             MainActor.assumeIsolated {
                 history.setUndone(id, undone)
@@ -442,11 +555,11 @@ enum FileOps {
 
     /// ⌘Z and ⇧⌘Z work that moves items, done one step at a time in the order pressed, however quickly: each step
     /// finds the items where the one before left them (`undoWork` is the latest; tests wait for it).
-    static var undoWork: Task<Void, Never>?
+    package static var undoWork: Task<Void, Never>?
 
     /// Runs `work` after every undo and redo step before it.
     @discardableResult
-    static func afterUndoWork(_ work: @escaping () async -> Void) -> Task<Void, Never> {
+    package static func afterUndoWork(_ work: @escaping () async -> Void) -> Task<Void, Never> {
         let previous = undoWork
         let task = Task {
             await previous?.value
@@ -462,26 +575,26 @@ enum FileOps {
     /// they left it (`landed`, recorded as each lands). History entry `entry` is marked `marksUndone` only once the
     /// moves have worked (the inverse flips it back). Containers made for the operation are recreated before Redo
     /// and removed after Undo only while their recorded identities still match and they are empty.
-    static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
-                                 copies: CopyProviders = .live, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
-                                 landed: LandedFiles? = nil, history: OperationLog = .shared) {
+    package static func registerMoveUndo(_ moves: [Move], _ actionName: String, _ undo: UndoManager?, entry: UUID? = nil,
+                                 copies: CopyProviders, marksUndone: Bool = true, containers: CreatedFolders.Change = .none,
+                                 landed: LandedFiles? = nil, history: OperationLog) {
         guard !moves.isEmpty else { return }
         let landed = landed ?? LandedFiles(moves.map(\.to))
         register(actionName, undo) { undo in
             let returned = LandedFiles()
             afterUndoWork {
-                let back = moves.filter { landed.holds($0.to) }.reversed().map { (from: $0.to, to: $0.from) }
+                let held = Set(await landed.holding(moves.map(\.to)).map(\.path))
+                let back = moves.filter { held.contains($0.to.path) }.reversed().map { (from: $0.to, to: $0.from) }
                 guard !back.isEmpty else { return }
-                for pair in back { returned.expect(pair.from, at: pair.to) }
                 do {
                     guard !back.contains(where: { ReadOnlyCopies.contains($0.from, copies: copies) || ReadOnlyCopies.contains($0.to, copies: copies) }) else {
                         throw insideArchiveError
                     }
-                    try containers.prepare()
+                    try await containers.prepare()
                     if let entry { history.updateContainerIdentities(entry, containers.historyIdentities) }
-                    let (done, error) = await moveAll(back)
-                    done.forEach { returned.arrived($0.to) }
-                    containers.finish()
+                    let (done, error, identities) = await moveAll(back)
+                    done.forEach { returned.set(identities[$0.to.path], at: $0.to) }
+                    await containers.finish()
                     if let error { throw error }
                     if let entry { history.setUndone(entry, marksUndone) }
                 } catch {
@@ -500,53 +613,47 @@ enum FileOps {
 }
 
 /// Finder-compatible file clipboard, plus cut: ⌘X marks the items and the next paste moves them.
-final class Clipboard {
-    static let shared = Clipboard()
+package final class Clipboard {
+    package static let shared = Clipboard(pasteboard: .general, notifications: .default)
 
-    /// The general pasteboard; tests use one of their own.
-    static var pasteboard: NSPasteboard {
-        get { shared.pasteboard }
-        set { shared.pasteboard = newValue }
-    }
-
-    var pasteboard: NSPasteboard
-    let notifications: NotificationCenter
+    package let pasteboard: NSPasteboard
+    package let notifications: NotificationCenter
     private var cut: (urls: Set<URL>, changeCount: Int)?
 
-    init(pasteboard: NSPasteboard = .general, notifications: NotificationCenter = .default) {
+    package init(pasteboard: NSPasteboard, notifications: NotificationCenter) {
         self.pasteboard = pasteboard
         self.notifications = notifications
     }
 
-    func write(_ urls: [URL], cut isCut: Bool) {
+    package func write(_ urls: [URL], cut isCut: Bool) {
         pasteboard.clearContents()
         pasteboard.writeObjects(urls as [NSURL])
         cut = isCut ? (Set(urls), pasteboard.changeCount) : nil
         notifications.post(name: .clipboardChanged, object: nil)
     }
 
-    func read() -> (urls: [URL], isCut: Bool) {
+    package func read() -> (urls: [URL], isCut: Bool) {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return (urls, cut?.changeCount == pasteboard.changeCount)
     }
 
-    func isCut(_ url: URL) -> Bool {
+    package func isCut(_ url: URL) -> Bool {
         guard let cut, cut.changeCount == pasteboard.changeCount else { return false }
         return cut.urls.contains(url)
     }
 
-    func clearCut() {
+    package func clearCut() {
         cut = nil
         notifications.post(name: .clipboardChanged, object: nil)
     }
 
-    var hasFiles: Bool {
+    package var hasFiles: Bool {
         pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
     }
 
-    static func write(_ urls: [URL], cut isCut: Bool) { shared.write(urls, cut: isCut) }
-    static func read() -> (urls: [URL], isCut: Bool) { shared.read() }
-    static func isCut(_ url: URL) -> Bool { shared.isCut(url) }
-    static func clearCut() { shared.clearCut() }
-    static var hasFiles: Bool { shared.hasFiles }
+    /// Puts `text` there instead (a branch name, a command).
+    package func copyText(_ text: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
 }

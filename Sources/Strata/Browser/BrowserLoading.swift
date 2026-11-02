@@ -1,16 +1,36 @@
 import Foundation
 
+nonisolated struct VolumeSpace: Sendable, Equatable {
+    let free: Int64
+    let total: Int64?
+    let availableIncludingReclaimable: Int64?
+
+    init(free: Int64, total: Int64? = nil, availableIncludingReclaimable: Int64? = nil) {
+        self.free = max(0, free)
+        self.total = total
+        self.availableIncludingReclaimable = availableIncludingReclaimable
+    }
+}
+
 /// Owns a browser's folder reads and their lifetime. AppKit decides when to apply a delivered listing, including
 /// deferring it while a native name editor is open; a read completing does not mean those entries are on screen.
 @MainActor final class BrowserLoading {
     struct Delivery {
+        /// The folder the read listed: the one asked for, or where a link or alias to a folder led.
+        let folder: URL
         let entries: [FileEntry]
+        /// The first listing since the browser went to this folder: where it has arrived.
+        let landed: Bool
         let fromTop: Bool
+        /// The order the entries were read in, if they were sorted as they were read.
+        let sortedBy: BrowserOrdering.Snapshot?
     }
 
     let reads: DirectoryReadSession
     private let reader: DirectoryReader
-    private let capacity: @Sendable (URL) async -> Int64?
+    private let capacity: @Sendable (URL) async -> VolumeSpace?
+    private let now: @Sendable () -> Date
+    private var capacityReadAt: Date?
     private(set) var capacityTask: Task<Void, Never>?
     private struct ChildRead {
         let node: FileNode
@@ -23,11 +43,13 @@ import Foundation
     private(set) var error: Error?
     private(set) var isLoaded = false
     private(set) var isLoadingFolder = false
-    private(set) var availableCapacity: Int64?
+    private(set) var volumeSpace: VolumeSpace?
 
-    init(reader: DirectoryReader, capacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace) {
+    init(reader: DirectoryReader, capacity: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
+         now: @escaping @Sendable () -> Date = Date.init) {
         self.reader = reader
         self.capacity = capacity
+        self.now = now
         reads = DirectoryReadSession(reader: reader)
     }
 
@@ -42,23 +64,28 @@ import Foundation
         if newFolder {
             opensAtTop = true
             isLoadingFolder = true
-            availableCapacity = nil
+            volumeSpace = nil
         }
     }
 
     func reload(showHidden: Bool, applications: ApplicationsFolders, scrollToTop: Bool, invalidateCopy: Bool = false,
+                sortedBy: BrowserOrdering.Snapshot?, after: Task<Void, Never>? = nil,
                 receive: @escaping (Result<Delivery, Error>) -> Void, capacityChanged: @escaping () -> Void) {
         guard let directory else { return }
         cancelAuxiliaryReads()
-        reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy) { [weak self] result, generation in
+        reads.load(directory, showHidden: showHidden, applications: applications, invalidateCopy: invalidateCopy,
+                   sortedBy: sortedBy, after: after) { [weak self] result, generation in
             guard let self else { return }
             isLoadingFolder = false
             switch result {
-            case .success(let entries):
+            case .success(let listing):
                 error = nil
-                let fromTop = scrollToTop || opensAtTop
+                // Where a link led is where the browser is: refreshing reads that folder from now on.
+                self.directory = listing.folder
+                let landed = opensAtTop, fromTop = scrollToTop || opensAtTop
                 opensAtTop = false
-                receive(.success(Delivery(entries: entries, fromTop: fromTop)))
+                receive(.success(Delivery(folder: listing.folder, entries: listing.entries, landed: landed,
+                                          fromTop: fromTop, sortedBy: sortedBy)))
             case .failure(let failure):
                 error = failure
                 isLoaded = true
@@ -66,14 +93,29 @@ import Foundation
             }
             // Applying entries can synchronously navigate or replace the folder with results.
             guard reads.generation == generation else { return }
-            let capacity = capacity
-            capacityTask = Task { [weak self] in
-                let value = await capacity(directory)
-                guard let self, !Task.isCancelled, reads.generation == generation else { return }
-                availableCapacity = value
-                capacityTask = nil
-                capacityChanged()
+            refreshVolumeSpace(force: true, changed: capacityChanged)
+        }
+    }
+
+    func refreshVolumeSpace(force: Bool = false, changed: @escaping () -> Void) {
+        guard let directory else { return }
+        let instant = now()
+        if !force {
+            guard capacityTask == nil else { return }
+            if let capacityReadAt {
+                let elapsed = instant.timeIntervalSince(capacityReadAt)
+                if elapsed >= 0, elapsed < 5 { return }
             }
+        }
+        capacityTask?.cancel()
+        capacityReadAt = instant
+        let generation = reads.generation, capacity = capacity
+        capacityTask = Task { [weak self] in
+            let value = await capacity(directory)
+            guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }
+            volumeSpace = value
+            capacityTask = nil
+            changed()
         }
     }
 
@@ -117,13 +159,17 @@ import Foundation
         return session.load(node.url, showHidden: showHidden, applications: applications) { [weak self, weak session] result, _ in
             guard let self, let session, children[key]?.session === session else { return }
             children.removeValue(forKey: key)
-            receive((try? result.get()) ?? [])
+            receive((try? result.get())?.entries ?? [])
         }
     }
 
     @concurrent
-    nonisolated static func freeSpace(_ url: URL) async -> Int64? {
-        let values = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage
+    nonisolated static func readVolumeSpace(_ url: URL) async -> VolumeSpace? {
+        let values = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [
+            .volumeTotalCapacityKey, .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
+        ])
+        guard let free = values?.volumeAvailableCapacity else { return nil }
+        return VolumeSpace(free: Int64(free), total: values?.volumeTotalCapacity.map(Int64.init),
+                           availableIncludingReclaimable: values?.volumeAvailableCapacityForImportantUsage)
     }
 }

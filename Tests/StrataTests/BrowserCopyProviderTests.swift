@@ -4,6 +4,13 @@ import Synchronization
 import Testing
 import UniformTypeIdentifiers
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct BrowserCopyProviderTests {
     private nonisolated final class PlaceholderState: Sendable {
@@ -199,8 +206,8 @@ struct BrowserCopyProviderTests {
     }
 
     private final class Environment {
-        let domain = "StrataBrowserCopyProviderTests.\(UUID().uuidString)"
-        let defaults: UserDefaults
+        let testEnvironment: IndependentEnvironment
+
         let preferences: Prefs
         let storage: SecureStorage.Context
         let history: OperationLog
@@ -213,16 +220,15 @@ struct BrowserCopyProviderTests {
         let services: BrowserServices
 
         init(_ tree: TestTree, folder: String, servers: [RemoteServer] = [], extraProviders: [any CopyProvider] = []) throws {
-            defaults = try #require(UserDefaults(suiteName: domain))
-            defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
-            preferences = Prefs(defaults: defaults, domainName: domain, notifications: NotificationCenter())
+            preferences = try Prefs.isolated()
+            preferences.defaults.set(try JSONEncoder().encode(servers), forKey: "remoteServers")
             preferences.showIconPreviews = false
+            testEnvironment = try IndependentEnvironment(preferences: preferences)
             storage = SecureStorage.Context(
                 directory: tree.url(folder + "/state"),
                 caches: tree.url(folder + "/state/Caches"),
                 key: nil
             )
-            history = OperationLog(storage: storage)
             let serverStorage = tree.url(folder + "/remote-storage")
             try FileManager.default.createDirectory(at: serverStorage, withIntermediateDirectories: true)
             backend = DiskRemoteBackend(root: serverStorage)
@@ -243,24 +249,25 @@ struct BrowserCopyProviderTests {
             copies = CopyProviders(
                 [ServerCopyProvider(files: remote.files)] + extraProviders,
                 remoteCopies: remote.copies,
+                containerCopies: testEnvironment.services.containers.copies,
                 clipboardRoot: tree.url(folder + "/clipboard")
             )
+            history = OperationLog(storage: storage, copies: copies)
             pasteboard = NSPasteboard(name: .init("StrataBrowserCopyProviderTests.pasteboard.\(UUID().uuidString)"))
             clipboard = Clipboard(pasteboard: pasteboard, notifications: NotificationCenter())
             queue = TransferQueue(preferences: preferences, history: history, copies: copies)
             services = BrowserServices.configured(
                 transfers: queue,
-                visits: Frecency(preferences: defaults),
+                visits: Frecency(preferences: preferences.defaults),
                 windows: .headless,
                 remote: remote,
-                containers: .shared,
-                containerStore: .shared,
+                containers: testEnvironment.services.containers,
+                containerStore: testEnvironment.services.containerStore,
                 clipboard: clipboard)
         }
 
         isolated deinit {
             pasteboard.releaseGlobally()
-            defaults.removePersistentDomain(forName: domain)
         }
     }
 
@@ -309,7 +316,7 @@ struct BrowserCopyProviderTests {
         #expect(await first.backend.renamedPaths.map(\.to).contains("/notes.md"))
 
         // Same-server SFTP move uses rename on first.remote.files without queuing an upload job.
-        browserA.copyToServer([renamedFile], into: createdFolder, move: true)
+        browserA.serverCommands.copy([renamedFile], into: createdFolder, move: true)
         let movedFile = createdFolder.appending(path: "notes.md")
         await browserA.commandWork?.value
         await first.remote.files.refresh(createdFolder)
@@ -336,33 +343,33 @@ struct BrowserCopyProviderTests {
 
         // Server deletion target filtering deduplicates nested selections, rejects the server root, and excludes other environments.
         let nested = [createdFolder, movedFile, createdFolder]
-        #expect(BrowserViewController.serverDeletionTargets(nested, copies: first.remote.copies) == [createdFolder.standardizedFileURL])
-        #expect(BrowserViewController.serverDeletionTargets([topA], copies: first.remote.copies).isEmpty)
-        #expect(BrowserViewController.serverDeletionTargets([createdFolder, bucketChild], copies: first.remote.copies) == [createdFolder.standardizedFileURL])
-        #expect(BrowserViewController.serverDeletionTargets([tree.url("local/file.txt")], copies: first.remote.copies).isEmpty)
+        #expect(ServerCommands.serverDeletionTargets(nested, copies: first.remote.copies) == [createdFolder.standardizedFileURL])
+        #expect(ServerCommands.serverDeletionTargets([topA], copies: first.remote.copies).isEmpty)
+        #expect(ServerCommands.serverDeletionTargets([createdFolder, bucketChild], copies: first.remote.copies) == [createdFolder.standardizedFileURL])
+        #expect(ServerCommands.serverDeletionTargets([tree.url("local/file.txt")], copies: first.remote.copies).isEmpty)
 
         // Local deletionPlan and FileOps.canTrash refuse items in injected copies while accepting ordinary local files.
-        let refusedPlan = BrowserViewController.deletionPlan([createdFolder], copies: first.copies)
+        let refusedPlan = await Deletion.plan([createdFolder], copies: first.copies)
         #expect(refusedPlan.candidates.isEmpty && refusedPlan.refused == [createdFolder.standardizedFileURL])
         let localFile = tree.url("local/file.txt").standardizedFileURL
-        let localPlan = BrowserViewController.deletionPlan([localFile], copies: first.copies)
+        let localPlan = await Deletion.plan([localFile], copies: first.copies)
         #expect(localPlan.candidates == [localFile] && localPlan.refused.isEmpty)
         #expect(!FileOps.canTrash(createdFolder, copies: first.copies))
-        #expect(!SidebarViewController.canTrash([createdFolder], copies: first.copies))
+        #expect(!SidebarViewController.canTrash([createdFolder], copies: first.copies, mounts: MountPoints.current()))
         #expect(FileOps.canTrash(localFile, copies: first.copies))
-        #expect(SidebarViewController.canTrash([localFile], copies: first.copies))
+        #expect(SidebarViewController.canTrash([localFile], copies: first.copies, mounts: MountPoints.current()))
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies)
+            _ = try FileOps.newFolder(in: topA, undo: nil, copies: first.copies, history: first.history)
         }
         #expect(throws: FileOps.insideArchiveError) {
-            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies)
+            _ = try FileOps.newFile(in: topA, extension: "txt", undo: nil, copies: first.copies, history: first.history)
         }
         await #expect(throws: FileOps.insideArchiveError) {
-            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies)
+            _ = try await FileOps.rename(createdFolder, to: "Other", undo: nil, copies: first.copies, history: first.history)
         }
         await #expect(throws: FileOps.insideArchiveError) {
             try await FileOps.move([(from: localFile, to: topA.appending(path: "file.txt"))],
-                                   actionName: "Move", undo: nil, copies: first.copies)
+                                   actionName: "Move", undo: nil, history: first.history, copies: first.copies)
         }
         withExtendedLifetime((tree, first, second, browserA, browserB)) {}
     }
@@ -512,7 +519,7 @@ struct BrowserCopyProviderTests {
         #expect(staged.count == 2)
         #expect(second.clipboard.read().urls.isEmpty)
         #expect(staged.allSatisfy { $0.standardizedFileURL.path.hasPrefix(first.copies.clipboardRoot.standardizedFileURL.path + "/") })
-        #expect(staged.allSatisfy { !first.copies.contains($0) && !LazyCopies.contains($0) })
+        #expect(staged.allSatisfy { !first.copies.contains($0) && !CopyProviders.live.contains($0) })
         #expect(first.copies.stageForClipboard([escapingLink]).isEmpty)
 
         // Copy Path in Browser writes to the environment's clipboard pasteboard (and uses the provider's displayPath in the browser).
@@ -528,12 +535,12 @@ struct BrowserCopyProviderTests {
         #expect(!(ContainerDragItem.writer(for: escapingLink, copies: second.copies) is ContainerDragItem))
 
         // FileDrop.operation refuses non-remote read-only targets, allows remote targets (move within same SFTP server, copy otherwise), and forces .copy from read-only sources.
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: first.copies) == [])
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: second.copies) == .move)
-        #expect(FileDrop.operation([doc], into: tree.url("local/target"), mask: [.copy, .move], option: false, copies: first.copies) == .copy)
-        #expect(FileDrop.operation([remoteFile], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .move)
-        #expect(FileDrop.operation([remoteFile], into: remoteFolder, mask: [.copy, .move], option: true, copies: first.copies) == .copy)
-        #expect(FileDrop.operation([tree.url("local/outside.txt")], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: first.copies) == [])
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: providerRoot, mask: [.copy, .move], option: false, copies: second.copies) == .move)
+        #expect(await FileDrop.dropped([doc], into: tree.url("local/target"), mask: [.copy, .move], option: false, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([remoteFile], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .move)
+        #expect(await FileDrop.dropped([remoteFile], into: remoteFolder, mask: [.copy, .move], option: true, copies: first.copies) == .copy)
+        #expect(await FileDrop.dropped([tree.url("local/outside.txt")], into: remoteFolder, mask: [.copy, .move], option: false, copies: first.copies) == .copy)
 
         // Views created by BrowserPresentations receive the browser's CopyProviders.
         for mode in [BrowserViewMode.grid, .columns, .gallery, .treemap] {

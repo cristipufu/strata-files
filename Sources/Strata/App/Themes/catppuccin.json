@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "id": "catppuccin",
+  "name": "Catppuccin",
+  "comment": "Color theme: the Catppuccin palette, a proper name; Latte in light appearance and Mocha in dark",
+  "order": 150,
+  "seed": [
+    0.533,
+    0.224,
+    0.937
+  ],
+  "light": {
+    "content": "#eff1f5",
+    "sidebar": "#e6e9ef",
+    "inspector": "#e6e9ef",
+    "preview": "#eff1f5",
+    "chrome": "#ccd0da",
+    "alternatingRow": "#e6e9ef",
+    "selection": "#d8c9f4",
+    "accent": "#702fc5"
+  },
+  "dark": {
+    "content": "#1e1e2e",
+    "sidebar": "#181825",
+    "inspector": "#181825",
+    "preview": "#11111b",
+    "chrome": "#313244",
+    "alternatingRow": "#181825",
+    "selection": "#5b4e74",
+    "accent": "#cba6f7"
+  }
+}

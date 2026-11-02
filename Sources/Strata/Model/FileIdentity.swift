@@ -1,7 +1,7 @@
 import Foundation
 
 /// The item itself, without following a symlink. Live Undo compares birth time too, so reusing an inode does not
-/// make a replacement its own. History keeps its existing on-disk formats, including records from older versions.
+/// make a replacement its own. History uses volume UUIDs so remounting does not change an item’s identity.
 nonisolated package struct FileIdentity: Sendable, Equatable {
     package let device: dev_t
     package let inode: ino_t
@@ -26,12 +26,10 @@ nonisolated package struct FileIdentity: Sendable, Equatable {
                             birthSeconds: info.st_birthtimespec.tv_sec, birthNanoseconds: info.st_birthtimespec.tv_nsec)
     }
 
-    package var legacyHistoryKey: String { "\(device):\(inode)" }
-
     package func historyKey(volumeID: String?) -> String { "\(volumeID ?? String(device))/\(inode)" }
 
     /// Volume UUIDs survive remounting, unlike device numbers. Preserve the device-number fallback for volumes
-    /// without a UUID; changing that representation would make already-saved History stop recognizing its items.
+    /// without a UUID.
     package static func historyKey(at path: String) -> String? {
         guard let identity = read(path) else { return nil }
         let volume = (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeUUIDStringKey]))?.volumeUUIDString
@@ -48,7 +46,6 @@ nonisolated package struct FileIdentity: Sendable, Equatable {
     }
 
     package static func matchesHistory(_ recorded: String, at path: String) -> Bool {
-        guard recorded.contains(":"), !recorded.contains("/") else { return historyKey(at: path) == recorded }
-        return read(path)?.legacyHistoryKey == recorded
+        historyKey(at: path) == recorded
     }
 }

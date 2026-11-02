@@ -1,6 +1,13 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct QueueOrderingTests {
     private func reserve(_ folder: URL, in queue: TransferQueue) async throws -> (dev_t, TransferJob) {
@@ -63,7 +70,7 @@ struct QueueOrderingTests {
             #expect(try String(contentsOf: out.appending(path: "one 2.txt"), encoding: .utf8) == "a/one.txt")
             #expect(queue.history.entries.count == 3)
             let source = try #require(b.sources.first).path
-            let entry = try #require(queue.history.entries.first { $0.pairs.contains { $0.first == source } })
+            let entry = try #require(queue.history.entries.first { $0.moves.contains { $0.from == source } })
             for _ in 0..<2 {
                 undo.undo(); await drain(queue)
                 #expect(tree.text("b/one.txt") == "b/one.txt")

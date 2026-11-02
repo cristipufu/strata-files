@@ -16,9 +16,11 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
     /// ↑, ↓ and Return while typing; true when handled.
     var onCommand: ((Selector) -> Bool)?
     private var shown: [String] = []
+    private let tags: TagStore
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(tags: TagStore) {
+        self.tags = tags
+        super.init(frame: .zero)
         delegate = self
         tokenStyle = .rounded
         placeholderString = String(localized: "Add Tags", comment: "Placeholder of the tag field")
@@ -26,9 +28,17 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         cell?.wraps = true
         cell?.isScrollable = false
         setAccessibilityLabel(String(localized: "Tags", comment: "Finder tags (accessibility label or caption)"))
+        // Tags not known yet are read in the background: shown once they arrive, unless you're typing.
+        NotificationCenter.default.addObserver(self, selector: #selector(tagsLoaded), name: .tagsLoaded, object: tags)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func tagsLoaded() {
+        guard currentEditor() == nil, !urls.isEmpty else { return }
+        reload()
+    }
 
     /// As tall as its tokens need at its width, so no tag hides past the first line.
     override var intrinsicContentSize: NSSize {
@@ -60,10 +70,10 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
 
     /// Shows what the items have now (after a change elsewhere).
     func reload() {
-        let sets = urls.map { Set(TagStore.shared.tags(for: $0).map { $0.name.lowercased() }) }
+        let sets = urls.map { Set(self.tags.tags(for: $0).map { $0.name.lowercased() }) }
         let common = sets.dropFirst().reduce(sets.first ?? []) { $0.intersection($1) }
         // In the first item's order, which is the order they were added.
-        let tags = urls.first.map { TagStore.shared.tags(for: $0).map(\.name).filter { common.contains($0.lowercased()) } } ?? []
+        let tags = urls.first.map { self.tags.tags(for: $0).map(\.name).filter { common.contains($0.lowercased()) } } ?? []
         // The Inspector reloads whenever files change; the same tags again leave the field and its tokens alone.
         if tags == shown, objectValue as? [String] == tags { return }
         shown = tags
@@ -114,32 +124,40 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         invalidateIntrinsicContentSize()
     }
 
-    /// Writes what changed since the field was last in step with the items.
-    func commit(includingTyped: Bool = true) {
+    /// Writes what changed since the field was last in step with the items, away from the main thread (the store
+    /// writes each change after the one before).
+    @discardableResult
+    func commit(includingTyped: Bool = true) -> Task<Void, Never>? {
         let tokens = tokens(includingTyped: includingTyped)
         let before = Set(shown.map { $0.lowercased() })
         let after = Set(tokens.map { $0.lowercased() })
         let added = tokens.filter { !before.contains($0.lowercased()) }
         let removed = before.subtracting(after)
-        guard !added.isEmpty || !removed.isEmpty else { return }
-        do {
-            try TagStore.shared.update(urls, adding: added, removing: removed, undo: undo)
-        } catch {
-            let alert = NSAlert(error: error)
-            if let host = errorWindow ?? NSApp.mainWindow, host.attachedSheet == nil {
-                alert.beginSheetModal(for: host, completionHandler: nil)
-            } else {
-                alert.runModal()
+        guard !added.isEmpty || !removed.isEmpty else { return nil }
+        // In step with the items from now on; a failure reads them again.
+        var seen = Set<String>()
+        shown = tokens.filter { seen.insert($0.lowercased()).inserted }
+        let tags = tags, urls = urls, undo = undo
+        return Task { [weak self] in
+            do {
+                try await tags.update(urls, adding: added, removing: removed, undo: undo)
+            } catch {
+                self?.show(error)
+                self?.reload()
+                return
             }
-            reload()
-            return
-        }
-        if currentEditor() == nil {
-            reload()
-        } else {
             // Mid-edit the field already shows them; resetting it would lose the caret.
-            var seen = Set<String>()
-            shown = tokens.filter { seen.insert($0.lowercased()).inserted }
+            guard let self, currentEditor() == nil else { return }
+            reload()
+        }
+    }
+
+    private func show(_ error: Error) {
+        let alert = NSAlert(error: error)
+        if let host = errorWindow ?? NSApp.mainWindow, host.attachedSheet == nil {
+            alert.beginSheetModal(for: host, completionHandler: nil)
+        } else {
+            alert.runModal()
         }
     }
 
@@ -189,7 +207,7 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
         case create(String)
     }
 
-    let field = TagField()
+    let field: TagField
     /// Return with nothing typed (the popover closes).
     var onDone: (() -> Void)?
     /// The list grew, shrank, showed or hid.
@@ -206,7 +224,11 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     static let rowHeight: CGFloat = 24
 
-    init(listWhileEditing: Bool, maxRows: Int) {
+    private let tags: TagStore
+
+    init(listWhileEditing: Bool, maxRows: Int, tags: TagStore) {
+        self.tags = tags
+        field = TagField(tags: tags)
         self.listWhileEditing = listWhileEditing
         self.maxRows = maxRows
         super.init(frame: .zero)
@@ -259,6 +281,7 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
         refresh()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     /// Lists the tags matching what's typed: names that start with it first, then names that contain it.
@@ -266,7 +289,7 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let query = field.typed?.text ?? ""
         let present = Set(field.tokens(includingTyped: false).map { $0.lowercased() })
         // A name with a comma would split into two tags in the field.
-        let all = TagStore.shared.suggestions.filter { !$0.name.contains(",") }
+        let all = tags.suggestions.filter { !$0.name.contains(",") }
         let available = all.filter { !present.contains($0.name.lowercased()) }
         if query.isEmpty {
             items = available.map(Item.tag)
@@ -434,6 +457,7 @@ private final class TagSuggestionCell: NSTableCellView {
         ])
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -460,17 +484,19 @@ private final class TagSuggestionCell: NSTableCellView {
 
 /// "Tags…": the tag picker in a popover next to the selection.
 final class TagEditorController: NSViewController, NSPopoverDelegate {
-    private let picker = TagPicker(listWhileEditing: false, maxRows: 8)
+    private let picker: TagPicker
     private let urls: [URL]
     private weak var tagUndo: UndoManager?
     private weak var popover: NSPopover?
 
-    init(urls: [URL], undo: UndoManager?) {
+    init(urls: [URL], undo: UndoManager?, tags: TagStore) {
+        picker = TagPicker(listWhileEditing: false, maxRows: 8, tags: tags)
         self.urls = urls
         self.tagUndo = undo
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {

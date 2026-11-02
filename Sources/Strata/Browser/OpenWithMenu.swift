@@ -1,0 +1,158 @@
+import AppKit
+
+/// An item as Finder shows it, its name and a small icon, read where it's made: away from the main thread, since
+/// both ask the disk and LaunchServices.
+nonisolated struct FinderLook: Sendable {
+    let name: String
+    let icon: CGImage?
+
+    init(name: String, icon: CGImage? = nil) {
+        self.name = name
+        self.icon = icon
+    }
+
+    init(_ url: URL) {
+        name = FileManager.default.displayName(atPath: url.path)
+        var rect = NSRect(x: 0, y: 0, width: 32, height: 32)
+        icon = NSWorkspace.shared.icon(forFile: url.path).cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+
+    nonisolated static func read(_ url: URL) async -> FinderLook { await OwnThread.run { FinderLook(url) } }
+
+    var image: NSImage? { icon.map { NSImage(cgImage: $0, size: NSSize(width: 16, height: 16)) } }
+}
+
+/// Finder's looks of the folders a view shows, each read once and kept while it's shown: a view built again for the
+/// same folder (the Inspector's, on each refresh) waits for the read under way instead of starting another a slow disk
+/// would hold up.
+final class FinderLooks {
+    private struct Read {
+        let id = UUID()
+        let task: Task<FinderLook, Never>
+    }
+
+    private let read: @Sendable (URL) async -> FinderLook
+    private var known: [String: FinderLook] = [:]
+    private var reading: [String: Read] = [:]
+    private var wanted: Set<String>?
+
+    init(read: @escaping @Sendable (URL) async -> FinderLook = FinderLook.read) {
+        self.read = read
+    }
+
+    isolated deinit { for request in reading.values { request.task.cancel() } }
+
+    func look(_ url: URL) async -> FinderLook {
+        let key = url.path
+        guard !Task.isCancelled else { return FinderLook(name: url.lastPathComponent) }
+        if let known = known[key] { return known }
+        let request = reading[key] ?? Read(task: Task { [read] in await read(url) })
+        reading[key] = request
+        let look = await request.task.value
+        guard reading[key]?.id == request.id else { return look }
+        reading[key] = nil
+        if wanted?.contains(key) != false { known[key] = look }
+        return look
+    }
+
+    /// Forgets all but the looks of `urls` (what's shown now), so one shown again later is read as it is then.
+    func keep(only urls: [URL]) {
+        let kept = Set(urls.map(\.path))
+        wanted = kept
+        known = known.filter { kept.contains($0.key) }
+        for (key, request) in reading where !kept.contains(key) {
+            reading[key] = nil
+            request.task.cancel()
+        }
+    }
+}
+
+/// An app that can open something, with its name and a small icon, read where it's found.
+nonisolated struct OpenWithApp: Sendable, Equatable {
+    let url: URL
+    let look: FinderLook
+    /// The app the item opens with now.
+    var isDefault = false
+
+    init(_ url: URL) {
+        self.url = url
+        look = FinderLook(url)
+    }
+
+    var name: String { look.name }
+
+    /// The same app, shown the same way: its icon comes with its location.
+    static func == (a: OpenWithApp, b: OpenWithApp) -> Bool {
+        a.url == b.url && a.name == b.name && a.isDefault == b.isDefault
+    }
+
+    /// The apps that open `file`, at most `limit`, read away from the main thread.
+    @concurrent static func all(opening file: URL, limit: Int) async -> [OpenWithApp] {
+        let current = NSWorkspace.shared.urlForApplication(toOpen: file)
+        return NSWorkspace.shared.urlsForApplications(toOpen: file).prefix(limit).map { url in
+            var app = OpenWithApp(url)
+            app.isDefault = url == current
+            return app
+        }
+    }
+
+    var image: NSImage? { look.image }
+}
+
+/// An Open With submenu, filled the first time it opens: asking LaunchServices for every app that opens an item, with
+/// their names and icons, held up every right-click.
+final class OpenWithMenu: NSObject, NSMenuDelegate {
+    private let menu = NSMenu()
+    private let load: () async -> [OpenWithApp]
+    private weak var target: AnyObject?
+    private let action: Selector
+    private(set) var loading: Task<Void, Never>?
+
+    init(target: AnyObject, action: Selector, load: @escaping () async -> [OpenWithApp]) {
+        self.target = target
+        self.action = action
+        self.load = load
+        super.init()
+        menu.delegate = self
+        menu.addItem(withTitle: String(localized: "Loading…"), action: nil, keyEquivalent: "")
+    }
+
+    /// The menu item that opens it, which keeps it as long as the menu it's in.
+    var item: NSMenuItem {
+        let item = NSMenuItem(title: String(localized: "Open With"), action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: "app.badge", accessibilityDescription: nil)
+        item.submenu = menu
+        item.representedObject = self
+        return item
+    }
+
+    var items: [NSMenuItem] { menu.items }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard loading == nil else { return }
+        let load = load
+        loading = Task { [weak self] in
+            let apps = await load()
+            self?.show(apps)
+        }
+    }
+
+    private func show(_ apps: [OpenWithApp]) {
+        menu.removeAllItems()
+        guard !apps.isEmpty else {
+            menu.addItem(withTitle: String(localized: "No App", comment: "Inspector Open With menu: no app can open the item"),
+                         action: nil, keyEquivalent: "")
+            return
+        }
+        for app in apps {
+            let title = app.isDefault
+                ? String(localized: "\(app.name) (default)", comment: "Open With submenu: the app that opens the file by default")
+                : app.name
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = target
+            item.representedObject = app.url
+            item.image = app.image
+            menu.addItem(item)
+        }
+    }
+}

@@ -1,25 +1,29 @@
+import StrataArchives
 import Foundation
 import StrataPreviews
 
 /// Owns reads for one Space preview. Its tree is independent of the browser, so exploring it never navigates a pane.
 @MainActor final class PreviewSession {
-    typealias ArchiveReader = @Sendable (URL, ArchiveKind) async throws -> ArchiveListing
+    typealias ArchiveListingReader = @Sendable (URL, ArchiveKind) async throws -> ArchiveListing
 
     enum Change {
         case root
         case children(PreviewItem)
         case selection
         case content
+        /// The root's items have their places in the OneNote notebook they hold.
+        case order
     }
 
     private let reader: DirectoryReader
     private let isPlaceholder: @Sendable (URL) -> Bool
-    private let archiveReader: ArchiveReader?
+    private let archiveReader: ArchiveListingReader?
     let archiveAccess: PreviewArchiveAccess
     private let rootRead: DirectoryReadSession
     private var childReads: [ObjectIdentifier: DirectoryReadSession] = [:]
     private var items: Set<ObjectIdentifier> = []
     private var archiveTask: Task<Void, Never>?
+    private(set) var notebookTask: Task<Void, Never>?
     private var revision = 0
     private var showHidden = false
     private var applications = ApplicationsFolders.standard
@@ -41,7 +45,7 @@ import StrataPreviews
         return root.isFolder || (!root.isDirectory && ArchiveKind(fileName: root.name) != nil)
     }
 
-    init(reader: DirectoryReader, archiveReader: ArchiveReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess(),
+    init(reader: DirectoryReader, archiveReader: ArchiveListingReader? = nil, archiveAccess: PreviewArchiveAccess = PreviewArchiveAccess(),
          isPlaceholder: @escaping @Sendable (URL) -> Bool = { _ in false }) {
         let reader = reader.forPreview
         self.isPlaceholder = isPlaceholder
@@ -61,43 +65,120 @@ import StrataPreviews
         self.showHidden = showHidden
         self.applications = applications
         error = nil
-        let revision = revision
         if entry.isFolder && !entry.isSymlink {
-            isLoading = true
-            rootRead.load(entry.url, showHidden: showHidden, applications: applications) { [weak self] result, _ in
-                guard let self, !isClosed, self.revision == revision else { return }
-                isLoading = false
-                do { roots = try makeItems(result.get(), in: entry.url) }
-                catch { self.error = error }
-                onChange?(.root)
-            }
+            showFolder(entry)
         } else if !entry.isDirectory, !entry.isSymlink, !isPlaceholder(entry.url), let kind = ArchiveKind(fileName: entry.name) {
-            isLoading = true
-            let read = archiveReader
-            let access = archiveAccess
-            do { access.reset(try PreviewArchiveSource(entry.url)) }
-            catch { self.error = error; isLoading = false; onChange?(.root); return }
-            archiveTask = Task { [weak self] in
-                let result: Result<ArchiveListing, Error>
-                do {
-                    try Task.checkCancellation()
-                    if let read { result = .success(try await read(entry.url, kind)) }
-                    else { result = .success(try PreviewArchiveReader.listing(await access.read())) }
-                } catch { result = .failure(error) }
-                guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
-                archiveTask = nil
-                isLoading = false
-                switch result {
-                case .success(let listing):
-                    archive = listing
-                    roots = listing.root.value.children.map { PreviewItem(.member($0, path: [$0.name])) }
-                    register(roots)
-                case .failure(let error): if !(error is CancellationError) { self.error = error }
-                }
-                onChange?(.root)
-            }
+            showArchive(entry, kind: kind)
         }
         onChange?(.root)
+    }
+
+    /// A folder's items, once read, in its notebook's order when it holds one.
+    private func showFolder(_ entry: FileEntry) {
+        let revision = revision
+        isLoading = true
+        rootRead.load(entry.url, showHidden: showHidden, applications: applications) { [weak self] result, _ in
+            guard let self, !isClosed, self.revision == revision else { return }
+            isLoading = false
+            do {
+                let listing = try result.get(), entries = listing.entries
+                roots = try makeItems(entries, in: listing.folder)
+                if OneNoteContents.pick(entries.map(\.name)) != nil {
+                    order { [isPlaceholder] in
+                        try await Self.notebook(among: entries, isPlaceholder: isPlaceholder)
+                    }
+                }
+            } catch { self.error = error }
+            onChange?(.root)
+        }
+    }
+
+    /// An archive's items, once its worker has listed them. One that can't be opened shows why at once.
+    private func showArchive(_ entry: FileEntry, kind: ArchiveKind) {
+        let revision = revision
+        isLoading = true
+        let read = archiveReader
+        let access = archiveAccess
+        do { access.reset(try ArchiveSource(entry.url)) }
+        catch { self.error = error; isLoading = false; return }
+        archiveTask = Task { [weak self] in
+            let result: Result<ArchiveListing, Error>
+            do {
+                try Task.checkCancellation()
+                if let read { result = .success(try await read(entry.url, kind)) }
+                else {
+                    let listed = ArchiveReadListing(records: try await access.read(), end: .complete)
+                    result = .success(try ArchiveLister.tree(listed, compressed: nil, named: entry.url.lastPathComponent))
+                }
+            } catch { result = .failure(error) }
+            guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
+            archiveTask = nil
+            isLoading = false
+            switch result {
+            case .success(let listing): showListing(listing, access: access)
+            case .failure(let error): if !(error is CancellationError) { self.error = error }
+            }
+            onChange?(.root)
+        }
+    }
+
+    /// An archive's top items, in its notebook's order when it holds one.
+    private func showListing(_ listing: ArchiveListing, access: PreviewArchiveAccess) {
+        archive = listing
+        roots = listing.root.value.children.map { PreviewItem(.member($0, path: [$0.name])) }
+        register(roots)
+        let files = listing.root.value.children.filter { !$0.isDirectory }
+            .map { (name: $0.name, size: $0.size) }
+        order { [source = access.source] in
+            guard let source else { return nil }
+            return try await Self.notebook(in: files, source: source)
+        }
+    }
+
+    /// Once the root's items show, gives them their places in the OneNote notebook they hold, from the table of
+    /// contents `read` finds among them. Until then, and without one, they keep their own order.
+    private func order(_ read: @escaping @MainActor () async throws -> OneNoteContents?) {
+        let revision = revision, items = roots
+        notebookTask?.cancel()
+        notebookTask = Task { [weak self] in
+            let contents = try? await read()
+            guard let self, !isClosed, self.revision == revision, !Task.isCancelled else { return }
+            notebookTask = nil
+            guard let contents else { return }
+            let names = items.map { $0.entry?.name ?? $0.name }
+            for (item, position) in zip(items, contents.positions(of: names)) { item.notebookPosition = position }
+            onChange?(.order)
+        }
+    }
+
+    /// An archive's, as OneNote exports a notebook: copied out no larger than one may be, by the size the worker sends
+    /// before its contents, and without asking for a password, so an archive that needs one keeps its order.
+    @concurrent private static func notebook(in files: [(name: String, size: Int64)], source: ArchiveSource)
+        async throws -> OneNoteContents? {
+        guard let index = OneNoteContents.pick(files.map(\.name)), files[index].size <= OneNoteContents.byteLimit else {
+            return nil
+        }
+        let copied = Copied()
+        try await ArchiveReader.stream(source, member: [files[index].name], password: nil) { size in
+            guard size <= OneNoteContents.byteLimit else { throw OneStoreError.tooLarge }
+            return { copied.data.append(contentsOf: $0) }
+        }
+        return try await OneNoteContents.read(copied.data)
+    }
+
+    /// What a copy of one file out of an archive brings, gathered on the thread reading it and read once it's done.
+    nonisolated private final class Copied: @unchecked Sendable {
+        var data = Data()
+    }
+
+    /// A notebook folder's, once it's here: a copy of a server's or a container's may not be fetched yet.
+    @concurrent private static func notebook(among entries: [FileEntry], isPlaceholder: @Sendable (URL) -> Bool)
+        async throws -> OneNoteContents? {
+        let files = entries.filter { !$0.isDirectory }
+        guard let index = OneNoteContents.pick(files.map(\.name)),
+              (files[index].size ?? .max) <= OneNoteContents.byteLimit,
+              !isPlaceholder(files[index].url) else { return nil }
+        return try await OneNoteContents.open(ArchiveSource(files[index].url))
     }
 
     func close() {
@@ -113,6 +194,8 @@ import StrataPreviews
         items = []
         selected = nil
         archive = nil
+        notebookTask?.cancel()
+        notebookTask = nil
         root = nil
         rootIdentity = nil
         error = nil
@@ -127,12 +210,20 @@ import StrataPreviews
             selected.fetched(entry)
             onChange?(.content)
         }
+        // A notebook folder's table of contents, fetched since the folder showed, gives it its order now.
+        let path = entry.url.path.utf8
+        guard !entry.isDirectory, (entry.name as NSString).pathExtension.lowercased() == OneNoteContents.fileExtension,
+              roots.contains(where: { $0.entry?.url.path.utf8.elementsEqual(path) == true }) else { return }
+        let entries = roots.compactMap(\.entry).map { $0.url.path.utf8.elementsEqual(path) ? entry : $0 }
+        order { [isPlaceholder] in try await Self.notebook(among: entries, isPlaceholder: isPlaceholder) }
     }
 
     func cancelLoading() {
         let wasLoading = isLoading
         archiveTask?.cancel()
         archiveTask = nil
+        notebookTask?.cancel()
+        notebookTask = nil
         rootRead.invalidate()
         archiveAccess.cancelPassword?()
         isLoading = false
@@ -162,7 +253,10 @@ import StrataPreviews
         return read.load(entry.url, showHidden: showHidden, applications: applications) { [weak self, weak item, weak read] result, _ in
             guard let self, let item, let read, !isClosed, self.revision == revision, childReads[key] === read else { return }
             childReads[key] = nil
-            do { item.children = try makeItems(result.get(), in: entry.url, parent: item) }
+            do {
+                let listing = try result.get()
+                item.children = try makeItems(listing.entries, in: listing.folder, parent: item)
+            }
             catch { self.error = error }
             onChange?(.children(item))
         }
@@ -176,10 +270,10 @@ import StrataPreviews
     /// Reject a malformed provider batch before adding any rows. Only immediate children belong to this folder.
     private func makeItems(_ entries: [FileEntry], in folder: URL, parent: PreviewItem? = nil) throws -> [PreviewItem] {
         guard entries.count <= DirectoryReader.previewLimit - items.count else { throw CocoaError(.fileReadTooLarge) }
-        let bases = Set(applications.directories(for: folder).map { $0.standardizedFileURL.path })
+        let bases = Set(applications.directories(for: folder).map { $0.lexicallyStandardized.path })
         var seen: Set<String> = []
         for entry in entries {
-            let url = entry.url.standardizedFileURL
+            let url = entry.url.lexicallyStandardized
             guard url.isFileURL, bases.contains(url.deletingLastPathComponent().path),
                   !entry.name.isEmpty, entry.name != ".", entry.name != "..", !entry.name.contains("/"),
                   !entry.name.utf8.contains(0), entry.name.utf8.elementsEqual(entry.url.lastPathComponent.utf8),

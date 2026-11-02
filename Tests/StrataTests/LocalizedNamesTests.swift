@@ -1,8 +1,19 @@
 import AppKit
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct LocalizedNamesTests {
+    let testEnvironment: IndependentEnvironment
+
+    init() throws { testEnvironment = try IndependentEnvironment() }
+
     private func localized(_ url: URL, as label: String) throws -> FileEntry {
         try #require(FileEntry(url: url)).with(displayName: label)
     }
@@ -21,10 +32,10 @@ struct LocalizedNamesTests {
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: tree.url("Original.app/Contents/Info.plist"))
         try Data("\"CFBundleDisplayName\" = \"Translated App\"; \"CFBundleName\" = \"Translated App\";".utf8)
             .write(to: tree.url("Original.app/Contents/Resources/en.lproj/InfoPlist.strings"))
-        let entries = try await DirectoryLoader.load(tree.root, showHidden: false)
+        let entries = try await DirectoryLoader.load(tree.root, showHidden: false, copies: testEnvironment.services.copies).entries
         #expect(entries.first { $0.name == "Original.localized" }?.displayName == "Translated Folder")
         #expect(entries.first { $0.name == "Original.app" }?.displayName == "Translated App")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.showResults(entries.map { $0.with(displayName: $0.name) }, total: 2)
         browser.select([tree.url("Original.app")])
@@ -60,7 +71,7 @@ struct LocalizedNamesTests {
         let tree = try TestTree("a.txt", "b.txt")
         let a = try localized(tree.url("a.txt"), as: "Zulu")
         let b = try localized(tree.url("b.txt"), as: "Alpha")
-        let browser = BrowserViewController()
+        let browser = BrowserViewController(services: testEnvironment.services)
         _ = browser.view
         browser.showResults([a, b], total: 2)
         browser.applySort(.name, ascending: true, remember: false)
@@ -70,7 +81,8 @@ struct LocalizedNamesTests {
         let cell = browser.outlineView(browser.outlineView, viewFor: column, item: node) as? NameCellView
         #expect(cell?.textField?.stringValue == "Zulu")
         let item = GridItem()
-        item.configure(a, matches: [], metrics: GridMetrics(iconSize: 64), showsInfo: false, dimmed: false, scale: 2)
+        item.configure(a, matches: [], metrics: GridMetrics(iconSize: 64, typography: .standard), showsInfo: false, dimmed: false, scale: 2,
+                       preferences: browser.preferences, thumbnails: testEnvironment.services.thumbnails, itemInfo: testEnvironment.services.itemInfo)
         #expect(item.itemView.accessibilityLabel() == "Zulu")
         #expect(TreemapItem(entry: a, bytes: 10).name == "Zulu")
         browser.setFilter("Zulu")
@@ -85,7 +97,7 @@ struct LocalizedNamesTests {
     @Test func everyViewRenamesTheSelectedURLRatherThanItsTranslatedLabelAndUndoRestoresIt() async throws {
         for mode in BrowserViewMode.ordered {
             let tree = try TestTree("Original.txt", "Translated.txt", "Originals.txt", "other/", "other/Original.txt")
-            let browser = BrowserViewController()
+            let browser = BrowserViewController(services: testEnvironment.services)
             browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
             browser.setMode(mode, remember: false)
             browser.load(tree.root)
@@ -99,7 +111,7 @@ struct LocalizedNamesTests {
             let undo = UndoManager()
             undo.groupsByEvent = false
             undo.beginUndoGrouping()
-            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.txt", undo: undo)
+            _ = try await FileOps.rename(try #require(browser.selectedURLs.first), to: "Renamed.txt", undo: undo, copies: testEnvironment.services.copies, history: testEnvironment.services.transfers.history)
             undo.endUndoGrouping()
             #expect(tree.snapshot() == ["Originals.txt", "Renamed.txt", "Translated.txt", "other/", "other/Original.txt"], "\(mode)")
             #expect(tree.text("Renamed.txt") == "Original.txt" && tree.text("Translated.txt") == "Translated.txt")
@@ -113,7 +125,7 @@ struct LocalizedNamesTests {
         let tree = try TestTree("left/", "left/a.txt", "right/", "right/a.txt")
         let left = try localized(tree.url("left/a.txt"), as: "Same label")
         let right = try localized(tree.url("right/a.txt"), as: "Same label")
-        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"))
+        let window = BrowserWindowController(location: tree.url("left"), secondPane: tree.url("right"), services: testEnvironment.services)
         let other = try #require(window.otherBrowser)
         try await wait { window.browser.isLoaded && other.isLoaded }
         window.browser.showResults([left, right], total: 2)

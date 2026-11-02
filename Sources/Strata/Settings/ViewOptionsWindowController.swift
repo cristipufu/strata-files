@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class ViewOptionsWindowController: NSWindowController {
-    init(preferences: Prefs = .shared) {
+    init(preferences: Prefs) {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 410, height: 650),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = String(localized: "View Options", comment: "Title of the window opened with Command-J")
@@ -13,6 +13,7 @@ final class ViewOptionsWindowController: NSWindowController {
         panel.center()
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show() { showWindow(nil) }
@@ -23,12 +24,14 @@ struct ViewOptionsView: View {
     @State private var options: IconViewOptions
     @State private var iconSize: Double
     @State private var previews: Bool
+    @State private var alternatingRows: Bool
     @State private var hiddenColumns: Set<String>
 
-    init(preferences: Prefs = .shared) {
+    init(preferences: Prefs) {
         self.preferences = preferences
         _options = State(initialValue: preferences.iconViewOptions)
         _iconSize = State(initialValue: preferences.gridIconSize)
+        _alternatingRows = State(initialValue: preferences.alternatingRows)
         _previews = State(initialValue: preferences.showIconPreviews)
         _hiddenColumns = State(initialValue: preferences.hiddenListColumns)
     }
@@ -50,6 +53,7 @@ struct ViewOptionsView: View {
                 Toggle("Show icon previews", isOn: Binding(get: { previews }, set: { previews = $0; preferences.showIconPreviews = $0 }))
             }
             Section("List columns") {
+                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; preferences.alternatingRows = $0 }))
                 ForEach(ListColumn.allCases, id: \.self) { column in
                     Toggle(column.title, isOn: Binding(get: { !hiddenColumns.contains(column.rawValue) }, set: { shown in
                         if shown { hiddenColumns.remove(column.rawValue) } else { hiddenColumns.insert(column.rawValue) }
@@ -69,6 +73,7 @@ struct ViewOptionsView: View {
             iconSize = preferences.gridIconSize
         }
         .onReceive(preferences.notifications.publisher(for: .appearanceChanged)) { _ in previews = preferences.showIconPreviews }
+        .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
         .onReceive(preferences.notifications.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = preferences.hiddenListColumns }
     }
 }

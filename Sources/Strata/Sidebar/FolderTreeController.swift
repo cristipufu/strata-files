@@ -45,17 +45,19 @@ final class FolderTreeController: NSViewController {
     private let remote: RemoteServices
     private let copies: CopyProviders
     private let containerStore: ContainerStore
+    private let places: PlaceChecks
     var clipboard: Clipboard
     var cloudFolders: [CloudFolder] = [] {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(transfers: TransferQueue = .shared, preferences: Prefs = .shared, remote: RemoteServices = .shared,
-         copies: CopyProviders? = nil, containerStore: ContainerStore = .shared,
-         clipboard: Clipboard = .shared, watchBudget: FolderWatchers.Budget = .shared) {
+    init(places: PlaceChecks, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
+         copies: CopyProviders, containerStore: ContainerStore,
+         clipboard: Clipboard, watchBudget: FolderWatchers.Budget) {
         watchers = FolderWatchers(budget: watchBudget)
+        self.places = places
         self.remote = remote
-        self.copies = copies ?? CopyProviders(servers: remote.files, containers: .shared)
+        self.copies = copies
         self.containerStore = containerStore
         self.clipboard = clipboard
         self.transfers = transfers
@@ -64,6 +66,7 @@ final class FolderTreeController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
+    @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     var onSelect: ((SidebarTarget) -> Void)?
@@ -76,6 +79,9 @@ final class FolderTreeController: NSViewController {
 
     private let outline = SidebarOutlineView()
     private var roots: [FolderNode] = []
+    /// The home Trash's symbol as last read (`Trash.homeSymbol`), and which read that was.
+    private var trashSymbol = "trash"
+    private var trashReads = 0
     private var generation = 0
     private var suppressSelection = false
     /// The folder shown in the window: revealed once the tree is on screen.
@@ -145,15 +151,18 @@ final class FolderTreeController: NSViewController {
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: containerStore)
+        // Disks are listed as last read: a mount is read in the background, and shows when that read ends.
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: places)
         remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteServersChanged, object: remote.servers)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
         }
+        trashMayHaveChanged()
     }
 
     // MARK: - Contents
 
-    private static var trashSymbol: String { Trash.isHomeEmpty ? "trash" : "trash.fill" }
+
 
     /// Home, then each disk (the startup disk as "/"), servers, Containers while an engine runs, and the Trash. Nodes already in
     /// the tree are kept, so what's expanded stays expanded.
@@ -162,9 +171,9 @@ final class FolderTreeController: NSViewController {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
         let home = Places.home
-        var fresh = [reuse(home, .folder) { FolderNode(url: home, title: FileManager.default.displayName(atPath: home.path), symbol: "house") }]
-        for volume in Places.volumes() {
-            let url = volume.url.standardizedFileURL
+        var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
+        for volume in places.snapshot.volumes {
+            let url = volume.url.lexicallyStandardized
             fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
         }
         for folder in cloudFolders where !fresh.contains(where: { $0.url.fileViewKey == folder.url.fileViewKey }) {
@@ -188,7 +197,7 @@ final class FolderTreeController: NSViewController {
             })
         }
         fresh.append(reuse(Trash.home, .trash) {
-            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: Self.trashSymbol, kind: .trash)
+            FolderNode(url: Trash.home, title: String(localized: "Trash", comment: "Sidebar item: the Trash"), symbol: trashSymbol, kind: .trash)
         })
         return fresh
     }
@@ -242,9 +251,16 @@ final class FolderTreeController: NSViewController {
 
     /// Full or empty, like the Dock's.
     @objc private func trashMayHaveChanged() {
-        guard let trash = roots.first(where: { $0.kind == .trash }), trash.symbol != Self.trashSymbol else { return }
-        trash.symbol = Self.trashSymbol
-        outline.reloadItem(trash)
+        trashReads += 1
+        let read = trashReads
+        Task { [weak self] in
+            let symbol = await Trash.homeSymbol()
+            guard let self, read == trashReads else { return }
+            trashSymbol = symbol
+            guard let trash = roots.first(where: { $0.kind == .trash }), trash.symbol != symbol else { return }
+            trash.symbol = symbol
+            outline.reloadItem(trash)
+        }
     }
 
     /// Reads `node`'s subfolders (once) off the main thread, then shows them and runs what was waiting for them.
@@ -280,8 +296,7 @@ final class FolderTreeController: NSViewController {
     /// Whether the folders just shown have subfolders, so their triangles are right. Only where looking can't ask for
     /// access (Desktop, Documents… and anything in ~/Library without Full Disk Access), only on this Mac's disks, and once.
     private func lookAhead(_ node: FolderNode) {
-        guard node.kind == .folder, !node.lookedAhead, let children = node.children, children.count <= 500,
-              (try? node.url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal != false else { return }
+        guard node.kind == .folder, !node.lookedAhead, let children = node.children, children.count <= 500 else { return }
         node.lookedAhead = true
         let library = Places.home.appending(path: "Library").fileViewKey
         let candidates = children.filter { child in
@@ -291,9 +306,11 @@ final class FolderTreeController: NSViewController {
                 && !Privacy.measuringWouldPrompt(child.url, browsing: node.url)
         }
         guard !candidates.isEmpty else { return }
-        let urls = candidates.map(\.url), hidden = preferences.showHidden, generation = generation
+        let urls = candidates.map(\.url), hidden = preferences.showHidden, generation = generation, folder = node.url
         Self.lookAheads.async { [weak self] in
-            let answers = urls.map { Self.hasSubfolder($0, includeHidden: hidden) }
+            // Only on this Mac's disks: on a server each look is a round trip.
+            let local = (try? folder.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal != false
+            let answers = local ? urls.map { Self.hasSubfolder($0, includeHidden: hidden) } : urls.map { _ in nil }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.lookedAhead(candidates, answers, generation: generation) }
             }
@@ -318,7 +335,7 @@ final class FolderTreeController: NSViewController {
             guard let values = try? child.resourceValues(forKeys: Set(keys)) else { return false }
             return values.isDirectory == true && values.isPackage != true && values.isSymbolicLink != true
         }
-        .map { ($0.standardizedFileURL, FileManager.default.displayName(atPath: $0.path)) }
+        .map { ($0.lexicallyStandardized, FileManager.default.displayName(atPath: $0.path)) }
         .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
@@ -411,7 +428,7 @@ final class FolderTreeController: NSViewController {
         guard node.kind == .folder else { return }
         load(node) { [weak self] in
             // Expanded only with something inside (expanding asks to load again: an unreadable folder would loop).
-            guard node.children?.isEmpty == false else { return NSSound.beep() }
+            guard node.children?.isEmpty == false else { return Sounds.beep() }
             self?.outline.expandItem(node)
         }
     }
@@ -425,7 +442,7 @@ final class FolderTreeController: NSViewController {
             current = nil
             return isViewLoaded ? deselect() : ()
         }
-        let target = url.standardizedFileURL
+        let target = url.lexicallyStandardized
         current = target
         guard isViewLoaded, isActive, !roots.isEmpty else { return }
         // The Trash (and what's in it) and the containers' files have their own rows.
@@ -480,7 +497,7 @@ final class FolderTreeController: NSViewController {
 
     /// The loaded node for `url`, if it's in the tree.
     private func node(for url: URL) -> FolderNode? {
-        let key = url.standardizedFileURL.fileViewKey
+        let key = url.lexicallyStandardized.fileViewKey
         func find(_ nodes: [FolderNode]) -> FolderNode? {
             for node in nodes where node.kind == .folder {
                 let nodeKey = node.url.fileViewKey
@@ -583,7 +600,9 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             trashVerdict = (info.draggingSequenceNumber, operation)
             return operation
         }
-        springLoader.hover(FileDrop.isInside(urls, node.url) || !SpringLoader.canOpen(node.url, browsing: nil) ? nil : node.url,
+        let springs = !FileDrop.isInside(urls, node.url, during: info)
+            && SpringLoader.canOpen(node.url, browsing: nil, during: info)
+        springLoader.hover(springs ? node.url : nil,
                            drag: info.draggingSequenceNumber)
         return FileDrop.operation(urls, into: node.url, info: info, copies: copies)
     }
@@ -597,10 +616,12 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             onTrash?(urls)
             return true
         }
-        let operation = FileDrop.operation(urls, into: node.url, info: info, copies: copies)
-        guard !urls.isEmpty, !operation.isEmpty else { return false }
-        transfers.enqueue(urls, to: node.url, mode: operation == .move ? .move : .copy,
-                                     undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        guard !urls.isEmpty else { return false }
+        FileDrop.drop(urls, into: node.url, info: info, copies: copies) { [weak self] move in
+            guard let self else { return }
+            transfers.enqueue(urls, to: node.url, mode: move ? .move : .copy,
+                              undo: view.window?.undoManager, conflicts: .sheet(for: view.window))
+        }
         return true
     }
 }
@@ -623,7 +644,7 @@ extension FolderTreeController: NSMenuDelegate {
             return
         }
         add(String(localized: "Copy Path"), #selector(copyPath(_:)))
-        let isFavorite = Places.favorites(preferences: preferences).contains { $0.url.standardizedFileURL.fileViewKey == node.url.fileViewKey }
+        let isFavorite = Places.favorites(preferences: preferences, checks: places).contains { $0.url.lexicallyStandardized.fileViewKey == node.url.fileViewKey }
         if !isFavorite {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))
@@ -643,6 +664,7 @@ extension FolderTreeController: NSMenuDelegate {
 
     @objc private func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.addFavorites([url], at: nil, preferences: preferences)
+        let preferences = preferences, places = places
+        Task { await Places.addFavorites([url], preferences: preferences, checks: places) }
     }
 }

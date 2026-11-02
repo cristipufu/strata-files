@@ -28,6 +28,7 @@ package final class ToolbarThemeController: NSTitlebarAccessoryViewController {
         }
     }
 
+    @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
     package override func viewDidAppear() {

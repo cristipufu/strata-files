@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct FolderOpenSessionTests {
     private enum Failure: Error { case refused }
@@ -91,7 +98,7 @@ struct FolderOpenSessionTests {
         let tree = try TestTree("result/")
         let before = tree.snapshot(), reads = Reads()
         var session: FolderOpenSession? = FolderOpenSession()
-        weak var released = session
+        weak let released = session
         var calls = 0
         let task = try #require(session).open(operation: { try await reads.open() }) { _ in calls += 1 }
         session = nil

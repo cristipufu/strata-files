@@ -1,10 +1,7 @@
 import AppKit
 
-enum ListColumn: String, CaseIterable {
-    case modified, created, added, size, kind, tags
-    case fileExtension = "extension"
-    case dimensions, width, height, duration
-
+/// How a list column shows: its title, widths and alignment.
+extension ListColumn {
     var title: String {
         switch self {
         case .modified: String(localized: "Date Modified")
@@ -21,8 +18,6 @@ enum ListColumn: String, CaseIterable {
         }
     }
 
-    var isMedia: Bool { [.dimensions, .width, .height, .duration].contains(self) }
-    var ascending: Bool { [.kind, .fileExtension, .tags].contains(self) }
     var preferredWidth: CGFloat {
         switch self {
         case .modified, .created, .added: 170
@@ -39,12 +34,4 @@ enum ListColumn: String, CaseIterable {
         }
     }
     var alignment: NSTextAlignment { [.size, .width, .height, .duration].contains(self) ? .right : .left }
-
-    static let initiallyHidden: Set<String> = ["tags", "created", "added", "extension", "dimensions", "width", "height", "duration"]
-
-    /// New optional columns start hidden even for someone who already chose their columns in an older release.
-    static func hidden(stored: [String]?, known: [String]?) -> Set<String> {
-        let previous = Set(known ?? ["modified", "created", "size", "kind"])
-        return Set(stored ?? Array(initiallyHidden)).union(initiallyHidden.subtracting(previous))
-    }
 }

@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 struct CopyProvidersTests {
     private nonisolated struct Event: Equatable, Sendable {
@@ -22,7 +29,8 @@ struct CopyProvidersTests {
         let name: String
         let calls: Calls
         var fails: String? = nil
-        var root: URL { URL(fileURLWithPath: "/strata-provider-fixture/" + name) }
+        var folder: URL? = nil
+        var root: URL { folder ?? URL(fileURLWithPath: "/strata-provider-fixture/" + name) }
         func contains(_ url: URL) -> Bool { url.path == root.path || url.path.hasPrefix(root.path + "/") }
         func isPlaceholder(_ url: URL) -> Bool { url.pathExtension == "pending" }
         func refresh(_ folder: URL) async { await record("refresh", [folder]) }
@@ -48,13 +56,27 @@ struct CopyProvidersTests {
     }
 
     @Test func theLiveFacadeRecognizesBothCopyFamiliesWithoutClaimingTheirNeighbors() {
-        for root in [RemoteCopies.root, ContainerCopies.root] {
+        for root in [RemoteCopyStore.shared.root, ContainerCopyStore.shared.root] {
             for url in [root, root.appending(path: "unregistered-copy/file")] {
-                #expect(CopyProviders.live.contains(url) && LazyCopies.contains(url))
+                #expect(CopyProviders.live.contains(url))
             }
             let neighbor = root.deletingLastPathComponent().appending(path: root.lastPathComponent + "-other/file")
-            #expect(!CopyProviders.live.contains(neighbor) && !LazyCopies.contains(neighbor))
+            #expect(!CopyProviders.live.contains(neighbor))
         }
+    }
+
+    /// A folder copied out of a server or a container is searched for items not fetched yet away from the main
+    /// thread, as deep as it goes and only inside the provider's copies.
+    @Test func placeholdersAreFoundAnywhereInsideACopy() async throws {
+        let tree = try TestTree("copy/", "copy/sub/", "copy/sub/deep.pending", "copy/plain/", "copy/plain/file.txt",
+                                "outside.pending")
+        let providers = CopyProviders([Provider(name: "tree", calls: Calls(), folder: tree.url("copy"))])
+        #expect(try await providers.containsPlaceholderOffMain(in: [tree.url("copy")]))
+        #expect(!(try await providers.containsPlaceholderOffMain(in: [tree.url("copy/plain")])))
+        #expect(!(try await providers.containsPlaceholderOffMain(in: [tree.url("outside.pending")])))
+        #expect(try providers.containsPlaceholder(in: [tree.url("copy/sub")]))
+        #expect(tree.snapshot() == ["copy/", "copy/plain/", "copy/plain/file.txt", "copy/sub/", "copy/sub/deep.pending",
+                                    "outside.pending"])
     }
 
     @Test func everyReadCapabilityRoutesToAnAdditionalProvider() async throws {

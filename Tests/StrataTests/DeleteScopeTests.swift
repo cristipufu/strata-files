@@ -1,6 +1,13 @@
 import Foundation
 import Testing
 @testable import Strata
+@testable import StrataAI
+@testable import StrataConnections
+@testable import StrataDev
+@testable import StrataFiles
+@testable import StrataQueue
+@testable import StrataModel
+@testable import StrataSearch
 
 /// What deletes everything in a folder, or replaces what's at a path, must only ever reach the folder or path it's for:
 /// Empty Trash only Trash folders, the bucket never as a whole, the `strata` command only its own link.
@@ -28,20 +35,31 @@ struct DeleteScopeTests {
         }
     }
 
-    @Test func aTrashIsNeverTrashedOrDeletedItself() throws {
+    /// What menus, drags and the Inspector offer to trash is judged by spelling alone: never a Trash or what's in one,
+    /// nor an archive's copy; a folder only named like a Trash is an ordinary item. Move to Trash also follows links.
+    @Test func whatIsOfferedForTheTrashIsJudgedBySpellingAlone() throws {
+        let tree = try TestTree("a.txt", ".Trash/")
+        for url in [Trash.home, Trash.home.appending(path: "a.txt"), ArchiveCache.root.appending(path: "x/contents/a.txt")] {
+            #expect(!FileOps.canTrash(spelled: url, copies: .live), "\(url.path)")
+        }
+        for path in ["a.txt", ".Trash"] { #expect(FileOps.canTrash(spelled: tree.url(path), copies: .live), "\(path)") }
+        #expect(tree.snapshot() == [".Trash/", "a.txt"])
+    }
+
+    @Test func aTrashIsNeverTrashedOrDeletedItself() async throws {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let tree = try TestTree("a.txt", ".Trash/", "trash link -> \(Trash.home.path)", "home link -> \(home.path)")
         // The Trash however it's spelled (through a link to the home folder too), and anything in it.
         for url in [Trash.home, home.appending(path: ".TRASH"), home.appending(path: "./.Trash"), tree.url("home link/.Trash"),
                     Trash.home.appending(path: "a.txt")] {
-            #expect(!FileOps.canTrash(url), "\(url.path)")
+            #expect(!FileOps.canTrash(url, copies: .live), "\(url.path)")
         }
         // A folder only named like one, and a link to it, are ordinary items.
-        for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path)), "\(path)") }
+        for path in ["a.txt", ".Trash", "trash link"] { #expect(FileOps.canTrash(tree.url(path), copies: .live), "\(path)") }
         // Delete Immediately refuses it up front, and goes on with the rest.
-        let plan = BrowserViewController.deletionPlan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")])
+        let plan = await Deletion.plan([Trash.home, tree.url("home link/.Trash"), tree.url("a.txt")], copies: .live)
         #expect(plan.refused.map(\.standardizedFileURL.path) == [Trash.home, tree.url("home link/.Trash")].map(\.standardizedFileURL.path))
-        #expect(plan.candidates.map(\.path) == [tree.url("a.txt").standardizedFileURL.path])
+        #expect(plan.candidates.map(\.path) == [tree.url("a.txt").path])
         #expect(tree.snapshot() == [".Trash/", "a.txt", "home link -> \(home.path)", "trash link -> \(Trash.home.path)"])
     }
 
@@ -82,6 +100,18 @@ struct DeleteScopeTests {
         #expect(tree.snapshot().contains("link -> plain.txt"))
     }
 
+    @Test func removeDownloadChoosesFromTheListingAndFreesOnlyWhatsInTheCloudNow() async throws {
+        let tree = try TestTree("a.txt", "ab.txt", "link -> a.txt")
+        // The listing last read all three as downloaded; the link is never chosen, and outside a cloud folder the
+        // state read now refuses the rest, which stay.
+        let known: [URL: CloudStatus] = [tree.url("a.txt"): .downloaded, tree.url("ab.txt"): .downloaded, tree.url("link"): .downloaded]
+        let (chosen, failures) = await CloudActions.removeDownloads([tree.url("a.txt"), tree.url("link"), tree.url("ab.txt")], known: known)
+        #expect(chosen == [tree.url("a.txt"), tree.url("ab.txt")])
+        #expect(failures.map(\.0) == chosen)
+        #expect(await CloudActions.removeDownloads([tree.url("a.txt")], known: [:]).chosen.isEmpty)
+        #expect(tree.snapshot() == ["a.txt", "ab.txt", "link -> a.txt"])
+    }
+
     @Test func nothingInAReadOnlyCopyIsEverTrashed() async throws {
         // An archive opened as a folder is a temporary copy: Move to Trash on something inside it changes nothing.
         let copy = ArchiveCache.root.appending(path: "test-\(UUID().uuidString)/contents", directoryHint: .isDirectory)
@@ -89,12 +119,12 @@ struct DeleteScopeTests {
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
         let inside = copy.appending(path: "a.txt")
         try Data("x".utf8).write(to: inside)
-        try await FileOps.trashInBackground([inside], undo: nil)
+        try await FileOps.trashInBackground([inside], undo: nil, copies: .live, history: .shared)
         // Whatever went to the Trash despite this comes back out.
         defer {
             for entry in OperationLog.shared.entries {
-                for pair in entry.pairs where pair[0] == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair[1])) {
-                    TestTree.removeFromTrash(URL(fileURLWithPath: pair[1]), matching: entry.identities[pair[1]])
+                for pair in entry.moves where pair.from == inside.path && Trash.isInTrash(URL(fileURLWithPath: pair.to)) {
+                    TestTree.removeFromTrash(URL(fileURLWithPath: pair.to), matching: entry.expectation(at: pair.to).key)
                 }
             }
         }
@@ -104,8 +134,8 @@ struct DeleteScopeTests {
     @Test func testsKeepToCachesOfTheirOwn() {
         // The app's caches hold the copies it has open (archives, servers, containers): tests never prune, sweep or
         // set aside those.
-        let own = SecureStorage.directory.standardizedFileURL.path + "/"
-        for root in [ArchiveCache.root, RemoteCopies.root, ContainerCopies.root, LazyCopies.clipboardRoot] {
+        let own = SecureStorage.Context.shared.directory.standardizedFileURL.path + "/"
+        for root in [ArchiveCache.root, RemoteCopyStore.shared.root, ContainerCopyStore.shared.root, CopyProviders.live.clipboardRoot] {
             #expect(root.standardizedFileURL.path.hasPrefix(own), "\(root.path)")
         }
     }
