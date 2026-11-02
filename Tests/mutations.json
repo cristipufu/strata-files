@@ -3681,6 +3681,27 @@
     "tests": "FinderLooksTests/anOldReadCannotOverwriteAReopenedFoldersLook"
   },
   {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "if deep, refreshed.complete { deepRoots.append(target) }",
+    "replace": "if deep, refreshed.complete { deepRoots.append(path) }",
+    "rule": "Index refresh coverage: stale paths make the same surviving parent scan repeatedly",
+    "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "if deep, refreshed.complete { deepRoots.append(target) }",
+    "replace": "if deep { deepRoots.append(target) }",
+    "rule": "Index refresh coverage: a failed parent read hides later child events",
+    "tests": "IndexWorkerTests/failedParentReadsDoNotHideLaterChildEvents"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "path == $0 || path.hasPrefix($0 == \"/\" ? \"/\" : $0 + \"/\")",
+    "replace": "path.hasPrefix($0)",
+    "rule": "Index refresh coverage: a folder suppresses its lookalike sibling's event",
+    "tests": "IndexWorkerTests/aDeepRefreshDoesNotCoverALookalikeSibling"
+  },
+  {
     "file": "Strata/Inspector/InfoEditorView.swift",
     "find": "if let previous = url, comments.currentEditor() != nil {\n            pendingCommentSave?.cancel()\n            saveComment(comments.stringValue, at: previous.path, choice: commentChoice ?? shownCommentChoice)\n            window?.makeFirstResponder(nil)\n        }",
     "replace": "if false {}",

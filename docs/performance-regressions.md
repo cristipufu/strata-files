@@ -178,5 +178,27 @@ not a controlled before/after memory comparison. The interactive 45-second trace
 events in about 96% of samples and no watchdog stalls recorded within that interval. The log did record a 422 ms
 startup stall and a separate 589 ms stall before that trace, without a matching sampled stack. CPU reached 70–99%
 after the run; the trace's sustained work was a deep index refresh on its background queue. Builds and tests were
-also producing filesystem changes. Repeated refresh coverage and the unmatched stalls need separate investigation;
-the Where fixes alone do not establish that this workload is now fully smooth.
+also producing filesystem changes. The refresh coverage defect found in that investigation is described below.
+The earlier unmatched stalls still lack a sampled stack; the Where fixes alone do not establish that this workload
+is now fully smooth.
+
+## Overlapping index refreshes
+
+The live trace prompted a review of deep-refresh batching. The initial implementation in `afe394c` recorded the
+event's path as covered before resolving it to an indexed folder. After a deletion, several stale paths can resolve
+to the same surviving parent. A mixed batch of ordinary deletion and deep-refresh events then rescans that parent
+and its subtree repeatedly. The exact live event batch was not recorded, so this defect cannot be assigned all of
+the CPU observed in that session.
+
+Coverage now records the folder actually refreshed, after a complete deep read. Failed or cancelled reads do not
+suppress later events, and a newly scanned subtree is conservatively left uncovered because that scanner does not
+report unreadable folders. A folder's coverage includes itself and descendants with a path-component boundary.
+
+The injected directory reader counts real production reads. The deletion regression failed before the fix: the
+parent and an unrelated subtree were each read twice, and a deeper folder three times. They are now each read once.
+Further regressions verify that a failed ancestor read still permits later child updates and that `a` never covers
+its sibling `ab`. Saved indexes retain the expected deletions, updated file sizes and unrelated files. All 77 focused
+index and search tests pass. Three negative controls target coverage identity, failed reads and sibling boundaries.
+The final full Address Sanitizer run passed all 1,606 tests in 215 suites. All 99 Python checks, all four architecture
+audits, and localization extraction and completeness checks passed. The optimized app product also built successfully.
+All three index mutations were caught, completing six caught negative controls across the Inspector follow-up fixes.

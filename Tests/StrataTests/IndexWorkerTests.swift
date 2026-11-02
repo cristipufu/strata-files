@@ -19,10 +19,10 @@ struct IndexWorkerTests {
         let changes: OSAllocatedUnfairLock<Int>
     }
 
-    private func start(_ tree: TestTree) async throws -> Fixture {
+    private func start(_ tree: TestTree, readDirectory: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read) async throws -> Fixture {
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
                                  file: tree.url(".state/index.sealed"), storage: .shared)
-        let worker = IndexWorker(watchesChanges: false)
+        let worker = IndexWorker(watchesChanges: false, readDirectory: readDirectory)
         let store = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         let changes = OSAllocatedUnfairLock(initialState: 0)
         let started = OSAllocatedUnfairLock(initialState: false)
@@ -180,6 +180,81 @@ struct IndexWorkerTests {
         #expect(tree.text("untouched/z.txt") == "untouched/z.txt")
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "a/", "a/deep/", "a/deep/x.txt", "b/",
                                     "b/new/", "b/new/added.txt", "b/y.txt", "untouched/", "untouched/z.txt"])
+    }
+
+    @Test func overlappingEventsReadTheResolvedParentOnlyOnce() async throws {
+        let tree = try TestTree(".state/", "gone-a/a.txt", "gone-b/b.txt", "other/z.txt", "survivor/deep/kept.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try FileManager.default.removeItem(at: tree.url("gone-a"))
+        try FileManager.default.removeItem(at: tree.url("gone-b"))
+        try Data("updated".utf8).write(to: tree.url("survivor/deep/kept.txt"))
+        let paths = ["gone-a", "gone-a/deep", "gone-b", "survivor/deep"]
+        fixture.worker.receive(paths.enumerated().map { offset, path in
+            .init(path: tree.url(path).path,
+                  flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
+        })
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == [tree.url("gone-a").path: 1, tree.root.path: 1, tree.url("other").path: 1,
+            tree.url("survivor").path: 1, tree.url("survivor/deep").path: 1])
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("gone-a").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("gone-b").path) } == nil)
+        let kept = try #require(loaded.read { $0.lookup(tree.url("survivor/deep/kept.txt").path) })
+        #expect(loaded.read { $0.size[Int(kept)] } == 7)
+        #expect(loaded.read { $0.lookup(tree.url("other/z.txt").path) } != nil)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "other/", "other/z.txt",
+            "survivor/", "survivor/deep/", "survivor/deep/kept.txt"])
+    }
+
+    @Test func failedParentReadsDoNotHideLaterChildEvents() async throws {
+        let tree = try TestTree(".state/", "gone-a/a.txt", "gone-b/b.txt", "survivor/deep/kept.txt")
+        let rootPath = tree.root.path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            if path == rootPath { return EACCES }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try FileManager.default.removeItem(at: tree.url("gone-a"))
+        try FileManager.default.removeItem(at: tree.url("gone-b"))
+        try Data("updated".utf8).write(to: tree.url("survivor/deep/kept.txt"))
+        fixture.worker.receive(["gone-a", "gone-a/deep", "gone-b", "survivor/deep"].enumerated().map { offset, path in
+            .init(path: tree.url(path).path,
+                  flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
+        })
+        await save(fixture.worker)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("gone-a").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("gone-b").path) } == nil)
+        let kept = try #require(loaded.read { $0.lookup(tree.url("survivor/deep/kept.txt").path) })
+        #expect(loaded.read { $0.size[Int(kept)] } == 7, "The failed ancestor read cannot suppress this child's event.")
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "survivor/", "survivor/deep/", "survivor/deep/kept.txt"])
+    }
+
+    @Test func aDeepRefreshDoesNotCoverALookalikeSibling() async throws {
+        let tree = try TestTree(".state/", "a/gone/file.txt", "a/kept.txt", "ab/kept.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try FileManager.default.removeItem(at: tree.url("a/gone"))
+        try Data("sibling".utf8).write(to: tree.url("ab/kept.txt"))
+        fixture.worker.receive(["a/gone", "a/gone/deep", "ab"].enumerated().map { offset, path in
+            .init(path: tree.url(path).path,
+                  flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
+        })
+        await save(fixture.worker)
+        let firstPath = tree.url("a").path, siblingPath = tree.url("ab").path
+        #expect(reads.withLock { $0[firstPath] } == 1)
+        #expect(reads.withLock { $0[siblingPath] } == 1)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        let sibling = try #require(loaded.read { $0.lookup(tree.url("ab/kept.txt").path) })
+        #expect(loaded.read { $0.size[Int(sibling)] } == 7)
+        #expect(loaded.read { $0.lookup(tree.url("a/gone").path) } == nil)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "a/", "a/kept.txt", "ab/", "ab/kept.txt"])
     }
 
     @Test func aRemovedFolderIsStillRemovedFromTheSavedIndex() async throws {

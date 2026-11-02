@@ -24,6 +24,8 @@ nonisolated package struct IndexConfig: Sendable {
 
 /// Owns the index on a private serial queue: loads or builds it, applies FSEvents changes, saves it.
 nonisolated package final class IndexWorker: @unchecked Sendable {
+    package typealias DirectoryRead = @Sendable (String, inout [ScannedItem], inout [UInt8], UnsafeMutableRawBufferPointer, () -> Bool) -> Int32
+
     private let log = Logger(subsystem: "dev.strata.app", category: "index")
     package enum Phase: Sendable, Equatable {
         case loading
@@ -50,6 +52,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var interrupted = false
     private let events = FSEventsStream()
     private let watchesChanges: Bool
+    private let readDirectory: DirectoryRead
 
     /// Called with each new store (after loading or a full rebuild) and every phase change.
     package var onStore: (@Sendable (IndexStore) -> Void)?
@@ -58,8 +61,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     package var onChange: (@Sendable () -> Void)?
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
-    package init(watchesChanges: Bool = true) {
+    package init(watchesChanges: Bool = true, readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read) {
         self.watchesChanges = watchesChanges
+        self.readDirectory = readDirectory
         events.handler = { [weak self] events in self?.receive(events) }
     }
 
@@ -247,13 +251,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let work = pending.sorted { $0.key < $1.key }
         pending.removeAll()
         var deepRoots: [String] = []
+        func covered(_ path: String) -> Bool {
+            deepRoots.contains { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }
+        }
         var changed = false
         for (path, deep) in work {
             if stopForQuit() { break }
             // A deep refresh of a parent already covers this folder.
-            if deepRoots.contains(where: { path.hasPrefix($0 + "/") }) { continue }
+            if covered(path) { continue }
             if isExcluded(path, config) { continue }
-            if deep { deepRoots.append(path) }
             // The folder may be new: refresh the nearest ancestor we already know about.
             var target = path
             var id = store.read { store in store.lookup(target) }
@@ -262,7 +268,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 id = store.read { store in store.lookup(target) }
             }
             guard let id, store.read({ store in store.isDirectory(id) }) else { continue }
-            if refreshFolder(id, target, deep: deep) { changed = true }
+            if covered(target) { continue }
+            let refreshed = refreshFolder(id, target, deep: deep)
+            if refreshed.changed { changed = true }
+            if deep, refreshed.complete { deepRoots.append(target) }
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
         if changed { markChanged() }
@@ -300,19 +309,19 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Re-reads one folder and applies the differences. New subfolders are scanned in full; with `deep`, existing
     /// subfolders are refreshed too (FSEvents asks for that when it coalesced too many changes).
-    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool) -> Bool {
-        guard let config, let store, !stopForQuit() else { return false }
+    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool) -> (changed: Bool, complete: Bool) {
+        guard let config, let store, !stopForQuit() else { return (false, false) }
         var items: [ScannedItem] = []
         var names: [UInt8] = []
-        let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: readBuffer) { self.pastQuitDeadline }
+        let error = readDirectory(path, &items, &names, readBuffer) { self.pastQuitDeadline }
         if error == ECANCELED {
             interrupted = true
-            return false
+            return (false, false)
         }
         if error == ENOENT || error == ENOTDIR {
-            return store.write { store in Self.removeGone(id, from: &store) }
+            return (store.write { store in Self.removeGone(id, from: &store) }, true)
         }
-        guard error == 0 else { return false }
+        guard error == 0 else { return (false, false) }
 
         let listing = FolderListing(items: items, names: names, path: path)
         var changes = FolderChanges()
@@ -325,10 +334,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         if !changes.newFolders.isEmpty { scan(changes.newFolders, into: store, config: config) }
         store.write { store in store.integrateNew(from: firstNew) }
         var changed = changes.changed
+        // The new-subtree scanner doesn't report unreadable folders, so its coverage can't be assumed complete.
+        var complete = changes.newFolders.isEmpty
         for folder in changes.existingFolders {
-            if refreshFolder(folder.id, folder.path, deep: true) { changed = true }
+            let refreshed = refreshFolder(folder.id, folder.path, deep: true)
+            if refreshed.changed { changed = true }
+            if !refreshed.complete { complete = false }
         }
-        return changed
+        return (changed, complete)
     }
 
     /// One folder as read: its items, their names in one buffer, and each one's own noise (see `IndexStore.ownNoise`).
