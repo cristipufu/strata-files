@@ -20,12 +20,14 @@
     "%@ (default)": "%@ (implicită)",
     "%@ (Me)": "%@ (Eu)",
     "%@ (undone)": "%@ (anulată)",
-    "%@ available": "%@ disponibili",
+    "%@ available including reclaimable space": "%@ disponibili, inclusiv spațiul recuperabil",
     "%@ belongs to “%@”.": "%@ aparține comenzii „%@”.",
     "%@ can’t be compared": "%@ nu pot fi comparate",
     "%@ compressed": "%@ comprimat",
     "%@ didn’t answer in time.": "%@ nu a răspuns la timp.",
     "%@ each": "%@ fiecare",
+    "%@ file size": "Dimensiune logică: %@",
+    "%@ free": "%@ liberi",
     "%@ is used by “%@”.": "%@ este folosită de „%@”.",
     "%@ isn’t running.": "%@ nu rulează.",
     "%@ named %@": "%@ cu numele %@",
@@ -36,11 +38,14 @@
       "other": "%@ din %lld de articole"
     },
     "%@ of this folder": "%@ din acest dosar",
+    "%@ on disk": "%@ pe disc",
+    "%@ physically free": "%@ liberi fizic",
     "%@ refused it.": "%@ a refuzat acțiunea.",
     "%@ to copy ←": "%@ de copiat ←",
     "%@ to copy →": "%@ de copiat →",
     "%@ to reclaim": "%@ de recuperat",
     "%@ to the Trash": "%@ în Coș",
+    "%@ used of %@": "%@ utilizați din %@",
     "%@ · %@ on disk": "%@ · %@ pe disc",
     "%@ — only %@": "%@ — doar %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — regulile integrate ale Strata gestionează cererile obișnuite.",
@@ -335,6 +340,11 @@
       "few": "%lld seturi de dubluri",
       "other": "%lld de seturi de dubluri"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld dimensiune indisponibilă",
+      "few": "%lld dimensiuni indisponibile",
+      "other": "%lld de dimensiuni indisponibile"
+    },
     "%lld skipped": {
       "one": "%lld omis",
       "few": "%lld omise",
@@ -394,6 +404,11 @@
       "one": "%lld vizualizare",
       "few": "%lld vizualizări",
       "other": "%lld de vizualizări"
+    },
+    "%lld visible items": {
+      "one": "%lld element vizibil",
+      "few": "%lld elemente vizibile",
+      "other": "%lld de elemente vizibile"
     },
     "%lld words": {
       "one": "%lld cuvânt",
@@ -1057,6 +1072,7 @@
     "Lockfile": "Fișier de blocare",
     "Log In": "Autentifică-te",
     "Log in to “%@”": "Autentifică-te la „%@”",
+    "Logical size": "Dimensiune logică",
     "Long lines shortened": "Linii lungi scurtate",
     "longer than %@": "mai lung de %@",
     "Looking for duplicates…": "Se caută dubluri…",
@@ -1224,6 +1240,7 @@
     "Only on the left": "Doar în stânga",
     "Only on the Right": "Doar în dreapta",
     "Only on the right": "Doar în dreapta",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Sunt incluse doar elementele afișate în această vizualizare. Datele partajate sau clonate pot fi numărate pentru mai multe fișiere.",
     "Open": "Deschide",
     "Open %@, then choose Check for Updates to install it": "Deschide %@, apoi alege Caută actualizări pentru a instala actualizarea",
     "Open a shell in the container, in your terminal": "Deschide un shell în container, în terminalul tău",
@@ -1544,6 +1561,8 @@
     "Single Pane": "Panou unic",
     "Size": "Dimensiune",
     "size": "dimensiune",
+    "Size on disk": "Dimensiune pe disc",
+    "Sizes unavailable": "Dimensiuni indisponibile",
     "Skip": "Omite",
     "Slate": "Ardezie",
     "Smaller Icons": "Pictograme mai mici",
@@ -1558,6 +1577,7 @@
     "Some items couldn’t be renamed.": "Unele articole nu au putut fi redenumite.",
     "Some pages couldn’t be read.": "Unele pagini nu au putut fi citite.",
     "Some servers in “%@” didn’t connect": "Unele servere din „%@” nu s-au conectat",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Unele dimensiuni nu sunt disponibile. „+” indică o limită inferioară.",
     "Something else is already mounted there.": "Altceva este deja montat acolo.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Între timp, altceva a luat numele, așa că acum se numește „%@”.",
     "Sort By": "Sortează după",
@@ -1822,7 +1842,6 @@
       "few": "Primele %@ din %lld rezultate",
       "other": "Primele %@ din %lld de rezultate"
     },
-    "Total": "Total",
     "Total size": "Dimensiune totală",
     "Tracking %@": "Urmărește %@",
     "Transfers": "Transferuri",

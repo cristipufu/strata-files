@@ -25,7 +25,7 @@ nonisolated package enum BulkDirectoryReader {
             | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_MODTIME) | attrgroup_t(ATTR_CMN_FLAGS)
             | attrgroup_t(ATTR_CMN_FILEID)
         request.dirattr = attrgroup_t(ATTR_DIR_MOUNTSTATUS)
-        request.fileattr = attrgroup_t(ATTR_FILE_DATALENGTH)
+        request.fileattr = attrgroup_t(ATTR_FILE_ALLOCSIZE) | attrgroup_t(ATTR_FILE_DATALENGTH)
 
         while true {
             if shouldStop() { return ECANCELED }
@@ -67,6 +67,7 @@ nonisolated package enum BulkDirectoryReader {
                   buffer[start + nameLength - 1] == 0 else { return EIO }
             var type: UInt32 = 0, mtime: UInt32 = 0, bsdFlags: UInt32 = 0, fileKey: UInt32 = 0, mount: UInt32 = 0
             var size: Int64 = 0
+            var allocated: Int64?
             if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
                 guard let value = read(UInt32.self) else { return EIO }; type = value
             }
@@ -82,6 +83,9 @@ nonisolated package enum BulkDirectoryReader {
             if returned.dirattr & attrgroup_t(ATTR_DIR_MOUNTSTATUS) != 0 {
                 guard let value = read(UInt32.self) else { return EIO }; mount = value
             }
+            if returned.fileattr & attrgroup_t(ATTR_FILE_ALLOCSIZE) != 0 {
+                guard let value = read(Int64.self), value >= 0 else { return EIO }; allocated = value
+            }
             if returned.fileattr & attrgroup_t(ATTR_FILE_DATALENGTH) != 0 {
                 guard let value = read(Int64.self) else { return EIO }; size = max(0, value)
             }
@@ -93,7 +97,7 @@ nonisolated package enum BulkDirectoryReader {
                                      isPackage: directory && isPackageName(nameBytes), isSymlink: type == UInt32(VLNK.rawValue),
                                      isHidden: nameBytes[0] == 46 || bsdFlags & UInt32(UF_HIDDEN) != 0,
                                      isMountPoint: mount & UInt32(DIR_MNTSTATUS_MNTPOINT) != 0,
-                                     size: size, mtime: mtime, fileKey: fileKey))
+                                     size: size, mtime: mtime, fileKey: fileKey, allocatedSize: allocated))
             names.append(contentsOf: nameBytes)
         }
         return 0
@@ -187,7 +191,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
         while let job = nextJob() {
             items.removeAll(keepingCapacity: true)
             names.removeAll(keepingCapacity: true)
-            _ = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
+            let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
             // Work out child folder paths before taking the lock; only id assignment happens inside it.
             let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
             var folders: [(offset: Int, path: String, noise: Bool)] = []
@@ -197,6 +201,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
             }
             let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
             let ids = store.write { store in
+                if error == 0 { _ = store.finishedAllocationRead(of: job.id) }
                 let ids = names.withUnsafeBytes { store.appendChildren(items, nameBuffer: $0, of: job.id, ownNoise: ownNoise) }
                 for folder in folders where folder.noise && folder.offset < ids.count {
                     store.flags[Int(ids.lowerBound) + folder.offset] |= IndexStore.Flag.noise

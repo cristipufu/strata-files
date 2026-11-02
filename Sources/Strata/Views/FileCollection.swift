@@ -92,6 +92,22 @@ struct FileCollectionContent {
     let matches: [URL: [Int]]
 }
 
+nonisolated enum DiskSizeMeasurement: Sendable, Equatable {
+    case measured(Int64), partial(Int64), measuring, unavailable
+
+    var isPartial: Bool { if case .partial = self { true } else { false } }
+
+    static let partialExplanation = String(localized: "Some sizes are unavailable. “+” marks a lower bound.",
+        comment: "Storage measurement: totals exclude unreadable or unmeasured contents")
+
+    var bytes: Int64? {
+        switch self {
+        case .measured(let bytes), .partial(let bytes): bytes
+        default: nil
+        }
+    }
+}
+
 /// Lookups remain with the browser: a view requests only the metadata it needs. Retained callbacks must not keep
 /// their browser alive (Columns retains the comparator for folders opened later).
 struct FileCollectionMetadata {
@@ -100,6 +116,7 @@ struct FileCollectionMetadata {
     let size: @MainActor (FileEntry) -> Int64?
     /// The same order, for folders sorted away from the main thread as they're read; nil when it can't be.
     var sortedBy: BrowserOrdering.Snapshot?
+    var diskSize: (@MainActor (FileEntry) -> DiskSizeMeasurement)? = nil
 }
 
 /// What the browser needs from whichever presentation is active.

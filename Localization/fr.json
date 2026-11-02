@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (par défaut)",
     "%@ (Me)": "%@ (Moi)",
     "%@ (undone)": "%@ (annulée)",
-    "%@ available": "%@ disponibles",
+    "%@ available including reclaimable space": "%@ disponibles, y compris l’espace récupérable",
     "%@ belongs to “%@”.": "%@ appartient à « %@ ».",
     "%@ can’t be compared": "%@ non comparables",
     "%@ compressed": "%@ compressés",
     "%@ didn’t answer in time.": "%@ n’a pas répondu à temps.",
     "%@ each": "%@ chacun",
+    "%@ file size": "Taille des fichiers : %@",
+    "%@ free": "%@ libres",
     "%@ is used by “%@”.": "%@ est utilisé par « %@ ».",
     "%@ isn’t running.": "%@ n’est pas lancé.",
     "%@ named %@": "%@ portant le nom %@",
@@ -33,11 +35,14 @@
       "other": "%@ sur %lld éléments"
     },
     "%@ of this folder": "%@ de ce dossier",
+    "%@ on disk": "%@ sur le disque",
+    "%@ physically free": "%@ physiquement libres",
     "%@ refused it.": "%@ a refusé l’action.",
     "%@ to copy ←": "%@ à copier ←",
     "%@ to copy →": "%@ à copier →",
     "%@ to reclaim": "%@ à récupérer",
     "%@ to the Trash": "%@ à la corbeille",
+    "%@ used of %@": "%@ utilisés sur %@",
     "%@ · %@ on disk": "%@ · %@ sur le disque",
     "%@ — only %@": "%@ — uniquement %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — les règles intégrées de Strata gèrent les demandes courantes.",
@@ -276,6 +281,10 @@
       "one": "%lld groupe de doublons",
       "other": "%lld groupes de doublons"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld taille indisponible",
+      "other": "%lld tailles indisponibles"
+    },
     "%lld skipped": {
       "one": "%lld ignoré",
       "other": "%lld ignorés"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld vue",
       "other": "%lld vues"
+    },
+    "%lld visible items": {
+      "one": "%lld élément visible",
+      "other": "%lld éléments visibles"
     },
     "%lld words": {
       "one": "%lld mot",
@@ -962,6 +975,7 @@
     "Lockfile": "Fichier de verrouillage",
     "Log In": "Se connecter",
     "Log in to “%@”": "Se connecter à « %@ »",
+    "Logical size": "Taille logique",
     "Long lines shortened": "Lignes longues raccourcies",
     "longer than %@": "plus long que %@",
     "Looking for duplicates…": "Recherche de doublons…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Uniquement à gauche",
     "Only on the Right": "Uniquement à droite",
     "Only on the right": "Uniquement à droite",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Seuls les éléments affichés dans cette vue sont inclus. Les données partagées ou clonées peuvent être comptabilisées pour plusieurs fichiers.",
     "Open": "Ouvrir",
     "Open %@, then choose Check for Updates to install it": "Ouvrez %@, puis choisissez « Rechercher des mises à jour » pour l’installer",
     "Open a shell in the container, in your terminal": "Ouvrir un shell dans le conteneur, dans votre terminal",
@@ -1430,6 +1445,8 @@
     "Single Pane": "Panneau unique",
     "Size": "Taille",
     "size": "taille",
+    "Size on disk": "Taille sur le disque",
+    "Sizes unavailable": "Tailles indisponibles",
     "Skip": "Ignorer",
     "Slate": "Ardoise",
     "Smaller Icons": "Réduire les icônes",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Certains éléments n’ont pas pu être renommés.",
     "Some pages couldn’t be read.": "Certaines pages n’ont pas pu être lues.",
     "Some servers in “%@” didn’t connect": "La connexion à certains serveurs de « %@ » a échoué",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Certaines tailles sont indisponibles. « + » indique une limite inférieure.",
     "Something else is already mounted there.": "Un autre élément est déjà monté à cet emplacement.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Entre-temps, un autre élément a pris son nom ; il s’appelle désormais « %@ ».",
     "Sort By": "Trier par",
@@ -1696,7 +1714,6 @@
       "one": "Les %@ premiers sur %lld résultat",
       "other": "Les %@ premiers sur %lld résultats"
     },
-    "Total": "Total",
     "Total size": "Taille totale",
     "Tracking %@": "Suit %@",
     "Transfers": "Transferts",

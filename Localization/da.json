@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (standard)",
     "%@ (Me)": "%@ (mig)",
     "%@ (undone)": "%@ (fortrudt)",
-    "%@ available": "%@ ledig",
+    "%@ available including reclaimable space": "%@ tilgængeligt inklusive plads, der kan frigøres",
     "%@ belongs to “%@”.": "%@ tilhører »%@«.",
     "%@ can’t be compared": "%@ kan ikke sammenlignes",
     "%@ compressed": "%@ komprimeret",
     "%@ didn’t answer in time.": "%@ svarede ikke i tide.",
     "%@ each": "%@ hver",
+    "%@ file size": "%@ filstørrelse",
+    "%@ free": "%@ ledigt",
     "%@ is used by “%@”.": "%@ bruges af »%@«.",
     "%@ isn’t running.": "%@ kører ikke.",
     "%@ named %@": "%@ med navnet %@",
@@ -33,11 +35,14 @@
       "other": "%@ af %lld emner"
     },
     "%@ of this folder": "%@ af denne mappe",
+    "%@ on disk": "%@ på disk",
+    "%@ physically free": "%@ fysisk ledigt",
     "%@ refused it.": "%@ afviste handlingen.",
     "%@ to copy ←": "%@ skal kopieres ←",
     "%@ to copy →": "%@ skal kopieres →",
     "%@ to reclaim": "%@ kan frigøres",
     "%@ to the Trash": "%@ i papirkurven",
+    "%@ used of %@": "%@ brugt af %@",
     "%@ · %@ on disk": "%@ · %@ på disk",
     "%@ — only %@": "%@ — kun %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Stratas indbyggede regler klarer almindelige anmodninger.",
@@ -276,6 +281,10 @@
       "one": "%lld sæt dubletter",
       "other": "%lld sæt dubletter"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld størrelse er ikke tilgængelig",
+      "other": "%lld størrelser er ikke tilgængelige"
+    },
     "%lld skipped": {
       "one": "%lld sprunget over",
       "other": "%lld sprunget over"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld visning",
       "other": "%lld visninger"
+    },
+    "%lld visible items": {
+      "one": "%lld synligt emne",
+      "other": "%lld synlige emner"
     },
     "%lld words": {
       "one": "%lld ord",
@@ -962,6 +975,7 @@
     "Lockfile": "Låsefil",
     "Log In": "Log ind",
     "Log in to “%@”": "Log ind på »%@«",
+    "Logical size": "Logisk størrelse",
     "Long lines shortened": "Lange linjer forkortet",
     "longer than %@": "længere end %@",
     "Looking for duplicates…": "Søger efter dubletter…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Kun til venstre",
     "Only on the Right": "Kun til højre",
     "Only on the right": "Kun til højre",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Kun de emner, der vises i denne visning, er medtaget. Delte eller klonede data kan blive talt med for mere end én fil.",
     "Open": "Åbn",
     "Open %@, then choose Check for Updates to install it": "Åbn %@, og vælg derefter Søg efter opdateringer for at installere den",
     "Open a shell in the container, in your terminal": "Åbn en shell i containeren, i din terminal",
@@ -1430,6 +1445,8 @@
     "Single Pane": "Ét panel",
     "Size": "Størrelse",
     "size": "størrelse",
+    "Size on disk": "Størrelse på disk",
+    "Sizes unavailable": "Størrelser er ikke tilgængelige",
     "Skip": "Spring over",
     "Slate": "Skifer",
     "Smaller Icons": "Mindre symboler",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Nogle emner kunne ikke omdøbes.",
     "Some pages couldn’t be read.": "Nogle sider kunne ikke læses.",
     "Some servers in “%@” didn’t connect": "Der kunne ikke oprettes forbindelse til nogle servere i »%@«",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Nogle størrelser er ikke tilgængelige. “+” angiver en nedre grænse.",
     "Something else is already mounted there.": "Der er allerede noget andet monteret der.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Noget andet har fået navnet i mellemtiden, så det hedder nu »%@«.",
     "Sort By": "Sorter efter",
@@ -1696,7 +1714,6 @@
       "one": "Top %@ af %lld resultat",
       "other": "Top %@ af %lld resultater"
     },
-    "Total": "I alt",
     "Total size": "Samlet størrelse",
     "Tracking %@": "Følger %@",
     "Transfers": "Filoverførsler",

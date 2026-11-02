@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (por omisión)",
     "%@ (Me)": "%@ (yo)",
     "%@ (undone)": "%@ (deshecho)",
-    "%@ available": "%@ disponibles",
+    "%@ available including reclaimable space": "%@ disponibles, incluido el espacio recuperable",
     "%@ belongs to “%@”.": "%@ pertenece a «%@».",
     "%@ can’t be compared": "%@ no comparables",
     "%@ compressed": "%@ comprimido",
     "%@ didn’t answer in time.": "%@ no respondió a tiempo.",
     "%@ each": "%@ cada una",
+    "%@ file size": "Tamaño de archivos: %@",
+    "%@ free": "%@ libres",
     "%@ is used by “%@”.": "%@ está asignado a «%@».",
     "%@ isn’t running.": "%@ no se está ejecutando.",
     "%@ named %@": "%@ con el nombre %@",
@@ -33,11 +35,14 @@
       "other": "%@ de %lld ítems"
     },
     "%@ of this folder": "%@ de esta carpeta",
+    "%@ on disk": "%@ en disco",
+    "%@ physically free": "%@ físicamente libres",
     "%@ refused it.": "%@ ha rechazado la acción.",
     "%@ to copy ←": "%@ para copiar ←",
     "%@ to copy →": "%@ para copiar →",
     "%@ to reclaim": "%@ recuperables",
     "%@ to the Trash": "%@ a la Papelera",
+    "%@ used of %@": "%@ usados de %@",
     "%@ · %@ on disk": "%@ · %@ en disco",
     "%@ — only %@": "%@ — solo %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — las reglas integradas de Strata resuelven las peticiones habituales.",
@@ -276,6 +281,10 @@
       "one": "%lld grupo de duplicados",
       "other": "%lld grupos de duplicados"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld tamaño no disponible",
+      "other": "%lld tamaños no disponibles"
+    },
     "%lld skipped": {
       "one": "%lld omitido",
       "other": "%lld omitidos"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld vista",
       "other": "%lld vistas"
+    },
+    "%lld visible items": {
+      "one": "%lld elemento visible",
+      "other": "%lld elementos visibles"
     },
     "%lld words": {
       "one": "%lld palabra",
@@ -962,6 +975,7 @@
     "Lockfile": "Archivo de bloqueo",
     "Log In": "Iniciar sesión",
     "Log in to “%@”": "Iniciar sesión en «%@»",
+    "Logical size": "Tamaño lógico",
     "Long lines shortened": "Líneas largas acortadas",
     "longer than %@": "de más de %@",
     "Looking for duplicates…": "Buscando duplicados…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Solo a la izquierda",
     "Only on the Right": "Solo a la derecha",
     "Only on the right": "Solo a la derecha",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Solo se incluyen los elementos mostrados en esta vista. Los datos compartidos o clonados pueden contabilizarse en más de un archivo.",
     "Open": "Abrir",
     "Open %@, then choose Check for Updates to install it": "Abre %@ y elige «Buscar actualizaciones» para instalarla",
     "Open a shell in the container, in your terminal": "Abrir un shell en el contenedor, en tu terminal",
@@ -1430,6 +1445,8 @@
     "Single Pane": "Panel único",
     "Size": "Tamaño",
     "size": "tamaño",
+    "Size on disk": "Tamaño en disco",
+    "Sizes unavailable": "Tamaños no disponibles",
     "Skip": "Omitir",
     "Slate": "Pizarra",
     "Smaller Icons": "Iconos más pequeños",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Algunos ítems no se han podido renombrar.",
     "Some pages couldn’t be read.": "No se han podido leer algunas páginas.",
     "Some servers in “%@” didn’t connect": "No se ha podido conectar con algunos servidores de «%@»",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Algunos tamaños no están disponibles. «+» indica un límite inferior.",
     "Something else is already mounted there.": "Ya hay otra cosa montada ahí.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Mientras tanto, otro elemento ocupó su nombre, así que ahora se llama «%@».",
     "Sort By": "Ordenar por",
@@ -1696,7 +1714,6 @@
       "one": "Los %@ primeros de %lld resultado",
       "other": "Los %@ primeros de %lld resultados"
     },
-    "Total": "Total",
     "Total size": "Tamaño total",
     "Tracking %@": "Siguiendo %@",
     "Transfers": "Transferencias",

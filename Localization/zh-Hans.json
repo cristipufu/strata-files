@@ -16,12 +16,14 @@
     "%@ (default)": "%@（默认）",
     "%@ (Me)": "%@（我）",
     "%@ (undone)": "%@（已撤销）",
-    "%@ available": "%@可用",
+    "%@ available including reclaimable space": "可用 %@，包含可回收空间",
     "%@ belongs to “%@”.": "%@已分配给“%@”。",
     "%@ can’t be compared": "%@无法比较",
     "%@ compressed": "压缩后%@",
     "%@ didn’t answer in time.": "%@未及时响应。",
     "%@ each": "每个%@",
+    "%@ file size": "文件大小 %@",
+    "%@ free": "可用 %@",
     "%@ is used by “%@”.": "%@已被“%@”使用。",
     "%@ isn’t running.": "%@未在运行。",
     "%@ named %@": "名为%2$@的%1$@",
@@ -30,11 +32,14 @@
       "other": "%@/%lld个项目"
     },
     "%@ of this folder": "占此文件夹的%@",
+    "%@ on disk": "占用空间 %@",
+    "%@ physically free": "实际空闲 %@",
     "%@ refused it.": "%@拒绝了此操作。",
     "%@ to copy ←": "%@将拷贝 ←",
     "%@ to copy →": "%@将拷贝 →",
     "%@ to reclaim": "可释放%@",
     "%@ to the Trash": "%@移到废纸篓",
+    "%@ used of %@": "已用 %@，共 %@",
     "%@ · %@ on disk": "%@ · 占用磁盘空间 %@",
     "%@ — only %@": "%@——仅限%@",
     "%@ — Strata’s built-in rules handle common requests.": "%@——Strata的内置规则可处理常见请求。",
@@ -217,6 +222,9 @@
     "%lld sets of duplicates": {
       "other": "%lld组重复项目"
     },
+    "%lld sizes unavailable": {
+      "other": "%lld 个大小不可用"
+    },
     "%lld skipped": {
       "other": "已跳过%lld个"
     },
@@ -252,6 +260,9 @@
     },
     "%lld views": {
       "other": "%lld个视图"
+    },
+    "%lld visible items": {
+      "other": "%lld 个可见项目"
     },
     "%lld words": {
       "other": "%lld个词"
@@ -867,6 +878,7 @@
     "Lockfile": "锁定文件",
     "Log In": "登录",
     "Log in to “%@”": "登录“%@”",
+    "Logical size": "逻辑大小",
     "Long lines shortened": "长行已截短",
     "longer than %@": "长于%@",
     "Looking for duplicates…": "正在查找重复项目…",
@@ -1022,6 +1034,7 @@
     "Only on the left": "仅在左侧",
     "Only on the Right": "仅在右侧",
     "Only on the right": "仅在右侧",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "仅统计当前视图中显示的项目。共享或克隆的数据可能在多个文件中重复计算。",
     "Open": "打开",
     "Open %@, then choose Check for Updates to install it": "打开%@，然后选取“检查更新”来安装",
     "Open a shell in the container, in your terminal": "在终端中打开容器内的Shell",
@@ -1316,6 +1329,8 @@
     "Single Pane": "单窗格",
     "Size": "大小",
     "size": "大小",
+    "Size on disk": "占用空间",
+    "Sizes unavailable": "大小不可用",
     "Skip": "跳过",
     "Slate": "岩灰",
     "Smaller Icons": "缩小图标大小",
@@ -1330,6 +1345,7 @@
     "Some items couldn’t be renamed.": "部分项目无法重新命名。",
     "Some pages couldn’t be read.": "无法读取部分页面。",
     "Some servers in “%@” didn’t connect": "“%@”中的部分服务器未能连接",
+    "Some sizes are unavailable. “+” marks a lower bound.": "部分大小不可用。“+”表示下限。",
     "Something else is already mounted there.": "该位置已装载了其他内容。",
     "Something else took its name meanwhile, so it’s now “%@”.": "在此期间，另一个项目使用了这个名称，因此它现在名为“%@”。",
     "Sort By": "排序方式",
@@ -1570,7 +1586,6 @@
     "Top %@ of %lld results": {
       "other": "前%@个（共%lld个结果）"
     },
-    "Total": "总计",
     "Total size": "总大小",
     "Tracking %@": "跟踪%@",
     "Transfers": "传输",

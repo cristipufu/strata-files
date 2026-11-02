@@ -2678,14 +2678,14 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "            availableCapacity = nil",
+    "find": "            volumeSpace = nil",
     "replace": "            // Retain the previous capacity.",
     "rule": "Browser loading new folders retain the previous volumes free space",
     "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "guard let self, !Task.isCancelled, reads.generation == generation else { return }",
+    "find": "guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
     "replace": "guard let self else { return }",
     "rule": "Browser loading obsolete free space overwrites the current folder",
     "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
@@ -2727,8 +2727,8 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "capacityTask = Task { [weak self] in\n                let value = await capacity(directory)\n                guard let self, !Task.isCancelled, reads.generation == generation else { return }",
-    "replace": "capacityTask = Task { [self] in\n                let value = await capacity(directory)\n                guard !Task.isCancelled, reads.generation == generation else { return }",
+    "find": "capacityTask = Task { [weak self] in\n            let value = await capacity(directory)\n            guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
+    "replace": "capacityTask = Task { [self] in\n            let value = await capacity(directory)\n            guard !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
     "rule": "Browser loading capacity work retains a closed browser",
     "tests": "BrowserLoadingTests/outstandingCapacityAndChildWorkDoNotRetainTheOwner"
   },
@@ -3591,15 +3591,15 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "if services.copies.contains(item.url) { return true }",
-    "replace": "if CopyProviders.live.contains(item.url) { return true }",
+    "find": "let copy = services.copies.contains(item.url)",
+    "replace": "let copy = CopyProviders.live.contains(item.url)",
     "rule": "Inspector provider ownership multi-selection leaves provider folders calculating",
     "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes",
-    "replace": "return folderSize(item.url)?.bytes",
+    "find": "let size = copy ? nil : folderSize(item.url)",
+    "replace": "let size = folderSize(item.url)",
     "rule": "Inspector provider ownership multi-selection sums folderSize for a provider folder",
     "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
   },
@@ -8479,5 +8479,40 @@
     "find": "                let data = try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()",
     "replace": "                let data = offset == 0 ? (try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()) : Data()",
     "tests": "SFTPClientTests/uploadsExactlyAndKeepsTheDate"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "value >= 0 else { return EIO }; allocated = value",
+    "replace": "value >= 0 else { return EIO }; allocated = 0",
+    "rule": "Storage measurement sparse files lose their allocated blocks in the bulk scanner",
+    "tests": "DiskSpaceTests/aSparseFilesAllocationSurvivesListingIndexingAndPersistence"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "let unknown = flags[i] & Flag.unreadDirectory != 0\n                    || children(of: current).contains",
+    "replace": "let unknown = children(of: current).contains",
+    "rule": "Storage measurement a child update declares an unread parent complete",
+    "tests": "DiskSpaceTests/anUnreadFolderStaysUnknownUntilItsOwnReadFinishes"
+  },
+  {
+    "file": "Strata/Views/TreemapViewController.swift",
+    "find": "let bytes = showsAllocatedSize ? size?.allocatedBytes : size?.bytes",
+    "replace": "let bytes = size?.bytes",
+    "rule": "Storage measurement arriving folder totals switch disk usage back to logical lengths",
+    "tests": "DiskSpaceTests/arrivingFolderSizesKeepTheDiskUsageMeasurement"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "let size = await read(items, facts, copies)\n            guard let self, !Task.isCancelled else { return }",
+    "replace": "let size = await read(items, facts, copies)\n            guard let self else { return }",
+    "rule": "Storage measurement obsolete Inspector totals overwrite the new selection",
+    "tests": "DiskSpaceTests/replacedSelectionTotalsCannotOverwriteTheCurrentItems"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "Format.bytes(volumeSpace.free)",
+    "replace": "Format.bytes(volumeSpace.availableIncludingReclaimable ?? volumeSpace.free)",
+    "rule": "Storage measurement the footer mistakes reclaimable availability for physically free space",
+    "tests": "DiskSpaceTests/freeSpaceAndReclaimableAvailabilityRemainDistinctInTheFooter"
   }
 ]

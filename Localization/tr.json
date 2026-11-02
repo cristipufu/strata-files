@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (varsayılan)",
     "%@ (Me)": "%@ (Ben)",
     "%@ (undone)": "%@ (geri alındı)",
-    "%@ available": "%@ boş",
+    "%@ available including reclaimable space": "Geri kazanılabilir alan dahil %@ kullanılabilir",
     "%@ belongs to “%@”.": "%@, “%@” komutuna ait.",
     "%@ can’t be compared": "%@ karşılaştırılamıyor",
     "%@ compressed": "%@ sıkıştırılmış",
     "%@ didn’t answer in time.": "%@ zamanında yanıt vermedi.",
     "%@ each": "her biri %@",
+    "%@ file size": "Dosya boyutu: %@",
+    "%@ free": "%@ boş",
     "%@ is used by “%@”.": "%@, “%@” tarafından kullanılıyor.",
     "%@ isn’t running.": "%@ çalışmıyor.",
     "%@ named %@": "%2$@ adlı %1$@",
@@ -33,11 +35,14 @@
       "other": "%@ / %lld öğe"
     },
     "%@ of this folder": "bu klasörün %@ kadarı",
+    "%@ on disk": "Diskte %@",
+    "%@ physically free": "%@ fiziksel boş alan",
     "%@ refused it.": "%@ bu işlemi reddetti.",
     "%@ to copy ←": "%@ kopyalanacak ←",
     "%@ to copy →": "%@ kopyalanacak →",
     "%@ to reclaim": "%@ geri kazanılabilir",
     "%@ to the Trash": "%@ Çöp Sepeti’ne",
+    "%@ used of %@": "%@ kullanılıyor, toplam %@",
     "%@ · %@ on disk": "%@ · diskte %@",
     "%@ — only %@": "%@ — yalnızca %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Yaygın istekleri Strata’nın yerleşik kuralları karşılar.",
@@ -276,6 +281,10 @@
       "one": "%lld yinelenen dosya grubu",
       "other": "%lld yinelenen dosya grubu"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld boyut kullanılamıyor",
+      "other": "%lld boyut kullanılamıyor"
+    },
     "%lld skipped": {
       "one": "%lld atlandı",
       "other": "%lld atlandı"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld görünüm",
       "other": "%lld görünüm"
+    },
+    "%lld visible items": {
+      "one": "%lld görünür öğe",
+      "other": "%lld görünür öğe"
     },
     "%lld words": {
       "one": "%lld sözcük",
@@ -962,6 +975,7 @@
     "Lockfile": "Kilit dosyası",
     "Log In": "Oturum Aç",
     "Log in to “%@”": "“%@” sunucusunda oturum açın",
+    "Logical size": "Mantıksal boyut",
     "Long lines shortened": "Uzun satırlar kısaltıldı",
     "longer than %@": "%@ süresinden uzun",
     "Looking for duplicates…": "Yinelenenler aranıyor…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Yalnızca solda",
     "Only on the Right": "Yalnızca Sağda",
     "Only on the right": "Yalnızca sağda",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Yalnızca bu görünümde gösterilen öğeler dahil edilir. Paylaşılan veya klonlanan veriler birden fazla dosya için sayılabilir.",
     "Open": "Aç",
     "Open %@, then choose Check for Updates to install it": "Yüklemek için %@ uygulamasını açın, ardından Güncellemeleri Denetle’yi seçin",
     "Open a shell in the container, in your terminal": "Terminalinizde konteynerin içinde bir kabuk açın",
@@ -1430,6 +1445,8 @@
     "Single Pane": "Tek Bölme",
     "Size": "Büyüklük",
     "size": "büyüklük",
+    "Size on disk": "Diskteki boyut",
+    "Sizes unavailable": "Boyutlar kullanılamıyor",
     "Skip": "Atla",
     "Slate": "Arduvaz",
     "Smaller Icons": "Daha Küçük Simgeler",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Bazı öğelerin adı değiştirilemedi.",
     "Some pages couldn’t be read.": "Bazı sayfalar okunamadı.",
     "Some servers in “%@” didn’t connect": "“%@” içindeki bazı sunuculara bağlanılamadı",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Bazı boyutlar kullanılamıyor. “+” bir alt sınırı belirtir.",
     "Something else is already mounted there.": "Orada zaten başka bir şey bağlı.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Bu arada adı başka bir öge aldı, bu yüzden artık adı “%@”.",
     "Sort By": "Şuna Göre Sırala",
@@ -1696,7 +1714,6 @@
       "one": "%2$lld sonucun ilk %1$@ tanesi",
       "other": "%2$lld sonucun ilk %1$@ tanesi"
     },
-    "Total": "Toplam",
     "Total size": "Toplam büyüklük",
     "Tracking %@": "İzlenen: %@",
     "Transfers": "Aktarımlar",

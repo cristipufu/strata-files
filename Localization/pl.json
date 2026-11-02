@@ -22,12 +22,14 @@
     "%@ (default)": "%@ (domyślna)",
     "%@ (Me)": "%@ (Ja)",
     "%@ (undone)": "%@ (cofnięto)",
-    "%@ available": "%@ wolne",
+    "%@ available including reclaimable space": "%@ dostępne, w tym miejsce do odzyskania",
     "%@ belongs to “%@”.": "%@ należy do polecenia „%@”.",
     "%@ can’t be compared": "%@ nie do porównania",
     "%@ compressed": "%@ po kompresji",
     "%@ didn’t answer in time.": "%@ nie odpowiedział na czas.",
     "%@ each": "po %@",
+    "%@ file size": "Rozmiar plików: %@",
+    "%@ free": "%@ wolnego",
     "%@ is used by “%@”.": "%@ jest przypisany do polecenia „%@”.",
     "%@ isn’t running.": "%@ nie jest uruchomiony.",
     "%@ named %@": "%@ o nazwie %@",
@@ -39,11 +41,14 @@
       "other": "%@ z %lld rzeczy"
     },
     "%@ of this folder": "%@ tego folderu",
+    "%@ on disk": "%@ na dysku",
+    "%@ physically free": "%@ fizycznie wolnego",
     "%@ refused it.": "%@ odmówił wykonania tej czynności.",
     "%@ to copy ←": "%@ do skopiowania ←",
     "%@ to copy →": "%@ do skopiowania →",
     "%@ to reclaim": "%@ do odzyskania",
     "%@ to the Trash": "%@ do Kosza",
+    "%@ used of %@": "%@ użyte z %@",
     "%@ · %@ on disk": "%@ · %@ na dysku",
     "%@ — only %@": "%@ — tylko %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — typowe prośby obsłużą wbudowane reguły Strata.",
@@ -394,6 +399,12 @@
       "many": "%lld zestawów duplikatów",
       "other": "%lld zestawu duplikatów"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld rozmiar niedostępny",
+      "few": "%lld rozmiary niedostępne",
+      "many": "%lld rozmiarów niedostępnych",
+      "other": "%lld rozmiaru niedostępne"
+    },
     "%lld skipped": {
       "one": "pominięto %lld",
       "few": "pominięto %lld",
@@ -465,6 +476,12 @@
       "few": "%lld widoki",
       "many": "%lld widoków",
       "other": "%lld widoku"
+    },
+    "%lld visible items": {
+      "one": "%lld widoczny element",
+      "few": "%lld widoczne elementy",
+      "many": "%lld widocznych elementów",
+      "other": "%lld widocznego elementu"
     },
     "%lld words": {
       "one": "%lld słowo",
@@ -1152,6 +1169,7 @@
     "Lockfile": "Plik blokady",
     "Log In": "Zaloguj",
     "Log in to “%@”": "Zaloguj się do „%@”",
+    "Logical size": "Rozmiar logiczny",
     "Long lines shortened": "Skrócono długie wiersze",
     "longer than %@": "dłuższe niż %@",
     "Looking for duplicates…": "Szukam duplikatów…",
@@ -1325,6 +1343,7 @@
     "Only on the left": "Tylko po lewej",
     "Only on the Right": "Tylko po prawej",
     "Only on the right": "Tylko po prawej",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Uwzględniane są tylko elementy pokazane w tym widoku. Współdzielone lub sklonowane dane mogą być liczone dla więcej niż jednego pliku.",
     "Open": "Otwórz",
     "Open %@, then choose Check for Updates to install it": "Otwórz %@, a następnie wybierz polecenie Sprawdź uaktualnienia, aby zainstalować uaktualnienie",
     "Open a shell in the container, in your terminal": "Otwórz powłokę w kontenerze, w Twoim terminalu",
@@ -1658,6 +1677,8 @@
     "Single Pane": "Jeden panel",
     "Size": "Wielkość",
     "size": "wielkość",
+    "Size on disk": "Rozmiar na dysku",
+    "Sizes unavailable": "Rozmiary niedostępne",
     "Skip": "Pomiń",
     "Slate": "Łupek",
     "Smaller Icons": "Mniejsze ikony",
@@ -1672,6 +1693,7 @@
     "Some items couldn’t be renamed.": "Nie udało się zmienić nazw niektórych rzeczy.",
     "Some pages couldn’t be read.": "Nie udało się odczytać niektórych stron.",
     "Some servers in “%@” didn’t connect": "Nie udało się połączyć z niektórymi serwerami z „%@”",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Niektóre rozmiary są niedostępne. „+” oznacza dolną granicę.",
     "Something else is already mounted there.": "Coś innego jest już tam zamontowane.",
     "Something else took its name meanwhile, so it’s now “%@”.": "W międzyczasie coś innego zajęło tę nazwę, więc teraz nazywa się „%@”.",
     "Sort By": "Sortuj wg",
@@ -1948,7 +1970,6 @@
       "many": "Pierwsze %@ z %lld wyników",
       "other": "Pierwsze %@ z %lld wyniku"
     },
-    "Total": "Razem",
     "Total size": "Łączna wielkość",
     "Tracking %@": "Śledzi %@",
     "Transfers": "Transfery",

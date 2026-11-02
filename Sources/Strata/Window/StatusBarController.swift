@@ -2,6 +2,10 @@ import AppKit
 
 /// Item count, selection size and free space, attached under the file list.
 final class StatusBarController: NSSplitViewItemAccessoryViewController {
+    var details: String? {
+        get { label.toolTip }
+        set { label.toolTip = newValue }
+    }
     private let label = NSTextField(labelWithString: "")
 
     override func loadView() {

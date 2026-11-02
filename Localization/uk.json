@@ -22,12 +22,14 @@
     "%@ (default)": "%@ (типова)",
     "%@ (Me)": "%@ (я)",
     "%@ (undone)": "%@ (відмінено)",
-    "%@ available": "%@ вільно",
+    "%@ available including reclaimable space": "%@ доступно, включно з місцем, яке можна звільнити",
     "%@ belongs to “%@”.": "%@ належить команді «%@».",
     "%@ can’t be compared": "%@ не вдається порівняти",
     "%@ compressed": "%@ у стиснутому вигляді",
     "%@ didn’t answer in time.": "%@ не відповів вчасно.",
     "%@ each": "по %@",
+    "%@ file size": "Розмір файлів: %@",
+    "%@ free": "%@ вільно",
     "%@ is used by “%@”.": "%@ уже використовує команда «%@».",
     "%@ isn’t running.": "%@ не запущено.",
     "%@ named %@": "%@ з назвою %@",
@@ -39,11 +41,14 @@
       "other": "%@ із %lld елемента"
     },
     "%@ of this folder": "%@ цієї папки",
+    "%@ on disk": "%@ на диску",
+    "%@ physically free": "%@ фізично вільно",
     "%@ refused it.": "%@ відхилив цю дію.",
     "%@ to copy ←": "%@ для копіювання ←",
     "%@ to copy →": "%@ для копіювання →",
     "%@ to reclaim": "%@ можна звільнити",
     "%@ to the Trash": "%@ у Смітник",
+    "%@ used of %@": "Використано %@ із %@",
     "%@ · %@ on disk": "%@ · %@ на диску",
     "%@ — only %@": "%@ — лише %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — типові запити опрацюють вбудовані правила Strata.",
@@ -394,6 +399,12 @@
       "many": "%lld наборів дублікатів",
       "other": "%lld набору дублікатів"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld розмір недоступний",
+      "few": "%lld розміри недоступні",
+      "many": "%lld розмірів недоступні",
+      "other": "%lld розміру недоступні"
+    },
     "%lld skipped": {
       "one": "пропущено %lld",
       "few": "пропущено %lld",
@@ -465,6 +476,12 @@
       "few": "%lld представлення",
       "many": "%lld представлень",
       "other": "%lld представлення"
+    },
+    "%lld visible items": {
+      "one": "%lld видимий елемент",
+      "few": "%lld видимі елементи",
+      "many": "%lld видимих елементів",
+      "other": "%lld видимого елемента"
     },
     "%lld words": {
       "one": "%lld слово",
@@ -1152,6 +1169,7 @@
     "Lockfile": "Файл блокування",
     "Log In": "Увійти",
     "Log in to “%@”": "Увійти до «%@»",
+    "Logical size": "Логічний розмір",
     "Long lines shortened": "Довгі рядки скорочено",
     "longer than %@": "довше за %@",
     "Looking for duplicates…": "Пошук дублікатів…",
@@ -1325,6 +1343,7 @@
     "Only on the left": "Лише ліворуч",
     "Only on the Right": "Лише праворуч",
     "Only on the right": "Лише праворуч",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Враховуються лише елементи, показані в цьому поданні. Спільні або клоновані дані можуть враховуватися для кількох файлів.",
     "Open": "Відкрити",
     "Open %@, then choose Check for Updates to install it": "Відкрийте %@ і виберіть «Перевірити оновлення», щоб встановити оновлення",
     "Open a shell in the container, in your terminal": "Відкрити оболонку в контейнері, у вашому терміналі",
@@ -1658,6 +1677,8 @@
     "Single Pane": "Одна панель",
     "Size": "Розмір",
     "size": "розмір",
+    "Size on disk": "Розмір на диску",
+    "Sizes unavailable": "Розміри недоступні",
     "Skip": "Пропустити",
     "Slate": "Сланець",
     "Smaller Icons": "Менші іконки",
@@ -1672,6 +1693,7 @@
     "Some items couldn’t be renamed.": "Деякі елементи не вдалося перейменувати.",
     "Some pages couldn’t be read.": "Не вдалося прочитати деякі сторінки.",
     "Some servers in “%@” didn’t connect": "Не вдалося підʼєднатися до деяких серверів із «%@»",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Деякі розміри недоступні. «+» позначає нижню межу.",
     "Something else is already mounted there.": "Там уже змонтовано щось інше.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Тим часом це ім’я зайняв інший об’єкт, тому тепер він називається «%@».",
     "Sort By": "Сортування",
@@ -1948,7 +1970,6 @@
       "many": "Перші %@ із %lld результатів",
       "other": "Перші %@ із %lld результату"
     },
-    "Total": "Усього",
     "Total size": "Загальний розмір",
     "Tracking %@": "Відстежує %@",
     "Transfers": "Передавання",

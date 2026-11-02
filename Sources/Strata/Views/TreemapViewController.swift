@@ -23,6 +23,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
     let treemapView: TreemapView
     private let legend = TreemapLegendView()
     private var relayoutWork: DispatchWorkItem?
+    private(set) var showsAllocatedSize = false
 
     var focusView: NSView { treemapView }
 
@@ -54,7 +55,13 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         unmeasured = content.entries.filter {
             $0.isDirectory && !$0.isSymlink && !$0.isVolume && !metadata.canMeasure($0)
         }.count
-        setEntries(content.entries, size: metadata.size, animated: animated)
+        if let diskSize = metadata.diskSize {
+            showsAllocatedSize = true
+            setEntries(content.entries, items: content.entries.map { TreemapItem(entry: $0, measurement: diskSize($0)) }, animated: animated)
+        } else {
+            showsAllocatedSize = false
+            setEntries(content.entries, size: metadata.size, animated: animated)
+        }
     }
 
     /// Replaces everything shown. Pass `animated: false` when switching folders.
@@ -72,14 +79,24 @@ final class TreemapViewController: NSViewController, FileCollectionController {
 
     /// Convenience for the browser: the folder's entries plus a size lookup (nil while a folder is measuring).
     func setEntries(_ entries: [FileEntry], size: (FileEntry) -> Int64?, animated: Bool = true) {
+        setEntries(entries, items: entries.map { TreemapItem(entry: $0, bytes: size($0)) }, animated: animated)
+    }
+
+    private func setEntries(_ entries: [FileEntry], items: [TreemapItem], animated: Bool) {
         self.entries = Dictionary(entries.map { ($0.url.fileViewKey, $0) }, uniquingKeysWith: { a, _ in a })
-        setItems(entries.map { TreemapItem(entry: $0, bytes: size($0)) }, animated: animated)
+        setItems(items, animated: animated)
     }
 
     /// A folder's size arrived (or changed). Bursts are coalesced into one animated relayout.
-    func updateSize(_ bytes: Int64?, for url: URL) {
-        guard let index = indexByKey[url.fileViewKey], items[index].bytes != bytes else { return }
+    func updateFolderSize(_ size: FolderSize?, for url: URL) {
+        let bytes = showsAllocatedSize ? size?.allocatedBytes : size?.bytes
+        let unavailable = showsAllocatedSize && size != nil && bytes == nil
+        let incomplete = showsAllocatedSize && size?.allocationComplete == false
+        guard let index = indexByKey[url.fileViewKey],
+              items[index].bytes != bytes || items[index].sizeUnavailable != unavailable || items[index].sizeIncomplete != incomplete else { return }
         items[index].bytes = bytes
+        items[index].sizeUnavailable = unavailable
+        items[index].sizeIncomplete = incomplete
         guard relayoutWork == nil else { return }
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
@@ -95,7 +112,7 @@ final class TreemapViewController: NSViewController, FileCollectionController {
         let total = items.map { max($0.bytes ?? 0, 0) }.saturatingSum
         treemapView.totalBytes = total
         treemapView.setItems(items, animated: animated && view.window != nil)
-        legend.update(items: items, total: total, unmeasured: unmeasured)
+        legend.update(items: items, total: total, unmeasured: unmeasured, allocated: showsAllocatedSize)
     }
 
     // MARK: - Selection
@@ -342,8 +359,11 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     private func drawPlaceholder() {
         // An empty folder (or a filter matching nothing) is the browser's empty state, drawn over the map.
         guard !items.isEmpty else { return }
-        let pending = items.contains { $0.bytes == nil }
-        let text = pending ? String(localized: "Calculating sizes…") : String(localized: "Nothing here takes up space")
+        let pending = items.contains { $0.bytes == nil && !$0.sizeUnavailable }
+        let unavailable = items.contains { $0.sizeUnavailable }
+        let text = pending ? String(localized: "Calculating sizes…")
+            : unavailable ? String(localized: "Sizes unavailable", comment: "Disk Usage: no allocated sizes could be read")
+            : String(localized: "Nothing here takes up space")
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         let string = NSAttributedString(string: text, attributes: [
@@ -428,7 +448,8 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: sizeFont, .foregroundColor: NSColor.secondaryLabelColor.withAlphaComponent(0.9 * alpha),
         ]
-        var detail = Format.bytes(tile.bytes)
+        let amount = Format.bytes(tile.bytes) + (tile.item?.sizeIncomplete == true ? "+" : "")
+        var detail = amount
         if large, totalBytes > 0 {
             let share = Double(tile.bytes) / Double(totalBytes)
             detail += "  ·  " + share.formatted(.percent.precision(.fractionLength(share < 0.1 ? 1 : 0)))
@@ -436,7 +457,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
         // Numbers are never truncated: shown whole or not at all.
         var sizeText = NSAttributedString(string: detail, attributes: attributes)
         if sizeText.size().width > content.width {
-            sizeText = NSAttributedString(string: Format.bytes(tile.bytes), attributes: attributes)
+            sizeText = NSAttributedString(string: amount, attributes: attributes)
             guard sizeText.size().width <= content.width else { return }
         }
         sizeText.draw(with: NSRect(x: content.minX, y: y, width: content.width, height: sizeHeight),
@@ -632,7 +653,7 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
             return "\(count)\(separator)\(Format.bytes(tile.bytes))\(share)"
         }
         let kind = item.isFolder ? String(localized: "Folder", comment: "Kind of item") : item.group.title
-        return "\(item.name)\(separator)\(Format.bytes(tile.bytes))\(share)\(separator)\(kind)"
+        return "\(item.name)\(separator)\(Format.bytes(tile.bytes))\(item.sizeIncomplete ? "+" : "")\(share)\(separator)\(kind)"
     }
 
     override func accessibilityChildren() -> [Any]? {
@@ -713,17 +734,20 @@ final class TreemapLegendView: NSView {
         let bytes: Int64
         let pending: Int
         let unmeasured: Int
+        let allocated: Bool
+        let unavailable: Int
     }
     private var lastShown: Shown?
 
-    func update(items: [TreemapItem], total bytes: Int64, unmeasured: Int) {
+    func update(items: [TreemapItem], total bytes: Int64, unmeasured: Int, allocated: Bool) {
         var byGroup: [FileKindGroup: Int64] = [:]
         for item in items { byGroup[item.group] = [byGroup[item.group, default: 0], max(item.bytes ?? 0, 0)].saturatingSum }
         let groups = byGroup.filter { $0.value > 0 }.sorted { $0.value > $1.value }
-        let pending = items.filter { $0.bytes == nil }.count
+        let pending = items.filter { $0.bytes == nil && !$0.sizeUnavailable }.count
+        let unavailable = max(0, items.filter { $0.sizeUnavailable || $0.sizeIncomplete }.count - unmeasured)
         // The same legend again (an index refresh): leave it be.
         let shown = Shown(groups: groups.map { [$0.key.title, "\($0.value)"] }, count: items.count, bytes: bytes,
-                          pending: pending, unmeasured: unmeasured)
+                          pending: pending, unmeasured: unmeasured, allocated: allocated, unavailable: unavailable)
         guard shown != lastShown else { return }
         lastShown = shown
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -733,10 +757,15 @@ final class TreemapLegendView: NSView {
             stack.addArrangedSubview(entry)
             stack.setVisibilityPriority(index == 0 ? .mustHold : NSStackView.VisibilityPriority(rawValue: 900 - Float(index) * 10), for: entry)
         }
-        var text = String(localized: "\(items.count) items", comment: "plural") + " · " + Format.bytes(bytes)
+        let amount = Format.bytes(bytes) + (allocated && (unavailable > 0 || unmeasured > 0) ? "+" : "")
+        let sized = allocated ? String(localized: "\(amount) on disk", comment: "Disk Usage: allocated space of visible items")
+            : String(localized: "\(Format.bytes(bytes)) file size", comment: "Disk Usage: logical size when allocation is unavailable on a server or in an archive")
+        var text = String(localized: "\(items.count) visible items", comment: "plural") + " · " + sized
         if pending > 0 { text = String(localized: "Measuring \(pending) folders…", comment: "plural") + "  " + text }
         if unmeasured > 0 { text += " · " + String(localized: "\(unmeasured) folders need Full Disk Access to be measured", comment: "plural") }
+        if unavailable > 0 { text += " · " + String(localized: "\(unavailable) sizes unavailable", comment: "plural") }
         total.stringValue = text
+        total.toolTip = DiskSizeMeasurement.partialExplanation + "\n" + String(localized: "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.", comment: "Disk Usage legend: scope and shared storage")
         if pending > 0 { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         let legend = groups.map { "\($0.key.title) \(Format.bytes($0.value))" }.joined(separator: ", ")
         setAccessibilityLabel(String(localized: "Legend: \(legend). \(text)",

@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (alapértelmezett)",
     "%@ (Me)": "%@ (Én)",
     "%@ (undone)": "%@ (visszavonva)",
-    "%@ available": "%@ szabad",
+    "%@ available including reclaimable space": "%@ elérhető, a felszabadítható hellyel együtt",
     "%@ belongs to “%@”.": "%@ ehhez tartozik: „%@”.",
     "%@ can’t be compared": "%@ nem hasonlítható össze",
     "%@ compressed": "%@ tömörítve",
     "%@ didn’t answer in time.": "A(z) %@ nem válaszolt időben.",
     "%@ each": "%@ darabonként",
+    "%@ file size": "Fájlméret: %@",
+    "%@ free": "%@ szabad",
     "%@ is used by “%@”.": "%@ már használatban van ehhez: „%@”.",
     "%@ isn’t running.": "A(z) %@ nem fut.",
     "%@ named %@": "%2$@ nevű %1$@",
@@ -33,11 +35,14 @@
       "other": "%2$lld elemből %1$@"
     },
     "%@ of this folder": "%@ a mappa méretéből",
+    "%@ on disk": "%@ a lemezen",
+    "%@ physically free": "%@ fizikailag szabad",
     "%@ refused it.": "A(z) %@ elutasította a műveletet.",
     "%@ to copy ←": "%@ másolandó ←",
     "%@ to copy →": "%@ másolandó →",
     "%@ to reclaim": "%@ felszabadítható",
     "%@ to the Trash": "%@ a Kukába",
+    "%@ used of %@": "%@ használatban, összesen %@",
     "%@ · %@ on disk": "%@ · %@ a lemezen",
     "%@ — only %@": "%@ – csak %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ – a Strata beépített szabályai kezelik a gyakori kéréseket.",
@@ -276,6 +281,10 @@
       "one": "%lld duplikátumcsoport",
       "other": "%lld duplikátumcsoport"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld méret nem érhető el",
+      "other": "%lld méret nem érhető el"
+    },
     "%lld skipped": {
       "one": "%lld kihagyva",
       "other": "%lld kihagyva"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld nézet",
       "other": "%lld nézet"
+    },
+    "%lld visible items": {
+      "one": "%lld látható elem",
+      "other": "%lld látható elem"
     },
     "%lld words": {
       "one": "%lld szó",
@@ -962,6 +975,7 @@
     "Lockfile": "Zárolási fájl",
     "Log In": "Bejelentkezés",
     "Log in to “%@”": "Bejelentkezés ide: „%@”",
+    "Logical size": "Logikai méret",
     "Long lines shortened": "A hosszú sorok le vannak rövidítve",
     "longer than %@": "hosszabb, mint %@",
     "Looking for duplicates…": "Duplikátumok keresése…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Csak a bal oldalon",
     "Only on the Right": "Csak a jobb oldalon",
     "Only on the right": "Csak a jobb oldalon",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Csak az ebben a nézetben megjelenített elemek számítanak bele. A megosztott vagy klónozott adatok több fájlnál is beszámíthatók.",
     "Open": "Megnyitás",
     "Open %@, then choose Check for Updates to install it": "Nyissa meg ezt: %@, majd a telepítéshez válassza a Frissítések keresése lehetőséget",
     "Open a shell in the container, in your terminal": "Shell megnyitása a konténerben, a saját terminálban",
@@ -1430,6 +1445,8 @@
     "Single Pane": "Egy panel",
     "Size": "Méret",
     "size": "méret",
+    "Size on disk": "Lemezen elfoglalt méret",
+    "Sizes unavailable": "A méretek nem érhetők el",
     "Skip": "Kihagyás",
     "Slate": "Pala",
     "Smaller Icons": "Kisebb ikonok",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Néhány elemet nem sikerült átnevezni.",
     "Some pages couldn’t be read.": "Néhány oldalt nem sikerült beolvasni.",
     "Some servers in “%@” didn’t connect": "„%@” egyes szervereihez nem sikerült kapcsolódni",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Egyes méretek nem érhetők el. A „+” alsó korlátot jelöl.",
     "Something else is already mounted there.": "Ott már valami más van csatolva.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Közben valami más kapta meg a nevét, ezért most „%@” a neve.",
     "Sort By": "Rendezés",
@@ -1696,7 +1714,6 @@
       "one": "%2$lld találatból az első %1$@",
       "other": "%2$lld találatból az első %1$@"
     },
-    "Total": "Összesen",
     "Total size": "Teljes méret",
     "Tracking %@": "Követett ág: %@",
     "Transfers": "Átvitelek",

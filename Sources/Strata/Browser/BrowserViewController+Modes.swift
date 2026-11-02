@@ -81,6 +81,12 @@ extension BrowserViewController {
         var matches: [URL: [Int]] = [:]
         for node in shown where !node.matchIndices.isEmpty { matches[node.url] = node.matchIndices }
         let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches)
+        let diskSizeReader: (@MainActor (FileEntry) -> DiskSizeMeasurement)?
+        if services.copies.contains(directory) || ArchiveCache.archive(containing: directory) != nil {
+            diskSizeReader = nil
+        } else {
+            diskSizeReader = { [weak self] entry in self?.diskSize(entry) ?? .unavailable }
+        }
         let metadata = FileCollectionMetadata(
             ordered: { [weak self] a, b in
                 self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)
@@ -91,8 +97,19 @@ extension BrowserViewController {
                 guard entry.isDirectory else { return entry.size }
                 return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
             },
-            sortedBy: ordering.snapshot)
+            sortedBy: ordering.snapshot,
+            diskSize: diskSizeReader)
         active.apply(content, metadata: metadata, animated: animated)
+    }
+
+    private func diskSize(_ entry: FileEntry) -> DiskSizeMeasurement {
+        if !entry.isDirectory || entry.isSymlink {
+            return entry.allocatedSize.map(DiskSizeMeasurement.measured) ?? .unavailable
+        }
+        guard canMeasure(entry) else { return .unavailable }
+        guard let size = folderSize(entry.url, request: true) else { return .measuring }
+        guard let bytes = size.allocatedBytes else { return .unavailable }
+        return size.allocationComplete ? .measured(bytes) : .partial(bytes)
     }
 
     // MARK: - Lazily created presentations

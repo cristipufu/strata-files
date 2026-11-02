@@ -35,7 +35,7 @@ final class BrowserServices {
     static func configured(transfers: TransferQueue, visits: Frecency, windows: BrowserWindows,
                            remote: RemoteServices, containers: ContainerFiles, containerStore: ContainerStore,
                            clipboard: Clipboard, directories: DirectoryReader? = nil,
-                           availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                           volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                            remoteBrowsing: RemoteBrowsing? = nil,
                            mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
@@ -44,7 +44,7 @@ final class BrowserServices {
                            tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil,
                            index: FileIndex? = nil, contentIndex: SemanticIndex? = nil) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
-                        availableCapacity: availableCapacity, remote: remote, remoteBrowsing: remoteBrowsing,
+                        volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
                         mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
@@ -77,7 +77,7 @@ final class BrowserServices {
     let mediaReader: MediaInfoLoader.Reader
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
-    let availableCapacity: @Sendable (URL) async -> Int64?
+    let volumeSpace: @Sendable (URL) async -> VolumeSpace?
     let windows: BrowserWindows
     let tags: TagStore
     let cloud: CloudStore
@@ -87,7 +87,7 @@ final class BrowserServices {
     var statuses: FileStatuses { FileStatuses(tags: tags, cloud: cloud, git: git) }
 
     private init(transfers: TransferQueue, visits: Frecency, directories: DirectoryReader? = nil, windows: BrowserWindows,
-                 availableCapacity: @escaping @Sendable (URL) async -> Int64? = BrowserLoading.freeSpace,
+                 volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                  remote: RemoteServices, remoteBrowsing: RemoteBrowsing? = nil,
                  containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
                  mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
@@ -117,7 +117,7 @@ final class BrowserServices {
         self.mediaReader = mediaReader
         self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore)
         self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
-        self.availableCapacity = availableCapacity
+        self.volumeSpace = volumeSpace
         self.windows = windows
         // An environment of its own reads its own: unstarted indexes in its History's storage, and stores no other window
         // shares.

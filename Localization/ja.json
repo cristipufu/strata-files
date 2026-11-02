@@ -16,12 +16,14 @@
     "%@ (default)": "%@（デフォルト）",
     "%@ (Me)": "%@（自分）",
     "%@ (undone)": "%@（取り消し済み）",
-    "%@ available": "%@空き",
+    "%@ available including reclaimable space": "解放可能な領域を含む利用可能容量 %@",
     "%@ belongs to “%@”.": "%@は「%@」に割り当て済みです。",
     "%@ can’t be compared": "%@件は比較できません",
     "%@ compressed": "圧縮後%@",
     "%@ didn’t answer in time.": "%@から時間内に応答がありませんでした。",
     "%@ each": "各%@",
+    "%@ file size": "ファイルサイズ %@",
+    "%@ free": "空き %@",
     "%@ is used by “%@”.": "%@は「%@」で使用されています。",
     "%@ isn’t running.": "%@が実行されていません。",
     "%@ named %@": "%2$@という名前の%1$@",
@@ -30,11 +32,14 @@
       "other": "%@ / %lld項目"
     },
     "%@ of this folder": "このフォルダの%@",
+    "%@ on disk": "ディスク上 %@",
+    "%@ physically free": "物理的な空き領域 %@",
     "%@ refused it.": "%@に拒否されました。",
     "%@ to copy ←": "%@件をコピー ←",
     "%@ to copy →": "%@件をコピー →",
     "%@ to reclaim": "%@を解放可能",
     "%@ to the Trash": "%@件をゴミ箱へ",
+    "%@ used of %@": "%@ 使用中 / 合計 %@",
     "%@ · %@ on disk": "%@ · ディスク上のサイズ %@",
     "%@ — only %@": "%@ — %@のみ",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — 一般的な依頼にはStrataの内蔵ルールで対応します。",
@@ -217,6 +222,9 @@
     "%lld sets of duplicates": {
       "other": "%lld組の重複"
     },
+    "%lld sizes unavailable": {
+      "other": "%lld個のサイズを取得できません"
+    },
     "%lld skipped": {
       "other": "%lld件スキップ"
     },
@@ -252,6 +260,9 @@
     },
     "%lld views": {
       "other": "%lld個のビュー"
+    },
+    "%lld visible items": {
+      "other": "%lld個の表示項目"
     },
     "%lld words": {
       "other": "%lld語"
@@ -867,6 +878,7 @@
     "Lockfile": "ロックファイル",
     "Log In": "ログイン",
     "Log in to “%@”": "「%@」にログイン",
+    "Logical size": "論理サイズ",
     "Long lines shortened": "長い行は省略されています",
     "longer than %@": "%@より長い",
     "Looking for duplicates…": "重複項目を検索中…",
@@ -1022,6 +1034,7 @@
     "Only on the left": "左側のみ",
     "Only on the Right": "右側のみ",
     "Only on the right": "右側のみ",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "この表示にある項目のみが含まれます。共有またはクローンされたデータは、複数のファイルで重複して計上されることがあります。",
     "Open": "開く",
     "Open %@, then choose Check for Updates to install it": "インストールするには、%@を開いてから「アップデートを確認」を選択してください",
     "Open a shell in the container, in your terminal": "ターミナルでコンテナのシェルを開く",
@@ -1316,6 +1329,8 @@
     "Single Pane": "シングルペイン",
     "Size": "サイズ",
     "size": "サイズ",
+    "Size on disk": "ディスク上のサイズ",
+    "Sizes unavailable": "サイズを取得できません",
     "Skip": "スキップ",
     "Slate": "スレート",
     "Smaller Icons": "アイコンを小さく",
@@ -1330,6 +1345,7 @@
     "Some items couldn’t be renamed.": "一部の項目の名前を変更できませんでした。",
     "Some pages couldn’t be read.": "一部のページを読み込めませんでした。",
     "Some servers in “%@” didn’t connect": "「%@」の一部のサーバに接続できませんでした",
+    "Some sizes are unavailable. “+” marks a lower bound.": "一部のサイズを取得できません。「+」は最小値を示します。",
     "Something else is already mounted there.": "その場所にはすでに別のものがマウントされています。",
     "Something else took its name meanwhile, so it’s now “%@”.": "その間に別の項目がその名前を使ったため、「%@」になりました。",
     "Sort By": "表示順序",
@@ -1570,7 +1586,6 @@
     "Top %@ of %lld results": {
       "other": "%2$lld件中上位%1$@件"
     },
-    "Total": "合計",
     "Total size": "合計サイズ",
     "Tracking %@": "追跡: %@",
     "Transfers": "転送",

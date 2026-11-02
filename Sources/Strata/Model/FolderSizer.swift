@@ -4,10 +4,14 @@ import StrataSupport
 nonisolated package struct FolderSize: Sendable {
     package let bytes: Int64
     package let files: Int
+    package let allocatedBytes: Int64?
+    package let allocationComplete: Bool
 
-    package init(bytes: Int64, files: Int) {
+    package init(bytes: Int64, files: Int, allocatedBytes: Int64? = nil, allocationComplete: Bool = true) {
         self.bytes = bytes
         self.files = files
+        self.allocatedBytes = allocatedBytes
+        self.allocationComplete = allocationComplete
     }
 }
 
@@ -82,6 +86,8 @@ package final class FolderSizer {
         guard let fts = fts_open(&paths, FTS_PHYSICAL | FTS_NOCHDIR | FTS_XDEV, nil) else { return nil }
         defer { fts_close(fts) }
         var bytes: Int64 = 0
+        var allocated: Int64 = 0
+        var allocationKnown = true
         var files = 0
         var visited = 0
         while let entry = fts_read(fts) {
@@ -89,13 +95,18 @@ package final class FolderSizer {
             if visited & 63 == 0, isCancelled() { return nil }
             switch Int32(entry.pointee.fts_info) {
             case FTS_F, FTS_SL, FTS_SLNONE, FTS_DEFAULT:
-                if let stat = entry.pointee.fts_statp { bytes = bytes.saturatingAdd(max(0, Int64(stat.pointee.st_size))) }
+                if let stat = entry.pointee.fts_statp {
+                    bytes = bytes.saturatingAdd(max(0, Int64(stat.pointee.st_size)))
+                    allocated = allocated.saturatingAdd(max(0, Int64(stat.pointee.st_blocks)).saturatingMultiply(512))
+                } else { allocationKnown = false }
                 files += 1
+            case FTS_DNR, FTS_ERR, FTS_NS:
+                allocationKnown = false
             default:
                 break
             }
         }
-        return isCancelled() ? nil : FolderSize(bytes: bytes, files: files)
+        return isCancelled() ? nil : FolderSize(bytes: bytes, files: files, allocatedBytes: allocated, allocationComplete: allocationKnown)
     }
 }
 

@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (förval)",
     "%@ (Me)": "%@ (Jag)",
     "%@ (undone)": "%@ (ångrad)",
-    "%@ available": "%@ tillgängligt",
+    "%@ available including reclaimable space": "%@ tillgängligt inklusive återvinningsbart utrymme",
     "%@ belongs to “%@”.": "%@ tillhör ”%@”.",
     "%@ can’t be compared": "%@ kan inte jämföras",
     "%@ compressed": "%@ komprimerat",
     "%@ didn’t answer in time.": "%@ svarade inte i tid.",
     "%@ each": "%@ vardera",
+    "%@ file size": "%@ filstorlek",
+    "%@ free": "%@ ledigt",
     "%@ is used by “%@”.": "%@ används av ”%@”.",
     "%@ isn’t running.": "%@ är inte igång.",
     "%@ named %@": "%@ med namnet %@",
@@ -33,11 +35,14 @@
       "other": "%@ av %lld objekt"
     },
     "%@ of this folder": "%@ av den här mappen",
+    "%@ on disk": "%@ på disk",
+    "%@ physically free": "%@ fysiskt ledigt",
     "%@ refused it.": "%@ nekade åtgärden.",
     "%@ to copy ←": "%@ att kopiera ←",
     "%@ to copy →": "%@ att kopiera →",
     "%@ to reclaim": "%@ kan frigöras",
     "%@ to the Trash": "%@ till papperskorgen",
+    "%@ used of %@": "%@ använt av %@",
     "%@ · %@ on disk": "%@ · %@ på skivan",
     "%@ — only %@": "%@ – endast %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ – Stratas inbyggda regler hanterar vanliga förfrågningar.",
@@ -276,6 +281,10 @@
       "one": "%lld uppsättning dubbletter",
       "other": "%lld uppsättningar dubbletter"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld storlek ej tillgänglig",
+      "other": "%lld storlekar ej tillgängliga"
+    },
     "%lld skipped": {
       "one": "%lld hoppades över",
       "other": "%lld hoppades över"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld vy",
       "other": "%lld vyer"
+    },
+    "%lld visible items": {
+      "one": "%lld synligt objekt",
+      "other": "%lld synliga objekt"
     },
     "%lld words": {
       "one": "%lld ord",
@@ -962,6 +975,7 @@
     "Lockfile": "Låsfil",
     "Log In": "Logga in",
     "Log in to “%@”": "Logga in på ”%@”",
+    "Logical size": "Logisk storlek",
     "Long lines shortened": "Långa rader förkortade",
     "longer than %@": "längre än %@",
     "Looking for duplicates…": "Letar efter dubbletter…",
@@ -1123,6 +1137,7 @@
     "Only on the left": "Endast till vänster",
     "Only on the Right": "Endast till höger",
     "Only on the right": "Endast till höger",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Endast objekten som visas i den här vyn ingår. Delade eller klonade data kan räknas för mer än en fil.",
     "Open": "Öppna",
     "Open %@, then choose Check for Updates to install it": "Öppna %@ och välj sedan Sök efter uppdateringar för att installera den",
     "Open a shell in the container, in your terminal": "Öppna ett skal i containern, i din terminal",
@@ -1430,6 +1445,8 @@
     "Single Pane": "En panel",
     "Size": "Storlek",
     "size": "storlek",
+    "Size on disk": "Storlek på disk",
+    "Sizes unavailable": "Storlekar ej tillgängliga",
     "Skip": "Hoppa över",
     "Slate": "Skiffer",
     "Smaller Icons": "Mindre symboler",
@@ -1444,6 +1461,7 @@
     "Some items couldn’t be renamed.": "Vissa objekt kunde inte döpas om.",
     "Some pages couldn’t be read.": "Det gick inte att läsa vissa sidor.",
     "Some servers in “%@” didn’t connect": "Det gick inte att ansluta till vissa servrar i ”%@”",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Vissa storlekar är inte tillgängliga. ”+” anger en nedre gräns.",
     "Something else is already mounted there.": "Något annat är redan monterat där.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Något annat fick namnet under tiden, så nu heter det ”%@”.",
     "Sort By": "Sortera efter",
@@ -1696,7 +1714,6 @@
       "one": "Topp %@ av %lld resultat",
       "other": "Topp %@ av %lld resultat"
     },
-    "Total": "Totalt",
     "Total size": "Total storlek",
     "Tracking %@": "Spårar %@",
     "Transfers": "Överföringar",

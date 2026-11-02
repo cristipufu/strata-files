@@ -8,8 +8,9 @@ import StrataModel
 nonisolated package enum IndexPersistence {
     private static let magic: UInt32 = 0x5354_5258 // "STRX"
     // 5: only app-like packages' contents are noise, plus build output beside its project file; 6: file IDs (a full
-    // rescan picks that up).
-    private static let version: UInt32 = 6
+    // rescan picks that up); 7: allocated sizes kept separately from logical file lengths.
+    private static let version: UInt32 = 7
+    package static let cacheName = "index-v\(version).sealed"
 
     package struct Header {
         package var eventID: UInt64
@@ -51,6 +52,7 @@ nonisolated package enum IndexPersistence {
             putColumn(store.nameStart)
             putColumn(store.nameLength)
             putColumn(store.size)
+            putColumn(store.allocated)
             putColumn(store.fileCount)
             putColumn(store.mtime)
             putColumn(store.fileKey)
@@ -139,14 +141,15 @@ nonisolated package enum IndexPersistence {
             store.nameStart = try column(UInt32.self)
             store.nameLength = try column(UInt16.self)
             store.size = try column(Int64.self)
+            store.allocated = try column(Int64.self)
             store.fileCount = try column(UInt32.self)
             store.mtime = try column(UInt32.self)
             store.fileKey = try column(UInt32.self)
-            store.flags = try column(UInt8.self)
+            store.flags = try column(UInt16.self)
             store.names = try column(UInt8.self)
             let count = store.parent.count
             guard [store.firstChild.count, store.nextSibling.count, store.nameStart.count, store.nameLength.count,
-                   store.size.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
+                   store.size.count, store.allocated.count, store.fileCount.count, store.mtime.count, store.fileKey.count,
                    store.flags.count].allSatisfy({ $0 == count })
             else { throw Corrupt() }
         }
@@ -169,7 +172,7 @@ nonisolated package enum IndexPersistence {
             guard (parent == -1 && roots.contains(Int32(i))) || (parent >= 0 && Int(parent) < i),
                   validLink(store.firstChild[i]), validLink(store.nextSibling[i]),
                   Int(store.nameStart[i]) + Int(store.nameLength[i]) <= store.names.count,
-                  store.size[i] >= 0 else { return false }
+                  store.size[i] >= 0, store.allocated[i] >= 0 else { return false }
             if parent >= 0, store.flags[Int(parent)] & IndexStore.Flag.directory == 0 { return false }
         }
         var linked = [Bool](repeating: false, count: count)

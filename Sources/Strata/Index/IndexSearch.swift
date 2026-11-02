@@ -322,10 +322,11 @@ nonisolated package struct IndexHit: Sendable {
     package let files: UInt32
     package let mtime: UInt32
     package let score: Int
+    package var allocatedSize: Int64? = nil
 
     /// The same hit with another score (results merged from several stores).
     package func scored(_ score: Int) -> IndexHit {
-        IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score)
+        IndexHit(path: path, isDirectory: isDirectory, isPackage: isPackage, size: size, files: files, mtime: mtime, score: score, allocatedSize: allocatedSize)
     }
 }
 
@@ -405,7 +406,8 @@ nonisolated package enum IndexSearch {
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: store.flags[id] & IndexStore.Flag.directory != 0,
                                 isPackage: store.flags[id] & IndexStore.Flag.package != 0, size: store.size[id],
-                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score))
+                                files: store.fileCount[id], mtime: store.mtime[id], score: Int(item.score),
+                                allocatedSize: store.allocatedSize(item.id))
             }
         }
         return isCancelled() ? ([], 0) : (hits, matched.total)
@@ -481,7 +483,7 @@ nonisolated package enum IndexSearch {
             return found.items.map { item in
                 let id = Int(item.id)
                 return IndexHit(path: store.path(of: item.id), isDirectory: false, isPackage: false, size: store.size[id],
-                                files: 1, mtime: store.mtime[id], score: 0)
+                                files: 1, mtime: store.mtime[id], score: 0, allocatedSize: store.allocatedSize(item.id))
             }
         }
     }
@@ -506,7 +508,7 @@ nonisolated package enum IndexSearch {
 
     /// Whether the item is one the query looks at, by what it is, its size and its date.
     @inline(__always)
-    private static func passesFilters(_ i: Int, _ flags: UInt8, _ query: IndexQuery, _ c: IndexStore.Columns) -> Bool {
+    private static func passesFilters(_ i: Int, _ flags: UInt16, _ query: IndexQuery, _ c: IndexStore.Columns) -> Bool {
         if flags & IndexStore.Flag.deleted != 0 || c.parent[i] < 0 { return false }
         if !query.includeNoise && flags & IndexStore.Flag.noise != 0 { return false }
         if !query.includeHidden && flags & IndexStore.Flag.hidden != 0 { return false }
@@ -529,7 +531,7 @@ nonisolated package enum IndexSearch {
     /// How well the item's name (and the folders above it, through `progress`) matches the query's words, or nil when
     /// it doesn't.
     @inline(__always)
-    private static func nameScore<Progress: FixedWidthInteger>(_ i: Int, _ flags: UInt8, _ name: UnsafeBufferPointer<UInt8>,
+    private static func nameScore<Progress: FixedWidthInteger>(_ i: Int, _ flags: UInt16, _ name: UnsafeBufferPointer<UInt8>,
                                                                _ query: IndexQuery, _ c: IndexStore.Columns,
                                                                _ extensions: [UInt64], _ progress: [[Progress]]) -> Int? {
         let isDirectory = flags & IndexStore.Flag.directory != 0

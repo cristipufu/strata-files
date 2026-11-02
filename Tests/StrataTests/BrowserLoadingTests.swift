@@ -35,6 +35,33 @@ struct BrowserLoadingTests {
                        capacityChanged: capacityChanged)
     }
 
+    @Test func freeSpaceRefreshesAreCoalescedAndUseTheInjectedClock() async throws {
+        let tree = try TestTree("a/")
+        let reads = ControlledDirectoryReads(), capacity = CapacityReads(), clock = TestClock()
+        let loading = BrowserLoading(reader: reads.reader,
+            capacity: { (await capacity.read($0)).map { VolumeSpace(free: $0) } }, now: clock.now)
+        var changes = 0
+        loading.navigate(to: tree.url("a"), newFolder: true)
+        reload(loading, capacityChanged: { changes += 1 })
+        let listing = try #require(loading.reads.task)
+        try await reads.request(0).finish(.success([]))
+        await listing.value
+        let firstWork = try #require(loading.capacityTask), first = await capacity.next()
+        for _ in 0..<1000 { loading.refreshVolumeSpace { changes += 1 } }
+        #expect(capacity.requests.isEmpty)
+        first.reply.resume(returning: 100)
+        await firstWork.value
+        loading.refreshVolumeSpace { changes += 1 }
+        #expect(loading.capacityTask == nil)
+        clock.advance(by: 5)
+        loading.refreshVolumeSpace { changes += 1 }
+        let secondWork = try #require(loading.capacityTask), second = await capacity.next()
+        second.reply.resume(returning: 200)
+        await secondWork.value
+        #expect(loading.volumeSpace?.free == 200 && changes == 2)
+        #expect(tree.snapshot() == ["a/"])
+    }
+
     @Test func refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation() async throws {
         let tree = try TestTree("a/one.txt", "b/two.txt")
         let reads = ControlledDirectoryReads()
@@ -84,7 +111,7 @@ struct BrowserLoadingTests {
             let reads = ControlledDirectoryReads(), capacity = CapacityReads()
             defer { reads.stop() }
             var changes = 0
-            let loading = BrowserLoading(reader: reads.reader, capacity: { await capacity.read($0) })
+            let loading = BrowserLoading(reader: reads.reader, capacity: { (await capacity.read($0)).map { VolumeSpace(free: $0) } })
             loading.navigate(to: tree.url("a"), newFolder: true)
             reload(loading, capacityChanged: { changes += 1 })
             let first = try #require(loading.reads.task)
@@ -102,14 +129,14 @@ struct BrowserLoadingTests {
             if oldFirst {
                 old.reply.resume(returning: 100)
                 await oldWork.value
-                #expect(loading.availableCapacity == nil && loading.capacityTask != nil)
+                #expect(loading.volumeSpace == nil && loading.capacityTask != nil)
             }
             current.reply.resume(returning: 200)
             await newWork.value
             if !oldFirst { old.reply.resume(returning: 100); await oldWork.value }
-            #expect(loading.availableCapacity == 200 && loading.capacityTask == nil && changes == 1)
+            #expect(loading.volumeSpace?.free == 200 && loading.capacityTask == nil && changes == 1)
             loading.navigate(to: tree.url("a"), newFolder: true)
-            #expect(loading.availableCapacity == nil)
+            #expect(loading.volumeSpace == nil)
         }
         #expect(tree.snapshot() == ["a/", "b/"])
     }
@@ -119,7 +146,7 @@ struct BrowserLoadingTests {
         let reads = ControlledDirectoryReads()
         defer { reads.stop() }
         let capacity = CapacityReads()
-        let loading = BrowserLoading(reader: reads.reader, capacity: { await capacity.read($0) })
+        let loading = BrowserLoading(reader: reads.reader, capacity: { (await capacity.read($0)).map { VolumeSpace(free: $0) } })
         loading.navigate(to: tree.root, newFolder: true)
         reload(loading, receive: { _ in loading.showResults() })
         let task = try #require(loading.reads.task)
@@ -179,7 +206,7 @@ struct BrowserLoadingTests {
         let tree = try TestTree("folder/")
         let reads = ControlledDirectoryReads(), capacity = CapacityReads()
         defer { reads.stop() }
-        var loading: BrowserLoading? = BrowserLoading(reader: reads.reader, capacity: { await capacity.read($0) })
+        var loading: BrowserLoading? = BrowserLoading(reader: reads.reader, capacity: { (await capacity.read($0)).map { VolumeSpace(free: $0) } })
         weak let owner = loading
         loading?.navigate(to: tree.root, newFolder: true)
         var changes = 0
