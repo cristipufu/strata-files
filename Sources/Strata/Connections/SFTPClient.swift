@@ -338,7 +338,7 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
         var finished = false
         while true {
             while !finished, inFlight.count < Self.window {
-                let data = try file.read(upToCount: Self.chunk) ?? Data()
+                let data = try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()
                 if data.isEmpty {
                     finished = true
                     break

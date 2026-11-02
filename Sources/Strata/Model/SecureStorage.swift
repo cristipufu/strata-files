@@ -335,13 +335,13 @@ nonisolated package enum SecureStorage {
             handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             self.key = key
             maximumLength = Int(info.st_size)
-            guard let header = try handle.read(upToCount: 8), header.count == 8,
+            guard let header = try FileRead.chunk(handle, upToCount: 8), header.count == 8,
                   header.withUnsafeBytes({ UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) }) == magic
             else { throw Failure() }
             let version = header.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
             switch version {
             case formatVersion:
-                guard let salt = try handle.read(upToCount: saltSize), salt.count == saltSize else { throw Failure() }
+                guard let salt = try FileRead.chunk(handle, upToCount: saltSize), salt.count == saltSize else { throw Failure() }
                 self.salt = salt
                 isLegacy = false
             case 1:
@@ -386,14 +386,14 @@ nonisolated package enum SecureStorage {
         /// Confirms everything was consumed, through the final chunk (which is empty when the data filled the last one).
         package func finish() throws {
             if position == chunk.count && !sawFinal { try nextChunk() }
-            guard sawFinal, position == chunk.count, try handle.read(upToCount: 1)?.isEmpty ?? true else { throw Failure() }
+            guard sawFinal, position == chunk.count, try FileRead.chunk(handle, upToCount: 1)?.isEmpty ?? true else { throw Failure() }
         }
 
         private func nextChunk() throws {
-            guard !sawFinal, let prefix = try handle.read(upToCount: 4), prefix.count == 4 else { throw Failure() }
+            guard !sawFinal, let prefix = try FileRead.chunk(handle, upToCount: 4), prefix.count == 4 else { throw Failure() }
             let length = Int(prefix.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) })
             guard length >= boxOverhead, length <= chunkSize + boxOverhead,
-                  let combined = try handle.read(upToCount: length), combined.count == length else { throw Failure() }
+                  let combined = try FileRead.chunk(handle, upToCount: length), combined.count == length else { throw Failure() }
             let box = try AES.GCM.SealedBox(combined: combined)
             // The last chunk is the only one sealed as final; try that only when a full-size chunk didn't open.
             func data(final: Bool) -> Data {

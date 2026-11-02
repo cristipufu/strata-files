@@ -321,7 +321,7 @@ package nonisolated enum FolderCompare {
         func readChunk(_ handle: FileHandle, count: Int) throws -> Data {
             var buffer = Data()
             while buffer.count < count {
-                guard let piece = try handle.read(upToCount: count - buffer.count), !piece.isEmpty else { break }
+                guard let piece = try FileRead.chunk(handle, upToCount: count - buffer.count), !piece.isEmpty else { break }
                 buffer.append(piece)
             }
             return buffer

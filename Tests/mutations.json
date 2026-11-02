@@ -8430,5 +8430,19 @@
     "find": "            updates.cancel()",
     "replace": "",
     "tests": "BackgroundUpdateTests/comparisonProgressIsBoundedAndNeverOverwritesTheCompletedResult"
+  },
+  {
+    "file": "Strata/Support/FileRead.swift",
+    "rule": "Streaming reads: native temporary ownership drains after every chunk",
+    "find": "        return try autoreleasepool { try read(handle, count) }",
+    "replace": "        return try read(handle, count)",
+    "tests": "FileReadTests/eachChunkDrainsItsNativeTemporariesBeforeTheNextRead"
+  },
+  {
+    "file": "Strata/Connections/SFTPClient.swift",
+    "rule": "Streaming reads: uploads send the entire source and leave neighbors unchanged",
+    "find": "                let data = try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()",
+    "replace": "                let data = offset == 0 ? (try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()) : Data()",
+    "tests": "SFTPClientTests/uploadsExactlyAndKeepsTheDate"
   }
 ]

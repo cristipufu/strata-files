@@ -629,7 +629,7 @@ package nonisolated enum Archiver {
         var pending = Data()
         var tail: [Substring] = []
         let reader = pipe.fileHandleForReading
-        while let chunk = try? reader.read(upToCount: 1 << 16), !chunk.isEmpty {
+        while let chunk = try? FileRead.chunk(reader, upToCount: 1 << 16), !chunk.isEmpty {
             pending.append(chunk)
             guard let last = pending.lastIndex(of: UInt8(ascii: "\n")) else { continue }
             let text = String(decoding: pending[...last], as: UTF8.self)

@@ -105,11 +105,11 @@ nonisolated package enum DuplicateFinder {
         defer { try? handle.close() }
         let chunk = 64 * 1024
         var hasher = SHA256()
-        guard let head = try? handle.read(upToCount: chunk), head.count == min(Int(clamping: size), chunk) else { return nil }
+        guard let head = try? FileRead.chunk(handle, upToCount: chunk), head.count == min(Int(clamping: size), chunk) else { return nil }
         hasher.update(data: head)
         if size > Int64(chunk) {
             guard (try? handle.seek(toOffset: UInt64(size) - UInt64(chunk))) != nil,
-                  let tail = try? handle.read(upToCount: chunk), tail.count == chunk else { return nil }
+                  let tail = try? FileRead.chunk(handle, upToCount: chunk), tail.count == chunk else { return nil }
             hasher.update(data: tail)
         }
         return Data(hasher.finalize())
@@ -124,16 +124,11 @@ nonisolated package enum DuplicateFinder {
         do {
             while true {
                 if isCancelled() { return nil }
-                // Foundation autoreleases each read buffer. Drain it here, rather than retaining every chunk until
-                // the entire scan ends, which can hold as much memory as all the files hashed.
-                let count = try autoreleasepool {
-                    let data = try handle.read(upToCount: 1 << 20) ?? Data()
-                    hasher.update(data: data)
-                    return data.count
-                }
-                if count == 0 { break }
-                guard Int64(count) <= expectedSize - read else { return nil }
-                read += Int64(count)
+                let data = try FileRead.chunk(handle, upToCount: 1 << 20) ?? Data()
+                if data.isEmpty { break }
+                guard Int64(data.count) <= expectedSize - read else { return nil }
+                hasher.update(data: data)
+                read += Int64(data.count)
             }
         } catch {
             return nil

@@ -573,6 +573,12 @@ a native call while cancelling and replacing its caller, without loading a live 
   expensive library call. Test limits with bounded fixtures on either side of the boundary, never by exhausting the
   machine's memory. For files that could be replaced while opening, inspect the opened descriptor and reject nonregular
   input before reading, as `TextFile.readPrefix` does.
+- Coalesce high-frequency progress before crossing to the main actor: use `LatestUpdate` for callback producers or
+  a newest-value stream for full snapshots. Never enqueue a UI task per file, chunk or event. Requests cancel their
+  delivery before publishing a terminal result, and recheck ownership after callbacks that can start another request.
+- Streaming `FileHandle` reads use `FileRead.chunk`, which drains Foundation's autoreleased buffers per read. Otherwise
+  a worker can retain as much temporary memory as all the files it reads. Keep chunk data ownership and error tests;
+  measure memory separately with `python3 scripts/benchmark-streaming.py` when changing this boundary.
 - Register C callbacks such as `atexit` from a nonisolated function when the system may call them on another thread:
   a closure created in a MainActor context can assert at runtime even if its body is thread-safe. Include process
   shutdown when validating lifecycle changes.

@@ -74,3 +74,24 @@ The callback audit also checked the paths below; their existing sampling or coal
 | Folder watchers | Coalesced Dispatch sources and a debounced refresh |
 | Thumbnails and media metadata | Four active readers, coalesced requests and stale-result guards |
 | Server session results | A one-element result stream per waiting request |
+
+## Other streaming read buffers
+
+The same Foundation read ownership appeared in encrypted storage in `afe394c`, Compare in `0720cd1`, SFTP upload
+in `3ab928c`, and archive-tool progress in `33e70a8`. These implementations predated the later refactoring.
+Their loop-local Swift values did not release Foundation's additional autoreleased ownership per iteration.
+
+`FileRead.chunk` now owns that boundary for these loops and the duplicate finder. It preserves the returned bytes,
+EOF and throwing read errors, and rejects negative lengths before entering Foundation. Existing size validation,
+opened-file checks, cancellation and write destinations stay with their callers.
+
+`FileReadTests` injects a real native autoreleased lifetime probe alongside the file read and verifies release after
+each chunk, inside an outer pool. Removing the inner pool fails this test without memory or timing thresholds.
+It also checks retained bytes after later reads and handle closure, EOF, errors and multi-chunk encrypted input
+preservation. The SFTP upload regression verifies complete bytes, dates and unchanged neighboring files.
+
+Run `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/benchmark-streaming.py` to compile the
+production helper and compare it with direct reads on the same workload. A 256 MiB run reported 263.6 MiB peak RSS
+for direct reads and 8.6 MiB for chunk-owned reads, with identical SHA-256 digests. Results vary by system; this is
+a separate measurement, not a CI memory threshold. A separate 256 MiB write experiment stayed around 9 MB RSS, so
+the read ownership correction was not applied to the write paths.
