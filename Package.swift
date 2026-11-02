@@ -78,6 +78,7 @@ let modelSources = [
     "NewWindowLocation.swift",
     "PipeRead.swift",
     "PreviewLayout.swift",
+    "RemovalVolume.swift",
     "SavedNavigation.swift",
     "SecureStorage.swift",
     "ServerConnection.swift",

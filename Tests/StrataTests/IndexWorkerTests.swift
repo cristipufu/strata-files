@@ -79,7 +79,7 @@ struct IndexWorkerTests {
             #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }
         #expect(!config.excluded.contains(tree.url("elsewhere").path))
-        #expect(config.file == storage.url("index.sealed") && config.storage === storage)
+        #expect(config.file == storage.url(IndexPersistence.cacheName) && config.storage === storage)
         #expect(tree.snapshot() == ["Clipboard/", "Containers/", "Servers/", "elsewhere/", "state/", "state/Caches/"])
     }
 
@@ -255,6 +255,30 @@ struct IndexWorkerTests {
         #expect(loaded.read { $0.size[Int(sibling)] } == 7)
         #expect(loaded.read { $0.lookup(tree.url("a/gone").path) } == nil)
         #expect(tree.snapshot() == [".state/", ".state/index.sealed", "a/", "a/kept.txt", "ab/", "ab/kept.txt"])
+    }
+
+    @Test func allocationChangesUpdateTheIndexWithoutChangingFileLengthOrDate() async throws {
+        let tree = try TestTree(".state/", "file.txt")
+        let allocatedOverride = OSAllocatedUnfairLock<Int64?>(initialState: nil)
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            let error = BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+            if let allocated = allocatedOverride.withLock({ $0 }) {
+                for i in items.indices where !items[i].isDirectory { items[i].allocatedSize = allocated }
+            }
+            return error
+        })
+        let file = try #require(fixture.store.read { $0.lookup(tree.url("file.txt").path) })
+        let initial = try #require(fixture.store.read { $0.allocatedSize(file) })
+        let logical = fixture.store.read { $0.size[Int(file)] }
+        allocatedOverride.withLock { $0 = initial + 4096 }
+        fixture.worker.receive([.init(path: tree.root.path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.size[Int(file)] } == logical)
+        #expect(loaded.read { $0.allocatedSize(file) } == initial + 4096)
+        #expect(loaded.read { $0.allocatedSize(0) } == nil) // The .state subtree is deliberately excluded.
+        #expect(fixture.changes.withLock { $0 } == 1)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "file.txt"])
     }
 
     @Test func aRemovedFolderIsStillRemovedFromTheSavedIndex() async throws {

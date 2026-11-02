@@ -672,6 +672,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // Catch commits, checkouts and edits made in other apps while we were in the background (tags in Finder too).
         for p in panes { services.git.invalidate(containing: p.location) }
         panes.forEach { $0.browser.rereadTags() }
+        panes.forEach { $0.browser.refreshVolumeSpaceIfVisible() }
     }
 
     func windowDidResignKey(_ notification: Notification) { navigationGestures.cancel() }
@@ -728,9 +729,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             status += (status.isEmpty ? "" : "  ·  ") + String(localized: "Indexing \(items) items…", comment: "plural")
         }
         split.status.text = status
+        split.status.details = browser.volumeSpaceDescription
         // Two panes: each shows its own counts under its list; the shared bar would sit across both.
         split.status.isHidden = isDualPane
-        for p in panes { p.host.setStatus(isDualPane ? p.browser.statusText : nil) }
+        for p in panes { p.host.setStatus(isDualPane ? p.browser.statusText : nil, details: p.browser.volumeSpaceDescription) }
         let folder: FileEntry? = { if case .folder = destination { return pane.folderEntry } else { return nil } }()
         let browser = browser
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }

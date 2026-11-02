@@ -281,7 +281,10 @@ package enum FileOps {
     /// History entry `entry` as `marksUndone` once it has worked. Returns where the items went.
     @discardableResult
     package static func trash(_ urls: [URL], undo: UndoManager?, record: Bool = true, entry: UUID? = nil,
-                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog) throws -> [Move] {
+                      marksUndone: Bool = true, copies: CopyProviders, history: OperationLog,
+                      volume: RemovalVolume.Reader = RemovalVolume.read) throws -> [Move] {
+        let chosen = Self.outermost(urls).filter { Self.canTrash($0, copies: copies) }
+        if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { throw refusal }
         var moved: [Move] = []
         let landed = LandedFiles()
         defer {
@@ -289,7 +292,7 @@ package enum FileOps {
             registerMoveUndo(moved, "Move to Trash", undo, entry: logged, copies: copies, marksUndone: record ? true : marksUndone, landed: landed, history: history)
             if !moved.isEmpty { Sounds.movedToTrash() }
         }
-        for url in Self.outermost(urls) where Self.canTrash(url, copies: copies) {
+        for url in chosen {
             var result: NSURL?
             try FileManager.default.trashItem(at: url, resultingItemURL: &result)
             if let result {
@@ -348,8 +351,9 @@ package enum FileOps {
 
     /// Moves `urls` to the Trash off the main thread (a big selection or a slow disk would freeze the window), then
     /// records and registers undo like `trash`. Items on disks without a Trash come back in `NoTrash`.
-    package static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog) async throws {
-        let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies)
+    package static func trashInBackground(_ urls: [URL], undo: UndoManager?, copies: CopyProviders, history: OperationLog,
+                                         volume: @escaping RemovalVolume.Reader = RemovalVolume.read) async throws {
+        let (moved, identities, noTrash, failure) = await trashItems(urls, copies: copies, volume: volume)
         let landed = LandedFiles()
         for (move, identity) in zip(moved, identities) { landed.set(identity, at: move.to) }
         let entry = history.recordMove("Move to Trash", moved, fileIdentities: await landed.historyKeys(for: moved.map(\.to)))
@@ -363,20 +367,24 @@ package enum FileOps {
     /// it's still the one the operation left there, asked just before it goes. It stops at the first failure, a disk
     /// without a Trash included, and returns what went, what each is in the Trash (read as it lands) and that failure;
     /// nothing is recorded or registered.
-    package static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool, copies: CopyProviders) async
+    package static func trashForUndo(_ urls: [URL], owns: @escaping @Sendable (URL) -> Bool, copies: CopyProviders,
+                                    volume: @escaping RemovalVolume.Reader = RemovalVolume.read) async
         -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
-        let result = await trashOwned(urls, owns: owns, copies: copies)
+        let result = await trashOwned(urls, owns: owns, copies: copies, volume: volume)
         if !result.moved.isEmpty { Sounds.movedToTrash() }
         return result
     }
 
     @concurrent
-    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool, copies: CopyProviders) async
+    private static func trashOwned(_ urls: [URL], owns: @Sendable (URL) -> Bool, copies: CopyProviders,
+                                   volume: RemovalVolume.Reader) async
         -> (moved: [Move], identities: [FileIdentity?], failure: Error?) {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         // Owned first: a copy inside a folder put in another's place is still the operation's own.
-        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {
+        let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }
+        if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { return ([], [], refusal) }
+        for url in chosen where owns(url) {
             var result: NSURL?
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: &result)
@@ -442,11 +450,13 @@ package enum FileOps {
     }
 
     @concurrent
-    private static func trashItems(_ urls: [URL], copies: CopyProviders) async -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
+    private static func trashItems(_ urls: [URL], copies: CopyProviders, volume: RemovalVolume.Reader) async
+        -> (moved: [Move], identities: [FileIdentity?], noTrash: [URL], failure: Error?) {
         var moved: [Move] = []
         var identities: [FileIdentity?] = []
         var noTrash: [URL] = []
         guard let urls = trashable(urls, copies: copies) else { return ([], [], [], HoldsADisk()) }
+        if let refusal = RemovalVolume.refusal(in: urls, read: volume) { return ([], [], [], refusal) }
         for url in urls {
             var result: NSURL?
             do {

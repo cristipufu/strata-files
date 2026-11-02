@@ -24,7 +24,7 @@ struct IndexPersistenceSafetyTests {
     }
 
     @Test(arguments: ["parentRange", "parentCycle", "childRange", "siblingCycle", "nameRange",
-                      "rootRange", "duplicateRoot", "missingChild", "wrongParent", "negativeSize", "duplicateSibling"])
+                      "rootRange", "duplicateRoot", "missingChild", "wrongParent", "negativeSize", "negativeAllocation", "duplicateSibling"])
     func malformedAuthenticatedIndexesAreRejected(_ damage: String) throws {
         let tree = try TestTree("state/", "kept.txt")
         let store = fixture()
@@ -39,6 +39,7 @@ struct IndexPersistenceSafetyTests {
             case "duplicateRoot": store.roots.append(store.roots[0])
             case "missingChild": store.firstChild[0] = -1
             case "wrongParent": store.parent[2] = 1
+            case "negativeAllocation": store.allocated[1] = -1
             case "duplicateSibling": store.nameStart[2] = store.nameStart[1]
             default: store.size[1] = -1
             }

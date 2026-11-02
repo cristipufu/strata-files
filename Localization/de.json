@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (Standard)",
     "%@ (Me)": "%@ (Ich)",
     "%@ (undone)": "%@ (widerrufen)",
-    "%@ available": "%@ verfügbar",
+    "%@ available including reclaimable space": "%@ verfügbar, einschließlich freigebbarem Speicher",
     "%@ belongs to “%@”.": "%@ gehört zu „%@“.",
     "%@ can’t be compared": "%@ nicht vergleichbar",
     "%@ compressed": "%@ komprimiert",
     "%@ didn’t answer in time.": "%@ hat nicht rechtzeitig geantwortet.",
     "%@ each": "je %@",
+    "%@ file size": "%@ Dateigröße",
+    "%@ free": "%@ frei",
     "%@ is used by “%@”.": "%@ wird von „%@“ verwendet.",
     "%@ isn’t running.": "%@ läuft nicht.",
     "%@ named %@": "%@ mit dem Namen %@",
@@ -33,11 +35,14 @@
       "other": "%@ von %lld Objekten"
     },
     "%@ of this folder": "%@ dieses Ordners",
+    "%@ on disk": "%@ auf Datenträger",
+    "%@ physically free": "%@ physisch frei",
     "%@ refused it.": "%@ hat die Aktion abgelehnt.",
     "%@ to copy ←": "%@ zu kopieren ←",
     "%@ to copy →": "%@ zu kopieren →",
     "%@ to reclaim": "%@ freigebbar",
     "%@ to the Trash": "%@ in den Papierkorb",
+    "%@ used of %@": "%@ von %@ belegt",
     "%@ · %@ on disk": "%@ · %@ auf dem Volume",
     "%@ — only %@": "%@ — nur %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Die integrierten Regeln von Strata erledigen gängige Anfragen.",
@@ -276,6 +281,10 @@
       "one": "%lld Gruppe von Duplikaten",
       "other": "%lld Gruppen von Duplikaten"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld Größe nicht verfügbar",
+      "other": "%lld Größen nicht verfügbar"
+    },
     "%lld skipped": {
       "one": "%lld übersprungen",
       "other": "%lld übersprungen"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld Ansicht",
       "other": "%lld Ansichten"
+    },
+    "%lld visible items": {
+      "one": "%lld sichtbares Objekt",
+      "other": "%lld sichtbare Objekte"
     },
     "%lld words": {
       "one": "%lld Wort",
@@ -774,6 +787,7 @@
     "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "„Ablage“ ▸ „Neue Datei“ erstellt eine leere Datei „%@“. Lass das Suffix leer, wenn du keins möchtest.",
     "Files": "Dateien",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "Dateien in „%@“ auf %@: eine schreibgeschützte Kopie, die beim Durchsuchen aus dem Container gelesen wird.",
+    "Files on this disk can’t be moved to Trash or deleted while the disk is read-only.": "Dateien auf diesem Laufwerk können nicht in den Papierkorb bewegt oder gelöscht werden, solange es schreibgeschützt ist.",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Dateien über 5 GB können noch nicht in einen Bucket hochgeladen werden.",
     "Filter": "Filter",
     "Filters loaded items only.": "Filtert nur bereits geladene Objekte.",
@@ -963,11 +977,13 @@
     "Lockfile": "Lockfile",
     "Log In": "Anmelden",
     "Log in to “%@”": "Bei „%@“ anmelden",
+    "Logical size": "Logische Größe",
     "Long lines shortened": "Lange Zeilen gekürzt",
     "longer than %@": "länger als %@",
     "Looking for duplicates…": "Suche nach Duplikaten …",
     "lowercase": "Kleinbuchstaben",
     "macOS asks before apps read this folder. Open it in Strata once, then search it.": "macOS fragt nach, bevor Apps diesen Ordner lesen. Öffne ihn einmal in Strata und durchsuche ihn dann.",
+    "macOS does not allow this system item to be moved to Trash or deleted.": "macOS erlaubt nicht, dieses Systemobjekt in den Papierkorb zu bewegen oder zu löschen.",
     "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.": "macOS schützt den Papierkorb. Aktiviere Strata unter „Datenschutz & Sicherheit“ ▸ „Festplattenvollzugriff“.",
     "macOS protects this location. Give Strata Full Disk Access to browse it.": "macOS schützt diesen Ort. Gib Strata Festplattenvollzugriff, um ihn zu durchsuchen.",
     "Match Case": "Groß-/Kleinschreibung beachten",
@@ -1125,6 +1141,7 @@
     "Only on the left": "Nur links",
     "Only on the Right": "Nur rechts",
     "Only on the right": "Nur rechts",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Nur die in dieser Ansicht angezeigten Objekte sind enthalten. Gemeinsam genutzte oder geklonte Daten können bei mehreren Dateien mitgezählt werden.",
     "Open": "Öffnen",
     "Open %@, then choose Check for Updates to install it": "Öffne %@ und wähle „Nach Updates suchen“, um das Update zu installieren",
     "Open a shell in the container, in your terminal": "Eine Shell im Container in deinem Terminal öffnen",
@@ -1432,6 +1449,8 @@
     "Single Pane": "Ein Bereich",
     "Size": "Größe",
     "size": "Größe",
+    "Size on disk": "Größe auf Datenträger",
+    "Sizes unavailable": "Größen nicht verfügbar",
     "Skip": "Überspringen",
     "Slate": "Schiefer",
     "Smaller Icons": "Kleinere Symbole",
@@ -1446,6 +1465,7 @@
     "Some items couldn’t be renamed.": "Einige Objekte konnten nicht umbenannt werden.",
     "Some pages couldn’t be read.": "Einige Seiten konnten nicht gelesen werden.",
     "Some servers in “%@” didn’t connect": "Zu einigen Servern in „%@“ konnte keine Verbindung hergestellt werden",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Einige Größen sind nicht verfügbar. „+“ kennzeichnet eine Untergrenze.",
     "Something else is already mounted there.": "Dort ist bereits etwas anderes aktiviert.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Inzwischen hat etwas anderes den Namen bekommen, deshalb heißt es jetzt „%@“.",
     "Sort By": "Sortieren nach",
@@ -1698,7 +1718,6 @@
       "one": "Top %@ von %lld Ergebnis",
       "other": "Top %@ von %lld Ergebnissen"
     },
-    "Total": "Gesamt",
     "Total size": "Gesamtgröße",
     "Tracking %@": "Folgt %@",
     "Transfers": "Übertragungen",
@@ -1875,7 +1894,9 @@
     "“%@” is changed by this plan too": "„%@“ wird ebenfalls durch diesen Plan geändert",
     "“%@” is empty.": "„%@“ ist leer.",
     "“%@” is new": "„%@“ ist neu",
+    "“%@” is on a read-only disk.": "„%@“ befindet sich auf einem schreibgeschützten Laufwerk.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@“ ist passwortgeschützt. Öffne es mit dem Archivierungsprogramm, um das Passwort einzugeben.",
+    "“%@” is protected by macOS.": "„%@“ ist durch macOS geschützt.",
     "“%@” isn’t a valid name": "„%@“ ist kein gültiger Name",
     "“%@” isn’t an archive Strata can open.": "„%@“ ist kein Archiv, das Strata öffnen kann.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "„%@“ ist nicht im Index, daher liest Strata es direkt.",

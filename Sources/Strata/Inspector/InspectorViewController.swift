@@ -54,12 +54,15 @@ final class InspectorViewController: NSViewController {
     private var previewHeight: NSLayoutConstraint?
 
     private let previewScheduler: (DispatchWorkItem) -> Void
+    private let readSelectionSizes: InspectorSelectionSizes.Reader
+    private(set) var selectionSizesTask: Task<Void, Never>?
 
     init(services: BrowserServices,
          previewScheduler: @escaping (DispatchWorkItem) -> Void = {
              DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
-         }) {
+         }, readSelectionSizes: @escaping InspectorSelectionSizes.Reader = InspectorSelectionSizes.read) {
         self.services = services
+        self.readSelectionSizes = readSelectionSizes
         tagPicker = TagPicker(listWhileEditing: true, maxRows: 6, tags: services.tags)
         self.containerView = ContainerInspectorView(preferences: services.preferences,
                                                     copies: services.copies.containerCopies,
@@ -73,6 +76,7 @@ final class InspectorViewController: NSViewController {
     }
 
     isolated deinit {
+        selectionSizesTask?.cancel()
         previewWork?.cancel()
         projectTask?.cancel()
         dimensionsTask?.cancel()
@@ -270,6 +274,8 @@ final class InspectorViewController: NSViewController {
 
     /// Shows `entries`, or `folder` when the selection is empty. Calling again with the same items only refreshes metadata.
     func show(entries: [FileEntry], folder: FileEntry?, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
+        selectionSizesTask?.cancel()
+        selectionSizesTask = nil
         let items = entries.isEmpty ? [folder].compactMap { $0 } : entries
         showProject(of: items)
         updateSummary(for: items)
@@ -285,7 +291,7 @@ final class InspectorViewController: NSViewController {
                 schedulePreview(first)
             }
         } else {
-            showSelection(items, folderSize: folderSize, canMeasure: canMeasure)
+            showSelection(items, sameItems: sameItems, folderSize: folderSize, canMeasure: canMeasure)
             if !sameItems {
                 hidePreview()
                 iconView.isHidden = false
@@ -350,38 +356,43 @@ final class InspectorViewController: NSViewController {
     }
 
     /// Several items: how many folders and files, and their total size as far as it's known.
-    private func showSelection(_ items: [FileEntry], folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
+    private func showSelection(_ items: [FileEntry], sameItems: Bool, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
         titleLabel.stringValue = String(localized: "\(items.count) items", comment: "plural")
-        let size = selectionSize(items, folderSize: folderSize, canMeasure: canMeasure)
-        subtitleLabel.stringValue = Format.bytes(size.total) + (size.pending || size.unmeasured > 0 ? "+" : "")
-        let folders = items.filter(\.isFolder).count
-        let totalText = size.pending ? String(localized: "\(Format.bytes(size.total)) (calculating…)", comment: "Inspector: a total size still being worked out")
-            : size.unmeasured > 0 ? String(localized: "\(Format.bytes(size.total)) (\(size.unmeasured) folders not measured)", comment: "plural")
-            : Format.bytes(size.total)
-        setRows([
-            (String(localized: "Folders", comment: "Inspector row: how many folders are selected"), InspectorRows.text(folders.formatted())),
-            (String(localized: "Files", comment: "Inspector row: how many files are selected"), InspectorRows.text((items.count - folders).formatted())),
-            (String(localized: "Total", comment: "Inspector row: the selection’s total size"), InspectorRows.text(totalText)),
-        ])
+        if !sameItems {
+            subtitleLabel.stringValue = String(localized: "Calculating…")
+            setRows([(Self.allocatedSizeTitle, InspectorRows.text("—")), (Self.logicalSizeTitle, InspectorRows.text("—"))])
+        }
+        var facts: [URL: InspectorSelectionSizes.Folder] = [:]
+        for item in items where item.isDirectory {
+            let copy = services.copies.contains(item.url)
+            let size = copy ? nil : folderSize(item.url)
+            let unmeasured = size == nil && (copy || !canMeasure(item) || item.isSymlink || item.isVolume
+                || Privacy.measuringWouldPrompt(item.url, browsing: item.url.deletingLastPathComponent()))
+            facts[item.url] = InspectorSelectionSizes.Folder(size: size, unmeasured: unmeasured)
+        }
+        let read = readSelectionSizes, copies = services.copies
+        selectionSizesTask = Task { [weak self] in
+            let size = await read(items, facts, copies)
+            guard let self, !Task.isCancelled else { return }
+            selectionSizesTask = nil
+            if let size { showSelectionSizes(size, count: items.count) }
+        }
     }
 
-    /// `pending`: some sizes are still being measured. Symlinked folders, volumes, provider copies and folders macOS
-    /// guards aren't measured (`unmeasured`): their size never arrives, so they mustn't leave the total "calculating"
-    /// forever.
-    private func selectionSize(_ items: [FileEntry], folderSize: (URL) -> FolderSize?,
-                               canMeasure: (FileEntry) -> Bool) -> (total: Int64, pending: Bool, unmeasured: Int) {
-        let known = items.compactMap { item -> Int64? in
-            guard item.isDirectory else { return item.size }
-            return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes
-        }
-        let unmeasured = items.filter { item in
-            guard item.isDirectory else { return false }
-            if services.copies.contains(item.url) { return true }
-            guard folderSize(item.url) == nil else { return false }
-            return !canMeasure(item) || item.isSymlink || item.isVolume
-                || Privacy.measuringWouldPrompt(item.url, browsing: item.url.deletingLastPathComponent())
-        }.count
-        return (known.saturatingSum, known.count + unmeasured < items.count, unmeasured)
+    private func showSelectionSizes(_ size: InspectorSelectionSizes, count: Int) {
+        subtitleLabel.stringValue = size.supportsAllocation
+            ? allocationText(size.allocated, complete: size.allocationComplete)
+            : Format.bytes(size.logical) + (size.pending || size.unmeasured > 0 ? "+" : "")
+        let totalText = size.pending ? String(localized: "\(Format.bytes(size.logical)) (calculating…)", comment: "Inspector: a total size still being worked out")
+            : size.unmeasured > 0 ? String(localized: "\(Format.bytes(size.logical)) (\(size.unmeasured) folders not measured)", comment: "plural")
+            : Format.bytes(size.logical)
+        var rows: [(String, NSView)] = [
+            (Self.logicalSizeTitle, InspectorRows.text(totalText)),
+            (String(localized: "Folders", comment: "Inspector row: how many folders are selected"), InspectorRows.text(size.folders.formatted())),
+            (String(localized: "Files", comment: "Inspector row: how many files are selected"), InspectorRows.text((count - size.folders).formatted())),
+        ]
+        if size.supportsAllocation { rows.insert((Self.allocatedSizeTitle, allocatedRow(allocationText(size.allocated, complete: size.allocationComplete))), at: 0) }
+        setRows(rows)
     }
 
     /// Where an item appears to be, since things are described there: inside an archive opened as a folder, in a
@@ -407,9 +418,17 @@ final class InspectorViewController: NSViewController {
         let isCopy = services.copies.contains(entry.url)
         titleLabel.stringValue = title(of: entry, place: place)
         let directorySize = entry.isDirectory && !isCopy ? folderSize(entry.url) : nil
-        let size = entry.isDirectory ? directorySize.map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes)
+        let allocated = entry.isDirectory && !entry.isSymlink ? directorySize?.allocatedBytes : entry.allocatedSize
+        let allocation = allocationText(allocated, complete: directorySize?.allocationComplete != false)
+        let size = isCopy || place.apparent != nil
+            ? (entry.isDirectory ? directorySize.map { Format.bytes($0.bytes) } : entry.size.map(Format.bytes))
+            : (allocated == nil ? nil : allocation)
         subtitleLabel.stringValue = [entry.kind, size].compactMap { $0 }.joined(separator: " · ")
-        var rows = [sizeRow(entry, directorySize: directorySize, isCopy: isCopy, canMeasure: canMeasure)].compactMap { $0 }
+        var rows: [(String, NSView)] = []
+        if !isCopy, place.apparent == nil {
+            rows.append((Self.allocatedSizeTitle, allocatedRow(allocation)))
+        }
+        if let logical = sizeRow(entry, directorySize: directorySize, isCopy: isCopy, canMeasure: canMeasure) { rows.append(logical) }
         if let dimensions = imageDimensions(entry, at: rows.count) {
             rows.append((Self.dimensionsTitle, InspectorRows.text(dimensions)))
         }
@@ -432,7 +451,7 @@ final class InspectorViewController: NSViewController {
 
     private func sizeRow(_ entry: FileEntry, directorySize: FolderSize?, isCopy: Bool,
                          canMeasure: (FileEntry) -> Bool) -> (String, NSView)? {
-        let sizeTitle = String(localized: "Size", comment: "Inspector row: how big the item is")
+        let sizeTitle = Self.logicalSizeTitle
         if entry.isDirectory {
             if let size = directorySize {
                 let files = String(localized: "\(size.files) files", comment: "plural")
@@ -608,6 +627,18 @@ final class InspectorViewController: NSViewController {
         infoCard.isHidden = rows.isEmpty
     }
 
+    private func allocatedRow(_ text: String) -> NSTextField {
+        let row = InspectorRows.text(text)
+        row.toolTip = DiskSizeMeasurement.partialExplanation
+        return row
+    }
+
+    private func allocationText(_ bytes: Int64?, complete: Bool) -> String {
+        bytes.map { Format.bytes($0) + (complete ? "" : "+") } ?? "—"
+    }
+
+    private static let logicalSizeTitle = String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage")
+    private static let allocatedSizeTitle = String(localized: "Size on disk", comment: "Inspector: space allocated to the item’s files")
     private static let dimensionsTitle = String(localized: "Dimensions",
                                                 comment: "Inspector row: an image’s width × height in pixels")
 

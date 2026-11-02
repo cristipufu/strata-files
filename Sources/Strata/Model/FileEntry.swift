@@ -20,6 +20,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package let isListed: Bool
     package let isVolume: Bool
     package let size: Int64?
+    package let allocatedSize: Int64?
     package let modified: Date?
     package let created: Date?
     package let added: Date?
@@ -112,14 +113,14 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     }
 
     package static let resourceKeys: [URLResourceKey] = [
-        .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey,
+        .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey,
         .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey, .localizedTypeDescriptionKey,
         .contentTypeKey, .isVolumeKey, .isAliasFileKey, .isRegularFileKey,
     ]
 
     package init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
          size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
-         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true) {
+         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true, allocatedSize: Int64? = nil) {
         self.url = url
         self.name = name
         self.displayName = displayName ?? name
@@ -133,6 +134,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.isListed = isListed
         self.isVolume = isVolume
         self.size = size
+        self.allocatedSize = allocatedSize
         self.modified = modified
         self.created = created
         self.added = added
@@ -160,6 +162,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.isPackage = isPackage
         isHidden = values.isHidden ?? name.hasPrefix(".")
         size = isDirectory ? nil : values.fileSize.map(Int64.init)
+        allocatedSize = isDirectory && !isSymlink ? nil : values.totalFileAllocatedSize.map(Int64.init)
         modified = values.contentModificationDate
         created = values.creationDate
         added = values.addedToDirectoryDate

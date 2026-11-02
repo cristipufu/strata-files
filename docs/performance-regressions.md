@@ -202,3 +202,67 @@ index and search tests pass. Three negative controls target coverage identity, f
 The final full Address Sanitizer run passed all 1,606 tests in 215 suites. All 99 Python checks, all four architecture
 audits, and localization extraction and completeness checks passed. The optimized app product also built successfully.
 All three index mutations were caught, completing six caught negative controls across the Inspector follow-up fixes.
+
+## Storage measurements
+
+The size discrepancy was caused by different definitions, rather than a new terabyte of disk use. Folder sizing
+and the index summed logical file lengths, including sparse regions. OrbStack's `data.img.raw` had a logical length
+of 994.66 GB while its allocated blocks occupied about 79 GB when checked. The Disk Usage chart included only the
+visible entries; the user's hidden `Library` folder was absent. The footer showed macOS's availability for important
+usage, which includes reclaimable space, rather than physically free space.
+
+The Inspector now leads with Size on disk and keeps Logical size below it. Local Disk Usage tiles use allocated
+bytes and the legend explicitly says visible items. Servers and archives retain logical sizes because the local
+placeholder or extracted copy is not their storage allocation. Unknown allocation stays unknown; unreadable,
+excluded and unvisited folders never become measured zeroes. Partial folder measurements retain the known allocated
+bytes and show “+” as a lower bound, with an explanation beside the measurement. A folder's own unread state is distinct from unknown
+descendant sizes, so a child update cannot accidentally mark an unread parent complete. Shared or cloned data can
+still count toward multiple files: these totals are not a promise of uniquely reclaimable space.
+
+The footer now shows physically free space; its tooltip separates actual occupied space, total capacity, free space
+and availability including reclaimable space. Volume reads remain asynchronous, follow the folder actually listed,
+reject obsolete results and coalesce event-driven refreshes with an injected five-second clock. Selection aggregation
+has its own cancellable reader, off the main actor, and never retains a closed Inspector or publishes an older total.
+
+Allocation is read with each listing, bulk scan and fallback folder walk. It remains separate from logical lengths
+used by transfers and search. Index cache format 7 uses a separate filename, so a side-by-side older app cannot
+overwrite it. Fixed-width index storage rises from 39 to 48 bytes per record, before names and spare capacity; this
+costs about 62 MiB for the observed 7.2 million records. A first launch rebuilds the disposable index.
+
+Regressions exercise a real sparse 1 TiB fixture with only one small data write, listing and tree-walk agreement,
+scan → save → reopen → compact, allocation-only updates, missing allocation and recovery, late selection totals,
+Inspector teardown, and arriving chart totals that must retain the chosen measurement. The fixtures never read the
+sparse file's contents or allocate its logical length. These checks establish the cases exercised; they do not prove
+the unique physical contribution of APFS clones or unreadable folders.
+
+Validation passed: a full debug run of 1,616 tests, 47 final focused tests after the presentation review, the complete
+Address Sanitizer suite with all 1,617 tests, all 99 Python checks, the four architecture audits and complete
+localization checks. Five new negative controls cover allocation parsing, unread parents, chart updates, obsolete
+Inspector totals and physical free space; the existing capacity and provider controls follow the refactored code.
+All ten new or updated controls were caught, and the source was restored after every deliberate regression.
+
+## Trash permissions and system apps
+
+The live Blenny check moved only `/Applications/Blenny.app` to Trash, then used Strata's native Undo and verified the
+restored device, inode and birth time against the original. The user also reported that Steam moved successfully.
+Chess is a different case: this Mac's `/System/Applications/Chess.app` is restricted and belongs to the sealed,
+read-only system volume. An administrator prompt cannot permit that removal. Apple's [uninstall guidance](https://support.apple.com/en-ie/102610)
+also distinguishes protected system apps from ordinary installed apps.
+
+Strata previously passed the OS's generic failure through to its alert, without distinguishing read-only volumes.
+`RemovalVolume` now reads that policy away from the UI and produces a specific reason. Trash validates the whole
+chosen batch before moving anything, including creation Undo and owned transfer/History Undo. Permanent-deletion
+planning retains the reason for its refusal. Removing a symlink checks its parent's volume, so a writable link to a
+protected system item remains removable. No system app was modified in this investigation.
+
+The new headless regressions inject volume facts and use only throwaway files. They cover a protected last item in a
+mixed batch, unchanged siblings, no partial History/Undo registration, ownership filtering, symlink targets, deletion
+planning and the real native error alert. The original Topaz authorization failure remains unverified: that app had
+already been removed with Finder. These results do not establish support for every administrator-only deletion or
+Empty Trash failure.
+
+Validation passed: 163 focused tests in both debug and Address Sanitizer, all 99 Python checks, the architecture
+audits and complete localization checks. The native alert is checked headlessly. Six new negative controls exercise
+batch refusal, synchronous creation Undo, owned Undo, link handling, deletion planning and the alert's explanation;
+three existing ownership controls follow the refactored code.
+All nine controls were caught, and the source was restored after every deliberate regression.

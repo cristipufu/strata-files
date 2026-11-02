@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (standard)",
     "%@ (Me)": "%@ (Meg)",
     "%@ (undone)": "%@ (angret)",
-    "%@ available": "%@ tilgjengelig",
+    "%@ available including reclaimable space": "%@ tilgjengelig inkludert plass som kan frigjøres",
     "%@ belongs to “%@”.": "%@ tilhører «%@».",
     "%@ can’t be compared": "%@ kan ikke sammenlignes",
     "%@ compressed": "%@ komprimert",
     "%@ didn’t answer in time.": "%@ svarte ikke i tide.",
     "%@ each": "%@ hver",
+    "%@ file size": "%@ filstørrelse",
+    "%@ free": "%@ ledig",
     "%@ is used by “%@”.": "%@ brukes av «%@».",
     "%@ isn’t running.": "%@ kjører ikke.",
     "%@ named %@": "%@ med navnet %@",
@@ -33,11 +35,14 @@
       "other": "%@ av %lld objekter"
     },
     "%@ of this folder": "%@ av denne mappen",
+    "%@ on disk": "%@ på disk",
+    "%@ physically free": "%@ fysisk ledig",
     "%@ refused it.": "%@ avviste handlingen.",
     "%@ to copy ←": "%@ å kopiere ←",
     "%@ to copy →": "%@ å kopiere →",
     "%@ to reclaim": "%@ kan frigjøres",
     "%@ to the Trash": "%@ til papirkurven",
+    "%@ used of %@": "%@ brukt av %@",
     "%@ · %@ on disk": "%@ · %@ på disk",
     "%@ — only %@": "%@ – bare %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ – Stratas innebygde regler håndterer vanlige forespørsler.",
@@ -276,6 +281,10 @@
       "one": "%lld sett med duplikater",
       "other": "%lld sett med duplikater"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld størrelse er utilgjengelig",
+      "other": "%lld størrelser er utilgjengelige"
+    },
     "%lld skipped": {
       "one": "%lld hoppet over",
       "other": "%lld hoppet over"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld visning",
       "other": "%lld visninger"
+    },
+    "%lld visible items": {
+      "one": "%lld synlig element",
+      "other": "%lld synlige elementer"
     },
     "%lld words": {
       "one": "%lld ord",
@@ -774,6 +787,7 @@
     "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "Arkiv ▸ Ny fil lager en tom «%@». La filetternavnet stå tomt for ingen.",
     "Files": "Filer",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "Filer i «%@» på %@: en skrivebeskyttet kopi, lest fra containeren mens du blar.",
+    "Files on this disk can’t be moved to Trash or deleted while the disk is read-only.": "Filer på denne disken kan ikke flyttes til papirkurven eller slettes mens disken er skrivebeskyttet.",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Filer over 5 GB kan ikke lastes opp til en bucket ennå.",
     "Filter": "Filter",
     "Filters loaded items only.": "Filtrerer bare innlastede objekter.",
@@ -963,11 +977,13 @@
     "Lockfile": "Låsefil",
     "Log In": "Logg på",
     "Log in to “%@”": "Logg på «%@»",
+    "Logical size": "Logisk størrelse",
     "Long lines shortened": "Lange linjer forkortet",
     "longer than %@": "lengre enn %@",
     "Looking for duplicates…": "Ser etter duplikater…",
     "lowercase": "små bokstaver",
     "macOS asks before apps read this folder. Open it in Strata once, then search it.": "macOS spør før apper leser denne mappen. Åpne den i Strata én gang, og søk i den etterpå.",
+    "macOS does not allow this system item to be moved to Trash or deleted.": "macOS tillater ikke at dette systemobjektet flyttes til papirkurven eller slettes.",
     "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.": "macOS beskytter papirkurven. Slå på Strata i Personvern og sikkerhet ▸ Full disktilgang.",
     "macOS protects this location. Give Strata Full Disk Access to browse it.": "macOS beskytter dette stedet. Gi Strata full disktilgang for å bla gjennom det.",
     "Match Case": "Skill mellom store og små bokstaver",
@@ -1125,6 +1141,7 @@
     "Only on the left": "Bare til venstre",
     "Only on the Right": "Bare til høyre",
     "Only on the right": "Bare til høyre",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Bare elementene som vises i denne visningen, er inkludert. Delte eller klonede data kan telles for mer enn én fil.",
     "Open": "Åpne",
     "Open %@, then choose Check for Updates to install it": "Åpne %@, og velg deretter Se etter oppdateringer for å installere den",
     "Open a shell in the container, in your terminal": "Åpne et skall i containeren, i terminalen din",
@@ -1432,6 +1449,8 @@
     "Single Pane": "Ett panel",
     "Size": "Størrelse",
     "size": "størrelse",
+    "Size on disk": "Størrelse på disk",
+    "Sizes unavailable": "Størrelser er utilgjengelige",
     "Skip": "Hopp over",
     "Slate": "Skifer",
     "Smaller Icons": "Mindre symboler",
@@ -1446,6 +1465,7 @@
     "Some items couldn’t be renamed.": "Noen objekter kunne ikke gis nytt navn.",
     "Some pages couldn’t be read.": "Kunne ikke lese noen av sidene.",
     "Some servers in “%@” didn’t connect": "Kunne ikke koble til noen av tjenerne i «%@»",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Noen størrelser er utilgjengelige. «+» angir en nedre grense.",
     "Something else is already mounted there.": "Noe annet er allerede tilkoblet der.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Noe annet har fått navnet i mellomtiden, så det heter nå «%@».",
     "Sort By": "Sorter etter",
@@ -1698,7 +1718,6 @@
       "one": "Topp %@ av %lld resultat",
       "other": "Topp %@ av %lld resultater"
     },
-    "Total": "Totalt",
     "Total size": "Samlet størrelse",
     "Tracking %@": "Sporer %@",
     "Transfers": "Overføringer",
@@ -1875,7 +1894,9 @@
     "“%@” is changed by this plan too": "«%@» endres også av denne planen",
     "“%@” is empty.": "«%@» er tomt.",
     "“%@” is new": "«%@» er ny",
+    "“%@” is on a read-only disk.": "«%@» ligger på en skrivebeskyttet disk.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "«%@» er passordbeskyttet. Åpne det med Arkivverktøy for å skrive inn passordet.",
+    "“%@” is protected by macOS.": "«%@» er beskyttet av macOS.",
     "“%@” isn’t a valid name": "«%@» er ikke et gyldig navn",
     "“%@” isn’t an archive Strata can open.": "«%@» er ikke et arkiv Strata kan åpne.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "«%@» er ikke i indeksen, så Strata leser den direkte.",

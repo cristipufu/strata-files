@@ -16,12 +16,14 @@
     "%@ (default)": "%@（預設）",
     "%@ (Me)": "%@（我）",
     "%@ (undone)": "%@（已還原）",
-    "%@ available": "%@可用",
+    "%@ available including reclaimable space": "可用 %@，包含可回收空間",
     "%@ belongs to “%@”.": "%@已指派給「%@」。",
     "%@ can’t be compared": "%@無法比較",
     "%@ compressed": "壓縮後%@",
     "%@ didn’t answer in time.": "%@未及時回應。",
     "%@ each": "每個%@",
+    "%@ file size": "檔案大小 %@",
+    "%@ free": "可用 %@",
     "%@ is used by “%@”.": "%@已被「%@」使用。",
     "%@ isn’t running.": "%@未在執行。",
     "%@ named %@": "名稱為%2$@的%1$@",
@@ -30,11 +32,14 @@
       "other": "%@/%lld個項目"
     },
     "%@ of this folder": "佔此檔案夾的%@",
+    "%@ on disk": "佔用空間 %@",
+    "%@ physically free": "實際可用 %@",
     "%@ refused it.": "%@拒絕了此操作。",
     "%@ to copy ←": "%@將拷貝 ←",
     "%@ to copy →": "%@將拷貝 →",
     "%@ to reclaim": "可釋放%@",
     "%@ to the Trash": "%@丟到垃圾桶",
+    "%@ used of %@": "已使用 %@，共 %@",
     "%@ · %@ on disk": "%@ · 磁碟佔用空間 %@",
     "%@ — only %@": "%@——僅限%@",
     "%@ — Strata’s built-in rules handle common requests.": "%@——Strata的內建規則可處理常見要求。",
@@ -217,6 +222,9 @@
     "%lld sets of duplicates": {
       "other": "%lld組重複項目"
     },
+    "%lld sizes unavailable": {
+      "other": "%lld 個大小無法取得"
+    },
     "%lld skipped": {
       "other": "已略過%lld個"
     },
@@ -252,6 +260,9 @@
     },
     "%lld views": {
       "other": "%lld個檢視表"
+    },
+    "%lld visible items": {
+      "other": "%lld 個可見項目"
     },
     "%lld words": {
       "other": "%lld個字詞"
@@ -682,6 +693,7 @@
     "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "「檔案」▸「新增檔案」會建立空白的「%@」。如不需要副檔名，請留空。",
     "Files": "檔案",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "%2$@上「%1$@」中的檔案：瀏覽時從容器讀取的唯讀副本。",
+    "Files on this disk can’t be moved to Trash or deleted while the disk is read-only.": "磁碟為唯讀時，無法將其中的檔案移至垃圾桶或刪除。",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "暫不支援將超過5 GB的檔案上傳到儲存貯體。",
     "Filter": "篩選",
     "Filters loaded items only.": "僅篩選已載入的項目。",
@@ -868,11 +880,13 @@
     "Lockfile": "鎖定檔",
     "Log In": "登入",
     "Log in to “%@”": "登入「%@」",
+    "Logical size": "邏輯大小",
     "Long lines shortened": "長行已截短",
     "longer than %@": "長於%@",
     "Looking for duplicates…": "正在尋找重複項目⋯",
     "lowercase": "小寫",
     "macOS asks before apps read this folder. Open it in Strata once, then search it.": "macOS會在App讀取此檔案夾前詢問。請先在Strata中打開一次，然後再搜尋。",
+    "macOS does not allow this system item to be moved to Trash or deleted.": "macOS 不允許將此系統項目移至垃圾桶或刪除。",
     "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.": "macOS會保護垃圾桶。請在「隱私權與安全性」▸「完全取用磁碟」中開啟Strata。",
     "macOS protects this location. Give Strata Full Disk Access to browse it.": "macOS會保護此位置。請授予Strata「完全取用磁碟」權限以瀏覽此位置。",
     "Match Case": "區分大小寫",
@@ -1024,6 +1038,7 @@
     "Only on the left": "僅在左側",
     "Only on the Right": "僅在右側",
     "Only on the right": "僅在右側",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "僅統計目前檢視中顯示的項目。共享或複製的資料可能會在多個檔案中重複計算。",
     "Open": "打開",
     "Open %@, then choose Check for Updates to install it": "打開%@，然後選擇「檢查更新」來安裝",
     "Open a shell in the container, in your terminal": "在終端機中打開容器內的Shell",
@@ -1318,6 +1333,8 @@
     "Single Pane": "單窗格",
     "Size": "大小",
     "size": "大小",
+    "Size on disk": "佔用空間",
+    "Sizes unavailable": "無法取得大小",
     "Skip": "略過",
     "Slate": "岩灰",
     "Smaller Icons": "縮小圖像大小",
@@ -1332,6 +1349,7 @@
     "Some items couldn’t be renamed.": "部分項目無法重新命名。",
     "Some pages couldn’t be read.": "無法讀取部分頁面。",
     "Some servers in “%@” didn’t connect": "「%@」中的部分伺服器未能連線",
+    "Some sizes are unavailable. “+” marks a lower bound.": "部分大小無法取得。「+」表示下限。",
     "Something else is already mounted there.": "該位置已裝載了其他內容。",
     "Something else took its name meanwhile, so it’s now “%@”.": "在此期間，另一個項目使用了這個名稱，因此它現在名為「%@」。",
     "Sort By": "排序方式",
@@ -1572,7 +1590,6 @@
     "Top %@ of %lld results": {
       "other": "前%@個（共%lld個結果）"
     },
-    "Total": "總計",
     "Total size": "總大小",
     "Tracking %@": "追蹤%@",
     "Transfers": "傳輸",
@@ -1744,7 +1761,9 @@
     "“%@” is changed by this plan too": "此計畫也會更改「%@」",
     "“%@” is empty.": "「%@」是空的。",
     "“%@” is new": "「%@」是新項目",
+    "“%@” is on a read-only disk.": "「%@」位於唯讀磁碟上。",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "「%@」受密碼保護。請使用「封存工具程式」打開以輸入密碼。",
+    "“%@” is protected by macOS.": "「%@」受到 macOS 保護。",
     "“%@” isn’t a valid name": "「%@」不是有效的名稱",
     "“%@” isn’t an archive Strata can open.": "「%@」不是Strata可以打開的封存檔。",
     "“%@” isn’t in the index, so Strata is reading it directly.": "「%@」不在索引中，因此Strata正在直接讀取它。",

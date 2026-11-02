@@ -341,6 +341,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if refreshed.changed { changed = true }
             if !refreshed.complete { complete = false }
         }
+        if store.write({ $0.finishedAllocationRead(of: id) }) { changed = true }
         return (changed, complete)
     }
 
@@ -411,10 +412,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else if item.isDirectory {
                 update(folder: old, at: listing.prefix + name, to: item, in: &store, config: config, deep: deep,
                        changes: &changes)
-            } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime {
+            } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime
+                        || store.allocatedSize(old) != item.allocatedSize {
                 changes.changed = true
                 store.propagate(from: old, bytes: item.size - store.size[Int(old)], files: 0)
                 store.size[Int(old)] = item.size
+                store.setAllocation(item.allocatedSize, of: old)
                 store.mtime[Int(old)] = item.mtime
             }
         }

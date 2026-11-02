@@ -18,12 +18,14 @@
     "%@ (default)": "%@ (standaard)",
     "%@ (Me)": "%@ (ik)",
     "%@ (undone)": "%@ (ongedaan gemaakt)",
-    "%@ available": "%@ beschikbaar",
+    "%@ available including reclaimable space": "%@ beschikbaar, inclusief terugwinbare ruimte",
     "%@ belongs to “%@”.": "%@ hoort bij “%@”.",
     "%@ can’t be compared": "%@ niet te vergelijken",
     "%@ compressed": "%@ gecomprimeerd",
     "%@ didn’t answer in time.": "%@ heeft niet op tijd geantwoord.",
     "%@ each": "%@ per stuk",
+    "%@ file size": "%@ bestandsgrootte",
+    "%@ free": "%@ vrij",
     "%@ is used by “%@”.": "%@ wordt gebruikt door “%@”.",
     "%@ isn’t running.": "%@ is niet actief.",
     "%@ named %@": "%@ met de naam %@",
@@ -33,11 +35,14 @@
       "other": "%@ van %lld onderdelen"
     },
     "%@ of this folder": "%@ van deze map",
+    "%@ on disk": "%@ op schijf",
+    "%@ physically free": "%@ fysiek vrij",
     "%@ refused it.": "%@ heeft de actie geweigerd.",
     "%@ to copy ←": "%@ te kopiëren ←",
     "%@ to copy →": "%@ te kopiëren →",
     "%@ to reclaim": "%@ terug te winnen",
     "%@ to the Trash": "%@ naar prullenmand",
+    "%@ used of %@": "%@ van %@ gebruikt",
     "%@ · %@ on disk": "%@ · %@ op schijf",
     "%@ — only %@": "%@ — alleen %@",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — De ingebouwde regels van Strata verwerken veelvoorkomende verzoeken.",
@@ -276,6 +281,10 @@
       "one": "%lld set duplicaten",
       "other": "%lld sets duplicaten"
     },
+    "%lld sizes unavailable": {
+      "one": "%lld grootte niet beschikbaar",
+      "other": "%lld groottes niet beschikbaar"
+    },
     "%lld skipped": {
       "one": "%lld overgeslagen",
       "other": "%lld overgeslagen"
@@ -323,6 +332,10 @@
     "%lld views": {
       "one": "%lld weergave",
       "other": "%lld weergaven"
+    },
+    "%lld visible items": {
+      "one": "%lld zichtbaar item",
+      "other": "%lld zichtbare items"
     },
     "%lld words": {
       "one": "%lld woord",
@@ -774,6 +787,7 @@
     "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "Archief ▸ Nieuw bestand maakt een leeg bestand ‘%@’. Laat de extensie leeg voor geen extensie.",
     "Files": "Bestanden",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "Bestanden in “%@” op %@: een alleen-lezen kopie, uit de container gelezen terwijl je bladert.",
+    "Files on this disk can’t be moved to Trash or deleted while the disk is read-only.": "Bestanden op deze schijf kunnen niet naar de prullenmand worden verplaatst of worden verwijderd zolang de schijf alleen-lezen is.",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "Bestanden groter dan 5 GB kunnen nog niet naar een bucket worden geüpload.",
     "Filter": "Filter",
     "Filters loaded items only.": "Filtert alleen geladen onderdelen.",
@@ -963,11 +977,13 @@
     "Lockfile": "Lockbestand",
     "Log In": "Log in",
     "Log in to “%@”": "Log in bij “%@”",
+    "Logical size": "Logische grootte",
     "Long lines shortened": "Lange regels ingekort",
     "longer than %@": "langer dan %@",
     "Looking for duplicates…": "Zoeken naar duplicaten…",
     "lowercase": "kleine letters",
     "macOS asks before apps read this folder. Open it in Strata once, then search it.": "macOS vraagt toestemming voordat apps deze map lezen. Open hem één keer in Strata en doorzoek hem daarna.",
+    "macOS does not allow this system item to be moved to Trash or deleted.": "macOS staat niet toe dat dit systeemonderdeel naar de prullenmand wordt verplaatst of wordt verwijderd.",
     "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.": "macOS beschermt de prullenmand. Schakel Strata in bij Privacy en beveiliging ▸ Volledige schijftoegang.",
     "macOS protects this location. Give Strata Full Disk Access to browse it.": "macOS beschermt deze locatie. Geef Strata volledige schijftoegang om hem te bekijken.",
     "Match Case": "Hoofdlettergevoelig",
@@ -1125,6 +1141,7 @@
     "Only on the left": "Alleen links",
     "Only on the Right": "Alleen rechts",
     "Only on the right": "Alleen rechts",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "Alleen de items in deze weergave worden meegerekend. Gedeelde of gekloonde gegevens kunnen bij meerdere bestanden worden meegeteld.",
     "Open": "Open",
     "Open %@, then choose Check for Updates to install it": "Open %@ en kies Zoek naar updates om de update te installeren",
     "Open a shell in the container, in your terminal": "Open een shell in de container, in je terminal",
@@ -1432,6 +1449,8 @@
     "Single Pane": "Eén paneel",
     "Size": "Grootte",
     "size": "grootte",
+    "Size on disk": "Grootte op schijf",
+    "Sizes unavailable": "Groottes niet beschikbaar",
     "Skip": "Sla over",
     "Slate": "Leisteen",
     "Smaller Icons": "Kleinere symbolen",
@@ -1446,6 +1465,7 @@
     "Some items couldn’t be renamed.": "De naam van sommige onderdelen kon niet worden gewijzigd.",
     "Some pages couldn’t be read.": "Sommige pagina’s konden niet worden gelezen.",
     "Some servers in “%@” didn’t connect": "Met sommige servers in “%@” kon geen verbinding worden gemaakt",
+    "Some sizes are unavailable. “+” marks a lower bound.": "Sommige groottes zijn niet beschikbaar. ‘+’ geeft een ondergrens aan.",
     "Something else is already mounted there.": "Daar is al iets anders gekoppeld.",
     "Something else took its name meanwhile, so it’s now “%@”.": "Intussen heeft iets anders de naam gekregen, dus het heet nu “%@”.",
     "Sort By": "Sorteer op",
@@ -1698,7 +1718,6 @@
       "one": "Top %@ van %lld resultaat",
       "other": "Top %@ van %lld resultaten"
     },
-    "Total": "Totaal",
     "Total size": "Totale grootte",
     "Tracking %@": "Volgt %@",
     "Transfers": "Overdrachten",
@@ -1875,7 +1894,9 @@
     "“%@” is changed by this plan too": "“%@” wordt ook door dit plan gewijzigd",
     "“%@” is empty.": "“%@” is leeg.",
     "“%@” is new": "“%@” is nieuw",
+    "“%@” is on a read-only disk.": "‘%@’ staat op een alleen-lezen schijf.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” is beveiligd met een wachtwoord. Open het met Archiefhulpprogramma om het wachtwoord in te voeren.",
+    "“%@” is protected by macOS.": "‘%@’ wordt beschermd door macOS.",
     "“%@” isn’t a valid name": "“%@” is geen geldige naam",
     "“%@” isn’t an archive Strata can open.": "“%@” is geen archief dat Strata kan openen.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "“%@” staat niet in de index, dus Strata leest het direct.",

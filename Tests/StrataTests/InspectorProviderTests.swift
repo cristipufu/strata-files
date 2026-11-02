@@ -176,7 +176,7 @@ struct InspectorProviderTests {
                         folderSize: { _ in FolderSize(bytes: 4096, files: 2) },
                         canMeasure: { _ in true })
         #expect(inspectorA.titleLabel.stringValue == "First Cloud")
-        #expect(rowText(inspectorA, String(localized: "Size", comment: "Inspector row: how big the item is")) == "—")
+        #expect(rowText(inspectorA, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage")) == "—")
         #expect(rowText(inspectorA, String(localized: "Created", comment: "Inspector row: creation date")) == nil)
         #expect(rowText(inspectorA, String(localized: "Added", comment: "Inspector row: date the item was added to its folder")) == nil)
         #expect(locationRow(inspectorA) == nil)
@@ -196,7 +196,7 @@ struct InspectorProviderTests {
         }
         await controller.browser.directoryReads.task?.value
         #expect(controller.split.inspector.services === first.services)
-        #expect(rowText(controller.split.inspector, String(localized: "Size", comment: "Inspector row: how big the item is")) == "—")
+        #expect(rowText(controller.split.inspector, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage")) == "—")
         #expect(locationRow(controller.split.inspector)?.nameText == "First Cloud")
         #expect(locationRow(controller.split.inspector)?.locationText == serverA.address)
         // At the server's top the address describes the server: it goes under the name, not before it as a path.
@@ -206,7 +206,7 @@ struct InspectorProviderTests {
         #expect(controller.split.inspector.composeView.isHidden)
         controller.navigate(to: URL(fileURLWithPath: "/"))
         await controller.browser.directoryReads.task?.value
-        #expect(rowText(controller.split.inspector, String(localized: "Size", comment: "Inspector row: how big the item is")) == "—")
+        #expect(rowText(controller.split.inspector, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage")) == "—")
 
         // Deeper item in environment A: Where shows "app" in "First Cloud:/srv".
         let configEntry = try #require(FileEntry(url: configA))
@@ -233,7 +233,7 @@ struct InspectorProviderTests {
         // Environment B does not treat environment A's copy folder as its own copy.
         let srvEntry = try #require(FileEntry(url: srvA))
         inspectorB.show(entries: [srvEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in true })
-        #expect(rowText(inspectorB, String(localized: "Size", comment: "Inspector row: how big the item is")) == String(localized: "Calculating…"))
+        #expect(rowText(inspectorB, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage")) == String(localized: "Calculating…"))
         #expect(rowText(inspectorB, String(localized: "Created", comment: "Inspector row: creation date")) != nil)
         #expect(locationRow(inspectorB)?.locationText != serverA.address)
 
@@ -246,7 +246,7 @@ struct InspectorProviderTests {
         #expect(inspectorA.composeView.preferences === first.preferences)
     }
 
-    @Test func multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes() throws {
+    @Test func multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("first/keep.txt", "second/keep.txt")
         let server = RemoteServer(id: UUID().uuidString, kind: .sftp, name: "Server", host: "server.invalid")
@@ -267,9 +267,10 @@ struct InspectorProviderTests {
         inspectorA.show(entries: [folderEntry, fileEntry], folder: nil,
                         folderSize: { _ in FolderSize(bytes: 99_999, files: 10) },
                         canMeasure: { _ in true })
+        await inspectorA.selectionSizesTask?.value
         let expectedBytes = Format.bytes(2048)
         #expect(inspectorA.subtitleLabel.stringValue == "\(expectedBytes)+")
-        #expect(rowText(inspectorA, String(localized: "Total", comment: "Inspector row: the selection’s total size"))
+        #expect(rowText(inspectorA, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage"))
                 == String(localized: "\(expectedBytes) (\(1) folders not measured)", comment: "plural"))
 
         let inspectorB = InspectorViewController(services: second.services, previewScheduler: { _ in })
@@ -277,7 +278,8 @@ struct InspectorProviderTests {
         inspectorB.show(entries: [folderEntry, fileEntry], folder: nil,
                         folderSize: { _ in nil },
                         canMeasure: { _ in true })
-        #expect(rowText(inspectorB, String(localized: "Total", comment: "Inspector row: the selection’s total size"))
+        await inspectorB.selectionSizesTask?.value
+        #expect(rowText(inspectorB, String(localized: "Logical size", comment: "Inspector row: file lengths before compression, sparse allocation or shared storage"))
                 == String(localized: "\(expectedBytes) (calculating…)", comment: "Inspector: a total size still being worked out"))
     }
 

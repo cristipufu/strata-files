@@ -16,12 +16,14 @@
     "%@ (default)": "%@(기본값)",
     "%@ (Me)": "%@(나)",
     "%@ (undone)": "%@(실행 취소됨)",
-    "%@ available": "%@ 사용 가능",
+    "%@ available including reclaimable space": "회수 가능한 공간을 포함한 사용 가능 공간 %@",
     "%@ belongs to “%@”.": "%@은(는) ‘%@’에 할당되어 있습니다.",
     "%@ can’t be compared": "%@ 비교할 수 없음",
     "%@ compressed": "압축 크기 %@",
     "%@ didn’t answer in time.": "%@이(가) 제시간에 응답하지 않았습니다.",
     "%@ each": "각 %@",
+    "%@ file size": "파일 크기 %@",
+    "%@ free": "여유 공간 %@",
     "%@ is used by “%@”.": "%@은(는) ‘%@’에서 사용 중입니다.",
     "%@ isn’t running.": "%@이(가) 실행 중이 아닙니다.",
     "%@ named %@": "%2$@(이)라는 이름의 %1$@",
@@ -30,11 +32,14 @@
       "other": "%@/%lld개 항목"
     },
     "%@ of this folder": "이 폴더의 %@",
+    "%@ on disk": "디스크 사용량 %@",
+    "%@ physically free": "실제 여유 공간 %@",
     "%@ refused it.": "%@이(가) 작업을 거부했습니다.",
     "%@ to copy ←": "%@ 복사 예정 ←",
     "%@ to copy →": "%@ 복사 예정 →",
     "%@ to reclaim": "%@ 확보 가능",
     "%@ to the Trash": "%@ 휴지통으로",
+    "%@ used of %@": "%@ 사용 중 / 총 %@",
     "%@ · %@ on disk": "%@ · 디스크 사용량 %@",
     "%@ — only %@": "%@ — %@만",
     "%@ — Strata’s built-in rules handle common requests.": "%@ — Strata의 내장 규칙으로 일반적인 요청을 처리할 수 있습니다.",
@@ -217,6 +222,9 @@
     "%lld sets of duplicates": {
       "other": "중복 항목 %lld세트"
     },
+    "%lld sizes unavailable": {
+      "other": "크기를 확인할 수 없는 항목 %lld개"
+    },
     "%lld skipped": {
       "other": "%lld개 건너뜀"
     },
@@ -252,6 +260,9 @@
     },
     "%lld views": {
       "other": "뷰 %lld개"
+    },
+    "%lld visible items": {
+      "other": "표시된 항목 %lld개"
     },
     "%lld words": {
       "other": "%lld개 단어"
@@ -682,6 +693,7 @@
     "File ▸ New File makes an empty “%@”. Leave the extension empty for none.": "파일 ▸ 새로운 파일은 빈 “%@” 파일을 만듭니다. 확장자를 붙이지 않으려면 비워 두십시오.",
     "Files": "파일",
     "Files in “%@” on %@: a read-only copy, read from the container as you browse.": "%2$@의 ‘%1$@’에 있는 파일: 탐색할 때마다 컨테이너에서 읽어 오는 읽기 전용 사본입니다.",
+    "Files on this disk can’t be moved to Trash or deleted while the disk is read-only.": "디스크가 읽기 전용인 동안에는 이 디스크의 파일을 휴지통으로 이동하거나 삭제할 수 없습니다.",
     "Files over 5 GB can’t be uploaded to a bucket yet.": "5 GB를 초과하는 파일은 아직 버킷에 업로드할 수 없습니다.",
     "Filter": "필터",
     "Filters loaded items only.": "불러온 항목만 필터링합니다.",
@@ -868,11 +880,13 @@
     "Lockfile": "잠금 파일",
     "Log In": "로그인",
     "Log in to “%@”": "‘%@’에 로그인",
+    "Logical size": "논리적 크기",
     "Long lines shortened": "긴 줄은 짧게 표시됨",
     "longer than %@": "%@보다 김",
     "Looking for duplicates…": "중복된 항목 찾는 중…",
     "lowercase": "소문자",
     "macOS asks before apps read this folder. Open it in Strata once, then search it.": "macOS는 앱이 이 폴더를 읽기 전에 허락을 요청합니다. Strata에서 한 번 연 다음 검색하십시오.",
+    "macOS does not allow this system item to be moved to Trash or deleted.": "macOS는 이 시스템 항목을 휴지통으로 이동하거나 삭제하는 것을 허용하지 않습니다.",
     "macOS protects the Trash. Turn on Strata in Privacy & Security ▸ Full Disk Access.": "macOS는 휴지통을 보호합니다. 개인정보 보호 및 보안 ▸ 전체 디스크 접근 권한에서 Strata를 켜십시오.",
     "macOS protects this location. Give Strata Full Disk Access to browse it.": "macOS는 이 위치를 보호합니다. 탐색하려면 Strata에 전체 디스크 접근 권한을 부여하십시오.",
     "Match Case": "대소문자 구분",
@@ -1024,6 +1038,7 @@
     "Only on the left": "왼쪽에만 있음",
     "Only on the Right": "오른쪽에만 있음",
     "Only on the right": "오른쪽에만 있음",
+    "Only the items shown in this view are included. Shared or cloned data may count toward more than one file.": "이 보기에 표시된 항목만 포함됩니다. 공유되거나 복제된 데이터는 여러 파일에 중복 계산될 수 있습니다.",
     "Open": "열기",
     "Open %@, then choose Check for Updates to install it": "설치하려면 %@을(를) 연 다음 ‘업데이트 확인’을 선택하십시오",
     "Open a shell in the container, in your terminal": "터미널에서 컨테이너의 셸 열기",
@@ -1318,6 +1333,8 @@
     "Single Pane": "단일 패널",
     "Size": "크기",
     "size": "크기",
+    "Size on disk": "디스크 할당 크기",
+    "Sizes unavailable": "크기 확인 불가",
     "Skip": "건너뜀",
     "Slate": "슬레이트",
     "Smaller Icons": "아이콘 크기 감소",
@@ -1332,6 +1349,7 @@
     "Some items couldn’t be renamed.": "일부 항목의 이름을 변경할 수 없습니다.",
     "Some pages couldn’t be read.": "일부 페이지를 읽을 수 없습니다.",
     "Some servers in “%@” didn’t connect": "‘%@’의 일부 서버에 연결되지 않음",
+    "Some sizes are unavailable. “+” marks a lower bound.": "일부 크기를 확인할 수 없습니다. “+”는 하한을 나타냅니다.",
     "Something else is already mounted there.": "해당 위치에 이미 다른 항목이 마운트되어 있습니다.",
     "Something else took its name meanwhile, so it’s now “%@”.": "그 사이에 다른 항목이 이름을 사용해서 이제 ‘%@’(으)로 바뀌었습니다.",
     "Sort By": "다음으로 정렬",
@@ -1572,7 +1590,6 @@
     "Top %@ of %lld results": {
       "other": "상위 %@개(총 %lld개 결과)"
     },
-    "Total": "합계",
     "Total size": "전체 크기",
     "Tracking %@": "%@ 추적 중",
     "Transfers": "전송",
@@ -1744,7 +1761,9 @@
     "“%@” is changed by this plan too": "‘%@’도 이 계획에 의해 변경됨",
     "“%@” is empty.": "‘%@’은(는) 비어 있습니다.",
     "“%@” is new": "‘%@’은(는) 새 항목임",
+    "“%@” is on a read-only disk.": "“%@”은(는) 읽기 전용 디스크에 있습니다.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "‘%@’은(는) 암호로 보호되어 있습니다. 암호를 입력하려면 아카이브 유틸리티로 여십시오.",
+    "“%@” is protected by macOS.": "“%@”은(는) macOS에서 보호합니다.",
     "“%@” isn’t a valid name": "‘%@’은(는) 유효한 이름이 아님",
     "“%@” isn’t an archive Strata can open.": "‘%@’은(는) Strata가 열 수 있는 아카이브가 아닙니다.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "‘%@’이(가) 인덱스에 없으므로 Strata가 직접 읽는 중입니다.",

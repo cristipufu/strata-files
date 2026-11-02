@@ -105,7 +105,8 @@ package final class FileIndex {
         let path = url.lexicallyStandardized.path
         return store.tryRead { store -> FolderSize? in
             guard let id = store.lookup(path), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
-            return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]))
+            return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]), allocatedBytes: store.allocated[Int(id)],
+                              allocationComplete: store.allocatedSize(id) != nil)
         } ?? nil
     }
 
@@ -119,7 +120,8 @@ package final class FileIndex {
             var sizes: [String: FolderSize] = [:]
             let prefix = base == "/" ? "/" : base + "/"
             for child in store.children(of: id) where store.isDirectory(child) && !isExcludedLocked(store, child) {
-                sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]))
+                sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]),
+                                                              allocatedBytes: store.allocated[Int(child)], allocationComplete: store.allocatedSize(child) != nil)
             }
             return sizes
         } ?? [:]
@@ -285,7 +287,7 @@ package final class FileIndex {
         // The encrypted index replaces the plain index.bin of earlier builds.
         SecureStorage.removeLegacy(storage.url("index.bin"))
         return IndexConfig(roots: roots(home: home), excluded: excluded, noise: [home + "/Library"],
-                           file: storage.url("index.sealed"), storage: storage)
+                           file: storage.url(IndexPersistence.cacheName), storage: storage)
     }
 
 
@@ -308,6 +310,6 @@ extension FileEntry {
                   kind: hit.isDirectory && !hit.isPackage ? String(localized: "Folder", comment: "Kind of item: a folder")
                       : FileEntry.kind(extension: url.pathExtension, isDirectory: hit.isDirectory, isPackage: hit.isPackage,
                                        size: hit.size, system: type?.localizedDescription, type: type),
-                  contentType: type, isListed: false)
+                  contentType: type, isListed: false, allocatedSize: hit.allocatedSize)
     }
 }

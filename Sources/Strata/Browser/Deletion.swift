@@ -21,6 +21,12 @@ enum Deletion {
         guard let first = candidates.first else {
             if let item = refused.first {
                 let alert = NSAlert()
+                if refused.count == 1, let refusal = plan.readOnlyRefusal {
+                    alert.messageText = refusal.localizedDescription
+                    alert.informativeText = refusal.recoverySuggestion ?? ""
+                    FileAlerts.present(alert, in: window) { _ in }
+                    return
+                }
                 alert.messageText = refused.count == 1 ? String(localized: "“\(item.lastPathComponent)” can’t be deleted.")
                                                        : String(localized: "These \(refused.count) items can’t be deleted.", comment: "plural")
                 alert.informativeText = String(localized: "Disks, and items in folders you don’t have permission to change, can’t be deleted here.")
@@ -67,20 +73,26 @@ enum Deletion {
         let candidates: [URL]
         let refused: [URL]
         let choices: [Request]
+        let readOnlyRefusal: RemovalVolume.Refusal?
     }
 
-    nonisolated static func plan(_ urls: [URL], copies: CopyProviders) async -> Plan {
+    nonisolated static func plan(_ urls: [URL], copies: CopyProviders,
+                                volume: @escaping RemovalVolume.Reader = RemovalVolume.read) async -> Plan {
         await OwnThread.run {
             var refused: [URL] = []
+            var readOnlyRefusal: RemovalVolume.Refusal?
             let candidates = FileOps.outermost(urls).filter { url in
                 // A Trash is emptied, never deleted itself.
                 let fixed = FileOps.isWholeDisk(url) || Trash.isTrash(anySpelling: url)
                 // An archive opened as a folder isn't changed either.
-                let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)
+                let readOnly = RemovalVolume.refusal(in: [url], read: volume)
+                if readOnlyRefusal == nil { readOnlyRefusal = readOnly }
+                let changeable = readOnly == nil && access(url.deletingLastPathComponent().path, W_OK) == 0
+                    && !ReadOnlyCopies.contains(url, copies: copies)
                 if fixed || !changeable { refused.append(url) }
                 return !fixed && changeable
             }
-            return Plan(candidates: candidates, refused: refused, choices: candidates.map(Request.init))
+            return Plan(candidates: candidates, refused: refused, choices: candidates.map(Request.init), readOnlyRefusal: readOnlyRefusal)
         }
     }
 

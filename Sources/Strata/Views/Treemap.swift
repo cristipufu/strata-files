@@ -7,6 +7,8 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     let name: String
     /// Nil while a folder is still being measured; such items aren't drawn until their size arrives.
     var bytes: Int64?
+    var sizeUnavailable = false
+    var sizeIncomplete = false
     let isFolder: Bool
     let contentType: UTType?
 
@@ -21,6 +23,13 @@ nonisolated struct TreemapItem: Sendable, Hashable {
     init(entry: FileEntry, bytes: Int64?) {
         self.init(url: entry.url, name: entry.displayName, bytes: bytes ?? (entry.isDirectory ? nil : entry.size ?? 0),
                   isFolder: entry.isFolder, contentType: entry.contentType)
+    }
+
+    init(entry: FileEntry, measurement: DiskSizeMeasurement) {
+        self.init(url: entry.url, name: entry.displayName, bytes: measurement.bytes,
+                  isFolder: entry.isFolder, contentType: entry.contentType)
+        sizeUnavailable = measurement == .unavailable
+        sizeIncomplete = measurement.isPartial
     }
 
     var group: FileKindGroup { FileKindGroup.of(isFolder: isFolder, type: contentType) }

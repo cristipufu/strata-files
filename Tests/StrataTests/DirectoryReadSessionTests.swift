@@ -45,7 +45,7 @@ struct DirectoryReadSessionTests {
             containerStore: testEnvironment.services.containerStore,
             clipboard: testEnvironment.services.clipboard,
             directories: reads.reader,
-            availableCapacity: { _ in 123 })
+            volumeSpace: { _ in VolumeSpace(free: 123) })
         let browser = BrowserViewController(services: services)
         _ = browser.view
         browser.load(tree.url("a"))
@@ -53,9 +53,9 @@ struct DirectoryReadSessionTests {
         try await reads.request(0).finish(.success([]))
         await first.value
         await browser.loading.capacityTask?.value
-        #expect(browser.availableCapacity == 123)
+        #expect(browser.volumeSpace?.free == 123)
         browser.load(tree.url("b"))
-        #expect(browser.availableCapacity == nil)
+        #expect(browser.volumeSpace == nil)
         let next = try #require(browser.directoryReads.task)
         try await reads.request(1).finish(.success([]))
         await next.value

@@ -179,9 +179,10 @@ final class PaneHostViewController: NSViewController {
     }
 
     /// A per-pane status line (dual-pane mode), or nil to hide it.
-    func setStatus(_ text: String?) {
+    func setStatus(_ text: String?, details: String? = nil) {
         loadViewIfNeeded()
         status.stringValue = text ?? ""
+        status.toolTip = details
         statusBar.isHidden = text == nil
         hold(text == nil ? aboveBottom : aboveStatus, over: text == nil ? aboveStatus : aboveBottom)
     }

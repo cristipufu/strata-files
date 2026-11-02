@@ -324,6 +324,7 @@ extension BrowserViewController {
 
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
     @objc func indexChanged() {
+        refreshVolumeSpaceIfVisible()
         // Folder sizes come from the index; a file's is its own.
         let column = outlineView.column(withIdentifier: .size)
         let visible = outlineView.rows(in: outlineView.visibleRect)
@@ -337,6 +338,14 @@ extension BrowserViewController {
         if effectiveMode == .treemap { pushContent(animated: true) }
         if effectiveMode == .grid { gridController?.refreshVisibleItems(reconfigure: true) }
         delegate?.browserContentDidChange(self)
+    }
+
+    func refreshVolumeSpaceIfVisible() {
+        guard let view = viewIfLoaded, view.window?.isVisible == true, !view.isHiddenOrHasHiddenAncestor else { return }
+        loading.refreshVolumeSpace { [weak self] in
+            guard let self else { return }
+            delegate?.browserContentDidChange(self)
+        }
     }
 
     /// Status arrived or changed: redraw visible rows (badges and ignored-dimming).

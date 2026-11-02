@@ -49,7 +49,7 @@ final class BrowserViewController: NSViewController {
     init(services: BrowserServices) {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
-        loading = BrowserLoading(reader: services.directories, capacity: services.availableCapacity)
+        loading = BrowserLoading(reader: services.directories, capacity: services.volumeSpace)
         mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
         outlineView = FileOutlineView(copies: services.copies)
         super.init(nibName: nil, bundle: nil)
@@ -99,7 +99,7 @@ final class BrowserViewController: NSViewController {
 
     var filter: String { listing.filter }
     private(set) lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
-    var availableCapacity: Int64? { loading.availableCapacity }
+    var volumeSpace: VolumeSpace? { loading.volumeSpace }
 
     let outlineView: FileOutlineView
     private let scrollView = NSScrollView()
@@ -667,7 +667,7 @@ final class BrowserViewController: NSViewController {
         let row = outlineView.row(forItem: node)
         let column = outlineView.column(withIdentifier: .size)
         if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column]) }
-        treemapController?.updateSize(folderSize(url)?.bytes, for: url)
+        if effectiveMode == .treemap { treemapController?.updateFolderSize(folderSize(url), for: url) }
         if mode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
@@ -738,9 +738,22 @@ final class BrowserViewController: NSViewController {
                 ? String(localized: "\(selected.count) selected, \(Format.bytes(known.saturatingSum))", comment: "plural")
                 : String(localized: "\(selected.count) selected", comment: "plural"))
         }
-        if let availableCapacity, !isShowingResults {
-            parts.append(String(localized: "\(Format.bytes(availableCapacity)) available", comment: "Status bar: free space on the folder’s disk"))
+        if let volumeSpace, !isShowingResults {
+            parts.append(String(localized: "\(Format.bytes(volumeSpace.free)) free", comment: "Status bar: physically free space on the folder’s disk"))
         }
         return parts.joined(separator: "  ·  ")
+    }
+
+    var volumeSpaceDescription: String? {
+        guard !isShowingResults, let space = volumeSpace else { return nil }
+        var lines: [String] = []
+        if let total = space.total, total >= space.free {
+            lines.append(String(localized: "\(Format.bytes(total - space.free)) used of \(Format.bytes(total))", comment: "Drive storage: actual occupied space and capacity"))
+        }
+        lines.append(String(localized: "\(Format.bytes(space.free)) physically free", comment: "Drive storage: unallocated space"))
+        if let available = space.availableIncludingReclaimable {
+            lines.append(String(localized: "\(Format.bytes(available)) available including reclaimable space", comment: "Drive storage: macOS availability includes purgeable files"))
+        }
+        return lines.joined(separator: "\n")
     }
 }

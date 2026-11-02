@@ -149,7 +149,7 @@ struct IndexStoreAccessTests {
         #expect(compact.read { $0.fileCount } == [2, 1, 1, 1])
         #expect(compact.read { $0.fileKey } == [0, 11, 12, 13])
         #expect(compact.read { $0.mtime } == [10, 42, 42, 42])
-        #expect(compact.read { $0.flags[1] } == IndexStore.Flag.directory | IndexStore.Flag.unicodeName)
+        #expect(compact.read { $0.flags[1] } == IndexStore.Flag.directory | IndexStore.Flag.unicodeName | IndexStore.Flag.unknownAllocation | IndexStore.Flag.unreadDirectory)
         #expect(compact.read { $0.lookup("/synthetic/discarded") } == nil)
         let photo = try #require(compact.read { $0.lookup("/synthetic/café/photo.jpg") })
         #expect(photo == 2)

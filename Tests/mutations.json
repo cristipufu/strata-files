@@ -2678,14 +2678,14 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "            availableCapacity = nil",
+    "find": "            volumeSpace = nil",
     "replace": "            // Retain the previous capacity.",
     "rule": "Browser loading new folders retain the previous volumes free space",
     "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "guard let self, !Task.isCancelled, reads.generation == generation else { return }",
+    "find": "guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
     "replace": "guard let self else { return }",
     "rule": "Browser loading obsolete free space overwrites the current folder",
     "tests": "BrowserLoadingTests/freeSpaceBelongsToTheCurrentFolderAndLateReadsCannotClearNewWork"
@@ -2727,8 +2727,8 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "capacityTask = Task { [weak self] in\n                let value = await capacity(directory)\n                guard let self, !Task.isCancelled, reads.generation == generation else { return }",
-    "replace": "capacityTask = Task { [self] in\n                let value = await capacity(directory)\n                guard !Task.isCancelled, reads.generation == generation else { return }",
+    "find": "capacityTask = Task { [weak self] in\n            let value = await capacity(directory)\n            guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
+    "replace": "capacityTask = Task { [self] in\n            let value = await capacity(directory)\n            guard !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }",
     "rule": "Browser loading capacity work retains a closed browser",
     "tests": "BrowserLoadingTests/outstandingCapacityAndChildWorkDoNotRetainTheOwner"
   },
@@ -3591,15 +3591,15 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "if services.copies.contains(item.url) { return true }",
-    "replace": "if CopyProviders.live.contains(item.url) { return true }",
+    "find": "let copy = services.copies.contains(item.url)",
+    "replace": "let copy = CopyProviders.live.contains(item.url)",
     "rule": "Inspector provider ownership multi-selection leaves provider folders calculating",
     "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "return services.copies.contains(item.url) ? nil : folderSize(item.url)?.bytes",
-    "replace": "return folderSize(item.url)?.bytes",
+    "find": "let size = copy ? nil : folderSize(item.url)",
+    "replace": "let size = folderSize(item.url)",
     "rule": "Inspector provider ownership multi-selection sums folderSize for a provider folder",
     "tests": "InspectorProviderTests/multiSelectionCountsProviderFoldersAsUnmeasuredWithoutWaitingForSizes"
   },
@@ -3773,8 +3773,8 @@
   },
   {
     "file": "Strata/Browser/Deletion.swift",
-    "find": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
-    "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: .live)",
+    "find": "!ReadOnlyCopies.contains(url, copies: copies)",
+    "replace": "!ReadOnlyCopies.contains(url, copies: .live)",
     "rule": "Browser copy provider ownership deletionPlan checks the global copy provider",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
@@ -7234,9 +7234,17 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "rule": "History undo trashes a copy something else took the place of",
-    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
-    "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) {",
-    "tests": "TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies"
+    "tests": "TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies",
+    "edits": [
+      {
+        "find": "let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }",
+        "replace": "let chosen = outermost(urls).filter { canTrash($0, copies: copies) }"
+      },
+      {
+        "find": "for url in chosen where owns(url) {",
+        "replace": "for url in chosen {"
+      }
+    ]
   },
   {
     "file": "Strata/Inspector/InfoEditorView.swift",
@@ -7248,8 +7256,8 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "rule": "History undo drops an owned copy inside a folder that isn't owned",
-    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
-    "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {",
+    "find": "let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }",
+    "replace": "let chosen = outermost(urls).filter { canTrash($0, copies: copies) && owns($0) }",
     "tests": "TransferTests/undoTrashesAnOwnedCopyInsideAFolderThatIsntOwned"
   },
   {
@@ -8479,5 +8487,82 @@
     "find": "                let data = try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()",
     "replace": "                let data = offset == 0 ? (try FileRead.chunk(file, upToCount: Self.chunk) ?? Data()) : Data()",
     "tests": "SFTPClientTests/uploadsExactlyAndKeepsTheDate"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "value >= 0 else { return EIO }; allocated = value",
+    "replace": "value >= 0 else { return EIO }; allocated = 0",
+    "rule": "Storage measurement sparse files lose their allocated blocks in the bulk scanner",
+    "tests": "DiskSpaceTests/aSparseFilesAllocationSurvivesListingIndexingAndPersistence"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "let unknown = flags[i] & Flag.unreadDirectory != 0\n                    || children(of: current).contains",
+    "replace": "let unknown = children(of: current).contains",
+    "rule": "Storage measurement a child update declares an unread parent complete",
+    "tests": "DiskSpaceTests/anUnreadFolderStaysUnknownUntilItsOwnReadFinishes"
+  },
+  {
+    "file": "Strata/Views/TreemapViewController.swift",
+    "find": "let bytes = showsAllocatedSize ? size?.allocatedBytes : size?.bytes",
+    "replace": "let bytes = size?.bytes",
+    "rule": "Storage measurement arriving folder totals switch disk usage back to logical lengths",
+    "tests": "DiskSpaceTests/arrivingFolderSizesKeepTheDiskUsageMeasurement"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "let size = await read(items, facts, copies)\n            guard let self, !Task.isCancelled else { return }",
+    "replace": "let size = await read(items, facts, copies)\n            guard let self else { return }",
+    "rule": "Storage measurement obsolete Inspector totals overwrite the new selection",
+    "tests": "DiskSpaceTests/replacedSelectionTotalsCannotOverwriteTheCurrentItems"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "Format.bytes(volumeSpace.free)",
+    "replace": "Format.bytes(volumeSpace.availableIncludingReclaimable ?? volumeSpace.free)",
+    "rule": "Storage measurement the footer mistakes reclaimable availability for physically free space",
+    "tests": "DiskSpaceTests/freeSpaceAndReclaimableAvailabilityRemainDistinctInTheFooter"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: urls, read: volume) { return ([], [], [], refusal) }",
+    "replace": "// Skip the read-only batch preflight.",
+    "rule": "Read-only removal Trash moves writable items before discovering a protected item",
+    "tests": "RemovalVolumeTests/aReadOnlyItemRefusesTheWholeTrashSelectionBeforeAnythingMoves"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { throw refusal }",
+    "replace": "// Skip the synchronous read-only preflight.",
+    "rule": "Read-only removal synchronous Trash partially changes a mixed selection",
+    "tests": "RemovalVolumeTests/synchronousTrashAlsoRefusesBeforeMovingAWritableSibling"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { return ([], [], refusal) }",
+    "replace": "// Skip the owned read-only preflight.",
+    "rule": "Read-only removal Undo starts moving before checking every owned item",
+    "tests": "RemovalVolumeTests/undoTrashChecksEveryOwnedItemsVolumeBeforeMovingAny"
+  },
+  {
+    "file": "Strata/Model/RemovalVolume.swift",
+    "find": "statfs(item.deletingLastPathComponent().path, &volume)",
+    "replace": "statfs(item.path, &volume)",
+    "rule": "Read-only removal follows a selected links target instead of checking its parent",
+    "tests": "RemovalVolumeTests/aLinkOnAWritableVolumeCanBeRemovedWithoutChangingItsReadOnlyTarget"
+  },
+  {
+    "file": "Strata/Browser/Deletion.swift",
+    "find": "let changeable = readOnly == nil && access",
+    "replace": "let changeable = access",
+    "rule": "Read-only removal permanent deletion accepts a protected item",
+    "tests": "RemovalVolumeTests/permanentDeletionRetainsTheReasonForAReadOnlyRefusal"
+  },
+  {
+    "file": "Strata/Model/RemovalVolume.swift",
+    "find": "package struct Refusal: LocalizedError",
+    "replace": "package struct Refusal: Error",
+    "rule": "Read-only removal native errors lose their specific explanation",
+    "tests": "RemovalVolumeTests/aNativeAlertExplainsTheSystemRestriction"
   }
 ]
