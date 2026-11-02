@@ -196,6 +196,52 @@ struct ToolbarCustomizationTests {
         }
     }
 
+    @Test func toolbarCopyAndMoveSendOnlyTheActivePanesSelectionToTheOtherPane() async throws {
+        for index in 0...1 {
+            let (from, to) = index == 0 ? ("left", "right") : ("right", "left")
+            let tree = try TestTree("left/", "right/", "\(from)/a.txt", "\(from)/b.txt", "\(from)/c.txt")
+            let state = try TestTree(), environment = try PreviewEnvironment(state)
+            let owner = controller(tree, environment)
+            defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+            for pane in owner.panes { await pane.browser.directoryReads.task?.value }
+            let source = owner.panes[index].browser
+            owner.window?.makeFirstResponder(source.focusView)
+            let toolbar = try #require(owner.window?.toolbar)
+            toolbar.itemIdentifiers = [BrowserToolbar.identifier(.copyToOtherPane), BrowserToolbar.identifier(.moveToOtherPane)]
+            let copy = toolbar.items[0], move = toolbar.items[1]
+            #expect(copy.label == "Copy To" && copy.paletteLabel == "Copy to Other Pane" && move.label == "Move To")
+            source.select([], scroll: false)
+            #expect(!owner.validateToolbarItem(copy) && !owner.validateToolbarItem(move))
+
+            source.select([tree.url("\(from)/a.txt")], scroll: false)
+            #expect(owner.validateToolbarItem(copy))
+            owner.performToolbarCommand(copy)
+            for _ in 0..<300 where !tree.snapshot().contains("\(to)/a.txt") { try await Task.sleep(for: .milliseconds(20)) }
+            #expect(tree.snapshot().sorted() == ["\(from)/", "\(from)/a.txt", "\(from)/b.txt", "\(from)/c.txt", "\(to)/", "\(to)/a.txt"].sorted())
+
+            source.select([tree.url("\(from)/b.txt")], scroll: false)
+            #expect(owner.validateToolbarItem(move))
+            owner.performToolbarCommand(move)
+            for _ in 0..<300 where !tree.snapshot().contains("\(to)/b.txt") { try await Task.sleep(for: .milliseconds(20)) }
+            #expect(tree.snapshot().sorted() == ["\(from)/", "\(from)/a.txt", "\(from)/c.txt", "\(to)/", "\(to)/a.txt", "\(to)/b.txt"].sorted())
+            withExtendedLifetime((environment, state)) {}
+        }
+    }
+
+    @Test func toolbarButtonsUseShortLabelsAndThePaletteKeepsTheFullTitle() throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil }
+        let toolbar = try #require(owner.window?.toolbar)
+        let labels: [(StrataCommand, String)] = [(.copyToOtherPane, "Copy To"), (.moveToOtherPane, "Move To"),
+                                                (.compareWithOtherPane, "Sync"), (.connectToServer, "Connect"), (.newFolder, "New Folder")]
+        for (command, label) in labels {
+            let item = try #require(owner.toolbar(toolbar, itemForItemIdentifier: BrowserToolbar.identifier(command), willBeInsertedIntoToolbar: false))
+            #expect(item.label == label && item.paletteLabel == command.title && item.toolTip == command.title)
+        }
+        withExtendedLifetime((environment, state)) {}
+    }
+
     @Test func removedAndForeignItemsAndNativeEditingCannotTriggerFileCommands() async throws {
         let tree = try TestTree("left/a", "right/a"), state = try TestTree()
         let environment = try PreviewEnvironment(state), owner = controller(tree, environment)

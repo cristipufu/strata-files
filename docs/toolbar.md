@@ -1,7 +1,8 @@
 # Customize Toolbar
 
 Choose View → Customize Toolbar, or use the toolbar's native context menu. Drag commands in, out or into another
-order. New Folder, New File, Move to Trash, Open in Terminal, Quick Look, Reload and Command Palette are optional.
+order. New Folder, New File, Move to Trash, Copy To, Move To, Sync, Connect, Open in Terminal, Quick Look, Reload
+and Command Palette are optional. Sync opens Compare with Other Pane so you can review differences before syncing.
 The default set is unchanged; dragging the default set from the native palette restores it.
 Reload appears only when added through customization, and is disabled in search results, Recents and Duplicates.
 
