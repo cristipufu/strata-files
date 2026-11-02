@@ -3,7 +3,7 @@ import AppKit
 /// A pane's reads of server and container files before they're opened or previewed: the selection's prefetch, and the
 /// one action waiting for a fetch or a read. Each replaces the one before it; the pane stops them when it goes elsewhere,
 /// and they stop when the pane, and so this, goes.
-final class PaneFetches {
+@MainActor final class PaneFetches {
     private static let selectionPrefetchLimit: Int64 = 256 << 20
 
     private let services: BrowserServices

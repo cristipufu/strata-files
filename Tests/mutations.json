@@ -8671,5 +8671,12 @@
     "replace": "// Ignore a changed wrapping preference.",
     "rule": "Text preview wrapping a visible preview ignores its owners new choice",
     "tests": "CodeWrappingTests/resizingAndSwitchingWrappingKeepTheDocumentSelectionAndSingleRead|CodeWrappingTests/hiddenPreviewsApplyWrappingWhenTheyAreShownAgain"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "isolated deinit { queue.cancelAllOperations() }",
+    "replace": "isolated deinit {}",
+    "rule": "Folder size ownership releasing its owner leaves the active walk uncancelled",
+    "tests": "FolderSizerCancellationTests/releasingTheOwnerCancelsItsActiveWalk"
   }
 ]

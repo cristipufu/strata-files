@@ -9,7 +9,7 @@ import os
 /// Quick Look thumbnails for the file views and the column preview, generated on demand and cached by path,
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
-final class FileThumbnails {
+@MainActor final class FileThumbnails {
     static let shared = FileThumbnails(copies: .live, containerStore: .shared)
 
     typealias Completion = @Sendable (CGImage?, Bool) -> Void

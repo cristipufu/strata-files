@@ -17,7 +17,7 @@ nonisolated package struct FolderSize: Sendable {
 
 /// Computes folder sizes in the background. Results are shared by every window; each browser owns
 /// its own queue so leaving a folder cancels only that browser's pending walks.
-package final class FolderSizer {
+@MainActor package final class FolderSizer {
     private static var cache: [String: FolderSize] = [:]
 
     package var onUpdate: ((URL) -> Void)?

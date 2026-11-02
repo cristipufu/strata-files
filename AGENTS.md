@@ -69,8 +69,8 @@ python3 -m unittest discover -s Tests -p 'test_*.py'  # checkers and generated r
 ### CI and release gates
 
 - Pushes to `main` and pull requests that touch the code run **CI** (destructive-action audit, Python checks, build
-  and `swift test`, plus an Address Sanitizer job) and **Translations** (complete catalogs, `en.json` matching the
-  code). README and website changes run **README translations** and **Website** (see `docs/readme-localization.md`
+  and `swift test`, plus optimized and Address Sanitizer jobs) and **Translations** (complete catalogs, `en.json`
+  matching the code). README and website changes run **README translations** and **Website** (see `docs/readme-localization.md`
   and `docs/website.md`). **Mutations** runs weekly.
 - Tags run **Release**, which repeats extraction, completeness and localization regression tests, the full Swift suite
   and the sanitizer suite before importing signing credentials, signing or publishing, including on manual runs.

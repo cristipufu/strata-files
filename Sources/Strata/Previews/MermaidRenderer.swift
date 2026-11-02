@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 /// Only the bundled library executes here. Document text crosses the JavaScript boundary as an argument.
-package final class MermaidRenderer: NSObject, WKNavigationDelegate {
+@MainActor package final class MermaidRenderer: NSObject, WKNavigationDelegate {
     nonisolated package static let textLimit = 50_000
     nonisolated package static let diagramLimit = 12
     private let webView: WKWebView

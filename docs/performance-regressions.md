@@ -319,3 +319,16 @@ Headless native checks cover text, source and JSON, Unicode, long unbroken lines
 horizontal scrolling, resize, retained selection and a single source read, lazy offscreen layout, and Space and
 Inspector settings ownership. The renderer-retirement check also changes wrapping after a native failure, so the
 new setting cannot reactivate the retired renderer.
+
+## Optimized release compilation
+
+The first 0.8.0 release attempt passed its normal suite, then failed while Swift 6.3.3 imported `FolderSizer` into
+the optimized file module: its deinitializer was isolated but the imported class was not recognized as actor-isolated.
+Commit `44e458e` introduced that cleanup while fixing obsolete folder measurements; 0.7.5 had no such deinitializer.
+The newer local Swift 6.4.2 toolchain accepted it. The affected standalone owners now explicitly name `MainActor`
+on their declarations, preserving the isolation and cancellation they already required. Native view subclasses
+continue to inherit their actor from AppKit. A held folder-size read verifies that releasing its owner still
+cancels active work, rather than dropping cleanup to make compilation pass.
+
+Regular CI now runs the complete optimized suite with its pinned Xcode, alongside normal and sanitizer jobs, so
+release-only compilation errors are checked before a tag. The Release workflow retains all three suites.

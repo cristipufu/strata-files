@@ -7,7 +7,7 @@ extension Notification.Name {
 
 /// The containers of the engine Strata found (see `EngineDiscovery`), kept current from the engine's events. When no
 /// engine is running, it looks again now and then and whenever Strata comes to the front.
-package final class ContainerStore {
+@MainActor package final class ContainerStore {
     package static let shared = ContainerStore()
 
     package private(set) var engine: ContainerEngine?

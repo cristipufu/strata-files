@@ -79,6 +79,31 @@ import Testing
         #expect(tree.snapshot() == ["folder/", "folder/file"])
     }
 
+    @Test func releasingTheOwnerCancelsItsActiveWalk() async throws {
+        let tree = try TestTree("folder/file")
+        let started = AsyncStream<Void>.makeStream()
+        let completed = AsyncStream<Bool>.makeStream()
+        let resume = DispatchSemaphore(value: 0)
+        defer { resume.signal(); started.continuation.finish(); completed.continuation.finish() }
+        var sizer: FolderSizer? = FolderSizer(reader: { _, isCancelled in
+            started.continuation.yield(())
+            started.continuation.finish()
+            resume.wait()
+            completed.continuation.yield(isCancelled())
+            completed.continuation.finish()
+            return nil
+        })
+        weak var owner = sizer
+        sizer?.request(tree.url("folder"))
+        var beginning = started.stream.makeAsyncIterator()
+        _ = await beginning.next()
+        sizer = nil
+        #expect(owner == nil)
+        resume.signal()
+        var ending = completed.stream.makeAsyncIterator()
+        #expect(await ending.next() == true)
+        #expect(tree.snapshot() == ["folder/", "folder/file"])
+    }
 
     @Test func equivalentPathSpellingsShareSizesAndInvalidateTogether() async throws {
         let tree = try TestTree("folder/file")

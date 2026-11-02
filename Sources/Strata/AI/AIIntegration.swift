@@ -23,7 +23,7 @@ package enum StrataAI {
     }
 }
 
-package final class SemanticIndexing {
+@MainActor package final class SemanticIndexing {
     package typealias Work = @Sendable (@escaping @Sendable (SemanticIndexProgress) -> Void) async -> Void
     package private(set) var progress = SemanticIndexProgress(phase: .done)
     private let schedule: LatestUpdate<SemanticIndexProgress>.Schedule

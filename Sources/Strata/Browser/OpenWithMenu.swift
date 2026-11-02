@@ -25,7 +25,7 @@ nonisolated struct FinderLook: Sendable {
 /// Finder's looks of the folders a view shows, each read once and kept while it's shown: a view built again for the
 /// same folder (the Inspector's, on each refresh) waits for the read under way instead of starting another a slow disk
 /// would hold up.
-final class FinderLooks {
+@MainActor final class FinderLooks {
     private struct Read {
         let id = UUID()
         let task: Task<FinderLook, Never>

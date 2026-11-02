@@ -9,7 +9,7 @@ extension Notification.Name {
 /// them, and the disks mounted, read away from the main thread. The sidebar lists them each time a window comes
 /// forward, ⌘K and path suggestions each time they open: a folder on a server that stopped answering would hold the
 /// app until the server timed out. Lists show what was last read, and update when a read finds a change.
-package final class PlaceChecks {
+@MainActor package final class PlaceChecks {
     package nonisolated struct Snapshot: Sendable, Equatable {
         package var volumes: [Place] = []
         package var folders: Set<String> = []
