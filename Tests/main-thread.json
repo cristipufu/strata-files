@@ -190,5 +190,11 @@
  {
   "helper": "GitRunner.executable",
   "reason": "Where git is installed, found once a launch (the first time a git store is made) among the system's own folders on the startup disk."
+ },
+ {
+  "file": "Sources/Strata/Model/FileOps.swift",
+  "call": "RemovalVolume.refusal(in:)",
+  "count": 1,
+  "reason": "The synchronous Undo of New File or New Folder checks the one item it made before moving it to Trash; its inverse must be registered inside the UndoManager callback. User selections and History read volumes in their background workers."
  }
 ]

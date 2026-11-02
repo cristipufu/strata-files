@@ -3773,8 +3773,8 @@
   },
   {
     "file": "Strata/Browser/Deletion.swift",
-    "find": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: copies)",
-    "replace": "let changeable = access(url.deletingLastPathComponent().path, W_OK) == 0 && !ReadOnlyCopies.contains(url, copies: .live)",
+    "find": "!ReadOnlyCopies.contains(url, copies: copies)",
+    "replace": "!ReadOnlyCopies.contains(url, copies: .live)",
     "rule": "Browser copy provider ownership deletionPlan checks the global copy provider",
     "tests": "BrowserCopyProviderTests/serverCommandsAndDeletionsStayInTheirOwnBrowserServices"
   },
@@ -7234,9 +7234,17 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "rule": "History undo trashes a copy something else took the place of",
-    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
-    "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) {",
-    "tests": "TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies"
+    "tests": "TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies",
+    "edits": [
+      {
+        "find": "let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }",
+        "replace": "let chosen = outermost(urls).filter { canTrash($0, copies: copies) }"
+      },
+      {
+        "find": "for url in chosen where owns(url) {",
+        "replace": "for url in chosen {"
+      }
+    ]
   },
   {
     "file": "Strata/Inspector/InfoEditorView.swift",
@@ -7248,8 +7256,8 @@
   {
     "file": "Strata/Model/FileOps.swift",
     "rule": "History undo drops an owned copy inside a folder that isn't owned",
-    "find": "        for url in outermost(urls.filter(owns)) where canTrash(url, copies: copies) && owns(url) {",
-    "replace": "        for url in outermost(urls) where canTrash(url, copies: copies) && owns(url) {",
+    "find": "let chosen = outermost(urls.filter(owns)).filter { canTrash($0, copies: copies) && owns($0) }",
+    "replace": "let chosen = outermost(urls).filter { canTrash($0, copies: copies) && owns($0) }",
     "tests": "TransferTests/undoTrashesAnOwnedCopyInsideAFolderThatIsntOwned"
   },
   {
@@ -8514,5 +8522,47 @@
     "replace": "Format.bytes(volumeSpace.availableIncludingReclaimable ?? volumeSpace.free)",
     "rule": "Storage measurement the footer mistakes reclaimable availability for physically free space",
     "tests": "DiskSpaceTests/freeSpaceAndReclaimableAvailabilityRemainDistinctInTheFooter"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: urls, read: volume) { return ([], [], [], refusal) }",
+    "replace": "// Skip the read-only batch preflight.",
+    "rule": "Read-only removal Trash moves writable items before discovering a protected item",
+    "tests": "RemovalVolumeTests/aReadOnlyItemRefusesTheWholeTrashSelectionBeforeAnythingMoves"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { throw refusal }",
+    "replace": "// Skip the synchronous read-only preflight.",
+    "rule": "Read-only removal synchronous Trash partially changes a mixed selection",
+    "tests": "RemovalVolumeTests/synchronousTrashAlsoRefusesBeforeMovingAWritableSibling"
+  },
+  {
+    "file": "Strata/Model/FileOps.swift",
+    "find": "if let refusal = RemovalVolume.refusal(in: chosen, read: volume) { return ([], [], refusal) }",
+    "replace": "// Skip the owned read-only preflight.",
+    "rule": "Read-only removal Undo starts moving before checking every owned item",
+    "tests": "RemovalVolumeTests/undoTrashChecksEveryOwnedItemsVolumeBeforeMovingAny"
+  },
+  {
+    "file": "Strata/Model/RemovalVolume.swift",
+    "find": "statfs(item.deletingLastPathComponent().path, &volume)",
+    "replace": "statfs(item.path, &volume)",
+    "rule": "Read-only removal follows a selected links target instead of checking its parent",
+    "tests": "RemovalVolumeTests/aLinkOnAWritableVolumeCanBeRemovedWithoutChangingItsReadOnlyTarget"
+  },
+  {
+    "file": "Strata/Browser/Deletion.swift",
+    "find": "let changeable = readOnly == nil && access",
+    "replace": "let changeable = access",
+    "rule": "Read-only removal permanent deletion accepts a protected item",
+    "tests": "RemovalVolumeTests/permanentDeletionRetainsTheReasonForAReadOnlyRefusal"
+  },
+  {
+    "file": "Strata/Model/RemovalVolume.swift",
+    "find": "package struct Refusal: LocalizedError",
+    "replace": "package struct Refusal: Error",
+    "rule": "Read-only removal native errors lose their specific explanation",
+    "tests": "RemovalVolumeTests/aNativeAlertExplainsTheSystemRestriction"
   }
 ]

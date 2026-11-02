@@ -240,3 +240,29 @@ Address Sanitizer suite with all 1,617 tests, all 99 Python checks, the four arc
 localization checks. Five new negative controls cover allocation parsing, unread parents, chart updates, obsolete
 Inspector totals and physical free space; the existing capacity and provider controls follow the refactored code.
 All ten new or updated controls were caught, and the source was restored after every deliberate regression.
+
+## Trash permissions and system apps
+
+The live Blenny check moved only `/Applications/Blenny.app` to Trash, then used Strata's native Undo and verified the
+restored device, inode and birth time against the original. The user also reported that Steam moved successfully.
+Chess is a different case: this Mac's `/System/Applications/Chess.app` is restricted and belongs to the sealed,
+read-only system volume. An administrator prompt cannot permit that removal. Apple's [uninstall guidance](https://support.apple.com/en-ie/102610)
+also distinguishes protected system apps from ordinary installed apps.
+
+Strata previously passed the OS's generic failure through to its alert, without distinguishing read-only volumes.
+`RemovalVolume` now reads that policy away from the UI and produces a specific reason. Trash validates the whole
+chosen batch before moving anything, including creation Undo and owned transfer/History Undo. Permanent-deletion
+planning retains the reason for its refusal. Removing a symlink checks its parent's volume, so a writable link to a
+protected system item remains removable. No system app was modified in this investigation.
+
+The new headless regressions inject volume facts and use only throwaway files. They cover a protected last item in a
+mixed batch, unchanged siblings, no partial History/Undo registration, ownership filtering, symlink targets, deletion
+planning and the real native error alert. The original Topaz authorization failure remains unverified: that app had
+already been removed with Finder. These results do not establish support for every administrator-only deletion or
+Empty Trash failure.
+
+Validation passed: 163 focused tests in both debug and Address Sanitizer, all 99 Python checks, the architecture
+audits and complete localization checks. The native alert is checked headlessly. Six new negative controls exercise
+batch refusal, synchronous creation Undo, owned Undo, link handling, deletion planning and the alert's explanation;
+three existing ownership controls follow the refactored code.
+All nine controls were caught, and the source was restored after every deliberate regression.
