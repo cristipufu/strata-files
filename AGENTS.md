@@ -590,6 +590,10 @@ a native call while cancelling and replacing its caller, without loading a live 
   its input after a connection check, and a throwing write alone doesn't prevent termination. Test the real transport
   with a closed-reader fixture wherever another process holds the reader, and keep the signal policy local to its
   descriptor.
+- A pipe handle must stay open for its active write. A throwing Foundation write can still raise an Objective-C
+  exception if another thread closes the handle. Use `SFTPInput`'s ownership pattern: refuse queued writes on close,
+  defer handle closure until the active write ends, and stop the child without waiting for the writer's lock. Test
+  held writes and fake handle callbacks so a broken guard reports a failure without intentionally crashing.
 - A closed `QLPreviewView` can't accept another item. `QuickLookPreviewView` owns the native view for one window
   lifetime, rejects late completions after closing, and creates a new native view when moved to another window. Cover
   deferred selection work and the rich-preview fallback after closing with a controlled scheduler.

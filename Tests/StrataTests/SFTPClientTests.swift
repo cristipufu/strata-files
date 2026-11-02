@@ -169,6 +169,8 @@ struct SFTPClientTests {
     @Test func aClosedSessionFailsCleanly() throws {
         defer { cleanUp() }
         client.close()
+        client.close()
+        #expect(throws: SFTPError.self) { try client.connect() }
         #expect(throws: SFTPError.self) { try client.list(root.path) }
     }
 }

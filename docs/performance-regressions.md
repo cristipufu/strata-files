@@ -283,3 +283,22 @@ audits and complete localization checks. The native alert is checked headlessly.
 batch refusal, synchronous creation Undo, owned Undo, link handling, deletion planning and the alert's explanation;
 three existing ownership controls follow the refactored code.
 All nine controls were caught, and the source was restored after every deliberate regression.
+
+## SFTP disconnect during a write
+
+CI on macOS 26 exposed an uncaught `NSFileHandleOperationException` while a background download sent an SFTP
+request after its fixture closed the client. `SFTPClient` serialized writes with a lock, but `close()` closed the
+same `FileHandle` independently. Foundation's throwing write still reads the handle's descriptor and can raise an
+Objective-C exception when it has already closed. Suppressing `SIGPIPE` protects against the server closing its
+end, not this lifetime race. The same independent write/close paths are present in the shipped `v0.7.5` source.
+
+`SFTPInput` now owns packet serialization and handle lifetime. Disconnect immediately refuses queued writes, leaves
+an active writer's handle open, and closes it exactly once when that write returns or throws. It never waits for
+the writer's lock, so the client can end the child process and unblock a full pipe. Reader exit and explicit close
+share one client cleanup path; only the first close ends the process. Failed sends close the session and release
+its remaining waiters. The diagnostic signal-policy value is captured while the handle is open.
+
+`SFTPInputTests` holds writes at an injected boundary and checks both successful and failed writes, queued refusal,
+repeated close, and release of an unused input. The fake handle callbacks make lifecycle regressions fail without
+deliberately invoking a native exception. Existing real-process SFTP and remote-file suites exercise the integrated
+transport, including a peer that closes its input. These tests use temporary files and no live server.

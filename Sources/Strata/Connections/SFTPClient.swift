@@ -82,13 +82,10 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
     private static let window = 16
 
     private let process: Process
-    private let toServer: FileHandle
+    private let input: SFTPInput
     private let fromServer: FileHandle
     private let errors = Pipe()
     private let lock = NSLock()
-    /// Whole packets go out one at a time. Separate from `lock`: a write can block on a full pipe while the reader still
-    /// needs `lock` to hand out answers.
-    private let writeLock = NSLock()
     private var nextID: UInt32 = 1
     private var waiting: [UInt32: Waiter] = [:]
     private var closedReason: String?
@@ -124,13 +121,15 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
-        toServer = input.fileHandleForWriting
+        let toServer = input.fileHandleForWriting
         fromServer = output.fileHandleForReading
         // ssh can exit between a request's connection check and its write. Suppress SIGPIPE on this descriptor
         // only, so FileHandle reports EPIPE instead of terminating the app.
         guard fcntl(toServer.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
+        suppressesBrokenPipeSignal = fcntl(toServer.fileDescriptor, F_GETNOSIGPIPE) == 1
+        self.input = SFTPInput(write: { try toServer.write(contentsOf: $0) }, close: { try? toServer.close() })
         try process.run()
         let reader = Thread { [weak self] in self?.readLoop() }
         reader.name = "SFTP reader"
@@ -161,10 +160,12 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
         lock.lock()
         let pending = waiting
         waiting.removeAll()
-        if closedReason == nil { closedReason = "" }
+        let firstClose = closedReason == nil
+        if firstClose { closedReason = "" }
         lock.unlock()
         pending.values.forEach { $0.done.signal() }
-        try? toServer.close()
+        guard firstClose else { return }
+        input.close()
         if process.isRunning { process.terminate() }
     }
 
@@ -372,7 +373,10 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
     private func hello() throws {
         // VERSION has no request ID: it's the first thing back.
         let waiter = Waiter()
-        lock.withLock { waiting[0] = waiter }
+        try lock.withLock {
+            if let reason = closedReason { throw SFTPError.disconnected(reason.isEmpty ? stderrText : reason) }
+            waiting[0] = waiter
+        }
         var body = Writer()
         body.uint32(3)
         try write(type: Packet.`init`.rawValue, body: body.bytes)
@@ -450,6 +454,7 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
             try write(type: type.rawValue, body: body.bytes)
         } catch {
             _ = lock.withLock { waiting.removeValue(forKey: id) }
+            close()
             throw SFTPError.disconnected(lock.withLock { stderrText })
         }
         return (id, waiter)
@@ -484,15 +489,14 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
     package var processIdentifier: Int32 { process.processIdentifier }
 
     /// The writer must turn a closed ssh input into an error, never a process-wide SIGPIPE.
-    package var suppressesBrokenPipeSignal: Bool { fcntl(toServer.fileDescriptor, F_GETNOSIGPIPE) == 1 }
+    package let suppressesBrokenPipeSignal: Bool
 
     private func write(type: UInt8, body: [UInt8]) throws {
         var packet = Writer()
         packet.uint32(UInt32(body.count + 1))
         packet.byte(type)
         packet.raw(body)
-        // Several threads may send at once: whole packets only.
-        try writeLock.withLock { try toServer.write(contentsOf: Data(packet.bytes)) }
+        try input.write(Data(packet.bytes))
     }
 
     /// Answers, matched to their requests by ID, until the server goes away.
@@ -516,14 +520,8 @@ package nonisolated final class SFTPClient: @unchecked Sendable {
             waiter?.reply = (type, body)
             waiter?.done.signal()
         }
-        lock.lock()
-        if closedReason == nil { closedReason = "" }
-        let pending = waiting
-        waiting.removeAll()
-        lock.unlock()
-        pending.values.forEach { $0.done.signal() }
         // Garbled or gone: ssh goes too (it isn't left running with nothing reading it).
-        if process.isRunning { process.terminate() }
+        close()
     }
 
     /// What ssh prints (a login that failed, an unknown host…), kept short for messages.

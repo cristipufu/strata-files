@@ -8622,5 +8622,26 @@
     ],
     "rule": "Toolbar startup inserts native items in the wrong display mode before restoring the users choice",
     "tests": "ToolbarStartupTests/savedDisplayModePrecedesNativeItemsAndTheSavedLayoutSurvivesAttachment"
+  },
+  {
+    "file": "Strata/Connections/SFTPInput.swift",
+    "find": "guard state == .open else { return false }",
+    "replace": "guard true else { return false }",
+    "rule": "SFTP input ownership a queued write uses a handle after disconnect",
+    "tests": "SFTPInputTests/aClosedInputNeverCallsItsHandleAgain|SFTPInputTests/disconnectReturnsWithoutClosingAnActiveWritesHandle"
+  },
+  {
+    "file": "Strata/Connections/SFTPInput.swift",
+    "find": "case .writing: state = .closing; return false",
+    "replace": "case .writing: state = .closing; return true",
+    "rule": "SFTP input ownership disconnect closes the handle underneath an active write",
+    "tests": "SFTPInputTests/disconnectReturnsWithoutClosingAnActiveWritesHandle"
+  },
+  {
+    "file": "Strata/Connections/SFTPInput.swift",
+    "find": "case .closing: state = .closed; return true",
+    "replace": "case .closing: state = .closed; return false",
+    "rule": "SFTP input ownership a stopped writer leaks its handle after completing",
+    "tests": "SFTPInputTests/disconnectReturnsWithoutClosingAnActiveWritesHandle"
   }
 ]
