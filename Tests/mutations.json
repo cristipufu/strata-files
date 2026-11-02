@@ -8367,5 +8367,26 @@
     "find": "        case .list: clipboardChanged()",
     "replace": "        case .list: clipboardChanged(); columnController?.refreshVisibleRows()",
     "tests": "IconLoadingTests/backgroundDecorationsLeaveCachedColumnsAloneUntilShown"
+  },
+  {
+    "file": "Strata/Index/DuplicateFinder.swift",
+    "rule": "Duplicates: cancelled candidate collection stops even when no sizes match",
+    "find": "                if id % 1024 == 0, isCancelled() { return [] }",
+    "replace": "",
+    "tests": "DuplicateFinderTests/cancellationInterruptsCandidateCollectionEvenWithoutMatchingSizes"
+  },
+  {
+    "file": "Strata/Index/DuplicateFinder.swift",
+    "rule": "Duplicates: cancellation interrupts a full hash between chunks",
+    "find": "                if isCancelled() { return nil }",
+    "replace": "",
+    "tests": "DuplicateFinderTests/fullHashesStopBetweenChunksAndKeepTheCorrectDigestAcrossPools"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "rule": "Duplicates: an index read never holds a closed pane alive",
+    "find": "        task = Task { [weak self, weak p] in\n            let reporter = Task",
+    "replace": "        task = Task { [weak self, weak p, keepPane = p] in\n            defer { withExtendedLifetime(keepPane) {} }\n            let reporter = Task",
+    "tests": "DuplicateFinderTests/closingAPaneReleasesItsSearchWhileAnIndexReadIsHeld"
   }
 ]

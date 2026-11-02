@@ -14,16 +14,29 @@ nonisolated package struct DuplicateGroup: Sendable {
 /// Finds duplicate files among indexed ones: same size first (free, from the index), then a hash of the first and
 /// last 64 KB, then a full SHA-256 only for files that still look identical.
 nonisolated package enum DuplicateFinder {
-    package static func candidates(in store: IndexStore, minSize: Int64) -> [[(path: String, size: Int64)]] {
-        store.read { store in
+    package static func candidates(in store: IndexStore, minSize: Int64,
+                                   isCancelled: @Sendable () -> Bool = { false }) -> [[(path: String, size: Int64)]] {
+        guard !isCancelled() else { return [] }
+        return store.read { store in
             var bySize: [Int64: [Int32]] = [:]
             let skip = IndexStore.Flag.directory | IndexStore.Flag.noise | IndexStore.Flag.hidden | IndexStore.Flag.deleted
                 | IndexStore.Flag.symlink
             // App internals carry the noise flag, so the skip mask already leaves them out.
-            for id in 0..<store.count where store.flags[id] & skip == 0 && store.size[id] >= minSize {
+            for id in 0..<store.count {
+                if id % 1024 == 0, isCancelled() { return [] }
+                guard store.flags[id] & skip == 0, store.size[id] >= minSize else { continue }
                 bySize[store.size[id], default: []].append(Int32(id))
             }
-            return bySize.filter { $0.value.count > 1 }.map { size, ids in ids.map { (store.path(of: $0), size) } }
+            var groups: [[(path: String, size: Int64)]] = []
+            for (size, ids) in bySize where ids.count > 1 {
+                var paths: [(path: String, size: Int64)] = []
+                for id in ids {
+                    if isCancelled() { return [] }
+                    paths.append((store.path(of: id), size))
+                }
+                groups.append(paths)
+            }
+            return groups
         }
     }
 
@@ -39,15 +52,19 @@ nonisolated package enum DuplicateFinder {
             let size = first.size
             // Hard links are one file under several names: deleting one frees nothing, so each counts once.
             var inodes: Set<[UInt64]> = []
-            let distinct = group.filter { file in
+            var distinct: [(path: String, size: Int64)] = []
+            for file in group {
+                if isCancelled() { return [] }
                 var info = stat()
-                guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, info.st_size == size else { return false }
-                return inodes.insert([UInt64(bitPattern: Int64(info.st_dev)), info.st_ino]).inserted
+                guard lstat(file.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, info.st_size == size else { continue }
+                if inodes.insert([UInt64(bitPattern: Int64(info.st_dev)), info.st_ino]).inserted { distinct.append(file) }
             }
             guard distinct.count > 1 else { continue }
             var byQuickHash: [Data: [String]] = [:]
             for file in distinct {
-                if let hash = quickHash(file.path, size: size) { byQuickHash[hash, default: []].append(file.path) }
+                if isCancelled() { return [] }
+                let hash = autoreleasepool { quickHash(file.path, size: size) }
+                if let hash { byQuickHash[hash, default: []].append(file.path) }
             }
             for paths in byQuickHash.values where paths.count > 1 {
                 // Up to 128 KB the head and tail hashes cover the whole file.
@@ -58,13 +75,14 @@ nonisolated package enum DuplicateFinder {
                 var byFullHash: [Data: [String]] = [:]
                 for path in paths {
                     if isCancelled() { return [] }
-                    if let hash = fullHash(path, expectedSize: size) { byFullHash[hash, default: []].append(path) }
+                    if let hash = fullHash(path, expectedSize: size, isCancelled: isCancelled) { byFullHash[hash, default: []].append(path) }
                 }
                 for same in byFullHash.values where same.count > 1 {
                     groups.append(DuplicateGroup(size: size, paths: same.sorted()))
                 }
             }
         }
+        guard !isCancelled() else { return [] }
         progress(total, total)
         return groups.sorted { $0.reclaimable > $1.reclaimable }
     }
@@ -97,18 +115,30 @@ nonisolated package enum DuplicateFinder {
         return Data(hasher.finalize())
     }
 
-    private static func fullHash(_ path: String, expectedSize: Int64) -> Data? {
+    package static func fullHash(_ path: String, expectedSize: Int64, isCancelled: @Sendable () -> Bool) -> Data? {
+        guard !isCancelled() else { return nil }
         guard let handle = openRegularFile(path, expectedSize: expectedSize) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
+        var read: Int64 = 0
         do {
-            // `read(upToCount:)` returns nil (not empty data) at the end of the file.
-            while let data = try handle.read(upToCount: 1 << 20), !data.isEmpty {
-                hasher.update(data: data)
+            while true {
+                if isCancelled() { return nil }
+                // Foundation autoreleases each read buffer. Drain it here, rather than retaining every chunk until
+                // the entire scan ends, which can hold as much memory as all the files hashed.
+                let count = try autoreleasepool {
+                    let data = try handle.read(upToCount: 1 << 20) ?? Data()
+                    hasher.update(data: data)
+                    return data.count
+                }
+                if count == 0 { break }
+                guard Int64(count) <= expectedSize - read else { return nil }
+                read += Int64(count)
             }
         } catch {
             return nil
         }
+        guard read == expectedSize, !isCancelled() else { return nil }
         return Data(hasher.finalize())
     }
 }

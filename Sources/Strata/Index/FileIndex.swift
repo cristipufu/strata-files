@@ -228,8 +228,14 @@ package final class FileIndex {
     @concurrent
     private nonisolated static func findDuplicates(_ store: IndexStore, _ minSize: Int64, _ progress: @escaping @Sendable (Int, Int) -> Void,
                                                    _ isCancelled: @escaping @Sendable () -> Bool) async -> [DuplicateGroup] {
-        let candidates = DuplicateFinder.candidates(in: store, minSize: minSize)
-        return DuplicateFinder.find(candidates, progress: progress, isCancelled: isCancelled)
+        let cancelled = OSAllocatedUnfairLock(initialState: false)
+        return await withTaskCancellationHandler {
+            await OwnThread.run {
+                let stopped: @Sendable () -> Bool = { cancelled.withLock { $0 } || isCancelled() }
+                let candidates = DuplicateFinder.candidates(in: store, minSize: minSize, isCancelled: stopped)
+                return DuplicateFinder.find(candidates, progress: progress, isCancelled: stopped)
+            }
+        } onCancel: { cancelled.withLock { $0 = true } }
     }
 
     @concurrent

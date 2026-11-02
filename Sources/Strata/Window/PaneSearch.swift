@@ -32,6 +32,8 @@ import AppKit
         self.waitForRefresh = waitForRefresh
     }
 
+    isolated deinit { stop() }
+
     /// An index update must not keep restarting a search before its results land. Coalesce changes and leave a
     /// pause after the current read, so a busy index doesn't keep a full search running continuously.
     func refresh() {
@@ -275,7 +277,24 @@ import AppKit
 
     @concurrent
     private static func entries(_ urls: [URL]) async -> [FileEntry] {
-        urls.compactMap(FileEntry.init(url:))
+        var found: [FileEntry] = []
+        for url in urls {
+            guard !Task.isCancelled else { return [] }
+            if let entry = autoreleasepool(invoking: { FileEntry(url: url) }) { found.append(entry) }
+        }
+        return found
+    }
+
+    @concurrent
+    private static func duplicateEntries(_ groups: [DuplicateGroup]) async -> [String: FileEntry] {
+        var found: [String: FileEntry] = [:]
+        for group in groups {
+            for path in group.paths {
+                guard !Task.isCancelled else { return [:] }
+                if let entry = autoreleasepool(invoking: { FileEntry(url: URL(fileURLWithPath: path)) }) { found[path] = entry }
+            }
+        }
+        return found
     }
 
     /// Searches a folder the index doesn't cover by reading it (`FolderSearch`): matches fill in while it reads, the
@@ -342,6 +361,9 @@ import AppKit
         guard let p = pane else { return }
         latest += 1
         let generation = latest
+        task?.cancel()
+        task = nil
+        duplicateSearch?.set()
         guard services.index.isReady else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Duplicates appear once the first index is built."))
@@ -349,24 +371,29 @@ import AppKit
         }
         p.browser.showMessage(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"))
         let cancelled = CancelFlag()
-        duplicateSearch?.set()
         duplicateSearch = cancelled
-        Task {
-            let groups = await services.index.duplicates(progress: { done, total in
-                Task { @MainActor in
-                    guard generation == self.latest, total > 0 else { return }
-                    p.browser.showMessage(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
-                                          message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
+        let services = services
+        let (updates, progress) = AsyncStream<(Int, Int)>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        task = Task { [weak self, weak p] in
+            let reporter = Task { [weak self, weak p] in
+                for await (done, total) in updates {
+                    guard !Task.isCancelled else { return }
+                    self?.showDuplicateProgress(done, total, in: p, generation: generation)
+                    try? await Task.sleep(for: .milliseconds(200))
                 }
+            }
+            defer { progress.finish(); reporter.cancel(); self?.finished(generation) }
+            let groups = await services.index.duplicates(progress: { done, total in
+                progress.yield((done, total))
             }, isCancelled: { cancelled.isSet }) ?? []
+            guard !Task.isCancelled, !cancelled.isSet else { return }
             let shown = Array(groups.prefix(500))
             // Each copy's details are read away from the main thread: up to 500 groups of them.
-            let found = await Self.entries(shown.flatMap { $0.paths.map { URL(fileURLWithPath: $0) } })
-            let byPath = Dictionary(found.map { ($0.url.path, $0) }, uniquingKeysWith: { first, _ in first })
-            guard generation == latest, p.destination == .duplicates else { return }
+            let byPath = await Self.duplicateEntries(shown)
+            guard let self, let p, isCurrent(generation, p, .duplicates), !cancelled.isSet else { return }
             let reclaimable = groups.map(\.reclaimable).saturatingSum
             let rows = shown.map { group in
-                let entries = group.paths.compactMap { byPath[URL(fileURLWithPath: $0).path] }
+                let entries = group.paths.compactMap { byPath[$0] }
                 let name = (group.paths.first as NSString?)?.lastPathComponent ?? ""
                 let detail = [
                     String(localized: "\(group.paths.count) copies", comment: "plural"),
@@ -383,5 +410,11 @@ import AppKit
                                      + String(localized: "\(Format.bytes(reclaimable)) to reclaim", comment: "Disk space freed by removing the extra copies"))
             }
         }
+    }
+
+    private func showDuplicateProgress(_ done: Int, _ total: Int, in pane: Pane?, generation: Int) {
+        guard let pane, isCurrent(generation, pane, .duplicates), total > 0 else { return }
+        pane.browser.emptyState.show(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
+                                     message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
     }
 }
