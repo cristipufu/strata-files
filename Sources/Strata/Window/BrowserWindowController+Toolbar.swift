@@ -37,7 +37,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func makeCommandItem(_ command: StrataCommand, _ id: NSToolbarItem.Identifier) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
-        item.label = command.title
+        item.label = BrowserToolbar.label(command)
         item.paletteLabel = command.title
         item.toolTip = command.title
         item.image = command.image

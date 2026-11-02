@@ -7,9 +7,20 @@ final class BrowserToolbar {
         .flexibleSpace, .viewMode, .dualPane, .share, .search, .transfers, .inspectorTrackingSeparator, .toggleInspector,
     ]
     static let commands: [StrataCommand] = [
-        .newFolder, .newFile, .moveToTrash, .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
+        .newFolder, .newFile, .moveToTrash, .copyToOtherPane, .moveToOtherPane, .compareWithOtherPane, .connectToServer,
+        .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
     ]
     static func identifier(_ command: StrataCommand) -> NSToolbarItem.Identifier { .init("command." + command.id) }
+    /// The label under a toolbar icon; the customization palette and the tooltip keep the full menu title.
+    static func label(_ command: StrataCommand) -> String {
+        switch command.id {
+        case StrataCommand.copyToOtherPane.id: String(localized: "Copy To", comment: "Toolbar button label: copy the selection to the other pane")
+        case StrataCommand.moveToOtherPane.id: String(localized: "Move To", comment: "Toolbar button label: move the selection to the other pane")
+        case StrataCommand.compareWithOtherPane.id: String(localized: "Sync", comment: "Toolbar button label: compare and sync the two panes")
+        case StrataCommand.connectToServer.id: String(localized: "Connect", comment: "Toolbar button label: connect to a server")
+        default: command.title
+        }
+    }
     static func command(_ id: NSToolbarItem.Identifier) -> StrataCommand? { commands.first { identifier($0) == id } }
     static var allowed: [NSToolbarItem.Identifier] { defaults + commands.map(identifier) + [.space] }
 
