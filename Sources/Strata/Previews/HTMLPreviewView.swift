@@ -8,6 +8,7 @@ package final class HTMLPreviewView: WebPreviewView {
     private let browserButton = NSButton(title: String(localized: "Open in Browser"), target: nil, action: nil)
     private let host = NSView()
     private let url: URL
+    private let preferences: any PreviewTextSettings
     /// Its file, chosen away from the main thread as the view is made.
     private let selected: Task<ChosenFile?, Never>
     /// Open in Browser, checking the chosen file first.
@@ -19,8 +20,9 @@ package final class HTMLPreviewView: WebPreviewView {
     /// `timeLimit` ends when WebKit has had long enough to start showing the page: its source is shown instead.
     package init(url: URL, openFile: ((URL) -> Void)? = nil,
                  openLink: @escaping (URL) -> Void = PreviewWebPage.usualOpenLink,
-                 timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
+                 timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit, preferences: any PreviewTextSettings) {
         self.url = url
+        self.preferences = preferences
         selected = Task { await ChosenFile.choosing(url) }
         self.openFile = openFile ?? Self.openInBrowser
         super.init(page: PreviewWebPage(timeLimit: timeLimit, openLink: openLink))
@@ -120,7 +122,7 @@ package final class HTMLPreviewView: WebPreviewView {
             let view = CodePreviewView(source: {
                 guard let selected = await selected.value else { throw POSIXError(.ESTALE) }
                 return try await HTMLPreviewDocument.source(selected)
-            }, language: Languages.html)
+            }, language: Languages.html, preferences: preferences)
             source = view; attach(view)
         }
         source?.isHidden = false

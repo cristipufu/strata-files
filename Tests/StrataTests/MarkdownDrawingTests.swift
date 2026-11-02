@@ -199,7 +199,8 @@ import Testing
         let tree = try TestTree("document.swift")
         let source = "let chosen = 1\n"
         try Data(source.utf8).write(to: tree.url("document.swift"))
-        let view = CodePreviewView(url: tree.url("document.swift"), mode: .source(Languages.swift))
+        let preferences = try Prefs.isolated()
+        let view = CodePreviewView(url: tree.url("document.swift"), mode: .source(Languages.swift), preferences: preferences)
         view.frame = NSRect(x: 0, y: 0, width: 720, height: 1800)
         view.layoutSubtreeIfNeeded()
         await view.loadingTask?.value
@@ -213,6 +214,9 @@ import Testing
         await withCheckedContinuation { delivered = $0 }
         #expect(scroll.documentView == nil && scroll.verticalRulerView == nil)
         #expect(view.subviews.contains { $0 is PreviewMessageView })
+        preferences.previewWrapLines = false
+        view.layoutSubtreeIfNeeded()
+        preferences.previewWrapLines = true
         view.layoutSubtreeIfNeeded()
         #expect(view.footer.isHidden)
         #expect(tree.text("document.swift") == source)

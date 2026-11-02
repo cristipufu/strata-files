@@ -53,7 +53,7 @@ import Testing
             }
         }
         let tree = try TestTree("folder/page.html", "outside")
-        let view = try #require(RichPreview.makeView(for: page(tree), contentType: .html) as? HTMLPreviewView)
+        let view = try #require(RichPreview.makeView(for: page(tree), contentType: .html, preferences: try Prefs.isolated()) as? HTMLPreviewView)
         view.stop()
         #expect(tree.text("outside") == "outside")
     }
@@ -163,7 +163,7 @@ import Testing
         let tree = try TestTree("folder/page.html", "outside")
         try Data(repeating: 32, count: TextFile.limit+1).write(to: tree.url("folder/page.html"))
         var fallback = false
-        let view = HTMLPreviewView(url: tree.url("folder/page.html"))
+        let view = HTMLPreviewView(url: tree.url("folder/page.html"), preferences: try Prefs.isolated())
         view.fallback = { fallback = true }
         let work = try #require(view.loadingTask)
         await work.value
@@ -233,7 +233,7 @@ import Testing
         <script>window.ran=true;document.getElementById('title').textContent='Executed'</script>
         <iframe src="page.html"></iframe><form action="page.html"><input type=submit></form>
         """)
-        let before = tree.snapshot(), view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
+        let before = tree.snapshot(), view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit, preferences: try Prefs.isolated())
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await view.shown()
@@ -269,7 +269,7 @@ import Testing
         let url = try page(tree), before = tree.snapshot()
         // Its time is up as soon as WebKit starts.
         let ended = Mutex(false)
-        let view = HTMLPreviewView(url: url, timeLimit: { ended.withLock { $0 = true } }), window = window(view)
+        let view = HTMLPreviewView(url: url, timeLimit: { ended.withLock { $0 = true } }, preferences: try Prefs.isolated()), window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await wait { view.modeControl.selectedSegment == 1 }
         #expect(ended.withLock { $0 } && !view.page.isShowing && view.webView == nil)
@@ -282,7 +282,7 @@ import Testing
         let tree = try TestTree("folder/page.html", "outside")
         let url = try page(tree)
         var opened: [URL] = []
-        let view = HTMLPreviewView(url: url, openFile: { opened.append($0) })
+        let view = HTMLPreviewView(url: url, openFile: { opened.append($0) }, preferences: try Prefs.isolated())
         let work = view.loadingTask
         view.stop()
         await work?.value
@@ -294,7 +294,7 @@ import Testing
         view.openBrowser(nil)
         await view.openingBrowser?.value
         #expect(opened.isEmpty)
-        let another = HTMLPreviewView(url: url, openFile: { opened.append($0) })
+        let another = HTMLPreviewView(url: url, openFile: { opened.append($0) }, preferences: try Prefs.isolated())
         another.openBrowser(nil)
         await another.openingBrowser?.value
         #expect(opened == [url])
@@ -325,7 +325,7 @@ extension HTMLPreviewTests {
         """)
         let view = HTMLPreviewView(
             url: url, openLink: { _ in Issue.record("An automatic navigation opened the browser.") },
-            timeLimit: PreviewWebPage.noTimeLimit)
+            timeLimit: PreviewWebPage.noTimeLimit, preferences: try Prefs.isolated())
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         try await view.shown()
@@ -360,7 +360,7 @@ extension HTMLPreviewTests {
     @Test func reattachingStartsWebKitAgainForTheDocumentReadOnceWhilePreviewIsChosen() async throws {
         let tree = try TestTree("folder/page.html", "outside")
         let url = try page(tree)
-        let view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
+        let view = HTMLPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit, preferences: try Prefs.isolated())
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         func reattach() {
@@ -398,7 +398,7 @@ extension HTMLPreviewTests {
 
     @Test func choosingSourceWhileTheDocumentIsReadStopsReadingItAndPreviewReadsItAgain() async throws {
         let tree = try TestTree("folder/page.html", "outside")
-        let view = HTMLPreviewView(url: try page(tree), timeLimit: PreviewWebPage.noTimeLimit)
+        let view = HTMLPreviewView(url: try page(tree), timeLimit: PreviewWebPage.noTimeLimit, preferences: try Prefs.isolated())
         let window = window(view)
         defer { view.stop(); window.close(); window.contentView = nil }
         let reading = try #require(view.loadingTask)

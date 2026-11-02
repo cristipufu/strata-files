@@ -1,4 +1,5 @@
 import StrataArchives
+import StrataModel
 import AppKit
 import UniformTypeIdentifiers
 
@@ -12,13 +13,13 @@ package enum RichPreview {
     /// A view that loads its content off the main thread and fills whatever frame it's given.
     /// `fallback` runs if the file turns out not to suit a rich preview after all (a `.ts` video, a `.db` that isn't
     /// SQLite, binary data under a text extension); show Quick Look then. Without it, the view says "No Preview Available".
-    package static func makeView(for url: URL, contentType: UTType?, fallback: (() -> Void)? = nil) -> NSView? {
+    package static func makeView(for url: URL, contentType: UTType?, preferences: any PreviewTextSettings, fallback: (() -> Void)? = nil) -> NSView? {
         guard let format = PreviewFormat(url: url, contentType: contentType) else { return nil }
         let view: PreviewView = switch format {
-        case .code(let language): CodePreviewView(url: url, mode: .source(language))
-        case .json: CodePreviewView(url: url, mode: .json)
+        case .code(let language): CodePreviewView(url: url, mode: .source(language), preferences: preferences)
+        case .json: CodePreviewView(url: url, mode: .json, preferences: preferences)
         case .markdown: MarkdownPreviewView(url: url)
-        case .html: HTMLPreviewView(url: url)
+        case .html: HTMLPreviewView(url: url, preferences: preferences)
         case .epub: EPUBPreviewView(url: url)
         case .onenote: OneNotePreviewView(url: url)
         case .onenoteContents: OneNoteContentsView(url: url)

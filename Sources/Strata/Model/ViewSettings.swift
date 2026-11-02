@@ -2,6 +2,15 @@ import Foundation
 
 // The values view settings take: kept by `Prefs`, shown by the views above.
 
+package protocol PreviewTextSettings: AnyObject {
+    var previewWrapLines: Bool { get set }
+    var notifications: NotificationCenter { get }
+}
+
+extension Notification.Name {
+    package static let previewWrappingChanged = Notification.Name("StrataPreviewWrappingChanged")
+}
+
 /// Space previews of a folder: as a list or as icons.
 package enum PreviewViewMode: Int { case list, icons }
 

@@ -542,7 +542,7 @@ final class InspectorViewController: NSViewController {
                     return
                 }
                 self.previewingContent = true
-                if !entry.isDirectory, let rich = RichPreview.makeView(for: entry.url, contentType: entry.contentType, fallback: { [weak self] in
+                if !entry.isDirectory, let rich = RichPreview.makeView(for: entry.url, contentType: entry.contentType, preferences: self.services.preferences, fallback: { [weak self] in
                     guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }
                     self.removeRichPreview()
                     self.showQuickLook(entry.url)

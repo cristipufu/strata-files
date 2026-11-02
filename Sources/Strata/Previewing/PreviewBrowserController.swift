@@ -49,7 +49,7 @@ import StrataPreviews
         providerContent = PreviewProviderContent(copies: copies)
         measurement = PreviewMeasurement(copies: copies)
         archiveContent = PreviewArchiveContent(copies: copies)
-        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies)
+        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies, preferences: preferences)
         let tree = NSViewController()
         tree.view = treeHost
         treeController = tree

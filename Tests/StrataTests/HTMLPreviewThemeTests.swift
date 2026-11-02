@@ -18,7 +18,7 @@ extension ColorThemeTests {
         _ = NSApplication.shared
         let tree = try TestTree("page.html", "outside")
         try Data("<body style='background:#123456;color:#fff'><h1>Keep this document</h1></body>".utf8).write(to: tree.url("page.html"))
-        let html = HTMLPreviewView(url: tree.url("page.html"), timeLimit: PreviewWebPage.noTimeLimit)
+        let html = HTMLPreviewView(url: tree.url("page.html"), timeLimit: PreviewWebPage.noTimeLimit, preferences: try Prefs.isolated())
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = html

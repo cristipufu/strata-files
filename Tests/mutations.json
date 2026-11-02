@@ -8643,5 +8643,33 @@
     "replace": "case .closing: state = .closed; return false",
     "rule": "SFTP input ownership a stopped writer leaks its handle after completing",
     "tests": "SFTPInputTests/disconnectReturnsWithoutClosingAnActiveWritesHandle"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "get { defaults.object(forKey: Key.previewWrapLines) as? Bool ?? true }",
+    "replace": "get { defaults.object(forKey: Key.previewWrapLines) as? Bool ?? false }",
+    "rule": "Text preview wrapping starts disabled for a fresh preference owner",
+    "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles"
+  },
+  {
+    "file": "Strata/Previews/CodePreviewView.swift",
+    "find": "textView.textContainer?.widthTracksTextView = wraps",
+    "replace": "textView.textContainer?.widthTracksTextView = false",
+    "rule": "Text preview wrapping leaves the container wider than its viewport",
+    "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles|CodeWrappingTests/resizingAndSwitchingWrappingKeepTheDocumentSelectionAndSingleRead"
+  },
+  {
+    "file": "Strata/Previews/CodePreviewView.swift",
+    "find": "layoutManager.characterIndexForGlyph(at: range.location) == self.lineStarts[line]",
+    "replace": "layoutManager.characterIndexForGlyph(at: range.location) >= self.lineStarts[line]",
+    "rule": "Text preview wrapping repeats the original line number on every visual fragment",
+    "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles"
+  },
+  {
+    "file": "Strata/Previews/CodePreviewView.swift",
+    "find": "if wrapsLines != preferences.previewWrapLines { applyWrapping() }",
+    "replace": "// Ignore a changed wrapping preference.",
+    "rule": "Text preview wrapping a visible preview ignores its owners new choice",
+    "tests": "CodeWrappingTests/resizingAndSwitchingWrappingKeepTheDocumentSelectionAndSingleRead|CodeWrappingTests/hiddenPreviewsApplyWrappingWhenTheyAreShownAgain"
   }
 ]

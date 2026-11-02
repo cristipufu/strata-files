@@ -370,7 +370,7 @@ struct BookPreviewTests {
     @Test func epubUsesTheSameNativePreviewInQuickLookAndInspectorAndClosesItsWebSession() async throws {
         let tree = try TestTree("book.epub", "outside/keep")
         let url = try epub(tree)
-        #expect(RichPreview.makeView(for: url, contentType: .epub) is EPUBPreviewView)
+        #expect(RichPreview.makeView(for: url, contentType: .epub, preferences: try Prefs.isolated()) is EPUBPreviewView)
         let view = EPUBPreviewView(url: url, timeLimit: PreviewWebPage.noTimeLimit)
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)

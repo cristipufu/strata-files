@@ -302,3 +302,20 @@ its remaining waiters. The diagnostic signal-policy value is captured while the 
 repeated close, and release of an unused input. The fake handle callbacks make lifecycle regressions fail without
 deliberately invoking a native exception. Existing real-process SFTP and remote-file suites exercise the integrated
 transport, including a peer that closes its input. These tests use temporary files and no live server.
+
+## Text preview wrapping (#35)
+
+The shipped 0.7.5 code deliberately used an unbounded text container and horizontal scrolling. Wrapping is a new
+display option, enabled by default, rather than a repair to an unreleased refactoring regression. A preview's Wrap
+Lines control saves its choice through the owning settings, supplied through a small model interface so the preview
+library never depends on the application's preferences type. Changes are scoped to that settings owner and do not
+reload the file or replace its text storage.
+
+Wrapped containers follow the available width, including the native gutter inset. The gutter labels only each
+document line's first visual fragment. Layout stays noncontiguous and background layout is disabled; the existing
+512 KiB read limit and 2,000-character line limit remain. Hidden previews defer setting changes until shown.
+
+Headless native checks cover text, source and JSON, Unicode, long unbroken lines, real control actions, persisted
+horizontal scrolling, resize, retained selection and a single source read, lazy offscreen layout, and Space and
+Inspector settings ownership. The renderer-retirement check also changes wrapping after a native failure, so the
+new setting cannot reactivate the retired renderer.

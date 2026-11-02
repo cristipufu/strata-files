@@ -42,7 +42,7 @@ nonisolated package enum CodeTheme {
     /// Width of one column.
     package static func advance(of font: NSFont) -> CGFloat { font.maximumAdvancement.width }
 
-    /// Font, color, four-column tabs and a fixed, airy line height, so every line is exactly one fragment of equal height.
+    /// Font, color, four-column tabs and a fixed, airy height for each visual line.
     package static func baseAttributes(size: CGFloat = fontSize) -> [NSAttributedString.Key: Any] {
         let font = font(size: size)
         let paragraph = NSMutableParagraphStyle()

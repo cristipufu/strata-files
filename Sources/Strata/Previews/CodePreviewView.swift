@@ -1,8 +1,9 @@
 import AppKit
 import CPreviewText
+import StrataModel
 import StrataSupport
 
-/// Syntax-highlighted source with a line-number gutter. Lines don't wrap; the text scrolls sideways and is selectable.
+/// Syntax-highlighted source with original line numbers and the owner's wrapping preference.
 /// JSON is pretty-printed (or shown as written, with the error line marked, when invalid).
 package final class CodePreviewView: PreviewView {
     nonisolated package enum Mode: Sendable {
@@ -11,14 +12,19 @@ package final class CodePreviewView: PreviewView {
     }
 
     private let scrollView = NSScrollView()
+    private let preferences: any PreviewTextSettings
+    private let wrapButton = NSButton(checkboxWithTitle: String(localized: "Wrap Lines", comment: "Text preview option: wrap long lines to the available width"), target: nil, action: nil)
+    private var wrapsLines: Bool?
+    private var unwrappedWidth: CGFloat = 0
     private var pendingScrollLine: Int?
     private var lineStarts: [Int] = []
     /// The ruler inset the text was last moved clear of.
     private var rulerInset: CGFloat = 0
-    // TextKit 1: non-contiguous layout keeps half-megabyte files fast, and line fragments map 1:1 to lines.
+    // TextKit 1 keeps line-fragment layout lazy while the gutter maps fragments to original lines.
     private let textView = STPreviewTextView(usingTextLayoutManager: false)
 
-    package init(url: URL, mode: Mode) {
+    package init(url: URL, mode: Mode, preferences: any PreviewTextSettings) {
+        self.preferences = preferences
         super.init(frame: .zero)
         configure()
         load({ try await CodeLoader.load(url, mode: mode) }) { [weak self] document in
@@ -27,7 +33,8 @@ package final class CodePreviewView: PreviewView {
     }
 
     /// Render text supplied by an owner that pins the chosen file through its read.
-    package init(source: @escaping @concurrent @Sendable () async throws -> TextFile, language: Language) {
+    package init(source: @escaping @concurrent @Sendable () async throws -> TextFile, language: Language, preferences: any PreviewTextSettings) {
+        self.preferences = preferences
         super.init(frame: .zero)
         configure()
         load({ try await CodeLoader.load(try await source(), language: language) }) { [weak self] document in
@@ -39,13 +46,30 @@ package final class CodePreviewView: PreviewView {
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
+        wrapButton.controlSize = .small
+        wrapButton.identifier = NSUserInterfaceItemIdentifier("preview.wrapLines")
+        wrapButton.target = self
+        wrapButton.action = #selector(toggleWrapping(_:))
+        let bar = NSStackView(views: [NSView(), wrapButton])
+        bar.orientation = .horizontal
+        bar.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(bar)
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(scrollView)
-        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: contentView))
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            bar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
 
         textView.isEditable = false
         textView.isSelectable = true
@@ -57,21 +81,63 @@ package final class CodePreviewView: PreviewView {
         textView.textContainer?.lineFragmentPadding = 6
         textView.isHorizontallyResizable = true
         textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width, .height]
+        textView.autoresizingMask = [.width]
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.layoutManager?.allowsNonContiguousLayout = true
+        textView.layoutManager?.backgroundLayoutEnabled = false
         textView.renderingFailed = { [weak self] _ in self?.renderingFailed() }
+        // A load can finish before the first native layout; don't wrap into a zero-width container meanwhile.
+        textView.setFrameSize(NSSize(width: 320, height: 0))
         scrollView.documentView = textView
+        preferences.notifications.addObserver(self, selector: #selector(wrappingChanged), name: .previewWrappingChanged,
+                                              object: preferences)
+        applyWrapping()
+    }
+
+    @objc private func toggleWrapping(_ sender: NSButton) {
+        guard textView.renderingError == nil else { return }
+        preferences.previewWrapLines = sender.state == .on
+    }
+
+    @objc private func wrappingChanged() { needsLayout = true }
+
+    private func applyWrapping() {
+        guard textView.renderingError == nil else { return }
+        let wraps = preferences.previewWrapLines
+        wrapsLines = wraps
+        wrapButton.state = wraps ? .on : .off
+        scrollView.hasHorizontalScroller = !wraps
+        textView.isHorizontallyResizable = !wraps
+        textView.textContainer?.widthTracksTextView = wraps
+        textView.textContainer?.containerSize = NSSize(width: wraps ? textView.frame.width : .greatestFiniteMagnitude,
+                                                     height: .greatestFiniteMagnitude)
+        resizeText()
+        if !wraps, (textView.textStorage?.length ?? 0) > 0 { textView.sizeToFit() }
+        let clip = scrollView.contentView
+        clip.scroll(to: NSPoint(x: -clip.contentInsets.left, y: clip.bounds.origin.y))
+        scrollView.reflectScrolledClipView(clip)
+        scrollView.verticalRulerView?.needsDisplay = true
+        needsLayout = true
+    }
+
+    private func resizeText() {
+        let clip = scrollView.contentView
+        let available = scrollView.contentSize.width - clip.contentInsets.left - clip.contentInsets.right
+        guard available > 0 else { return }
+        let minimum = NSSize(width: preferences.previewWrapLines ? 0 : unwrappedWidth, height: scrollView.contentSize.height)
+        if textView.minSize != minimum { textView.minSize = minimum }
+        let width = max(available, preferences.previewWrapLines ? 0 : unwrappedWidth)
+        let size = NSSize(width: width, height: max(textView.frame.height, scrollView.contentSize.height))
+        if textView.frame.size != size { textView.setFrameSize(size) }
     }
 
     private func show(_ document: CodeDocument) {
         guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
         let font = CodeTheme.font()
         let padding = 2 * (textView.textContainer?.lineFragmentPadding ?? 0) + 12
-        textView.minSize = NSSize(width: CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding, height: 0)
-        textView.sizeToFit()
+        unwrappedWidth = CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding
         guard textView.renderingError == nil else { return }
 
         let ruler = LineNumberRuler(textView: textView, lineStarts: document.lineStarts, highlightedLine: document.errorLine)
@@ -81,6 +147,7 @@ package final class CodePreviewView: PreviewView {
         scrollView.tile()
         keepTextClearOfRuler()
         lineStarts = document.lineStarts
+        applyWrapping()
 
         let lines = document.lineStarts.count
         let summary = [document.languageName, String(localized: "\(lines) lines", comment: "plural")] + [document.note].compactMap { $0 }
@@ -104,13 +171,20 @@ package final class CodePreviewView: PreviewView {
 
     package override func layout() {
         super.layout()
-        guard textView.renderingError == nil else { return }
+        guard textView.renderingError == nil, !isHiddenOrHasHiddenAncestor else { return }
+        if wrapsLines != preferences.previewWrapLines { applyWrapping() }
         keepTextClearOfRuler()
+        resizeText()
         // Centering a line needs the final size, so it waits for the first real layout.
         if let line = pendingScrollLine, scrollView.contentSize.height > 0 {
             pendingScrollLine = nil
             center(line: line)
         }
+    }
+
+    package override func viewDidUnhide() {
+        super.viewDidUnhide()
+        needsLayout = true
     }
 
     /// The ruler floats over the text: the clip view gets a left inset for it, but its scroll position isn't moved to
@@ -139,7 +213,7 @@ package final class CodePreviewView: PreviewView {
     }
 }
 
-/// Right-aligned line numbers beside a non-wrapping `NSTextView`, drawn only for the visible lines.
+/// Original line numbers, drawn once at each visible line's first fragment.
 final class LineNumberRuler: NSRulerView {
     private weak var textView: NSTextView?
     private let lineStarts: [Int]
@@ -170,24 +244,35 @@ final class LineNumberRuler: NSRulerView {
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView, (textView as? STPreviewTextView)?.renderingError == nil,
-              let layoutManager = textView.layoutManager, let container = textView.textContainer,
-              layoutManager.numberOfGlyphs > 0 else { return }
-        let origin = textView.textContainerOrigin
-        let visible = textView.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
-        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        guard let textView else { return }
         let normal: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.tertiaryLabelColor]
         let marked: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold), .foregroundColor: NSColor.systemRed,
         ]
         let right = bounds.width - 8
+        for label in labels(in: textView.visibleRect) {
+            let text = NSAttributedString(string: String(label.number), attributes: label.number == highlightedLine ? marked : normal)
+            text.draw(at: NSPoint(x: right - text.size().width, y: label.baseline - font.ascender))
+        }
+    }
+
+    func labels(in visibleRect: NSRect) -> [(number: Int, baseline: CGFloat)] {
+        guard let textView, (textView as? STPreviewTextView)?.renderingError == nil,
+              let layoutManager = textView.layoutManager, let container = textView.textContainer,
+              layoutManager.numberOfGlyphs > 0 else { return [] }
+        let origin = textView.textContainerOrigin
+        let visible = visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        var labels: [(number: Int, baseline: CGFloat)] = []
         layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, range, _ in
             let line = self.lineIndex(containing: layoutManager.characterIndexForGlyph(at: range.location))
+            guard self.lineStarts.indices.contains(line),
+                  layoutManager.characterIndexForGlyph(at: range.location) == self.lineStarts[line] else { return }
             let baseline = layoutManager.location(forGlyphAt: range.location).y
             let y = self.convert(NSPoint(x: 0, y: fragment.minY + origin.y + baseline), from: textView).y
-            let label = NSAttributedString(string: String(line + 1), attributes: line + 1 == self.highlightedLine ? marked : normal)
-            label.draw(at: NSPoint(x: right - label.size().width, y: y - self.font.ascender))
+            labels.append((number: line + 1, baseline: y))
         }
+        return labels
     }
 
     private func lineIndex(containing character: Int) -> Int {

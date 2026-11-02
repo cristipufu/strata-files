@@ -16,7 +16,7 @@ extension Notification.Name {
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
 /// notification center, so changing a fixture never reloads another environment's views.
-package final class Prefs {
+package final class Prefs: PreviewTextSettings {
     private static var selected: Prefs?
     /// A test process keeps its settings here, in a folder of its own, not in ~/Library/Preferences: the system can
     /// write a test suite's file back after its process exits, and only a temporary folder can take those late writes.
@@ -74,6 +74,7 @@ package final class Prefs {
         static let gridIconSize = "gridIconSize"
         static let previewViewMode = "previewViewMode"
         static let previewIconSize = "previewIconSize"
+        static let previewWrapLines = "previewWrapLines"
         static let previewWindowSize = "previewWindowSize"
         static let previewBrowserFraction = "previewBrowserFraction"
         static let previewColumnWidths = "previewColumnWidths"
@@ -171,6 +172,15 @@ package final class Prefs {
         set {
             defaults.set(newValue, forKey: Key.gridIconSize)
             notifications.post(name: .viewOptionsChanged, object: nil)
+        }
+    }
+
+    package var previewWrapLines: Bool {
+        get { defaults.object(forKey: Key.previewWrapLines) as? Bool ?? true }
+        set {
+            let changed = newValue != previewWrapLines
+            defaults.set(newValue, forKey: Key.previewWrapLines)
+            if changed { notifications.post(name: .previewWrappingChanged, object: self) }
         }
     }
 
