@@ -4,6 +4,7 @@ import AppKit
 /// per row), and Sync. Copies run in the Transfers list, verified, with undo and History; what a mirror removes goes to
 /// the Trash.
 final class CompareController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    typealias Reader = @Sendable (URL, URL, Bool, Bool, FolderCompare.Control, @escaping @Sendable (Int) -> Void) async -> FolderCompare.Result
     private let transfers: TransferQueue
     private let preferences: Prefs
     private let left: URL
@@ -15,6 +16,10 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     private var actions: [String: FolderCompare.Action] = [:]
     private var control: FolderCompare.Control?
     private var lastResult: FolderCompare.Result?
+    private let read: Reader
+    private let scheduleProgress: LatestUpdate<Int>.Schedule
+    private var comparison: Task<Void, Never>?
+    private var progress: LatestUpdate<Int>?
 
     private let contents = NSButton(checkboxWithTitle: String(localized: "Compare contents"), target: nil, action: nil)
     private let filter = NSPopUpButton()
@@ -50,17 +55,23 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         }
     }
 
-    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue, preferences: Prefs? = nil) {
+    init(left: URL, right: URL, undo: UndoManager?, transfers: TransferQueue, preferences: Prefs? = nil,
+         read: @escaping Reader = { await FolderCompare.compare($0, $1, contents: $2, includeHidden: $3, control: $4, progress: $5) },
+         scheduleProgress: @escaping LatestUpdate<Int>.Schedule = LatestUpdate<Int>.onMain) {
         self.transfers = transfers
         self.preferences = preferences ?? transfers.preferences
         self.left = left
         self.right = right
         self.undo = undo
+        self.read = read
+        self.scheduleProgress = scheduleProgress
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit { stopComparison() }
 
     override func loadView() {
         let title = NSTextField(labelWithString: String(localized: "Compare Folders"))
@@ -182,7 +193,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
 
     override func viewDidDisappear() {
         super.viewDidDisappear()
-        control?.cancel()
+        stopComparison()
     }
 
     // MARK: - Comparing
@@ -192,7 +203,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     }
 
     private func runComparison() {
-        control?.cancel()
+        stopComparison()
         let control = FolderCompare.Control()
         self.control = control
         differences = []
@@ -202,18 +213,28 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
         spinner.startAnimation(nil)
         summary.stringValue = String(localized: "Comparing…")
         let left = left, right = right, contents = contents.state == .on, hidden = preferences.showHidden
-        let progress: @Sendable (Int) -> Void = { [weak self] count in
-            Task { @MainActor in
-                guard let self, self.control === control else { return }
-                self.summary.stringValue = String(localized: "Comparing… \(count) items", comment: "plural")
-            }
+        let updates = LatestUpdate<Int>(schedule: scheduleProgress) { [weak self] count in
+            guard let self, self.control === control, !control.isCancelled else { return }
+            self.summary.stringValue = String(localized: "Comparing… \(count) items", comment: "plural")
         }
-        Task { [weak self] in
-            let result = await FolderCompare.compare(left, right, contents: contents, includeHidden: hidden, control: control,
-                                                     progress: progress)
-            guard let self, self.control === control, !result.cancelled else { return }
+        progress = updates
+        let read = read
+        comparison = Task { [weak self] in
+            let result = await read(left, right, contents, hidden, control, updates.send)
+            updates.cancel()
+            guard let self, self.control === control, !control.isCancelled, !Task.isCancelled, !result.cancelled else { return }
+            progress = nil
+            comparison = nil
             show(result)
         }
+    }
+
+    private func stopComparison() {
+        control?.cancel()
+        comparison?.cancel()
+        comparison = nil
+        progress?.cancel()
+        progress = nil
     }
 
     private func show(_ result: FolderCompare.Result) {
@@ -391,7 +412,7 @@ final class CompareController: NSViewController, NSTableViewDataSource, NSTableV
     // MARK: - Syncing
 
     @objc private func close(_ sender: Any?) {
-        control?.cancel()
+        stopComparison()
         dismiss(nil)
     }
 

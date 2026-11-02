@@ -34,7 +34,7 @@ package nonisolated enum Summarizer {
     }
 
     package static func summarize(url: URL, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
-        AsyncThrowingStream { continuation in
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 guard let extracted = await TextExtractor.extract(url, options: TextExtractor.Options(maxCharacters: 60_000, maxPDFPages: 30)) else {
                     continuation.finish(throwing: SummaryError.noText)
@@ -64,7 +64,7 @@ package nonisolated enum Summarizer {
     }
 
     package static func summarize(text: String, titleHint: String?, preferModel: Bool = true) -> AsyncThrowingStream<DocumentSummary, Error> {
-        AsyncThrowingStream { continuation in
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 let fallback = keySentences(text: text, titleHint: titleHint)
                 guard preferModel, AIModel.isAvailable else {

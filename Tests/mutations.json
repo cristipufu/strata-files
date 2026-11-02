@@ -8385,8 +8385,8 @@
   {
     "file": "Strata/Window/PaneSearch.swift",
     "rule": "Duplicates: an index read never holds a closed pane alive",
-    "find": "        task = Task { [weak self, weak p] in\n            let reporter = Task",
-    "replace": "        task = Task { [weak self, weak p, keepPane = p] in\n            defer { withExtendedLifetime(keepPane) {} }\n            let reporter = Task",
+    "find": "        task = Task { [weak self, weak p] in\n            defer { updates.cancel(); self?.finished(generation) }",
+    "replace": "        task = Task { [weak self, weak p, keepPane = p] in\n            defer { withExtendedLifetime(keepPane) {} }\n            defer { updates.cancel(); self?.finished(generation) }",
     "tests": "DuplicateFinderTests/closingAPaneReleasesItsSearchWhileAnIndexReadIsHeld"
   },
   {
@@ -8395,5 +8395,40 @@
     "find": "            chosenRow = (section.id, item.target)",
     "replace": "",
     "tests": "SidebarSelectionTests/duplicateLocationsKeepTheChosenSectionAcrossNavigationAndRebuilds"
+  },
+  {
+    "file": "Strata/Support/LatestUpdate.swift",
+    "rule": "Background updates: a burst schedules only one UI delivery",
+    "find": "            guard !$0.scheduled else { return false }",
+    "replace": "",
+    "tests": "LatestUpdateTests/burstsScheduleOneDeliveryAndFinishingCannotPublishStaleValues"
+  },
+  {
+    "file": "Strata/Support/LatestUpdate.swift",
+    "rule": "Background updates: cancelled requests cannot publish later values",
+    "find": "        state.withLock { $0.cancelled = true; $0.value = nil }",
+    "replace": "        state.withLock { $0.value = nil }",
+    "tests": "LatestUpdateTests/cancellationAndOwnerReleaseDropPendingAndLaterUpdates"
+  },
+  {
+    "file": "Strata/AI/AIIntegration.swift",
+    "rule": "Background updates: a semantic completion never clears its replacement",
+    "find": "            delivery.finish()\n            guard updates === delivery else { return }",
+    "replace": "            delivery.finish()",
+    "tests": "BackgroundUpdateTests/semanticCompletionCanStartAReplacementWithoutTheOldRequestClearingIt"
+  },
+  {
+    "file": "Strata/AI/AIIntegration.swift",
+    "rule": "Background updates: stopping semantic work releases its callback before the reader returns",
+    "find": "        updates = nil\n        onProgress = nil",
+    "replace": "        updates = nil",
+    "tests": "BackgroundUpdateTests/releasingSemanticIndexingCancelsDeliveryAndReleasesItsCallbackWhileWorkIsHeld"
+  },
+  {
+    "file": "Strata/Window/CompareController.swift",
+    "rule": "Background updates: comparison progress never replaces its terminal result",
+    "find": "            updates.cancel()",
+    "replace": "",
+    "tests": "BackgroundUpdateTests/comparisonProgressIsBoundedAndNeverOverwritesTheCompletedResult"
   }
 ]

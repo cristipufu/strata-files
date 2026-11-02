@@ -32,6 +32,7 @@ package final class ContainerStore {
     }
 
     isolated deinit {
+        watcher?.cancel()
         if let activation { NotificationCenter.default.removeObserver(activation) }
     }
 
@@ -209,19 +210,31 @@ package final class ContainerStore {
 
 /// Follows an engine's event stream on its own thread (it can stay quiet for hours).
 package nonisolated final class EventWatcher: Sendable {
+    package typealias Reader = @Sendable (ContainerEngine, @escaping @Sendable () -> Bool, @escaping @Sendable () -> Void) throws -> Void
     private let stop = StopFlag()
+    private let updates: LatestUpdate<Void>
 
-    package init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void) {
+    package init(_ engine: ContainerEngine, changed: @escaping @MainActor @Sendable () -> Void, ended: @escaping @MainActor @Sendable () -> Void,
+                 read: @escaping Reader = { try ContainerAPI.watchEvents($0, shouldStop: $1, changed: $2) },
+                 schedule: @escaping LatestUpdate<Void>.Schedule = LatestUpdate<Void>.onMain) {
         let stop = self.stop
+        let updates = LatestUpdate<Void>(schedule: schedule) { _ in if !stop.isSet { changed() } }
+        self.updates = updates
         Thread.detachNewThread {
-            try? ContainerAPI.watchEvents(engine, shouldStop: { stop.isSet }) {
-                DispatchQueue.main.async { MainActor.assumeIsolated { changed() } }
+            try? read(engine, { stop.isSet }) {
+                if !stop.isSet { updates.send(()) }
             }
-            if !stop.isSet { DispatchQueue.main.async { MainActor.assumeIsolated { ended() } } }
+            DispatchQueue.main.async {
+                updates.finish()
+                if !stop.isSet { ended() }
+            }
         }
     }
 
+    deinit { cancel() }
+
     package func cancel() {
         stop.set()
+        updates.cancel()
     }
 }

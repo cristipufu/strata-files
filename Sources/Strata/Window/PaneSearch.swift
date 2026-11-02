@@ -373,18 +373,14 @@ import AppKit
         let cancelled = CancelFlag()
         duplicateSearch = cancelled
         let services = services
-        let (updates, progress) = AsyncStream<(Int, Int)>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let updates = LatestUpdate<(Int, Int)> { [weak self, weak p] update in
+            guard !cancelled.isSet else { return }
+            self?.showDuplicateProgress(update.0, update.1, in: p, generation: generation)
+        }
         task = Task { [weak self, weak p] in
-            let reporter = Task { [weak self, weak p] in
-                for await (done, total) in updates {
-                    guard !Task.isCancelled else { return }
-                    self?.showDuplicateProgress(done, total, in: p, generation: generation)
-                    try? await Task.sleep(for: .milliseconds(200))
-                }
-            }
-            defer { progress.finish(); reporter.cancel(); self?.finished(generation) }
+            defer { updates.cancel(); self?.finished(generation) }
             let groups = await services.index.duplicates(progress: { done, total in
-                progress.yield((done, total))
+                updates.send((done, total))
             }, isCancelled: { cancelled.isSet }) ?? []
             guard !Task.isCancelled, !cancelled.isSet else { return }
             let shown = Array(groups.prefix(500))
@@ -413,7 +409,7 @@ import AppKit
     }
 
     private func showDuplicateProgress(_ done: Int, _ total: Int, in pane: Pane?, generation: Int) {
-        guard let pane, isCurrent(generation, pane, .duplicates), total > 0 else { return }
+        guard let pane, isCurrent(generation, pane, .duplicates), task?.isCancelled == false, total > 0 else { return }
         pane.browser.emptyState.show(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
                                      message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
     }

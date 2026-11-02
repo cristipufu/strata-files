@@ -46,3 +46,31 @@ The sidebar now remembers the chosen section and destination together, restores 
 and falls back to a visible match if its section is collapsed. Programmatic selection and rebuilding do not navigate.
 `SidebarSelectionTests` uses a native outline with the same folder in Locations and Frequent, chooses both
 occurrences, rebuilds, navigates elsewhere and back, and collapses/reopens the chosen section.
+
+## Background progress and event bursts
+
+Compare's per-2,000-item UI task came with `0720cd1`; container events' per-event main-queue block came with
+`cb250c3`; semantic indexing's per-file UI task was in the initial `afe394c`. Coalescing after hopping to the UI
+did not bound the callbacks waiting to get there. These were original implementation gaps, not new behavior from
+the later module or controller extractions. Semantic indexing also let an old completion clear a restarted request.
+
+`LatestUpdate` keeps one pending value and schedules one delivery before crossing to the main actor. Duplicates,
+Compare, container events and semantic indexing use it. Each request cancels its bridge on replacement, completion
+or closure. Semantic indexing has an injected request owner, and rechecks ownership after callbacks that can start
+a replacement. Summary streams retain only their newest complete snapshot rather than every intermediate snapshot.
+
+`LatestUpdateTests` holds delivery while publishing 10,000 updates and exercises concurrent publishers, cancellation,
+finishing and release. `BackgroundUpdateTests` exercises the real Compare controller, container event watcher and
+semantic request owner with held readers, including late updates, callback capture release and reentrant completion.
+
+The callback audit also checked the paths below; their existing sampling or coalescing remains in place:
+
+| Path | Delivery |
+| --- | --- |
+| Local and server transfers, archive jobs | Worker counters sampled by the queue every 250 ms |
+| Direct folder search | One owned polling loop, 400–1,000 ms between reads |
+| File index scan | Progress timer every 500 ms; change notifications coalesced |
+| Git status | Batched FSEvents, one status reader and one pending refresh per repository |
+| Folder watchers | Coalesced Dispatch sources and a debounced refresh |
+| Thumbnails and media metadata | Four active readers, coalesced requests and stale-result guards |
+| Server session results | A one-element result stream per waiting request |
