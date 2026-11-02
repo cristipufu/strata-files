@@ -8592,5 +8592,35 @@
     "replace": "let job = services.transfers.enqueue(urls, to: target, mode: .copy,",
     "rule": "Optional other-pane toolbar Move copies instead of moving the selected item",
     "tests": "ToolbarCustomizationTests/toolbarCopyAndMoveSendOnlyTheActivePanesSelectionToTheOtherPane"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "edits": [
+      {
+        "find": "        setUpToolbar(in: window)\n        ThemeStyle.apply(to: window)",
+        "replace": "        ThemeStyle.apply(to: window)"
+      },
+      {
+        "find": "        window.setContentSize(NSSize(width: 1240, height: 780))",
+        "replace": "        window.setContentSize(NSSize(width: 1240, height: 780))\n        setUpToolbar(in: window)"
+      }
+    ],
+    "rule": "Toolbar startup measures the location item before applying dual-pane address bars",
+    "tests": "ToolbarStartupTests/dualPaneLocationHasItsFinalVisibilityBeforeItFirstEntersTheToolbar"
+  },
+  {
+    "file": "Strata/Toolbar/BrowserToolbar.swift",
+    "edits": [
+      {
+        "find": "        window.toolbar = toolbar",
+        "replace": ""
+      },
+      {
+        "find": "        toolbar.displayMode = NSToolbar.DisplayMode(rawValue: UInt(preferences.toolbarDisplayMode)) ?? .iconOnly",
+        "replace": "        toolbar.displayMode = .iconOnly\n        window.toolbar = toolbar\n        toolbar.displayMode = NSToolbar.DisplayMode(rawValue: UInt(preferences.toolbarDisplayMode)) ?? .iconOnly"
+      }
+    ],
+    "rule": "Toolbar startup inserts native items in the wrong display mode before restoring the users choice",
+    "tests": "ToolbarStartupTests/savedDisplayModePrecedesNativeItemsAndTheSavedLayoutSurvivesAttachment"
   }
 ]

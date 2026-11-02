@@ -3,6 +3,23 @@
 Foundation is Apple's built-in framework for common facilities such as file reading and data buffers. The memory
 measurements below use standalone developer benchmarks; they do not represent the app's complete memory footprint.
 
+## Toolbar startup and search layout (#33)
+
+`01b6149` added per-pane address bars, hiding the toolbar's location item when both panes show their own. Window
+startup still attached the toolbar before restoring its frame or creating the second pane. The location item
+therefore entered AppKit's first layout as visible and was hidden afterward. This ordering predates the optional
+toolbar contributions in #20 and #34. Saved display mode was also applied after the initial items were inserted.
+
+The window now establishes its frame and panes before attaching the toolbar, and applies display mode before
+attachment. Saved item order is applied immediately afterward: AppKit ignores `itemIdentifiers` before attachment.
+Preference observation starts last, so initial default items do not replace saved choices.
+
+`ToolbarStartupTests` observes actual native item insertions and checks location visibility for both address-bar
+settings, initial display mode, retained customization and unchanged fresh preferences. Both startup regressions
+failed before the fix. The exact search expansion reported on the 2560-point display was not reproduced on the
+available system; these checks guard the demonstrated initialization defects, not every adaptive layout
+decision AppKit makes.
+
 ## Application icons
 
 `94e54e8` moved per-file icons off the main thread. Its new placeholder inferred a package from the filename's

@@ -71,11 +71,14 @@ final class BrowserToolbar {
 
     private var observations: [NSKeyValueObservation] = []
 
-    init(_ toolbar: NSToolbar, preferences: Prefs) {
+    init(_ toolbar: NSToolbar, preferences: Prefs, window: NSWindow) {
         toolbar.allowsUserCustomization = true
         // Native autosaving writes UserDefaults.standard, outside an injected environment.
         toolbar.autosavesConfiguration = false
         toolbar.displayMode = NSToolbar.DisplayMode(rawValue: UInt(preferences.toolbarDisplayMode)) ?? .iconOnly
+        window.toolbar = toolbar
+        // AppKit only accepts itemIdentifiers after attachment. Restore before observing to keep the initial
+        // default items from overwriting the user's saved choices.
         if let items = Self.layout(preferences.toolbarItems), toolbar.itemIdentifiers != items {
             toolbar.itemIdentifiers = items
         }

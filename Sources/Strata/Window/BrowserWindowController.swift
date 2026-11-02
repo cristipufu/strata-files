@@ -59,7 +59,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1240, height: 780))
-        setUpToolbar(in: window)
         if !window.setFrameAutosaveName("StrataBrowserWindow") { window.center() }
 
         configure(first)
@@ -68,6 +67,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         observeFocus(in: window)
         go(.folder(first.location), select: select, recordHistory: false)
         if let secondPane { toggleDualPane(at: secondPane) }
+        // AppKit's first measurement must see the restored frame and the final pane arrangement.
+        setUpToolbar(in: window)
         ThemeStyle.apply(to: window)
     }
 
@@ -87,9 +88,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func setUpToolbar(in window: BrowserWindow) {
         let toolbar = NSToolbar(identifier: services.preferences.domainName + ".main")
         toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        window.toolbar = toolbar
-        toolbarCustomization = BrowserToolbar(toolbar, preferences: services.preferences)
+        toolbarCustomization = BrowserToolbar(toolbar, preferences: services.preferences, window: window)
     }
 
     /// The sidebar, path bar and search scope bar act on this window.
