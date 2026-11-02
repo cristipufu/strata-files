@@ -1,5 +1,8 @@
 # Performance regressions and their guards
 
+Foundation is Apple's built-in framework for common facilities such as file reading and data buffers. The memory
+measurements below use standalone developer benchmarks; they do not represent the app's complete memory footprint.
+
 ## Application icons
 
 `94e54e8` moved per-file icons off the main thread. Its new placeholder inferred a package from the filename's
@@ -95,3 +98,30 @@ production helper and compare it with direct reads on the same workload. A 256 M
 for direct reads and 8.6 MiB for chunk-owned reads, with identical SHA-256 digests. Results vary by system; this is
 a separate measurement, not a CI memory threshold. A separate 256 MiB write experiment stayed around 9 MB RSS, so
 the read ownership correction was not applied to the write paths.
+
+## Disk-image cleanup fixture
+
+The final full debug run exposed four assertions in one scratch-volume cleanup test. The mounted volume had gone,
+but DiskImages still listed its backing image, so the helper correctly refused to remove the image's folder. The
+mounted-path detach was already present in `469d3d0`; `7f84a86` added publication settling but retained that target.
+
+The fixture now resolves the image's partition-scheme disk through its mounted filesystem. It requires the image
+to be a regular file in the owned folder, verifies that the attachment record names that mount, and rechecks the
+opened mount's device and filesystem identity before detaching. A missing or mismatched record refuses cleanup.
+The pure mapping regression covers unrelated images, different mounts and missing records; the native test still
+checks that the running disk stays attached and a symlink cannot redirect cleanup. This changes test infrastructure.
+All seven fixture tests passed in debug and under Address Sanitizer. Disabling the mount-to-image guard failed the
+mapping regression, after which the original source was restored.
+
+## Final validation — 2 November 2026
+
+- Full debug suite: 1,596 tests in 214 suites passed.
+- Full Address Sanitizer suite: 1,596 tests in 214 suites passed, including native disk-image cleanup.
+- Python checks: all 99 passed.
+- Main-thread, app-wide ownership, destructive-action and theme audits passed; all localization catalogs are complete.
+- Fifteen distinct negative controls were caught across the fixes, including the native read-pool lifetime and
+  disk-image ownership guards. The duplicate-owner control was checked again after adopting the shared update helper.
+- Optimized app and helper products built successfully. No package dependencies changed.
+
+These checks cover the reported defects and the audited paths above. They do not establish that every path in the
+app is free of bugs or performance limits.

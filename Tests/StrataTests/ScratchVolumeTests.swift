@@ -12,6 +12,25 @@ import Testing
 @testable import StrataSearch
 
 struct ScratchVolumeTests {
+    @Test func mountedCleanupChoosesOnlyTheBackingDiskOfItsOwnImage() {
+        let path = "/private/var/strata-volume-fixture/disk.sparseimage"
+        let mount = "/private/var/strata-volume-fixture/dmg.A"
+        let other = "/private/var/strata-volume-neighbor/dmg.B"
+        let images: [[String: Any]] = [
+            ["image-path": "/var/strata-volume-fixture/disk.sparseimage", "system-entities": [
+                ["dev-entry": "/dev/disk7s1", "mount-point": mount, "content-hint": "41504653-0000-11AA-AA11-00306543ECAC"],
+                ["dev-entry": "/dev/disk7", "content-hint": "EF57347C-0000-11AA-AA11-00306543ECAC"],
+                ["dev-entry": "/dev/disk6", "content-hint": "GUID_partition_scheme"]]],
+            ["image-path": "/var/strata-volume-neighbor/disk.sparseimage", "system-entities": [
+                ["dev-entry": "/dev/disk9s1", "mount-point": other],
+                ["dev-entry": "/dev/disk8", "content-hint": "GUID_partition_scheme"]]],
+        ]
+        #expect(ScratchVolume.wholeDisk(mountedAt: "/var/strata-volume-fixture/dmg.A", image: path, in: images) == "/dev/disk6")
+        #expect(ScratchVolume.wholeDisk(mountedAt: other, image: path, in: images) == nil)
+        #expect(ScratchVolume.wholeDisk(mountedAt: mount, image: "/var/strata-volume-neighbor/disk.sparseimage", in: images) == nil)
+        #expect(ScratchVolume.wholeDisk(mountedAt: mount, image: path, in: []) == nil)
+    }
+
     @Test func onlyDisksThatEndedProcessesLeftAreSwept() async throws {
         let tree = try TestTree("strata-volume-ended/", "strata-volume-ended/disk.sparseimage", "strata-volume-ended/dmg.ABC/",
                                 "target/",

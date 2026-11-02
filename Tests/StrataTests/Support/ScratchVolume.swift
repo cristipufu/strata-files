@@ -392,7 +392,7 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
                 // Each try detaches what's mounted here then, which another process may have detached meanwhile. A
                 // disk that unmounted but stays attached is left for `discard` to report: the only way back to it is a
                 // path, which a link could lead elsewhere.
-                try detach { mountPoint(name, in: folder.fd) }
+                try detach { try mountedDisk(name, in: folder) }
             } catch {
                 let mount = folder.url.appending(path: name).path
                 problems.append("couldn't detach the disk mounted on \(mount): \(error)")
@@ -401,16 +401,46 @@ nonisolated final class ScratchVolume: @unchecked Sendable {
         return problems.isEmpty ? nil : problems.joined(separator: "; ")
     }
 
+    private static func mountedDisk(_ name: String, in folder: OpenedFolder) throws -> String? {
+        guard let mount = mountedDirectory(name, in: folder.fd) else { return nil }
+        let image = folder.url.appending(path: imageFile).path
+        guard isFile(imageFile, in: folder.fd),
+              let disk = wholeDisk(mountedAt: mount.path, image: image, in: try attachedImages()) else {
+            throw HdiutilFailure(description: "the disk mounted at \(mount.path) is not identified as this folder's image")
+        }
+        // Reopening the mount, without following a link, must still name the filesystem just looked up.
+        guard mountedDirectory(name, in: folder.fd) == mount else { return nil }
+        return disk
+    }
+
+    static func wholeDisk(mountedAt mount: String, image path: String, in images: [[String: Any]]) -> String? {
+        guard let image = image(at: path, in: images) else { return nil }
+        let mounted = spellings(mount)
+        let entities = image["system-entities"] as? [[String: Any]] ?? []
+        guard entities.contains(where: { entity in
+            (entity["mount-point"] as? String).map { !spellings($0).isDisjoint(with: mounted) } == true
+        }) else { return nil }
+        // Detaching an APFS mount can leave its backing image attached. Detach the image's partition-scheme disk.
+        return wholeDisk(of: path, in: images)
+    }
+
     /// Where the disk mounted on the folder `name` in the opened `folder` is mounted, as the system records it; nil when
     /// nothing is. A disk mounted there makes that folder, opened without following a link, a file system of its own.
-    private static func mountPoint(_ name: String, in folder: Int32) -> String? {
+    private struct MountedDirectory: Equatable {
+        let path: String
+        let device: dev_t
+        let fileSystem: Data
+    }
+
+    private static func mountedDirectory(_ name: String, in folder: Int32) -> MountedDirectory? {
         let fd = openat(folder, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var inside = stat(), outside = stat(), mounted = statfs()
         guard fstat(fd, &inside) == 0, fstat(folder, &outside) == 0, inside.st_dev != outside.st_dev,
               fstatfs(fd, &mounted) == 0 else { return nil }
-        return withUnsafeBytes(of: mounted.f_mntonname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        let path = withUnsafeBytes(of: mounted.f_mntonname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        return MountedDirectory(path: path, device: inside.st_dev, fileSystem: withUnsafeBytes(of: mounted.f_fsid) { Data($0) })
     }
 
     /// Removes a disk's folder: first the empty folders its disks were mounted on, then its image and owner, then the
