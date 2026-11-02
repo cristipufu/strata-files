@@ -8388,5 +8388,12 @@
     "find": "        task = Task { [weak self, weak p] in\n            let reporter = Task",
     "replace": "        task = Task { [weak self, weak p, keepPane = p] in\n            defer { withExtendedLifetime(keepPane) {} }\n            let reporter = Task",
     "tests": "DuplicateFinderTests/closingAPaneReleasesItsSearchWhileAnIndexReadIsHeld"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "rule": "Sidebar selection: duplicate destinations retain the section the user chose",
+    "find": "            chosenRow = (section.id, item.target)",
+    "replace": "",
+    "tests": "SidebarSelectionTests/duplicateLocationsKeepTheChosenSectionAcrossNavigationAndRebuilds"
   }
 ]

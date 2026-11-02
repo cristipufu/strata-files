@@ -35,3 +35,14 @@ elapsed time was 0.19 and 0.15 seconds. This measures temporary hashing work, no
 `DuplicateFinderTests` covers filtering, cancellation without matching sizes, cancellation between hash chunks,
 unchanged SHA-256 digests, equal ends with different middles, hard links, and pane release/replacement while the
 index is held. The `Duplicates` mutations remove the cancellation and ownership guards to check those regressions.
+
+## Duplicate locations in the sidebar
+
+The initial `afe394c` sidebar selected the first matching destination, without remembering which section was
+clicked. When a location also appeared in Frequent, navigation or a sidebar rebuild selected the earlier Frequent
+row. Section extraction in `d923568` retained this policy.
+
+The sidebar now remembers the chosen section and destination together, restores that occurrence after rebuilding,
+and falls back to a visible match if its section is collapsed. Programmatic selection and rebuilding do not navigate.
+`SidebarSelectionTests` uses a native outline with the same folder in Locations and Frequent, chooses both
+occurrences, rebuilds, navigates elsewhere and back, and collapses/reopens the chosen section.

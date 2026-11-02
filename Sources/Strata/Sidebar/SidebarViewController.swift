@@ -54,6 +54,7 @@ final class SidebarViewController: NSViewController {
     private var applyingCollapsed = false
     private var suppressSelection = false
     private var current: SidebarTarget?
+    private var chosenRow: (section: String, target: SidebarTarget)?
     /// Whether the current drag may go on the Trash, worked out once per drag.
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
@@ -142,6 +143,9 @@ final class SidebarViewController: NSViewController {
     }
 
     func reload() {
+        let wasSuppressed = suppressSelection
+        suppressSelection = true
+        defer { suppressSelection = wasSuppressed }
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
             + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
@@ -274,20 +278,27 @@ final class SidebarViewController: NSViewController {
     func highlight(_ target: SidebarTarget?) {
         current = target
         if case .folder(let url)? = target { tree.reveal(url) } else { tree.reveal(nil) }
-        var row = -1
-        for section in sections {
-            if let item = section.items.first(where: { matches($0.target, target) }) {
-                row = outline.row(forItem: item)
-                break
-            }
+        let preferred = chosenRow.flatMap { chosen in
+            matches(chosen.target, target) ? sections.first { $0.id == chosen.section } : nil
         }
+        let row = preferred.flatMap { matchingRow(for: target, in: $0) }
+            ?? sections.lazy.compactMap { self.matchingRow(for: target, in: $0) }.first
+        let wasSuppressed = suppressSelection
         suppressSelection = true
-        if row >= 0 {
+        defer { suppressSelection = wasSuppressed }
+        if let row {
             outline.selectRowIndexes([row], byExtendingSelection: false)
         } else {
             outline.deselectAll(nil)
         }
-        suppressSelection = false
+    }
+
+    private func matchingRow(for target: SidebarTarget?, in section: SidebarSection) -> Int? {
+        for item in section.items where matches(item.target, target) {
+            let row = outline.row(forItem: item)
+            if row >= 0 { return row }
+        }
+        return nil
     }
 
     @objc func refreshCloudFolders() {
@@ -424,6 +435,9 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !suppressSelection, let item = outline.item(atRow: outline.selectedRow) as? SidebarItem else { return }
         if case .workspace = item.target { return }
+        if let section = sections.first(where: { $0.items.contains { $0 === item } }) {
+            chosenRow = (section.id, item.target)
+        }
         onSelect?(item.target)
     }
 
