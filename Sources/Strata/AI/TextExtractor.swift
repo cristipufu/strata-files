@@ -1,6 +1,6 @@
 import AppKit
 import NaturalLanguage
-import PDFKit
+import CNativeReaders
 import UniformTypeIdentifiers
 import Vision
 
@@ -69,6 +69,7 @@ package nonisolated enum TextExtractor {
 
     @concurrent
     package static func extract(_ url: URL, options: Options = Options()) async -> ExtractedText? {
+        guard !Task.isCancelled, options.maxCharacters > 0, options.maxFileBytes >= 0 else { return nil }
         let ext = url.pathExtension.lowercased()
         let type = UTType(filenameExtension: ext)
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
@@ -85,7 +86,7 @@ package nonisolated enum TextExtractor {
         if ext == "pdf" || type?.conforms(to: .pdf) == true {
             result = await pdf(url, options: options)
         } else if let docType = richTextTypes[ext] ?? (type?.conforms(to: .rtf) == true ? .rtf : nil) {
-            result = rich(url, type: docType, maxBytes: Int(clamping: options.maxFileBytes))
+            result = rich(url, type: docType, maxBytes: Int(clamping: options.maxFileBytes), maxCharacters: maxCharacters)
         } else if htmlExtensions.contains(ext) || type?.conforms(to: .html) == true {
             result = readPlain(url, limit: plainLimit).map { html($0) }
         } else if plainTextExtensions.contains(ext) || type?.conforms(to: .plainText) == true || type?.conforms(to: .sourceCode) == true {
@@ -101,7 +102,7 @@ package nonisolated enum TextExtractor {
             result = await ocrImage(url).map { ExtractedText(text: $0, title: nil, source: .ocr) }
         }
 
-        guard var result else { return nil }
+        guard !Task.isCancelled, var result else { return nil }
         result.text = normalizeWhitespace(result.text)
         if result.text.count > maxCharacters {
             result.text = String(result.text.prefix(maxCharacters))
@@ -140,66 +141,72 @@ package nonisolated enum TextExtractor {
         return fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
     }
 
-    package static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20) -> ExtractedText? {
-        var attributes: NSDictionary?
-        let string: NSAttributedString
+    package static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20,
+                             maxCharacters: Int = 120_000) -> ExtractedText? {
+        guard !Task.isCancelled, maxBytes >= 0, maxCharacters > 0 else { return nil }
+        let document: STExtractedDocument?
         if type == .rtfd {
             var info = stat()
-            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR,
-                  let loaded = try? NSAttributedString(url: url, options: [.documentType: type], documentAttributes: &attributes) else {
-                return nil
-            }
-            string = loaded
+            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return nil }
+            document = try? STDocumentReader.richText(url, type: type, maxCharacters: UInt(maxCharacters))
         } else {
-            guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maxBytes), !truncated,
-                  let loaded = try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: &attributes) else {
-                return nil
-            }
-            string = loaded
+            guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maxBytes), !truncated else { return nil }
+            document = try? STDocumentReader.richText(data, type: type, maxCharacters: UInt(maxCharacters))
         }
-        let title = (attributes?[NSAttributedString.DocumentAttributeKey.title] as? String)
-        // Attachments show up as U+FFFC.
-        let text = string.string.replacingOccurrences(of: "\u{FFFC}", with: " ")
-        return ExtractedText(text: text, title: title, source: .rich)
+        guard !Task.isCancelled, let document else { return nil }
+        return ExtractedText(text: document.text.replacingOccurrences(of: "\u{FFFC}", with: " "),
+                             title: document.title, source: .rich, truncated: document.truncated)
     }
 
-    package static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
-        guard isRegularFile(url), let document = PDFDocument(url: url), !document.isLocked else { return nil }
-        let count = max(0, document.pageCount)
-        let limit = max(0, min(count, options.maxPDFPages))
-        var text = ""
-        var starts: [Int] = []
-        var scanned: [Int] = []
-        for index in 0..<limit {
-            guard let page = document.page(at: index) else { continue }
-            starts.append(text.utf16.count)
-            let pageText = page.string ?? ""
-            if pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { scanned.append(index) }
-            text += pageText + "\n\n"
-            if text.count > max(0, options.maxCharacters) { break }
-        }
-        var source = ExtractedText.Source.pdf
-        if options.ocr, scanned.count == starts.count, !scanned.isEmpty {
-            // No text layer at all: a scan. Recognise the first few pages.
-            text = ""
-            starts = []
-            for index in scanned.prefix(max(0, options.maxOCRPages)) {
-                guard let page = document.page(at: index), let image = render(page) else { continue }
-                starts.append(text.utf16.count)
-                text += (await ocr(image) ?? "") + "\n\n"
+    @concurrent package static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
+        guard !Task.isCancelled, let data = pdfData(url, limit: options.maxFileBytes),
+              !Task.isCancelled, let reader = try? STPDFReader.open(data), !Task.isCancelled,
+              let document = try? reader.read(maxCharacters: UInt(max(0, options.maxCharacters)),
+                  maxPages: UInt(max(0, options.maxPDFPages)), cancelled: { Task.isCancelled }), !Task.isCancelled else { return nil }
+        var result = ExtractedText(text: document.text, title: document.title, source: .pdf,
+                                  pageStarts: document.pageStarts.map(\.intValue), pageCount: document.pageCount,
+                                  truncated: document.truncated)
+        let scanned = document.scannedPageIndexes
+        if options.ocr, !scanned.isEmpty, scanned.count == document.pageStarts.count {
+            result.text = ""; result.pageStarts = []; result.source = .ocr
+            let limit = max(0, options.maxOCRPages)
+            result.truncated = result.truncated || scanned.count > limit
+            for page in scanned.prefix(limit) {
+                guard !Task.isCancelled else { return nil }
+                guard let image = try? reader.image(forPage: page.uintValue) else {
+                    if reader.failure != nil { return nil }
+                    continue
+                }
+                let text = await ocr(image.image) ?? ""
+                guard !Task.isCancelled else { return nil }
+                result.pageStarts.append(result.text.utf16.count)
+                result.text += text + "\n\n"
+                if result.text.count >= max(0, options.maxCharacters) { result.truncated = true; break }
             }
-            source = .ocr
         }
-        let title = document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
-        return ExtractedText(text: text, title: title, source: source, pageStarts: starts, pageCount: count, truncated: limit < count)
+        return Task.isCancelled ? nil : result
     }
 
-    private static func render(_ page: PDFPage) -> CGImage? {
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return nil }
-        let scale = min(2, 2200 / max(bounds.width, bounds.height, 1))
-        let size = NSSize(width: bounds.width * scale, height: bounds.height * scale)
-        return page.thumbnail(of: size, for: .mediaBox).cgImage(forProposedRect: nil, context: nil, hints: nil)
+    private static func pdfData(_ url: URL, limit: Int64) -> Data? {
+        guard limit >= 0, limit < Int64(Int.max) else { return nil }
+        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? file.close() }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0, info.st_size <= limit else { return nil }
+        var data = Data()
+        data.reserveCapacity(Int(info.st_size))
+        let chunkSize = 64 * 1024
+        do {
+            while !Task.isCancelled {
+                let remaining = Int(limit) - data.count
+                guard let chunk = try FileRead.chunk(file, upToCount: min(chunkSize, remaining + 1)), !chunk.isEmpty else { return data }
+                guard chunk.count <= remaining else { return nil }
+                data.append(chunk)
+            }
+        } catch { return nil }
+        return nil
     }
 
     package static func ocrImage(_ url: URL) async -> String? {

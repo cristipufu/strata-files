@@ -8727,5 +8727,40 @@
     "replace": "false",
     "rule": "Packaged resources: missing app resources never borrow build output",
     "tests": "ResourceBundleTests/missingPackagedResourcesNeverBorrowAnotherBundleOrTheCheckout"
+  },
+  {
+    "file": "CNativeReaders/NativeDocuments.m",
+    "find": "if (error) *error = STNativeReadFailure(@\"rich text extraction\", exception);",
+    "replace": "[exception raise];",
+    "rule": "Native documents: rich text exceptions never escape the native reader",
+    "tests": "NativeDocumentReaderTests/aNativeRichTextExceptionBecomesAnOrdinaryError"
+  },
+  {
+    "file": "CNativeReaders/NativeDocuments.m",
+    "find": "if (!cancelled()) return NO;",
+    "replace": "return NO;",
+    "rule": "Native documents: cancellation prevents subsequent PDF page reads",
+    "tests": "NativeDocumentReaderTests/pdfCancellationStopsBeforeTheNextNativePage"
+  },
+  {
+    "file": "CNativeReaders/NativeDocuments.m",
+    "find": "if (!_failure) return YES;",
+    "replace": "return YES;",
+    "rule": "Native documents: failed PDF readers cannot resume",
+    "tests": "NativeDocumentReaderTests/pdfTextErrorsAbandonTheDocumentAndTheNextReadIsIndependent"
+  },
+  {
+    "file": "CNativeReaders/NativeDocuments.m",
+    "find": "if (text.length <= limit) return text;",
+    "replace": "return text;",
+    "rule": "Native documents: output is bounded before it crosses the native reader",
+    "tests": "NativeDocumentReaderTests/nativeTextOutputsStayWithinTheirUTF16BudgetWithoutSplittingCharacters"
+  },
+  {
+    "file": "CNativeReaders/NativeDocuments.m",
+    "find": "const CGFloat maximumSide = 2200;",
+    "replace": "const CGFloat maximumSide = 2300;",
+    "rule": "Native documents: OCR bitmaps keep their pixel bound",
+    "tests": "NativeDocumentReaderTests/scannedPagesAreRasterizedOnDemandAndOwnTheirPixelsAfterTheReaderCloses"
   }
 ]

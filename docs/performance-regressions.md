@@ -352,3 +352,23 @@ The build now checks resource discovery after packaging, using a headless checke
 resource bundles. It loads the themes and renders the reporter's diagram through the production loader and Mermaid
 renderer. Tests also omit each bundle and the script: these paths must exit with a normal failure, without a Swift
 trap, even while build output exists on the test machine. The checker is a build tool and is not shipped in Strata.
+
+
+## Native document extraction boundaries
+
+Summaries and content indexing used Swift `try?` around rich-text importers and called PDFKit directly. Those calls
+handled ordinary Cocoa errors but did not catch native exceptions. `CNativeReaders` now owns the native imports and
+one PDF reader per extraction. A failed or cancelled PDF reader drops its document and refuses subsequent reads;
+page loops check their caller's cancellation before advancing. Errors keep the existing unreadable-document path.
+
+PDF input is checked through its opened descriptor, including regular-file and byte limits, and read in cancellable
+64 KiB chunks with per-chunk autorelease ownership. Native text output is bounded without splitting composed
+characters. OCR continues one page at a time; each thumbnail is decoded into an owned bitmap inside the boundary,
+limited to 2,200 pixels per side, so releasing the PDF never leaves deferred decoding for the UI or OCR caller.
+The existing Unicode title policy is preserved, and an exactly fitting document is not marked as truncated.
+
+Headless tests exercise real RTF/PDF extraction, unchanged source bytes, controlled native exceptions, terminal reader
+state, cancellation before another page, unexpected page counts, output boundaries and raster ownership after reader
+release. The rich-text failure fixture catches an escaped exception itself, so breaking the production boundary
+reports a test failure without intentionally crashing a process. These boundaries handle Objective-C exceptions;
+native memory faults and native decoder expansion still require process isolation for a complete crash boundary.

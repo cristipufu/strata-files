@@ -109,6 +109,8 @@ let package = Package(
     targets: [
         .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
                 linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ImageIO")]),
+        .target(name: "CNativeReaders", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
+                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("PDFKit")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
         .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
         // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
@@ -183,7 +185,7 @@ let package = Package(
         // searches: above the file layer, below the interface.
         .target(
             name: "StrataAI",
-            dependencies: ["StrataQueue"],
+            dependencies: ["StrataQueue", "CNativeReaders"],
             path: "Sources/Strata/AI",
             swiftSettings: strataSwiftSettings
         ),
@@ -263,6 +265,8 @@ let package = Package(
                           swiftSettings: strataSwiftSettings),
         .target(name: "CPreviewTextTestSupport", dependencies: ["CPreviewText"], path: "Tests/CPreviewTextTestSupport",
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
+        .target(name: "CNativeReaderTestSupport", dependencies: ["CNativeReaders"], path: "Tests/CNativeReaderTestSupport",
+                cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .testTarget(
             name: "StrataTests",
             dependencies: [
@@ -273,6 +277,8 @@ let package = Package(
                 "StrataPreviews",
                 "CPreviewText",
                 "CPreviewTextTestSupport",
+                "CNativeReaders",
+                "CNativeReaderTestSupport",
                 "StrataArchives",
                 "StrataIndex",
                 "StrataConnections",
