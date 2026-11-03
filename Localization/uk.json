@@ -721,6 +721,7 @@
     "Clear the filter": "Очистити фільтр",
     "Clear the history of file operations?": "Очистити історію операцій з файлами?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Клацніть скорочення, а потім натисніть клавіші. ⌫ вилучає його; esc залишає.",
+    "Clipboard": "Буфер обміну",
     "Close": "Закрити",
     "Close any files from it that are open in other apps, then try again. (%@)": "Закрийте всі файли з цього диска, відкриті в інших програмах, і спробуйте ще раз. (%@)",
     "Close Window": "Закрити вікно",

@@ -112,7 +112,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
             dropHighlight.bottomAnchor.constraint(equalTo: root.safeAreaLayoutGuide.bottomAnchor, constant: -3),
         ])
         view = root
-        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: clipboard)
     }
 
     // MARK: - Content

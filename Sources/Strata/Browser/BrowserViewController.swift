@@ -205,7 +205,7 @@ final class BrowserViewController: NSViewController {
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
-        services.clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        services.clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: services.clipboard)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
         NotificationCenter.default.addObserver(self, selector: #selector(tagsChanged), name: .tagsChanged, object: services.tags)

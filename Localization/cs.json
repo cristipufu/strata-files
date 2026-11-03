@@ -638,6 +638,7 @@
     "Clear the filter": "Vymazat filtr",
     "Clear the history of file operations?": "Vymazat historii operací se soubory?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Klikněte na zkratku a stiskněte klávesy. ⌫ ji odstraní, esc ji ponechá.",
+    "Clipboard": "Schránka",
     "Close": "Zavřít",
     "Close any files from it that are open in other apps, then try again. (%@)": "Zavřete všechny soubory z tohoto disku otevřené v jiných aplikacích a zkuste to znovu. (%@)",
     "Close Window": "Zavřít okno",

@@ -723,6 +723,7 @@
     "Clear the filter": "Сбросить фильтр",
     "Clear the history of file operations?": "Очистить историю операций с файлами?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Нажмите на сочетание, затем нажмите клавиши. ⌫ удаляет его; esc оставляет.",
+    "Clipboard": "Буфер обмена",
     "Close": "Закрыть",
     "Close any files from it that are open in other apps, then try again. (%@)": "Закройте все файлы с этого диска, открытые в других программах, и повторите попытку. (%@)",
     "Close Window": "Закрыть окно",

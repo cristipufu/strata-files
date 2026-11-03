@@ -555,6 +555,7 @@
     "Clear the filter": "Filter löschen",
     "Clear the history of file operations?": "Verlauf der Dateivorgänge löschen?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Klicke auf einen Kurzbefehl und drücke dann die Tasten. ⌫ entfernt ihn, esc behält ihn bei.",
+    "Clipboard": "Zwischenablage",
     "Close": "Schließen",
     "Close any files from it that are open in other apps, then try again. (%@)": "Schließe alle Dateien davon, die in anderen Apps geöffnet sind, und versuche es erneut. (%@)",
     "Close Window": "Fenster schließen",

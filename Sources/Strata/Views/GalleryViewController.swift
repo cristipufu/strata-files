@@ -90,7 +90,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
         updateStripHeight()
         view = root
         root.registerForDraggedTypes(FileDrop.types)
-        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: clipboard)
         NotificationCenter.default.addObserver(self, selector: #selector(scrollerStyleChanged), name: NSScroller.preferredScrollerStyleDidChangeNotification,
                                                object: nil)
     }

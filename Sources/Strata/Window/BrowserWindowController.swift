@@ -658,6 +658,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         navigationGestures.cancel()
         isClosed = true
         split.inspector.cancelMediaRead()
+        stopClipboardMonitoring()
         panes.forEach { $0.stopBackgroundWork() }
         onClose?()
     }
@@ -667,6 +668,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        if !isClosed, clipboardMonitoring == nil { clipboardMonitoring = services.clipboard.monitor() }
+        services.clipboard.refresh()
         // What's there may have changed while we were away: it's read again in the background, and the sidebar follows.
         services.places.refresh()
         split.sidebar.reload()
@@ -676,7 +679,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         panes.forEach { $0.browser.refreshVolumeSpaceIfVisible() }
     }
 
-    func windowDidResignKey(_ notification: Notification) { navigationGestures.cancel() }
+    func windowDidResignKey(_ notification: Notification) {
+        navigationGestures.cancel()
+        stopClipboardMonitoring()
+    }
+
+    private func stopClipboardMonitoring() {
+        if let clipboardMonitoring { services.clipboard.stopMonitoring(clipboardMonitoring) }
+        clipboardMonitoring = nil
+    }
 
     @objc private func gitStatusChanged(_ notification: Notification) {
         updateGitChrome()
@@ -716,7 +727,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var workspaceName: String?
 
     /// Closed: a workspace still connecting leaves it alone.
+    private var clipboardMonitoring: UUID?
     private(set) var isClosed = false
+
+    isolated deinit { stopClipboardMonitoring() }
 
     @objc private func cloudStatusChanged() {
         guard split.splitViewItems.last?.isCollapsed == false else { return }

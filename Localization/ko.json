@@ -472,6 +472,7 @@
     "Clear the filter": "필터 지우기",
     "Clear the history of file operations?": "파일 작업 기록을 지우겠습니까?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "단축키를 클릭한 다음 키를 누르십시오. ⌫를 누르면 제거되고 esc를 누르면 유지됩니다.",
+    "Clipboard": "클립보드",
     "Close": "닫기",
     "Close any files from it that are open in other apps, then try again. (%@)": "다른 앱에서 열려 있는 이 디스크의 파일을 모두 닫은 다음 다시 시도하십시오.(%@)",
     "Close Window": "윈도우 닫기",

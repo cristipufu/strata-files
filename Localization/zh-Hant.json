@@ -472,6 +472,7 @@
     "Clear the filter": "清除篩選條件",
     "Clear the history of file operations?": "要清除檔案操作的記錄嗎？",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "按一下快速鍵，然後按下按鍵。按⌫可移除，按esc可保留。",
+    "Clipboard": "剪貼簿",
     "Close": "關閉",
     "Close any files from it that are open in other apps, then try again. (%@)": "請關閉此磁碟上在其他App中打開的檔案，然後再試一次。（%@）",
     "Close Window": "關閉視窗",

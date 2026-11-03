@@ -5,13 +5,14 @@ final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowCont
     let sidebar: SidebarViewController
     let panes: PaneContainerViewController
     let inspector: InspectorViewController
-    let status = StatusBarController()
+    let status: StatusBarController
     let scopeBar = SearchScopeBar()
     let noticeBar = NoticeBar()
     let inspectorItem: NSSplitViewItem
 
     init(firstPane: PaneHostViewController) {
         let services = firstPane.browser.services
+        status = StatusBarController(clipboard: services.clipboard)
         sidebar = SidebarViewController(services: services)
         panes = PaneContainerViewController(first: firstPane)
         inspector = InspectorViewController(services: services)

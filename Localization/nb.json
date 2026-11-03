@@ -555,6 +555,7 @@
     "Clear the filter": "Fjern filteret",
     "Clear the history of file operations?": "Vil du tømme historikken over filhandlinger?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Klikk på en snarvei, og trykk deretter på tastene. ⌫ fjerner den; esc beholder den.",
+    "Clipboard": "Utklippstavle",
     "Close": "Lukk",
     "Close any files from it that are open in other apps, then try again. (%@)": "Lukk alle filer herfra som er åpne i andre apper, og prøv igjen. (%@)",
     "Close Window": "Lukk vindu",

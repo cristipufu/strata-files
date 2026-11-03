@@ -555,6 +555,7 @@
     "Clear the filter": "Szűrő törlése",
     "Clear the history of file operations?": "Törli a fájlműveletek előzményeit?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "Kattintson egy billentyűparancsra, majd nyomja le a billentyűket. A ⌫ eltávolítja, az esc megtartja.",
+    "Clipboard": "Vágólap",
     "Close": "Bezárás",
     "Close any files from it that are open in other apps, then try again. (%@)": "Zárja be az innen származó, más appokban megnyitott fájlokat, majd próbálja újra. (%@)",
     "Close Window": "Ablak bezárása",

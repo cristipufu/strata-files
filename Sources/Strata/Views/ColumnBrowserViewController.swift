@@ -97,7 +97,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets()
         view = scrollView
-        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: nil)
+        clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: clipboard)
     }
 
     override func viewDidLayout() {

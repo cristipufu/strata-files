@@ -472,6 +472,7 @@
     "Clear the filter": "フィルタを消去",
     "Clear the history of file operations?": "ファイル操作の履歴を消去しますか?",
     "Click a shortcut, then press the keys. ⌫ removes it; esc keeps it.": "ショートカットをクリックしてからキーを押します。⌫で削除、escでそのまま残します。",
+    "Clipboard": "クリップボード",
     "Close": "閉じる",
     "Close any files from it that are open in other apps, then try again. (%@)": "ほかのアプリで開いているファイルを閉じてから、もう一度お試しください。（%@）",
     "Close Window": "ウインドウを閉じる",

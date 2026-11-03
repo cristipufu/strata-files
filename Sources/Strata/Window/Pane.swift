@@ -100,7 +100,7 @@ final class PaneHostViewController: NSViewController {
     let pathBar: PathBar
     var onActivate: (() -> Void)?
     private let header: PaneHeaderView
-    private let status = NSTextField(labelWithString: "")
+    private let status: BrowserStatusView
     private let statusBar = NSView()
     private var underToolbar: NSLayoutConstraint?
     private var underHeader: NSLayoutConstraint?
@@ -110,6 +110,7 @@ final class PaneHostViewController: NSViewController {
     init(browser: BrowserViewController) {
         self.browser = browser
         let services = browser.services
+        status = BrowserStatusView(clipboard: services.clipboard)
         pathBar = PathBar(preferences: services.preferences, places: services.places, index: services.index, copies: services.copies,
                           names: services.folderNames, clipboard: services.clipboard,
                           embedded: true)
@@ -131,15 +132,7 @@ final class PaneHostViewController: NSViewController {
         header.onClick = { [weak self] in self?.onActivate?() }
         browser.view.translatesAutoresizingMaskIntoConstraints = false
         browser.view.clipsToBounds = true
-        status.font = .systemFont(ofSize: 11)
-        status.textColor = .secondaryLabelColor
-        status.alignment = .center
-        status.lineBreakMode = .byTruncatingMiddle
         status.translatesAutoresizingMaskIntoConstraints = false
-        // Spanning the pane, the status line mustn't size it (dragging the divider between panes): below the panes'
-        // holding priority (250), it neither holds the pane wider nor pulls it narrower (a label hugs its text at 251).
-        status.setContentCompressionResistancePriority(.init(200), for: .horizontal)
-        status.setContentHuggingPriority(.init(200), for: .horizontal)
         let hairline = NSBox()
         hairline.boxType = .separator
         hairline.translatesAutoresizingMaskIntoConstraints = false
@@ -164,9 +157,10 @@ final class PaneHostViewController: NSViewController {
             hairline.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
             hairline.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
             hairline.topAnchor.constraint(equalTo: statusBar.topAnchor),
-            status.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
-            status.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: 10),
-            status.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -10),
+            status.topAnchor.constraint(equalTo: statusBar.topAnchor),
+            status.bottomAnchor.constraint(equalTo: statusBar.bottomAnchor),
+            status.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
+            status.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
         ])
         aboveBottom = browser.view.bottomAnchor.constraint(equalTo: root.bottomAnchor)
         aboveStatus = browser.view.bottomAnchor.constraint(equalTo: statusBar.topAnchor)
@@ -181,8 +175,8 @@ final class PaneHostViewController: NSViewController {
     /// A per-pane status line (dual-pane mode), or nil to hide it.
     func setStatus(_ text: String?, details: String? = nil) {
         loadViewIfNeeded()
-        status.stringValue = text ?? ""
-        status.toolTip = details
+        status.label.stringValue = text ?? ""
+        status.label.toolTip = details
         statusBar.isHidden = text == nil
         hold(text == nil ? aboveBottom : aboveStatus, over: text == nil ? aboveStatus : aboveBottom)
     }
