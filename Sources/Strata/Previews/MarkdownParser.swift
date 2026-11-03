@@ -19,44 +19,59 @@ nonisolated package struct MarkdownListItem {
     package var blocks: [MarkdownBlock]
 }
 
-nonisolated package enum MarkdownParser {
-    package static func parse(_ text: String) -> [MarkdownBlock] {
+nonisolated package final class MarkdownParser {
+    private var budget = MarkdownBudget()
+    private init() {}
+
+    package static func parse(_ text: String) throws -> [MarkdownBlock] {
+        try MarkdownParser().document(text)
+    }
+
+    private func document(_ text: String) throws -> [MarkdownBlock] {
+        try Task.checkCancellation()
         var lines = text.replacingOccurrences(of: "\t", with: "    ").components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []
         // YAML front matter shows as a code block.
         if lines.first == "---", let end = lines.dropFirst().prefix(100).firstIndex(where: { $0 == "---" || $0 == "..." }) {
+            try budget.reserveNode()
             blocks.append(.code(language: "yaml", text: lines[1..<end].joined(separator: "\n")))
             lines.removeSubrange(0...end)
         }
-        return blocks + parse(lines: lines)
+        return try blocks + parse(lines: lines, depth: 0)
     }
 
     /// Each quote or list level recurses; a crafted file with thousands of `>` or list markers would exhaust the stack.
     /// Nesting deeper than any real document uses shows as plain text instead.
-    private static let maxDepth = 16
-    /// NSTextTable lays out every cell eagerly; a table this big is shown cut off.
-    private static let maxTableColumns = 20
-    private static let maxTableRows = 200
-
-    package static func parse(lines: [String], depth: Int = 0) -> [MarkdownBlock] {
-        guard depth < maxDepth else { return lines.isEmpty ? [] : [.code(language: "", text: lines.joined(separator: "\n"))] }
+    private let maxDepth = 16
+    private func parse(lines: [String], depth: Int) throws -> [MarkdownBlock] {
+        guard depth < maxDepth else {
+            guard !lines.isEmpty else { return [] }
+            try budget.reserveNode()
+            return [.code(language: "", text: lines.joined(separator: "\n"))]
+        }
         var blocks: [MarkdownBlock] = []
         var paragraph: [String] = []
         var i = 0
-        func flush() {
-            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: "\n"))) }
+        func flush() throws {
+            if !paragraph.isEmpty {
+                try budget.reserveNode()
+                blocks.append(.paragraph(paragraph.joined(separator: "\n")))
+            }
             paragraph = []
         }
 
         while i < lines.count {
+            try Task.checkCancellation()
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { flush(); i += 1; continue }
-            switch start(lines, at: &i, depth: depth, inParagraph: !paragraph.isEmpty) {
+            if trimmed.isEmpty { try flush(); i += 1; continue }
+            switch try start(lines, at: &i, depth: depth, inParagraph: !paragraph.isEmpty) {
             case .block(let block)?:
-                flush()
+                try flush()
+                try budget.reserveNode()
                 blocks.append(block)
             case .underline(let level)?:
+                try budget.reserveNode()
                 blocks.append(.heading(level: level, text: paragraph.joined(separator: "\n")))
                 paragraph = []
             case nil:
@@ -64,7 +79,7 @@ nonisolated package enum MarkdownParser {
                 i += 1
             }
         }
-        flush()
+        try flush()
         return blocks
     }
 
@@ -76,7 +91,7 @@ nonisolated package enum MarkdownParser {
 
     /// What starts at line `i`, which it reads past; nil for a paragraph's text. Indented code and HTML don't
     /// interrupt a paragraph, nor do most list markers.
-    private static func start(_ lines: [String], at i: inout Int, depth: Int, inParagraph: Bool) -> Start? {
+    private func start(_ lines: [String], at i: inout Int, depth: Int, inParagraph: Bool) throws -> Start? {
         let line = lines[i]
         let indent = indentation(line)
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -94,11 +109,11 @@ nonisolated package enum MarkdownParser {
             i += 1
             return .block(.rule)
         }
-        if trimmed.hasPrefix(">") { return .block(quote(lines, from: &i, depth: depth)) }
+        if trimmed.hasPrefix(">") { return .block(try quote(lines, from: &i, depth: depth)) }
         if let marker = listMarker(line), !inParagraph || marker.canInterruptParagraph {
-            return .block(parseList(lines, from: &i, depth: depth))
+            return .block(try parseList(lines, from: &i, depth: depth))
         }
-        if trimmed.contains("|"), let table = table(lines, from: &i) { return .block(table) }
+        if trimmed.contains("|"), let table = try table(lines, from: &i) { return .block(table) }
         if !inParagraph, isHTMLBlockStart(trimmed) { return .block(htmlBlock(lines, from: &i)) }
         return nil
     }
@@ -106,7 +121,7 @@ nonisolated package enum MarkdownParser {
     // MARK: - Blocks
 
     /// Lines indented four spaces or more, blank ones between them included, as code.
-    private static func indentedCode(_ lines: [String], from i: inout Int) -> MarkdownBlock {
+    private func indentedCode(_ lines: [String], from i: inout Int) -> MarkdownBlock {
         var code: [String] = []
         while i < lines.count, indentation(lines[i]) >= 4 || isBlank(lines[i]) {
             code.append(String(lines[i].dropFirst(min(4, lines[i].count))))
@@ -117,7 +132,7 @@ nonisolated package enum MarkdownParser {
     }
 
     /// From the opening fence (at line `i`) to the closing one, or the end.
-    private static func fencedCode(_ lines: [String], from i: inout Int, fence: (marker: String, info: String),
+    private func fencedCode(_ lines: [String], from i: inout Int, fence: (marker: String, info: String),
                                    indent: Int) -> MarkdownBlock {
         var code: [String] = []
         i += 1
@@ -131,7 +146,7 @@ nonisolated package enum MarkdownParser {
     }
 
     /// `>` lines, and the lines that continue their paragraph, parsed as blocks of their own one level down.
-    private static func quote(_ lines: [String], from i: inout Int, depth: Int) -> MarkdownBlock {
+    private func quote(_ lines: [String], from i: inout Int, depth: Int) throws -> MarkdownBlock {
         var quoted: [String] = []
         while i < lines.count {
             let current = lines[i].trimmingCharacters(in: .whitespaces)
@@ -146,31 +161,32 @@ nonisolated package enum MarkdownParser {
             }
             i += 1
         }
-        return .quote(parse(lines: quoted, depth: depth + 1))
+        return .quote(try parse(lines: quoted, depth: depth + 1))
     }
 
     /// A GitHub table: a header row, then its alignment row, then rows until a blank or pipeless line. nil, with `i`
     /// left alone, when line `i` doesn't start one.
-    private static func table(_ lines: [String], from i: inout Int) -> MarkdownBlock? {
-        guard i + 1 < lines.count, let alignments = tableAlignments(lines[i + 1]) else { return nil }
-        let allHeaders = cells(lines[i].trimmingCharacters(in: .whitespaces))
-        guard allHeaders.count == alignments.count else { return nil }
-        let header = Array(allHeaders.prefix(maxTableColumns))
+    private func table(_ lines: [String], from i: inout Int) throws -> MarkdownBlock? {
+        guard i + 1 < lines.count, let alignments = try tableAlignments(lines[i + 1]) else { return nil }
+        let header = try cells(lines[i].trimmingCharacters(in: .whitespaces))
+        guard header.count == alignments.count else { return nil }
+        try budget.reserveTable()
+        try budget.reserveCells(header.count)
         var rows: [[String]] = []
         i += 2
         while i < lines.count, !isBlank(lines[i]), lines[i].contains("|") {
-            if rows.count < maxTableRows {
-                var row = cells(lines[i].trimmingCharacters(in: .whitespaces))
-                row = Array(row.prefix(header.count)) + Array(repeating: "", count: max(0, header.count - row.count))
-                rows.append(row)
-            }
+            guard rows.count < MarkdownLimits.tableRows else { throw MarkdownLimitExceeded() }
+            try budget.reserveCells(header.count)
+            var row = try cells(lines[i].trimmingCharacters(in: .whitespaces))
+            row = Array(row.prefix(header.count)) + Array(repeating: "", count: max(0, header.count - row.count))
+            rows.append(row)
             i += 1
         }
-        return .table(header: header, alignments: Array(alignments.prefix(header.count)), rows: rows)
+        return .table(header: header, alignments: alignments, rows: rows)
     }
 
     /// Raw HTML up to the next blank line.
-    private static func htmlBlock(_ lines: [String], from i: inout Int) -> MarkdownBlock {
+    private func htmlBlock(_ lines: [String], from i: inout Int) -> MarkdownBlock {
         var html: [String] = []
         while i < lines.count, !isBlank(lines[i]) {
             html.append(lines[i])
@@ -193,7 +209,7 @@ nonisolated package enum MarkdownParser {
         var canInterruptParagraph: Bool { !isEmpty && (!ordered || number == 1) }
     }
 
-    private static func listMarker(_ line: String) -> ListMarker? {
+    private func listMarker(_ line: String) -> ListMarker? {
         let indent = indentation(line)
         guard indent < 4 else { return nil }
         let rest = line.dropFirst(indent)
@@ -223,11 +239,13 @@ nonisolated package enum MarkdownParser {
                           contentOffset: indent + markerWidth + gap, isEmpty: afterMarker.allSatisfy { $0 == " " })
     }
 
-    private static func parseList(_ lines: [String], from i: inout Int, depth: Int) -> MarkdownBlock {
+    private func parseList(_ lines: [String], from i: inout Int, depth: Int) throws -> MarkdownBlock {
         guard let first = listMarker(lines[i]) else { return .paragraph(lines[i]) }
         var items: [MarkdownListItem] = []
         while i < lines.count, let marker = listMarker(lines[i]), marker.ordered == first.ordered,
               marker.delimiter == first.delimiter, marker.indent < first.contentOffset, !isRule(lines[i].trimmingCharacters(in: .whitespaces)) {
+            try Task.checkCancellation()
+            try budget.reserveNode()
             var content = [String(lines[i].dropFirst(marker.contentOffset))]
             i += 1
             while i < lines.count {
@@ -255,7 +273,7 @@ nonisolated package enum MarkdownParser {
                 checked = head.lowercased().hasPrefix("[x]")
                 content[0] = String(head.dropFirst(4))
             }
-            items.append(MarkdownListItem(checked: checked, blocks: parse(lines: content, depth: depth + 1)))
+            items.append(MarkdownListItem(checked: checked, blocks: try parse(lines: content, depth: depth + 1)))
             // Blank lines between items keep the list going.
             var next = i
             while next < lines.count, isBlank(lines[next]) { next += 1 }
@@ -269,15 +287,15 @@ nonisolated package enum MarkdownParser {
 
     // MARK: - Line classification
 
-    private static func indentation(_ line: String) -> Int {
+    private func indentation(_ line: String) -> Int {
         line.prefix(while: { $0 == " " }).count
     }
 
-    private static func isBlank(_ line: String) -> Bool {
+    private func isBlank(_ line: String) -> Bool {
         line.allSatisfy { $0 == " " }
     }
 
-    private static func fence(_ trimmed: String) -> (marker: String, info: String)? {
+    private func fence(_ trimmed: String) -> (marker: String, info: String)? {
         for char in ["`", "~"] where trimmed.hasPrefix(String(repeating: char, count: 3)) {
             let marker = String(trimmed.prefix(while: { String($0) == char }))
             let info = trimmed.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
@@ -287,7 +305,7 @@ nonisolated package enum MarkdownParser {
         return nil
     }
 
-    private static func atxHeading(_ trimmed: String) -> (Int, String)? {
+    private func atxHeading(_ trimmed: String) -> (Int, String)? {
         let hashes = trimmed.prefix(while: { $0 == "#" }).count
         guard (1...6).contains(hashes) else { return nil }
         let rest = trimmed.dropFirst(hashes)
@@ -303,25 +321,25 @@ nonisolated package enum MarkdownParser {
         return (hashes, text)
     }
 
-    private static func isRule(_ trimmed: String) -> Bool {
+    private func isRule(_ trimmed: String) -> Bool {
         guard let first = trimmed.first, "-*_".contains(first) else { return false }
         let compact = trimmed.filter { $0 != " " }
         return compact.count >= 3 && compact.allSatisfy { $0 == first }
     }
 
-    private static func startsBlock(_ line: String) -> Bool {
+    private func startsBlock(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         return fence(trimmed) != nil || atxHeading(trimmed) != nil || isRule(trimmed) || trimmed.hasPrefix(">")
     }
 
-    private static func isHTMLBlockStart(_ trimmed: String) -> Bool {
+    private func isHTMLBlockStart(_ trimmed: String) -> Bool {
         trimmed.firstMatch(of: /^<(\/?[A-Za-z][A-Za-z0-9-]*[\s>\/]|\/?[A-Za-z][A-Za-z0-9-]*$|!--)/) != nil
     }
 
-    private static func tableAlignments(_ line: String) -> [NSTextAlignment]? {
+    private func tableAlignments(_ line: String) throws -> [NSTextAlignment]? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.contains("-"), trimmed.allSatisfy({ "|:- ".contains($0) }) else { return nil }
-        let parts = cells(trimmed)
+        let parts = try cells(trimmed)
         guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0.contains("-") }) else { return nil }
         return parts.map { part in
             switch (part.hasPrefix(":"), part.hasSuffix(":")) {
@@ -333,7 +351,7 @@ nonisolated package enum MarkdownParser {
     }
 
     /// Cells of a table row, honoring `\|` escapes and outer pipes.
-    private static func cells(_ row: String) -> [String] {
+    private func cells(_ row: String) throws -> [String] {
         var text = Substring(row)
         if text.hasPrefix("|") { text = text.dropFirst() }
         if text.hasSuffix("|"), !text.hasSuffix("\\|") { text = text.dropLast() }
@@ -346,12 +364,14 @@ nonisolated package enum MarkdownParser {
             if char == "\\" { escaped = true; continue }
             if char == "`" { inCode.toggle() }
             if char == "|", !inCode {
+                guard result.count < MarkdownLimits.tableColumns else { throw MarkdownLimitExceeded() }
                 result.append(current.trimmingCharacters(in: .whitespaces))
                 current = ""
             } else {
                 current.append(char)
             }
         }
+        guard result.count < MarkdownLimits.tableColumns else { throw MarkdownLimitExceeded() }
         result.append(current.trimmingCharacters(in: .whitespaces))
         return result
     }

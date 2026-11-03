@@ -44,7 +44,7 @@ import Testing
         try #require(text.renderingError != nil)
         if failures == 0 { await withCheckedContinuation { delivered = $0 } }
         #expect(failures == 1)
-        #expect(!text.useTextStorage(NSTextStorage(string: "Must not revive")))
+        #expect(!text.useTextStorage(NSTextStorage(string: "Must not revive"), allowingNonContiguousLayout: false))
         text.sizeToFit()
         text.layout()
         text.setNeedsDisplay(text.bounds, avoidAdditionalLayout: false)
@@ -60,6 +60,19 @@ import Testing
         #expect(try STPreviewTextBuilder.width(of: valid).doubleValue > 0)
     }
 
+    @Test func storageInstallationKeepsLayoutPolicyWithItsDocument() {
+        let text = MarkdownTextView(usingTextLayoutManager: false)
+        text.setFrameSize(NSSize(width: 320, height: 200))
+        #expect(text.useTextStorage(NSTextStorage(string: "Source"), allowingNonContiguousLayout: true))
+        #expect(text.layoutManager?.allowsNonContiguousLayout == true)
+        #expect(text.layoutManager?.backgroundLayoutEnabled == false)
+        #expect(text.useTextStorage(NSTextStorage(string: "Rich"), allowingNonContiguousLayout: false))
+        #expect(text.string == "Rich")
+        #expect(text.layoutManager?.allowsNonContiguousLayout == false)
+        #expect(text.layoutManager?.backgroundLayoutEnabled == false)
+        #expect(text.renderingError == nil)
+    }
+
     @Test func markdownDisablesIdleLayoutAndStorageInstallationKeepsItDisabled() async throws {
         let tree = try TestTree("document.md")
         try Data("# 中文\n\nParagraph with `code`.".utf8).write(to: tree.url("document.md"))
@@ -67,7 +80,7 @@ import Testing
         let manager = try #require(view.textView.layoutManager)
         #expect(!manager.backgroundLayoutEnabled)
         manager.backgroundLayoutEnabled = true
-        #expect(view.textView.useTextStorage(NSTextStorage(string: "Replacement")))
+        #expect(view.textView.useTextStorage(NSTextStorage(string: "Replacement"), allowingNonContiguousLayout: false))
         #expect(!manager.backgroundLayoutEnabled)
         #expect(tree.text("document.md") == "# 中文\n\nParagraph with `code`.")
     }
@@ -126,7 +139,7 @@ import Testing
         let view = await markdown(tree)
         let storage = STFailingPreviewStorage()
         storage.addAttribute(MarkdownRenderer.mermaidSource, value: "graph TD; A-->B", range: NSRange(location: 0, length: storage.length))
-        try #require(view.textView.useTextStorage(storage))
+        try #require(view.textView.useTextStorage(storage, allowingNonContiguousLayout: false))
         storage.failsEditing = true
         defer { storage.failsEditing = false; view.cancelLoad() }
         try await expectRetirement(view.textView) {

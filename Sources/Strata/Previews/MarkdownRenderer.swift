@@ -8,9 +8,11 @@ import StrataTheme
 /// backgrounds, quote bars, heading rules and tables; Foundation handles inline runs through the native exception boundary.
 nonisolated package final class MarkdownRenderer {
     private let baseURL: URL
-    private var imageBudget = 12
+    private static let imageLimit = 12
+    private var imageBudget = imageLimit
     private(set) var tables: [MarkdownTable] = []
     private var diagrams = 0
+    private var budget = MarkdownBudget()
     static let mermaidSource = NSAttributedString.Key("StrataMermaidSource")
 
     private let bodySize: CGFloat = 13
@@ -24,8 +26,13 @@ nonisolated package final class MarkdownRenderer {
     }
 
     package func render(_ blocks: [MarkdownBlock]) throws -> NSMutableAttributedString {
+        budget = MarkdownBudget()
+        imageBudget = Self.imageLimit
+        diagrams = 0
+        tables.removeAll()
         let output = NSMutableAttributedString()
         try render(blocks, into: output, context: Context())
+        guard output.length <= MarkdownLimits.renderedUnits else { throw MarkdownLimitExceeded() }
         if output.string.hasSuffix("\n") { output.deleteCharacters(in: NSRange(location: output.length - 1, length: 1)) }
         return output
     }
@@ -42,6 +49,7 @@ nonisolated package final class MarkdownRenderer {
     private func render(_ blocks: [MarkdownBlock], into output: NSMutableAttributedString, context: Context) throws {
         for block in blocks {
             try Task.checkCancellation()
+            try budget.reserveNode()
             switch block {
             case .heading(let level, let text):
                 try heading(level: level, text: text, into: output, context: context)
@@ -50,7 +58,7 @@ nonisolated package final class MarkdownRenderer {
                 output.append(try inline(text, size: bodySize, color: textColor(context), paragraph: style))
                 output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
             case .code(let language, let text):
-                code(text, language: language, into: output, context: context)
+                try code(text, language: language, into: output, context: context)
             case .quote(let children):
                 let start = output.length
                 let bar = QuoteBlock()
@@ -69,6 +77,7 @@ nonisolated package final class MarkdownRenderer {
             case .list(let ordered, let start, let items):
                 try list(ordered: ordered, start: start, items: items, into: output, context: context)
             case .rule:
+                try budget.reserveText("")
                 let line = MarkdownTextBlock()
                 line.setValue(100, type: .percentageValueType, for: .width)
                 line.setWidth(1, type: .absoluteValueType, for: .border, edge: .minY)
@@ -113,7 +122,8 @@ nonisolated package final class MarkdownRenderer {
         output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
     }
 
-    private func code(_ text: String, language: String, into output: NSMutableAttributedString, context: Context) {
+    private func code(_ text: String, language: String, into output: NSMutableAttributedString, context: Context) throws {
+        try budget.reserveText(text)
         let background = CodeBlockBackground()
         background.setValue(100, type: .percentageValueType, for: .width)
         background.setWidth(9, type: .absoluteValueType, for: .padding)
@@ -136,8 +146,10 @@ nonisolated package final class MarkdownRenderer {
             diagrams += 1
             output.addAttribute(Self.mermaidSource, value: text, range: NSRange(location: start, length: output.length - start))
         }
-        if let language = Languages.detect(fenceInfo: language) {
-            CodeTheme.apply(SyntaxHighlighter.tokens(in: body, lexer: language.lexer), to: output, offset: start, size: size)
+        if body.utf16.count <= MarkdownLimits.formattingInputUnits, let language = Languages.detect(fenceInfo: language) {
+            let tokens = SyntaxHighlighter.tokens(in: body, lexer: language.lexer)
+            try budget.reserveRuns(tokens.count)
+            CodeTheme.apply(tokens, to: output, offset: start, size: size)
         }
     }
 
@@ -151,6 +163,8 @@ nonisolated package final class MarkdownRenderer {
         let column = max(listColumn, ceil(widest) + 8)
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
+            try budget.reserveNode()
+            try budget.reserveText("")
             var inner = context
             inner.indent = context.indent + column
             inner.listDepth += 1
@@ -173,6 +187,7 @@ nonisolated package final class MarkdownRenderer {
             line.append(NSAttributedString(string: "\t", attributes: [.paragraphStyle: style]))
             var rest = item.blocks
             if case .paragraph(let text)? = rest.first {
+                try budget.reserveNode()
                 rest.removeFirst()
                 line.append(try inline(text, size: bodySize, color: textColor(context), paragraph: style))
             }
@@ -190,6 +205,10 @@ nonisolated package final class MarkdownRenderer {
     private func table(header: [String], alignments: [NSTextAlignment], rows: [[String]],
                        into output: NSMutableAttributedString, context: Context) throws {
         guard !header.isEmpty else { return }
+        guard header.count <= MarkdownLimits.tableColumns,
+              rows.count <= MarkdownLimits.tableRows else { throw MarkdownLimitExceeded() }
+        try budget.reserveTable()
+        try budget.reserveCells(header.count * (rows.count + 1))
         let table = MarkdownTable()
         table.availableInset = context.indent + context.textBlocks.reduce(0) { inset, block in
             inset + [NSTextBlock.Layer.margin, .border, .padding].reduce(0) { width, layer in
@@ -207,7 +226,7 @@ nonisolated package final class MarkdownRenderer {
         table.setWidth(blockSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
         for (rowIndex, row) in ([header] + rows).enumerated() {
             try Task.checkCancellation()
-            for (column, text) in row.enumerated() where column < header.count {
+            for (column, text) in row.prefix(header.count).enumerated() {
                 let cell = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1, startingColumn: column, columnSpan: 1)
                 table.add(cell)
                 cell.setWidth(1, type: .absoluteValueType, for: .border)
@@ -296,12 +315,15 @@ nonisolated package final class MarkdownRenderer {
 
     private func inline(_ markdown: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor,
                         paragraph: NSParagraphStyle) throws -> NSAttributedString {
+        guard markdown.utf16.count <= MarkdownLimits.formattingInputUnits else { throw MarkdownLimitExceeded() }
+        try budget.reserveText(markdown)
         let parsed = try STPreviewTextBuilder.inlineMarkdown(markdown, baseURL: baseURL)
         let source = parsed.string as NSString
         let result = NSMutableAttributedString()
         var offset = 0
         while offset < parsed.length {
             try Task.checkCancellation()
+            try budget.reserveRuns(1)
             var range = NSRange()
             let native = parsed.attributes(at: offset, effectiveRange: &range)
             offset = NSMaxRange(range)

@@ -18,7 +18,7 @@ FOUNDATION_EXPORT NSTextStorage *_Nullable STCreatePreviewTextStorage(NSAttribut
 @interface STPreviewTextView : NSTextView
 @property(nonatomic, readonly, nullable) NSError *renderingError;
 @property(nonatomic, copy, nullable) void (^renderingFailed)(NSError *error);
-- (BOOL)useTextStorage:(NSTextStorage *)storage;
+- (BOOL)useTextStorage:(NSTextStorage *)storage allowingNonContiguousLayout:(BOOL)allows;
 - (BOOL)applyWrapping:(BOOL)wraps;
 - (void)retireWithError:(NSError *)error;
 - (BOOL)resizeAttachments:(NSArray<NSTextAttachment *> *)attachments width:(CGFloat)width NS_SWIFT_NAME(resizeAttachments(_:width:));

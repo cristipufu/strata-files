@@ -33,12 +33,18 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
     [self retireWithError:STPreviewError(operation, exception)];
 }
 
-- (BOOL)useTextStorage:(NSTextStorage *)storage {
+- (BOOL)useTextStorage:(NSTextStorage *)storage allowingNonContiguousLayout:(BOOL)allows {
     if (_renderingError) return NO;
     @try {
         // Idle-time layout runs outside view callbacks and their exception boundaries.
         self.layoutManager.backgroundLayoutEnabled = NO;
+        if (_renderingError) return NO;
+        // Turn lazy layout on before installation; turn it off only after the old storage has gone.
+        if (allows) self.layoutManager.allowsNonContiguousLayout = YES;
+        if (_renderingError) return NO;
         [self.layoutManager replaceTextStorage:storage];
+        if (_renderingError) return NO;
+        if (!allows) self.layoutManager.allowsNonContiguousLayout = NO;
         return _renderingError == nil;
     } @catch (NSException *exception) {
         [self retireAfterException:exception operation:@"text storage installation"];

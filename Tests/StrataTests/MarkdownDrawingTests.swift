@@ -126,12 +126,12 @@ import Testing
         var delivered: CheckedContinuation<Void, Never>?
         text.renderingFailed = { _ in failures += 1; delivered?.resume(); delivered = nil }
         let invalid = try invalidTableStorage()
-        let accepted = text.useTextStorage(invalid)
+        let accepted = text.useTextStorage(invalid, allowingNonContiguousLayout: false)
         if accepted { _ = try draw(text, width: 640, appearance: #require(NSAppearance(named: .aqua))) }
         try #require(text.renderingError != nil)
         if failures == 0 { await withCheckedContinuation { delivered = $0 } }
         #expect(failures == 1)
-        #expect(!text.useTextStorage(NSTextStorage(string: "Another document")))
+        #expect(!text.useTextStorage(NSTextStorage(string: "Another document"), allowingNonContiguousLayout: false))
         text.draw(text.bounds)
         #expect(failures == 1)
     }
@@ -162,7 +162,7 @@ import Testing
         let failure = try #require(view.textView.renderingFailed)
         var delivered: CheckedContinuation<Void, Never>?
         view.textView.renderingFailed = { error in failure(error); delivered?.resume(); delivered = nil }
-        if view.textView.useTextStorage(try invalidTableStorage()) {
+        if view.textView.useTextStorage(try invalidTableStorage(), allowingNonContiguousLayout: false) {
             _ = try draw(view.textView, width: 720, appearance: #require(NSAppearance(named: .aqua)))
         }
         try #require(view.textView.renderingError != nil)

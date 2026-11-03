@@ -8804,5 +8804,83 @@
     "find": "count > frames",
     "replace": "NO",
     "tests": "NativeImageReaderTests/animatedImagesRespectTheCallersFrameLimit"
+  },
+  {
+    "file": "Strata/Previews/MarkdownBudget.swift",
+    "rule": "Markdown budgets: nested nodes share the document allowance",
+    "find": "mutating func reserveNode() throws { try Self.consume(1, from: &nodes) }",
+    "replace": "mutating func reserveNode() throws {}",
+    "tests": "MarkdownBudgetTests/parserNodesAreBoundedAcrossQuotesAndListItems"
+  },
+  {
+    "file": "Strata/Previews/MarkdownBudget.swift",
+    "rule": "Markdown budgets: cells share one allowance across tables",
+    "find": "mutating func reserveCells(_ count: Int) throws { try Self.consume(count, from: &cells) }",
+    "replace": "mutating func reserveCells(_ count: Int) throws {}",
+    "tests": "MarkdownBudgetTests/tableCellBudgetsCoverTheWholeDocumentInBothPasses"
+  },
+  {
+    "file": "Strata/Previews/MarkdownBudget.swift",
+    "rule": "Markdown budgets: many small tables cannot bypass the limit",
+    "find": "mutating func reserveTable() throws { try Self.consume(1, from: &tables) }",
+    "replace": "mutating func reserveTable() throws {}",
+    "tests": "MarkdownBudgetTests/manySmallTablesShareTheirBudgetAndBecomeReadableSource"
+  },
+  {
+    "file": "Strata/Previews/MarkdownBudget.swift",
+    "rule": "Markdown budgets: inline and syntax runs share one allowance",
+    "find": "mutating func reserveRuns(_ count: Int) throws { try Self.consume(count, from: &runs) }",
+    "replace": "mutating func reserveRuns(_ count: Int) throws {}",
+    "tests": "MarkdownBudgetTests/formattingRunsAreSharedByInlineTextAndCodeBlocks"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Markdown budgets: inline input is bounded before native parsing",
+    "find": "        guard markdown.utf16.count <= MarkdownLimits.formattingInputUnits else { throw MarkdownLimitExceeded() }\n",
+    "replace": "",
+    "tests": "MarkdownBudgetTests/longInlineTextUsesSourceBeforeNativeParsingAndKeepsUnicode"
+  },
+  {
+    "file": "Strata/Previews/MarkdownBudget.swift",
+    "rule": "Markdown budgets: decorated lines cannot bypass the source fallback",
+    "find": "        try Self.consume(breaks + 1, from: &lines)\n",
+    "replace": "",
+    "tests": "MarkdownBudgetTests/decoratedLinesAndOutputUnitsStayBoundedWithoutDroppingTheSource"
+  },
+  {
+    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "rule": "Markdown budgets: output includes formatting-added characters",
+    "find": "        guard output.length <= MarkdownLimits.renderedUnits else { throw MarkdownLimitExceeded() }\n",
+    "replace": "",
+    "tests": "MarkdownBudgetTests/decoratedLinesAndOutputUnitsStayBoundedWithoutDroppingTheSource"
+  },
+  {
+    "file": "Strata/Previews/MarkdownParser.swift",
+    "rule": "Markdown budgets: oversized rows retain their full readable source",
+    "find": "            guard rows.count < MarkdownLimits.tableRows else { throw MarkdownLimitExceeded() }\n",
+    "replace": "",
+    "tests": "MarkdownBudgetTests/oversizedTablesKeepAllTheirRowsAndColumnsInSource"
+  },
+  {
+    "file": "Strata/Previews/MarkdownParser.swift",
+    "rule": "Markdown budgets: wide tables stop allocating cells early",
+    "edits": [
+      {
+        "find": "\n                guard result.count < MarkdownLimits.tableColumns else { throw MarkdownLimitExceeded() }",
+        "replace": ""
+      },
+      {
+        "find": "\n        guard result.count < MarkdownLimits.tableColumns else { throw MarkdownLimitExceeded() }",
+        "replace": ""
+      }
+    ],
+    "tests": "MarkdownBudgetTests/oversizedTablesKeepAllTheirRowsAndColumnsInSource"
+  },
+  {
+    "file": "CPreviewText/PreviewTextView.m",
+    "rule": "Markdown budgets: source storage enables lazy layout inside its guard",
+    "find": "        if (allows) self.layoutManager.allowsNonContiguousLayout = YES;\n",
+    "replace": "",
+    "tests": "PreviewTextBoundaryTests/storageInstallationKeepsLayoutPolicyWithItsDocument"
   }
 ]

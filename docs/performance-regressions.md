@@ -392,3 +392,25 @@ Regression tests cover real PNG/JPEG decoding, rotated metadata, camera dates, c
 reader release and failure, regular-file restrictions, descriptor ownership, truncation and ordinary/cancelled OCR.
 Controlled per-reader failures avoid global framework replacements. These are exception and resource boundaries inside
 the app, not process isolation: they cannot contain native memory faults or enforce a timeout inside a framework call.
+
+
+## Whole-document Markdown work limits
+
+The source-byte and per-table limits did not bound the total number of parsed nodes, native tables/cells or formatting
+runs. A small file could contain many individually valid tables or alternate inline styles thousands of times.
+Each parse now owns one budget shared by quotes and lists; each render owns a fresh budget for its document. Named
+policies cap 4,096 structural nodes, 128 tables, 4,096 table cells, 16,384 formatting runs, 8,192 decorated lines and
+1,048,576 rendered UTF-16 units. A native inline parse or syntax-highlighting pass takes at most 32,768 UTF-16 units;
+longer code fences retain their text without highlighting. Existing Mermaid source/diagram limits remain separate.
+
+Exhaustion switches the whole preview to selectable, searchable source and labels the footer “Source”. It preserves
+all text that the existing 512 KiB file read returned, without retaining partially built tables or starting diagrams.
+Tables beyond 20 columns or 200 rows also use this source fallback instead of silently dropping extra data. Other
+native read/render failures still use the existing error message; cancellation propagates without becoming a fallback.
+Source mode uses lazy layout, while rich Markdown retains its native layout policy. The native storage-installation
+boundary switches that policy with its document, turning lazy layout off only after the old storage has been replaced.
+
+Tests exercise parser and renderer boundaries, shared nested budgets, real inline/code formatting, table limits,
+normal rich rendering, source drawing/search/Unicode, unchanged files, cancellation, document replacement and the
+packaged Mermaid reproducer. Work counts bound these paths; they are not a universal time or memory guarantee for
+prebuilt macOS frameworks.

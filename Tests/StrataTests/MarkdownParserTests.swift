@@ -30,7 +30,7 @@ struct MarkdownParserTests {
         }
     }
 
-    @Test func eachKindOfBlock() {
+    @Test func eachKindOfBlock() throws {
         let text = """
         ---
         title: Notes
@@ -66,7 +66,7 @@ struct MarkdownParserTests {
         </div>
         Plain
         """
-        #expect(described(MarkdownParser.parse(text)) == [
+        #expect(described(try MarkdownParser.parse(text)) == [
             "code[yaml] title: Notes",
             "h1 Title",
             "h1 Setext",
@@ -82,7 +82,7 @@ struct MarkdownParserTests {
         ])
     }
 
-    @Test func aTableNeedsAsManyHeadersAsAlignments() {
-        #expect(described(MarkdownParser.parse("a | b | c\n|--|--|\nrest")) == ["p a | b | c\n|--|--|\nrest"])
+    @Test func aTableNeedsAsManyHeadersAsAlignments() throws {
+        #expect(described(try MarkdownParser.parse("a | b | c\n|--|--|\nrest")) == ["p a | b | c\n|--|--|\nrest"])
     }
 }

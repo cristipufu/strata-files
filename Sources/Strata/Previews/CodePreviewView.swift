@@ -132,7 +132,7 @@ package final class CodePreviewView: PreviewView {
     }
 
     private func show(_ document: CodeDocument) {
-        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
+        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value, allowingNonContiguousLayout: true) else { return }
         let font = CodeTheme.font()
         let padding = 2 * (textView.textContainer?.lineFragmentPadding ?? 0) + 12
         unwrappedWidth = CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding

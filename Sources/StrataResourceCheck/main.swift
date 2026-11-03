@@ -26,7 +26,7 @@ import StrataTheme
     }
 
     @concurrent private static func diagram(_ url: URL) async throws -> String {
-        let blocks = MarkdownParser.parse(try TextFile.read(url).text)
+        let blocks = try MarkdownParser.parse(TextFile.read(url).text)
         guard blocks.count == 1, case .code(let language, let source) = blocks[0], language == "mermaid" else { throw Invalid.sample }
         return source
     }

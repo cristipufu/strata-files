@@ -62,12 +62,13 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
             textView.retireWithError(error as NSError)
             return
         }
-        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
+        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value, allowingNonContiguousLayout: document.isSource) else { return }
         search.find(query)
         guard textView.renderingError == nil else { return }
         renderDiagrams()
         let words = String(localized: "\(document.wordCount) words", comment: "plural")
-        footer.show(["Markdown", words], note: document.isTruncated
+        let summary = document.isSource ? ["Markdown", String(localized: "Source"), words] : ["Markdown", words]
+        footer.show(summary, note: document.isTruncated
             ? String(localized: "Showing first \(TextFile.limitDescription)", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil)
     }
 
@@ -206,6 +207,7 @@ nonisolated package struct MarkdownDocument: Sendable {
     let tables: Handoff<[MarkdownTable]>
     package let wordCount: Int
     package let isTruncated: Bool
+    package let isSource: Bool
 }
 
 nonisolated package enum MarkdownLoader {
@@ -214,15 +216,27 @@ nonisolated package enum MarkdownLoader {
         try Task.checkCancellation()
         let file = try TextFile.read(url)
         guard !file.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw PreviewError.empty }
-        let blocks = MarkdownParser.parse(file.text)
-        try Task.checkCancellation()
-        let renderer = MarkdownRenderer(baseURL: url.deletingLastPathComponent())
-        let rendered = try renderer.render(blocks)
+        let rendered: NSAttributedString
+        var tables: [MarkdownTable] = []
+        var isSource = false
+        do {
+            let blocks = try MarkdownParser.parse(file.text)
+            try Task.checkCancellation()
+            let renderer = MarkdownRenderer(baseURL: url.deletingLastPathComponent())
+            rendered = try renderer.render(blocks)
+            tables = renderer.tables
+        } catch is MarkdownLimitExceeded {
+            try Task.checkCancellation()
+            rendered = NSAttributedString(string: file.text, attributes: CodeTheme.baseAttributes())
+            isSource = true
+        }
         try Task.checkCancellation()
         let words = try STPreviewTextBuilder.wordCount(in: rendered.string).intValue
+        try Task.checkCancellation()
         guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
-        return MarkdownDocument(storage: Handoff(value: storage), tables: Handoff(value: renderer.tables), wordCount: words,
-                                isTruncated: file.isTruncated)
+        try Task.checkCancellation()
+        return MarkdownDocument(storage: Handoff(value: storage), tables: Handoff(value: tables), wordCount: words,
+                                isTruncated: file.isTruncated, isSource: isSource)
     }
 }
 

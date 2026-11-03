@@ -20,6 +20,7 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
   boundaries and `IndexStore`'s private storage. What the app uses from a library is `package`.
 - `Sources/Strata/Archives/` — archive reading and process infrastructure, shared by transfers and previews.
 - `Sources/CPreviewText/` — the native exception boundary for Markdown and source text previews.
+- `Sources/CNativeReaders/` — guarded native document extraction, image metadata, decoding and preview encoding.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
