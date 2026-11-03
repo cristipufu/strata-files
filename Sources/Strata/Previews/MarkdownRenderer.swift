@@ -1,10 +1,10 @@
 import AppKit
-import ImageIO
+import CPreviewText
 import StrataModel
 import StrataTheme
 
 /// Turns parsed Markdown blocks into an attributed string for a TextKit 1 text view: text blocks draw code
-/// backgrounds, quote bars, heading rules and tables; `AttributedString(markdown:)` handles inline runs.
+/// backgrounds, quote bars, heading rules and tables; Foundation handles inline runs through the native exception boundary.
 nonisolated package final class MarkdownRenderer {
     private let baseURL: URL
     private var imageBudget = 12
@@ -22,9 +22,9 @@ nonisolated package final class MarkdownRenderer {
         self.baseURL = baseURL
     }
 
-    package func render(_ blocks: [MarkdownBlock]) -> NSMutableAttributedString {
+    package func render(_ blocks: [MarkdownBlock]) throws -> NSMutableAttributedString {
         let output = NSMutableAttributedString()
-        render(blocks, into: output, context: Context())
+        try render(blocks, into: output, context: Context())
         if output.string.hasSuffix("\n") { output.deleteCharacters(in: NSRange(location: output.length - 1, length: 1)) }
         return output
     }
@@ -38,14 +38,15 @@ nonisolated package final class MarkdownRenderer {
 
     // MARK: - Blocks
 
-    private func render(_ blocks: [MarkdownBlock], into output: NSMutableAttributedString, context: Context) {
+    private func render(_ blocks: [MarkdownBlock], into output: NSMutableAttributedString, context: Context) throws {
         for block in blocks {
+            try Task.checkCancellation()
             switch block {
             case .heading(let level, let text):
-                heading(level: level, text: text, into: output, context: context)
+                try heading(level: level, text: text, into: output, context: context)
             case .paragraph(let text):
                 let style = paragraphStyle(context)
-                output.append(inline(text, size: bodySize, color: textColor(context), paragraph: style))
+                output.append(try inline(text, size: bodySize, color: textColor(context), paragraph: style))
                 output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
             case .code(let language, let text):
                 code(text, language: language, into: output, context: context)
@@ -62,10 +63,10 @@ nonisolated package final class MarkdownRenderer {
                 inner.textBlocks.append(bar)
                 inner.indent = 0
                 inner.quoted = true
-                render(children, into: output, context: inner)
+                try render(children, into: output, context: inner)
                 setTrailingSpacing(0, in: output, from: start)
             case .list(let ordered, let start, let items):
-                list(ordered: ordered, start: start, items: items, into: output, context: context)
+                try list(ordered: ordered, start: start, items: items, into: output, context: context)
             case .rule:
                 let line = MarkdownTextBlock()
                 line.setValue(100, type: .percentageValueType, for: .width)
@@ -82,14 +83,14 @@ nonisolated package final class MarkdownRenderer {
                     .paragraphStyle: style, .font: NSFont.systemFont(ofSize: 1),
                 ]))
             case .table(let header, let alignments, let rows):
-                table(header: header, alignments: alignments, rows: rows, into: output, context: context)
+                try table(header: header, alignments: alignments, rows: rows, into: output, context: context)
             case .html(let html):
-                render(htmlBlocks(html), into: output, context: context)
+                try render(htmlBlocks(html), into: output, context: context)
             }
         }
     }
 
-    private func heading(level: Int, text: String, into output: NSMutableAttributedString, context: Context) {
+    private func heading(level: Int, text: String, into output: NSMutableAttributedString, context: Context) throws {
         let sizes: [CGFloat] = [21, 17, 15, 13, 12, 12]
         let clamped = min(max(level, 1), 6)
         let size = sizes[clamped - 1]
@@ -107,7 +108,7 @@ nonisolated package final class MarkdownRenderer {
             style.firstLineHeadIndent = 0
         }
         let color: NSColor = level == 6 ? .secondaryLabelColor : textColor(context)
-        output.append(inline(text, size: size, weight: level <= 2 ? .bold : .semibold, color: color, paragraph: style))
+        output.append(try inline(text, size: size, weight: level <= 2 ? .bold : .semibold, color: color, paragraph: style))
         output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
     }
 
@@ -139,14 +140,16 @@ nonisolated package final class MarkdownRenderer {
         }
     }
 
-    private func list(ordered: Bool, start: Int, items: [MarkdownListItem], into output: NSMutableAttributedString, context: Context) {
+    private func list(ordered: Bool, start: Int, items: [MarkdownListItem], into output: NSMutableAttributedString, context: Context) throws {
         let start = max(0, min(start, 999_999_999))
         let listStart = output.length
         let bullets = ["•", "◦", "▪"]
         let markerFont = NSFont.monospacedDigitSystemFont(ofSize: bodySize, weight: .regular)
-        let widest = ordered ? ("\(start + items.count - 1)." as NSString).size(withAttributes: [.font: markerFont]).width : 0
+        let widest = ordered ? CGFloat(truncating: try STPreviewTextBuilder.width(of: NSAttributedString(
+            string: "\(start + items.count - 1).", attributes: [.font: markerFont]))) : 0
         let column = max(listColumn, ceil(widest) + 8)
         for (index, item) in items.enumerated() {
+            try Task.checkCancellation()
             var inner = context
             inner.indent = context.indent + column
             inner.listDepth += 1
@@ -170,13 +173,13 @@ nonisolated package final class MarkdownRenderer {
             var rest = item.blocks
             if case .paragraph(let text)? = rest.first {
                 rest.removeFirst()
-                line.append(inline(text, size: bodySize, color: textColor(context), paragraph: style))
+                line.append(try inline(text, size: bodySize, color: textColor(context), paragraph: style))
             }
             line.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
             output.append(line)
             if !rest.isEmpty {
                 let nestedStart = output.length
-                render(rest, into: output, context: inner)
+                try render(rest, into: output, context: inner)
                 setTrailingSpacing(4, in: output, from: nestedStart)
             }
         }
@@ -184,7 +187,7 @@ nonisolated package final class MarkdownRenderer {
     }
 
     private func table(header: [String], alignments: [NSTextAlignment], rows: [[String]],
-                       into output: NSMutableAttributedString, context: Context) {
+                       into output: NSMutableAttributedString, context: Context) throws {
         guard !header.isEmpty else { return }
         let table = MarkdownTable()
         table.availableInset = context.indent + context.textBlocks.reduce(0) { inset, block in
@@ -202,6 +205,7 @@ nonisolated package final class MarkdownRenderer {
         table.setWidth(2, type: .absoluteValueType, for: .margin, edge: .minY)
         table.setWidth(blockSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
         for (rowIndex, row) in ([header] + rows).enumerated() {
+            try Task.checkCancellation()
             for (column, text) in row.enumerated() where column < header.count {
                 let cell = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1, startingColumn: column, columnSpan: 1)
                 table.add(cell)
@@ -216,10 +220,10 @@ nonisolated package final class MarkdownRenderer {
                 style.alignment = alignments.indices.contains(column) ? alignments[column] : .left
                 style.lineHeightMultiple = 1.1
                 let size: CGFloat = 12
-                let content = inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style)
+                let content = try inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style)
                 let measurement = NSMutableAttributedString(attributedString: content)
                 measurement.removeAttribute(.paragraphStyle, range: NSRange(location: 0, length: measurement.length))
-                let measured = measurement.size().width
+                let measured = CGFloat(truncating: try STPreviewTextBuilder.width(of: measurement))
                 table.preferredWidths[column] = max(table.preferredWidths[column], ceil(measured) + 18)
                 output.append(content)
                 output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
@@ -290,15 +294,18 @@ nonisolated package final class MarkdownRenderer {
     // MARK: - Inline
 
     private func inline(_ markdown: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor,
-                        paragraph: NSParagraphStyle) -> NSAttributedString {
-        let options = AttributedString.MarkdownParsingOptions(
-            allowsExtendedAttributes: false, interpretedSyntax: .inlineOnlyPreservingWhitespace,
-            failurePolicy: .returnPartiallyParsedIfPossible)
-        let parsed = (try? AttributedString(markdown: markdown, options: options, baseURL: baseURL)) ?? AttributedString(markdown)
+                        paragraph: NSParagraphStyle) throws -> NSAttributedString {
+        let parsed = try STPreviewTextBuilder.inlineMarkdown(markdown, baseURL: baseURL)
+        let source = parsed.string as NSString
         let result = NSMutableAttributedString()
-        for run in parsed.runs {
-            var text = String(parsed[run.range].characters)
-            let intent = run.inlinePresentationIntent ?? []
+        var offset = 0
+        while offset < parsed.length {
+            try Task.checkCancellation()
+            var range = NSRange()
+            let native = parsed.attributes(at: offset, effectiveRange: &range)
+            offset = NSMaxRange(range)
+            var text = source.substring(with: range)
+            let intent = InlinePresentationIntent(rawValue: (native[.inlinePresentationIntent] as? NSNumber)?.uintValue ?? 0)
             if intent.contains(.inlineHTML) {
                 guard text.lowercased().hasPrefix("<br") else { continue }
                 text = "\u{2028}"
@@ -319,12 +326,12 @@ nonisolated package final class MarkdownRenderer {
                 attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.foregroundColor] = NSColor.secondaryLabelColor
             }
-            if let link = run.link {
+            if let link = native[.link] as? URL {
                 attributes[.link] = link.relativeString.hasPrefix("#") ? link.relativeString : link.absoluteURL
                 // Show where a link really goes; the visible text can say anything.
                 attributes[.toolTip] = link.relativeString.hasPrefix("#") ? nil : link.absoluteURL.absoluteString
             }
-            if let imageURL = run.imageURL {
+            if let imageURL = native[.imageURL] as? URL {
                 result.append(image(imageURL.absoluteURL, alt: text, attributes: attributes))
                 continue
             }
@@ -381,18 +388,8 @@ nonisolated package final class MarkdownRenderer {
         var info = stat()
         let limit = 8 << 20
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit,
-              let data = try? handle.read(upToCount: limit + 1), data.count <= limit,
-              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
-              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
-              width > 0, height > 0, width <= pixelLimit / height,
-              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: 640,
-              ] as CFDictionary) else { return nil }
-        return NSImage(cgImage: thumbnail, size: NSSize(width: thumbnail.width, height: thumbnail.height))
+              let data = try? handle.read(upToCount: limit + 1), data.count <= limit else { return nil }
+        return STPreviewTextBuilder.thumbnail(from: data, pixelLimit: pixelLimit)
     }
 
     private func checkbox(_ checked: Bool, paragraph: NSParagraphStyle) -> NSAttributedString {

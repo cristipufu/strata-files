@@ -183,7 +183,7 @@ struct EdgeCaseSafetyTests {
         #expect(result.total == 0)
     }
 
-    @Test func planExpanderRenderHandlesCombiningMarkExtensionsAndNonPositiveTextLimits() {
+    @Test func planExpanderRenderHandlesCombiningMarkExtensionsAndNonPositiveTextLimits() throws {
         let combiningItem = PlanItem(
             url: URL(fileURLWithPath: "/tmp/a.\u{0301}"),
             name: "a.\u{0301}",
@@ -203,7 +203,7 @@ struct EdgeCaseSafetyTests {
         #expect(!TextChunker.chunks("hello world", target: 5, overlap: 5).isEmpty)
         #expect(Summarizer.shorten("hello world", to: 0).isEmpty)
         #expect(Summarizer.shorten("hello world", to: -5).isEmpty)
-        let markdown = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/tmp")).render(MarkdownParser.parse("![](missing.png)"))
+        let markdown = try MarkdownRenderer(baseURL: URL(fileURLWithPath: "/tmp")).render(MarkdownParser.parse("![](missing.png)"))
         #expect(markdown.length >= 0)
         #expect(!TransferFormat.rate(.infinity).isEmpty)
         #expect(!TransferFormat.rate(.nan).isEmpty)

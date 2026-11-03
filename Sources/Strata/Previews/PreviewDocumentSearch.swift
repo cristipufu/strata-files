@@ -1,4 +1,5 @@
 import AppKit
+import CPreviewText
 
 package protocol PreviewDocumentSearch: AnyObject {
     func find(_ query: String)
@@ -6,19 +7,19 @@ package protocol PreviewDocumentSearch: AnyObject {
 }
 
 final class PreviewTextSearch {
-    private let textView: NSTextView
+    private let textView: STPreviewTextView
     private(set) var matches: [NSRange] = []
     private var current = -1
 
-    init(textView: NSTextView) { self.textView = textView }
+    init(textView: STPreviewTextView) { self.textView = textView }
 
     func find(_ query: String) {
+        guard textView.renderingError == nil else { return }
         let whole = NSRange(location: 0, length: textView.string.utf16.count)
-        textView.layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: whole)
-        textView.layoutManager?.removeTemporaryAttribute(.foregroundColor, forCharacterRange: whole)
         let previous = matches.indices.contains(current) ? matches[current] : nil
         matches = []; current = -1
         guard !query.isEmpty else {
+            guard textView.highlightRanges([], clearing: whole) else { return }
             if let previous, textView.selectedRange() == previous { textView.setSelectedRange(NSRange(location: previous.location, length: 0)) }
             return
         }
@@ -28,18 +29,18 @@ final class PreviewTextSearch {
             let range = text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: remaining)
             guard range.location != NSNotFound, range.length > 0 else { break }
             matches.append(range)
-            textView.layoutManager?.addTemporaryAttribute(.backgroundColor, value: NSColor.selectedTextBackgroundColor,
-                                                         forCharacterRange: range)
-            textView.layoutManager?.addTemporaryAttribute(.foregroundColor, value: NSColor.selectedTextColor, forCharacterRange: range)
             remaining = NSRange(location: NSMaxRange(range), length: whole.length - NSMaxRange(range))
+        }
+        guard textView.highlightRanges(matches.map(NSValue.init(range:)), clearing: whole) else {
+            matches = []
+            return
         }
         findNext(backwards: false)
     }
 
     func findNext(backwards: Bool) {
-        guard !matches.isEmpty else { return }
+        guard textView.renderingError == nil, !matches.isEmpty else { return }
         current = (current + (backwards ? matches.count - 1 : 1)) % matches.count
-        textView.setSelectedRange(matches[current])
-        textView.scrollRangeToVisible(matches[current])
+        if !textView.revealRange(matches[current]) { matches = []; current = -1 }
     }
 }

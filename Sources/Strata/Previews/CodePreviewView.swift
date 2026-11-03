@@ -109,12 +109,10 @@ package final class CodePreviewView: PreviewView {
         wrapsLines = wraps
         wrapButton.state = wraps ? .on : .off
         scrollView.hasHorizontalScroller = !wraps
-        textView.isHorizontallyResizable = !wraps
-        textView.textContainer?.widthTracksTextView = wraps
-        textView.textContainer?.containerSize = NSSize(width: wraps ? textView.frame.width : .greatestFiniteMagnitude,
-                                                     height: .greatestFiniteMagnitude)
+        guard textView.applyWrapping(wraps) else { return }
         resizeText()
         if !wraps, (textView.textStorage?.length ?? 0) > 0 { textView.sizeToFit() }
+        guard textView.renderingError == nil else { return }
         let clip = scrollView.contentView
         clip.scroll(to: NSPoint(x: -clip.contentInsets.left, y: clip.bounds.origin.y))
         scrollView.reflectScrolledClipView(clip)
@@ -140,7 +138,8 @@ package final class CodePreviewView: PreviewView {
         unwrappedWidth = CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding
         guard textView.renderingError == nil else { return }
 
-        let ruler = LineNumberRuler(textView: textView, lineStarts: document.lineStarts, highlightedLine: document.errorLine)
+        guard let ruler = LineNumberRuler(textView: textView, lineStarts: document.rulerLineStarts.value,
+                                         highlightedLine: document.errorLine.map(NSNumber.init(value:))) else { return }
         scrollView.verticalRulerView = ruler
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
@@ -148,6 +147,7 @@ package final class CodePreviewView: PreviewView {
         keepTextClearOfRuler()
         lineStarts = document.lineStarts
         applyWrapping()
+        guard textView.renderingError == nil else { return }
 
         let lines = document.lineStarts.count
         let summary = [document.languageName, String(localized: "\(lines) lines", comment: "plural")] + [document.note].compactMap { $0 }
@@ -173,8 +173,10 @@ package final class CodePreviewView: PreviewView {
         super.layout()
         guard textView.renderingError == nil, !isHiddenOrHasHiddenAncestor else { return }
         if wrapsLines != preferences.previewWrapLines { applyWrapping() }
+        guard textView.renderingError == nil else { return }
         keepTextClearOfRuler()
         resizeText()
+        guard textView.renderingError == nil else { return }
         // Centering a line needs the final size, so it waits for the first real layout.
         if let line = pendingScrollLine, scrollView.contentSize.height > 0 {
             pendingScrollLine = nil
@@ -200,96 +202,19 @@ package final class CodePreviewView: PreviewView {
     }
 
     private func center(line index: Int) {
-        guard lineStarts.indices.contains(index), let layoutManager = textView.layoutManager,
-              let container = textView.textContainer else { return }
-        let glyphs = layoutManager.glyphRange(forCharacterRange: NSRange(location: lineStarts[index], length: 0),
-                                              actualCharacterRange: nil)
-        let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
-        let clip = scrollView.contentView
-        var target = clip.bounds
-        target.origin = NSPoint(x: -clip.contentInsets.left, y: rect.midY + textView.textContainerOrigin.y - target.height / 2)
-        clip.scroll(to: clip.constrainBoundsRect(target).origin)
-        scrollView.reflectScrolledClipView(clip)
+        guard lineStarts.indices.contains(index) else { return }
+        textView.centerCharacter(at: UInt(lineStarts[index]))
     }
 }
 
-/// Original line numbers, drawn once at each visible line's first fragment.
-final class LineNumberRuler: NSRulerView {
-    private weak var textView: NSTextView?
-    private let lineStarts: [Int]
-    private let highlightedLine: Int?
-    private let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-
-    init(textView: NSTextView, lineStarts: [Int], highlightedLine: Int?) {
-        self.textView = textView
-        self.lineStarts = lineStarts
-        self.highlightedLine = highlightedLine
-        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
-        clientView = textView
-        clipsToBounds = true
-        let digits = max(2, String(lineStarts.count).count)
-        ruleThickness = ceil(CGFloat(digits) * ("8" as NSString).size(withAttributes: [.font: font]).width) + 16
-        reservedThicknessForMarkers = 0
-        reservedThicknessForAccessoryView = 0
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-
-    // No background or edge: the numbers sit on whatever is behind the preview.
-    override func draw(_ dirtyRect: NSRect) {
-        drawHashMarksAndLabels(in: dirtyRect)
-    }
-
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView else { return }
-        let normal: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.tertiaryLabelColor]
-        let marked: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold), .foregroundColor: NSColor.systemRed,
-        ]
-        let right = bounds.width - 8
-        for label in labels(in: textView.visibleRect) {
-            let text = NSAttributedString(string: String(label.number), attributes: label.number == highlightedLine ? marked : normal)
-            text.draw(at: NSPoint(x: right - text.size().width, y: label.baseline - font.ascender))
-        }
-    }
-
-    func labels(in visibleRect: NSRect) -> [(number: Int, baseline: CGFloat)] {
-        guard let textView, (textView as? STPreviewTextView)?.renderingError == nil,
-              let layoutManager = textView.layoutManager, let container = textView.textContainer,
-              layoutManager.numberOfGlyphs > 0 else { return [] }
-        let origin = textView.textContainerOrigin
-        let visible = visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
-        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
-        var labels: [(number: Int, baseline: CGFloat)] = []
-        layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, range, _ in
-            let line = self.lineIndex(containing: layoutManager.characterIndexForGlyph(at: range.location))
-            guard self.lineStarts.indices.contains(line),
-                  layoutManager.characterIndexForGlyph(at: range.location) == self.lineStarts[line] else { return }
-            let baseline = layoutManager.location(forGlyphAt: range.location).y
-            let y = self.convert(NSPoint(x: 0, y: fragment.minY + origin.y + baseline), from: textView).y
-            labels.append((number: line + 1, baseline: y))
-        }
-        return labels
-    }
-
-    private func lineIndex(containing character: Int) -> Int {
-        var low = 0, high = lineStarts.count - 1
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if lineStarts[mid] <= character { low = mid } else { high = mid - 1 }
-        }
-        return low
-    }
-}
+typealias LineNumberRuler = STPreviewLineNumberRuler
 
 /// A highlighted document, ready for a text view.
 nonisolated package struct CodeDocument: Sendable {
     package let storage: Handoff<NSTextStorage>
     /// UTF-16 offset where each line starts.
     package let lineStarts: [Int]
+    let rulerLineStarts: Handoff<[NSNumber]>
     /// The longest line, in columns with tabs expanded.
     package let maxColumns: Int
     package let languageName: String
@@ -361,7 +286,8 @@ nonisolated package enum CodeLoader {
         }
         rendered.endEditing()
         guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
-        return CodeDocument(storage: Handoff(value: storage), lineStarts: lineStarts, maxColumns: maxColumns,
+        return CodeDocument(storage: Handoff(value: storage), lineStarts: lineStarts,
+                            rulerLineStarts: Handoff(value: lineStarts.map(NSNumber.init(value:))), maxColumns: maxColumns,
                             languageName: language.name, isTruncated: truncated, note: note, errorLine: errorLine)
     }
 

@@ -108,7 +108,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
-                linkerSettings: [.linkedFramework("AppKit")]),
+                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ImageIO")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
         .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
         // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
@@ -258,6 +258,8 @@ let package = Package(
             path: "Sources/StrataCLI",
             linkerSettings: [.linkedFramework("AppKit")]
         ),
+        .target(name: "CPreviewTextTestSupport", dependencies: ["CPreviewText"], path: "Tests/CPreviewTextTestSupport",
+                cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .testTarget(
             name: "StrataTests",
             dependencies: [
@@ -267,6 +269,7 @@ let package = Package(
                 "StrataModel",
                 "StrataPreviews",
                 "CPreviewText",
+                "CPreviewTextTestSupport",
                 "StrataArchives",
                 "StrataIndex",
                 "StrataConnections",

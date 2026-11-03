@@ -4387,11 +4387,11 @@
     "replace": "let base = url.deletingLastPathComponent().standardizedFileURL.path"
   },
   {
-    "file": "Strata/Previews/MarkdownRenderer.swift",
+    "file": "CPreviewText/PreviewTextBuilder.m",
     "rule": "Security review: markdown image dimensions are checked before decoding",
     "tests": "SecurityReviewTests/markdownImages",
-    "find": "width > 0, height > 0, width <= pixelLimit / height,",
-    "replace": "width > 0, height > 0,"
+    "find": "w > pixelLimit / h",
+    "replace": "NO"
   },
   {
     "file": "Strata/Previews/MarkdownRenderer.swift",
@@ -8652,16 +8652,16 @@
     "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles"
   },
   {
-    "file": "Strata/Previews/CodePreviewView.swift",
-    "find": "textView.textContainer?.widthTracksTextView = wraps",
-    "replace": "textView.textContainer?.widthTracksTextView = false",
+    "file": "CPreviewText/PreviewTextView.m",
+    "find": "self.textContainer.widthTracksTextView = wraps;",
+    "replace": "self.textContainer.widthTracksTextView = NO;",
     "rule": "Text preview wrapping leaves the container wider than its viewport",
     "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles|CodeWrappingTests/resizingAndSwitchingWrappingKeepTheDocumentSelectionAndSingleRead"
   },
   {
-    "file": "Strata/Previews/CodePreviewView.swift",
-    "find": "layoutManager.characterIndexForGlyph(at: range.location) == self.lineStarts[line]",
-    "replace": "layoutManager.characterIndexForGlyph(at: range.location) >= self.lineStarts[line]",
+    "file": "CPreviewText/PreviewLineNumberRuler.m",
+    "find": "if (character != self->_lineStarts[line].unsignedIntegerValue) return;",
+    "replace": "if (character < self->_lineStarts[line].unsignedIntegerValue) return;",
     "rule": "Text preview wrapping repeats the original line number on every visual fragment",
     "tests": "CodeWrappingTests/textCodeAndJSONWrapByDefaultWithoutChangingTheirFiles"
   },
@@ -8678,5 +8678,40 @@
     "replace": "isolated deinit {}",
     "rule": "Folder size ownership releasing its owner leaves the active walk uncancelled",
     "tests": "FolderSizerCancellationTests/releasingTheOwnerCancelsItsActiveWalk"
+  },
+  {
+    "file": "CPreviewText/PreviewTextView.m",
+    "find": "self.layoutManager.backgroundLayoutEnabled = NO;",
+    "replace": "self.layoutManager.backgroundLayoutEnabled = YES;",
+    "rule": "Text preview boundary: installation must disable idle layout",
+    "tests": "PreviewTextBoundaryTests/markdownDisablesIdleLayoutAndStorageInstallationKeepsItDisabled"
+  },
+  {
+    "file": "CPreviewText/PreviewTextView.m",
+    "find": "[self retireAfterException:exception operation:@\"Find highlighting\"];",
+    "replace": "(void)exception;",
+    "rule": "Text preview boundary: Find failures must retire the document",
+    "tests": "PreviewTextBoundaryTests/findFailureRetiresTheDocumentAndStopsFurtherSearchAndThemeWork"
+  },
+  {
+    "file": "CPreviewText/PreviewTextView.m",
+    "find": "[self retireAfterException:exception operation:@\"document replacement\"];",
+    "replace": "(void)exception;",
+    "rule": "Text preview boundary: failed diagram edits must retire their document",
+    "tests": "PreviewTextBoundaryTests/aDiagramEditingExceptionRetiresThePreviewAndDoesNotInstallTheAttachment"
+  },
+  {
+    "file": "CPreviewText/PreviewLineNumberRuler.m",
+    "find": "[textView retireWithError:STPreviewError(@\"line number layout\", exception)];",
+    "replace": "(void)exception;",
+    "rule": "Text preview boundary: ruler failures must retire their document",
+    "tests": "PreviewTextBoundaryTests/sourceRulerAndErrorPositionFailuresRetireOnlyTheirDocument"
+  },
+  {
+    "file": "CPreviewText/PreviewTextView.m",
+    "find": "// Removing a document also invalidates it; a retired view must never reenter its failed layout manager.\n    if (_renderingError) return;",
+    "replace": "// Allow display invalidation to reenter a retired renderer.",
+    "rule": "Text preview boundary: removing a retired view must not request glyph layout",
+    "tests": "PreviewTextBoundaryTests/removingARetiredDocumentNeverAsksItsLayoutManagerForGlyphs"
   }
 ]

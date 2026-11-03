@@ -32,6 +32,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(scrollView)
         NSLayoutConstraint.activate(scrollView.fillingConstraints(in: contentView))
+        layoutManager.backgroundLayoutEnabled = false
         textView.textContainer?.replaceLayoutManager(layoutManager)
         textView.isEditable = false
         textView.isSelectable = true
@@ -55,9 +56,15 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         guard textView.renderingError == nil else { return }
         textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
         textView.tables = document.tables.value
-        textView.tables.forEach { $0.fit(to: max(1, textView.bounds.width - 28)) }
+        do {
+            for table in textView.tables { try table.fit(to: max(1, textView.bounds.width - 28)) }
+        } catch {
+            textView.retireWithError(error as NSError)
+            return
+        }
         guard textView.renderingError == nil, textView.useTextStorage(document.storage.value) else { return }
         search.find(query)
+        guard textView.renderingError == nil else { return }
         renderDiagrams()
         let words = String(localized: "\(document.wordCount) words", comment: "plural")
         footer.show(["Markdown", words], note: document.isTruncated
@@ -155,8 +162,6 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
                 image.accessibilityDescription = source
                 attachment.image = image
                 let previous = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment
-                textView.diagrams.removeAll { $0 === previous }
-                textView.diagrams.append(attachment)
                 let width = min(image.size.width, max(40, textView.bounds.width - 48))
                 attachment.bounds = NSRect(x: 0, y: 0, width: width, height: image.size.height * width / image.size.width)
                 let replacement = NSMutableAttributedString(attachment: attachment)
@@ -166,7 +171,9 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
                 replacement.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: 1))
                 replacement.addAttribute(MarkdownRenderer.mermaidSource, value: source, range: NSRange(location: 0, length: 1))
                 replacement.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
-                storage.replaceCharacters(in: range, with: replacement)
+                guard textView.replaceCharacters(in: range, with: replacement) else { return }
+                textView.diagrams.removeAll { $0 === previous }
+                textView.diagrams.append(attachment)
                 search.find(query)
             }
         }
@@ -204,17 +211,15 @@ nonisolated package struct MarkdownDocument: Sendable {
 nonisolated package enum MarkdownLoader {
     @concurrent
     package static func load(_ url: URL) async throws -> MarkdownDocument {
+        try Task.checkCancellation()
         let file = try TextFile.read(url)
         guard !file.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw PreviewError.empty }
         let blocks = MarkdownParser.parse(file.text)
         try Task.checkCancellation()
         let renderer = MarkdownRenderer(baseURL: url.deletingLastPathComponent())
-        let rendered = renderer.render(blocks)
+        let rendered = try renderer.render(blocks)
         try Task.checkCancellation()
-        var words = 0
-        rendered.string.enumerateSubstrings(in: rendered.string.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in
-            words += 1
-        }
+        let words = try STPreviewTextBuilder.wordCount(in: rendered.string).intValue
         guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
         return MarkdownDocument(storage: Handoff(value: storage), tables: Handoff(value: renderer.tables), wordCount: words,
                                 isTruncated: file.isTruncated)

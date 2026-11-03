@@ -4,16 +4,31 @@ import Testing
 @testable import StrataPreviews
 
 @MainActor struct MarkdownPreviewTests {
+    @Test func nativeInlineParsingPreservesUnicodeFormattingAndLinkDestinations() throws {
+        let renderer = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/docs/", isDirectory: true))
+        let text = try renderer.render(MarkdownParser.parse("**粗体😀** *斜体* ~~删除~~ `代码` [链接](child.md) [锚点](#here)"))
+        func attributes(_ part: String) -> [NSAttributedString.Key: Any] {
+            text.attributes(at: (text.string as NSString).range(of: part).location, effectiveRange: nil)
+        }
+        #expect(text.string == "粗体😀 斜体 删除 代码 链接 锚点")
+        let bold = try #require(attributes("粗体😀")[.font] as? NSFont)
+        #expect(bold.fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(attributes("代码")[.backgroundColor] as? NSColor == MarkdownColors.inlineCode)
+        #expect(attributes("删除")[.strikethroughStyle] as? Int == NSUnderlineStyle.single.rawValue)
+        #expect(attributes("链接")[.link] as? URL == URL(fileURLWithPath: "/docs/child.md"))
+        #expect(attributes("锚点")[.link] as? String == "#here")
+    }
+
     @Test func tableFitsContentAndReflowsWithoutChangingAlignment() throws {
         let renderer = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/"))
-        let text = renderer.render(MarkdownParser.parse("| No | Description |\n| --: | :-- |\n| 1 | A much longer description that needs the room |"))
+        let text = try renderer.render(MarkdownParser.parse("| No | Description |\n| --: | :-- |\n| 1 | A much longer description that needs the room |"))
         let table = try #require(renderer.tables.first)
-        table.fit(to: 600)
+        try table.fit(to: 600)
         let short = try #require(table.cells.first)
         let prose = table.cells[1]
         #expect(short.value(for: .width) < prose.value(for: .width) / 3)
         let wide = prose.value(for: .width)
-        table.fit(to: 250)
+        try table.fit(to: 250)
         #expect(prose.value(for: .width) < wide)
         let styles = text.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         #expect(styles?.alignment == .right)
@@ -24,19 +39,19 @@ import Testing
         }
     }
 
-    @Test func tableCellsDoNotKeepTheirTableAliveAfterTheDocumentCloses() {
+    @Test func tableCellsDoNotKeepTheirTableAliveAfterTheDocumentCloses() throws {
         weak var table: MarkdownTable?
-        autoreleasepool {
+        try autoreleasepool {
             let renderer = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/"))
-            let document = renderer.render(MarkdownParser.parse("| A | B |\n| -- | -- |\n| 1 | 2 |"))
+            let document = try renderer.render(MarkdownParser.parse("| A | B |\n| -- | -- |\n| 1 | 2 |"))
             table = renderer.tables.first
             #expect(document.length > 0 && table != nil)
         }
         #expect(table == nil)
     }
 
-    @Test func nestedMermaidFencesAreMarkedAndOtherCodeIsPreserved() {
-        let text = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/")).render(MarkdownParser.parse("""
+    @Test func nestedMermaidFencesAreMarkedAndOtherCodeIsPreserved() throws {
+        let text = try MarkdownRenderer(baseURL: URL(fileURLWithPath: "/")).render(MarkdownParser.parse("""
         > ```mermaid
         > graph TD; A-->B
         > ```
@@ -58,7 +73,7 @@ import Testing
         }
         #expect(sources.count == 2)
         #expect(text.string.contains("let keep = 1"))
-        let excessive = MarkdownRenderer(baseURL: URL(fileURLWithPath: "/")).render([.code(language: "mermaid", text: String(repeating: "a", count: MermaidRenderer.textLimit + 1))])
+        let excessive = try MarkdownRenderer(baseURL: URL(fileURLWithPath: "/")).render([.code(language: "mermaid", text: String(repeating: "a", count: MermaidRenderer.textLimit + 1))])
         #expect(excessive.attribute(MarkdownRenderer.mermaidSource, at: 0, effectiveRange: nil) == nil)
     }
 

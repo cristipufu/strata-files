@@ -260,11 +260,11 @@ struct SecurityReviewTests {
             }
             return count
         }
-        let positive = MarkdownRenderer(baseURL: documentFolder).render(MarkdownParser.parse("![last](image.png)"))
+        let positive = try MarkdownRenderer(baseURL: documentFolder).render(MarkdownParser.parse("![last](image.png)"))
         #expect(attachmentCount(positive) == 1)
         let budgeted = MarkdownRenderer(baseURL: documentFolder)
         let markdown = String(repeating: "![missing](missing.png) ", count: 12) + "![last](image.png)"
-        #expect(attachmentCount(budgeted.render(MarkdownParser.parse(markdown))) == 0)
+        #expect(attachmentCount(try budgeted.render(MarkdownParser.parse(markdown))) == 0)
         let thumbnail = try #require(renderer.localImage(tree.url("doc/image.png")))
         #expect(thumbnail.size.width <= 640 && thumbnail.size.height <= 640)
         #expect(tree.snapshot() == ["doc/", "doc/image-link -> ../outside/image.png", "doc/image.png", "doc/large.png", "doc/link -> ../outside",

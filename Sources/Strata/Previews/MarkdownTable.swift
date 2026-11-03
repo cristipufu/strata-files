@@ -13,15 +13,12 @@ nonisolated final class MarkdownTable: NSTextTable {
     var availableInset: CGFloat = 0
     private var lastWidth: CGFloat = 0
 
-    func fit(to width: CGFloat) {
+    func fit(to width: CGFloat) throws {
         let available = max(1, width - availableInset)
         guard available != lastWidth, !preferredWidths.isEmpty else { return }
-        lastWidth = available
         let widths = Self.widths(preferred: preferredWidths, available: available)
-        setValue(available, type: .absoluteValueType, for: .width)
-        for cell in cells {
-            cell.setValue(max(1, widths[cell.startingColumn] - 18), type: .absoluteValueType, for: .width)
-        }
+        try STPreviewTextBuilder.fitTable(self, cells: cells, widths: widths.map { NSNumber(value: Double($0)) }, available: available)
+        lastWidth = available
     }
 
     static func widths(preferred: [CGFloat], available: CGFloat) -> [CGFloat] {
@@ -54,13 +51,13 @@ final class MarkdownTextView: STPreviewTextView {
         }
         if newSize.width != frame.width {
             let width = max(1, newSize.width - textContainerInset.width * 2 - (textContainer?.lineFragmentPadding ?? 0) * 2)
-            tables.forEach { $0.fit(to: width) }
-            for attachment in diagrams {
-                guard let size = attachment.image?.size, size.width > 0 else { continue }
-                let fitted = min(size.width, max(1, width - 20))
-                attachment.bounds = NSRect(x: 0, y: 0, width: fitted, height: size.height * fitted / size.width)
+            do {
+                for table in tables { try table.fit(to: width) }
+            } catch {
+                retireWithError(error as NSError)
+                return
             }
-            if let storage = textStorage { layoutManager?.invalidateLayout(forCharacterRange: NSRange(location: 0, length: storage.length), actualCharacterRange: nil) }
+            guard resizeAttachments(diagrams, width: width) else { return }
         }
         super.setFrameSize(newSize)
     }
