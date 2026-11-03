@@ -465,6 +465,11 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     /// Metadata can arrive after a deeper column was sorted. Keep each column's selection and defer native editing.
+    /// Reads again the columns showing these folders (by path): a file saved in place there changed none of its entries.
+    func reloadColumns(showing folders: Set<String>) {
+        for pane in panes where folders.contains(pane.folder.lexicallyStandardized.path) { pane.reload() }
+    }
+
     func resortLoadedColumns() {
         for pane in panes.dropFirst() {
             let sorted = pane.entries.sorted(by: sortComparator)

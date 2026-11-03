@@ -38,9 +38,11 @@ extension BrowserViewController {
         guard newMode != mode else { return }
         columnController?.cancelPendingRename()
         let selection = selectedURLs
+        let wasShown = showsContentsModified
         setStoredMode(newMode)
         if remember { preferences.viewMode = newMode.rawValue }
         installActiveView()
+        contentsDemandChanged(from: wasShown)
         pushContent()
         select(selection)
         view.window?.makeFirstResponder(focusView)

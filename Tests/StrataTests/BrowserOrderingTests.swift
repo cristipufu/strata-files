@@ -47,6 +47,8 @@ struct BrowserOrderingTests {
         var media: [URL: MediaInfo] = [:]
         var tags: [URL: [String]] = [:]
         var tagReads: [URL] = []
+        /// Folders' newest-file dates; nil for one not measured yet. A file, or anything missing, counts by its own date.
+        var contentsModified: [URL: Date?] = [:]
         var sizeReads: [URL] = []
         var batchReads: [URL] = []
         var requests: [URL] = []
@@ -55,7 +57,8 @@ struct BrowserOrderingTests {
                 metadata: .init(folderSize: { self.sizeReads.append($0); return self.sizes[$0.standardizedFileURL.path] },
                     childFolderSizes: { self.batchReads.append($0); return self.batches[$0] ?? [:] },
                     media: { self.media[$0.url] }, requestMedia: { self.requests.append($0.url) },
-                    tags: { self.tagReads.append($0); return self.tags[$0] ?? [] }))
+                    tags: { self.tagReads.append($0); return self.tags[$0] ?? [] },
+                    contentsModified: { self.contentsModified[$0.url] ?? $0.modified }))
         }
     }
 
@@ -66,7 +69,8 @@ struct BrowserOrderingTests {
                           label: key == .name ? "Item 2" : "Z", kind: key == .kind ? "Type 2" : "Document")
             let date = Date(timeIntervalSince1970: 500)
             let b = entry(key == .fileExtension ? "a.10" : "a.txt", size: key == .size ? 10 : 0,
-                          label: key == .name ? "Item 10" : "A", modified: key == .modified ? date : nil,
+                          label: key == .name ? "Item 10" : "A",
+                          modified: key == .modified || key == .contentsModified ? date : nil,
                           created: key == .created ? date : nil, added: key == .added ? date : nil,
                           kind: key == .kind ? "Type 10" : "Document")
             switch key {
@@ -100,6 +104,24 @@ struct BrowserOrderingTests {
         }
     }
 
+
+    @Test func contentsModifiedOrdersFoldersByTheirNewestFileAndUnmeasuredOnesLast() {
+        let metadata = Metadata(), order = metadata.ordering(.contentsModified, ascending: false)
+        let date = { Date(timeIntervalSince1970: $0) }
+        // Its own date is newest, but nothing inside it changed since: the folder that's busy inside comes first.
+        let quiet = entry("quiet", folder: true, modified: date(5_000))
+        let busy = entry("busy", folder: true, modified: date(1_000))
+        let unmeasured = entry("unmeasured", folder: true, modified: date(9_000))
+        let file = entry("file.txt", modified: date(3_000))
+        metadata.contentsModified = [quiet.url: date(2_000), busy.url: date(4_000), unmeasured.url: Date?.none]
+        var nodes = [quiet, file, unmeasured, busy].map { FileNode(entry: $0) }
+        order.sort(&nodes)
+        #expect(nodes.map(\.url) == [busy.url, file.url, quiet.url, unmeasured.url])
+        #expect(order.ordered(busy, quiet) && !order.ordered(quiet, busy))
+        // Newest files are known only on the main thread, so a folder isn't sorted by them as it's read.
+        #expect(order.snapshot == nil)
+        #expect(metadata.sizeReads.isEmpty && metadata.batchReads.isEmpty && metadata.requests.isEmpty)
+    }
 
     @Test func tagSortUsesEveryNameAndCachesEachItemOncePerPass() {
         let metadata = Metadata(), order = metadata.ordering(.tags)

@@ -279,6 +279,7 @@
     "A folder can’t be copied into itself": "檔案夾無法拷貝到其本身之中",
     "A folder can’t be moved into itself": "檔案夾無法搬移到其本身之中",
     "A folder can’t go inside itself": "檔案夾不能放入其本身之中",
+    "A folder is dated by the newest file inside it. Hidden files include a project’s Git data.": "檔案夾的日期取其中最新檔案的日期。隱藏檔案包括專案的 Git 資料。",
     "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.": "Dock 中 Strata 旁的搜尋欄位會在你輸入時尋找 App、檔案與檔案夾。Strata 需要「輔助使用」權限來放置它，並會在 Dock 中為它保留幾個空位。",
     "about %lld h %lld min left": "大約剩餘%lld小時%lld分鐘",
     "about %lld h left": "大約剩餘%lld小時",
@@ -525,6 +526,8 @@
     "Contains renamed files": "包含已重新命名的檔案",
     "Contains unmodified files": "包含未修改的檔案",
     "Contents": "內容",
+    "Contents Modified": "內容修改日期",
+    "Contents Modified counts hidden files": "「內容修改日期」包含隱藏檔案",
     "Copied": "已拷貝",
     "Copied %lld items to %@": {
       "other": "已將%lld個項目拷貝到%@"

@@ -26,6 +26,7 @@ struct ViewOptionsView: View {
     @State private var previews: Bool
     @State private var alternatingRows: Bool
     @State private var hiddenColumns: Set<String>
+    @State private var countsHidden: Bool
 
     init(preferences: Prefs) {
         self.preferences = preferences
@@ -34,6 +35,7 @@ struct ViewOptionsView: View {
         _alternatingRows = State(initialValue: preferences.alternatingRows)
         _previews = State(initialValue: preferences.showIconPreviews)
         _hiddenColumns = State(initialValue: preferences.hiddenListColumns)
+        _countsHidden = State(initialValue: preferences.contentsModifiedCountsHidden)
     }
 
     var body: some View {
@@ -60,6 +62,10 @@ struct ViewOptionsView: View {
                         preferences.hiddenListColumns = hiddenColumns
                     }))
                 }
+                Toggle("Contents Modified counts hidden files",
+                       isOn: Binding(get: { countsHidden }, set: { countsHidden = $0; preferences.contentsModifiedCountsHidden = $0 }))
+                Text("A folder is dated by the newest file inside it. Hidden files include a project’s Git data.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Text("Applies to all windows.").font(.caption).foregroundStyle(.secondary)
         }
@@ -75,5 +81,6 @@ struct ViewOptionsView: View {
         .onReceive(preferences.notifications.publisher(for: .appearanceChanged)) { _ in previews = preferences.showIconPreviews }
         .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
         .onReceive(preferences.notifications.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = preferences.hiddenListColumns }
+        .onReceive(preferences.notifications.publisher(for: .prefsChanged)) { _ in countsHidden = preferences.contentsModifiedCountsHidden }
     }
 }

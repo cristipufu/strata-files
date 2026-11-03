@@ -354,6 +354,7 @@
     "A folder can’t be copied into itself": "Un dossier ne peut pas être copié dans lui-même",
     "A folder can’t be moved into itself": "Un dossier ne peut pas être déplacé dans lui-même",
     "A folder can’t go inside itself": "Un dossier ne peut pas se trouver dans lui-même",
+    "A folder is dated by the newest file inside it. Hidden files include a project’s Git data.": "Un dossier prend la date du fichier le plus récent qu’il contient. Les fichiers masqués incluent les données Git d’un projet.",
     "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.": "Un champ de recherche à côté de Strata dans le Dock trouve apps, fichiers et dossiers pendant la saisie. Strata a besoin de l’accès à Accessibilité pour le placer, et réserve quelques emplacements vides dans le Dock pour lui.",
     "about %lld h %lld min left": "environ %lld h %lld min restantes",
     "about %lld h left": "environ %lld h restantes",
@@ -612,6 +613,8 @@
     "Contains renamed files": "Contient des fichiers renommés",
     "Contains unmodified files": "Contient des fichiers non modifiés",
     "Contents": "Contenu",
+    "Contents Modified": "Contenu modifié",
+    "Contents Modified counts hidden files": "Contenu modifié compte les fichiers masqués",
     "Copied": "Copié",
     "Copied %lld items to %@": {
       "one": "%lld élément copié dans %@",

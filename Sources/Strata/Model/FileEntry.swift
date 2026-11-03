@@ -26,6 +26,8 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package let added: Date?
     package let kind: String
     package let contentType: UTType?
+    /// The file system's number for the item, which a different item at the same path doesn't share.
+    package let identifier: UInt64?
 
     /// A folder you navigate into (packages such as apps open instead).
     package var isFolder: Bool { isDirectory && !isPackage }
@@ -115,12 +117,13 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     package static let resourceKeys: [URLResourceKey] = [
         .nameKey, .localizedNameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .fileSizeKey, .totalFileAllocatedSizeKey,
         .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey, .localizedTypeDescriptionKey,
-        .contentTypeKey, .isVolumeKey, .isAliasFileKey, .isRegularFileKey,
+        .contentTypeKey, .isVolumeKey, .isAliasFileKey, .isRegularFileKey, .fileIdentifierKey,
     ]
 
     package init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool, isSymlink: Bool, isVolume: Bool,
          size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
-         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true, allocatedSize: Int64? = nil) {
+         isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true, allocatedSize: Int64? = nil,
+         identifier: UInt64? = nil) {
         self.url = url
         self.name = name
         self.displayName = displayName ?? name
@@ -140,6 +143,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         self.added = added
         self.kind = kind
         self.contentType = contentType
+        self.identifier = identifier
     }
 
     package init(url: URL, values: URLResourceValues) {
@@ -170,6 +174,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
                          size: values.fileSize.map(Int64.init), system: values.localizedTypeDescription,
                          type: values.contentType)
         contentType = values.contentType
+        identifier = values.fileIdentifier
     }
 
     /// The same item described as another kind.

@@ -97,6 +97,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         case .tags: cell.configure(services.tags.tags(for: entry.url).map(\.name).joined(separator: ", "),
                                    alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
+        case .contentsModified:
+            let date = contentsModified(entry, request: true)
+            let measuring = date == nil && entry.isDirectory && sizer.isMeasuring(entry.url)
+            cell.configure(measuring ? "…" : Format.date(date ?? entry.modified), alignment: .left, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
         default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
         }
@@ -107,7 +111,12 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
         // A container's folder holds only what's been browsed: its size isn't known.
         if services.copies.contains(node.url) { return "—" }
-        if let size = services.index.folderSize(node.url) ?? FolderSizer.cached(node.url) {
+        if let size = services.index.folderSize(node.url) {
+            return Format.bytes(size.bytes)
+        }
+        if let size = FolderSizer.cached(node.url) {
+            if FolderSizer.isStale(node.url), canMeasure(node.entry),
+               !Privacy.walkingWouldPrompt(node.url, browsing: directory ?? node.url) { sizer.request(node.url) }
             return Format.bytes(size.bytes)
         }
         guard canMeasure(node.entry) else { return "—" }
@@ -147,7 +156,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
         if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
+        let wasShown = showsContentsModified
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
+        contentsDemandChanged(from: wasShown)
         syncSortDescriptor()
         if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
         let selection = selectedURLs
@@ -174,6 +185,10 @@ extension BrowserViewController: NSTextFieldDelegate {
         }
         view.window?.makeFirstResponder(outlineView)
         resorting.editingEnded()
+        if resultDatesChangedWhileEditing {
+            resultDatesChangedWhileEditing = false
+            if isShowingResults { showResultDates() }
+        }
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
     }

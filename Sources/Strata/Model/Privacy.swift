@@ -64,6 +64,19 @@ package enum Privacy {
         }
         return false
     }
+
+    /// Whether walking everything below `url` could trigger a prompt: `url` itself is guarded, or a guarded folder
+    /// lies somewhere below it (home, seen from /Users, holds Desktop, Documents and Library).
+    package static func walkingWouldPrompt(_ url: URL, browsing directory: URL) -> Bool {
+        if measuringWouldPrompt(url, browsing: directory) { return true }
+        guard !hasFullDiskAccess else { return false }
+        let path = url.lexicallyStandardized.path
+        let prefix = path == "/" ? "/" : path + "/"
+        let current = directory.lexicallyStandardized.path
+        return guardedRoots.contains { root in
+            root.hasPrefix(prefix) && !(current == root || current.hasPrefix(root + "/")) && !isKnownAccessible(root)
+        }
+    }
 }
 
 /// Shown once at first launch without Full Disk Access: one explained request instead of a prompt per folder.

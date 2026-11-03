@@ -4872,8 +4872,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column])",
-    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column])",
+    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: totals)",
+    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: totals)",
     "rule": "Inline rename metadata: folder size updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"
   },
@@ -8335,8 +8335,8 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "guard pending[key] == id else { return }",
-    "replace": "guard true else { return }",
+    "find": "guard let walk = pending[key], walk == id else { return }",
+    "replace": "guard let walk = pending[key] else { return }",
     "rule": "Folder sizing publishes an obsolete completion over its replacement",
     "tests": "FolderSizerCancellationTests"
   },

@@ -220,6 +220,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             switch result {
             case .success(let listing):
                 let entries = listing.entries
+                FolderSizer.listed(entries.filter(\.isDirectory).map { ($0.url, $0.identifier) })
                 statuses.tags.invalidate(listing.folder)
                 statuses.tags.load(entries)
                 statuses.cloud.load(entries.map(\.url), in: listing.folder)

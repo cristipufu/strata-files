@@ -15,12 +15,14 @@ extension ListColumn {
         case .width: String(localized: "Width", comment: "List column: image or movie width in pixels")
         case .height: String(localized: "Height", comment: "List column: image or movie height in pixels")
         case .duration: String(localized: "Duration", comment: "List column: playing time of a movie or audio file")
+        case .contentsModified: String(localized: "Contents Modified",
+                                       comment: "List column: for a folder, when the newest file anywhere inside it was modified")
         }
     }
 
     var preferredWidth: CGFloat {
         switch self {
-        case .modified, .created, .added: 170
+        case .modified, .created, .added, .contentsModified: 170
         case .kind, .tags: 150
         case .dimensions: 130
         default: 84
@@ -28,7 +30,7 @@ extension ListColumn {
     }
     var minWidth: CGFloat {
         switch self {
-        case .modified, .created, .added: 110
+        case .modified, .created, .added, .contentsModified: 110
         case .kind, .tags, .dimensions: 80
         default: 60
         }
