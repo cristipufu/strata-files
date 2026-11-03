@@ -49,6 +49,7 @@ extension BrowserViewController {
         let revision = navigationRevision
         columnController?.cancelPendingRename()
         let selection = selectedURLs
+        let wasShown = showsContentsModified
         if isShowingResults { results.chooseMode(newMode) }
         else {
             setStoredMode(newMode)
@@ -59,6 +60,7 @@ extension BrowserViewController {
             }
         }
         installActiveView()
+        contentsDemandChanged(from: wasShown)
         if !applyHeldListing() { pushContent() }
         guard navigationRevision == revision, effectiveMode == newMode else { return }
         select(selection)
