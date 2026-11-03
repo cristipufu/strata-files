@@ -51,7 +51,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Order waiting copies, moves and archives | `TransferOrdering`, `TransferQueue.reorder`, `releaseDisk`, `startNextArchiveJob` | `QueueOrderingTests/*` (real scheduling, native controls, conflicts, cancellation, independent disks, private History, Undo/Redo and replacements); mutations: “Queue order” |
 | Copy / move jobs (drag and drop, paste, other pane, Duplicate) | `TransferQueue.enqueue`, `TransferJob` | `TransferJobTests/*`, incl. `aReadOnlyCopyTakesNothingAndWhatLeavesItIsCopied` |
 | What a drop does | `FileDrop.decided`, from `FileDrop.operation(_:into:mask:option:copies:disk:)` | `DropTests/*`, `TransferContextTests/everyViewDropsIntoExactlyTheFolderItLandedOn`, `BrowserPresentationsTests/iconsAndGalleryDecideWhereADropGoesAndWhetherItMoves` |
-| Cut and paste | `Clipboard`, `ClipboardCommands.paste` | `ClipboardTests/*` |
+| Cut and paste | `Model/Clipboard.swift`, `ClipboardCommands.paste`; read-only preview cells consume Cut/Paste in `GridTableView` | `ClipboardTests/*`, `TablePreviewTests/readOnlyCellsNeverForwardCutOrPasteToFileCommands` |
 | Space previews stop file edits before they reach the source browser; Copy retains its chosen item, clipboard and pane | `PreviewReadOnlyCommands`, `PreviewCommandTarget`, `PreviewCoordinator.perform` | `PreviewCommandTests/*` (native responder dispatch, stale menus and sessions, replacement files and redirected parents, independent clipboards, original pane after focus changes); mutations: “Space preview actions” |
 
 ## Rename and new items

@@ -1,17 +1,22 @@
 import AppKit
+import StrataModel
 
 /// A SQLite database: a pop-up of its tables and views (with row counts), and the first rows of the chosen one.
 package final class SQLitePreviewView: PreviewView {
     private let url: URL
     private let picker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let summary = NSTextField(labelWithString: "")
-    private let grid = GridView()
+    private let grid: GridView
+    private var page = 0
+    private var shownTableIndex = 0
     private var tables: [SQLiteTable] = []
 
-    package init(url: URL) {
+    package init(url: URL, clipboard: Clipboard) {
         self.url = url
+        self.grid = GridView(clipboard: clipboard)
         super.init(frame: .zero)
         configure()
+        grid.onPage = { [weak self] in self?.showPage($0) }
         load({
             guard try SQLiteReader.isSQLite(url) else { throw PreviewError.unsupported }
             let tables = try SQLiteReader.tables(url)
@@ -82,7 +87,9 @@ package final class SQLitePreviewView: PreviewView {
     }
 
     private func show(_ rows: SQLiteRows, of table: SQLiteTable) {
+        shownTableIndex = picker.indexOfSelectedItem
         grid.show(rows.data)
+        grid.setPage(page, hasNext: rows.hasMore)
         let total = table.rowCount ?? rows.data.rows.count
         let rowText = table.rowCount == nil && rows.data.rows.count == SQLiteReader.rowLimit
             ? String(localized: "\(SQLiteReader.rowLimit)+ rows", comment: "plural") : String(localized: "\(total) rows", comment: "plural")
@@ -101,11 +108,25 @@ package final class SQLitePreviewView: PreviewView {
     @objc private func pickTable() {
         let index = picker.indexOfSelectedItem
         guard tables.indices.contains(index) else { return }
-        let table = tables[index]
-        let url = url
-        load({ try SQLiteReader.rows(url, table: table.name) }, apply: { [weak self] rows in
-            self?.show(rows, of: table)
-        })
+        page = 0
+        showPage(0)
+    }
+
+    private func showPage(_ page: Int) {
+        let index = picker.indexOfSelectedItem
+        guard page >= 0, page <= (Int.max - SQLiteReader.rowLimit) / SQLiteReader.rowLimit,
+              tables.indices.contains(index) else { return }
+        let table = tables[index], url = url
+        grid.beginPageLoad()
+        load({ try SQLiteReader.rows(url, table: table.name, offset: page * SQLiteReader.rowLimit) }, failed: { [weak self] message in
+            guard let self else { return }
+            picker.selectItem(at: shownTableIndex)
+            grid.pageLoadFailed(message)
+        }) { [weak self] rows in
+            guard let self else { return }
+            self.page = page
+            show(rows, of: table)
+        }
     }
 }
 

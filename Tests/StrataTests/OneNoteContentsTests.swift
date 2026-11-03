@@ -242,7 +242,7 @@ struct OneNoteContentsTests {
             return
         }
         let view = try #require(RichPreview.makeView(for: tree.url("folder/Open Notebook.onetoc2"),
-                                                     contentType: nil, preferences: try Prefs.isolated()) as? OneNoteContentsView)
+                                                     contentType: nil, preferences: try Prefs.isolated(), clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) as? OneNoteContentsView)
         await view.loadingTask?.value
         let rows = view.list.arrangedSubviews.compactMap { $0 as? NSStackView }
         #expect(rows.compactMap { ($0.arrangedSubviews.last as? NSTextField)?.stringValue } == ["Zebra", "Apple", "Group"])
@@ -253,14 +253,14 @@ struct OneNoteContentsTests {
                 == [0x33, 0x22, 0x11])
         let count = String(localized: "\(2) sections", comment: "plural")
         #expect(view.footer.subviews.contains { ($0 as? NSTextField)?.stringValue.contains(count) == true })
-        let empty = try #require(RichPreview.makeView(for: tree.url("folder/Empty.onetoc2"), contentType: nil, preferences: try Prefs.isolated()) as? PreviewView)
+        let empty = try #require(RichPreview.makeView(for: tree.url("folder/Empty.onetoc2"), contentType: nil, preferences: try Prefs.isolated(), clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) as? PreviewView)
         await empty.loadingTask?.value
         let said = String(localized: "This notebook lists no sections.")
         let messages = empty.subviews.compactMap { $0 as? PreviewMessageView }
         #expect(messages.flatMap { $0.subviews.flatMap(\.subviews) }.compactMap { ($0 as? NSTextField)?.stringValue } == [said])
         // A file named so that isn't one goes to Quick Look.
         var fellBack = false
-        let other = try #require(RichPreview.makeView(for: tree.url("folder/Not.onetoc2"), contentType: nil, preferences: try Prefs.isolated()) {
+        let other = try #require(RichPreview.makeView(for: tree.url("folder/Not.onetoc2"), contentType: nil, preferences: try Prefs.isolated(), clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) {
             fellBack = true
         } as? PreviewView)
         await other.loadingTask?.value

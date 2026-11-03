@@ -1,5 +1,6 @@
 import StrataArchives
 import AppKit
+import StrataModel
 import StrataPreviews
 
 /// The same native and rich file renderers used by Get Info, owned by this preview window's lifetime.
@@ -7,6 +8,7 @@ import StrataPreviews
     private let thumbnails: FileThumbnails
     private let copies: CopyProviders
     private let preferences: Prefs
+    private let clipboard: Clipboard
     private let native = QuickLookPreviewView(frame: .zero, style: .normal)
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
@@ -20,10 +22,11 @@ import StrataPreviews
     private var generation = 0
     private var isClosed = false
 
-    init(thumbnails: FileThumbnails, copies: CopyProviders, preferences: Prefs) {
+    init(thumbnails: FileThumbnails, copies: CopyProviders, preferences: Prefs, clipboard: Clipboard) {
         self.thumbnails = thumbnails
         self.copies = copies
         self.preferences = preferences
+        self.clipboard = clipboard
         super.init(frame: .zero)
         ThemeStyle.bind(self, to: .preview)
         icon.imageScaling = .scaleProportionallyDown
@@ -85,7 +88,7 @@ import StrataPreviews
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }
         let url = entry.url
         shownURL = url
-        if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, preferences: preferences, fallback: { [weak self] in
+        if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, preferences: preferences, clipboard: clipboard, fallback: { [weak self] in
             guard let self, self.generation == generation, shownURL == url else { return }
             (self.rich as? PreviewView)?.cancelLoad()
             self.rich?.removeFromSuperview()

@@ -352,5 +352,11 @@
     "code": "layer.backgroundColor = color",
     "count": 1,
     "reason": "Guarded macOS 26 titlebar fill uses the resolved ThemeStyle content color, preserving native blur and opacity; System and unknown layer structures restore the captured native color."
+  },
+  {
+    "file": "Sources/Strata/Previews/GridCells.swift",
+    "code": "NSColor.selectedContentBackgroundColor.setFill()",
+    "count": 1,
+    "reason": "Native preview table cells use the system selection color for the selected rectangle; document tables retain native control colors."
   }
 ]

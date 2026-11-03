@@ -13,7 +13,7 @@ package enum RichPreview {
     /// A view that loads its content off the main thread and fills whatever frame it's given.
     /// `fallback` runs if the file turns out not to suit a rich preview after all (a `.ts` video, a `.db` that isn't
     /// SQLite, binary data under a text extension); show Quick Look then. Without it, the view says "No Preview Available".
-    package static func makeView(for url: URL, contentType: UTType?, preferences: any PreviewTextSettings, fallback: (() -> Void)? = nil) -> NSView? {
+    package static func makeView(for url: URL, contentType: UTType?, preferences: any PreviewTextSettings, clipboard: Clipboard, fallback: (() -> Void)? = nil) -> NSView? {
         guard let format = PreviewFormat(url: url, contentType: contentType) else { return nil }
         let view: PreviewView = switch format {
         case .code(let language): CodePreviewView(url: url, mode: .source(language), preferences: preferences)
@@ -23,8 +23,8 @@ package enum RichPreview {
         case .epub: EPUBPreviewView(url: url)
         case .onenote: OneNotePreviewView(url: url)
         case .onenoteContents: OneNoteContentsView(url: url)
-        case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator)
-        case .sqlite: SQLitePreviewView(url: url)
+        case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator, clipboard: clipboard)
+        case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         }
         view.fallback = fallback

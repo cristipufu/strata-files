@@ -13,14 +13,17 @@ nonisolated package struct SQLiteRows: Sendable {
     package let data: GridData
     /// Why the rows couldn't be read (a virtual table from a missing module, say); the grid stays empty.
     package let error: String?
+    package var hasMore = false
 }
 
 /// Read-only access to SQLite files. Every call opens its own immutable, read-only connection, so nothing is
 /// shared between threads and the file (or its -wal/-shm siblings) is never written or locked.
 nonisolated package enum SQLiteReader {
+    private enum PageError: Error { case tooLarge }
     package static let rowLimit = 200
     package static let tableLimit = 500
     package static let columnLimit = 256
+    package static let pageByteLimit = 8 * 1024 * 1024
 
     package static func isSQLite(_ url: URL) throws -> Bool {
         let (head, _) = try TextFile.readPrefix(url, limit: 16)
@@ -47,56 +50,85 @@ nonisolated package enum SQLiteReader {
     }
 
     /// The first `rowLimit` rows of `table`. A view is the file's own SQL, so reading gets a time budget.
-    package static func rows(_ url: URL, table: String) throws -> SQLiteRows {
+    package static func rows(_ url: URL, table: String, offset: Int = 0) throws -> SQLiteRows {
+        guard offset >= 0, offset <= Int.max - rowLimit else { throw POSIXError(.EINVAL) }
         let db = try open(url)
         defer { sqlite3_close_v2(db) }
-        return withBudget(db, 3) { readRows(db, table: table) }
+        try Task.checkCancellation()
+        let result = withBudget(db, 3) { readRows(db, table: table, offset: offset) }
+        try Task.checkCancellation()
+        return result
     }
 
-    private static func readRows(_ db: OpaquePointer?, table: String) -> SQLiteRows {
+    private static func readRows(_ db: OpaquePointer?, table: String, offset: Int) -> SQLiteRows {
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT * FROM \(quoted(table)) LIMIT \(rowLimit)", -1, &statement, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(db, "SELECT * FROM \(quoted(table)) LIMIT \(rowLimit + 1) OFFSET \(offset)", -1, &statement, nil) == SQLITE_OK else {
             return SQLiteRows(data: GridData(columns: [], rows: []), error: String(localized: "This table couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
         }
         defer { sqlite3_finalize(statement) }
         let columnCount = min(columnLimit, Int(sqlite3_column_count(statement)))
-        var columns = (0..<columnCount).map { GridColumn(title: sqlite3_column_name(statement, Int32($0)).map { String(decoding: UnsafeRawBufferPointer(start: $0, count: strnlen($0, 1200)), as: UTF8.self) } ?? "") }
+        let columns = (0..<columnCount).map { GridColumn(title: sqlite3_column_name(statement, Int32($0)).map { String(decoding: UnsafeRawBufferPointer(start: $0, count: strnlen($0, 1200)), as: UTF8.self) } ?? "") }
         var numeric = Array(repeating: true, count: columnCount)
         var rows: [[GridValue]] = []
-        while true {
+        var bytes = 0
+        var hasMore = false
+        while !Task.isCancelled {
             let step = sqlite3_step(statement)
             if step == SQLITE_DONE { break }
             guard step == SQLITE_ROW else {
                 let error = step == SQLITE_INTERRUPT ? String(localized: "Reading this took too long; showing what was read in time.")
                     : String(localized: "Reading stopped early (\(message(db))).", comment: "Placeholder: SQLite's error message")
-                return SQLiteRows(data: GridData(columns: columns, rows: rows), error: error)
+                return result(columns, numeric: numeric, rows: rows, error: error)
             }
-            var row: [GridValue] = []
-            row.reserveCapacity(columnCount)
-            for index in 0..<columnCount {
-                let column = Int32(index)
-                switch sqlite3_column_type(statement, column) {
-                case SQLITE_INTEGER:
-                    row.append(.text(String(sqlite3_column_int64(statement, column))))
-                case SQLITE_FLOAT:
-                    row.append(.text(String(sqlite3_column_double(statement, column))))
-                case SQLITE_NULL:
-                    row.append(.null)
-                case SQLITE_BLOB:
-                    row.append(.blob(bytes: Int(sqlite3_column_bytes(statement, column))))
-                    numeric[index] = false
-                default:
-                    let value = text(statement, column) ?? ""
-                    row.append(.text(value.count > 300 ? String(value.prefix(300)) + "…" : value))
-                    numeric[index] = false
-                }
+            if rows.count == rowLimit { hasMore = true; break }
+            do { rows.append(try readRow(statement, columnCount: columnCount, bytes: &bytes, numeric: &numeric)) }
+            catch is PageError {
+                return result(columns, numeric: numeric, rows: rows,
+                              error: String(localized: "This selection is too large to preview or copy here."))
+            } catch {
+                return result(columns, numeric: numeric, rows: rows,
+                              error: String(localized: "Reading stopped early (\(error.localizedDescription)).", comment: "Placeholder: SQLite's error message"))
             }
-            rows.append(row)
         }
+        return result(columns, numeric: numeric, rows: rows, hasMore: hasMore)
+    }
+
+    private static func readRow(_ statement: OpaquePointer?, columnCount: Int, bytes: inout Int,
+                                numeric: inout [Bool]) throws -> [GridValue] {
+        var row: [GridValue] = []
+        row.reserveCapacity(columnCount)
+        for index in 0..<columnCount {
+            let column = Int32(index)
+            switch sqlite3_column_type(statement, column) {
+            case SQLITE_INTEGER: row.append(.text(String(sqlite3_column_int64(statement, column))))
+            case SQLITE_FLOAT: row.append(.text(String(sqlite3_column_double(statement, column))))
+            case SQLITE_NULL: row.append(.null)
+            case SQLITE_BLOB:
+                let count = Int(sqlite3_column_bytes(statement, column))
+                guard count >= 0 else { throw POSIXError(.EIO) }
+                row.append(.blob(bytes: count))
+                numeric[index] = false
+            default:
+                let count = Int(sqlite3_column_bytes(statement, column))
+                guard count >= 0, count <= pageByteLimit - bytes else { throw PageError.tooLarge }
+                bytes += count
+                let text = sqlite3_column_text(statement, column)
+                guard text != nil || count == 0 else { throw POSIXError(.ENOMEM) }
+                let value = text.map { String(decoding: UnsafeBufferPointer(start: $0, count: count), as: UTF8.self) } ?? ""
+                row.append(.text(value))
+                numeric[index] = false
+            }
+        }
+        return row
+    }
+
+    private static func result(_ original: [GridColumn], numeric: [Bool], rows: [[GridValue]],
+                               error: String? = nil, hasMore: Bool = false) -> SQLiteRows {
+        var columns = original
         for index in columns.indices { columns[index].isNumeric = numeric[index] && !rows.isEmpty }
         var data = GridData(columns: columns, rows: rows)
         data.measureColumns()
-        return SQLiteRows(data: data, error: nil)
+        return SQLiteRows(data: data, error: error, hasMore: hasMore)
     }
 
     // MARK: - Helpers

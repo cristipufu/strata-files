@@ -113,7 +113,7 @@ import UniformTypeIdentifiers
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
                                                thumbnails: environment.services.thumbnails,
-                                               copies: environment.services.copies)
+                                               copies: environment.services.copies, clipboard: environment.services.clipboard)
         _ = content.view
         session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: true, applications: .standard)
         await session.task?.value

@@ -53,7 +53,7 @@ import Testing
             }
         }
         let tree = try TestTree("folder/page.html", "outside")
-        let view = try #require(RichPreview.makeView(for: page(tree), contentType: .html, preferences: try Prefs.isolated()) as? HTMLPreviewView)
+        let view = try #require(RichPreview.makeView(for: page(tree), contentType: .html, preferences: try Prefs.isolated(), clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) as? HTMLPreviewView)
         view.stop()
         #expect(tree.text("outside") == "outside")
     }

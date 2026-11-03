@@ -229,7 +229,7 @@ struct PreviewSessionTests {
         let listing = try ArchiveLister.tree(ArchiveReadListing(records: [readme], end: .stopped(.limit)), compressed: nil, named: "pack.tar")
         let session = PreviewSession(reader: environment.services.directories, archiveReader: { _, _ in listing })
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
-                                               thumbnails: environment.services.thumbnails, copies: environment.services.copies)
+                                               thumbnails: environment.services.thumbnails, copies: environment.services.copies, clipboard: environment.services.clipboard)
         _ = content.view
         session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: false, applications: .standard)
         await session.task?.value

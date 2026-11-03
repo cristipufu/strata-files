@@ -111,7 +111,7 @@ import WebKit
         let tree = try TestTree("folder/Notes.one", "outside")
         try Data(repeating: 0x41, count: 4096).write(to: tree.url("folder/Notes.one"))
         var fellBack = false
-        let made = RichPreview.makeView(for: tree.url("folder/Notes.one"), contentType: nil, preferences: try Prefs.isolated()) { fellBack = true }
+        let made = RichPreview.makeView(for: tree.url("folder/Notes.one"), contentType: nil, preferences: try Prefs.isolated(), clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) { fellBack = true }
         let view = try #require(made as? OneNotePreviewView)
         await view.loadingTask?.value
         #expect(fellBack && view.section == nil && view.webView == nil)

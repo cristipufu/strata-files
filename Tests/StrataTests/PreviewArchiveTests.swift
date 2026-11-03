@@ -573,7 +573,7 @@ extension PreviewArchiveTests {
         })
         let session = PreviewSession(reader: environment.services.directories, archiveAccess: access)
         let content = PreviewBrowserController(session: session, preferences: environment.preferences,
-                                               thumbnails: environment.services.thumbnails, copies: environment.services.copies)
+                                               thumbnails: environment.services.thumbnails, copies: environment.services.copies, clipboard: environment.services.clipboard)
         session.show(try #require(FileEntry(url: tree.url("pack.tar"))), showHidden: true, applications: .standard)
         await session.task?.value
         let first = try #require(session.roots.first { $0.name == "a.txt" }), second = try #require(session.roots.first { $0.name == "b.txt" })

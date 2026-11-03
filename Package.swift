@@ -65,6 +65,7 @@ let appModelSources = [
 let modelSources = [
     "BookFormat.swift",
     "ChosenFile.swift",
+    "Clipboard.swift",
     "CloudFolders.swift",
     "CloudStatus.swift",
     "DSStore.swift",

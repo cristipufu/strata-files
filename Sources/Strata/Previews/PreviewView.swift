@@ -57,6 +57,7 @@ package class PreviewView: NSView {
 
     /// Runs `operation` off the main thread and hands its result to `apply`, unless the view is gone or a newer load started.
     package final func load<Value: Sendable>(_ operation: @escaping @concurrent @Sendable () async throws -> Value,
+                               failed: ((String) -> Void)? = nil,
                                apply: @escaping (Value) -> Void) {
         task?.cancel()
         isLoading = true
@@ -73,6 +74,12 @@ package class PreviewView: NSView {
             guard let self, !Task.isCancelled else { return }
             hideSpinner()
             isLoading = false
+            if case .failure(let error) = result, let failed {
+                if case PreviewError.message(let text, _) = error { failed(text) }
+                else if let text = (error as? any LocalizedError)?.errorDescription { failed(text) }
+                else { failed(Self.describe(error).1) }
+                return
+            }
             switch result {
             case .success(let value):
                 apply(value)

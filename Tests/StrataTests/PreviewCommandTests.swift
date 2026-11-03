@@ -269,7 +269,7 @@ struct PreviewCommandTests {
     @Test func specialFilesAndPathsReplacedByLinksNeverReachFileRenderers() throws {
         let tree = try TestTree("file.md", "outside/keep.md")
         let env = try PreviewEnvironment(tree)
-        let view = PreviewFileView(thumbnails: env.services.thumbnails, copies: env.services.copies, preferences: env.preferences)
+        let view = PreviewFileView(thumbnails: env.services.thumbnails, copies: env.services.copies, preferences: env.preferences, clipboard: env.services.clipboard)
         let entry = try #require(FileEntry(url: tree.url("file.md")))
         try FileManager.default.moveItem(at: tree.url("file.md"), to: tree.url("original.md"))
         let original = tree.snapshot()
@@ -291,7 +291,7 @@ struct PreviewCommandTests {
     @Test func aLateFallbackRefusesAReplacedPathAndCannotRestartAClosedFileView() throws {
         let tree = try TestTree("file.md", "sibling.md")
         let env = try PreviewEnvironment(tree)
-        let view = PreviewFileView(thumbnails: env.services.thumbnails, copies: env.services.copies, preferences: env.preferences)
+        let view = PreviewFileView(thumbnails: env.services.thumbnails, copies: env.services.copies, preferences: env.preferences, clipboard: env.services.clipboard)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = view

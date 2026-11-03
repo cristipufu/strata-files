@@ -301,7 +301,7 @@
     "tests": "BrowserPresentationsTests/iconsAndGalleryDecideWhereADropGoesAndWhetherItMoves"
   },
   {
-    "file": "Strata/Model/FileOps.swift",
+    "file": "Strata/Model/Clipboard.swift",
     "find": "        return (urls, cut?.changeCount == pasteboard.changeCount)",
     "replace": "        return (urls, cut != nil)",
     "rule": "A Cut survives another app's copy and the next paste moves",
@@ -8882,5 +8882,19 @@
     "find": "        if (allows) self.layoutManager.allowsNonContiguousLayout = YES;\n",
     "replace": "",
     "tests": "PreviewTextBoundaryTests/storageInstallationKeepsLayoutPolicyWithItsDocument"
+  },
+  {
+    "file": "Strata/Previews/GridTableView.swift",
+    "find": "    @objc func cut(_ sender: Any?) { Sounds.beep() }",
+    "replace": "    @objc func cut(_ sender: Any?) { _ = nextResponder?.tryToPerform(#selector(cut(_:)), with: sender) }",
+    "rule": "Read-only table cut reaches the browser file commands",
+    "tests": "TablePreviewTests/readOnlyCellsNeverForwardCutOrPasteToFileCommands"
+  },
+  {
+    "file": "Strata/Previews/GridTableView.swift",
+    "find": "    @objc func paste(_ sender: Any?) { Sounds.beep() }",
+    "replace": "    @objc func paste(_ sender: Any?) { _ = nextResponder?.tryToPerform(#selector(paste(_:)), with: sender) }",
+    "rule": "Read-only table paste reaches the browser file commands",
+    "tests": "TablePreviewTests/readOnlyCellsNeverForwardCutOrPasteToFileCommands"
   }
 ]

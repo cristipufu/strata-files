@@ -1,4 +1,5 @@
 import AppKit
+import StrataModel
 import StrataPreviews
 
 /// Independent browsing inside a Space preview, with native expansion and selection and an owned pane layout.
@@ -40,7 +41,7 @@ import StrataPreviews
     private var comicMode: PreviewViewMode?
     var focusView: NSView { if mode == .icons, let grid { return grid.collection }; return outline }
 
-    init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders) {
+    init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard) {
         self.session = session
         self.preferences = preferences
         self.thumbnails = thumbnails
@@ -49,7 +50,7 @@ import StrataPreviews
         providerContent = PreviewProviderContent(copies: copies)
         measurement = PreviewMeasurement(copies: copies)
         archiveContent = PreviewArchiveContent(copies: copies)
-        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies, preferences: preferences)
+        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies, preferences: preferences, clipboard: clipboard)
         let tree = NSViewController()
         tree.view = treeHost
         treeController = tree

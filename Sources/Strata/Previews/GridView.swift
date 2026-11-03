@@ -1,112 +1,40 @@
 import AppKit
-
-/// One cell of a data grid.
-nonisolated package enum GridValue: Sendable {
-    case text(String)
-    case null
-    case blob(bytes: Int)
-}
-
-nonisolated package struct GridColumn: Sendable {
-    package var title: String
-    /// Numbers align right in tabular digits.
-    package var isNumeric = false
-    /// Fitted by `GridData.measureColumns()`, off the main thread.
-    package var width: CGFloat = 80
-}
-
-/// Rows and columns for `GridView`.
-nonisolated package struct GridData: Sendable {
-    package var columns: [GridColumn]
-    package var rows: [[GridValue]]
-
-    package init(columns: [GridColumn], rows: [[GridValue]]) {
-        self.columns = columns
-        self.rows = rows
-    }
-
-    /// Marks columns numeric when nearly all their non-empty sample values parse as numbers.
-    package mutating func detectNumericColumns(sample: Int = 200) {
-        for index in columns.indices {
-            var numbers = 0, filled = 0
-            for row in rows.prefix(sample) where index < row.count {
-                guard case .text(let text) = row[index], !text.isEmpty else { continue }
-                filled += 1
-                if Self.looksNumeric(text) { numbers += 1 }
-            }
-            columns[index].isNumeric = filled > 0 && numbers * 10 >= filled * 9
-        }
-    }
-
-    /// Fits each column to its header and first hundred values, capped so one long column can't push the rest out of view.
-    package mutating func measureColumns() {
-        let header = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        let text = NSFont.systemFont(ofSize: 12)
-        let digits = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        for index in columns.indices {
-            var widest = (columns[index].title as NSString).size(withAttributes: [.font: header]).width
-            let font = columns[index].isNumeric ? digits : text
-            for row in rows.prefix(100) where index < row.count {
-                widest = max(widest, (GridView.display(row[index]) as NSString).size(withAttributes: [.font: font]).width)
-                if widest > GridView.maxColumnWidth { break }
-            }
-            let padding = 2 * GridHeaderCell.padding + (index == 0 ? GridLeadingHeaderCell.padding - GridHeaderCell.padding : 0)
-            columns[index].width = min(GridView.maxColumnWidth, max(48, ceil(widest) + padding + 2))
-        }
-    }
-
-    /// Numbers as people write them in spreadsheets: `1204`, `-3.5`, `1,234.50`, `924,83`, `12%`, `$9.99`.
-    private static func looksNumeric(_ text: String) -> Bool {
-        var scalars = Substring(text.trimmingCharacters(in: .whitespaces)).unicodeScalars[...]
-        if let sign = scalars.first, sign == "+" || sign == "-" { scalars = scalars.dropFirst() }
-        if let currency = scalars.first, "$€£¥".unicodeScalars.contains(currency) { scalars = scalars.dropFirst() }
-        if let percent = scalars.last, percent == "%" { scalars = scalars.dropLast() }
-        guard let first = scalars.first, ("0"..."9").contains(first),
-              let last = scalars.last, ("0"..."9").contains(last) else { return false }
-        var exponent = false
-        var allowExponentSign = false
-        var dotCount = 0
-        for scalar in scalars {
-            if ("0"..."9").contains(scalar) {
-                allowExponentSign = false
-                continue
-            }
-            if !exponent, ".,' _".unicodeScalars.contains(scalar) {
-                if scalar == "." {
-                    dotCount += 1
-                    if dotCount > 1 { return false }
-                }
-                continue
-            }
-            if (scalar == "e" || scalar == "E"), !exponent {
-                exponent = true
-                allowExponentSign = true
-                continue
-            }
-            if (scalar == "+" || scalar == "-"), allowExponentSign {
-                allowExponentSign = false
-                continue
-            }
-            return false
-        }
-        return true
-    }
-}
+import StrataModel
 
 /// A read-only table with a header row: no zebra stripes, columns sized to their content, sideways scrolling.
 package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let scrollView = NSScrollView()
-    private let tableView = NSTableView()
+    let tableView = GridTableView()
+    private let clipboard: Clipboard
+    private let pageLabel = NSTextField(labelWithString: "")
+    private let previous = NSButton()
+    private let next = NSButton()
+    private let scope = NSTextField(labelWithString: String(localized: "Sorting applies to this page."))
+    private var order: [Int] = []
+    private var pendingOrder: [Int]?
+    private var revision = 0
+    private var copyGeneration = 0
+    private(set) var sortTask: Task<Void, Never>?
+    private(set) var copyTask: Task<Void, Never>?
+    private(set) var isLoadingPage = false
+    var onPage: ((Int) -> Void)?
+    private var page = 0
+    private var hasNextPage = false
     private var data = GridData(columns: [], rows: [])
 
-    package override init(frame: NSRect) {
-        super.init(frame: frame)
+    package init(clipboard: Clipboard) {
+        self.clipboard = clipboard
+        super.init(frame: .zero)
         tableView.style = .plain
         tableView.rowHeight = 22
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.backgroundColor = .clear
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.allowsMultipleSelection = true
+        tableView.selectionHighlightStyle = .none
+        tableView.onSelectionChanged = { [weak self] in self?.refreshSelection() }
+        tableView.onCopy = { [weak self] in self?.copySelection() }
+        tableView.onSelectionEnded = { [weak self] in self?.applyPendingOrder() }
         tableView.allowsColumnReordering = false
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         tableView.focusRingType = .none
@@ -119,19 +47,66 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
-        NSLayoutConstraint.activate(scrollView.fillingConstraints(in: self))
+        configurePaging()
+        setPage(0, hasNext: false)
+    }
+
+    private func configurePaging() {
+        scope.font = .systemFont(ofSize: 11)
+        scope.textColor = .secondaryLabelColor
+        scope.lineBreakMode = .byTruncatingTail
+        scope.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pageLabel.font = .systemFont(ofSize: 11)
+        for (button, symbol, title, action) in [
+            (previous, "chevron.left", String(localized: "Previous Page"), #selector(previousPage)),
+            (next, "chevron.right", String(localized: "Next Page"), #selector(nextPage)),
+        ] {
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            button.toolTip = title
+            button.bezelStyle = .accessoryBarAction
+            button.controlSize = .small
+            button.target = self
+            button.action = action
+        }
+        let bar = NSStackView(views: [scope, NSView(), previous, pageLabel, next])
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.spacing = 8
+        addSubview(bar)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bar.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            bar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            bar.heightAnchor.constraint(equalToConstant: 28),
+        ])
     }
 
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
+    isolated deinit { sortTask?.cancel(); copyTask?.cancel() }
+
     package func show(_ data: GridData) {
+        cancelWork()
+        isLoadingPage = false
+        tableView.isEnabled = true
+        let sameColumns = self.data.columns.map(\.title) == data.columns.map(\.title)
+        let sorting = sameColumns ? tableView.sortDescriptors : []
         self.data = data
+        scope.stringValue = String(localized: "Sorting applies to this page.")
+        scope.toolTip = scope.stringValue
+        order = Array(data.rows.indices)
+        tableView.restoreSelection(rows: [], columns: [])
+        tableView.sortDescriptors = []
         for column in tableView.tableColumns.reversed() { tableView.removeTableColumn(column) }
         for (index, column) in data.columns.enumerated() {
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("\(index)"))
             tableColumn.headerCell = index == 0 ? GridLeadingHeaderCell() : GridHeaderCell()
             tableColumn.title = column.title
+            tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: "\(index)", ascending: true)
             tableColumn.headerCell.alignment = column.isNumeric ? .right : .left
             tableColumn.minWidth = 36
             tableColumn.width = column.width
@@ -139,6 +114,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         }
         tableView.reloadData()
         scrollToTop()
+        tableView.sortDescriptors = sorting
     }
 
     /// Back to the first row and column. The clip view's top inset keeps row 0 clear of the floating header.
@@ -166,94 +142,103 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         let identifier = NSUserInterfaceItemIdentifier("GridCell")
         let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? GridCellView ?? GridCellView()
         cell.identifier = identifier
-        let value = column < data.rows[row].count ? data.rows[row][column] : .text("")
+        guard order.indices.contains(row), data.rows.indices.contains(order[row]) else { return nil }
+        let values = data.rows[order[row]]
+        let value = column < values.count ? values[column] : .text("")
         cell.configure(value, numeric: data.columns[column].isNumeric, leading: column == 0)
+        cell.setSelected(tableView.selectedRowIndexes.contains(row) && self.tableView.selectedColumns.contains(column))
         return cell
     }
-}
 
-/// A single-line, truncating grid cell; NULLs and blobs show as quiet placeholders.
-final class GridCellView: NSTableCellView {
-    private let label = NSTextField(labelWithString: "")
-    private var isPlaceholder = false
-    private var isSecondary = false
-    private var leadingPadding: NSLayoutConstraint!
-
-    init() {
-        super.init(frame: .zero)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.lineBreakMode = .byTruncatingTail
-        label.usesSingleLineMode = true
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        addSubview(label)
-        textField = label
-        leadingPadding = label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: GridHeaderCell.padding)
-        NSLayoutConstraint.activate([
-            leadingPadding,
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -GridHeaderCell.padding),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+    func setPage(_ page: Int, hasNext: Bool) {
+        self.page = page
+        hasNextPage = hasNext
+        pageLabel.stringValue = String(localized: "Page \(page + 1)", comment: "Preview table page number")
+        previous.isEnabled = page > 0
+        next.isEnabled = hasNext
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// `leading` marks the first column, which keeps clear of the preview's rounded corner; `secondary` dims the text.
-    func configure(_ value: GridValue, numeric: Bool, leading: Bool, secondary: Bool = false) {
-        leadingPadding.constant = leading ? GridLeadingHeaderCell.padding : GridHeaderCell.padding
-        isSecondary = secondary
-        label.alignment = numeric ? .right : .left
-        switch value {
-        case .text(let text):
-            label.stringValue = text.contains("\n") ? text.replacingOccurrences(of: "\n", with: " ") : text
-            label.font = numeric ? .monospacedDigitSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 12)
-            isPlaceholder = false
-        case .null:
-            label.stringValue = "NULL"
-            label.font = .systemFont(ofSize: 11, weight: .medium)
-            isPlaceholder = true
-        case .blob:
-            label.stringValue = GridView.display(value)
-            label.font = .systemFont(ofSize: 11, weight: .medium)
-            isPlaceholder = true
-        }
-        updateColor()
+    func beginPageLoad() {
+        cancelWork()
+        isLoadingPage = true
+        tableView.isEnabled = false
+        previous.isEnabled = false
+        next.isEnabled = false
     }
 
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { updateColor() }
+    func pageLoadFailed(_ message: String) {
+        isLoadingPage = false
+        tableView.isEnabled = true
+        setPage(page, hasNext: hasNextPage)
+        scope.stringValue = message
+        scope.toolTip = message
     }
 
-    private func updateColor() {
-        if backgroundStyle == .emphasized {
-            label.textColor = isPlaceholder ? .alternateSelectedControlTextColor.withAlphaComponent(0.7) : .alternateSelectedControlTextColor
-        } else {
-            label.textColor = isPlaceholder ? .tertiaryLabelColor : isSecondary ? .secondaryLabelColor : .labelColor
+    private func cancelWork() {
+        revision += 1
+        pendingOrder = nil
+        sortTask?.cancel(); sortTask = nil
+        copyTask?.cancel(); copyTask = nil
+    }
+
+    @objc private func previousPage() { onPage?(page - 1) }
+    @objc private func nextPage() { onPage?(page + 1) }
+
+    package func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard !isLoadingPage, let descriptor = tableView.sortDescriptors.first,
+              let key = descriptor.key, let column = Int(key), data.columns.indices.contains(column) else { return }
+        sortTask?.cancel()
+        pendingOrder = nil
+        let revision = revision, data = data
+        sortTask = Task { [weak self] in
+            guard let sorted = try? await data.orderedRows(column: column, ascending: descriptor.ascending),
+                  !Task.isCancelled, let self, self.revision == revision else { return }
+            if self.tableView.isSelecting { pendingOrder = sorted }
+            else { applyOrder(sorted) }
+            sortTask = nil
         }
     }
-}
 
-/// Header cell whose title lines up with the cell text below it.
-final class GridHeaderCell: NSTableHeaderCell {
-    /// Horizontal padding of grid cell text; the header title gets the same.
-    nonisolated static let padding: CGFloat = 8
-    /// The system draws header titles about this far inside the cell.
-    nonisolated fileprivate static let systemInset: CGFloat = 3
-
-    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        let inset = Self.padding - Self.systemInset
-        super.drawInterior(withFrame: cellFrame.insetBy(dx: inset, dy: 0), in: controlView)
+    private func applyPendingOrder() {
+        guard let pendingOrder else { return }
+        self.pendingOrder = nil
+        applyOrder(pendingOrder)
     }
-}
 
-/// The first column's header, with the wider leading padding of that column.
-final class GridLeadingHeaderCell: NSTableHeaderCell {
-    nonisolated static let padding: CGFloat = 14
+    private func applyOrder(_ sorted: [Int]) {
+        let selected = Set(tableView.selectedRowIndexes.compactMap { order.indices.contains($0) ? order[$0] : nil })
+        let columns = tableView.selectedColumns
+        order = sorted
+        tableView.reloadData()
+        tableView.restoreSelection(rows: IndexSet(sorted.indices.filter { selected.contains(sorted[$0]) }), columns: columns)
+    }
 
-    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        var frame = cellFrame
-        frame.origin.x += Self.padding - GridHeaderCell.systemInset
-        frame.size.width -= Self.padding + GridHeaderCell.padding - 2 * GridHeaderCell.systemInset
-        super.drawInterior(withFrame: frame, in: controlView)
+    func copySelection() {
+        guard !isLoadingPage, !tableView.selectedRowIndexes.isEmpty, !tableView.selectedColumns.isEmpty else { return }
+        copyTask?.cancel()
+        copyGeneration += 1
+        let ticket = copyGeneration
+        let data = data, rows = tableView.selectedRowIndexes, columns = tableView.selectedColumns, order = order
+        let revision = revision, change = clipboard.pasteboard.changeCount
+        copyTask = Task { [weak self] in
+            defer { if let self, copyGeneration == ticket { copyTask = nil } }
+            do {
+                let text = try await data.copiedText(rows: rows, columns: columns, order: order)
+                guard !Task.isCancelled, let self, self.revision == revision, clipboard.pasteboard.changeCount == change else { return }
+                clipboard.copyText(text)
+            } catch {
+                guard !Task.isCancelled, let self, self.revision == revision else { return }
+                scope.stringValue = String(localized: "Selection is too large to copy.")
+            }
+        }
+    }
+
+    private func refreshSelection() {
+        tableView.enumerateAvailableRowViews { rowView, row in
+            for column in self.data.columns.indices {
+                (rowView.view(atColumn: column) as? GridCellView)?.setSelected(
+                    self.tableView.selectedRowIndexes.contains(row) && self.tableView.selectedColumns.contains(column))
+            }
+        }
     }
 }

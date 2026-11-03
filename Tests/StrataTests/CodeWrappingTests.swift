@@ -37,7 +37,7 @@ import os
         let preferences = try Prefs.isolated()
         #expect(preferences.previewWrapLines)
         let view = try #require(RichPreview.makeView(for: tree.url(name), contentType: .plainText,
-                                                    preferences: preferences) as? CodePreviewView)
+                                                    preferences: preferences, clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())) as? CodePreviewView)
         defer { view.cancelLoad() }
         view.frame = NSRect(x: 0, y: 0, width: 240, height: 220)
         view.layoutSubtreeIfNeeded()
@@ -169,7 +169,7 @@ import os
         let before = tree.snapshot()
         first.preferences.previewWrapLines = false
         let entry = try #require(FileEntry(url: tree.url("source.swift")))
-        let file = PreviewFileView(thumbnails: first.services.thumbnails, copies: first.services.copies, preferences: first.preferences)
+        let file = PreviewFileView(thumbnails: first.services.thumbnails, copies: first.services.copies, preferences: first.preferences, clipboard: first.services.clipboard)
         defer { file.close() }
         file.frame = NSRect(x: 0, y: 0, width: 400, height: 250)
         file.show(nil, root: entry)

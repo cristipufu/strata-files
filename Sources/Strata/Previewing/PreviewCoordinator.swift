@@ -1,4 +1,5 @@
 import AppKit
+import StrataModel
 import Quartz
 
 /// One preview per service environment, with a weak originating pane. Selection changes explicitly replace its root.
@@ -42,7 +43,7 @@ import Quartz
                 return await prompt.request(name, in: self?.panel)
             }
             session.archiveAccess.cancelPassword = { [weak self] in self?.passwordPrompt.cancel() }
-            let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies)
+            let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies, clipboard: clipboard)
             let panel = PreviewPanel(contentRect: NSRect(origin: .zero, size: PreviewLayout.defaultSize),
                                      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.isReleasedWhenClosed = false
