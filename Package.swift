@@ -135,6 +135,7 @@ let package = Package(
         ),
         .target(
             name: "StrataTheme",
+            dependencies: ["StrataSupport"],
             path: "Sources/Strata/App",
             exclude: appOnlySources,
             sources: themeSources,
@@ -258,6 +259,8 @@ let package = Package(
             path: "Sources/StrataCLI",
             linkerSettings: [.linkedFramework("AppKit")]
         ),
+        .executableTarget(name: "StrataResourceCheck", dependencies: ["StrataPreviews", "StrataTheme", "StrataSupport"],
+                          swiftSettings: strataSwiftSettings),
         .target(name: "CPreviewTextTestSupport", dependencies: ["CPreviewText"], path: "Tests/CPreviewTextTestSupport",
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .testTarget(
@@ -279,6 +282,7 @@ let package = Package(
                 "StrataDev",
                 "StrataSearch",
                 "StrataArchiveClient",
+                "StrataResourceCheck",
             ],
             path: "Tests/StrataTests",
             swiftSettings: [.defaultIsolation(MainActor.self)]

@@ -1,4 +1,7 @@
 import Foundation
+import StrataSupport
+
+private final class ThemeBundleMarker {}
 
 /// A contributed palette supplies color choices; native drawing and accessibility stay in ThemeStyle.
 nonisolated package struct ThemeDefinition: Decodable, Sendable {
@@ -150,9 +153,7 @@ nonisolated package enum ThemeCatalog {
     }()
 
     package static func loadBundled() throws -> [ColorTheme] {
-        // SwiftPM's accessor finds the bundle beside test executables; packaged apps carry it in Resources.
-        let bundle = Bundle.main.url(forResource: "Strata_StrataTheme", withExtension: "bundle")
-            .flatMap(Bundle.init(url:)) ?? .module
+        let bundle = try ResourceBundle.named("Strata_StrataTheme", in: .main, linkedTo: Bundle(for: ThemeBundleMarker.self))
         guard let folder = bundle.url(forResource: "Themes", withExtension: nil) else {
             throw Invalid("Missing bundled theme folder")
         }

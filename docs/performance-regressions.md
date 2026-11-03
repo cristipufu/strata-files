@@ -332,3 +332,23 @@ cancels active work, rather than dropping cleanup to make compilation pass.
 
 Regular CI now runs the complete optimized suite with its pinned Xcode, alongside normal and sanitizer jobs, so
 release-only compilation errors are checked before a tag. The Release workflow retains all three suites.
+
+
+## Installed Mermaid preview crash (#36)
+
+The reporter supplied a 45-byte Markdown file containing only `flowchart TD` and `north --> api`, and a crash report
+for 0.8.0 build 45. Its executable UUID matches the published app. The stack is a Swift assertion in SwiftPM's
+generated `Bundle.module` accessor, reached by `MermaidRenderer.script`; it is not a TextKit exception or a Chinese
+text failure. The release contains the Mermaid bundle under `Contents/Resources`, but the shipping SwiftPM accessor
+looks at the app root and then an absolute build-machine path. A checkout's build output hides that mismatch, and
+newer local SwiftPM versions generate a different accessor that also checks `resourceURL`.
+
+`ResourceBundle` now resolves packaged resources explicitly and throws when they are missing. Apps never borrow a
+resource bundle from a sibling or the checkout. Themes use the same resolver and retain their System fallback;
+a missing Mermaid script leaves the fenced source visible. The native TextKit protections in `7d0de6b` address
+separate failure paths and did not fix this runtime trap.
+
+The build now checks resource discovery after packaging, using a headless checker staged with only the app's actual
+resource bundles. It loads the themes and renders the reporter's diagram through the production loader and Mermaid
+renderer. Tests also omit each bundle and the script: these paths must exit with a normal failure, without a Swift
+trap, even while build output exists on the test machine. The checker is a build tool and is not shipped in Strata.

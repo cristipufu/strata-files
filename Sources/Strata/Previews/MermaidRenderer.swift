@@ -1,5 +1,8 @@
 import AppKit
 import WebKit
+import StrataSupport
+
+private final class PreviewBundleMarker {}
 
 /// Only the bundled library executes here. Document text crosses the JavaScript boundary as an argument.
 @MainActor package final class MermaidRenderer: NSObject, WKNavigationDelegate {
@@ -27,7 +30,8 @@ import WebKit
     isolated deinit { deadline?.cancel() }
 
     @concurrent package static func script() async throws -> String {
-        guard let url = Bundle.module.url(forResource: "mermaid.min", withExtension: "js", subdirectory: "Mermaid") else {
+        let bundle = try ResourceBundle.named("Strata_StrataPreviews", in: .main, linkedTo: Bundle(for: PreviewBundleMarker.self))
+        guard let url = bundle.url(forResource: "mermaid.min", withExtension: "js", subdirectory: "Mermaid") else {
             throw PreviewError.unsupported
         }
         return try String(contentsOf: url, encoding: .utf8)

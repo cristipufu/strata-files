@@ -28,6 +28,7 @@ swift build -c "$config" --arch arm64 --product Strata
 swift build -c "$config" --arch arm64 --product StrataCLI
 swift build -c "$config" --arch arm64 --product StrataArchiveService
 swift build -c "$config" --arch arm64 --product StrataArchiveWorker
+swift build -c "$config" --arch arm64 --product StrataResourceCheck
 bins="$(swift build -c "$config" --arch arm64 --show-bin-path)"
 
 app=build/Strata.app
@@ -48,6 +49,7 @@ cp "$bins/StrataCLI" "$app/Contents/Helpers/strata"
 # SwiftPM resources are shipped with the app, so theme discovery also works away from the checkout.
 cp -R "$bins/Strata_StrataTheme.bundle" "$app/Contents/Resources/Strata_StrataTheme.bundle"
 cp -R "$bins/Strata_StrataPreviews.bundle" "$app/Contents/Resources/Strata_StrataPreviews.bundle"
+python3 scripts/check-app-resources.py "$app" "$bins/StrataResourceCheck" Tests/PreviewDocuments/07-Issue36-Mermaid.md
 # Credits for the third-party software Strata includes or builds on (Sparkle, libarchive) travel with the app.
 cp THIRD_PARTY_NOTICES.md "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp Resources/Info.plist "$app/Contents/Info.plist"

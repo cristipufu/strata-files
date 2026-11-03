@@ -8713,5 +8713,19 @@
     "replace": "// Allow display invalidation to reenter a retired renderer.",
     "rule": "Text preview boundary: removing a retired view must not request glyph layout",
     "tests": "PreviewTextBoundaryTests/removingARetiredDocumentNeverAsksItsLayoutManagerForGlyphs"
+  },
+  {
+    "file": "Strata/Support/ResourceBundle.swift",
+    "find": "? [host.resourceURL]",
+    "replace": "? [host.bundleURL]",
+    "rule": "Packaged resources: installed apps load bundles from Contents Resources",
+    "tests": "ResourceBundleTests/packagedResourcesAreFoundInContentsResources|ResourceBundleTests/thePackagedProbeLoadsTheReportedDiagramAndMissingAssetsExitNormally"
+  },
+  {
+    "file": "Strata/Support/ResourceBundle.swift",
+    "find": "host.bundleURL.pathExtension.lowercased() == \"app\"",
+    "replace": "false",
+    "rule": "Packaged resources: missing app resources never borrow build output",
+    "tests": "ResourceBundleTests/missingPackagedResourcesNeverBorrowAnotherBundleOrTheCheckout"
   }
 ]
