@@ -111,14 +111,14 @@ import Testing
         let photo = try #require(FileEntry(url: tree.url("photo.png")))
         inspector.show(entries: [photo], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         #expect(dimensions() == nil)
-        let read = try #require(inspector.dimensionsTask)
+        let read = try #require(inspector.mediaDetails.task)
         // Moved on before the read ends: the size never joins another item's rows.
         inspector.show(entries: [try #require(FileEntry(url: tree.url("note.txt")))], folder: nil,
                        folderSize: { _ in nil }, canMeasure: { _ in false })
         await read.value
         #expect(dimensions() == nil)
         inspector.show(entries: [photo], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
-        await inspector.dimensionsTask?.value
+        await inspector.mediaDetails.task?.value
         #expect(dimensions() == "16 × 16")
         #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["note.txt", "photo.png"])
     }

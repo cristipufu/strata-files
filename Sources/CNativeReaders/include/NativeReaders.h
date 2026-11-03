@@ -17,6 +17,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly, nullable, copy) NSString *captureDate;
 @property(nonatomic, readonly, nullable, copy) NSString *captureOffset;
 @property(nonatomic, readonly, nullable, copy) NSString *cameraModel;
+@property(nonatomic, readonly, nullable, copy) NSString *cameraMake;
+@property(nonatomic, readonly, nullable, copy) NSString *lensModel;
+@property(nonatomic, readonly, nullable, copy) NSNumber *exposureTime;
+@property(nonatomic, readonly, nullable, copy) NSNumber *aperture;
+@property(nonatomic, readonly, nullable, copy) NSNumber *iso;
 @end
 
 @interface STImageReader : NSObject

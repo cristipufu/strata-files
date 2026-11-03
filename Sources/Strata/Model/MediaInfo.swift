@@ -15,6 +15,12 @@ nonisolated package struct MediaInfo: Equatable, Sendable {
         self.duration = duration
     }
 
+    package init(imageMetadata: STImageMetadata) {
+        let rotated = (5...8).contains(imageMetadata.orientation)
+        self.init(width: rotated ? imageMetadata.height : imageMetadata.width,
+                  height: rotated ? imageMetadata.width : imageMetadata.height)
+    }
+
     package var dimensions: String? {
         guard let width, let height, width > 0, height > 0 else { return nil }
         return "\(width) × \(height)"
@@ -35,21 +41,32 @@ nonisolated package struct MediaInfo: Equatable, Sendable {
         if contentType?.conforms(to: .image) == true {
             guard let metadata = try? STImageReader.metadata(at: url), !Task.isCancelled,
                   metadata.width > 0, metadata.height > 0 else { return Self() }
-            let rotated = (5...8).contains(metadata.orientation)
-            return Self(width: rotated ? metadata.height : metadata.width, height: rotated ? metadata.width : metadata.height)
+            return Self(imageMetadata: metadata)
         }
+        guard contentType?.conforms(to: .audiovisualContent) == true, isRegularFile(url) else { return Self() }
+        let asset = AVURLAsset(url: url)
+        return await withTaskCancellationHandler {
+            await readAsset(asset)
+        } onCancel: { asset.cancelLoading() }
+    }
+
+    package static func isRegularFile(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return Self() }
+        guard fd >= 0 else { return false }
         var info = stat()
         let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
         close(fd)
-        guard isRegular else { return Self() }
-        guard contentType?.conforms(to: .audiovisualContent) == true else { return Self() }
-        let asset = AVURLAsset(url: url)
+        return isRegular
+    }
+
+    @concurrent package static func readAsset(_ asset: AVURLAsset) async -> Self {
+        guard !Task.isCancelled else { return Self() }
         let duration = try? await asset.load(.duration).seconds
         guard !Task.isCancelled else { return Self() }
         var result = Self(duration: duration.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
         if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           !Task.isCancelled,
            let (size, transform) = try? await track.load(.naturalSize, .preferredTransform) {
             let displayed = size.applying(transform)
             let width = abs(displayed.width), height = abs(displayed.height)

@@ -112,6 +112,36 @@ struct InspectorProviderTests {
         }
     }
 
+    @Test func invalidatedMediaReadCannotPublishAndCanBeRetriedAfterFetching() async throws {
+        let tree = try TestTree("copy/photo.png")
+        let url = tree.url("copy/photo.png")
+        let state = PlaceholderState()
+        let environment = try Environment(tree, folder: "environment", extraProviders: [Provider(root: tree.url("copy"), state: state)])
+        let (started, signal) = AsyncStream<Void>.makeStream()
+        let (held, release) = AsyncStream<Void>.makeStream()
+        let request = InspectorMediaDetails(copies: environment.services.copies, read: { _, _ in
+            signal.yield(())
+            for await _ in held {}
+            return MediaDetails(photo: .init(camera: "fixture"))
+        })
+        let entry = try #require(FileEntry(url: url))
+        request.show(entry)
+        var iterator = started.makeAsyncIterator()
+        _ = await iterator.next()
+        state.set(url, missing: true)
+        release.finish()
+        await request.task?.value
+        #expect(request.value == nil && request.url == nil)
+        request.show(entry)
+        #expect(request.task == nil)
+        state.set(url, missing: false)
+        request.show(entry)
+        await request.task?.value
+        #expect(request.value?.photo?.camera == "fixture")
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["copy/", "copy/photo.png"])
+        withExtendedLifetime(environment) {}
+    }
+
     private func writePNG(to url: URL, width: Int, height: Int) throws {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let context = try #require(CGContext(
@@ -321,7 +351,7 @@ struct InspectorProviderTests {
         let photoEntry = try #require(FileEntry(url: photo))
         inspector.show(entries: [photoEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
         // Dimensions are read away from the main thread: any read started has landed before the row is looked for.
-        await inspector.dimensionsTask?.value
+        await inspector.mediaDetails.task?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == nil)
         #expect(scheduled.isEmpty)
         #expect(!inspector.iconView.isHidden && inspector.preview.isHidden && inspector.preview.previewItem == nil)
@@ -340,7 +370,7 @@ struct InspectorProviderTests {
         #expect(otherScheduled == 1)
         NotificationCenter.default.post(name: .containerFilesFetched, object: [photo])
         #expect(otherScheduled == 1)
-        await inspector.dimensionsTask?.value
+        await inspector.mediaDetails.task?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == "19 × 11")
         #expect(scheduled.count == 1)
 
@@ -398,7 +428,7 @@ struct InspectorProviderTests {
             kind: "Alias", contentType: .png
         )
         inspector.show(entries: [linkPhoto], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
-        await inspector.dimensionsTask?.value
+        await inspector.mediaDetails.task?.value
         #expect(rowText(inspector, String(localized: "Dimensions", comment: "Inspector row: an image’s width × height in pixels")) == nil)
         #expect(scheduled.isEmpty && inspector.preview.previewItem == nil && inspector.richPreview == nil)
 

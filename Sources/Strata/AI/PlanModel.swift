@@ -67,25 +67,7 @@ package nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
         guard let raw = metadata.captureDate else {
             return (nil, model)
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        if let offset = metadata.captureOffset, let zone = TimeZone(iso8601Offset: offset) {
-            formatter.timeZone = zone
-        } else {
-            formatter.timeZone = .current
-        }
-        return (formatter.date(from: raw), model?.isEmpty == false ? model : nil)
-    }
-}
-
-private nonisolated extension TimeZone {
-    /// "+02:00" / "-0530".
-    init?(iso8601Offset text: String) {
-        let digits = text.filter(\.isNumber)
-        guard let sign = text.first, sign == "+" || sign == "-", digits.count == 4, let hours = Int(digits.prefix(2)),
-              let minutes = Int(digits.suffix(2)) else { return nil }
-        self.init(secondsFromGMT: (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60))
+        return (MediaDetails.dateTaken(raw, offset: metadata.captureOffset), model?.isEmpty == false ? model : nil)
     }
 }
 

@@ -275,7 +275,7 @@ nonisolated package enum ArchiveReader {
         try await withTaskCancellationHandler {
             try await allowance.enter(id)
         } onCancel: { Task { await allowance.cancel(id) } }
-        defer { Task { await allowance.leave() } }
+        defer { Task { await allowance.leave(id) } }
         try Task.checkCancellation()
         do {
             let file = try source.open()

@@ -183,7 +183,7 @@ struct InspectorLocationTests {
         show()
         #expect(try whereRow() === original)
         let before = inspector.infoRows.shown.count
-        await inspector.dimensionsTask?.value
+        await inspector.mediaDetails.task?.value
         #expect(inspector.infoRows.shown.count == before + 1)
         #expect(try whereRow() === original, "Adding a metadata row keeps the visible folder's name and icon.")
         await original.reading?.value

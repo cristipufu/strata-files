@@ -18,7 +18,8 @@ final class BrowserServices {
                          connector: RemoteConnector, clipboard: Clipboard,
                          containers: ContainerFiles? = nil, containerStore: ContainerStore = ContainerStore(),
                          windows: BrowserWindows = .headless, directories: DirectoryReader? = nil,
-                         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read) -> BrowserServices {
+                         mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                         mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
         let containers = containers ?? ContainerFiles(copies: ContainerCopyStore(root: storage.caches.appending(path: "Containers")))
@@ -27,7 +28,7 @@ final class BrowserServices {
         let transfers = TransferQueue(preferences: preferences, history: history, copies: copies)
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
-                          directories: directories, mediaReader: mediaReader)
+                          directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader)
     }
 
     /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History
@@ -38,6 +39,7 @@ final class BrowserServices {
                            volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                            remoteBrowsing: RemoteBrowsing? = nil,
                            mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                           mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -46,7 +48,7 @@ final class BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
-                        mediaReader: mediaReader, thumbnails: thumbnails, itemInfo: itemInfo,
+                        mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
                         index: index, contentIndex: contentIndex)
     }
@@ -75,6 +77,7 @@ final class BrowserServices {
     let openContainer: @MainActor @Sendable (String) async throws -> URL
     let directories: DirectoryReader
     let mediaReader: MediaInfoLoader.Reader
+    let mediaDetailsReader: MediaDetails.Reader
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
     let volumeSpace: @Sendable (URL) async -> VolumeSpace?
@@ -91,6 +94,7 @@ final class BrowserServices {
                  remote: RemoteServices, remoteBrowsing: RemoteBrowsing? = nil,
                  containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
                  mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
+                 mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -115,6 +119,10 @@ final class BrowserServices {
         }
         self.directories = directories ?? DirectoryReader(copies: self.copies)
         self.mediaReader = mediaReader
+        let mediaReads = WorkAllowance(limit: 2)
+        self.mediaDetailsReader = { url, type in
+            await mediaReads.run { await mediaDetailsReader(url, type) } ?? MediaDetails()
+        }
         self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore)
         self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
         self.volumeSpace = volumeSpace

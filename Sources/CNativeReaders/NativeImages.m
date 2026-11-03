@@ -7,7 +7,8 @@
 @interface STImageMetadata ()
 @property(nonatomic) NSInteger width, height, orientation;
 @property(nonatomic, copy) NSString *typeIdentifier;
-@property(nonatomic, nullable, copy) NSString *captureDate, *captureOffset, *cameraModel;
+@property(nonatomic, nullable, copy) NSString *captureDate, *captureOffset, *cameraModel, *cameraMake, *lensModel;
+@property(nonatomic, nullable, copy) NSNumber *exposureTime, *aperture, *iso;
 @end
 @implementation STImageMetadata
 @end
@@ -18,7 +19,15 @@ static NSInteger STImageDimension(id value) {
     return isfinite(number) && number > 0 && number < (double)NSIntegerMax && floor(number) == number ? (NSInteger)number : 0;
 }
 
-static NSString *STMetadataString(id value) { return [value isKindOfClass:NSString.class] ? value : nil; }
+static NSString *STMetadataString(id value) {
+    return [value isKindOfClass:NSString.class] && [value length] <= 1024 ? value : nil;
+}
+
+static NSNumber *STPositiveMetadataNumber(id value) {
+    if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) != CFNumberGetTypeID()) return nil;
+    double number = [value doubleValue];
+    return isfinite(number) && number > 0 ? value : nil;
+}
 static const NSUInteger STMaximumImageSide = 4096;
 
 static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
@@ -36,8 +45,17 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
         result.captureDate = STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifDateTimeOriginal])
             ?: STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifDateTimeDigitized]);
         result.captureOffset = STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifOffsetTimeOriginal]);
+        result.lensModel = STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifLensModel]);
+        result.exposureTime = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifExposureTime]);
+        result.aperture = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifFNumber]);
+        id ratings = exif[(__bridge NSString *)kCGImagePropertyExifISOSpeedRatings];
+        id rating = [ratings isKindOfClass:NSArray.class] ? ([ratings count] ? ratings[0] : nil) : ratings;
+        result.iso = STPositiveMetadataNumber(rating);
     }
-    if ([tiff isKindOfClass:NSDictionary.class]) result.cameraModel = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFModel]);
+    if ([tiff isKindOfClass:NSDictionary.class]) {
+        result.cameraModel = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFModel]);
+        result.cameraMake = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFMake]);
+    }
     return result;
 }
 

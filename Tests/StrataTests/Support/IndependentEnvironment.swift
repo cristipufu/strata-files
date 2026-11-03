@@ -19,7 +19,8 @@ final class IndependentEnvironment {
     var preferences: Prefs { services.preferences }
     var defaults: UserDefaults { preferences.defaults }
 
-    init(directories: DirectoryReader? = nil, preferences supplied: Prefs? = nil) throws {
+    init(directories: DirectoryReader? = nil, preferences supplied: Prefs? = nil,
+         mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read) throws {
         state = try TestTree()
         let preferences = try supplied ?? Prefs.isolated()
         preferences.showIconPreviews = false
@@ -35,7 +36,7 @@ final class IndependentEnvironment {
         services = BrowserServices.isolated(preferences: preferences, storage: storage, credentials: credentials,
             connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
             clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers,
-            directories: directories)
+            directories: directories, mediaDetailsReader: mediaDetailsReader)
     }
 
     isolated deinit {

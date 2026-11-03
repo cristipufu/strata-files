@@ -3618,11 +3618,11 @@
     "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
   },
   {
-    "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "        guard canPreview(entry), entry.contentType?.conforms(to: .image) == true else { return nil }",
-    "replace": "        guard entry.contentType?.conforms(to: .image) == true else { return nil }",
+    "file": "Strata/Inspector/InspectorMediaDetails.swift",
+    "find": "guard let entry, entry.isRegular, !entry.isSymlink, !copies.isPlaceholder(entry.url),",
+    "replace": "guard let entry, entry.isRegular,",
     "rule": "Inspector provider ownership image dimensions read a placeholder or symlink",
-    "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
+    "tests": "InspectorProviderTests"
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
@@ -3633,7 +3633,7 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "if !entry.isDirectory {\n            updateSummary(for: [entry])\n            showSingleItem(entry, folderSize: { _ in nil }, canMeasure: { _ in false })\n        }",
+    "find": "if !entry.isDirectory {\n            mediaDetails.show(entry)\n            showMediaRows()\n            updateSummary(for: [entry])\n            showSingleItem(entry, folderSize: { _ in nil }, canMeasure: { _ in false })\n        }",
     "replace": "if false {}",
     "rule": "Inspector provider ownership fetched notification does not refresh metadata or summary",
     "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"

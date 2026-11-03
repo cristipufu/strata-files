@@ -1,6 +1,5 @@
 import AppKit
 import UniformTypeIdentifiers
-import CNativeReaders
 import Quartz
 
 /// Live preview and metadata for the selection, or for the current folder when nothing is selected.
@@ -45,9 +44,10 @@ final class InspectorViewController: NSViewController {
     let summary = SummaryView()
     private var projectFolder: URL?
     private var projectTask: Task<Void, Never>?
-    /// The image size read for the item on show, by its path and modification date, and the read under way.
-    private var dimensions: (key: String, text: String?)?
-    private(set) var dimensionsTask: Task<Void, Never>?
+    let mediaDetails: InspectorMediaDetails
+    let mediaRows = InspectorRows()
+    private(set) var mediaCard: InspectorCard!
+    private var dimensionsRowIndex: Int?
     /// A native preview for code, Markdown, JSON, CSV, SQLite and archives; Quick Look covers everything else.
     private(set) var richPreview: NSView?
     private let richBackdrop = NSBox()
@@ -63,6 +63,7 @@ final class InspectorViewController: NSViewController {
          }, readSelectionSizes: @escaping InspectorSelectionSizes.Reader = InspectorSelectionSizes.read) {
         self.services = services
         self.readSelectionSizes = readSelectionSizes
+        mediaDetails = InspectorMediaDetails(copies: services.copies, read: services.mediaDetailsReader)
         tagPicker = TagPicker(listWhileEditing: true, maxRows: 6, tags: services.tags)
         self.containerView = ContainerInspectorView(preferences: services.preferences,
                                                     copies: services.copies.containerCopies,
@@ -79,7 +80,7 @@ final class InspectorViewController: NSViewController {
         selectionSizesTask?.cancel()
         previewWork?.cancel()
         projectTask?.cancel()
-        dimensionsTask?.cancel()
+        mediaDetails.cancel()
         summary.url = nil
         infoEditor.hide()
     }
@@ -88,6 +89,7 @@ final class InspectorViewController: NSViewController {
     required init?(coder: NSCoder) { return nil }
 
     override func loadView() {
+        mediaDetails.onChange = { [weak self] in self?.mediaDetailsArrived() }
         configurePreview()
         configureTitles()
         let cards = makeCards()
@@ -141,6 +143,9 @@ final class InspectorViewController: NSViewController {
         let preferences = services.preferences
         infoCard = InspectorCard(id: "info", title: String(localized: "Information", comment: "Inspector section: size, dates, location"),
                                  symbol: "info.circle", content: infoRows, preferences: preferences)
+        mediaCard = InspectorCard(id: "media", title: String(localized: "Media", comment: "Inspector section: camera, video and audio metadata"),
+                                  symbol: "photo.on.rectangle", content: mediaRows, preferences: preferences)
+        mediaCard.isHidden = true
         tagsCard = InspectorCard(id: "tags", title: String(localized: "Tags", comment: "Inspector section: Finder tags"),
                                  symbol: "tag", content: tagPicker, preferences: preferences)
         commentsCard = InspectorCard(id: "comments", title: String(localized: "Comments", comment: "Inspector: the item’s Spotlight comments"),
@@ -155,7 +160,7 @@ final class InspectorViewController: NSViewController {
         composeView.isHidden = true
         composeView.onOpenContainer = { [weak self] id in self?.onOpenContainer?(id) }
         for card in [tagsCard, commentsCard, openWithCard, permissionsCard] as [NSView] { card.isHidden = true }
-        return [containerView, infoCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
+        return [containerView, infoCard, mediaCard, tagsCard, commentsCard, openWithCard, permissionsCard, summary, projectView, composeView]
     }
 
     private func observeChanges() {
@@ -224,6 +229,8 @@ final class InspectorViewController: NSViewController {
               urls.contains(where: { $0.lexicallyStandardized.path == shown.lexicallyStandardized.path }),
               let entry = FileEntry(url: shown), canPreview(entry) else { return }
         if !entry.isDirectory {
+            mediaDetails.show(entry)
+            showMediaRows()
             updateSummary(for: [entry])
             showSingleItem(entry, folderSize: { _ in nil }, canMeasure: { _ in false })
         }
@@ -282,6 +289,9 @@ final class InspectorViewController: NSViewController {
         let urls = items.map(\.url)
         let sameItems = urls == shownURLs
         shownURLs = urls
+        dimensionsRowIndex = nil
+        mediaDetails.show(items.count == 1 ? items.first : nil)
+        showMediaRows()
         updateTags(of: items, sameItems: sameItems)
         updateInfoCards(of: items)
         guard let first = items.first else { return showNothing() }
@@ -429,7 +439,7 @@ final class InspectorViewController: NSViewController {
             rows.append((Self.allocatedSizeTitle, allocatedRow(allocation)))
         }
         if let logical = sizeRow(entry, directorySize: directorySize, isCopy: isCopy, canMeasure: canMeasure) { rows.append(logical) }
-        if let dimensions = imageDimensions(entry, at: rows.count) {
+        if let dimensions = mediaDimensions(at: rows.count) {
             rows.append((Self.dimensionsTitle, InspectorRows.text(dimensions)))
         }
         rows += dateRows(entry, isCopy: isCopy)
@@ -642,31 +652,30 @@ final class InspectorViewController: NSViewController {
     private static let dimensionsTitle = String(localized: "Dimensions",
                                                 comment: "Inspector row: an image’s width × height in pixels")
 
-    /// An image's size once read; until then it's read away from the main thread and joins the rows at `index`.
-    private func imageDimensions(_ entry: FileEntry, at index: Int) -> String? {
-        dimensionsTask?.cancel()
-        dimensionsTask = nil
-        guard canPreview(entry), entry.contentType?.conforms(to: .image) == true else { return nil }
-        let key = "\(entry.url.path)|\(entry.modified?.timeIntervalSinceReferenceDate ?? 0)"
-        if let dimensions, dimensions.key == key { return dimensions.text }
-        let url = entry.url
-        dimensionsTask = Task { [weak self] in
-            let text = await Self.readDimensions(url)
-            guard !Task.isCancelled, let self, self.shownURLs == [url] else { return }
-            self.dimensions = (key, text)
-            guard let text, index <= self.infoRows.shown.count else { return }
-            var rows = self.infoRows.shown.map { ($0.title, $0.value) }
-            rows.insert((Self.dimensionsTitle, InspectorRows.text(text)), at: index)
-            self.setRows(rows)
-        }
-        return nil
+    private func mediaDimensions(at index: Int) -> String? {
+        guard mediaDetails.url != nil else { return nil }
+        dimensionsRowIndex = index
+        return mediaDetails.value?.basic.dimensions
     }
 
-    @concurrent private static func readDimensions(_ url: URL) async -> String? {
-        guard !Task.isCancelled, let metadata = try? STImageReader.metadata(at: url), !Task.isCancelled,
-              metadata.width > 0, metadata.height > 0 else { return nil }
-        return "\(metadata.width) × \(metadata.height)"
+    private func mediaDetailsArrived() {
+        guard let url = mediaDetails.url, shownURLs == [url] else { return }
+        if let text = mediaDetails.value?.basic.dimensions, let index = dimensionsRowIndex,
+           !infoRows.shown.contains(where: { $0.title == Self.dimensionsTitle }), index <= infoRows.shown.count {
+            var rows = infoRows.shown.map { ($0.title, $0.value) }
+            rows.insert((Self.dimensionsTitle, InspectorRows.text(text)), at: index)
+            setRows(rows)
+        }
+        showMediaRows()
     }
+
+    private func showMediaRows() {
+        let rows = mediaDetails.value.map(MediaDetailRows.rows) ?? []
+        mediaRows.setText(rows)
+        mediaCard.isHidden = rows.isEmpty
+    }
+
+    func cancelMediaRead() { mediaDetails.cancel() }
 
     /// Up to three icons fanned out, like a stack of the selected files.
     private func stackedIcons(_ items: [FileEntry]) -> NSImage {
