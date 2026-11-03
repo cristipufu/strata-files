@@ -9,5 +9,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) BOOL failsThumbnail;
 @property(nonatomic, readonly) NSUInteger textReads;
 @end
+@interface STReaderTestImage : STImageReader
+@property(nonatomic, readonly) NSUInteger reads;
+@end
 FOUNDATION_EXPORT NSError *_Nullable STTestRichTextException(void);
+FOUNDATION_EXPORT NSError *_Nullable STTestImageOpenException(void);
+FOUNDATION_EXPORT NSError *_Nullable STTestImageMetadataException(void);
+FOUNDATION_EXPORT NSData *_Nullable STTestImageFileRead(int descriptor, off_t capturedSize, off_t position,
+                                                      NSUInteger requested, NSError **error);
 NS_ASSUME_NONNULL_END

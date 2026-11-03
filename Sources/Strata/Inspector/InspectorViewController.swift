@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ImageIO
+import CNativeReaders
 import Quartz
 
 /// Live preview and metadata for the selection, or for the current folder when nothing is selected.
@@ -663,11 +663,9 @@ final class InspectorViewController: NSViewController {
     }
 
     @concurrent private static func readDimensions(_ url: URL) async -> String? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = props[kCGImagePropertyPixelWidth] as? Int,
-              let height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
-        return "\(width) × \(height)"
+        guard !Task.isCancelled, let metadata = try? STImageReader.metadata(at: url), !Task.isCancelled,
+              metadata.width > 0, metadata.height > 0 else { return nil }
+        return "\(metadata.width) × \(metadata.height)"
     }
 
     /// Up to three icons fanned out, like a stack of the selected files.

@@ -1,6 +1,6 @@
 import StrataArchives
 import Foundation
-import ImageIO
+import CNativeReaders
 
 /// A section open for previewing, read only from the file it was chosen as: each read checks before and after that the
 /// file is still that one, unchanged.
@@ -62,12 +62,10 @@ package actor OneNoteSectionFile {
     private func readsAsRaster(_ data: OneNoteData) -> Bool {
         let prefix = OneNoteData(offset: data.offset, count: min(data.count, 64 << 10))
         guard let bytes = try? reader.bytes(of: prefix),
-              let source = CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) != nil
+              let metadata = try? STImageReader.metadata(from: bytes)
         else { return false }
-        let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        guard let width = info?[kCGImagePropertyPixelWidth] as? Int,
-              let height = info?[kCGImagePropertyPixelHeight] as? Int, height > 0 else { return true }
-        return width <= PreviewPicture.pixelLimit / height
+        guard metadata.width > 0, metadata.height > 0 else { return true }
+        return metadata.width <= PreviewPicture.pixelLimit / metadata.height
     }
 
     /// Runs a read of the section, saying calmly why it can't be shown, or handing it to Quick Look.

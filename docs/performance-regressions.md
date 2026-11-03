@@ -372,3 +372,23 @@ state, cancellation before another page, unexpected page counts, output boundari
 release. The rich-text failure fixture catches an escaped exception itself, so breaking the production boundary
 reports a test failure without intentionally crashing a process. These boundaries handle Objective-C exceptions;
 native memory faults and native decoder expansion still require process isolation for a complete crash boundary.
+
+
+## Shared image-reader boundaries
+
+Image metadata, preview thumbnails and HTML image re-encoding previously called ImageIO directly from several Swift
+readers; Mermaid also let `NSImage(data:)` defer decoding until native drawing. `CNativeReaders` now owns these calls,
+catches Objective-C exceptions locally and retires a failed image reader. It copies bounded decoded pixels before
+returning to AppKit or OCR, preserving RGB colour spaces. Preview byte, source-pixel, frame and output limits remain
+with their callers, including HTML's per-document pixel and byte accounting.
+
+Metadata remains a header read without the small preview byte limit. Its file source pins one non-following regular-file
+descriptor, uses bounded positional reads instead of memory mapping and reports a file truncated during reading as an
+error. Media rotation and EXIF capture dates/camera names retain their existing policies. OCR prepares its image through
+the same boundary, observing the extraction byte limit and cancellation, with a 120-megapixel source ceiling and a
+4,096-pixel raster side limit; unusually large images may be skipped or reduced before recognition.
+
+Regression tests cover real PNG/JPEG decoding, rotated metadata, camera dates, colour spaces, encoded output,
+reader release and failure, regular-file restrictions, descriptor ownership, truncation and ordinary/cancelled OCR.
+Controlled per-reader failures avoid global framework replacements. These are exception and resource boundaries inside
+the app, not process isolation: they cannot contain native memory faults or enforce a timeout inside a framework call.

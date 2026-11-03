@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import StrataSupport
+import CNativeReaders
 
 private final class PreviewBundleMarker {}
 
@@ -57,8 +58,15 @@ private final class PreviewBundleMarker {}
             Task { @MainActor [weak self] in self?.close() }
         }
         try Task.checkCancellation()
-        guard let image = NSImage(data: data) else { throw PreviewError.unsupported }
-        return image
+        return try await Self.decode(data).value
+    }
+
+    @concurrent private static func decode(_ data: Data) async throws -> Handoff<NSImage> {
+        try Task.checkCancellation()
+        let reader = try STImageReader.open(data, byteLimit: 6_000_000, pixelLimit: 4_000_000, frameLimit: 1)
+        let bitmap = try reader.thumbnail(maximumSide: 2000)
+        try Task.checkCancellation()
+        return Handoff(value: NSImage(cgImage: bitmap.image, size: NSSize(width: bitmap.image.width, height: bitmap.image.height)))
     }
 
     package func close() {

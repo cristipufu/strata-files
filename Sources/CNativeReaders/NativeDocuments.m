@@ -1,19 +1,8 @@
-#import "NativeReaders.h"
+#import "NativeReadersInternal.h"
 #import "NativeReadError.h"
 #import "NativeBitmap.h"
 #import <PDFKit/PDFKit.h>
 #import <math.h>
-
-@implementation STDecodedImage {
-    CGImageRef _image;
-}
-- (instancetype)initWithImage:(CGImageRef)image {
-    if ((self = [super init])) _image = CGImageRetain(image);
-    return self;
-}
-- (CGImageRef)image { return _image; }
-- (void)dealloc { if (_image) CGImageRelease(_image); }
-@end
 
 @interface STExtractedDocument ()
 @property(nonatomic, copy) NSString *text;

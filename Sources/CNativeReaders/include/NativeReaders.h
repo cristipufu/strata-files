@@ -5,6 +5,29 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface STDecodedImage : NSObject
 @property(nonatomic, readonly) CGImageRef image;
+- (nullable NSData *)encodedAsJPEG:(BOOL)jpeg maximumBytes:(NSUInteger)maximumBytes error:(NSError **)error
+    NS_SWIFT_NAME(encoded(jpeg:maximumBytes:));
+@end
+
+@interface STImageMetadata : NSObject
+@property(nonatomic, readonly) NSInteger width;
+@property(nonatomic, readonly) NSInteger height;
+@property(nonatomic, readonly) NSInteger orientation;
+@property(nonatomic, readonly, copy) NSString *typeIdentifier;
+@property(nonatomic, readonly, nullable, copy) NSString *captureDate;
+@property(nonatomic, readonly, nullable, copy) NSString *captureOffset;
+@property(nonatomic, readonly, nullable, copy) NSString *cameraModel;
+@end
+
+@interface STImageReader : NSObject
+@property(nonatomic, readonly) STImageMetadata *metadata;
+@property(nonatomic, readonly, nullable) NSError *failure;
++ (nullable instancetype)openData:(NSData *)data byteLimit:(NSUInteger)byteLimit pixelLimit:(NSUInteger)pixelLimit
+    frameLimit:(NSUInteger)frameLimit error:(NSError **)error NS_SWIFT_NAME(open(_:byteLimit:pixelLimit:frameLimit:));
++ (nullable STImageMetadata *)metadataFromData:(NSData *)data error:(NSError **)error NS_SWIFT_NAME(metadata(from:));
++ (nullable STImageMetadata *)metadataAtURL:(NSURL *)url error:(NSError **)error NS_SWIFT_NAME(metadata(at:));
+- (nullable STDecodedImage *)thumbnailWithMaximumSide:(NSUInteger)maximumSide error:(NSError **)error
+    NS_SWIFT_NAME(thumbnail(maximumSide:));
 @end
 
 @interface STExtractedDocument : NSObject

@@ -1,5 +1,4 @@
 import Foundation
-import ImageIO
 import UniformTypeIdentifiers
 import StrataModel
 import StrataSupport
@@ -16,16 +15,10 @@ nonisolated package struct HTMLPreviewResource: Sendable {
         let picture = try PreviewPicture(data)
         guard picture.width <= pixels / picture.height else { throw PreviewError.unsupported }
         pixels -= picture.width * picture.height
-        let image = try picture.thumbnail(pixels: 2048)
         let type = picture.isJPEG ? UTType.jpeg : .png
-        let output = NSMutableData()
-        guard let writer = CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil) else {
-            throw PreviewError.unsupported
-        }
-        CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
-        guard CGImageDestinationFinalize(writer), output.length <= bytes else { throw PreviewError.unsupported }
-        bytes -= output.length
-        return HTMLPreviewResource(data: output as Data, mime: type.preferredMIMEType ?? "image/png")
+        let output = try picture.encoded(pixels: 2048, maximumBytes: bytes)
+        bytes -= output.count
+        return HTMLPreviewResource(data: output, mime: type.preferredMIMEType ?? "image/png")
     }
 }
 

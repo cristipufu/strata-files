@@ -45,6 +45,7 @@ CALLS = re.compile("|".join([
     r"\bpthread_rwlock_(?:rdlock|wrlock)\(",
     r"\bAXUIElementCopyAttributeValue\(",
     r"\bCGImageSourceCreateWithURL\(",
+    r"\b(?:STImageReader\.(?:open|metadata)|STPDFReader\.open|STDocumentReader\.richText)\(",
 ]))
 # A block whose header says it runs away from the main thread.
 OFF_MAIN = re.compile("|".join([

@@ -1,5 +1,5 @@
 import Foundation
-import ImageIO
+import CNativeReaders
 import UniformTypeIdentifiers
 
 /// A selected file and everything a plan may refer to.
@@ -62,25 +62,15 @@ package nonisolated struct PlanItem: Sendable, Hashable, Identifiable {
 
     /// Date taken and camera model from the image header (no pixel decoding).
     package static func exif(_ url: URL) -> (Date?, String?) {
-        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return (nil, nil) }
-        var info = stat()
-        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
-        close(fd)
-        guard isRegular,
-              let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
-                as? [CFString: Any] else { return (nil, nil) }
-        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
-        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
-        let model = (tiff?[kCGImagePropertyTIFFModel] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw = (exif?[kCGImagePropertyExifDateTimeOriginal] ?? exif?[kCGImagePropertyExifDateTimeDigitized]) as? String else {
+        guard let metadata = try? STImageReader.metadata(at: url) else { return (nil, nil) }
+        let model = metadata.cameraModel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw = metadata.captureDate else {
             return (nil, model)
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        if let offset = exif?[kCGImagePropertyExifOffsetTimeOriginal] as? String, let zone = TimeZone(iso8601Offset: offset) {
+        if let offset = metadata.captureOffset, let zone = TimeZone(iso8601Offset: offset) {
             formatter.timeZone = zone
         } else {
             formatter.timeZone = .current

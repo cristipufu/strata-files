@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import ImageIO
+import CNativeReaders
 import UniformTypeIdentifiers
 
 /// Dimensions in display orientation, and a movie or audio file's playing time.
@@ -32,20 +32,18 @@ nonisolated package struct MediaInfo: Equatable, Sendable {
     @concurrent
     package static func read(_ url: URL, contentType: UTType?) async -> Self {
         guard !Task.isCancelled else { return Self() }
+        if contentType?.conforms(to: .image) == true {
+            guard let metadata = try? STImageReader.metadata(at: url), !Task.isCancelled,
+                  metadata.width > 0, metadata.height > 0 else { return Self() }
+            let rotated = (5...8).contains(metadata.orientation)
+            return Self(width: rotated ? metadata.height : metadata.width, height: rotated ? metadata.width : metadata.height)
+        }
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return Self() }
         var info = stat()
         let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
         close(fd)
         guard isRegular else { return Self() }
-        if contentType?.conforms(to: .image) == true {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-                  let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                  let width = props[kCGImagePropertyPixelWidth] as? Int,
-                  let height = props[kCGImagePropertyPixelHeight] as? Int else { return Self() }
-            let rotated = (5...8).contains(props[kCGImagePropertyOrientation] as? Int ?? 1)
-            return Self(width: rotated ? height : width, height: rotated ? width : height)
-        }
         guard contentType?.conforms(to: .audiovisualContent) == true else { return Self() }
         let asset = AVURLAsset(url: url)
         let duration = try? await asset.load(.duration).seconds

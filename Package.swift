@@ -108,9 +108,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
-                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ImageIO")]),
+                linkerSettings: [.linkedFramework("AppKit")]),
         .target(name: "CNativeReaders", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
-                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("PDFKit")]),
+                linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("PDFKit"), .linkedFramework("ImageIO")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
         .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
         // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
@@ -146,7 +146,7 @@ let package = Package(
         ),
         .target(
             name: "StrataModel",
-            dependencies: ["StrataSupport"],
+            dependencies: ["StrataSupport", "CNativeReaders"],
             path: "Sources/Strata/Model",
             exclude: appModelSources,
             sources: modelSources,
@@ -160,7 +160,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText", "CNativeReaders"],
             path: "Sources/Strata/Previews",
             resources: [.copy("Mermaid")],
             swiftSettings: strataSwiftSettings

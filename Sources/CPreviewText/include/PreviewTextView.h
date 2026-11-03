@@ -9,7 +9,6 @@ FOUNDATION_EXPORT NSTextStorage *_Nullable STCreatePreviewTextStorage(NSAttribut
 + (nullable NSAttributedString *)inlineMarkdown:(NSString *)markdown baseURL:(NSURL *)baseURL error:(NSError **)error;
 + (nullable NSNumber *)widthOfString:(NSAttributedString *)string error:(NSError **)error;
 + (nullable NSNumber *)wordCountInString:(NSString *)string error:(NSError **)error;
-+ (nullable NSImage *)thumbnailFromData:(NSData *)data pixelLimit:(NSInteger)pixelLimit;
 + (BOOL)fitTable:(NSTextTable *)table cells:(NSArray<NSTextTableBlock *> *)cells
          widths:(NSArray<NSNumber *> *)widths available:(CGFloat)available error:(NSError **)error
     NS_SWIFT_NAME(fitTable(_:cells:widths:available:));

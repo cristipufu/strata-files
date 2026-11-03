@@ -99,7 +99,7 @@ package nonisolated enum TextExtractor {
                 }
             }
         } else if options.ocr, imageExtensions.contains(ext) || type?.conforms(to: .image) == true {
-            result = await ocrImage(url).map { ExtractedText(text: $0, title: nil, source: .ocr) }
+            result = await ocrImage(url, maxBytes: options.maxFileBytes).map { ExtractedText(text: $0, title: nil, source: .ocr) }
         }
 
         guard !Task.isCancelled, var result else { return nil }
@@ -133,14 +133,6 @@ package nonisolated enum TextExtractor {
         return String(data: data, encoding: .windowsCP1252)
     }
 
-    private static func isRegularFile(_ url: URL) -> Bool {
-        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var info = stat()
-        return fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
-    }
-
     package static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20,
                              maxCharacters: Int = 120_000) -> ExtractedText? {
         guard !Task.isCancelled, maxBytes >= 0, maxCharacters > 0 else { return nil }
@@ -159,7 +151,7 @@ package nonisolated enum TextExtractor {
     }
 
     @concurrent package static func pdf(_ url: URL, options: Options) async -> ExtractedText? {
-        guard !Task.isCancelled, let data = pdfData(url, limit: options.maxFileBytes),
+        guard !Task.isCancelled, let data = boundedData(url, limit: options.maxFileBytes),
               !Task.isCancelled, let reader = try? STPDFReader.open(data), !Task.isCancelled,
               let document = try? reader.read(maxCharacters: UInt(max(0, options.maxCharacters)),
                   maxPages: UInt(max(0, options.maxPDFPages)), cancelled: { Task.isCancelled }), !Task.isCancelled else { return nil }
@@ -187,7 +179,7 @@ package nonisolated enum TextExtractor {
         return Task.isCancelled ? nil : result
     }
 
-    private static func pdfData(_ url: URL, limit: Int64) -> Data? {
+    private static func boundedData(_ url: URL, limit: Int64) -> Data? {
         guard limit >= 0, limit < Int64(Int.max) else { return nil }
         let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { return nil }
@@ -209,19 +201,22 @@ package nonisolated enum TextExtractor {
         return nil
     }
 
-    package static func ocrImage(_ url: URL) async -> String? {
-        guard isRegularFile(url) else { return nil }
-        var request = RecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        guard let observations = try? await request.perform(on: url) else { return nil }
-        let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    private static let ocrPixelLimit: UInt = 120_000_000
+    private static let ocrMaximumSide: UInt = 4096
+
+    package static func ocrImage(_ url: URL, maxBytes: Int64 = 80 << 20) async -> String? {
+        guard !Task.isCancelled, let data = boundedData(url, limit: maxBytes), !Task.isCancelled,
+              let reader = try? STImageReader.open(data, byteLimit: UInt(max(0, maxBytes)),
+                  pixelLimit: ocrPixelLimit, frameLimit: 256),
+              let image = try? reader.thumbnail(maximumSide: ocrMaximumSide), !Task.isCancelled else { return nil }
+        return await ocr(image.image)
     }
 
     package static func ocr(_ image: CGImage) async -> String? {
+        guard !Task.isCancelled else { return nil }
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
-        guard let observations = try? await request.perform(on: image) else { return nil }
+        guard let observations = try? await request.perform(on: image), !Task.isCancelled else { return nil }
         let lines = observations.compactMap { $0.topCandidates(1).first?.string }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }

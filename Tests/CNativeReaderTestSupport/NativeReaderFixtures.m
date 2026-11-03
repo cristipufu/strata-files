@@ -1,4 +1,5 @@
 #import "NativeReaderFixtures.h"
+#import "../../Sources/CNativeReaders/NativeImageFile.h"
 
 @interface STReaderTestPage : PDFPage
 @property(nonatomic, weak) STReaderTestDocument *owner;
@@ -37,6 +38,14 @@
 - (const void *)bytes { static const char byte = '{'; return &byte; }
 @end
 
+@implementation STReaderTestImage
+- (CGImageRef)copyThumbnailWithMaximumSide:(NSUInteger)side {
+    _reads++;
+    [NSException raise:NSInternalInconsistencyException format:@"Controlled image thumbnail failure"];
+    return NULL;
+}
+@end
+
 NSError *STTestRichTextException(void) {
     @try {
         NSError *error;
@@ -46,4 +55,36 @@ NSError *STTestRichTextException(void) {
         // A broken production boundary reports a test failure, without unwinding Swift or terminating the process.
         return [NSError errorWithDomain:@"TestNativeExceptionEscaped" code:1 userInfo:nil];
     }
+}
+
+NSError *STTestImageOpenException(void) {
+    @try {
+        NSError *error;
+        [STImageReader openData:[STReaderFailingData new] byteLimit:100 pixelLimit:100 frameLimit:1 error:&error];
+        return error;
+    } @catch (NSException *exception) {
+        return [NSError errorWithDomain:@"TestNativeExceptionEscaped" code:1 userInfo:nil];
+    }
+}
+
+NSError *STTestImageMetadataException(void) {
+    @try {
+        NSError *error;
+        [STImageReader metadataFromData:[STReaderFailingData new] error:&error];
+        return error;
+    } @catch (NSException *exception) {
+        return [NSError errorWithDomain:@"TestNativeExceptionEscaped" code:1 userInfo:nil];
+    }
+}
+
+NSData *STTestImageFileRead(int descriptor, off_t capturedSize, off_t position, NSUInteger requested, NSError **error) {
+    STImageFile file = {.descriptor = descriptor, .size = capturedSize};
+    atomic_init(&file.error, 0);
+    NSMutableData *data = [NSMutableData dataWithLength:MIN(requested, 1024)];
+    data.length = STReadImageFileAtPosition(&file, data.mutableBytes, position, data.length);
+    if (atomic_load(&file.error)) {
+        if (error) *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:atomic_load(&file.error) userInfo:nil];
+        return nil;
+    }
+    return data;
 }

@@ -1,6 +1,5 @@
 #import "PreviewTextView.h"
 #import "PreviewTextError.h"
-#import <ImageIO/ImageIO.h>
 #import <math.h>
 
 @implementation STPreviewTextBuilder
@@ -41,40 +40,6 @@
         return @(count);
     } @catch (NSException *exception) {
         if (error) *error = STPreviewError(@"word counting", exception);
-        return nil;
-    }
-}
-
-+ (NSImage *)thumbnailFromData:(NSData *)data pixelLimit:(NSInteger)pixelLimit {
-    @try {
-        if (pixelLimit <= 0) return nil;
-        CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data,
-            (__bridge CFDictionaryRef)@{ (__bridge NSString *)kCGImageSourceShouldCache: @NO });
-        if (!source) return nil;
-        @try {
-            NSDictionary *properties = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, nil));
-            NSNumber *width = properties[(__bridge NSString *)kCGImagePropertyPixelWidth];
-            NSNumber *height = properties[(__bridge NSString *)kCGImagePropertyPixelHeight];
-            if (![width isKindOfClass:NSNumber.class] || ![height isKindOfClass:NSNumber.class]) return nil;
-            double w = width.doubleValue, h = height.doubleValue;
-            if (!isfinite(w) || !isfinite(h) || w <= 0 || h <= 0 || w > pixelLimit / h) return nil;
-            CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)@{
-                (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
-                (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
-                (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @640
-            });
-            if (!thumbnail) return nil;
-            @try {
-                return [[NSImage alloc] initWithCGImage:thumbnail size:NSMakeSize(CGImageGetWidth(thumbnail), CGImageGetHeight(thumbnail))];
-            } @finally {
-                CGImageRelease(thumbnail);
-            }
-        } @finally {
-            CFRelease(source);
-        }
-    } @catch (NSException *exception) {
-        // No decoder state is reused; an unreadable local image keeps its alt text.
-        STPreviewError(@"image thumbnail", exception);
         return nil;
     }
 }

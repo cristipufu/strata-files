@@ -38,6 +38,14 @@ class MainThreadAuditTests(unittest.TestCase):
             self.assertTrue(self.check(helper + "\nfunc draw() { Store.read() }"), call)
         self.assertEqual(self.check("func draw() { _ = pthread_rwlock_tryrdlock(lock) }"), [])
 
+    def test_native_readers_still_count_as_blocking_through_swift_helpers(self):
+        for call in ["STImageReader.open(data)", "STImageReader.metadata(at: url)",
+                     "STPDFReader.open(data)", "STDocumentReader.richText(data)"]:
+            self.assertTrue(self.check(f"func show() {{ _ = {call} }}"), call)
+            helper = f"nonisolated enum Reader {{ static func read() {{ _ = {call} }} }}"
+            self.assertTrue(self.check(helper + "\nfunc show() { Reader.read() }"), call)
+            self.assertEqual(self.check(f"@concurrent func read() async {{ _ = {call} }}"), [], call)
+
     def test_calls_away_from_the_main_thread_pass(self):
         call = "FileManager.default.fileExists(atPath: path)"
         for code in [

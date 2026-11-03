@@ -9,7 +9,9 @@ static inline CGImageRef _Nullable STCopyReadBitmap(CGImageRef _Nonnull image, s
     double scale = MIN(1, (double)maximumSide / MAX(width, height));
     width = MAX(1, (size_t)floor(width * scale));
     height = MAX(1, (size_t)floor(height * scale));
-    CGColorSpaceRef colors = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGColorSpaceRef original = CGImageGetColorSpace(image);
+    CGColorSpaceRef colors = original && CGColorSpaceGetModel(original) == kCGColorSpaceModelRGB
+        ? CGColorSpaceRetain(original) : CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     if (!colors) return nil;
     CGContextRef context;
     @try { context = CGBitmapContextCreate(nil, width, height, 8, width * 4, colors, kCGImageAlphaPremultipliedLast); }

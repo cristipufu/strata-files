@@ -4387,10 +4387,10 @@
     "replace": "let base = url.deletingLastPathComponent().standardizedFileURL.path"
   },
   {
-    "file": "CPreviewText/PreviewTextBuilder.m",
+    "file": "CNativeReaders/NativeImages.m",
     "rule": "Security review: markdown image dimensions are checked before decoding",
     "tests": "SecurityReviewTests/markdownImages",
-    "find": "w > pixelLimit / h",
+    "find": "(NSUInteger)metadata.width > pixels / (NSUInteger)metadata.height",
     "replace": "NO"
   },
   {
@@ -6399,8 +6399,8 @@
   {
     "file": "Strata/Previews/OneNoteSectionFile.swift",
     "rule": "OneNote: a printout's metafile is no picture for WebKit",
-    "find": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) != nil",
-    "replace": "CGImageSourceCreateWithData(bytes as CFData, nil), !bytes.isEmpty",
+    "find": "let found = readsAsRaster(data)",
+    "replace": "let found = true",
     "tests": "OneNotePreviewTests/aPageDocumentServesItsMarkupAndOnlyItsOwnPicturesAsPNGs"
   },
   {
@@ -6432,10 +6432,10 @@
     "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
   },
   {
-    "file": "Strata/Previews/HTMLPreviewDocument.swift",
+    "file": "CNativeReaders/NativeImages.m",
     "rule": "OneNote: pictures stop at their page's bytes",
-    "find": "guard CGImageDestinationFinalize(writer), output.length <= bytes else",
-    "replace": "guard CGImageDestinationFinalize(writer) else",
+    "find": "!CGImageDestinationFinalize(writer) || data.length > maximumBytes",
+    "replace": "!CGImageDestinationFinalize(writer)",
     "tests": "OneNotePreviewTests/picturesStopAtTheirPagesBudgets"
   },
   {
@@ -6498,8 +6498,8 @@
     "file": "Strata/Previews/PreviewPicture.swift",
     "rule": "Previews: a picture refused from its header costs nothing and isn't decoded",
     "tests": "OneNotePreviewTests/aPictureCostsItsPixelsOnlyOnceDecoded",
-    "find": "              width > 0, height > 0, width <= Self.pixelLimit / height else { throw PreviewError.unsupported }",
-    "replace": "              width > 0, height > 0 else { throw PreviewError.unsupported }"
+    "find": "pixelLimit: UInt(Self.pixelLimit)",
+    "replace": "pixelLimit: UInt.max"
   },
   {
     "file": "Strata/Previews/OneNotePageMarkup.swift",
@@ -6531,8 +6531,8 @@
         "replace": ""
       },
       {
-        "find": "        bytes -= output.length\n",
-        "replace": "        pixels -= picture.width * picture.height\n        bytes -= output.length\n"
+        "find": "        bytes -= output.count\n",
+        "replace": "        pixels -= picture.width * picture.height\n        bytes -= output.count\n"
       }
     ],
     "tests": "OneNotePreviewTests/aPictureCostsItsPixelsOnlyOnceDecoded"
@@ -6582,8 +6582,8 @@
   {
     "file": "Strata/Previews/OneNoteSectionFile.swift",
     "rule": "OneNote: every picture ImageIO decodes is shown",
-    "find": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) != nil",
-    "replace": "CGImageSourceCreateWithData(bytes as CFData, nil), CGImageSourceGetType(source) as String? == \"public.png\"",
+    "find": "let metadata = try? STImageReader.metadata(from: bytes)",
+    "replace": "let metadata = try? STImageReader.metadata(from: bytes), metadata.typeIdentifier == \"public.png\"",
     "tests": "OneNotePreviewTests/picturesImageIODecodesShowAndAnythingElseIsAChip"
   },
   {
@@ -6639,8 +6639,8 @@
   {
     "file": "Strata/Previews/OneNoteSectionFile.swift",
     "rule": "OneNote: a picture whose header says it's too large is a chip",
-    "find": "        return width <= PreviewPicture.pixelLimit / height",
-    "replace": "        return true",
+    "find": "return metadata.width <= PreviewPicture.pixelLimit / metadata.height",
+    "replace": "return true",
     "tests": "OneNotePreviewTests/picturesImageIODecodesShowAndAnythingElseIsAChip"
   },
   {
@@ -8762,5 +8762,47 @@
     "replace": "const CGFloat maximumSide = 2300;",
     "rule": "Native documents: OCR bitmaps keep their pixel bound",
     "tests": "NativeDocumentReaderTests/scannedPagesAreRasterizedOnDemandAndOwnTheirPixelsAfterTheReaderCloses"
+  },
+  {
+    "file": "CNativeReaders/NativeImages.m",
+    "rule": "Native images: exceptions do not escape image opening",
+    "find": "if (error) *error = STNativeReadFailure(@\"image opening\", exception);",
+    "replace": "[exception raise];",
+    "tests": "NativeImageReaderTests/nativeImageExceptionsBecomeOrdinaryReadErrors"
+  },
+  {
+    "file": "CNativeReaders/NativeImages.m",
+    "rule": "Native images: encoded byte limits are checked before decoding",
+    "find": "data.length > bytes || !pixels || !frames",
+    "replace": "!pixels || !frames",
+    "tests": "NativeImageReaderTests/imageBytePixelAndFrameLimitsAreCheckedBeforeDecoding"
+  },
+  {
+    "file": "CNativeReaders/NativeImages.m",
+    "rule": "Native images: thumbnails keep their absolute pixel bound",
+    "find": "STMaximumImageSide = 4096",
+    "replace": "STMaximumImageSide = 4097",
+    "tests": "NativeImageReaderTests/thumbnailRequestsKeepTheirAbsoluteSideLimit"
+  },
+  {
+    "file": "CNativeReaders/NativeImageFile.m",
+    "rule": "Native images: a file truncated during a read is an error",
+    "find": "atomic_store(&file->error, received < 0 ? errno : EIO);",
+    "replace": "if (received < 0) atomic_store(&file->error, errno);",
+    "tests": "NativeImageReaderTests/imageFileReadsStayWithTheirDescriptorAndRejectTruncation"
+  },
+  {
+    "file": "CNativeReaders/NativeImages.m",
+    "rule": "Native images: a failed reader never decodes again",
+    "find": "if (_failure) { if (error) *error = _failure; return nil; }",
+    "replace": "",
+    "tests": "NativeImageReaderTests/aFailedThumbnailRetiresItsReader"
+  },
+  {
+    "file": "CNativeReaders/NativeImages.m",
+    "rule": "Native images: animation frames keep their caller limit",
+    "find": "count > frames",
+    "replace": "NO",
+    "tests": "NativeImageReaderTests/animatedImagesRespectTheCallersFrameLimit"
   }
 ]

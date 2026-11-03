@@ -1,5 +1,6 @@
 import AppKit
 import CPreviewText
+import CNativeReaders
 import StrataModel
 import StrataTheme
 
@@ -389,7 +390,9 @@ nonisolated package final class MarkdownRenderer {
         let limit = 8 << 20
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size <= limit,
               let data = try? handle.read(upToCount: limit + 1), data.count <= limit else { return nil }
-        return STPreviewTextBuilder.thumbnail(from: data, pixelLimit: pixelLimit)
+        guard pixelLimit > 0, let reader = try? STImageReader.open(data, byteLimit: UInt(limit), pixelLimit: UInt(pixelLimit), frameLimit: 256),
+              let bitmap = try? reader.thumbnail(maximumSide: 640) else { return nil }
+        return NSImage(cgImage: bitmap.image, size: NSSize(width: bitmap.image.width, height: bitmap.image.height))
     }
 
     private func checkbox(_ checked: Bool, paragraph: NSParagraphStyle) -> NSAttributedString {
