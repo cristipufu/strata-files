@@ -64,6 +64,7 @@ package final class Prefs: PreviewTextSettings {
     private enum Key {
         static let showHidden = "showHiddenFiles"
         static let foldersFirst = "foldersFirst"
+        static let contentsModifiedCountsHidden = "contentsModifiedCountsHidden"
         static let lastLocation = "lastLocation"
         static let returnOpens = "returnOpens"
         static let terminal = "terminalApp"
@@ -144,6 +145,13 @@ package final class Prefs: PreviewTextSettings {
     package var foldersFirst: Bool {
         get { defaults.object(forKey: Key.foldersFirst) == nil ? true : defaults.bool(forKey: Key.foldersFirst) }
         set { defaults.set(newValue, forKey: Key.foldersFirst); notifications.post(name: .prefsChanged, object: nil) }
+    }
+
+    /// Contents Modified dates a folder by hidden files too (a repository's `.git`, dot-files), whether or not the list
+    /// shows them.
+    package var contentsModifiedCountsHidden: Bool {
+        get { defaults.object(forKey: Key.contentsModifiedCountsHidden) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.contentsModifiedCountsHidden); notifications.post(name: .prefsChanged, object: nil) }
     }
 
     /// Return opens the selection instead of renaming it (Finder renames).

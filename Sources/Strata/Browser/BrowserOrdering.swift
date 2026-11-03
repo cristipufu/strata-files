@@ -16,14 +16,14 @@ final class BrowserOrdering {
     }
 
     var snapshot: Snapshot? {
-        guard let choice, !choice.key.isMedia, choice.key != .size, choice.key != .tags else { return nil }
+        guard let choice, !choice.key.isMedia, ![.size, .tags, .contentsModified].contains(choice.key) else { return nil }
         return Snapshot(choice: choice, foldersFirst: foldersFirst())
     }
 
     @concurrent static func sorted(_ entries: [FileEntry], by snapshot: Snapshot) async -> [FileEntry] {
         entries.sorted {
             order($0, $1, choice: snapshot.choice, foldersFirst: snapshot.foldersFirst, size: { $0.size ?? 0 },
-                  tags: { _ in [] }, media: { _ in nil })
+                  tags: { _ in [] }, media: { _ in nil }, contentsModified: \.modified)
         }
     }
 
@@ -33,11 +33,14 @@ final class BrowserOrdering {
         let media: (FileEntry) -> MediaInfo?
         let requestMedia: (FileEntry) -> Void
         var tags: (URL) -> [String] = { _ in [] }
+        /// A folder's newest file date once measured (nil until then), a file's own date.
+        var contentsModified: (FileEntry) -> Date? = \.modified
     }
 
     @MainActor private final class Pass {
         var sizes: [String: Int64] = [:]
         var tags: [URL: [String]] = [:]
+        var contentsModified: [URL: Date?] = [:]
         var parents: Set<URL> = []
         var changedParents: [FileNode] = []
     }
@@ -99,6 +102,12 @@ final class BrowserOrdering {
             pass.tags[entry.url] = names
             return names
         }
+        func contentsModified(_ entry: FileEntry) -> Date? {
+            if let cached = pass.contentsModified[entry.url] { return cached }
+            let date = metadata.contentsModified(entry)
+            pass.contentsModified[entry.url] = date
+            return date
+        }
         func visit(_ level: inout [FileNode]) {
             if choice.key.isMedia { for node in level { metadata.requestMedia(node.entry) } }
             if choice.key == .size {
@@ -111,7 +120,7 @@ final class BrowserOrdering {
             }
             level.sort {
                 Self.order($0.entry, $1.entry, choice: choice, foldersFirst: foldersFirst, size: size, tags: tags,
-                           media: metadata.media)
+                           media: metadata.media, contentsModified: contentsModified)
             }
             for node in level {
                 if var children = node.children {
@@ -131,12 +140,13 @@ final class BrowserOrdering {
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool {
         Self.order(a, b, choice: choice ?? folderChoice, foldersFirst: foldersFirst(), size: { entry in
             entry.isDirectory ? metadata.folderSize(entry.url) ?? -1 : entry.size ?? 0
-        }, tags: tagNames, media: metadata.media)
+        }, tags: tagNames, media: metadata.media, contentsModified: metadata.contentsModified)
     }
 
     nonisolated private static func order(_ a: FileEntry, _ b: FileEntry, choice: Choice, foldersFirst: Bool,
                                           size: (FileEntry) -> Int64, tags: (FileEntry) -> [String],
-                                          media: (FileEntry) -> MediaInfo?) -> Bool {
+                                          media: (FileEntry) -> MediaInfo?,
+                                          contentsModified: (FileEntry) -> Date?) -> Bool {
         if foldersFirst, a.isFolder != b.isFolder { return a.isFolder }
         let result: ComparisonResult
         switch choice.key {
@@ -152,6 +162,8 @@ final class BrowserOrdering {
         case .width: result = compare(media(a)?.width ?? -1, media(b)?.width ?? -1)
         case .height: result = compare(media(a)?.height ?? -1, media(b)?.height ?? -1)
         case .duration: result = compare(media(a)?.duration ?? -1, media(b)?.duration ?? -1)
+        case .contentsModified:
+            result = compare(contentsModified(a) ?? .distantPast, contentsModified(b) ?? .distantPast)
         }
         if result == .orderedSame {
             let names = a.displayName.localizedStandardCompare(b.displayName)

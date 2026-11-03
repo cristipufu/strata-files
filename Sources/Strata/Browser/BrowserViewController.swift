@@ -32,6 +32,7 @@ extension NSUserInterfaceItemIdentifier {
     static let size = Self("size")
     static let kind = Self("kind")
     static let tags = Self("tags")
+    static let contentsModified = Self("contentsModified")
     static let location = Self("location")
     static let nameCell = Self("NameCell")
     static let textCell = Self("TextCell")
@@ -123,6 +124,14 @@ final class BrowserViewController: NSViewController {
     private(set) lazy var localCommands = LocalFileCommands(context: self, files: services.files)
 
     let watching = BrowserWatching()
+    /// A setting changed the dates shown while a result was being renamed; they're shown once editing ends.
+    var resultDatesChangedWhileEditing = false
+    /// Whether a mouse button is down: live updates that would move rows wait until it's up.
+    var pointerIsDown: () -> Bool = { NSEvent.pressedMouseButtons != 0 }
+    var afterPointerUp: [() -> Void] = []
+    /// A read for a live change is under way, and another change has come since it began.
+    private var liveReadUnderWay = false
+    private var liveReadAgain = false
     private(set) lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
@@ -130,7 +139,8 @@ final class BrowserViewController: NSViewController {
                         childFolderSizes: { [index = services.index] in index.childFolderSizes($0).mapValues(\.bytes) },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
-                        tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
+                        tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) },
+                        contentsModified: { [weak self] in self?.contentsModified($0, request: true) }))
     let pending = BrowserPendingActions()
     /// Opens the folder row a drag rests on (only rows still on screen).
     private(set) lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
@@ -198,6 +208,7 @@ final class BrowserViewController: NSViewController {
         view = root
 
         sizer.onUpdate = { [weak self] url in self?.folderSizeArrived(url) }
+        sizer.wantsRewalk = { [weak self] _ in self?.showsContentsModified ?? false }
         mediaInfo.onUpdate = { [weak self] entry in self?.mediaInfoArrived(entry) }
         installActiveView()
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
@@ -306,7 +317,11 @@ final class BrowserViewController: NSViewController {
         preferences.hiddenListColumns.formSymmetricDifference([id])
     }
 
-    @objc private func listColumnsChanged() { applyColumnVisibility(fitName: true) }
+    @objc private func listColumnsChanged() {
+        let wasShown = showsContentsModified
+        applyColumnVisibility(fitName: true)
+        contentsDemandChanged(from: wasShown)
+    }
 
     /// Shows the columns you haven't hidden (and ticks them in the menu on the titles); Name takes up the difference
     /// (before the list is laid out, the window's first layout does that).
@@ -394,6 +409,7 @@ final class BrowserViewController: NSViewController {
         loading.reload(showHidden: preferences.showHidden, applications: applicationFolders, scrollToTop: scrollToTop,
                        invalidateCopy: invalidateCopy, sortedBy: ordering.snapshot, after: watched) { [weak self] result in
             guard let self else { return }
+            defer { liveReadEnded() }
             switch result {
             case .success(let delivery):
                 settle(at: delivery.folder, asked: url, landed: delivery.landed)
@@ -425,9 +441,13 @@ final class BrowserViewController: NSViewController {
         guard watching.folder != folder else { return }
         // Owned by the folder shown, not the navigation: a deeper column chosen meanwhile keeps the first column's.
         let watched = watch(folder)
+        let generation = watching.generation
         Task { [weak self] in
             await watched.value
-            guard let self, directory == folder else { return }
+            // Stopping the pane, or watching another folder meanwhile, leaves this watch's work undone.
+            guard let self, directory == folder, watching.generation == generation else { return }
+            // Its entries were shown, and measuring started, before this watch was live.
+            revalidateContents()
             refresh()
         }
     }
@@ -435,9 +455,21 @@ final class BrowserViewController: NSViewController {
     /// Watches `folder` (both Applications folders for Applications), and finds its repository, away from the main
     /// thread: the watchers are open when the task it returns ends.
     private func watch(_ folder: URL) -> Task<Void, Never> {
-        watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
-                       changed: { [weak self] in self?.refresh() },
-                       isCurrent: { [weak self] in self?.directory == folder })
+        // Server and container copies hold only what's been fetched, so nothing below them is measured.
+        var contentsChanged: (@MainActor @Sendable ([BrowserWatching.Change]) -> Void)?
+        let local = !services.copies.contains(folder)
+        liveReadUnderWay = false
+        liveReadAgain = false
+        if local {
+            contentsChanged = { [weak self] changes in self?.contentsChanged(changes) }
+            // Nothing may have watched it until now: unless the watch replays what changed since it last stopped, what
+            // was measured below it earlier is checked again as it's shown.
+            if showsContentsModified, !watching.canResumeContents(of: folder) { FolderSizer.changed(inside: folder, everywhere: true) }
+        }
+        return watching.watch(applicationFolders.directories(for: folder), repositoryOf: folder, in: services.git,
+                              changed: { [weak self] in self?.refresh() }, contentsChanged: contentsChanged,
+                              watchingContents: local && showsContentsModified,
+                              isCurrent: { [weak self] in self?.directory == folder })
     }
 
     /// Shows `entries`. `fromTop`: a folder just opened, shown from its top before anything it selects is scrolled to.
@@ -456,6 +488,7 @@ final class BrowserViewController: NSViewController {
         let selection = pending.selection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         let presorted = sortedBy != nil && sortedBy == ordering.snapshot
+        noteReplacedFolders(entries)
         listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
         loading.applied()
         outlineView.reloadData()
@@ -480,6 +513,7 @@ final class BrowserViewController: NSViewController {
             guard let self, let node, self.node(for: node.url) === node else { return }
             services.tags.load(entries)
             services.cloud.load(entries.map(\.url), in: node.url)
+            noteReplacedFolders(entries)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
             if !selecting.isEmpty, activeView == nil {
@@ -631,7 +665,8 @@ final class BrowserViewController: NSViewController {
     func resortAfterMetadata() {
         guard ordering.choice != nil, filtering.typed.isEmpty else { return }
         if inlineRename.isEditing { return resorting.holdForEditing() }
-        if ordering.choice?.key == .tags { columnController?.resortLoadedColumns() }
+        if pointerIsDown() { return whenPointerUp { [weak self] in self?.scheduleResort() } }
+        if ordering.choice?.key == .tags || ordering.choice?.key == .contentsModified { columnController?.resortLoadedColumns() }
         let selection = selectedURLs
         var sorted = nodes
         let changedParents = ordering.sort(&sorted)
@@ -663,13 +698,15 @@ final class BrowserViewController: NSViewController {
 
     private func folderSizeArrived(_ url: URL) {
         if url == directory { delegate?.browserContentDidChange(self) }
+        // Deeper columns list folders the outline doesn't, so the order is updated before looking for a row.
+        if ordering.choice?.key == .size || ordering.choice?.key == .contentsModified { scheduleResort() }
         guard let node = node(for: url) else { return }
         let row = outlineView.row(forItem: node)
-        let column = outlineView.column(withIdentifier: .size)
-        if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column]) }
+        let totals = IndexSet([outlineView.column(withIdentifier: .size), outlineView.column(withIdentifier: .contentsModified)]
+            .filter { $0 >= 0 })
+        if row >= 0, !totals.isEmpty { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: totals) }
         if effectiveMode == .treemap { treemapController?.updateFolderSize(folderSize(url), for: url) }
         if mode == .grid { gridController?.reloadItems([url]) }
-        if ordering.choice?.key == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
     }
 
@@ -700,9 +737,145 @@ final class BrowserViewController: NSViewController {
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
         if services.copies.contains(url) { return nil }
         if let size = services.index.folderSize(url) { return size }
-        if let size = FolderSizer.cached(url) { return size }
+        if let size = FolderSizer.cached(url) {
+            if request, FolderSizer.isStale(url), mayWalk(url) { sizer.request(url) }
+            return size
+        }
         if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
         return nil
+    }
+
+    /// For a folder, when the newest file anywhere inside it was modified (hidden ones too, unless the setting leaves
+    /// them out), once measured; with `request`, starts measuring it when unknown. A folder without files, or one that
+    /// isn't measured (a link, a disk, a server or container copy, a folder whose walk would reach a guarded folder and
+    /// ask for consent), counts by its own date, as does a file. Read for every comparison while sorting, so a cached
+    /// value is answered before anything else is checked.
+    func contentsModified(_ entry: FileEntry, request: Bool = false) -> Date? {
+        guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url) else { return entry.modified }
+        if let size = FolderSizer.cached(entry.url) {
+            if request, FolderSizer.isStale(entry.url), mayWalk(entry.url) { sizer.request(entry.url) }
+            return (preferences.contentsModifiedCountsHidden ? size.newestFile : size.newestVisibleFile) ?? entry.modified
+        }
+        guard mayWalk(entry.url) else { return entry.modified }
+        if request { sizer.request(entry.url) }
+        return nil
+    }
+
+    private func mayWalk(_ url: URL) -> Bool { !Privacy.walkingWouldPrompt(url, browsing: directory ?? url) }
+
+    /// Whether folders show or sort by their newest file, so changes below them are worth watching and measuring.
+    var showsContentsModified: Bool {
+        ordering.choice?.key == .contentsModified
+            || (effectiveMode == .list && outlineView.tableColumn(withIdentifier: .contentsModified)?.isHidden == false)
+    }
+
+    /// Changes below the folder shown are watched only while they're shown. Turned on, what changed while nothing
+    /// watched is replayed when the watch can pick up where it stopped; otherwise everything measured below the folder
+    /// is checked again once the watch is live, so a change made while it started isn't missed. Turned off, walks
+    /// queued for dates no longer shown stop; sizes still shown are asked for again as their rows draw.
+    func contentsDemandChanged(from wasShown: Bool) {
+        let shown = showsContentsModified
+        guard shown != wasShown, let directory, !services.copies.contains(directory) else { return }
+        guard shown else {
+            watching.watchContents(false)
+            sizer.cancelPending()
+            reloadVisibleRows(in: .size)
+            return
+        }
+        let resumes = watching.canResumeContents(of: directory)
+        let started = watching.watchContents(true)
+        let generation = watching.contentsGeneration
+        guard !resumes else { return }
+        Task { [weak self] in
+            await started?.value
+            guard let self, showsContentsModified, watching.contentsGeneration == generation else { return }
+            revalidateContents()
+        }
+    }
+
+    func reloadVisibleRows(in column: NSUserInterfaceItemIdentifier) {
+        let index = outlineView.column(withIdentifier: column)
+        let visible = outlineView.rows(in: outlineView.visibleRect)
+        guard index >= 0, visible.length > 0 else { return }
+        outlineView.reloadData(forRowIndexes: inlineRename.except(IndexSet(integersIn: visible.location..<NSMaxRange(visible)), in: outlineView),
+                               columnIndexes: [index])
+    }
+
+    /// Runs `action` now, or once no mouse button is down: rows moving under a click or a drag would hand it another
+    /// item.
+    func whenPointerUp(_ action: @escaping () -> Void) {
+        guard pointerIsDown() else { return action() }
+        let waiting = !afterPointerUp.isEmpty
+        afterPointerUp.append(action)
+        if !waiting { checkPointer() }
+    }
+
+    private func checkPointer() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.afterPointerUp.isEmpty else { return }
+                if self.pointerIsDown() { return self.checkPointer() }
+                let actions = self.afterPointerUp
+                self.afterPointerUp = []
+                actions.forEach { $0() }
+            }
+        }
+    }
+
+    /// A file saved in place changes no entry of its folder, so only reading it again shows its new date. While such a
+    /// read is under way the next waits for it, so a folder that keeps changing still gets each read through.
+    private func readAgainForLiveChange() {
+        guard !isShowingResults, directory != nil else { return }
+        if liveReadUnderWay { liveReadAgain = true; return }
+        liveReadUnderWay = true
+        refresh()
+    }
+
+    private func liveReadEnded() {
+        guard liveReadUnderWay else { return }
+        liveReadUnderWay = false
+        if liveReadAgain {
+            liveReadAgain = false
+            DispatchQueue.main.async { [weak self] in self?.readAgainForLiveChange() }
+        }
+    }
+
+    func revalidateContents() {
+        guard let directory, !services.copies.contains(directory), showsContentsModified else { return }
+        contentsChanged([.init(folder: directory, everywhere: true)])
+    }
+
+    /// Something changed below the folder shown: the totals it's inside are stale. The loaded folders it affects, open
+    /// ones included, are measured again, each keeping its last value until then; deeper columns measure theirs as they
+    /// re-sort. A change in the folder itself, an open folder or a column's folder may be a file saved in place, which
+    /// only reading that folder again shows.
+    func contentsChanged(_ changes: [BrowserWatching.Change]) {
+        FolderSizer.changed(changes.map { ($0.folder, $0.everywhere) })
+        guard showsContentsModified else { return }
+        let changed = Set(changes.map { $0.folder.lexicallyStandardized.path })
+        var open: [FileNode] = []
+        var loaded = nodes
+        while let node = loaded.popLast() {
+            loaded += node.children ?? []
+            guard node.entry.isDirectory else { continue }
+            if FolderSizer.isStale(node.url) { _ = contentsModified(node.entry, request: true) }
+            if node.children != nil, outlineView.isItemExpanded(node), changed.contains(node.url.lexicallyStandardized.path) {
+                open.append(node)
+            }
+        }
+        let shownChanged = directory.map { changed.contains($0.lexicallyStandardized.path) } ?? false
+        whenPointerUp { [weak self] in
+            guard let self else { return }
+            if shownChanged { readAgainForLiveChange() }
+            for node in open where self.node(for: node.url) === node { loadChildren(of: node) }
+            columnController?.reloadColumns(showing: changed)
+        }
+        if ordering.choice?.key == .contentsModified { scheduleResort() }
+    }
+
+    /// Folders listed again: one put in place of another of the same name holds other contents.
+    func noteReplacedFolders(_ entries: [FileEntry]) {
+        FolderSizer.listed(entries.filter(\.isDirectory).map { ($0.url, $0.identifier) })
     }
 
     /// Re-measures folders after Full Disk Access is granted.

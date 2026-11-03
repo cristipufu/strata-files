@@ -504,6 +504,7 @@
     "A folder can’t be copied into itself": "Папку не можна скопіювати в неї саму",
     "A folder can’t be moved into itself": "Папку не можна перемістити в неї саму",
     "A folder can’t go inside itself": "Папка не може бути всередині самої себе",
+    "A folder is dated by the newest file inside it. Hidden files include a project’s Git data.": "Дата папки — дата найновішого файлу в ній. До прихованих файлів належать дані Git проєкту.",
     "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.": "Поле пошуку поруч зі Strata в Dock знаходить програми, файли й папки під час введення. Strata потрібен доступ до Доступності, щоб розмістити його, і вона залишає для нього кілька порожніх місць у Dock.",
     "about %lld h %lld min left": "лишилося близько %lld год %lld хв",
     "about %lld h left": "лишилося близько %lld год",
@@ -786,6 +787,8 @@
     "Contains renamed files": "Містить перейменовані файли",
     "Contains unmodified files": "Містить незмінені файли",
     "Contents": "Вміст",
+    "Contents Modified": "Зміна вмісту",
+    "Contents Modified counts hidden files": "Враховувати приховані файли у «Зміна вмісту»",
     "Copied": "Скопійовано",
     "Copied %lld items to %@": {
       "one": "Скопійовано %lld елемент до %@",

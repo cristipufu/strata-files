@@ -117,8 +117,10 @@ extension BrowserViewController {
         if !isShowingResults {
             cancelPendingActions()
             inlineRename.dropHeldListing()
+            let wasShown = showsContentsModified
             ordering.enterResults()
             installActiveView()
+            contentsDemandChanged(from: wasShown)
             syncSortDescriptor()
             results.makeRoomForWhere(in: outlineView)
             fitNameColumn()
@@ -127,11 +129,13 @@ extension BrowserViewController {
     }
 
     func leaveResults() {
+        let wasShown = showsContentsModified
         if let remembered = ordering.leaveResults() {
             preferences.sortColumn = remembered.key.rawValue
             preferences.sortAscending = remembered.ascending
         }
         installActiveView()
+        contentsDemandChanged(from: wasShown)
         results.restoreColumns(in: outlineView)
         fitNameColumn()
         syncSortDescriptor()

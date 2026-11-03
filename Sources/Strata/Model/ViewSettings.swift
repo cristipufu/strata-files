@@ -37,6 +37,8 @@ package struct IconViewOptions: Equatable {
 package nonisolated enum SortKey: String, CaseIterable, Sendable {
     case name, modified, created, added, size, kind, tags, dimensions, width, height, duration
     case fileExtension = "extension"
+    /// A folder by the newest file anywhere inside it; a file by its own date.
+    case contentsModified
 
     package var isMedia: Bool {
         switch self {
@@ -51,11 +53,13 @@ package enum ListColumn: String, CaseIterable {
     case modified, created, added, size, kind, tags
     case fileExtension = "extension"
     case dimensions, width, height, duration
+    case contentsModified
 
     package var isMedia: Bool { [.dimensions, .width, .height, .duration].contains(self) }
     package var ascending: Bool { [.kind, .fileExtension, .tags].contains(self) }
 
-    package static let initiallyHidden: Set<String> = ["tags", "created", "added", "extension", "dimensions", "width", "height", "duration"]
+    package static let initiallyHidden: Set<String> = ["tags", "created", "added", "extension", "dimensions", "width", "height", "duration",
+                                                       "contentsModified"]
 
     /// New optional columns start hidden even for someone who already chose their columns in an older release.
     package static func hidden(stored: [String]?, known: [String]?) -> Set<String> {

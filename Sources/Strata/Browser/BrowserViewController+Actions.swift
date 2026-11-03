@@ -110,6 +110,8 @@ extension BrowserViewController {
         inlineRename.cancel()
         presentations.cached.forEach { $0.cancelRename() }
         fetches.cancelSelection()
+        resultDatesChangedWhileEditing = false
+        afterPointerUp = []
         pending.cancel()
         columnController?.cancelPendingRename()
     }
@@ -165,6 +167,7 @@ extension BrowserViewController {
     /// View ▸ Sort By: the same orders as the list's column headers, for every view. Tags follow `sortMenuKeys`.
     static let sortMenuKeys: [(key: NSUserInterfaceItemIdentifier, ascending: Bool)] = [
         (.name, true), (.kind, true), (.modified, false), (.created, false), (.size, false), (.tags, true),
+        (.contentsModified, false),
     ]
 
     @objc func sortBy(_ sender: NSMenuItem) {
@@ -298,6 +301,20 @@ extension BrowserViewController {
     @objc func prefsChanged() {
         listing.sort(using: sort)
         refresh()
+        // A setting can change the dates Contents Modified shows (whether hidden files count). A refresh doesn't read
+        // results again and deeper columns keep their own order, so both take the new dates here.
+        guard showsContentsModified else { return }
+        if isShowingResults {
+            if inlineRename.isEditing { resultDatesChangedWhileEditing = true } else { showResultDates() }
+        }
+        columnController?.resortLoadedColumns()
+    }
+
+    func showResultDates() {
+        let selection = selectedURLs
+        outlineView.reloadData()
+        pushContent()
+        select(selection, scroll: false)
     }
 
     @objc func alternatingRowsChanged() {
