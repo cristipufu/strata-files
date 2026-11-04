@@ -74,10 +74,27 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 
 ## Look inside. Stay where you are.
 
-Press **Space** on a folder or archive to look inside. Browse the list or thumbnails and preview files alongside,
-without leaving your current folder. Filter, sort, and open or copy just what you need.
+Press **Space** to preview a file or look inside a folder or archive. Browse the list or thumbnails, preview files
+alongside, and filter, sort, open or copy just what you need without leaving your current folder.
 
 <p align="center"><img src="docs/screenshots/quicklook.webp" alt="Quick Look above the main browser, listing folder contents and previewing a Markdown file" width="820"></p>
+
+| Format | What you can do |
+|---|---|
+| **Markdown** | Read rendered text, tables and code blocks, with Mermaid diagrams right in the document. |
+| **Code and configuration** | Syntax highlighting, line numbers, Find and word wrap for Swift, Python, JavaScript, TypeScript, Rust, Go, C/C++, shell scripts, YAML, TOML, XML, Dockerfiles and more. |
+| **JSON** | Read formatted JSON, JSONC and JSON5 without opening an editor. |
+| **HTML** | Switch between the rendered page and its source. |
+| **CSV, TSV and PSV** | Page through data, sort columns, find values and copy individual cells or rectangles. |
+| **SQLite** | Choose a table or view, page through its rows, sort, find and copy cells. |
+| **Excel (`.xlsx`)** | Switch worksheets and explore their saved values with the same table controls. |
+| **STL models** | Rotate and zoom 3D models, with triangle counts and dimensions. |
+| **EPUB and comics** | Read book chapters and browse comic pages in EPUB, CBZ, CBR, CB7 and CBT files. |
+| **OneNote** | Navigate notebook contents and read section pages (`.one`, `.onetoc2`), or browse packaged notebooks (`.onepkg`). |
+| **Archives and packages** | Browse ZIP, 7z, RAR, TAR, ISO and CAB, plus packages such as JAR, APK, IPA and WHL. Preview or copy individual files inside. |
+
+PDFs, photos, audio, video and other formats supported by your Mac open through macOS Quick Look. File previews
+are also available in the inspector.
 
 ## Five views. Two panes.
 
