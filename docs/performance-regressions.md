@@ -425,3 +425,61 @@ Tests exercise parser and renderer boundaries, shared nested budgets, real inlin
 normal rich rendering, source drawing/search/Unicode, unchanged files, cancellation, document replacement and the
 packaged Mermaid reproducer. Work counts bound these paths; they are not a universal time or memory guarantee for
 prebuilt macOS frameworks.
+
+## Changing a rendered preview's columns (0.8.2)
+
+The installed 0.8.2 build 48 crashed while switching SQLite tables. Its final stack was an executor check in toolbar
+validation, but the unified log immediately before it identifies the first fault: `GridView.refreshSelection` called
+`NSTableRowView.viewAtColumn:` with an index beyond that row's native column count. The interactive-table commit
+`673eeba` adopted the new data before clearing the old selection, so a wider schema painted the old, narrower rows
+using the new column indexes. The native assertion escaped a Swift task; AppKit caught it, and the corrupted runtime
+failed at a later actor check. This delayed failure matches the Swift runtime maintainer's
+[diagnostic guidance](https://github.com/swiftlang/swift/issues/89197#issuecomment-4845997855).
+
+The old tests exercised bounded reads, sorting, copying and page scrolling, but did not replace materialized native
+rows with a wider schema. An unattached table without realized row views never entered the faulty paint loop.
+Sanitizers did not cover that missing interaction or instrument the system's AppKit assertion.
+
+Selection now clears while the old data still owns the rows. Painting follows each row's actual native column count,
+and a shared bounds-checked cell lookup also protects the path suggestions, command palette and Dock search.
+`TablePreviewSchemaTests` materializes real AppKit rows, switches narrow, wide and empty schemas, uses the SQLite
+picker through the real sandboxed reader, checks selection and copying, and verifies that fixture bytes stay unchanged.
+A row-view probe records an invalid native call before it can throw, so the released code fails these regressions
+without crashing the test process or corrupting its Swift runtime.
+
+### Audit of other native UI boundaries
+
+The same review covered row selection painting in path suggestions, the command palette and Dock search;
+Icons, Gallery and preview collection item creation; List and Columns row refresh and rename; Inspector grid
+replacement; table/sheet and application pickers; and text highlighting and selection ranges. Existing text and
+document reader exception boundaries remain local to their native operations, with their failed renderers retired.
+
+Icons and Gallery checked item indexes after calling native item creation. They now validate the complete index path,
+section and current item range first, including after the entries shrink or become empty. Their section counts also
+return zero outside their sole section. `NativeCollectionBoundsTests` calls both real data sources with valid,
+malformed, stale and extreme indexes; a native creation probe records requests without handing invalid paths to
+AppKit. Both tests failed on the previous implementation. These were additional boundary gaps found during review,
+not additional crashes observed in the installed app.
+
+The test launcher now rejects captured unhandled native exception diagnostics even when the child exits successfully,
+preserves the child's exit status in its result, and retains matching crash reports on failure. Python regressions
+cover fault markers, markers split across read chunks, harmless warnings and diagnostics persistence failures.
+This gate checks captured output; it cannot detect a fault reported only in the system's unified log. Runtime crashes
+still require examining that log alongside the crash report. The audit and sanitizer runs cover the exercised paths;
+they do not establish that every framework operation or future state transition is crash-proof.
+
+### Other crash classes: existing coverage and remaining limits
+
+The wider review also checked these boundaries. These are existing protections, separately from the new UI fixes above.
+
+| Risk | Existing protection and regression coverage | Limit |
+|---|---|---|
+| Objective-C exceptions crossing Swift | `CPreviewText` and `CNativeReaders` catch at native operation boundaries and abandon failed readers/renderers. `PreviewTextBoundaryTests`, `NativeDocumentReaderTests` and `NativeImageReaderTests` exercise failure paths and independent subsequent reads. | This covers the wrapped operations, not every AppKit call. Swift `do/catch` alone provides no Objective-C exception boundary. |
+| Invalid external counts, offsets or dimensions | Checked arithmetic, range/type checks and finite dimensions; `GridLayoutSafetyTests`, `SQLitePreviewSafetyTests`, `STLPreviewTests` and `XLSXPreviewTests` exercise malformed and boundary inputs. | Validation of one format or conversion does not validate a newly added reader. |
+| Excessive allocation or rendering work | Bounded table pages, SQLite query/worker quotas, image byte/pixel/frame limits and Markdown document budgets. Native image, table, JSON, Markdown and STL regressions cover refusal and fallback behavior. | A time limit cannot interrupt an arbitrary native call running inside Strata. |
+| A handle closing during I/O, or a closed pipe terminating the app | `SFTPInput` keeps a handle through its active write and refuses queued writes after closing; SFTP writes suppress `SIGPIPE` on their descriptor. `SFTPInputTests` and `ProcessPipeSafetyTests` exercise held writes, disconnects, closed readers, short output and read failures. | Other transports must preserve the same ownership when introduced or changed. |
+| C callbacks running on an unexpected executor | Exit and filesystem callbacks are created in nonisolated contexts; UI work is delivered to the main actor. The full suite exercises native subscriptions and shutdown, including scratch-volume cleanup. | This is exercised coverage, not exhaustive thread scheduling or proof about future callbacks. |
+| Native memory faults | Archive and SQLite parsing run in supervised workers; WebKit previews handle content-process termination. `ArchivePreviewSafetyTests`, `SQLitePreviewSafetyTests` and `STLPreviewTests` cover bounded/refused input and relevant failure behavior. | In-process image/document frameworks and native AppKit UI can still suffer memory faults. Objective-C exception guards cannot contain them; full containment requires a process boundary. |
+
+No additional source defect was confirmed in these checked boundaries during this pass. Their tests and guards provide
+specific coverage, not a claim that the whole application has no remaining crash paths.
