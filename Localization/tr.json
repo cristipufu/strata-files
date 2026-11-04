@@ -518,6 +518,7 @@
     "Cancelled.": "Vazgeçildi.",
     "Can’t be compared": "Karşılaştırılamıyor",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Hücre %lld / %@",
     "Change All": "Tümünü Değiştir",
     "Change All…": "Tümünü Değiştir…",
     "Change Case": "Büyük/Küçük Harfi Değiştir",
@@ -804,7 +805,9 @@
     "Filters loaded items only.": "Yalnızca yüklenmiş öğeleri filtreler.",
     "Filters…": "Filtreler…",
     "Find": "Bul",
+    "Find on This Page": "Bu Sayfada Bul",
     "Find text in this document.": "Bu belgede metin bul.",
+    "Find text on the current page only.": "Yalnızca geçerli sayfadaki metni bul.",
     "Find:": "Bul:",
     "Finder tags (via Spotlight)": "Finder etiketleri (Spotlight ile)",
     "first %lld shown": {

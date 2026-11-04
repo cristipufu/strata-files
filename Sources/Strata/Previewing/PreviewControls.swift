@@ -1,4 +1,5 @@
 import AppKit
+import StrataPreviews
 
 /// Native controls stay on the preview's surface; AppKit retains the search bezel, focus ring and menu behavior.
 @MainActor final class PreviewControls: NSStackView, NSSearchFieldDelegate, NSMenuDelegate {
@@ -121,12 +122,12 @@ import AppKit
         menuNeedsUpdate(menu)
     }
 
-    func configureSearch(document: Bool, enabled: Bool) {
+    func configureSearch(document: Bool, enabled: Bool, scope: PreviewSearchScope = .document) {
         searchesDocument = document
-        let label = document ? String(localized: "Find") : String(localized: "Filter")
+        let label = document ? scope.label : String(localized: "Filter")
         search.placeholderString = label
         search.setAccessibilityLabel(label)
-        search.toolTip = document ? String(localized: "Find text in this document.")
+        search.toolTip = document ? scope.hint
             : String(localized: "Filters loaded items only.", comment: "Preview filter never searches or downloads entire folders")
         search.isEnabled = enabled
     }

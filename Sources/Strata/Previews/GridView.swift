@@ -2,7 +2,7 @@ import AppKit
 import StrataModel
 
 /// A read-only table with a header row: no zebra stripes, columns sized to their content, sideways scrolling.
-package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate {
+package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate, PreviewDocumentSearch {
     private let scrollView = NSScrollView()
     let tableView = GridTableView()
     private let clipboard: Clipboard
@@ -10,6 +10,13 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
     private let previous = NSButton()
     private let next = NSButton()
     private let scope = NSTextField(labelWithString: String(localized: "Sorting applies to this page."))
+    private lazy var search = GridSearch(table: tableView) { [weak self] message in
+        let text = message ?? String(localized: "Sorting applies to this page.")
+        self?.scope.stringValue = text
+        self?.scope.toolTip = text
+    }
+    var findTask: Task<Void, Never>? { search.task }
+    package var searchScope: PreviewSearchScope { .page }
     private var order: [Int] = []
     private var pendingOrder: [Int]?
     private var revision = 0
@@ -116,6 +123,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scrollView.layoutSubtreeIfNeeded()
         scrollToTop()
         tableView.sortDescriptors = sorting
+        if sortTask == nil { search.reload(data, order: order) }
     }
 
     /// Back to the first row and column. The clip view's top inset keeps row 0 clear of the floating header.
@@ -175,12 +183,18 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scope.toolTip = message
     }
 
+    func stop() { search.close(); cancelWork() }
+
     func cancelWork() {
         revision += 1
+        search.cancel()
         pendingOrder = nil
         sortTask?.cancel(); sortTask = nil
         copyTask?.cancel(); copyTask = nil
     }
+
+    package func find(_ query: String) { search.find(query, in: data, order: order) }
+    package func findNext(backwards: Bool) { search.findNext(backwards: backwards) }
 
     @objc private func previousPage() { onPage?(page - 1) }
     @objc private func nextPage() { onPage?(page + 1) }
@@ -212,6 +226,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         order = sorted
         tableView.reloadData()
         tableView.restoreSelection(rows: IndexSet(sorted.indices.filter { selected.contains(sorted[$0]) }), columns: columns)
+        search.reload(data, order: order)
     }
 
     func copySelection() {

@@ -16,6 +16,7 @@ nonisolated package enum PreviewError: Error {
 package class PreviewView: NSView {
     /// Called when the file turns out not to suit this preview. Without it, a "No Preview" message shows instead.
     package var fallback: (() -> Void)?
+    package var documentSearch: (any PreviewDocumentSearch)? { self as? any PreviewDocumentSearch }
     /// False once content or a message is showing.
     package private(set) var isLoading = false
     package var loadingTask: Task<Void, Never>? { task }

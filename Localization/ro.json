@@ -598,6 +598,7 @@
     "Cancelled.": "Anulat.",
     "Can’t be compared": "Nu poate fi comparat",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Celula %lld din %@",
     "Change All": "Modifică tot",
     "Change All…": "Modifică tot…",
     "Change Case": "Schimbă tipul literelor",
@@ -898,7 +899,9 @@
     "Filters loaded items only.": "Filtrează doar elementele încărcate.",
     "Filters…": "Filtre…",
     "Find": "Caută",
+    "Find on This Page": "Caută în această pagină",
     "Find text in this document.": "Caută text în acest document.",
+    "Find text on the current page only.": "Caută text doar în pagina curentă.",
     "Find:": "Caută:",
     "Finder tags (via Spotlight)": "Etichete Finder (prin Spotlight)",
     "first %lld shown": {

@@ -5,6 +5,37 @@ import Testing
 @testable import StrataPreviews
 
 @Suite(.archiveWorkerApp) @MainActor struct XLSXPreviewTests {
+    @Test func findingStaysOnTheDisplayedWorksheetPage() async throws {
+        let tree = try TestTree("find.xlsx")
+        let rows = (1...401).map { row in
+            "<row r=\"\(row)\"><c r=\"A\(row)\" t=\"inlineStr\"><is><t>\(row == 401 ? "later only" : "earlier")</t></is></c></row>"
+        }.joined()
+        try workbook(first: rows).write(to: tree.url("find.xlsx"))
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let preview = XLSXPreviewView(url: tree.url("find.xlsx"), clipboard: Clipboard(pasteboard: board, notifications: NotificationCenter()))
+        defer { preview.stop() }
+        await preview.loadingTask?.value
+        let source = try #require(preview.contentView.subviews.first as? GridSourceView)
+        let search = try #require(preview.documentSearch)
+        search.find("later only")
+        await source.grid.findTask?.value
+        let bar = try #require(source.grid.subviews.compactMap { $0 as? NSStackView }.first)
+        let hint = try #require(bar.arrangedSubviews.compactMap { $0 as? NSTextField }.first)
+        #expect(hint.stringValue == String(localized: "No Matches"))
+        source.grid.onPage?(2)
+        await preview.loadingTask?.value
+        await source.grid.findTask?.value
+        #expect(source.grid.tableView.numberOfRows == 1)
+        #expect(source.grid.tableView.selectedRowIndexes == [0] && source.grid.tableView.selectedColumns == [1])
+        source.picker.selectItem(at: 1)
+        source.onSelect?(1)
+        await preview.loadingTask?.value
+        await source.grid.findTask?.value
+        #expect(hint.stringValue == String(localized: "No Matches"))
+        #expect(tree.snapshot() == ["find.xlsx"])
+    }
+
     @Test func realWorkbooksHaveMultipleSheetsRichStringsCachedFormulasAndNumericSorting() async throws {
         let tree = try TestTree("book.xlsx")
         let cells = """

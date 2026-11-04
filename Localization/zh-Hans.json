@@ -438,6 +438,7 @@
     "Cancelled.": "已取消。",
     "Can’t be compared": "无法比较",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "匹配单元格 %lld / %@",
     "Change All": "全部更改",
     "Change All…": "全部更改…",
     "Change Case": "更改大小写",
@@ -710,7 +711,9 @@
     "Filters loaded items only.": "仅筛选已加载的项目。",
     "Filters…": "筛选条件…",
     "Find": "查找",
+    "Find on This Page": "在此页查找",
     "Find text in this document.": "在此文档中查找文本。",
+    "Find text on the current page only.": "仅在当前页中查找文本。",
     "Find:": "查找：",
     "Finder tags (via Spotlight)": "Finder标签（通过Spotlight）",
     "first %lld shown": {

@@ -13,6 +13,8 @@ package final class SQLitePreviewView: PreviewView {
     private var shownTableIndex = 0
     private var tables: [SQLiteTable] = []
 
+    package override var documentSearch: (any PreviewDocumentSearch)? { grid }
+
     package init(url: URL, clipboard: Clipboard) {
         sourceView = GridSourceView(clipboard: clipboard)
         super.init(frame: .zero)
@@ -34,7 +36,7 @@ package final class SQLitePreviewView: PreviewView {
     @objc package override func stop() {
         source = nil
         sourceView.onSelect = nil; grid.onPage = nil
-        super.stop(); grid.cancelWork()
+        super.stop(); grid.stop()
     }
 
     private func show(_ snapshot: SQLiteSnapshot) {

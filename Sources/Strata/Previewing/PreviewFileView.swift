@@ -17,7 +17,7 @@ import StrataPreviews
     private let summary = NSStackView()
     private var rich: NSView?
     var onSearchAvailabilityChanged: (() -> Void)?
-    var documentSearch: (any PreviewDocumentSearch)? { rich as? any PreviewDocumentSearch }
+    var documentSearch: (any PreviewDocumentSearch)? { (rich as? PreviewView)?.documentSearch }
     private(set) var shownURL: URL?
     private var generation = 0
     private var isClosed = false

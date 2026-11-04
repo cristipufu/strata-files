@@ -518,6 +518,7 @@
     "Cancelled.": "Geannuleerd.",
     "Can’t be compared": "Niet te vergelijken",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Cel %lld van %@",
     "Change All": "Wijzig alles",
     "Change All…": "Wijzig alles…",
     "Change Case": "Wijzig hoofdlettergebruik",
@@ -804,7 +805,9 @@
     "Filters loaded items only.": "Filtert alleen geladen onderdelen.",
     "Filters…": "Filters…",
     "Find": "Zoek",
+    "Find on This Page": "Zoeken op deze pagina",
     "Find text in this document.": "Zoek tekst in dit document.",
+    "Find text on the current page only.": "Zoek alleen tekst op de huidige pagina.",
     "Find:": "Zoek:",
     "Finder tags (via Spotlight)": "Finder-tags (via Spotlight)",
     "first %lld shown": {

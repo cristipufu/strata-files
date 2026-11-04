@@ -598,6 +598,7 @@
     "Cancelled.": "Zrušeno.",
     "Can’t be compared": "Nelze porovnat",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Buňka %lld z %@",
     "Change All": "Změnit vše",
     "Change All…": "Změnit vše…",
     "Change Case": "Změnit velikost písmen",
@@ -898,7 +899,9 @@
     "Filters loaded items only.": "Filtruje pouze načtené položky.",
     "Filters…": "Filtry…",
     "Find": "Najít",
+    "Find on This Page": "Najít na této stránce",
     "Find text in this document.": "Najít text v tomto dokumentu.",
+    "Find text on the current page only.": "Hledat text pouze na aktuální stránce.",
     "Find:": "Najít:",
     "Finder tags (via Spotlight)": "Značky Finderu (přes Spotlight)",
     "first %lld shown": {

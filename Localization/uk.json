@@ -678,6 +678,7 @@
     "Cancelled.": "Скасовано.",
     "Can’t be compared": "Неможливо порівняти",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Комірка %lld із %@",
     "Change All": "Змінити всі",
     "Change All…": "Змінити всі…",
     "Change Case": "Змінити регістр",
@@ -992,7 +993,9 @@
     "Filters loaded items only.": "Фільтрує лише завантажені елементи.",
     "Filters…": "Фільтри…",
     "Find": "Знайти",
+    "Find on This Page": "Знайти на цій сторінці",
     "Find text in this document.": "Знайти текст у цьому документі.",
+    "Find text on the current page only.": "Шукати текст лише на поточній сторінці.",
     "Find:": "Знайти:",
     "Finder tags (via Spotlight)": "Теги Finder (через Spotlight)",
     "first %lld shown": {

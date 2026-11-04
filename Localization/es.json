@@ -518,6 +518,7 @@
     "Cancelled.": "Cancelado.",
     "Can’t be compared": "No se puede comparar",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Celda %lld de %@",
     "Change All": "Cambiar todo",
     "Change All…": "Cambiar todo…",
     "Change Case": "Cambiar mayúsculas/minúsculas",
@@ -804,7 +805,9 @@
     "Filters loaded items only.": "Filtra solo los elementos cargados.",
     "Filters…": "Filtros…",
     "Find": "Buscar",
+    "Find on This Page": "Buscar en esta página",
     "Find text in this document.": "Buscar texto en este documento.",
+    "Find text on the current page only.": "Buscar texto solo en la página actual.",
     "Find:": "Buscar:",
     "Finder tags (via Spotlight)": "Etiquetas de Finder (mediante Spotlight)",
     "first %lld shown": {

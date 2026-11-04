@@ -438,6 +438,7 @@
     "Cancelled.": "キャンセルしました。",
     "Can’t be compared": "比較できません",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "セル %lld / %@",
     "Change All": "すべてを変更",
     "Change All…": "すべてを変更…",
     "Change Case": "大文字/小文字を変更",
@@ -710,7 +711,9 @@
     "Filters loaded items only.": "読み込み済みの項目のみを絞り込みます。",
     "Filters…": "フィルタ…",
     "Find": "検索",
+    "Find on This Page": "このページ内を検索",
     "Find text in this document.": "この書類内のテキストを検索します。",
+    "Find text on the current page only.": "現在のページ内のテキストのみを検索します。",
     "Find:": "検索:",
     "Finder tags (via Spotlight)": "Finderタグ（Spotlight経由）",
     "first %lld shown": {

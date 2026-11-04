@@ -438,6 +438,7 @@
     "Cancelled.": "已取消。",
     "Can’t be compared": "無法比較",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "符合的儲存格 %lld / %@",
     "Change All": "全部更改",
     "Change All…": "全部更改⋯",
     "Change Case": "更改大小寫",
@@ -710,7 +711,9 @@
     "Filters loaded items only.": "僅篩選已載入的項目。",
     "Filters…": "篩選條件…",
     "Find": "尋找",
+    "Find on This Page": "在此頁尋找",
     "Find text in this document.": "在此文件中尋找文字。",
+    "Find text on the current page only.": "僅在目前頁面中尋找文字。",
     "Find:": "尋找：",
     "Finder tags (via Spotlight)": "Finder標籤（透過Spotlight）",
     "first %lld shown": {

@@ -8924,5 +8924,19 @@
     "replace": "        scrollToTop()",
     "rule": "Preview table paging: reset scrolling after native layout settles the new page",
     "tests": "TablePreviewScrollTests"
+  },
+  {
+    "file": "Strata/Previews/GridSearch.swift",
+    "find": "guard !Task.isCancelled, let self, self.revision == revision else { return }",
+    "replace": "guard let self else { return }",
+    "rule": "Table page Find: an old match result never replaces the newer query",
+    "tests": "GridSearchTests/lateResultsNeverReplace"
+  },
+  {
+    "file": "Strata/Previews/GridSearch.swift",
+    "find": "func close() { closed = true; cancel() }",
+    "replace": "func close() { closed = false; cancel() }",
+    "rule": "Table page Find: closing refuses reentrant and later queries",
+    "tests": "GridSearchTests/closingRejects"
   }
 ]

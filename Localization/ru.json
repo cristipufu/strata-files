@@ -680,6 +680,7 @@
     "Cancelled.": "Отменено.",
     "Can’t be compared": "Невозможно сравнить",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Ячейка %lld из %@",
     "Change All": "Изменить все",
     "Change All…": "Изменить все…",
     "Change Case": "Изменить регистр",
@@ -994,7 +995,9 @@
     "Filters loaded items only.": "Фильтрует только загруженные объекты.",
     "Filters…": "Фильтры…",
     "Find": "Найти",
+    "Find on This Page": "Найти на этой странице",
     "Find text in this document.": "Найти текст в этом документе.",
+    "Find text on the current page only.": "Поиск текста только на текущей странице.",
     "Find:": "Найти:",
     "Finder tags (via Spotlight)": "Теги Finder (через Spotlight)",
     "first %lld shown": {

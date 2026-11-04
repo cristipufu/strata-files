@@ -7,6 +7,8 @@ package final class XLSXPreviewView: PreviewView {
     private var workbook: XLSXWorkbook?
     private var shownSheet = 0
 
+    package override var documentSearch: (any PreviewDocumentSearch)? { sourceView.grid }
+
     package init(url: URL, clipboard: Clipboard) {
         sourceView = GridSourceView(clipboard: clipboard)
         super.init(frame: .zero)
@@ -30,7 +32,7 @@ package final class XLSXPreviewView: PreviewView {
         sourceView.onSelect = nil
         sourceView.grid.onPage = nil
         super.stop()
-        sourceView.grid.cancelWork()
+        sourceView.grid.stop()
     }
 
     private func show(_ opened: Opened) {

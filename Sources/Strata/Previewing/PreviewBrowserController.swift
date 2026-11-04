@@ -307,7 +307,8 @@ import StrataPreviews
     }
 
     func updateSearch() {
-        controls.configureSearch(document: !session.isContainer, enabled: session.isContainer || fileView.documentSearch != nil)
+        controls.configureSearch(document: !session.isContainer, enabled: session.isContainer || fileView.documentSearch != nil,
+                                 scope: fileView.documentSearch?.searchScope ?? .document)
         if !session.isContainer { fileView.documentSearch?.find(controls.search.stringValue) }
     }
 

@@ -1,9 +1,30 @@
 import AppKit
 import CPreviewText
 
+package enum PreviewSearchScope {
+    case document, page
+    package var label: String {
+        switch self {
+        case .document: String(localized: "Find")
+        case .page: String(localized: "Find on This Page")
+        }
+    }
+    package var hint: String {
+        switch self {
+        case .document: String(localized: "Find text in this document.")
+        case .page: String(localized: "Find text on the current page only.")
+        }
+    }
+}
+
 package protocol PreviewDocumentSearch: AnyObject {
+    var searchScope: PreviewSearchScope { get }
     func find(_ query: String)
     func findNext(backwards: Bool)
+}
+
+extension PreviewDocumentSearch {
+    package var searchScope: PreviewSearchScope { .document }
 }
 
 final class PreviewTextSearch {

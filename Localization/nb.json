@@ -518,6 +518,7 @@
     "Cancelled.": "Avbrutt.",
     "Can’t be compared": "Kan ikke sammenlignes",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "Celle %lld av %@",
     "Change All": "Endre alle",
     "Change All…": "Endre alle…",
     "Change Case": "Endre store/små bokstaver",
@@ -804,7 +805,9 @@
     "Filters loaded items only.": "Filtrerer bare innlastede objekter.",
     "Filters…": "Filtre…",
     "Find": "Finn",
+    "Find on This Page": "Finn på denne siden",
     "Find text in this document.": "Finn tekst i dette dokumentet.",
+    "Find text on the current page only.": "Finn tekst bare på gjeldende side.",
     "Find:": "Finn:",
     "Finder tags (via Spotlight)": "Finder-merker (via Spotlight)",
     "first %lld shown": {

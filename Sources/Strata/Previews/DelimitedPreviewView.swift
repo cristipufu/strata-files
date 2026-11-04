@@ -7,6 +7,8 @@ package final class DelimitedPreviewView: PreviewView {
     private let grid: GridView
     private var cursors: [DelimitedCursor?] = [nil]
 
+    package override var documentSearch: (any PreviewDocumentSearch)? { grid }
+
     package init(url: URL, separator: UInt8?, clipboard: Clipboard) {
         self.url = url
         self.separator = separator
@@ -22,7 +24,7 @@ package final class DelimitedPreviewView: PreviewView {
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
-    @objc package override func stop() { super.stop(); grid.cancelWork() }
+    @objc package override func stop() { super.stop(); grid.stop() }
 
     private func showPage(_ page: Int) {
         guard cursors.indices.contains(page) else { return }

@@ -518,6 +518,7 @@
     "Cancelled.": "Megszakítva.",
     "Can’t be compared": "Nem hasonlítható össze",
     "Catppuccin": "Catppuccin",
+    "Cell %lld of %@": "%lld. cella, összesen %@",
     "Change All": "Az összes módosítása",
     "Change All…": "Az összes módosítása…",
     "Change Case": "Kis- és nagybetűk módosítása",
@@ -804,7 +805,9 @@
     "Filters loaded items only.": "Csak a betöltött elemeket szűri.",
     "Filters…": "Szűrők…",
     "Find": "Keresés",
+    "Find on This Page": "Keresés ezen az oldalon",
     "Find text in this document.": "Szöveg keresése ebben a dokumentumban.",
+    "Find text on the current page only.": "Szöveg keresése csak az aktuális oldalon.",
     "Find:": "Keresés:",
     "Finder tags (via Spotlight)": "Finder-címkék (a Spotlighton keresztül)",
     "first %lld shown": {
