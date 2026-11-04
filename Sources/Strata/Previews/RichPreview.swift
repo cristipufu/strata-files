@@ -25,6 +25,7 @@ package enum RichPreview {
         case .onenoteContents: OneNoteContentsView(url: url)
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator, clipboard: clipboard)
         case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
+        case .stl: STLPreviewView(url: url)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         }
         view.fallback = fallback
@@ -44,6 +45,7 @@ nonisolated package enum PreviewFormat: Sendable {
     /// CSV/TSV; a nil separator is detected from the content.
     case delimited(separator: UInt8?)
     case sqlite
+    case stl
     case archive(ArchiveKind)
 
     package init?(url: URL, contentType: UTType?) {
@@ -68,6 +70,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .delimited(separator: 0x09)
         } else if ext == "psv" {
             self = .delimited(separator: 0x7C)
+        } else if ext == "stl" {
+            self = .stl
         } else if Self.sqliteExtensions.contains(ext) {
             self = .sqlite
         } else if let kind = ArchiveKind(fileName: name) {

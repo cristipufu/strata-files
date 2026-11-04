@@ -42,7 +42,7 @@ class ThirdPartyNoticeTests(unittest.TestCase):
         checksum = hashlib.sha256((resource / "mermaid.min.js").read_bytes()).hexdigest()
         self.assertIn(checksum, self.notices)
         self.assertIn((resource / "LICENSE").read_text(encoding="utf-8"), self.notices)
-        self.assertIn('resources: [.copy("Mermaid")]', self.manifest)
+        self.assertIn('.copy("Mermaid")', self.manifest)
         script = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
         self.assertIn('cp -R "$bins/Strata_StrataPreviews.bundle" "$app/Contents/Resources/Strata_StrataPreviews.bundle"', script)
 

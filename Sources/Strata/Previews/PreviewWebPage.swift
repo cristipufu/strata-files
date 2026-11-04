@@ -13,10 +13,12 @@ package final class PreviewWebPage: NSView {
         package let url: URL
         package let read: HTMLWebSession.Reader
         package let limits: HTMLWebSession.Limits
-        package init(url: URL, read: @escaping HTMLWebSession.Reader, limits: HTMLWebSession.Limits = .init()) {
+        package let trustedScript: String?
+        package init(url: URL, read: @escaping HTMLWebSession.Reader, limits: HTMLWebSession.Limits = .init(), trustedScript: String? = nil) {
             self.url = url
             self.read = read
             self.limits = limits
+            self.trustedScript = trustedScript
         }
     }
 
@@ -82,7 +84,7 @@ package final class PreviewWebPage: NSView {
     private func load(_ document: Document, rules: WKContentRuleList) {
         let session = HTMLWebSession(url: document.url, read: document.read, limits: document.limits,
                                      openLink: openLink)
-        let web = WKWebView(frame: .zero, configuration: session.configuration(rules: rules))
+        let web = WKWebView(frame: .zero, configuration: session.configuration(rules: rules, trustedScript: document.trustedScript))
         web.navigationDelegate = session; web.uiDelegate = session
         web.allowsLinkPreview = false
         web.allowsBackForwardNavigationGestures = false

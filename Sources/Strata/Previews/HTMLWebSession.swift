@@ -62,7 +62,7 @@ import StrataSupport
         catch { rules = nil; throw error }
     }
 
-    package func configuration(rules: WKContentRuleList) -> WKWebViewConfiguration {
+    package func configuration(rules: WKContentRuleList, trustedScript: String? = nil) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
@@ -70,6 +70,11 @@ import StrataSupport
         configuration.preferences.isElementFullscreenEnabled = false
         configuration.mediaTypesRequiringUserActionForPlayback = .all
         configuration.userContentController.add(rules)
+        // Bundled rendering code runs in its own world; scripts in the document remain disabled.
+        if let trustedScript {
+            configuration.userContentController.addUserScript(WKUserScript(source: trustedScript,
+                injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
+        }
         configuration.setURLSchemeHandler(self, forURLScheme: HTMLPreviewDocument.scheme)
         return configuration
     }

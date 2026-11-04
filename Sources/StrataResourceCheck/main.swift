@@ -11,6 +11,7 @@ import StrataTheme
         do {
             guard CommandLine.arguments.count == 2 else { throw Invalid.sample }
             guard !(try ThemeCatalog.loadBundled()).isEmpty else { throw Invalid.themes }
+            try await modelScripts()
             let url = URL(fileURLWithPath: CommandLine.arguments[1])
             _ = try await MarkdownLoader.load(url)
             let source = try await diagram(url)
@@ -18,11 +19,16 @@ import StrataTheme
             defer { renderer.close() }
             let image = try await renderer.render(source, dark: false)
             guard image.size.width > 0, image.size.height > 0 else { throw Invalid.image }
-            print("Packaged themes and Mermaid loaded; the Markdown sample rendered successfully.")
+            print("Packaged themes, STL and Mermaid loaded; the Markdown sample rendered successfully.")
         } catch {
             print("Packaged resource check failed: \(error)")
             exit(2)
         }
+    }
+
+    @concurrent private static func modelScripts() async throws {
+        guard !(try STLDocument.bundledScript("stl")).isEmpty,
+              !(try STLDocument.bundledScript("renderer")).isEmpty else { throw Invalid.sample }
     }
 
     @concurrent private static func diagram(_ url: URL) async throws -> String {
