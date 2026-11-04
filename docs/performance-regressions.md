@@ -338,6 +338,12 @@ deinitializer to a class using the module's default isolation. Its declaration n
 preserving the clipboard's existing isolation and timer cleanup across module imports. The optimized CI suite guards
 this compiler path; the clipboard tests cover its contents, ownership and stale-clear refusal.
 
+The first tagged 0.8.2 run then exposed a timing assumption in the allowance cancellation test: 200 scheduler yields
+did not guarantee that its waiting task had entered the actor. The test now starts an immediate task while isolated
+to that allowance, so its waiter is registered before the assertions run. It keeps the cancellation and foreign-ticket
+release checks and cleans up its tickets on a failed assertion as well as success.
+The native table-copy test likewise awaits its owned copy task instead of polling the pasteboard for one second.
+
 
 ## Installed Mermaid preview crash (#36)
 

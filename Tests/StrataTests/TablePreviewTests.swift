@@ -138,7 +138,7 @@ struct TablePreviewTests {
         }
         #expect(table.selectedRowIndexes == [0, 1] && table.selectedColumns == [0, 1])
         table.copy(nil)
-        for _ in 0..<100 where board.string(forType: .string) == nil { try await Task.sleep(for: .milliseconds(10)) }
+        await grid.copyTask?.value
         #expect(board.string(forType: .string) == "a\tb\nc\td")
         grid.show(GridData(columns: [], rows: []))
         #expect(table.selectedRowIndexes.isEmpty && table.selectedColumns.isEmpty)

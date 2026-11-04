@@ -204,23 +204,26 @@ import os
     }
 
     @Test func allowanceCancelsOnlyWaitingTicketsAndRefusesAnotherTicketsRelease() async throws {
-        let allowance = WorkAllowance(limit: 1)
+        try await Self.checkAllowanceOwnership(WorkAllowance(limit: 1))
+    }
+
+    private static func checkAllowanceOwnership(_ allowance: isolated WorkAllowance) async throws {
         let first = UUID(), second = UUID()
         try await allowance.enter(first)
-        await allowance.cancel(first)
-        #expect(await allowance.activeCount == 1)
-        let waiting = Task { try await allowance.enter(second) }
-        for _ in 0..<200 where await allowance.waitingCount == 0 { await Task.yield() }
-        try #require(await allowance.waitingCount == 1)
-        await allowance.leave(UUID())
-        #expect(await allowance.activeCount == 1)
-        #expect(await allowance.waitingCount == 1)
-        await allowance.cancel(second)
+        defer { allowance.cancel(second); allowance.leave(first) }
+        allowance.cancel(first)
+        #expect(allowance.activeCount == 1)
+        let waiting = Task.immediate { try await allowance.enter(second) }
+        try #require(allowance.waitingCount == 1)
+        allowance.leave(UUID())
+        #expect(allowance.activeCount == 1)
+        #expect(allowance.waitingCount == 1)
+        allowance.cancel(second)
         await #expect(throws: CancellationError.self) { try await waiting.value }
-        #expect(await allowance.activeCount == 1)
-        #expect(await allowance.waitingCount == 0)
-        await allowance.leave(first)
-        #expect(await allowance.activeCount == 0)
+        #expect(allowance.activeCount == 1)
+        #expect(allowance.waitingCount == 0)
+        allowance.leave(first)
+        #expect(allowance.activeCount == 0)
     }
 
     @Test func hidingAndClosingTheInspectorCancelItsReadAndRejectLateResults() async throws {
