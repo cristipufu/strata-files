@@ -333,6 +333,11 @@ cancels active work, rather than dropping cleanup to make compilation pass.
 Regular CI now runs the complete optimized suite with its pinned Xcode, alongside normal and sanitizer jobs, so
 release-only compilation errors are checked before a tag. The Release workflow retains all three suites.
 
+The pre-tag 0.8.2 check caught the same compiler limitation in `Clipboard`, whose new polling timer added an isolated
+deinitializer to a class using the module's default isolation. Its declaration now explicitly names `MainActor`,
+preserving the clipboard's existing isolation and timer cleanup across module imports. The optimized CI suite guards
+this compiler path; the clipboard tests cover its contents, ownership and stale-clear refusal.
+
 
 ## Installed Mermaid preview crash (#36)
 

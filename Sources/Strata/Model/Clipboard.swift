@@ -5,7 +5,7 @@ extension Notification.Name {
 }
 
 /// Finder-compatible file clipboard, plus Cut: the next paste moves the chosen items.
-package final class Clipboard {
+@MainActor package final class Clipboard {
     package struct Contents: Equatable, Sendable {
         package let changeCount: Int
         package let count: Int
