@@ -518,11 +518,16 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
 extension GalleryViewController: NSCollectionViewDataSource, NSCollectionViewDelegate {
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { entries.count }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        section == 0 ? entries.count : 0
+    }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        guard indexPath.count == 2, indexPath.section == 0, entries.indices.contains(indexPath.item) else {
+            return NSCollectionViewItem()
+        }
         let item = collectionView.makeItem(withIdentifier: GalleryThumbnailItem.identifier, for: indexPath)
-        if let item = item as? GalleryThumbnailItem, indexPath.count == 2, entries.indices.contains(indexPath.item) {
+        if let item = item as? GalleryThumbnailItem {
             configure(item, with: entries[indexPath.item])
         }
         return item

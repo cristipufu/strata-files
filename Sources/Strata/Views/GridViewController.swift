@@ -459,11 +459,16 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
 extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelegate {
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
 
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { entries.count }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        section == 0 ? entries.count : 0
+    }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        guard indexPath.count == 2, indexPath.section == 0, entries.indices.contains(indexPath.item) else {
+            return NSCollectionViewItem()
+        }
         let item = collectionView.makeItem(withIdentifier: GridItem.identifier, for: indexPath)
-        if let item = item as? GridItem, indexPath.count == 2 { configure(item, at: indexPath.item) }
+        if let item = item as? GridItem { configure(item, at: indexPath.item) }
         return item
     }
 
