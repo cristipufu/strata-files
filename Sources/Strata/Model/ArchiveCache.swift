@@ -19,6 +19,7 @@ package nonisolated enum ArchiveCache {
 
     private static let rootPath = root.path
     private static let copyName = "contents"
+    private static let sourceByteLimit = 4096
     /// Which archive each copy came from, by its top folder's path: asked for as views draw, so it's kept as this run
     /// made it, or as its bookkeeping file said the first time it was asked (once a launch, for copies left before).
     private static let sources = Mutex<[String: URL]>([:])
@@ -167,11 +168,18 @@ package nonisolated enum ArchiveCache {
     }
 
     private static func source(of folder: URL) -> URL? {
-        guard let data = try? Data(contentsOf: sourceFile(folder)), data.count < 4096,
-              let path = String(data: data, encoding: .utf8), path.hasPrefix("/") else { return nil }
-        let url = URL(fileURLWithPath: path).lexicallyStandardized
-        // An archive is never inside the cache's own bookkeeping folder.
-        return url.path == rootPath ? nil : url
+        do {
+            let metadata = try FileReadSource(sourceFile(folder), resolveParent: false)
+            guard metadata.size >= 0, metadata.size < sourceByteLimit else { return nil }
+            let file = try metadata.open()
+            defer { try? file.close() }
+            guard let data = try file.read(upToCount: sourceByteLimit), data.count < sourceByteLimit,
+                  let path = String(data: data, encoding: .utf8), path.hasPrefix("/") else { return nil }
+            try metadata.verify(file)
+            let url = URL(fileURLWithPath: path).lexicallyStandardized
+            // An archive is never inside the cache's own bookkeeping folder.
+            return url.path == rootPath ? nil : url
+        } catch { return nil }
     }
 
     /// Every copy: its `<hash>` folder, its top folder, and the archive it came from (nil when unfinished).

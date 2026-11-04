@@ -481,5 +481,51 @@ The wider review also checked these boundaries. These are existing protections, 
 | C callbacks running on an unexpected executor | Exit and filesystem callbacks are created in nonisolated contexts; UI work is delivered to the main actor. The full suite exercises native subscriptions and shutdown, including scratch-volume cleanup. | This is exercised coverage, not exhaustive thread scheduling or proof about future callbacks. |
 | Native memory faults | Archive and SQLite parsing run in supervised workers; WebKit previews handle content-process termination. `ArchivePreviewSafetyTests`, `SQLitePreviewSafetyTests` and `STLPreviewTests` cover bounded/refused input and relevant failure behavior. | In-process image/document frameworks and native AppKit UI can still suffer memory faults. Objective-C exception guards cannot contain them; full containment requires a process boundary. |
 
-No additional source defect was confirmed in these checked boundaries during this pass. Their tests and guards provide
-specific coverage, not a claim that the whole application has no remaining crash paths.
+That initial review checked the existing boundaries without confirming another defect in them. The extended review
+below then checked callers outside those boundaries and identified additional gaps. Coverage of a boundary does not
+establish that every caller uses it, or that the application has no remaining crash paths.
+
+### Extended review of actual callers
+
+The follow-up traced direct native parsing calls, network response collection, file-derived allocation counts,
+numeric conversions, pipe/handle ownership, filesystem and exit callbacks, and UI delivery from background work.
+It found these additional defects:
+
+- **S3 XML bypassed the native exception boundary.** Both listing and error parsers called `XMLParser.parse()`
+  directly. They now use `STXMLReader`, as the document readers already do; malformed error replies also discard
+  partial fields. `S3NativeXMLTests` injects a failing native parser into the real S3 entry points. An outer native
+  fixture catches any escape before it reaches a Swift task, letting both regressions fail safely on the previous
+  implementation. A third case covers truncated XML and a subsequent independent valid response.
+- **S3 uploads limited their replies after buffering them.** File uploads and folder-marker uploads used the async
+  upload API, which returned the whole response before the caller took its prefix. `S3Upload` now owns one suspended
+  native task and its bounded reply: declared lengths and incoming chunks are checked before growing the buffer,
+  terminal paths release state, and cancellation stops only that request. S3 clients invalidate their owned sessions
+  when released. Tests exercise real URLSession uploads with controlled replies, exact/exceeded limits, missing and
+  misleading lengths, service errors, redirect refusal, progress, cancellation before starting and during a response,
+  delegate release, and another active upload in the same session. Removing either size guard makes its regression
+  fail; both mutations were caught.
+- **Archive-cache metadata limited its bytes after reading them.** A bookkeeping file was read in full before the
+  4 KiB check. Its reader now pins a regular file, checks the size before reading, reads at most 4 KiB and verifies
+  the opened file afterward. Links, pipes, directories and oversized metadata are refused. `ArchiveCacheSourceTests`
+  covers real cache lookup, boundary sizes, source preservation and ordinary metadata; its linked-metadata regression
+  fails on the previous reader without allocating a huge file or waiting on a pipe.
+
+The S3 gaps date to the server feature in `3ab928c`; the cache read dates to archive folders in `b8ae9b3`. Following
+the same failure classes beyond the table preview uncovered these older coverage gaps.
+
+A newly added upload regression also exposed a test-fixture callback inheriting main-actor isolation while Foundation
+called it on a worker thread. That test process stopped unexpectedly. `FakeS3.answer` now requires `@Sendable`, so the
+compiler checks its callback captures and prevents that accidental isolation. The authoritative upload baseline was
+then run with the corrected fixture: both old upload paths accepted oversized declared replies and failed the new
+tests normally. This fixture failure is separate from the installed app's SQLite crash and the production findings.
+
+The remaining reviewed paths already use bounded reads, validated counts/dimensions, explicit native callback
+contexts, or request-owned handles. No additional defect was confirmed there in this review. Native memory faults
+inside in-process system frameworks remain outside Objective-C exception containment; no such new reproducer was
+found, and this work does not claim to make the entire AppKit application crash-proof.
+
+Final local validation passed 1,780 tests in 242 suites both normally and under Address Sanitizer, 65 focused optimized
+regressions in 10 suites, and 105 Python checks. Both S3 response-size mutations were caught. Localization completeness
+and the main-thread, application-instance, theme and destructive-action audits passed. No unhandled native exception
+diagnostics or sanitizer findings were captured in the final runs. Sanitizer shutdown left one test-owned image
+attached without a mount; after confirming its owner had exited and its exact backing image, it was detached and removed.

@@ -43,7 +43,7 @@
  },
  {
   "helper": "ArchiveCache.archive(containing:)",
-  "reason": "Which archive a copy came from is kept in memory as copies are made, looked up or pruned at launch (off the main thread); only a copy none of those has seen yet reads its bookkeeping file, once a launch: Strata's own small file in its caches on the startup disk, never on a share."
+  "reason": "Which archive a copy came from is kept in memory as copies are made, looked up or pruned at launch (off the main thread); only a copy none of those has seen yet reads its bookkeeping file, once a launch. That read pins a regular file in Strata's own startup-disk cache without following its link, refuses 4 KiB or larger before reading, and reads at most 4 KiB."
  },
  {
   "helper": "ContainerDragItem(source:)",
