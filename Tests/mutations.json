@@ -8906,8 +8906,8 @@
   },
   {
     "file": "CTablePreview/SQLiteQuota.c",
-    "find": "amount > ceiling-current",
-    "replace": "amount > SIZE_MAX-current",
+    "find": "if (current > ceiling || amount > ceiling-current) return 0;",
+    "replace": "if (amount > SIZE_MAX-current) return 0;",
     "rule": "SQLite preview heap: computed rows respect the allocation budget before returning values",
     "tests": "SQLiteWorkerTests/allocationIsRefused"
   },

@@ -13,15 +13,18 @@ import StrataArchiveClient
         try database(url, sql: """
             CREATE TABLE ordinary(value TEXT);
             INSERT INTO ordinary VALUES ('中文 😀');
+            CREATE VIEW single_allocation AS SELECT printf('%.*c', 6000000, 'x');
             CREATE VIEW computed AS SELECT printf('%.*c', 2000000, 'a') AS a,
                 printf('%.*c', 2000000, 'b') AS b, printf('%.*c', 2000000, 'c') AS c;
             """)
         let before = try Data(contentsOf: url)
         let source = try FileReadSource(url)
-        let bounded = try await SQLiteQueries.read(source, mode: .rows, table: "computed", limits: .init(heap: 4 << 20))
-        let page = try #require(bounded.page)
-        #expect(page.rows.isEmpty)
-        guard case .limit = page.warning else { Issue.record("Expected a recoverable allocation limit"); return }
+        for table in ["single_allocation", "computed"] {
+            let bounded = try await SQLiteQueries.read(source, mode: .rows, table: table, limits: .init(heap: 4 << 20))
+            let page = try #require(bounded.page)
+            #expect(page.rows.isEmpty)
+            guard case .limit = page.warning else { Issue.record("Expected a recoverable allocation limit for \(table)"); return }
+        }
         // A failed worker cannot poison the service or the app's separate SQLite connections.
         let normal = try await SQLiteQueries.read(source, mode: .rows, table: "ordinary")
         #expect(normal.page?.rows == [[.text("中文 😀")]])
