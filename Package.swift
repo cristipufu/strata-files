@@ -220,7 +220,7 @@ let package = Package(
         .target(
             name: "StrataFiles",
             dependencies: ["StrataSupport", "StrataModel", "StrataArchives", "StrataIndex",
-                           "StrataArchiveClient", "StrataConnections"],
+                           "StrataArchiveClient", "StrataConnections", "CNativeReaders"],
             path: "Sources/Strata",
             exclude: ["Archives", "AI", "App", "AppUpdates", "Browser", "Connections", "Dev", "Dock", "Index", "Inspector", "main.swift",
                       "Palette", "Queue",

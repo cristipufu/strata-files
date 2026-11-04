@@ -1,4 +1,5 @@
 import CryptoKit
+import CNativeReaders
 import Foundation
 
 package nonisolated struct S3Credentials: Sendable, Equatable {
@@ -350,13 +351,13 @@ package nonisolated final class S3ListParser: NSObject, XMLParserDelegate {
     private var text = ""
     private var key = "", size: Int64 = 0, modified: Date?
 
-    package static func parse(_ data: Data) -> S3ListParser {
+    package static func parse(_ data: Data, makeParser: (Data) -> XMLParser = XMLParser.init(data:)) -> S3ListParser {
         let delegate = S3ListParser()
         guard data.count <= 64 << 20, !declaresDocumentType(data) else { return delegate }
-        let parser = XMLParser(data: data)
+        let parser = makeParser(data)
         parser.shouldResolveExternalEntities = false
         parser.delegate = delegate
-        delegate.valid = parser.parse() && delegate.sawRoot
+        delegate.valid = (try? STXMLReader.parse(parser)) != nil && delegate.sawRoot
         return delegate
     }
 
@@ -404,13 +405,13 @@ package nonisolated final class S3ErrorParser: NSObject, XMLParserDelegate {
     private var current = ""
     private var text = ""
 
-    package static func parse(_ data: Data) -> S3ErrorParser {
+    package static func parse(_ data: Data, makeParser: (Data) -> XMLParser = XMLParser.init(data:)) -> S3ErrorParser {
         let delegate = S3ErrorParser()
         guard !data.isEmpty, data.count <= 1 << 20, !declaresDocumentType(data) else { return delegate }
-        let parser = XMLParser(data: data)
+        let parser = makeParser(data)
         parser.shouldResolveExternalEntities = false
         parser.delegate = delegate
-        parser.parse()
+        guard (try? STXMLReader.parse(parser)) != nil else { return S3ErrorParser() }
         return delegate
     }
 

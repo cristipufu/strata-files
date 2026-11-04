@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 FOUNDATION_EXPORT NSError *_Nullable STTestRichTextException(void);
 FOUNDATION_EXPORT NSError *_Nullable STTestXMLException(void);
+FOUNDATION_EXPORT NSError *_Nullable STTestXMLBoundary(void (NS_NOESCAPE ^operation)(NSXMLParser *parser));
 FOUNDATION_EXPORT NSError *_Nullable STTestImageOpenException(void);
 FOUNDATION_EXPORT NSError *_Nullable STTestImageMetadataException(void);
 FOUNDATION_EXPORT NSData *_Nullable STTestImageFileRead(int descriptor, off_t capturedSize, off_t position,

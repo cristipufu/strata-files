@@ -98,6 +98,15 @@ NSData *STTestImageFileRead(int descriptor, off_t capturedSize, off_t position, 
 }
 @end
 
+NSError *STTestXMLBoundary(void (NS_NOESCAPE ^operation)(NSXMLParser *parser)) {
+    @try {
+        operation([[STReaderFailingXML alloc] initWithData:[NSData data]]);
+        return nil;
+    } @catch (NSException *exception) {
+        return [NSError errorWithDomain:@"TestNativeExceptionEscaped" code:1 userInfo:nil];
+    }
+}
+
 NSError *STTestXMLException(void) {
     @try {
         NSError *error;
