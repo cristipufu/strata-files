@@ -120,6 +120,32 @@ struct ToolbarCustomizationTests {
         withExtendedLifetime((environment, state)) {}
     }
 
+    @Test func searchStaysAButtonThroughToolbarRelayoutsAndOpensOnlyWhenAsked() throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil }
+        let window = try #require(owner.window), toolbar = try #require(window.toolbar)
+        toolbar.itemIdentifiers = BrowserToolbar.defaults
+        let search = try #require(owner.toolbarItems.search)
+        #expect(!search.isExpanded)
+        // The first transfer shows the Transfers item, and the toolbar lays out again with room to spare.
+        let transfers = try #require(toolbar.items.first { $0.itemIdentifier == .transfers })
+        transfers.isHidden = false
+        window.setContentSize(NSSize(width: 2400, height: 800))
+        window.layoutIfNeeded()
+        #expect(!search.isExpanded)
+        owner.focusSearch(nil)
+        #expect(search.isExpanded && search.view === search.searchField)
+        let endEditing = { NotificationCenter.default.post(name: NSControl.textDidEndEditingNotification, object: search.searchField) }
+        search.searchField.stringValue = "notes"
+        endEditing()
+        #expect(search.isExpanded)
+        search.searchField.stringValue = ""
+        endEditing()
+        #expect(!search.isExpanded && search.view !== search.searchField)
+        withExtendedLifetime((environment, state)) {}
+    }
+
 
     @Test func layoutObserversDoNotRetainAClosedWindow() throws {
         let tree = try TestTree("left/", "right/"), state = try TestTree()

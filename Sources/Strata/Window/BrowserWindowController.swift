@@ -515,8 +515,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func setSearchField(_ text: String) {
-        guard let field = toolbarItems.search?.searchField, field.stringValue != text else { return }
-        field.stringValue = text
+        guard let item = toolbarItems.search, item.searchField.stringValue != text else { return }
+        item.searchField.stringValue = text
+        if !text.isEmpty { item.expand() }
     }
 
     private func childToSelect(in destination: Destination, from origin: Destination) -> URL? {
