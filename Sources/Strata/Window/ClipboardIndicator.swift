@@ -69,6 +69,9 @@ final class ClipboardInspection: NSViewController, NSTableViewDataSource, NSTabl
         let title = NSTextField(labelWithString: ClipboardIndicator.title(contents))
         title.font = .systemFont(ofSize: 12, weight: .semibold)
         let scroll = NSScrollView()
+        ThemeStyle.bind(root, to: .content)
+        ThemeStyle.bind(scroll, to: .content)
+        ThemeStyle.bind(table, to: .content)
         scroll.hasVerticalScroller = true
         let column = NSTableColumn(identifier: .init("path"))
         column.width = 400

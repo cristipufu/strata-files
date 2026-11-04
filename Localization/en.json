@@ -3055,7 +3055,7 @@
     "Show View Options…": "StrataCommand.swift:87",
     "Show “%@”": "Button: show that disk's Trash · Inspector: the item’s folder, as a button that shows it · FolderNotice.swift:64, InspectorCard.swift:348",
     "Show:": "Label before the menu choosing which differences are listed · CompareController.swift:114",
-    "Showing first %@": "Preview footer note: only the first part is shown (a count or a size) · ArchiveLister.swift:111, ClipboardIndicator.swift:87, CodePreviewView.swift:159",
+    "Showing first %@": "Preview footer note: only the first part is shown (a count or a size) · ArchiveLister.swift:111, ClipboardIndicator.swift:90, CodePreviewView.swift:159",
     "Sidebar": "Toolbar item label: switch between Places and the folder tree · BrowserWindowController+Toolbar.swift:86, ShortcutsWindowController.swift:81",
     "Sidebar Contents": "Toolbar customization palette label · BrowserWindowController+Toolbar.swift:87",
     "Single Pane": "BrowserWindowController+Palette.swift:205",
