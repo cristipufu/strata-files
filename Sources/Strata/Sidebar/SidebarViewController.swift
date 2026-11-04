@@ -456,6 +456,10 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         item.url != nil && favoritesSection?.items.contains { $0 === item } == true
     }
 
+    func isFrequent(_ item: SidebarItem) -> Bool {
+        sections.first { $0.id == "frequent" }?.items.contains { $0 === item } == true
+    }
+
     /// A folder row that isn't a favorite yet: not the Trash, a tag or a disk you can eject.
     func canAddToFavorites(_ item: SidebarItem) -> Bool {
         guard let url = item.url, item.tint == nil, !item.isEjectable, !Trash.isTrash(url) else { return false }

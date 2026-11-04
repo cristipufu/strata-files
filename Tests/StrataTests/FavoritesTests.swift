@@ -106,4 +106,32 @@ import Testing
         #expect(sidebar.sections.first { $0.id == "frequent" } == nil)
         #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["a/", "b/", "often/"])
     }
+
+    /// Remove from Frequent forgets the folder's visits: it leaves Frequent, stays gone in a new session, and stays on disk.
+    @Test func removeFromFrequentForgetsTheFolderButKeepsIt() async throws {
+        let tree = try TestTree("often/", "also/")
+        let environment = try PreviewEnvironment(tree)
+        defer { withExtendedLifetime(environment) {} }
+        let services = environment.services
+        services.preferences.favoritePaths = []
+        services.visits.record(tree.url("often"))
+        services.visits.record(tree.url("also"))
+        let sidebar = SidebarViewController(services: services)
+        _ = sidebar.view
+        sidebar.reload()
+        func frequent() -> [String] {
+            sidebar.sections.first { $0.id == "frequent" }?.items.compactMap(\.url?.lastPathComponent) ?? []
+        }
+        #expect(Set(frequent()) == ["often", "also"])
+        let often = try #require(sidebar.sections.first { $0.id == "frequent" }?.items.first { $0.url?.lastPathComponent == "often" })
+        let recents = try #require(sidebar.sections.first?.items.first)
+        #expect(sidebar.isFrequent(often) && !sidebar.isFrequent(recents))
+        let entry = NSMenuItem()
+        entry.representedObject = often.url
+        sidebar.removeFrequent(entry)
+        #expect(frequent() == ["also"])
+        let reopened = Frecency(preferences: services.preferences.defaults)
+        #expect(reopened.ranked().map(\.lastPathComponent) == ["also"])
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["also/", "often/"])
+    }
 }

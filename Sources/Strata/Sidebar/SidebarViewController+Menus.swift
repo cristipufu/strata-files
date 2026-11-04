@@ -1,6 +1,7 @@
 import AppKit
 
-/// Right-click: folders and volumes open in a new tab, copy their path or eject; saved searches can be removed.
+/// Right-click: folders and volumes open in a new tab, copy their path or eject; frequent folders and saved searches can
+/// be removed.
 extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -49,6 +50,9 @@ extension SidebarViewController: NSMenuDelegate {
             add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
         } else if canAddToFavorites(item) {
             add("Add to Favorites", #selector(addFavorite(_:)), url)
+        }
+        if isFrequent(item) {
+            add("Remove from Frequent", #selector(removeFrequent(_:)), url)
         }
         if item.isEjectable {
             menu.addItem(.separator())
@@ -177,6 +181,12 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         addFavorites([url], at: nil)
+    }
+
+    @objc func removeFrequent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        services.visits.forget(url)
+        reload()
     }
 
     @objc private func ejectItem(_ sender: NSMenuItem) {
