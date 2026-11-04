@@ -1,5 +1,19 @@
 [
   {
+    "file": "Strata/Remote/S3Upload.swift",
+    "find": "guard response.expectedContentLength <= Int64(maximumBytes) else {",
+    "replace": "guard true else {",
+    "rule": "S3 upload response ignores its declared size",
+    "tests": "S3Tests/uploadRepliesAreRefusedAtTheirDeclaredSize"
+  },
+  {
+    "file": "Strata/Remote/S3Upload.swift",
+    "find": "guard data.count <= maximumBytes - state.body.count else { return true }",
+    "replace": "guard true else { return true }",
+    "rule": "S3 upload reply buffers beyond its byte limit",
+    "tests": "S3UploadResponseTests/actualBytesAreBoundedWhenTheLengthIsMissingOrMisleading"
+  },
+  {
     "file": "Strata/Model/HistoryEntry.swift",
     "find": "guard !from.isEmpty, !to.isEmpty else {",
     "replace": "guard true else {",

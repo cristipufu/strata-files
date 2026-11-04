@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -156,11 +157,50 @@ struct S3Tests {
         try await client().download("big.bin", to: destination, limit: 300_000)
         #expect(try Data(contentsOf: destination).count == 300_000)
     }
+
+    @Test(arguments: [false, true])
+    func uploadRepliesAreRefusedAtTheirDeclaredSize(_ folder: Bool) async throws {
+        let tree = try TestTree("chosen.txt", "sibling.txt")
+        let original = try Data(contentsOf: tree.url("chosen.txt"))
+        let paths = Mutex<[String]>([])
+        FakeS3.answer = { request in
+            paths.withLock { $0.append(request.url?.path(percentEncoded: false) ?? "") }
+            return (200, ["Content-Length": String(S3Client.maxBody + 1)], Data())
+        }
+        let client = client()
+        await #expect(throws: S3Error.badResponse) {
+            if folder { try await client.makeFolder("chosen/") }
+            else { try await client.upload(tree.url("chosen.txt"), to: "chosen.txt") }
+        }
+        #expect(paths.withLock { $0 } == [folder ? "/chosen/" : "/chosen.txt"])
+        #expect(try Data(contentsOf: tree.url("chosen.txt")) == original)
+        #expect(tree.snapshot() == ["chosen.txt", "sibling.txt"])
+    }
+
+    @Test(arguments: [false, true])
+    func uploadRepliesKeepSuccessServiceErrorsAndRedirectRefusal(_ folder: Bool) async throws {
+        let tree = try TestTree("chosen.txt", "sibling.txt")
+        let original = try Data(contentsOf: tree.url("chosen.txt"))
+        let client = client()
+        func upload() async throws {
+            if folder { try await client.makeFolder("chosen/") }
+            else { try await client.upload(tree.url("chosen.txt"), to: "chosen.txt") }
+        }
+        FakeS3.answer = { _ in (200, [:], Data()) }
+        try await upload()
+        FakeS3.answer = { _ in (403, [:], Data("<Error><Code>AccessDenied</Code><Message>Denied</Message></Error>".utf8)) }
+        await #expect(throws: S3Error.service(status: 403, code: "AccessDenied", message: "Denied")) { try await upload() }
+        FakeS3.answer = { _ in (307, ["Location": "https://upload-redirect.strata.invalid/elsewhere"], Data()) }
+        await #expect(throws: S3Error.service(status: 307, code: "HTTP307", message: "")) { try await upload() }
+        #expect(!FakeS3.hosts.contains("upload-redirect.strata.invalid"))
+        #expect(try Data(contentsOf: tree.url("chosen.txt")) == original)
+        #expect(tree.snapshot() == ["chosen.txt", "sibling.txt"])
+    }
 }
 
 /// Answers S3 requests in tests, recording the hosts asked.
 nonisolated final class FakeS3: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var answer: (URLRequest) -> (Int, [String: String], Data) = { _ in (500, [:], Data()) }
+    nonisolated(unsafe) static var answer: @Sendable (URLRequest) -> (Int, [String: String], Data) = { _ in (500, [:], Data()) }
     nonisolated(unsafe) static var hosts: Set<String> = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }

@@ -135,6 +135,8 @@ package nonisolated final class S3Client: Sendable {
         session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
     }
 
+    deinit { session.invalidateAndCancel() }
+
     private var isLocal: Bool { ["localhost", "127.0.0.1", "::1"].contains(host.lowercased()) }
 
     // MARK: - Requests
@@ -271,14 +273,16 @@ package nonisolated final class S3Client: Sendable {
         guard size <= 5 << 30 else { throw S3Error.tooLarge }
         var request = try request("PUT", key: key, headers: ["Content-Length": String(size)], payloadHash: S3Signer.unsignedPayload)
         request.timeoutInterval = 3600
-        let (body, response) = try await session.upload(for: request, fromFile: source, delegate: UploadProgress(progress))
-        try Self.check(response, body.prefix(Self.maxBody))
+        let task = session.uploadTask(with: request, fromFile: source)
+        let (body, response) = try await S3Upload.response(to: task, maximumBytes: Self.maxBody, progress: progress)
+        try Self.check(response, body)
     }
 
     /// An empty "folder/" marker, so a new folder shows before anything is in it.
     @concurrent package func makeFolder(_ prefix: String) async throws {
-        let (body, response) = try await session.upload(for: request("PUT", key: prefix, headers: ["Content-Length": "0"]), from: Data())
-        try Self.check(response, body.prefix(Self.maxBody))
+        let task = try session.uploadTask(with: request("PUT", key: prefix, headers: ["Content-Length": "0"]), from: Data())
+        let (body, response) = try await S3Upload.response(to: task, maximumBytes: Self.maxBody, progress: { _ in })
+        try Self.check(response, body)
     }
 
     /// A server-side copy (no download), up to 5 GB.
@@ -308,25 +312,6 @@ package nonisolated final class S3Client: Sendable {
 /// Requests are signed for one host: a redirect would send them (and their credentials) somewhere else, so none is
 /// followed; the service's answer stands (an error, say, for the wrong region).
 nonisolated private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(nil)
-    }
-}
-
-/// Bytes sent so far, for an upload's progress.
-nonisolated private final class UploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
-    private let report: @Sendable (Int64) -> Void
-
-    init(_ report: @escaping @Sendable (Int64) -> Void) {
-        self.report = report
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
-                    totalBytesExpectedToSend: Int64) {
-        report(totalBytesSent)
-    }
-
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         completionHandler(nil)
