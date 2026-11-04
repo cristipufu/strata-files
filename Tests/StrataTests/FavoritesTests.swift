@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -67,5 +67,43 @@ import Testing
         #expect(preferences.favoritePaths?.map { URL(filePath: $0).lastPathComponent }
             == ["a", "d", Places.home.lastPathComponent])
         #expect(tree.snapshot() == ["a/", "d/"])
+    }
+
+    /// A Frequent folder dragged between the favorites joins them there, and leaves Frequent; dropped anywhere else it
+    /// does nothing, since the drag carries a private type and never the folder itself.
+    @Test func aFrequentFolderDraggedAmongTheFavoritesJoinsThem() async throws {
+        let tree = try TestTree("a/", "b/", "often/")
+        let environment = try PreviewEnvironment(tree)
+        defer { withExtendedLifetime(environment) {} }
+        let services = environment.services, preferences = services.preferences
+        preferences.favoritePaths = ["a", "b"].map { tree.url($0).path }
+        services.visits.record(tree.url("often"))
+        let sidebar = SidebarViewController(services: services)
+        _ = sidebar.view
+        sidebar.reload()
+        let outline = sidebar.outline
+        func section(_ id: String) throws -> SidebarSection { try #require(sidebar.sections.first { $0.id == id }) }
+        let favorites = try section("favorites"), frequent = try section("frequent")
+        let often = try #require(frequent.items.first { $0.url?.lastPathComponent == "often" })
+        #expect(sidebar.canAddToFavorites(often) && !favorites.items.contains { sidebar.canAddToFavorites($0) })
+
+        let writer = try #require(sidebar.outlineView(outline, pasteboardWriterForItem: often) as? NSPasteboardItem)
+        #expect(writer.types == [.sidebarFavorite])
+        let drag = FileDrag([])
+        drag.draggingPasteboard.clearContents()
+        drag.draggingPasteboard.writeObjects([writer])
+        let location = try #require(sidebar.sections.first { $0.id == "locations" }?.items.first { $0.url != nil })
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: location,
+                                    proposedChildIndex: NSOutlineViewDropOnItemIndex) == [])
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: frequent, proposedChildIndex: 0) == [])
+        // Between a and b: Recents is row 0, so child 2 is before b.
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: favorites, proposedChildIndex: 2) == .move)
+        #expect(sidebar.outlineView(outline, acceptDrop: drag, item: favorites, childIndex: 2))
+        for _ in 0..<200 where preferences.favoritePaths?.count != 3 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(preferences.favoritePaths?.map { URL(filePath: $0).lastPathComponent } == ["a", "often", "b"])
+        sidebar.reload()
+        // It was the only frequent folder, so the section goes.
+        #expect(sidebar.sections.first { $0.id == "frequent" } == nil)
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["a/", "b/", "often/"])
     }
 }

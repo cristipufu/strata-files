@@ -47,7 +47,7 @@ extension SidebarViewController: NSMenuDelegate {
         menu.addItem(.separator())
         if favorite {
             add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
-        } else if !item.isEjectable {
+        } else if canAddToFavorites(item) {
             add("Add to Favorites", #selector(addFavorite(_:)), url)
         }
         if item.isEjectable {
