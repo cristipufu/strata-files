@@ -1,5 +1,6 @@
 import AppKit
 import StrataModel
+import StrataSupport
 
 /// A read-only table with a header row: no zebra stripes, columns sized to their content, sideways scrolling.
 package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate, PreviewDocumentSearch {
@@ -102,11 +103,11 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         tableView.isEnabled = true
         let sameColumns = self.data.columns.map(\.title) == data.columns.map(\.title)
         let sorting = sameColumns ? tableView.sortDescriptors : []
+        tableView.restoreSelection(rows: [], columns: [])
         self.data = data
         scope.stringValue = String(localized: "Sorting applies to this page.")
         scope.toolTip = scope.stringValue
         order = Array(data.rows.indices)
-        tableView.restoreSelection(rows: [], columns: [])
         tableView.sortDescriptors = []
         for column in tableView.tableColumns.reversed() { tableView.removeTableColumn(column) }
         for (index, column) in data.columns.enumerated() {
@@ -250,10 +251,11 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
     }
 
     private func refreshSelection() {
+        let rows = tableView.selectedRowIndexes, columns = tableView.selectedColumns
         tableView.enumerateAvailableRowViews { rowView, row in
-            for column in self.data.columns.indices {
-                (rowView.view(atColumn: column) as? GridCellView)?.setSelected(
-                    self.tableView.selectedRowIndexes.contains(row) && self.tableView.selectedColumns.contains(column))
+            for column in 0..<rowView.numberOfColumns {
+                (rowView.existingCell(at: column) as? GridCellView)?.setSelected(
+                    rows.contains(row) && columns.contains(column))
             }
         }
     }

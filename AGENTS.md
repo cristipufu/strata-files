@@ -521,6 +521,12 @@ a native call while cancelling and replacing its caller, without loading a live 
 - A crash fix needs a headless regression that calls the real affected reader, decoder, layout or process helper,
   fails before the fix and passes after it. Keep it in `Tests/StrataTests` so local runs, pull-request CI and Release
   all run it. Regex checks, source-text assertions or tests of a duplicate implementation don't count.
+- Native row views can retain their old columns during a table reload. Clear the old selection before adopting new
+  data, paint the row's actual columns, and use `NSTableRowView.existingCell(at:)` for bounded native access. Exercise
+  materialized rows while switching between wider, narrower and empty schemas; unattached models don't cover this.
+- An AppKit exception escaping a Swift task can corrupt concurrency state even if AppKit catches it later. A crash
+  in an executor check can be the delayed result: inspect the preceding unified log and the crash report's
+  `SOME_OTHER_THREAD_SWALLOWED_AT_LEAST_ONE_EXCEPTION` breadcrumb before changing actor isolation checks.
 - Markdown block decorations are `NSTextTableBlock`s: TextKit sends table messages to enclosing blocks when it draws
   a nested table. Exercise native drawing, including quoted tables and diagram attachments, across widths and
   appearances. Text previews use `CPreviewText` for storage creation and native view drawing/layout; after an

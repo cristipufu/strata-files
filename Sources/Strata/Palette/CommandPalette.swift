@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import StrataSupport
 
 /// One thing the palette can do: jump to a folder, open a file, or run a command.
 struct PaletteItem {
@@ -375,7 +376,7 @@ extension CommandPalette: NSTableViewDataSource, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         let selected = table.selectedRow
         table.enumerateAvailableRowViews { rowView, row in
-            (rowView.view(atColumn: 0) as? PaletteCell)?.isRowSelected = row == selected
+            (rowView.existingCell(at: 0) as? PaletteCell)?.isRowSelected = row == selected
         }
     }
 }

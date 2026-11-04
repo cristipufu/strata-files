@@ -1,4 +1,5 @@
 import AppKit
+import StrataSupport
 
 /// A folder the path bar offers while you type.
 nonisolated struct PathSuggestion: Equatable, Sendable {
@@ -293,7 +294,7 @@ extension PathSuggestionList: NSTableViewDataSource, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         let selected = table.selectedRow
         table.enumerateAvailableRowViews { rowView, row in
-            (rowView.view(atColumn: 0) as? SuggestionCell)?.isRowSelected = row == selected
+            (rowView.existingCell(at: 0) as? SuggestionCell)?.isRowSelected = row == selected
         }
     }
 }

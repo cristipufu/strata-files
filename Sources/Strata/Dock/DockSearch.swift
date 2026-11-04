@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Synchronization
 import UniformTypeIdentifiers
+import StrataSupport
 
 /// Settings ▸ General ▸ Search box in the Dock (off unless you turn it on). Apple's Dock takes no plug-ins, so Strata
 /// keeps a gap of empty spacer tiles in it (see `DockGapTiles`), right after its own icon, and floats its own search box
@@ -319,7 +320,7 @@ final class DockSearch: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NS
     func tableViewSelectionDidChange(_ notification: Notification) {
         let selected = table.selectedRow
         table.enumerateAvailableRowViews { rowView, row in
-            (rowView.view(atColumn: 0) as? PaletteCell)?.isRowSelected = row == selected
+            (rowView.existingCell(at: 0) as? PaletteCell)?.isRowSelected = row == selected
         }
     }
 
