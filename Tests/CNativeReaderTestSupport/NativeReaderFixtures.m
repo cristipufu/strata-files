@@ -88,3 +88,22 @@ NSData *STTestImageFileRead(int descriptor, off_t capturedSize, off_t position, 
     }
     return data;
 }
+
+@interface STReaderFailingXML : NSXMLParser
+@end
+@implementation STReaderFailingXML
+- (BOOL)parse {
+    [NSException raise:NSInternalInconsistencyException format:@"Controlled XML parsing failure"];
+    return NO;
+}
+@end
+
+NSError *STTestXMLException(void) {
+    @try {
+        NSError *error;
+        [STXMLReader parse:[[STReaderFailingXML alloc] initWithData:[NSData data]] error:&error];
+        return error;
+    } @catch (NSException *exception) {
+        return [NSError errorWithDomain:@"TestNativeExceptionEscaped" code:1 userInfo:nil];
+    }
+}

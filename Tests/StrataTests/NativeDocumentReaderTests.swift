@@ -37,6 +37,12 @@ import Testing
         #expect(tree.snapshot() == ["document.rtf"])
     }
 
+    @Test func aNativeXMLExceptionBecomesAnOrdinaryError() throws {
+        let error = try #require(STTestXMLException()) as NSError
+        #expect(error.domain == "StrataNativeRead")
+        #expect(error.userInfo["operation"] as? String == "XML parsing")
+    }
+
     @Test func aNativeRichTextExceptionBecomesAnOrdinaryError() throws {
         let error = try #require(STTestRichTextException()) as NSError
         #expect(error.domain == "StrataNativeRead")
