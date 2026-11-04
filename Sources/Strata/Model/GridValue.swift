@@ -4,4 +4,3 @@ nonisolated package enum GridValue: Sendable, Equatable {
     case null
     case blob(bytes: Int)
 }
-
