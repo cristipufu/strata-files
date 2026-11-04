@@ -133,17 +133,19 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
     }
 
     private static func zone(_ offset: String?) -> TimeZone? {
-        guard let offset, [5, 6].contains(offset.utf8.count), let sign = offset.first, sign == "+" || sign == "-" else { return nil }
-        var digits = String(offset.dropFirst())
-        if digits.utf8.count == 5 {
-            let colon = digits.index(digits.startIndex, offsetBy: 2)
-            guard digits[colon] == ":" else { return nil }
-            digits.remove(at: colon)
+        guard let offset, [5, 6].contains(offset.utf8.count) else { return nil }
+        var bytes = Array(offset.utf8)
+        let sign = bytes.removeFirst()
+        guard sign == 43 || sign == 45 else { return nil }
+        if bytes.count == 5 {
+            guard bytes[2] == 58 else { return nil }
+            bytes.remove(at: 2)
         }
-        guard digits.utf8.allSatisfy({ (48...57).contains($0) }) else { return nil }
-        guard digits.count == 4, let hours = Int(digits.prefix(2)), let minutes = Int(digits.suffix(2)),
-              hours <= 23, minutes < 60 else { return nil }
-        return TimeZone(secondsFromGMT: (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60))
+        guard bytes.allSatisfy({ (48...57).contains($0) }) else { return nil }
+        let hours = Int(bytes[0] - 48) * 10 + Int(bytes[1] - 48)
+        let minutes = Int(bytes[2] - 48) * 10 + Int(bytes[3] - 48)
+        guard hours <= 23, minutes < 60 else { return nil }
+        return TimeZone(secondsFromGMT: (sign == 45 ? -1 : 1) * (hours * 3600 + minutes * 60))
     }
 
     private static func positive(_ value: Double?) -> Double? { value.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } }

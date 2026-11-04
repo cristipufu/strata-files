@@ -13,6 +13,15 @@ import os
 @MainActor struct MediaDetailsTests {
     private final class RequestOwner { weak var value: InspectorMediaDetails? }
 
+    @Test func malformedUnicodeEXIFOffsetsFallBackWithoutIndexingCharacters() {
+        let raw = "2026:11:04 12:30:00"
+        let local = MediaDetails.dateTaken(raw, offset: nil)
+        for offset in ["+😀1", "-😀1", "+é12", "+12😀", "+00:9😀", "+2a:00", "+24:00", "+00:60"] {
+            #expect(MediaDetails.dateTaken(raw, offset: offset) == local)
+        }
+        #expect(MediaDetails.dateTaken(raw, offset: "+0230") == MediaDetails.dateTaken(raw, offset: "+02:30"))
+    }
+
     @Test func aCancellationCallbackCanChooseANewerSelectionWithoutBeingOverwritten() async throws {
         let environment = try IndependentEnvironment()
         let tree = try TestTree("a.jpg", "b.jpg", "c.jpg")
