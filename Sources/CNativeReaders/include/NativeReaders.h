@@ -3,6 +3,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@interface STXMLReader : NSObject
++ (BOOL)parse:(NSXMLParser *)parser error:(NSError **)error NS_SWIFT_NAME(parse(_:));
+@end
+
 @interface STDecodedImage : NSObject
 @property(nonatomic, readonly) CGImageRef image;
 - (nullable NSData *)encodedAsJPEG:(BOOL)jpeg maximumBytes:(NSUInteger)maximumBytes error:(NSError **)error

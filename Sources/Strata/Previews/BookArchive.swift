@@ -2,6 +2,7 @@ import StrataArchives
 import StrataModel
 import Foundation
 import ImageIO
+import CNativeReaders
 import UniformTypeIdentifiers
 import StrataSupport
 
@@ -207,27 +208,12 @@ nonisolated package struct EPUBBook: Sendable {
 
     /// Resolve package-relative URI references once, before looking up an exact archive member.
     package static func path(_ href: String, relativeTo base: [String]) throws -> [String] {
-        guard href.utf8.count <= 4096, let uri = URLComponents(string: href), uri.scheme == nil, uri.host == nil,
-              uri.query == nil, !uri.percentEncodedPath.hasPrefix("/"), !uri.percentEncodedPath.isEmpty else { throw PreviewError.unsupported }
-        var parts = base
-        for encoded in uri.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: false) {
-            guard let part = String(encoded).removingPercentEncoding, !part.isEmpty,
-                  !part.unicodeScalars.contains(where: { $0 == "/" || $0 == "\\" || CharacterSet.controlCharacters.contains($0) }),
-                  part.utf8.count <= 255 else { throw PreviewError.unsupported }
-            if part == "." { continue }
-            if part == ".." { guard !parts.isEmpty else { throw PreviewError.unsupported }; parts.removeLast() }
-            else { parts.append(part) }
-        }
-        guard !parts.isEmpty, parts.count <= 16 else { throw PreviewError.unsupported }
-        return parts
+        guard !href.hasPrefix("/") else { throw PreviewError.unsupported }
+        return try PackagePath.resolve(href, relativeTo: base)
     }
 
     @concurrent package static func bytes(_ source: ArchiveSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
-        guard let record = records.first(where: { $0.path.joined(separator: "/").utf8.elementsEqual(path.joined(separator: "/").utf8) }),
-              record.kind == 1, record.size >= 0, record.size <= limit else { throw PreviewError.unsupported }
-        let selected = try await ArchiveReader.read(source, member: path)
-        guard selected.count == 1, let data = selected[0].body, data.count <= limit else { throw PreviewError.unsupported }
-        return data
+        try await PackagePart.read(source, records: records, path: path, limit: limit)
     }
 }
 
@@ -236,10 +222,14 @@ nonisolated package final class BookXML: NSObject, XMLParserDelegate {
     package final class Element {
         package let name: String
         package let attributes: [String: String]
+        private let namespacedAttributes: [String: [String: String]]
         package var text = ""
         package var children: [Element] = []
         package var allText: String { text }
-        init(_ name: String, _ attributes: [String: String]) { self.name = name; self.attributes = attributes }
+        init(_ name: String, _ attributes: [String: String], namespaced: [String: [String: String]]) {
+            self.name = name; self.attributes = attributes; namespacedAttributes = namespaced
+        }
+        package func attribute(_ name: String, namespace: String) -> String? { namespacedAttributes[namespace]?[name] }
         package func descendants(_ name: String) -> [Element] {
             children.flatMap { ($0.name == name ? [$0] : []) + $0.descendants(name) }
         }
@@ -248,15 +238,18 @@ nonisolated package final class BookXML: NSObject, XMLParserDelegate {
     private var root: Element?
     private var count = 0
     private var textBytes = 0
+    private var prefixes: [String: [String]] = [:]
     package static func parse(_ data: Data) throws -> Element {
+        try Task.checkCancellation()
         guard data.count <= TextFile.limit, let text = String(data: data, encoding: .utf8),
               !text.localizedCaseInsensitiveContains("<!ENTITY") else { throw PreviewError.unsupported }
         let delegate = BookXML(), parser = XMLParser(data: Data(try withoutDocumentType(text).utf8))
         parser.shouldProcessNamespaces = true
+        parser.shouldReportNamespacePrefixes = true
         parser.shouldResolveExternalEntities = false
         parser.externalEntityResolvingPolicy = .never
         parser.delegate = delegate
-        guard parser.parse(), delegate.stack.isEmpty, let root = delegate.root else { throw PreviewError.unsupported }
+        guard (try? STXMLReader.parse(parser)) != nil, delegate.stack.isEmpty, let root = delegate.root else { throw PreviewError.unsupported }
         return root
     }
 
@@ -288,9 +281,28 @@ nonisolated package final class BookXML: NSObject, XMLParserDelegate {
     package func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String]) {
         guard stack.count < 64, count < 20_000, attributes.count <= 32 else { parser.abortParsing(); return }
         count += 1
-        let element = Element(name, attributes)
+        let element = Element(name, attributes, namespaced: expanded(attributes))
         if let parent = stack.last { parent.children.append(element) } else { root = element }
         stack.append(element)
+    }
+    private func expanded(_ attributes: [String: String]) -> [String: [String: String]] {
+        var result: [String: [String: String]] = [:]
+        for (name, value) in attributes {
+            let parts = name.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2, let namespace = prefixes[String(parts[0])]?.last else { continue }
+            result[namespace, default: [:]][String(parts[1])] = value
+        }
+        return result
+    }
+    package func parser(_ parser: XMLParser, didStartMappingPrefix prefix: String, toURI uri: String) {
+        guard prefixes.count < 128, (prefixes[prefix]?.count ?? 0) < 64, prefix.utf8.count <= 256, uri.utf8.count <= 4096 else {
+            parser.abortParsing(); return
+        }
+        prefixes[prefix, default: []].append(uri)
+    }
+    package func parser(_ parser: XMLParser, didEndMappingPrefix prefix: String) {
+        _ = prefixes[prefix]?.popLast()
+        if prefixes[prefix]?.isEmpty == true { prefixes[prefix] = nil }
     }
     package func parser(_ parser: XMLParser, foundCharacters string: String) {
         textBytes += string.utf8.count

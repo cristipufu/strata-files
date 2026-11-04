@@ -3647,15 +3647,15 @@
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
-    "replace": "guard let self, self.shownURLs == [entry.url] else { return }",
+    "find": "guard let self, self.previewRevision == revision, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
+    "replace": "guard let self, self.previewRevision == revision, self.shownURLs == [entry.url] else { return }",
     "rule": "Inspector provider ownership rich preview fallback opens Quick Look for a placeholder",
     "tests": "InspectorProviderTests/inspectorSkipsPlaceholdersAndSymlinksForDimensionsSummariesAndPreviewsUntilFetched"
   },
   {
     "file": "Strata/Inspector/InspectorViewController.swift",
-    "find": "previewWork?.cancel()\n        projectTask?.cancel()",
-    "replace": "projectTask?.cancel()",
+    "find": "previewWork?.cancel()\n        (richPreview as? PreviewView)?.stop()\n        projectTask?.cancel()",
+    "replace": "(richPreview as? PreviewView)?.stop()\n        projectTask?.cancel()",
     "rule": "Inspector provider ownership released inspector leaves its deferred preview scheduled",
     "tests": "InspectorProviderTests/releasingTheInspectorCancelsPendingPreviewWorkWithoutRetainingIt"
   },
@@ -8896,5 +8896,12 @@
     "replace": "    @objc func paste(_ sender: Any?) { _ = nextResponder?.tryToPerform(#selector(paste(_:)), with: sender) }",
     "rule": "Read-only table paste reaches the browser file commands",
     "tests": "TablePreviewTests/readOnlyCellsNeverForwardCutOrPasteToFileCommands"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "guard let self, self.previewRevision == revision, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
+    "replace": "guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
+    "rule": "Inspector old preview fallback replaces a newer preview of the same file",
+    "tests": "InspectorPreviewLifecycleTests/oldWorkAndFallbacksCannotReplaceANewPreviewOfTheSameFile"
   }
 ]

@@ -26,6 +26,7 @@ package enum RichPreview {
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator, clipboard: clipboard)
         case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
         case .stl: STLPreviewView(url: url)
+        case .xlsx: XLSXPreviewView(url: url, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         }
         view.fallback = fallback
@@ -46,6 +47,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case delimited(separator: UInt8?)
     case sqlite
     case stl
+    case xlsx
     case archive(ArchiveKind)
 
     package init?(url: URL, contentType: UTType?) {
@@ -70,6 +72,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .delimited(separator: 0x09)
         } else if ext == "psv" {
             self = .delimited(separator: 0x7C)
+        } else if ext == "xlsx" {
+            self = .xlsx
         } else if ext == "stl" {
             self = .stl
         } else if Self.sqliteExtensions.contains(ext) {

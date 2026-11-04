@@ -11,6 +11,40 @@ import os
 @testable import StrataSupport
 
 @MainActor struct MediaDetailsTests {
+    private final class RequestOwner { weak var value: InspectorMediaDetails? }
+
+    @Test func aCancellationCallbackCanChooseANewerSelectionWithoutBeingOverwritten() async throws {
+        let environment = try IndependentEnvironment()
+        let tree = try TestTree("a.jpg", "b.jpg", "c.jpg")
+        let a = try #require(FileEntry(url: tree.url("a.jpg")))
+        let b = try #require(FileEntry(url: tree.url("b.jpg")))
+        let c = try #require(FileEntry(url: tree.url("c.jpg")))
+        let owner = RequestOwner(), gate = HeldMediaReads()
+        var started = gate.started.makeAsyncIterator()
+        let request = InspectorMediaDetails(copies: environment.services.copies, read: { url, _ in
+            await withTaskCancellationHandler { await gate.read(url) } onCancel: {
+                if url == a.url { MainActor.assumeIsolated { owner.value?.show(b) } }
+            }
+        })
+        owner.value = request
+        request.show(a)
+        #expect(await started.next() == a.url)
+        let first = try #require(request.task)
+        request.show(c)
+        #expect(request.url == b.url)
+        #expect(await started.next() == b.url)
+        let newest = try #require(request.task)
+        await gate.finish(0, value: .init(photo: .init(camera: "old")))
+        await first.value
+        #expect(request.task == newest)
+        await gate.finish(1, value: .init(photo: .init(camera: "newest")))
+        await newest.value
+        #expect(request.value?.photo?.camera == "newest")
+        #expect(await gate.count == 2)
+        #expect(tree.snapshot() == ["a.jpg", "b.jpg", "c.jpg"])
+        withExtendedLifetime(environment) {}
+    }
+
     @Test func photoDetailsKeepOrientationEXIFAndOriginalBytes() async throws {
         let tree = try TestTree("photo.jpg")
         let bytes = try photo()

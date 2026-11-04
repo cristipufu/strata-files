@@ -25,6 +25,7 @@ package class PreviewView: NSView {
     private var spinner: NSProgressIndicator?
     private var message: PreviewMessageView?
     private var task: Task<Void, Never>?
+    private var revision = 0
 
     package override init(frame: NSRect) {
         super.init(frame: frame)
@@ -49,31 +50,41 @@ package class PreviewView: NSView {
 
     deinit { task?.cancel() }
 
+    @objc package func stop() { cancelLoad() }
+
     package final func cancelLoad() {
-        task?.cancel(); task = nil
+        revision += 1
+        let previous = task
+        task = nil
         isLoading = false
         hideSpinner()
+        previous?.cancel()
     }
 
     /// Runs `operation` off the main thread and hands its result to `apply`, unless the view is gone or a newer load started.
     package final func load<Value: Sendable>(_ operation: @escaping @concurrent @Sendable () async throws -> Value,
                                failed: ((String) -> Void)? = nil,
                                apply: @escaping (Value) -> Void) {
-        task?.cancel()
+        let previous = task
+        revision += 1
+        let revision = revision
         isLoading = true
-        message?.removeFromSuperview()
+        let previousMessage = message
         message = nil
         task = Task { [weak self] in
+            guard !Task.isCancelled else { return }
             let spinnerDelay = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(250))
-                if !Task.isCancelled { self?.showSpinner() }
+                if !Task.isCancelled, self?.revision == revision { self?.showSpinner() }
             }
             let result: Result<Value, Error>
             do { result = .success(try await operation()) } catch { result = .failure(error) }
             spinnerDelay.cancel()
-            guard let self, !Task.isCancelled else { return }
-            hideSpinner()
+            guard let self, !Task.isCancelled, self.revision == revision else { return }
+            task = nil
             isLoading = false
+            hideSpinner()
+            guard self.revision == revision else { return }
             if case .failure(let error) = result, let failed {
                 if case PreviewError.message(let text, _) = error { failed(text) }
                 else if let text = (error as? any LocalizedError)?.errorDescription { failed(text) }
@@ -92,6 +103,8 @@ package class PreviewView: NSView {
                 showMessage(symbol: symbol, text)
             }
         }
+        previousMessage?.removeFromSuperview()
+        previous?.cancel()
     }
 
     /// Replaces the content with a centered symbol and text.

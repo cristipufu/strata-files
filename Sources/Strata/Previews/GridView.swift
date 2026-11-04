@@ -174,7 +174,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scope.toolTip = message
     }
 
-    private func cancelWork() {
+    func cancelWork() {
         revision += 1
         pendingOrder = nil
         sortTask?.cancel(); sortTask = nil

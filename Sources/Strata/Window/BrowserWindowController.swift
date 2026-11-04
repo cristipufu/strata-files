@@ -135,7 +135,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         inspectorObservation = split.inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.split.inspectorItem.isCollapsed { self.split.inspector.cancelMediaRead(); return }
+                if self.split.inspectorItem.isCollapsed { self.split.inspector.stopPreviewing(); return }
                 self.refreshPanels()
             }
         }
@@ -657,7 +657,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         navigationGestures.cancel()
         isClosed = true
-        split.inspector.cancelMediaRead()
+        split.inspector.stopPreviewing()
         stopClipboardMonitoring()
         panes.forEach { $0.stopBackgroundWork() }
         onClose?()
@@ -738,6 +738,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func refreshPanels() {
+        guard !isClosed else { return }
         syncViewModeItem()
         var status = browser.statusText
         if case .scanning(let items) = services.index.phase {

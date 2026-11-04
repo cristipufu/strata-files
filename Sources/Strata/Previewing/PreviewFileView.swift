@@ -70,7 +70,7 @@ import StrataPreviews
         defer { onSearchAvailabilityChanged?() }
         generation += 1
         let generation = generation
-        (rich as? PreviewView)?.cancelLoad()
+        (rich as? PreviewView)?.stop()
         rich?.removeFromSuperview()
         rich = nil
         native.clear()
@@ -90,7 +90,7 @@ import StrataPreviews
         shownURL = url
         if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, preferences: preferences, clipboard: clipboard, fallback: { [weak self] in
             guard let self, self.generation == generation, shownURL == url else { return }
-            (self.rich as? PreviewView)?.cancelLoad()
+            (self.rich as? PreviewView)?.stop()
             self.rich?.removeFromSuperview()
             self.rich = nil
             showNative(url)
@@ -116,7 +116,7 @@ import StrataPreviews
         isClosed = true
         generation += 1
         shownURL = nil
-        (rich as? PreviewView)?.cancelLoad()
+        (rich as? PreviewView)?.stop()
         rich?.removeFromSuperview()
         rich = nil
         native.close()

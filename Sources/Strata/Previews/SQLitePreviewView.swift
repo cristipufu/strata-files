@@ -4,18 +4,23 @@ import StrataModel
 /// A SQLite database: a pop-up of its tables and views (with row counts), and the first rows of the chosen one.
 package final class SQLitePreviewView: PreviewView {
     private let url: URL
-    private let picker = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let summary = NSTextField(labelWithString: "")
-    private let grid: GridView
+    private let sourceView: GridSourceView
+    private var picker: NSPopUpButton { sourceView.picker }
+    private var summary: NSTextField { sourceView.summary }
+    private var grid: GridView { sourceView.grid }
     private var page = 0
     private var shownTableIndex = 0
     private var tables: [SQLiteTable] = []
 
     package init(url: URL, clipboard: Clipboard) {
         self.url = url
-        self.grid = GridView(clipboard: clipboard)
+        sourceView = GridSourceView(clipboard: clipboard)
         super.init(frame: .zero)
-        configure()
+        sourceView.translatesAutoresizingMaskIntoConstraints = false
+        sourceView.isHidden = true
+        contentView.addSubview(sourceView)
+        NSLayoutConstraint.activate(sourceView.fillingConstraints(in: contentView))
+        sourceView.onSelect = { [weak self] _ in self?.pickTable() }
         grid.onPage = { [weak self] in self?.showPage($0) }
         load({
             guard try SQLiteReader.isSQLite(url) else { throw PreviewError.unsupported }
@@ -30,41 +35,7 @@ package final class SQLitePreviewView: PreviewView {
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
-    private func configure() {
-        picker.controlSize = .small
-        picker.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        picker.target = self
-        picker.action = #selector(pickTable)
-        picker.translatesAutoresizingMaskIntoConstraints = false
-        picker.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        summary.font = .systemFont(ofSize: 11)
-        summary.textColor = .tertiaryLabelColor
-        summary.lineBreakMode = .byTruncatingTail
-        summary.translatesAutoresizingMaskIntoConstraints = false
-        summary.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        for view in [picker, summary, separator, grid] {
-            view.isHidden = true
-            contentView.addSubview(view)
-        }
-        NSLayoutConstraint.activate([
-            picker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
-            picker.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 9),
-            summary.leadingAnchor.constraint(greaterThanOrEqualTo: picker.trailingAnchor, constant: 8),
-            summary.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
-            summary.centerYAnchor.constraint(equalTo: picker.centerYAnchor),
-            separator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            separator.topAnchor.constraint(equalTo: picker.bottomAnchor, constant: 8),
-            grid.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            grid.topAnchor.constraint(equalTo: separator.bottomAnchor),
-            grid.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-        ])
-    }
+    @objc package override func stop() { super.stop(); grid.cancelWork() }
 
     private func show(_ snapshot: SQLiteSnapshot) {
         tables = snapshot.tables

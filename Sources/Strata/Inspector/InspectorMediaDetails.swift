@@ -34,7 +34,9 @@ import UniformTypeIdentifiers
         }
         let key = Key(url: entry.url, modified: entry.modified, size: entry.size)
         guard self.key != key else { return }
-        cancel()
+        let previous = task
+        revision += 1
+        value = nil
         self.key = key
         let read = read, revision = revision, url = entry.url, type = entry.contentType
         task = Task { [weak self] in
@@ -46,13 +48,15 @@ import UniformTypeIdentifiers
             self.value = value
             onChange?()
         }
+        previous?.cancel()
     }
 
     func cancel() {
         revision += 1
-        task?.cancel()
+        let previous = task
         task = nil
         key = nil
         value = nil
+        previous?.cancel()
     }
 }

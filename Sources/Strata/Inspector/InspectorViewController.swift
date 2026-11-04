@@ -54,13 +54,18 @@ final class InspectorViewController: NSViewController {
     private var previewHeight: NSLayoutConstraint?
 
     private let previewScheduler: (DispatchWorkItem) -> Void
+    typealias PreviewFactory = (FileEntry, @escaping () -> Void) -> NSView?
+    private let makePreview: PreviewFactory
+    private var previewRevision = 0
+    private var previewingStopped = false
     private let readSelectionSizes: InspectorSelectionSizes.Reader
     private(set) var selectionSizesTask: Task<Void, Never>?
 
     init(services: BrowserServices,
          previewScheduler: @escaping (DispatchWorkItem) -> Void = {
              DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: $0)
-         }, readSelectionSizes: @escaping InspectorSelectionSizes.Reader = InspectorSelectionSizes.read) {
+         }, readSelectionSizes: @escaping InspectorSelectionSizes.Reader = InspectorSelectionSizes.read,
+         makePreview: PreviewFactory? = nil) {
         self.services = services
         self.readSelectionSizes = readSelectionSizes
         mediaDetails = InspectorMediaDetails(copies: services.copies, read: services.mediaDetailsReader)
@@ -72,6 +77,10 @@ final class InspectorViewController: NSViewController {
                                                 store: services.containerStore)
         self.projectView = ProjectInspectorView(files: services.files, git: services.git, clipboard: services.clipboard)
         self.previewScheduler = previewScheduler
+        self.makePreview = makePreview ?? { entry, fallback in
+            RichPreview.makeView(for: entry.url, contentType: entry.contentType, preferences: services.preferences,
+                                 clipboard: services.clipboard, fallback: fallback)
+        }
         infoEditor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         super.init(nibName: nil, bundle: nil)
     }
@@ -79,6 +88,7 @@ final class InspectorViewController: NSViewController {
     isolated deinit {
         selectionSizesTask?.cancel()
         previewWork?.cancel()
+        (richPreview as? PreviewView)?.stop()
         projectTask?.cancel()
         mediaDetails.cancel()
         summary.url = nil
@@ -224,7 +234,7 @@ final class InspectorViewController: NSViewController {
 
     /// The file shown arrived from its container: preview it now.
     @objc private func containerFilesFetched(_ notification: Notification) {
-        guard shownURLs.count == 1, let urls = notification.object as? [URL],
+        guard !previewingStopped, shownURLs.count == 1, let urls = notification.object as? [URL],
               let shown = shownURLs.first, services.copies.contains(shown),
               urls.contains(where: { $0.lexicallyStandardized.path == shown.lexicallyStandardized.path }),
               let entry = FileEntry(url: shown), canPreview(entry) else { return }
@@ -281,6 +291,7 @@ final class InspectorViewController: NSViewController {
 
     /// Shows `entries`, or `folder` when the selection is empty. Calling again with the same items only refreshes metadata.
     func show(entries: [FileEntry], folder: FileEntry?, folderSize: (URL) -> FolderSize?, canMeasure: (FileEntry) -> Bool) {
+        previewingStopped = false
         selectionSizesTask?.cancel()
         selectionSizesTask = nil
         let items = entries.isEmpty ? [folder].compactMap { $0 } : entries
@@ -358,10 +369,7 @@ final class InspectorViewController: NSViewController {
     }
 
     private func hidePreview() {
-        previewWork?.cancel()
-        previewingContent = false
-        removeRichPreview()
-        preview.clear()
+        stopPreviewing()
         preview.isHidden = true
     }
 
@@ -534,8 +542,14 @@ final class InspectorViewController: NSViewController {
     }
 
     private func schedulePreview(_ entry: FileEntry) {
-        previewWork?.cancel()
+        previewRevision += 1
+        let revision = previewRevision
+        let previous = previewWork
+        previewWork = nil
+        previous?.cancel()
+        guard previewRevision == revision else { return }
         removeRichPreview()
+        guard previewRevision == revision else { return }
         preview.clear()
         previewingContent = canPreview(entry)
         showIcons(of: [entry])
@@ -545,22 +559,20 @@ final class InspectorViewController: NSViewController {
         // Arrowing through a folder shouldn't render every file; wait for the selection to settle.
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, self.shownURLs == [entry.url] else { return }
+                guard let self, self.previewRevision == revision, self.shownURLs == [entry.url] else { return }
                 // A container's file not fetched yet: its icon until it arrives.
                 guard self.canPreview(entry) else {
                     self.previewingContent = false
                     return
                 }
                 self.previewingContent = true
-                if !entry.isDirectory, let rich = RichPreview.makeView(for: entry.url, contentType: entry.contentType, preferences: self.services.preferences, clipboard: self.services.clipboard, fallback: { [weak self] in
-                    guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }
+                let rich = entry.isDirectory ? nil : self.makePreview(entry, { [weak self] in
+                    guard let self, self.previewRevision == revision, self.shownURLs == [entry.url], self.canPreview(entry) else { return }
                     self.removeRichPreview()
                     self.showQuickLook(entry.url)
-                }) {
-                    self.showRich(rich)
-                } else {
-                    self.showQuickLook(entry.url)
-                }
+                })
+                guard self.previewRevision == revision, !self.previewingStopped else { Self.discard(rich); return }
+                if let rich { self.showRich(rich) } else { self.showQuickLook(entry.url) }
             }
         }
         previewWork = work
@@ -586,12 +598,17 @@ final class InspectorViewController: NSViewController {
         iconView.isHidden = true
     }
 
-    /// Dropping the view also cancels its loading.
     private func removeRichPreview() {
-        richPreview?.removeFromSuperview()
+        let previous = richPreview
         richPreview = nil
         richBackdrop.isHidden = true
         previewHeight?.constant = 230
+        Self.discard(previous)
+    }
+
+    private static func discard(_ view: NSView?) {
+        (view as? PreviewView)?.stop()
+        view?.removeFromSuperview()
     }
 
     // MARK: - Project section
@@ -675,7 +692,19 @@ final class InspectorViewController: NSViewController {
         mediaCard.isHidden = rows.isEmpty
     }
 
-    func cancelMediaRead() { mediaDetails.cancel() }
+    func stopPreviewing() {
+        previewingStopped = true
+        previewRevision += 1
+        let previous = previewWork
+        let revision = previewRevision
+        previewWork = nil
+        previewingContent = false
+        removeRichPreview()
+        guard previewRevision == revision else { return }
+        preview.clear()
+        mediaDetails.cancel()
+        previous?.cancel()
+    }
 
     /// Up to three icons fanned out, like a stack of the selected files.
     private func stackedIcons(_ items: [FileEntry]) -> NSImage {

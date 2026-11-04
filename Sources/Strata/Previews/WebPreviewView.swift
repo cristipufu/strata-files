@@ -45,5 +45,5 @@ package class WebPreviewView: PreviewView {
         open()
     }
 
-    @objc package func stop() { stopped = true; cancelLoad(); page.clear() }
+    @objc package override func stop() { stopped = true; super.stop(); page.clear() }
 }

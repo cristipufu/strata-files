@@ -22,6 +22,8 @@ package final class DelimitedPreviewView: PreviewView {
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
+    @objc package override func stop() { super.stop(); grid.cancelWork() }
+
     private func showPage(_ page: Int) {
         guard cursors.indices.contains(page) else { return }
         let url = url, separator = separator, cursor = cursors[page]

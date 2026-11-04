@@ -125,6 +125,8 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         diagramTask?.cancel(); diagramRevision += 1
     }
 
+    @objc package override func stop() { stopDiagrams(); super.stop() }
+
     private func renderingFailed() {
         stopDiagrams()
         cancelLoad()
