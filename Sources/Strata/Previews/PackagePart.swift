@@ -1,8 +1,9 @@
+import StrataModel
 import Foundation
 import StrataArchives
 
 nonisolated enum PackagePart {
-    static func read(_ source: ArchiveSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
+    static func read(_ source: FileReadSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
         let key = path.joined(separator: "/")
         guard let record = records.first(where: { $0.path.joined(separator: "/").utf8.elementsEqual(key.utf8) }),
               record.kind == 1, record.size >= 0, record.size <= limit else { throw PreviewError.unsupported }

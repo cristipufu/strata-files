@@ -1,3 +1,4 @@
+import StrataModel
 import Foundation
 import Testing
 @testable import Strata
@@ -69,7 +70,7 @@ import Testing
         let listing = try await ArchiveLister.list(archive, kind: .zip)
         #expect(listing.files == 1 && listing.uncompressed == 6 && listing.note == nil)
         #expect(listing.root.value.children.map(\.name) == ["chosen.txt"])
-        let source = try await TestWork.run { try ArchiveSource(archive) }
+        let source = try await TestWork.run { try FileReadSource(archive) }
         let member = try await ArchiveReader.read(source, member: ["chosen.txt"])
         #expect(member.count == 1 && member.first?.body == Data("chosen".utf8))
         let copies = environment.services.copies
@@ -90,7 +91,7 @@ import Testing
         let tree = try TestTree("invalid.zip")
         let archive = tree.url("invalid.zip")
         let original = try await TestWork.run { try Self.fixture(archive, invalid: problem) }
-        let source = try await TestWork.run { try ArchiveSource(archive) }
+        let source = try await TestWork.run { try FileReadSource(archive) }
         let listing = try await ArchiveReader.list(source, timeout: 10)
         #expect(listing.records.isEmpty)
         #expect(try await TestWork.run { try Self.tail(archive) } == original)
@@ -101,7 +102,7 @@ import Testing
         let tree = try TestTree("split.zip")
         let archive = tree.url("split.zip")
         let original = try await TestWork.run { try Self.fixture(archive, volumes: 2) }
-        let source = try await TestWork.run { try ArchiveSource(archive) }
+        let source = try await TestWork.run { try FileReadSource(archive) }
         let listing = try await ArchiveReader.list(source, timeout: 10)
         #expect(listing.records.isEmpty)
         #expect(try await TestWork.run { try Self.tail(archive) } == original)

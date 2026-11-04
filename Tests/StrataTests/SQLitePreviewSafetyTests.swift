@@ -10,34 +10,31 @@ import Testing
 @testable import StrataModel
 @testable import StrataSearch
 
-struct SQLitePreviewSafetyTests {
-    @Test func menusColumnsAndCellDecodingHaveIndependentBounds() throws {
+@Suite(.archiveWorkerApp) struct SQLitePreviewSafetyTests {
+    @Test func menusColumnsAndCellDecodingHaveIndependentBounds() async throws {
         let tree = try TestTree()
         let url = tree.url("bounded.db")
         let views = (0..<510).map { "CREATE VIEW v\($0) AS SELECT 1;" }.joined()
         let columns = (0..<300).map { "0 AS c\($0)" }.joined(separator: ",")
-        try database(url, sql: views + "CREATE VIEW wide AS SELECT \(columns);")
+        try database(url, sql: views + "CREATE VIEW wide AS SELECT \(columns); CREATE VIEW long_text AS SELECT hex(zeroblob(1000000)) AS \"" + String(repeating: "x", count: 2000) + "\";")
         let before = try Data(contentsOf: url)
-        #expect(try SQLiteReader.tables(url).count == 500)
-        #expect(try SQLiteReader.rows(url, table: "wide").data.columns.count == 256)
-        var db: OpaquePointer?, statement: OpaquePointer?
-        try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
-        defer { sqlite3_close(db) }
-        try #require(sqlite3_prepare_v2(db, "SELECT hex(zeroblob(1000000))", -1, &statement, nil) == SQLITE_OK)
-        defer { sqlite3_finalize(statement) }
-        try #require(sqlite3_step(statement) == SQLITE_ROW)
-        #expect(SQLiteReader.text(statement, 0)?.utf8.count == 1200)
+        #expect(try await SQLiteReader.tables(url).count == 500)
+        #expect(try await SQLiteReader.rows(url, table: "wide").data.columns.count == 256)
+        let long = try await SQLiteReader.rows(url, table: "long_text")
+        #expect(try #require(long.data.columns.first).title.utf8.count == 1200)
+        if case .text(let value) = long.data.rows.first?.first { #expect(value.utf8.count == 2_000_000) }
+        else { Issue.record("Expected the complete loaded text value") }
         #expect(try Data(contentsOf: url) == before)
         #expect(tree.snapshot() == ["bounded.db"])
     }
 
-    @Test func databaseLinksAreRefusedWithoutChangingTheirTargets() throws {
+    @Test func databaseLinksAreRefusedWithoutChangingTheirTargets() async throws {
         let tree = try TestTree("link.db -> ./real.db")
         try database(tree.url("real.db"), sql: "CREATE TABLE kept(value)")
         try tree.add(["parent -> ."])
         let before = try Data(contentsOf: tree.url("real.db"))
-        #expect(throws: (any Error).self) { try SQLiteReader.tables(tree.url("parent/real.db")) }
-        #expect(throws: (any Error).self) { try SQLiteReader.tables(tree.url("link.db")) }
+        await #expect(throws: (any Error).self) { try await SQLiteReader.tables(tree.url("parent/real.db")) }
+        await #expect(throws: (any Error).self) { try await SQLiteReader.tables(tree.url("link.db")) }
         #expect(try Data(contentsOf: tree.url("real.db")) == before)
         #expect(tree.snapshot() == ["link.db -> ./real.db", "parent -> .", "real.db"])
     }
@@ -49,20 +46,20 @@ struct SQLitePreviewSafetyTests {
         try #require(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
     }
 
-    @Test func aViewCannotAllocateAnArbitrarilyLargeValueForAPreview() throws {
+    @Test func aViewCannotAllocateAnArbitrarilyLargeValueForAPreview() async throws {
         let tree = try TestTree()
         let url = tree.url("test.db")
         // Exercise the same allocation path with 16 MiB rather than risking the system's 1 GiB default.
         try database(url, sql: "CREATE VIEW oversized AS SELECT randomblob(16777216) AS payload")
         let before = try Data(contentsOf: url)
-        let rows = try SQLiteReader.rows(url, table: "oversized")
+        let rows = try await SQLiteReader.rows(url, table: "oversized")
         #expect(rows.error != nil)
         #expect(rows.data.rows.isEmpty)
         #expect(try Data(contentsOf: url) == before)
         #expect(tree.snapshot() == ["test.db"])
     }
 
-    @Test func ordinaryTablesAndViewsRemainReadOnlyAndReadable() throws {
+    @Test func ordinaryTablesAndViewsRemainReadOnlyAndReadable() async throws {
         let tree = try TestTree()
         let url = tree.url("test.db")
         try database(url, sql: """
@@ -71,9 +68,9 @@ struct SQLitePreviewSafetyTests {
             CREATE VIEW example_view AS SELECT * FROM example;
             """)
         let before = try Data(contentsOf: url)
-        #expect(try SQLiteReader.tables(url).map(\.name) == ["example", "example_view"])
+        #expect(try await SQLiteReader.tables(url).map(\.name) == ["example", "example_view"])
         for name in ["example", "example_view"] {
-            let rows = try SQLiteReader.rows(url, table: name)
+            let rows = try await SQLiteReader.rows(url, table: name)
             #expect(rows.error == nil)
             #expect(rows.data.columns.count == 3 && rows.data.rows.count == 1)
         }
@@ -82,12 +79,12 @@ struct SQLitePreviewSafetyTests {
     }
 
     @Test(arguments: [8_388_607, 8_388_608, 8_388_609])
-    func valueLimitAcceptsItsBoundaryAndRefusesLargerValues(_ bytes: Int) throws {
+    func valueLimitAcceptsItsBoundaryAndRefusesLargerValues(_ bytes: Int) async throws {
         let tree = try TestTree()
         let url = tree.url("test.db")
         try database(url, sql: "CREATE VIEW bounded AS SELECT zeroblob(\(bytes)) AS payload")
         let before = try Data(contentsOf: url)
-        let result = try SQLiteReader.rows(url, table: "bounded")
+        let result = try await SQLiteReader.rows(url, table: "bounded")
         if bytes <= 8 * 1024 * 1024 {
             #expect(result.error == nil)
             let row = try #require(result.data.rows.first)
@@ -104,7 +101,7 @@ struct SQLitePreviewSafetyTests {
         #expect(tree.snapshot() == ["test.db"])
     }
 
-    @Test func anOversizedStoredValueKeepsEarlierRowsAndReportsTheFailure() throws {
+    @Test func anOversizedStoredValueKeepsEarlierRowsAndReportsTheFailure() async throws {
         let tree = try TestTree()
         let url = tree.url("test.db")
         try database(url, sql: """
@@ -114,7 +111,7 @@ struct SQLitePreviewSafetyTests {
             INSERT INTO example VALUES (3, zeroblob(16), zeroblob(32));
             """)
         let before = try Data(contentsOf: url)
-        let result = try SQLiteReader.rows(url, table: "example")
+        let result = try await SQLiteReader.rows(url, table: "example")
         #expect(result.error != nil)
         #expect(result.data.columns.map(\.title) == ["id", "first", "second"])
         #expect(result.data.rows.count == 1)
@@ -127,7 +124,7 @@ struct SQLitePreviewSafetyTests {
     }
 
 
-    @Test func aStoredRowCanStillReadSeparateValuesThatEachFitTheLimit() throws {
+    @Test func aStoredRowCanStillReadSeparateValuesThatEachFitTheLimit() async throws {
         let tree = try TestTree()
         let url = tree.url("test.db")
         try database(url, sql: """
@@ -135,7 +132,7 @@ struct SQLitePreviewSafetyTests {
             INSERT INTO example VALUES (zeroblob(4194304), zeroblob(4194304));
             """)
         let before = try Data(contentsOf: url)
-        let result = try SQLiteReader.rows(url, table: "example")
+        let result = try await SQLiteReader.rows(url, table: "example")
         #expect(result.error == nil)
         #expect(result.data.rows.count == 1)
         let row = try #require(result.data.rows.first)

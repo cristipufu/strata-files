@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 import os
@@ -116,7 +117,7 @@ package nonisolated enum Archiver {
     /// comes back incomplete, with what it counted so far. Runs off the main thread.
     @concurrent
     package static func inspect(_ archive: URL) async -> Inspection {
-        guard let source = try? ArchiveSource(archive.resolvingSymlinksInPath()),
+        guard let source = try? FileReadSource(archive.resolvingSymlinksInPath()),
               let survey = try? await ArchiveReader.survey(source, timeout: 30) else { return Inspection() }
         return survey
     }
@@ -203,7 +204,7 @@ package nonisolated enum Archiver {
         let status: ArchiveService.Status
         do {
             // A link to an archive extracts the archive, which mustn't change while it's read.
-            let source = try ArchiveSource(archive.resolvingSymlinksInPath())
+            let source = try FileReadSource(archive.resolvingSymlinksInPath())
             let file = try source.open()
             defer { try? file.close() }
             let reader = try PipeReader()

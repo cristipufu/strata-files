@@ -1,18 +1,19 @@
+import StrataModel
 import StrataArchives
 import AppKit
 import StrataTheme
 
 /// Owns one book; its chapters page through the header and WebKit page its base owns.
 package final class EPUBPreviewView: PagedPreviewView {
-    package typealias Loader = @Sendable (ArchiveSource) async throws -> EPUBBook
+    package typealias Loader = @Sendable (FileReadSource) async throws -> EPUBBook
     package private(set) var book: EPUBBook?
     /// Its file, opened away from the main thread as the view is made.
-    private let source: Task<ArchiveSource?, Never>
+    private let source: Task<FileReadSource?, Never>
     private let loader: Loader
 
     package init(url: URL, loader: @escaping Loader = { try await EPUBBook.open($0) },
                  timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
-        source = Task { await ArchiveSource.opening(url) }
+        source = Task { await FileReadSource.opening(url) }
         self.loader = loader
         super.init(name: url.deletingPathExtension().lastPathComponent, timeLimit: timeLimit)
         open()

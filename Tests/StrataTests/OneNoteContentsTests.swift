@@ -67,12 +67,12 @@ struct OneNoteContentsTests {
         // A name matches however its accents are composed and its letters capitalized.
         let accented = try await OneNoteContents.read(OneNoteFixture.contents([("Caf\u{E9}.one", nil)]))
         #expect(accented.positions(of: ["CAFE\u{301}.ONE"]) == [0])
-        let source = try ArchiveSource(tree.url("Notebook/Open Notebook.onetoc2"))
+        let source = try FileReadSource(tree.url("Notebook/Open Notebook.onetoc2"))
         #expect(try await OneNoteContents.open(source).entries == read.entries)
         // A file larger than one read out of a package is refused whatever it holds.
         try (data + Data(count: OneNoteContents.byteLimit)).write(to: tree.url("Notebook/Large.onetoc2"))
         await #expect(throws: OneStoreError.tooLarge) {
-            try await OneNoteContents.open(ArchiveSource(tree.url("Notebook/Large.onetoc2")))
+            try await OneNoteContents.open(FileReadSource(tree.url("Notebook/Large.onetoc2")))
         }
         #expect(tree.text("outside") == "outside")
     }
@@ -86,7 +86,7 @@ struct OneNoteContentsTests {
         // Nor does a section's preview take one: it goes to Quick Look.
         try OneNoteFixture.contents(Self.entries).write(to: tree.url("folder/Notes.one"))
         await #expect(throws: PreviewError.self) {
-            try await OneNoteSectionFile.open(ArchiveSource(tree.url("folder/Notes.one")))
+            try await OneNoteSectionFile.open(FileReadSource(tree.url("folder/Notes.one")))
         }
         // A table of contents that says OneNote 2010's sections' version, not its own.
         var older = OneNoteFixture.contents(Self.entries)

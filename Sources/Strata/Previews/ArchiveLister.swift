@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 import UniformTypeIdentifiers
@@ -61,9 +62,9 @@ nonisolated package enum ArchiveLister {
     /// Lists `url` in the archive service's sandboxed worker, as a tree. A link to an archive lists the archive.
     @concurrent
     package static func list(_ url: URL, kind: ArchiveKind, timeout: TimeInterval = timeout) async throws -> ArchiveListing {
-        let source: ArchiveSource, listed: ArchiveReadListing
+        let source: FileReadSource, listed: ArchiveReadListing
         do {
-            source = try ArchiveSource(url.resolvingSymlinksInPath())
+            source = try FileReadSource(url.resolvingSymlinksInPath())
             listed = try await ArchiveReader.list(source, timeout: timeout)
         } catch let error as POSIXError where error.code == .ESTALE {
             // The archive changed before it could be pinned, as one still downloading can.

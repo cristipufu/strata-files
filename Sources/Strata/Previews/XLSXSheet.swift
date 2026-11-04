@@ -1,3 +1,4 @@
+import StrataModel
 import Foundation
 
 nonisolated struct XLSXPage: Sendable {

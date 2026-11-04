@@ -280,3 +280,22 @@ of it, and refuses links that lead out, special files and unsafe paths.
 - [4] Jamf Threat Labs: [macOS Archive Utility vulnerability](https://www.jamf.com/blog/jamf-threat-labs-macos-archive-utility-vulnerability/)
 - [5] [macOS AUHelperService Full TCC Bypass](https://jhftss.github.io/macOS-AUHelperService-Full-TCC-Bypass)
 - [6] Mysk: [CVE-2026-28910: Breaking macOS App Sandbox Data Containers, TCC, and Hijacking Apps Using Archive Utility](https://mysk.blog/2026/05/19/cve-2026-28910/)
+
+## SQLite previews
+
+SQLite previews use the same service and descriptor transport, with a separate `StrataTableWorker` built from
+`CTablePreview`. The service selects only these two bundled executables; a request cannot name another program.
+The app and service do not link this reader. SQLite used by Strata's own search indexes stays separate.
+
+The worker registers a read-only SQLite VFS over the supplied descriptor. It cannot open another database, journal,
+WAL, extension or temporary file. As before, previews show the main database's saved contents; uncheckpointed WAL
+changes are not included. The app checks file identity, size, modification and change time before and after a read,
+and later pages keep the initial source stamp instead of combining different database versions.
+
+Every SQLite allocation reserves from a 64 MiB heap budget before allocating. This also bounds intermediate values
+and temporary sorts inside a saved view, before a displayed row exists. An allocation failure becomes a preview
+warning. Separate limits allow at most 200 rows, 256 columns, 8 MiB of text per page, 500 table names and 10 MiB of
+protocol output. Queries have a three-second progress budget; the worker also has an eight-second CPU ceiling,
+a 256 MiB sampled resident-memory ceiling and the service's deadline. At most two SQLite reads run concurrently.
+The app validates lengths, counts and tags before allocating or displaying any worker output. Closing or replacing
+a preview cancels its own read; worker failure leaves the app running and another preview can be opened normally.

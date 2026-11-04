@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 import StrataPreviews
@@ -99,7 +100,7 @@ import StrataPreviews
         isLoading = true
         let read = archiveReader
         let access = archiveAccess
-        do { access.reset(try ArchiveSource(entry.url)) }
+        do { access.reset(try FileReadSource(entry.url)) }
         catch { self.error = error; isLoading = false; return }
         archiveTask = Task { [weak self] in
             let result: Result<ArchiveListing, Error>
@@ -153,7 +154,7 @@ import StrataPreviews
 
     /// An archive's, as OneNote exports a notebook: copied out no larger than one may be, by the size the worker sends
     /// before its contents, and without asking for a password, so an archive that needs one keeps its order.
-    @concurrent private static func notebook(in files: [(name: String, size: Int64)], source: ArchiveSource)
+    @concurrent private static func notebook(in files: [(name: String, size: Int64)], source: FileReadSource)
         async throws -> OneNoteContents? {
         guard let index = OneNoteContents.pick(files.map(\.name)), files[index].size <= OneNoteContents.byteLimit else {
             return nil
@@ -178,7 +179,7 @@ import StrataPreviews
         guard let index = OneNoteContents.pick(files.map(\.name)),
               (files[index].size ?? .max) <= OneNoteContents.byteLimit,
               !isPlaceholder(files[index].url) else { return nil }
-        return try await OneNoteContents.open(ArchiveSource(files[index].url))
+        return try await OneNoteContents.open(FileReadSource(files[index].url))
     }
 
     func close() {

@@ -51,11 +51,12 @@ func run() async -> Int32 {
         -> ArchiveService.Reply {
         guard lseek(3, 0, SEEK_SET) == 0 else { throw POSIXError(.EIO) }
         return try await ArchiveService.send(encoded: request, limits: limits, to: service, archive: archive,
-                                             timeout: timeout, outputLimit: outputLimit ?? ArchiveService.outputLimit)
+                                             timeout: timeout, outputLimit: outputLimit ?? ArchiveService.outputLimit,
+                                             worker: CommandLine.arguments.contains("--table") ? .table : .archive)
     }
     do {
         let limits = ArchiveService.Limits(cpu: option("--cpu-limit").map { .microseconds($0) },
-                                           memory: option("--memory-limit"))
+                                           memory: option("--memory-limit"), heap: option("--heap-limit"))
         let timeout = option("--timeout-ms").map { TimeInterval($0) / 1000 } ?? 20
         /// A read whose output goes out as it comes. A reader that stops reading ends the read, not the harness.
         func passOn(_ read: (PipeReader) throws -> ArchiveService.Reply) throws -> Int32 {

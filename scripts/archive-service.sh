@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lays out the archive service inside an app, with the worker it starts for each read, and signs both inside out:
+# Lays out the archive service inside an app, with its per-read workers, and signs them inside out:
 # scripts/build.sh does it for Strata.app, and the archive tests for the app they read through. Each signature must then
 # carry exactly the entitlements given (none when none is given: the tests show each part refusing to read without
 # them), or this fails.
@@ -7,7 +7,7 @@
 #   scripts/archive-service.sh APP PRODUCTS [--identifier ID] [--service-entitlements FILE]
 #                              [--worker-entitlements FILE] -- CODESIGN_OPTIONS...
 #
-# PRODUCTS holds the built StrataArchiveService and StrataArchiveWorker. The service takes the app's version when it has
+# PRODUCTS holds StrataArchiveService, StrataArchiveWorker and StrataTableWorker. The service takes the app's version when it has
 # one, and the identifier in Sources/StrataArchiveService/Info.plist unless given another (an empty one keeps it).
 set -euo pipefail
 
@@ -31,12 +31,14 @@ if [[ ${#sign[@]} -eq 0 ]]; then echo "Pass the codesign options after --." >&2;
 sources="$(cd "$(dirname "$0")/.." && pwd)/Sources"
 service="$app/Contents/XPCServices/StrataArchiveService.xpc"
 worker="$service/Contents/Helpers/StrataArchiveWorker"
+table_worker="$service/Contents/Helpers/StrataTableWorker"
 plist=/usr/libexec/PlistBuddy
 
 rm -rf "$service"
 mkdir -p "$service/Contents/MacOS" "$service/Contents/Helpers"
 cp "$products/StrataArchiveService" "$service/Contents/MacOS/StrataArchiveService"
 cp "$products/StrataArchiveWorker" "$worker"
+cp "$products/StrataTableWorker" "$table_worker"
 cp "$sources/StrataArchiveService/Info.plist" "$service/Contents/Info.plist"
 if [[ -n "$identifier" ]]; then "$plist" -c "Set :CFBundleIdentifier $identifier" "$service/Contents/Info.plist"; fi
 for key in CFBundleShortVersionString CFBundleVersion; do
@@ -58,4 +60,5 @@ sys.exit(0 if (plistlib.loads(signed.stdout) if signed.stdout else None) == expe
   fi
 }
 sign_with "$worker_entitlements" "$worker"
+sign_with "$worker_entitlements" "$table_worker"
 sign_with "$service_entitlements" "$service"

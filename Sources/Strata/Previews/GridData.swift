@@ -1,12 +1,6 @@
 import AppKit
+import StrataModel
 import CPreviewText
-
-/// One cell of a data grid.
-nonisolated package enum GridValue: Sendable {
-    case text(String)
-    case null
-    case blob(bytes: Int)
-}
 
 nonisolated package struct GridColumn: Sendable {
     package var title: String

@@ -14,14 +14,14 @@ import StrataArchiveClient
 @Suite(.archiveWorkerApp)
 struct PreviewArchiveTests {
     private static let encryptedZIP = "UEsDBAoACQAAACQSWF1P0Lv6GwAAAA8AAAAIABwAbm90ZS50eHRVVAkAA/Pq22r06ttqdXgLAAEE9gEAAAQUAAAAqZnTHRQzXvFE0LuGDtYjGhKBryDYvKwZ9AMFUEsHCE/Qu/obAAAADwAAAFBLAQIeAwoACQAAACQSWF1P0Lv6GwAAAA8AAAAIABgAAAAAAAEAAACkgQAAAABub3RlLnR4dFVUBQAD8+rbanV4CwABBPYBAAAEFAAAAFBLBQYAAAAAAQABAE4AAABtAAAAAAA="
-    private func archive(_ tree: TestTree, _ entries: [(String, String)]) throws -> ArchiveSource {
+    private func archive(_ tree: TestTree, _ entries: [(String, String)]) throws -> FileReadSource {
         let bytes = entries.flatMap { ContainerTests.tarFile($0.0, $0.1) } + [UInt8](repeating: 0, count: 1024)
         try Data(bytes).write(to: tree.url("pack.tar"))
-        return try ArchiveSource(tree.url("pack.tar"))
+        return try FileReadSource(tree.url("pack.tar"))
     }
 
     @Test func theWorkerListsWithoutExtractingAndReadsOnlyTheExactChosenMember() async throws {
-        try #require(FileManager.default.isExecutableFile(atPath: ArchiveReader.harness.path), "Missing archive helper: \(ArchiveReader.harness.path)")
+        try #require(FileManager.default.isExecutableFile(atPath: ReadWorker.harness.path), "Missing archive helper: \(ReadWorker.harness.path)")
         let tree = try TestTree("pack.tar", "outside", "sibling")
         let source = try archive(tree, [("a/note.txt", "chosen"), ("ab/note.txt", "look alike"), ("a/other.txt", "other")])
         let before = tree.snapshot()
@@ -69,14 +69,14 @@ struct PreviewArchiveTests {
         #expect(tree.snapshot() == ["pack.tar"])
     }
 
-    private func list(_ source: ArchiveSource, _ arguments: [String] = []) async throws -> ProcessRunner.Result {
+    private func list(_ source: FileReadSource, _ arguments: [String] = []) async throws -> ProcessRunner.Result {
         let file = try source.open()
         defer { try? file.close() }
         return try await harness(arguments: arguments, file: file)
     }
 
     /// Runs a harness with `request` as it is: a listing of the whole archive by default.
-    private func harness(_ executable: String = ArchiveReader.harness.path, arguments: [String] = [],
+    private func harness(_ executable: String = ReadWorker.harness.path, arguments: [String] = [],
                          request: Data = Data(count: 10), file: FileHandle) async throws -> ProcessRunner.Result {
         let input = try ArchiveService.requestPipe(ArchiveService.Secret(request)) ?? oversized(request)
         // Room for both reads of --then-plain, each with the client's own 20 seconds.
@@ -174,9 +174,9 @@ struct PreviewArchiveTests {
         let info = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "dev.strata.tests.Route"],
                                                       format: .xml, options: 0)
         try info.write(to: tree.url("Strata.app/Contents/XPCServices/StrataArchiveService.xpc/Contents/Info.plist"))
-        #expect(ArchiveReader.route(for: tree.url("Strata.app")) == .service("dev.strata.tests.Route"))
-        #expect(ArchiveReader.route(for: tree.url("Bare.app")) == .missingService)
-        #expect(ArchiveReader.route(for: tree.url("Tests.xctest")) == .harness)
+        #expect(ReadWorker.route(for: tree.url("Strata.app")) == .service("dev.strata.tests.Route"))
+        #expect(ReadWorker.route(for: tree.url("Bare.app")) == .missingService)
+        #expect(ReadWorker.route(for: tree.url("Tests.xctest")) == .harness)
         let service = "Strata.app/Contents/XPCServices/StrataArchiveService.xpc"
         #expect(Set(tree.snapshot()) == ["Strata.app/", "Strata.app/Contents/", "Strata.app/Contents/XPCServices/", service + "/",
                                          service + "/Contents/", service + "/Contents/Info.plist", "Bare.app/",
@@ -202,7 +202,7 @@ struct PreviewArchiveTests {
         for index in 0...50_000 { tar.append(contentsOf: ContainerTests.tarFile("f\(index)", "")) }
         tar.append(Data(count: 1024))
         try tar.write(to: tree.url("many.tar"))
-        let listed = try await ArchiveReader.list(ArchiveSource(tree.url("many.tar")), timeout: 20)
+        let listed = try await ArchiveReader.list(FileReadSource(tree.url("many.tar")), timeout: 20)
         #expect(listed.end == .moreEntries && listed.records.count == 50_000)
         let pane = try await ArchiveLister.list(tree.url("many.tar"), kind: .tar)
         #expect(pane.files == 50_000)
@@ -212,7 +212,7 @@ struct PreviewArchiveTests {
                                     comment: "Preview footer note: only the first part is shown (a count or a size)"))
         // Copying out needs the whole listing, so a preview still refuses it.
         await #expect(throws: ArchiveReadError.limit) {
-            _ = try await ArchiveReader.read(ArchiveSource(tree.url("many.tar")))
+            _ = try await ArchiveReader.read(FileReadSource(tree.url("many.tar")))
         }
         #expect(tree.snapshot() == ["many.tar"])
     }
@@ -264,7 +264,7 @@ struct PreviewArchiveTests {
         #expect(await Archiver.inspect(tree.url("warning.tar")) == Archiver.Inspection(entries: 2, bytes: 11, complete: true))
         // Copying out is stricter: libarchive reports Mac metadata it couldn't load as a warning too, so the entry it
         // warned about needs full extraction, and the one before it copies as usual.
-        let source = try ArchiveSource(tree.url("warning.tar"))
+        let source = try FileReadSource(tree.url("warning.tar"))
         await #expect(throws: ArchiveReadError.needsExtraction) { try await ArchiveReader.read(source, member: ["b"]) }
         #expect(try await ArchiveReader.read(source, member: ["a"]).first?.body == Data("first".utf8))
         #expect(tree.snapshot() == ["warning.tar"])
@@ -327,7 +327,7 @@ struct PreviewArchiveTests {
             try #require(mark.withUnsafeBytes { fsetxattr(fd, "com.apple.quarantine", $0.baseAddress, mark.count, 0, 0) } == 0)
         }
         // The source's metadata changed before the operation, so capture it again.
-        let quarantined = try ArchiveSource(tree.url("pack.tar"))
+        let quarantined = try FileReadSource(tree.url("pack.tar"))
         let records = try await ArchiveReader.read(quarantined, member: ["a"], directory: true)
         var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: quarantined)
         let root = try #require(lease?.root), url = try #require(lease?.url)
@@ -380,7 +380,7 @@ struct PreviewArchiveTests {
         let bytes = ContainerTests.tarHeader("a/link", type: UInt8(ascii: "2"), link: "../../outside")
             + ContainerTests.tarFile("ab/other", "keep") + [UInt8](repeating: 0, count: 1024)
         try Data(bytes).write(to: tree.url("pack.tar"))
-        let before = tree.snapshot(), source = try ArchiveSource(tree.url("pack.tar"))
+        let before = tree.snapshot(), source = try FileReadSource(tree.url("pack.tar"))
         await #expect(throws: ArchiveReadError.unsafe) { try await ArchiveReader.read(source, member: ["a"], directory: true) }
         #expect(tree.snapshot() == before)
         #expect(throws: (any Error).self) { try ArchiveReader.parse(Data("SAP1\u{1}".utf8), member: nil, directory: false) }
@@ -425,7 +425,7 @@ struct PreviewArchiveTests {
         let replaced = tree.snapshot()
         await #expect(throws: (any Error).self) { try await ArchiveReader.read(source, member: ["a"]) }
         #expect(tree.snapshot() == replaced)
-        let current = try ArchiveSource(tree.url("pack.tar"))
+        let current = try FileReadSource(tree.url("pack.tar"))
         let handle = try FileHandle(forWritingTo: tree.url("pack.tar"))
         try handle.seek(toOffset: 512)
         try handle.write(contentsOf: Data("altered    ".utf8)); try handle.close()
@@ -438,7 +438,7 @@ struct PreviewArchiveTests {
         let tree = try TestTree("encrypted.zip", "other.tar")
         let zip = try #require(Data(base64Encoded: Self.encryptedZIP))
         try zip.write(to: tree.url("encrypted.zip"))
-        let before = tree.snapshot(), source = try ArchiveSource(tree.url("encrypted.zip"))
+        let before = tree.snapshot(), source = try FileReadSource(tree.url("encrypted.zip"))
         #expect(try await ArchiveReader.read(source).count == 1)
         await #expect(throws: ArchiveReadError.password) { try await ArchiveReader.read(source, member: ["note.txt"]) }
         await #expect(throws: ArchiveReadError.password) { try await ArchiveReader.read(source, member: ["note.txt"], password: "wrong") }
@@ -519,11 +519,11 @@ extension PreviewArchiveTests {
     @Test func oversizedTruncatedAndNonUTF8MembersAreRefusedByTheRealWorker() async throws {
         let tree = try TestTree("pack.tar", "outside", "sibling")
         try Data(ContainerTests.tarHeader("a", size: ArchiveReader.memberLimit+1)).write(to: tree.url("pack.tar"))
-        let source = try ArchiveSource(tree.url("pack.tar")), before = tree.snapshot()
+        let source = try FileReadSource(tree.url("pack.tar")), before = tree.snapshot()
         await #expect(throws: ArchiveReadError.limit) { try await ArchiveReader.read(source, member: ["a"]) }
         #expect(tree.snapshot() == before)
         try Data(ContainerTests.tarHeader("a", size: 1000)+[1,2,3]).write(to: tree.url("pack.tar"))
-        let truncated = try ArchiveSource(tree.url("pack.tar"))
+        let truncated = try FileReadSource(tree.url("pack.tar"))
         await #expect(throws: ArchiveReadError.unreadable) { try await ArchiveReader.read(truncated, member: ["a"]) }
         var bytes = ContainerTests.tarFile("a", "content")
         bytes[0] = 0xff
@@ -532,14 +532,14 @@ extension PreviewArchiveTests {
         let checksum = Array(String(format: "%06o", sum).utf8)+[0,32]
         bytes.replaceSubrange(148..<156, with: checksum)
         try Data(bytes+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        let invalid = try ArchiveSource(tree.url("pack.tar"))
+        let invalid = try FileReadSource(tree.url("pack.tar"))
         await #expect(throws: ArchiveReadError.unsafe) { try await ArchiveReader.read(invalid) }
         #expect(tree.snapshot() == before && tree.text("outside") == "outside" && tree.text("sibling") == "sibling")
     }
 
     @Test func oldPasswordFailuresCannotClearOrPromptForAReplacementSource() async throws {
         let tree = try TestTree("pack.tar", "other.tar", "sibling")
-        let first = try ArchiveSource(tree.url("pack.tar")), second = try ArchiveSource(tree.url("other.tar"))
+        let first = try FileReadSource(tree.url("pack.tar")), second = try FileReadSource(tree.url("other.tar"))
         let (started, signal) = AsyncStream<Void>.makeStream()
         var held: CheckedContinuation<[ArchiveRecord], Error>?
         let access = PreviewArchiveAccess { source, _, _, _ in
@@ -611,7 +611,7 @@ extension PreviewArchiveTests {
     @Test func replacedCacheRootIsNeverAdoptedDuringCleanup() async throws {
         let tree = try TestTree("pack.tar", "outside/keep")
         try Data(ContainerTests.tarFile("a", "owned")+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        let source = try ArchiveSource(tree.url("pack.tar"))
+        let source = try FileReadSource(tree.url("pack.tar"))
         var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"),
                                                                                          source: source, password: nil)
         let root = try #require(lease?.root)
@@ -671,7 +671,7 @@ extension PreviewArchiveTests {
         try #require(acl_add_flag_np(flags, ACL_ENTRY_FILE_INHERIT) == 0)
         try #require(acl_add_flag_np(flags, ACL_ENTRY_DIRECTORY_INHERIT) == 0)
         try #require(acl_set_file(tree.url("cache").path, ACL_TYPE_EXTENDED, list) == 0)
-        let source = try ArchiveSource(tree.url("pack.tar"))
+        let source = try FileReadSource(tree.url("pack.tar"))
         var lease: PreviewArchiveLease? = try await PreviewArchiveLease.stream(member: ["a"], in: tree.url("cache"),
                                                                                          source: source, password: nil)
         let root = try #require(lease?.root)
@@ -693,7 +693,7 @@ extension PreviewArchiveTests {
         let bytes = try #require(Data(base64Encoded: "N3q8ryccAANRIXJ9gAAAAAAAAAAmAAAAAAAAABpax2mOWrqfd7a1ZaNBMYhQiWvQGsnBfkkay/HQXBOBu2bPs5JKmpm341p7Jd0wnGCbVjFcomL/ZlXY03qBVxd6mIOYY9Q5Tc1UwpeKFzLslyn3LOkF4rKHeVOmxeXUqu9CFAVF00x7gs+D622Asq0Cc25+Dpc1cvDJXakl4KDJRM9kxhcGEAEJcAAHCwEAASQG8QcBClMHTxry5UUdLtIMYQoB+2PQJgAA"))
         try bytes.write(to: tree.url("encrypted.7z"))
         let access = PreviewArchiveAccess()
-        access.reset(try ArchiveSource(tree.url("encrypted.7z")))
+        access.reset(try FileReadSource(tree.url("encrypted.7z")))
         var prompts = 0
         access.requestPassword = { _ in prompts += 1; return "12345678" }
         await #expect(throws: ArchiveReadError.encryption) { try await access.read() }
@@ -743,7 +743,7 @@ extension PreviewArchiveTests {
     @Test func replacedStagedLeafSurvivesCleanupInsideItsStillOwnedFolder() async throws {
         let tree = try TestTree("pack.tar", "outside/keep")
         try Data(ContainerTests.tarFile("a/note", "owned")+[UInt8](repeating: 0, count: 1024)).write(to: tree.url("pack.tar"))
-        let source = try ArchiveSource(tree.url("pack.tar"))
+        let source = try FileReadSource(tree.url("pack.tar"))
         let records = try await ArchiveReader.read(source, member: ["a"], directory: true)
         var lease: PreviewArchiveLease? = try await PreviewArchiveLease.materialize(records, member: ["a"], in: tree.url("cache"), source: source)
         let note = try #require(lease?.url).appendingPathComponent("note")
@@ -818,7 +818,7 @@ extension PreviewArchiveTests {
         try #require(fork.withUnsafeBytes { setxattr(tree.url("payload/file").path, "com.apple.ResourceFork", $0.baseAddress, fork.count, 0, 0) } == 0)
         let folder = tree.url("payload")
         let zip = try await TestWork.run { try Archiver.compress([folder], copies: .live, control: .init()) }
-        let source = try ArchiveSource(zip), before = tree.snapshot()
+        let source = try FileReadSource(zip), before = tree.snapshot()
         let listing = try await ArchiveReader.read(source)
         #expect(listing.contains { $0.path == ["payload", "file"] })
         await #expect(throws: ArchiveReadError.needsExtraction) {

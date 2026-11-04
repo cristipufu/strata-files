@@ -71,8 +71,10 @@ let modelSources = [
     "DSStore.swift",
     "FileFootprint.swift",
     "FileIdentity.swift",
+    "FileReadSource.swift",
     "FileInfoEditing.swift",
     "FolderNames.swift",
+    "GridValue.swift",
     "FolderSizer.swift",
     "LandedFiles.swift",
     "MediaDetails.swift",
@@ -124,6 +126,8 @@ let package = Package(
             exclude: ["Info.plist", "ArchiveService.entitlements"]
         ),
         .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"], exclude: ["ArchiveWorker.entitlements"]),
+        .target(name: "CTablePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("sqlite3")]),
+        .executableTarget(name: "StrataTableWorker", dependencies: ["CTablePreview"]),
         .target(name: "StrataArchiveClient", path: "Sources/StrataArchiveClient", swiftSettings: strataSwiftSettings),
         // Test and development builds reach the service through this host, inside an app built around it.
         .executableTarget(

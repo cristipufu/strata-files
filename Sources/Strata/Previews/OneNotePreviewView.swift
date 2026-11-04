@@ -1,17 +1,18 @@
+import StrataModel
 import StrataArchives
 import AppKit
 
 /// Owns one section; its pages page through the header and WebKit page its base owns.
 package final class OneNotePreviewView: PagedPreviewView {
-    package typealias Loader = @Sendable (ArchiveSource) async throws -> OneNoteSectionFile
+    package typealias Loader = @Sendable (FileReadSource) async throws -> OneNoteSectionFile
     package private(set) var section: OneNoteSectionFile?
     /// Its file, opened away from the main thread as the view is made.
-    private let source: Task<ArchiveSource?, Never>
+    private let source: Task<FileReadSource?, Never>
     private let loader: Loader
 
     package init(url: URL, loader: @escaping Loader = { try await OneNoteSectionFile.open($0) },
                  timeLimit: @escaping PreviewWebPage.TimeLimit = PreviewWebPage.usualTimeLimit) {
-        source = Task { await ArchiveSource.opening(url) }
+        source = Task { await FileReadSource.opening(url) }
         self.loader = loader
         super.init(name: url.deletingPathExtension().lastPathComponent, timeLimit: timeLimit)
         open()

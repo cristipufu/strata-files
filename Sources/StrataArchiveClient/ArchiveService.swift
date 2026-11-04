@@ -61,16 +61,21 @@ nonisolated package enum ArchiveService {
         }
     }
 
+    package enum Worker: UInt64, Sendable { case archive = 0, table = 1 }
+
     /// Lower limits than the worker's own, which it never raises; nil keeps the worker's. Even a tiny or negative limit
     /// stays a limit.
     package struct Limits: Sendable {
         package let cpu: Duration?
         package let memory: Int?
+        package let heap: Int?
 
-        package init(cpu: Duration? = nil, memory: Int? = nil) { self.cpu = cpu; self.memory = memory }
+        package init(cpu: Duration? = nil, memory: Int? = nil, heap: Int? = nil) {
+            self.cpu = cpu; self.memory = memory; self.heap = heap
+        }
 
         /// Longer than any worker allows, a limit only has to stay representable.
-        fileprivate var cpuMicroseconds: UInt64? {
+        package var cpuMicroseconds: UInt64? {
             cpu.map { limit in
                 guard limit > .zero else { return 1 }
                 let (seconds, attoseconds) = limit.components
@@ -147,8 +152,8 @@ nonisolated package enum ArchiveService {
     /// A request already encoded, passed to the worker as it is: the worker validates it. Only a request over
     /// `requestLimit` is refused here, as over the limit; the worker's own bounds are far below it.
     package static func send(encoded request: Secret, limits: Limits = Limits(), to service: String, archive: FileHandle,
-                             timeout: TimeInterval, outputLimit: Int = outputLimit) async throws -> Reply {
-        let exchange = Exchange(output: try PipeReader())
+                             timeout: TimeInterval, outputLimit: Int = outputLimit, worker: Worker = .archive) async throws -> Reply {
+        let exchange = Exchange(output: try PipeReader(), worker: worker)
         let reply = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Reply, Error>) in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -194,7 +199,8 @@ nonisolated package enum ArchiveService {
         private let output: PipeReader
         private let replied = DispatchSemaphore(value: 0)
 
-        init(output: PipeReader) { self.output = output }
+        private let worker: Worker
+        init(output: PipeReader, worker: Worker = .archive) { self.output = output; self.worker = worker }
 
         func stop() { output.stop() }
 
@@ -289,6 +295,8 @@ nonisolated package enum ArchiveService {
             let message = xpc_dictionary_create_empty()
             if let cpu = limits.cpuMicroseconds { xpc_dictionary_set_uint64(message, "cpuLimit", cpu) }
             if let memory = limits.memoryBytes { xpc_dictionary_set_uint64(message, "memoryLimit", memory) }
+            if let heap = limits.heap { xpc_dictionary_set_uint64(message, "heapLimit", UInt64(clamping: max(1, heap))) }
+            xpc_dictionary_set_uint64(message, "worker", worker.rawValue)
             if unpacking { xpc_dictionary_set_bool(message, "unpacking", true) }
             xpc_dictionary_set_fd(message, "request", requestPipe.fileDescriptor)
             xpc_dictionary_set_fd(message, "archive", archive.fileDescriptor)

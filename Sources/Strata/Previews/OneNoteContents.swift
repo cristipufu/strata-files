@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 
@@ -44,7 +45,7 @@ nonisolated package struct OneNoteContents: Sendable {
     }
 
     /// Read only from the file it was chosen as, checked before and after, and no larger than one read out of a package.
-    @concurrent package static func open(_ source: ArchiveSource) async throws -> OneNoteContents {
+    @concurrent package static func open(_ source: FileReadSource) async throws -> OneNoteContents {
         try Task.checkCancellation()
         guard source.size <= byteLimit else { throw OneStoreError.tooLarge }
         let file = try source.open()

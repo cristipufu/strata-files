@@ -1,15 +1,16 @@
+import StrataModel
 import StrataArchives
 import AppKit
 
 /// Password and source ownership last only as long as this preview's archive. No credential is persisted.
 @MainActor final class PreviewArchiveAccess {
-    typealias Reader = @MainActor (ArchiveSource, [String]?, Bool, String?) async throws -> [ArchiveRecord]
+    typealias Reader = @MainActor (FileReadSource, [String]?, Bool, String?) async throws -> [ArchiveRecord]
     /// Its last argument says whether the copy is a preview's, taken from the cache (`PreviewArchiveLease.stream`).
-    typealias Copier = @MainActor (ArchiveSource, [String], URL, String?, Bool) async throws
+    typealias Copier = @MainActor (FileReadSource, [String], URL, String?, Bool) async throws
         -> PreviewArchiveLease
     private let reader: Reader
     private let copier: Copier
-    private(set) var source: ArchiveSource?
+    private(set) var source: FileReadSource?
     private var password: String?
     var requestPassword: ((String) async -> String?)?
     var cancelPassword: (() -> Void)?
@@ -24,7 +25,7 @@ import AppKit
         self.copier = copier
     }
 
-    func reset(_ source: ArchiveSource? = nil) {
+    func reset(_ source: FileReadSource? = nil) {
         self.source = source
         password = nil
         cancelPassword?()
@@ -39,7 +40,7 @@ import AppKit
     }
 
     /// Runs `read` with the password the archive takes, asking for it when the archive says so.
-    private func withPassword<T>(prompt: Bool, _ read: (ArchiveSource, String?) async throws -> T)
+    private func withPassword<T>(prompt: Bool, _ read: (FileReadSource, String?) async throws -> T)
         async throws -> T {
         guard let source else { throw ArchiveReadError.unreadable }
         var attempts = 0

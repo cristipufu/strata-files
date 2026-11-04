@@ -109,7 +109,7 @@ struct TablePreviewTests {
         #expect(tree.snapshot() == ["blank.csv"])
     }
 
-    @Test func aMillionSQLiteRowsUseLimitedReadOnlyQueriesAndKeepFullCellText() async throws {
+    @Test(.archiveWorkerApp) func aMillionSQLiteRowsUseLimitedReadOnlyQueriesAndKeepFullCellText() async throws {
         let tree = try TestTree()
         let url = tree.url("large.db")
         try await millionSQLite(url)
@@ -311,7 +311,7 @@ struct TablePreviewTests {
     }
 
     @concurrent private func sqlitePage(_ url: URL, offset: Int) async throws -> SQLiteRows {
-        try SQLiteReader.rows(url, table: "items", offset: offset)
+        try await SQLiteReader.rows(url, table: "items", offset: offset)
     }
 }
 

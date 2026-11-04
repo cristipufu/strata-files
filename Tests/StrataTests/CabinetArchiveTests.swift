@@ -67,7 +67,7 @@ struct CabinetArchiveTests {
                                         ("mszip.cab", Self.mszip, all), ("lzx.onepkg", Self.lzx, all)] {
             let tree = try TestTree("outside")
             try write(base64, to: tree.url(name))
-            let source = try ArchiveSource(tree.url(name)), before = tree.snapshot()
+            let source = try FileReadSource(tree.url(name)), before = tree.snapshot()
             let listed = try await ArchiveReader.read(source)
             #expect(listed.allSatisfy { $0.body == nil })
             #expect(listed.map { $0.path.joined(separator: "/") }.sorted() == members, "\(name)")
@@ -135,7 +135,7 @@ struct CabinetArchiveTests {
         #expect(listed.map(\.name) == ["Group", "café.one"] && listed.first?.children.map(\.name) == ["Section.one"])
         #expect(listing.note == ArchiveReadError.unsafe.localizedDescription)
         // The name read back is the one listed, whatever Unicode form the worker gives it.
-        let source = try ArchiveSource(tree.url("names.cab"))
+        let source = try FileReadSource(tree.url("names.cab"))
         let marked = try await ArchiveReader.read(source, member: [try #require(listed.last?.name)])
         #expect(marked.first?.body == Data("marked".utf8))
         let section = try await ArchiveReader.read(source, member: ["Group", "Section.one"])

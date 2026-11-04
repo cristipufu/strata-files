@@ -1,3 +1,4 @@
+import StrataModel
 import AppKit
 
 /// A single-line, truncating grid cell; NULLs and blobs show as quiet placeholders.

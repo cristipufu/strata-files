@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 import StrataSupport
@@ -6,7 +7,7 @@ import StrataSupport
 /// Clipboard exports relinquish cleanup after publication, matching the existing next-launch staging lifetime.
 nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     static let cacheLimit: Int64 = 512 << 20
-    typealias Copier = @Sendable (ArchiveSource, [String], String?,
+    typealias Copier = @Sendable (FileReadSource, [String], String?,
                                   @escaping @Sendable (Int64) throws -> ArchiveReader.Sink) async throws -> Void
     private static let buildLock = NSLock()
     let url: URL
@@ -47,14 +48,14 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     func keepForClipboard() { lock.withLock { retainedForClipboard = true } }
 
     @concurrent static func materialize(_ records: [ArchiveRecord], member: [String], in base: URL,
-                                       source: ArchiveSource) async throws -> PreviewArchiveLease {
+                                       source: FileReadSource) async throws -> PreviewArchiveLease {
         try buildLock.withLock { try build(records, member: member, in: base, source: source) }
     }
 
     /// One file copied out as it comes, never more of it in memory than a chunk. It's owned from the moment it's made,
     /// so a copy that fails or stops partway leaves nothing. A preview's copy is `cached`: its whole size is taken from
     /// the cache before anything is written. An export's isn't, as before: it outlives the cache until the next launch.
-    @concurrent static func stream(member: [String], in base: URL, source: ArchiveSource, password: String?,
+    @concurrent static func stream(member: [String], in base: URL, source: FileReadSource, password: String?,
                                    cached: Bool = true,
                                    copy: Copier = { try await ArchiveReader.stream($0, member: $1, password: $2,
                                                                                           open: $3) })
@@ -148,7 +149,7 @@ nonisolated final class PreviewArchiveLease: @unchecked Sendable {
     }
 
     private static func build(_ records: [ArchiveRecord], member: [String], in base: URL,
-                              source: ArchiveSource) throws -> PreviewArchiveLease {
+                              source: FileReadSource) throws -> PreviewArchiveLease {
         try validate(records, member: member)
         guard let name = member.last, !records.isEmpty else { throw ArchiveReadError.unreadable }
         let file = try source.open()

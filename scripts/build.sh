@@ -27,6 +27,7 @@ fi
 swift build -c "$config" --arch arm64 --product Strata
 swift build -c "$config" --arch arm64 --product StrataCLI
 swift build -c "$config" --arch arm64 --product StrataArchiveService
+swift build -c "$config" --arch arm64 --product StrataTableWorker
 swift build -c "$config" --arch arm64 --product StrataArchiveWorker
 swift build -c "$config" --arch arm64 --product StrataResourceCheck
 bins="$(swift build -c "$config" --arch arm64 --show-bin-path)"

@@ -12,12 +12,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-/* Strata's archive service: an XPC service with an App Sandbox of its own that never reads an archive itself. Each
- * request starts a worker (Contents/Helpers/StrataArchiveWorker), which inherits the sandbox, reads one archive with
+/* Strata's archive service: an XPC service with an App Sandbox of its own that never parses file contents itself. Each
+ * request selects one of two fixed workers in Contents/Helpers, which inherits the sandbox, reads one file with
  * limits of its own and exits with its status. The service ends a worker as soon as the app cancels its request, and
  * after 25 seconds, except Extract's, which reads as long as the archive takes. */
 static int refusal;
-static char worker[PATH_MAX];
+static char workers[2][PATH_MAX];
+static const char *worker_names[2] = {"StrataArchiveWorker", "StrataTableWorker"};
 
 static int find_worker(void) {
     char self[PATH_MAX];
@@ -26,8 +27,11 @@ static int find_worker(void) {
     char *name = strrchr(self, '/');
     if (!name) return 0;
     *name = 0;
-    int written = snprintf(worker, sizeof(worker), "%s/../Helpers/StrataArchiveWorker", self);
-    return written > 0 && written < (int)sizeof(worker);
+    for (unsigned i=0; i<2; ++i) {
+        int written = snprintf(workers[i], sizeof(workers[i]), "%s/../Helpers/%s", self, worker_names[i]);
+        if (written <= 0 || written >= (int)sizeof(workers[i])) return 0;
+    }
+    return 1;
 }
 
 /* A received descriptor moved above the standard three, so placing one on standard input or output can't overwrite
@@ -45,7 +49,7 @@ static int place(posix_spawn_file_actions_t *actions, int fd, int target) {
                         : posix_spawn_file_actions_adddup2(actions, fd, target);
 }
 
-static pid_t spawn_worker(int request, int archive, int output, char *const arguments[]) {
+static pid_t spawn_worker(const char *executable, int request, int archive, int output, char *const arguments[]) {
     char *const environment[] = {NULL};
     posix_spawn_file_actions_t actions;
     posix_spawnattr_t attributes;
@@ -66,7 +70,7 @@ static pid_t spawn_worker(int request, int archive, int output, char *const argu
         !place(&actions, archive, 3) &&
         !posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
     pid_t pid;
-    if (!ready || posix_spawn(&pid, worker, &actions, &attributes, arguments, environment)) pid = -1;
+    if (!ready || posix_spawn(&pid, executable, &actions, &attributes, arguments, environment)) pid = -1;
     posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attributes);
     return pid;
@@ -75,17 +79,22 @@ static pid_t spawn_worker(int request, int archive, int output, char *const argu
 /* The worker gets the request on standard input, the archive on 3 and the output pipe on standard output, and no other
  * descriptor of the service's. */
 static pid_t start(xpc_object_t message) {
+    xpc_object_t selected = xpc_dictionary_get_value(message, "worker");
+    if (selected && xpc_get_type(selected) != XPC_TYPE_UINT64) return -1;
+    uint64_t kind = xpc_dictionary_get_uint64(message, "worker");
+    if (kind > 1 || (kind && xpc_dictionary_get_bool(message, "unpacking"))) return -1;
     int request = above_standard(xpc_dictionary_dup_fd(message, "request"));
     int archive = above_standard(xpc_dictionary_dup_fd(message, "archive"));
     int output = above_standard(xpc_dictionary_dup_fd(message, "output"));
     pid_t pid = -1;
     if (request >= 0 && archive >= 0 && output >= 0) {
-        char cpu[24], memory[24];
+        char cpu[24], memory[24], heap[24];
         snprintf(cpu, sizeof(cpu), "%llu", (unsigned long long)xpc_dictionary_get_uint64(message, "cpuLimit"));
         snprintf(memory, sizeof(memory), "%llu", (unsigned long long)xpc_dictionary_get_uint64(message, "memoryLimit"));
-        char *arguments[] = {"StrataArchiveWorker", "--cpu-limit", cpu, "--memory-limit", memory,
+        snprintf(heap, sizeof(heap), "%llu", (unsigned long long)xpc_dictionary_get_uint64(message, "heapLimit"));
+        char *arguments[] = {(char *)worker_names[kind], "--cpu-limit", cpu, "--memory-limit", memory, "--heap-limit", heap,
                              xpc_dictionary_get_bool(message, "unpacking") ? "--unpacking" : NULL, NULL};
-        pid = spawn_worker(request, archive, output, arguments);
+        pid = spawn_worker(workers[kind], request, archive, output, arguments);
     }
     if (request >= 0) close(request);
     if (archive >= 0) close(archive);

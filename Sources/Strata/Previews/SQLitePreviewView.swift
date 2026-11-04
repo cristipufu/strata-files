@@ -1,9 +1,10 @@
 import AppKit
+import StrataArchives
 import StrataModel
 
 /// A SQLite database: a pop-up of its tables and views (with row counts), and the first rows of the chosen one.
 package final class SQLitePreviewView: PreviewView {
-    private let url: URL
+    private var source: FileReadSource?
     private let sourceView: GridSourceView
     private var picker: NSPopUpButton { sourceView.picker }
     private var summary: NSTextField { sourceView.summary }
@@ -13,7 +14,6 @@ package final class SQLitePreviewView: PreviewView {
     private var tables: [SQLiteTable] = []
 
     package init(url: URL, clipboard: Clipboard) {
-        self.url = url
         sourceView = GridSourceView(clipboard: clipboard)
         super.init(frame: .zero)
         sourceView.translatesAutoresizingMaskIntoConstraints = false
@@ -22,11 +22,7 @@ package final class SQLitePreviewView: PreviewView {
         NSLayoutConstraint.activate(sourceView.fillingConstraints(in: contentView))
         sourceView.onSelect = { [weak self] _ in self?.pickTable() }
         grid.onPage = { [weak self] in self?.showPage($0) }
-        load({
-            guard try SQLiteReader.isSQLite(url) else { throw PreviewError.unsupported }
-            let tables = try SQLiteReader.tables(url)
-            guard let first = tables.first else { throw PreviewError.message(String(localized: "This database has no tables."), symbol: "cylinder") }
-            return SQLiteSnapshot(tables: tables, rows: try SQLiteReader.rows(url, table: first.name))
+        load({ try await SQLiteReader.snapshot(url)
         }, apply: { [weak self] snapshot in
             self?.show(snapshot)
         })
@@ -35,9 +31,14 @@ package final class SQLitePreviewView: PreviewView {
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
-    @objc package override func stop() { super.stop(); grid.cancelWork() }
+    @objc package override func stop() {
+        source = nil
+        sourceView.onSelect = nil; grid.onPage = nil
+        super.stop(); grid.cancelWork()
+    }
 
     private func show(_ snapshot: SQLiteSnapshot) {
+        source = snapshot.source
         tables = snapshot.tables
         picker.removeAllItems()
         for table in tables {
@@ -86,10 +87,14 @@ package final class SQLitePreviewView: PreviewView {
     private func showPage(_ page: Int) {
         let index = picker.indexOfSelectedItem
         guard page >= 0, page <= (Int.max - SQLiteReader.rowLimit) / SQLiteReader.rowLimit,
-              tables.indices.contains(index) else { return }
-        let table = tables[index], url = url
+              tables.indices.contains(index), let source else { return }
+        let table = tables[index]
         grid.beginPageLoad()
-        load({ try SQLiteReader.rows(url, table: table.name, offset: page * SQLiteReader.rowLimit) }, failed: { [weak self] message in
+        load({
+            let rows = try await SQLiteReader.rows(source, table: table.name, offset: page * SQLiteReader.rowLimit)
+            if rows.data.rows.isEmpty, let error = rows.error { throw PreviewError.message(error) }
+            return rows
+        }, failed: { [weak self] message in
             guard let self else { return }
             picker.selectItem(at: shownTableIndex)
             grid.pageLoadFailed(message)
@@ -99,9 +104,4 @@ package final class SQLitePreviewView: PreviewView {
             show(rows, of: table)
         }
     }
-}
-
-nonisolated package struct SQLiteSnapshot: Sendable {
-    package let tables: [SQLiteTable]
-    package let rows: SQLiteRows
 }

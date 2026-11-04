@@ -1,3 +1,4 @@
+import StrataModel
 import Foundation
 import StrataArchives
 import StrataSupport
@@ -10,20 +11,20 @@ actor XLSXWorkbook {
     private static let relationshipLimit = 2000
     private static let targetByteLimit = 4096
     private static let nameByteLimit = 1024
-    private let source: ArchiveSource
+    private let source: FileReadSource
     private let records: [ArchiveRecord]
     nonisolated let sheets: [Sheet]
     private let strings: [String]
     private let styles: XLSXStyles
     private var cached: (index: Int, data: Data)?
 
-    private init(source: ArchiveSource, records: [ArchiveRecord], sheets: [Sheet], strings: [String], styles: XLSXStyles) {
+    private init(source: FileReadSource, records: [ArchiveRecord], sheets: [Sheet], strings: [String], styles: XLSXStyles) {
         self.source = source; self.records = records; self.sheets = sheets; self.strings = strings; self.styles = styles
     }
 
     @concurrent static func open(_ url: URL) async throws -> XLSXWorkbook {
         try Task.checkCancellation()
-        let source = try ArchiveSource(url), records = try await ArchiveReader.read(source)
+        let source = try FileReadSource(url), records = try await ArchiveReader.read(source)
         guard records.count <= entryLimit, Set(records.map { $0.path.joined(separator: "/") }).count == records.count else {
             throw XLSXXML.limitError
         }
@@ -68,7 +69,7 @@ actor XLSXWorkbook {
         return try XLSXSheet.read(data, strings: strings, styles: styles, offset: page * XLSXSheet.rowLimit)
     }
 
-    private static func relationships(_ source: ArchiveSource, records: [ArchiveRecord], path: [String]) async throws -> [String: Relationship] {
+    private static func relationships(_ source: FileReadSource, records: [ArchiveRecord], path: [String]) async throws -> [String: Relationship] {
         let root = try await metadata(source, records: records, path: path)
         guard root.name == "Relationships" else { throw PreviewError.unsupported }
         var result: [String: Relationship] = [:]
@@ -92,7 +93,7 @@ actor XLSXWorkbook {
         return try PackagePath.resolve(relation.target, relativeTo: folder)
     }
 
-    private static func optionalPart(_ kind: String, in relationships: [String: Relationship], source: ArchiveSource,
+    private static func optionalPart(_ kind: String, in relationships: [String: Relationship], source: FileReadSource,
                                      records: [ArchiveRecord], folder: [String], limit: Int) async throws -> Data? {
         let matches = relationships.values.filter { $0.kind == kind }
         guard matches.count <= 1 else { throw PreviewError.unsupported }
@@ -100,13 +101,13 @@ actor XLSXWorkbook {
         return try await bytes(source, records: records, path: resolve(match, relativeTo: folder), limit: limit)
     }
 
-    private static func metadata(_ source: ArchiveSource, records: [ArchiveRecord], path: [String]) async throws -> BookXML.Element {
+    private static func metadata(_ source: FileReadSource, records: [ArchiveRecord], path: [String]) async throws -> BookXML.Element {
         let data = try await bytes(source, records: records, path: path, limit: TextFile.limit)
         try XLSXXML.validate(data, limit: TextFile.limit)
         return try BookXML.parse(data)
     }
 
-    private static func bytes(_ source: ArchiveSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
+    private static func bytes(_ source: FileReadSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
         guard let entry = records.first(where: { $0.path == path }), entry.kind == 1, entry.size <= limit else { throw XLSXXML.limitError }
         return try await PackagePart.read(source, records: records, path: path, limit: limit)
     }

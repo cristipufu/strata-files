@@ -1,228 +1,73 @@
 import Foundation
-import SQLite3
+import StrataArchives
+import StrataModel
 import StrataSupport
-
-nonisolated package struct SQLiteTable: Sendable {
-    package let name: String
-    package let isView: Bool
-    /// nil when counting took too long (or for views, which aren't counted).
-    package let rowCount: Int?
-}
 
 nonisolated package struct SQLiteRows: Sendable {
     package let data: GridData
-    /// Why the rows couldn't be read (a virtual table from a missing module, say); the grid stays empty.
     package let error: String?
     package var hasMore = false
 }
 
-/// Read-only access to SQLite files. Every call opens its own immutable, read-only connection, so nothing is
-/// shared between threads and the file (or its -wal/-shm siblings) is never written or locked.
+nonisolated package struct SQLiteSnapshot: Sendable {
+    package let source: FileReadSource
+    package let tables: [SQLiteTable]
+    package let rows: SQLiteRows
+}
+
 nonisolated package enum SQLiteReader {
-    private enum PageError: Error { case tooLarge }
-    package static let rowLimit = 200
-    package static let tableLimit = 500
-    package static let columnLimit = 256
-    package static let pageByteLimit = 8 * 1024 * 1024
+    package static let rowLimit = SQLiteQueries.rowLimit
+    package static let tableLimit = SQLiteQueries.tableLimit
+    package static let columnLimit = SQLiteQueries.columnLimit
+    package static let pageByteLimit = SQLiteQueries.pageByteLimit
 
     package static func isSQLite(_ url: URL) throws -> Bool {
         let (head, _) = try TextFile.readPrefix(url, limit: 16)
         return head == Data("SQLite format 3\0".utf8)
     }
 
-    /// Tables and views, with row counts that each get a small time budget.
-    package static func tables(_ url: URL) throws -> [SQLiteTable] {
-        let db = try open(url)
-        defer { sqlite3_close_v2(db) }
-        let sql = "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND length(CAST(name AS BLOB)) <= 1200 ORDER BY type, name COLLATE NOCASE LIMIT \(tableLimit)"
-        var entries: [(String, Bool)] = []
-        try withBudget(db, 2) {
-            try query(db, sql) { statement in
-                entries.append((text(statement, 0) ?? "", text(statement, 1) == "view"))
-            }
-        }
-        let started = Date()
-        return try entries.map { name, isView in
-            try Task.checkCancellation()
-            guard !isView, Date().timeIntervalSince(started) < 1.5 else { return SQLiteTable(name: name, isView: isView, rowCount: nil) }
-            return SQLiteTable(name: name, isView: isView, rowCount: count(db, table: name, budget: 0.3))
-        }
+    @concurrent package static func snapshot(_ url: URL) async throws -> SQLiteSnapshot {
+        let source = try FileReadSource(url, resolveParent: false)
+        guard try isSQLite(url) else { throw PreviewError.unsupported }
+        let reply = try await query(source, mode: .snapshot)
+        guard !reply.tables.isEmpty else { throw PreviewError.message(String(localized: "This database has no tables."), symbol: "cylinder") }
+        guard let page = reply.page else { throw PreviewError.unsupported }
+        return SQLiteSnapshot(source: source, tables: reply.tables, rows: materialized(page))
     }
 
-    /// The first `rowLimit` rows of `table`. A view is the file's own SQL, so reading gets a time budget.
-    package static func rows(_ url: URL, table: String, offset: Int = 0) throws -> SQLiteRows {
-        guard offset >= 0, offset <= Int.max - rowLimit else { throw POSIXError(.EINVAL) }
-        let db = try open(url)
-        defer { sqlite3_close_v2(db) }
-        try Task.checkCancellation()
-        let result = withBudget(db, 3) { readRows(db, table: table, offset: offset) }
-        try Task.checkCancellation()
-        return result
+    @concurrent package static func tables(_ url: URL) async throws -> [SQLiteTable] {
+        try await query(FileReadSource(url, resolveParent: false), mode: .tables).tables
     }
 
-    private static func readRows(_ db: OpaquePointer?, table: String, offset: Int) -> SQLiteRows {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT * FROM \(quoted(table)) LIMIT \(rowLimit + 1) OFFSET \(offset)", -1, &statement, nil) == SQLITE_OK else {
-            return SQLiteRows(data: GridData(columns: [], rows: []), error: String(localized: "This table couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
-        }
-        defer { sqlite3_finalize(statement) }
-        let columnCount = min(columnLimit, Int(sqlite3_column_count(statement)))
-        let columns = (0..<columnCount).map { GridColumn(title: sqlite3_column_name(statement, Int32($0)).map { String(decoding: UnsafeRawBufferPointer(start: $0, count: strnlen($0, 1200)), as: UTF8.self) } ?? "") }
-        var numeric = Array(repeating: true, count: columnCount)
-        var rows: [[GridValue]] = []
-        var bytes = 0
-        var hasMore = false
-        while !Task.isCancelled {
-            let step = sqlite3_step(statement)
-            if step == SQLITE_DONE { break }
-            guard step == SQLITE_ROW else {
-                let error = step == SQLITE_INTERRUPT ? String(localized: "Reading this took too long; showing what was read in time.")
-                    : String(localized: "Reading stopped early (\(message(db))).", comment: "Placeholder: SQLite's error message")
-                return result(columns, numeric: numeric, rows: rows, error: error)
-            }
-            if rows.count == rowLimit { hasMore = true; break }
-            do { rows.append(try readRow(statement, columnCount: columnCount, bytes: &bytes, numeric: &numeric)) }
-            catch is PageError {
-                return result(columns, numeric: numeric, rows: rows,
-                              error: String(localized: "This selection is too large to preview or copy here."))
-            } catch {
-                return result(columns, numeric: numeric, rows: rows,
-                              error: String(localized: "Reading stopped early (\(error.localizedDescription)).", comment: "Placeholder: SQLite's error message"))
-            }
-        }
-        return result(columns, numeric: numeric, rows: rows, hasMore: hasMore)
+    @concurrent package static func rows(_ url: URL, table: String, offset: Int = 0) async throws -> SQLiteRows {
+        try await rows(FileReadSource(url, resolveParent: false), table: table, offset: offset)
     }
 
-    private static func readRow(_ statement: OpaquePointer?, columnCount: Int, bytes: inout Int,
-                                numeric: inout [Bool]) throws -> [GridValue] {
-        var row: [GridValue] = []
-        row.reserveCapacity(columnCount)
-        for index in 0..<columnCount {
-            let column = Int32(index)
-            switch sqlite3_column_type(statement, column) {
-            case SQLITE_INTEGER: row.append(.text(String(sqlite3_column_int64(statement, column))))
-            case SQLITE_FLOAT: row.append(.text(String(sqlite3_column_double(statement, column))))
-            case SQLITE_NULL: row.append(.null)
-            case SQLITE_BLOB:
-                let count = Int(sqlite3_column_bytes(statement, column))
-                guard count >= 0 else { throw POSIXError(.EIO) }
-                row.append(.blob(bytes: count))
-                numeric[index] = false
-            default:
-                let count = Int(sqlite3_column_bytes(statement, column))
-                guard count >= 0, count <= pageByteLimit - bytes else { throw PageError.tooLarge }
-                bytes += count
-                let text = sqlite3_column_text(statement, column)
-                guard text != nil || count == 0 else { throw POSIXError(.ENOMEM) }
-                let value = text.map { String(decoding: UnsafeBufferPointer(start: $0, count: count), as: UTF8.self) } ?? ""
-                row.append(.text(value))
-                numeric[index] = false
-            }
-        }
-        return row
+    @concurrent package static func rows(_ source: FileReadSource, table: String, offset: Int = 0) async throws -> SQLiteRows {
+        let reply = try await query(source, mode: .rows, table: table, offset: offset)
+        guard let page = reply.page else { throw PreviewError.unsupported }
+        return materialized(page)
     }
 
-    private static func result(_ original: [GridColumn], numeric: [Bool], rows: [[GridValue]],
-                               error: String? = nil, hasMore: Bool = false) -> SQLiteRows {
-        var columns = original
-        for index in columns.indices { columns[index].isNumeric = numeric[index] && !rows.isEmpty }
-        var data = GridData(columns: columns, rows: rows)
+    private static func query(_ source: FileReadSource, mode: SQLiteQueries.Mode, table: String = "", offset: Int = 0) async throws -> SQLiteQueries.Reply {
+        do { return try await SQLiteQueries.read(source, mode: mode, table: table, offset: offset) }
+        catch SQLiteQueries.Failure.limit { throw PreviewError.message(String(localized: "This selection is too large to preview or copy here.")) }
+        catch SQLiteQueries.Failure.unreadable { throw PreviewError.message(String(localized: "This database is encrypted or damaged."), symbol: "lock") }
+    }
+
+    private static func materialized(_ page: SQLitePage) -> SQLiteRows {
+        var data = GridData(columns: page.columns.map { GridColumn(title: $0.name, isNumeric: $0.isNumeric) }, rows: page.rows)
         data.measureColumns()
-        return SQLiteRows(data: data, error: error, hasMore: hasMore)
-    }
-
-    // MARK: - Helpers
-
-    private static func open(_ url: URL) throws -> OpaquePointer? {
-        let fd = Darwin.open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else {
-            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
+        let error: String?
+        switch page.warning {
+        case nil: error = nil
+        case .limit: error = String(localized: "This selection is too large to preview or copy here.")
+        case .interrupted: error = String(localized: "Reading this took too long; showing what was read in time.")
+        case .message(let message):
+            error = page.rows.isEmpty
+                ? String(localized: "This table couldn’t be read (\(message)).", comment: "Placeholder: SQLite's error message")
+                : String(localized: "Reading stopped early (\(message)).", comment: "Placeholder: SQLite's error message")
         }
-        var info = stat()
-        let isRegular = fstat(fd, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
-        Darwin.close(fd)
-        guard isRegular else {
-            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
-        }
-        var components = URLComponents()
-        components.scheme = "file"
-        components.host = ""
-        components.path = url.path
-        components.queryItems = [URLQueryItem(name: "immutable", value: "1")]
-        guard let uri = components.string else {
-            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
-        }
-        var db: OpaquePointer?
-        let status = sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOFOLLOW, nil)
-        guard status == SQLITE_OK else {
-            sqlite3_close_v2(db)
-            throw PreviewError.message(String(localized: "This database couldn’t be opened."))
-        }
-        // A view can allocate a huge value in one instruction, before the progress callback can interrupt it.
-        // Preview rows only need short text and blob sizes; report SQLite's normal error above this budget.
-        sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 8 * 1024 * 1024)
-        // The schema is the file's: don't let its views or triggers call functions with side effects.
-        sqlite3_exec(db, "PRAGMA trusted_schema = OFF", nil, nil, nil)
-        // A corrupt or encrypted file opens fine and fails on the first read.
-        guard withBudget(db, 2, { sqlite3_exec(db, "SELECT count(*) FROM sqlite_master", nil, nil, nil) }) == SQLITE_OK else {
-            sqlite3_close_v2(db)
-            throw PreviewError.message(String(localized: "This database is encrypted or damaged."), symbol: "lock")
-        }
-        return db
-    }
-
-    private static func query(_ db: OpaquePointer?, _ sql: String, row: (OpaquePointer?) throws -> Void) throws {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw PreviewError.message(String(localized: "This database couldn’t be read (\(message(db))).", comment: "Placeholder: SQLite's error message"))
-        }
-        defer { sqlite3_finalize(statement) }
-        while sqlite3_step(statement) == SQLITE_ROW { try row(statement) }
-    }
-
-    /// `count(*)`, interrupted after `budget` seconds so huge tables don't stall the preview.
-    private static func count(_ db: OpaquePointer?, table: String, budget: TimeInterval) -> Int? {
-        var result: Int?
-        withBudget(db, budget) {
-            try? query(db, "SELECT count(*) FROM \(quoted(table))") { statement in
-                result = Int(sqlite3_column_int64(statement, 0))
-            }
-        }
-        return result
-    }
-
-    /// Runs `body` with SQLite interrupting any statement once `budget` seconds pass or the preview is cancelled
-    /// (a crafted view with a runaway recursive query would otherwise spin forever).
-    private static func withBudget<T>(_ db: OpaquePointer?, _ budget: TimeInterval, _ body: () throws -> T) rethrows -> T {
-        let deadline = Deadline(date: Date().addingTimeInterval(budget))
-        let context = Unmanaged.passRetained(deadline)
-        defer {
-            sqlite3_progress_handler(db, 0, nil, nil)
-            context.release()
-        }
-        sqlite3_progress_handler(db, 5_000, { pointer in
-            guard let pointer else { return 0 }
-            return Date() > Unmanaged<Deadline>.fromOpaque(pointer).takeUnretainedValue().date || Task.isCancelled ? 1 : 0
-        }, context.toOpaque())
-        return try body()
-    }
-
-    private final class Deadline {
-        let date: Date
-        init(date: Date) { self.date = date }
-    }
-
-    private static func quoted(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-    }
-
-    package static func text(_ statement: OpaquePointer?, _ column: Int32) -> String? {
-        guard let bytes = sqlite3_column_text(statement, column) else { return nil }
-        let count = min(1200, Int(sqlite3_column_bytes(statement, column)))
-        return String(decoding: UnsafeBufferPointer(start: bytes, count: count), as: UTF8.self)
-    }
-
-    private static func message(_ db: OpaquePointer?) -> String {
-        sqlite3_errmsg(db).map { String(cString: $0) } ?? String(localized: "Unknown error")
+        return SQLiteRows(data: data, error: error, hasMore: page.hasMore)
     }
 }

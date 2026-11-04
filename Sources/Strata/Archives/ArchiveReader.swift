@@ -23,57 +23,6 @@ nonisolated package enum ArchiveReadError: Error, LocalizedError {
     }
 }
 
-/// Pins the chosen archive before any password sheet or worker starts. Contents must stay unchanged too.
-nonisolated package final class ArchiveSource: Sendable {
-    /// `url`'s file opened for reading, away from the main thread (nil when it can't be).
-    @concurrent package static func opening(_ url: URL) async -> ArchiveSource? { try? ArchiveSource(url) }
-
-    package let chosen: ChosenFile
-    private let stamp: Stamp
-    private struct Stamp: Equatable, Sendable {
-        let identity: FileIdentity
-        let size: Int64
-        let modified: timespec
-        let changed: timespec
-        init(_ info: stat) {
-            identity = .from(info); size = info.st_size; modified = info.st_mtimespec; changed = info.st_ctimespec
-        }
-        package static func == (a: Self, b: Self) -> Bool {
-            a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec
-                && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec
-                && a.changed.tv_nsec == b.changed.tv_nsec
-        }
-    }
-    package var size: Int64 { stamp.size }
-
-    package init(_ url: URL) throws {
-        guard url.isFileURL else { throw ArchiveReadError.unreadable }
-        chosen = try ChosenFile(url)
-        stamp = try chosen.withParent { _, _, info in
-            guard info.st_mode & S_IFMT == S_IFREG else { throw ArchiveReadError.unreadable }
-            return Stamp(info)
-        }
-    }
-    package func open() throws -> FileHandle {
-        try chosen.withParent { parent, name, _ in
-            let fd = openat(parent, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-            guard fd >= 0 else { throw ArchiveReadError.unreadable }
-            var info = stat()
-            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, Stamp(info) == stamp else {
-                close(fd); throw POSIXError(.ESTALE)
-            }
-            return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        }
-    }
-    package func verify(_ file: FileHandle) throws {
-        var info = stat()
-        guard fstat(file.fileDescriptor, &info) == 0, Stamp(info) == stamp else { throw POSIXError(.ESTALE) }
-        try chosen.withParent { _, _, current in
-            guard Stamp(current) == stamp else { throw POSIXError(.ESTALE) }
-        }
-    }
-}
-
 nonisolated package struct ArchiveRecord: Sendable {
     package let path: [String]
     package let kind: UInt8
@@ -156,25 +105,7 @@ nonisolated package enum ArchiveReader {
     package static let recordOverhead = 25
     private static let log = Logger(subsystem: "dev.strata.app", category: "archives")
 
-    /// Where archives are read: the app's archive service, whose identity comes from its own bundle; outside an app,
-    /// the harness; or nowhere, when the app lacks its service.
-    package enum Route: Equatable { case service(String), harness, missingService }
-    package static func route(for bundle: URL) -> Route {
-        guard bundle.pathExtension == "app" else { return .harness }
-        return ArchiveService.identifier(inApp: bundle).map(Route.service) ?? .missingService
-    }
-    private static let route = route(for: Bundle(for: PreviewArchiveBundle.self).bundleURL)
-
-    /// Test and development builds aren't an app: they read through the host of an app built around the same service,
-    /// among the build's products (beside the test bundle, or the folder of a bare executable).
-    package static let harnessApp: URL = {
-        let bundle = Bundle(for: PreviewArchiveBundle.self).bundleURL
-        let products = bundle.pathExtension.isEmpty ? bundle : bundle.deletingLastPathComponent()
-        return products.appending(path: "StrataArchiveHarness.app")
-    }()
-    package static let harness = harnessApp.appending(path: "Contents/MacOS/StrataArchiveHarness")
-
-    @concurrent package static func read(_ source: ArchiveSource, member: [String]? = nil, directory: Bool = false,
+    @concurrent package static func read(_ source: FileReadSource, member: [String]? = nil, directory: Bool = false,
                                 password: String? = nil) async throws -> [ArchiveRecord] {
         let path = try requested(member ?? [], password: password)
         let request = ArchiveService.Request(mode: member != nil ? .extract : .list, folder: directory, path: path)
@@ -185,7 +116,7 @@ nonisolated package enum ArchiveReader {
 
     /// Copies one file out as it comes, never holding more of it than a chunk: once the worker has named it, `open` is
     /// told its size and says where its contents go. It returns once all of them have gone there.
-    @concurrent package static func stream(_ source: ArchiveSource, member: [String], password: String?,
+    @concurrent package static func stream(_ source: FileReadSource, member: [String], password: String?,
                                            open: @escaping @Sendable (Int64) throws -> Sink) async throws {
         guard !member.isEmpty else { throw ArchiveReadError.unsafe }
         let path = try requested(member, password: password)
@@ -217,7 +148,7 @@ nonisolated package enum ArchiveReader {
     }
 
     /// Lists the whole archive, keeping what a listing cut short by its limits, its time or an error read.
-    @concurrent package static func list(_ source: ArchiveSource, timeout: TimeInterval) async throws
+    @concurrent package static func list(_ source: FileReadSource, timeout: TimeInterval) async throws
         -> ArchiveReadListing {
         let (output, status) = try await exchange(source, ArchiveService.Request(mode: .list), password: nil,
                                                   timeout: timeout, allowance: .listings)
@@ -227,7 +158,7 @@ nonisolated package enum ArchiveReader {
     }
 
     /// Counts what the archive holds without listing it, for the check before Extract.
-    @concurrent package static func survey(_ source: ArchiveSource, timeout: TimeInterval) async throws
+    @concurrent package static func survey(_ source: FileReadSource, timeout: TimeInterval) async throws
         -> ArchiveSurvey {
         let (output, status) = try await exchange(source, ArchiveService.Request(mode: .survey), password: nil,
                                                   timeout: timeout, allowance: .surveys)
@@ -260,7 +191,7 @@ nonisolated package enum ArchiveReader {
         return survey
     }
 
-    private static func exchange(_ source: ArchiveSource, _ request: ArchiveService.Request, password: String?,
+    private static func exchange(_ source: FileReadSource, _ request: ArchiveService.Request, password: String?,
                                  timeout: TimeInterval, allowance: ArchiveReadAllowance) async throws
         -> (Data, ArchiveService.Status) {
         try await withRead(source, allowance: allowance) { file in
@@ -269,8 +200,8 @@ nonisolated package enum ArchiveReader {
     }
 
     /// One read in the archive service, pinned to `source` and counted against the reads `allowance` permits at once.
-    private static func withRead<T>(_ source: ArchiveSource, allowance: ArchiveReadAllowance,
-                                    _ read: (FileHandle) async throws -> T) async throws -> T {
+    private static func withRead<T: Sendable>(_ source: FileReadSource, allowance: ArchiveReadAllowance,
+                                    _ read: @escaping @Sendable (FileHandle) async throws -> T) async throws -> T {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await allowance.enter(id)
@@ -278,12 +209,7 @@ nonisolated package enum ArchiveReader {
         defer { Task { await allowance.leave(id) } }
         try Task.checkCancellation()
         do {
-            let file = try source.open()
-            defer { try? file.close() }
-            let result = try await read(file)
-            try Task.checkCancellation()
-            try source.verify(file)
-            return result
+            return try await source.read(read)
         } catch let error as POSIXError {
             // The archive is gone or changed while it was read (one still downloading does), or staging the read failed.
             log.info("An archive couldn't be read: \(error.localizedDescription, privacy: .public)")
@@ -331,16 +257,16 @@ nonisolated package enum ArchiveReader {
     private static func routed(_ request: ArchiveService.Secret, archive: FileHandle, harness arguments: [String],
                                consume: (Int32) throws -> Void, read: (String) throws -> ArchiveService.Reply) throws
         -> ArchiveService.Status {
-        switch route {
+        switch ReadWorker.selectedRoute {
         case .service(let service):
             let reply = try read(service)
             if !reply.ended { log.error("The archive service didn't confirm that a stopped read's worker ended.") }
             return reply.outcome
         case .harness:
-            try requireHarness()
+            try ReadWorker.requireHarness()
             guard let input = try ArchiveService.requestPipe(request) else { return .limit }
             defer { try? input.close() }
-            let status = try ProcessRunner.stream(harness.path, arguments, standardInput: input, file: archive,
+            let status = try ProcessRunner.stream(ReadWorker.harness.path, arguments, standardInput: input, file: archive,
                                                   consume: consume)
             return ArchiveService.Status(rawValue: status) ?? .unreadable
         case .missingService:
@@ -366,43 +292,7 @@ nonisolated package enum ArchiveReader {
 
     private static func send(_ request: ArchiveService.Request, password: ArchiveService.Secret, archive: FileHandle,
                              timeout: TimeInterval) async throws -> (Data, ArchiveService.Status) {
-        switch route {
-        case .service(let service):
-            let reply = try await ArchiveService.send(request, password: password, to: service, archive: archive,
-                                                      timeout: timeout)
-            if !reply.ended { log.error("The archive service didn't confirm that a stopped read's worker ended.") }
-            return (reply.output, reply.outcome)
-        case .harness:
-            return try await sendThroughHarness(request, password: password, archive: archive, timeout: timeout)
-        case .missingService:
-            log.error("The app has no archive service (Contents/XPCServices/StrataArchiveService.xpc).")
-            throw ArchiveReadError.unreadable
-        }
-    }
-
-    private static func sendThroughHarness(_ request: ArchiveService.Request, password: ArchiveService.Secret,
-                                           archive: FileHandle, timeout: TimeInterval) async throws
-        -> (Data, ArchiveService.Status) {
-        try requireHarness()
-        guard let input = try ArchiveService.requestPipe(request.encoded(password: password)) else {
-            return (Data(), .limit)
-        }
-        defer { try? input.close() }
-        // Room for the harness's own read and its wait for the service to end the worker.
-        let run = try await ProcessRunner.run(harness.path, ["--timeout-ms", String(Int((timeout * 1000).rounded()))],
-                                              timeout: timeout + ArchiveService.answerBackstop + 5,
-                                              standardInput: input, file: archive)
-        if run.failed { return (run.output, .unreadable) }
-        let reply = ArchiveService.Reply(output: run.output, status: run.status, timedOut: run.timedOut,
-                                         truncated: run.truncated || run.output.count > ArchiveService.outputLimit)
-        return (reply.output, reply.outcome)
-    }
-
-    private static func requireHarness() throws {
-        guard FileManager.default.isExecutableFile(atPath: harness.path) else {
-            log.error("Outside the app, archives are read through \(harness.path, privacy: .public), which the archive tests build.")
-            throw ArchiveReadError.unreadable
-        }
+        try await ReadWorker.send(request.encoded(password: password), file: archive, timeout: timeout)
     }
 
     /// The worker's records, in a stream it ended or not: what was decoded before the stream ended, or turned out

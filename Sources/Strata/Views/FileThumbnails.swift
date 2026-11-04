@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import StrataSupport
 import AppKit
@@ -31,7 +32,7 @@ import os
         var entry: FileEntry
         var request: QLThumbnailGenerator.Request
         var generation: Int
-        var coverSource: ArchiveSource?
+        var coverSource: FileReadSource?
         let stopped: OSAllocatedUnfairLock<Bool>
         var preparing: Task<Void, Never>?
         var started = false
@@ -186,7 +187,7 @@ import os
         // Pin the book before Quick Look can fail and request its cover, without opening a file on the UI thread.
         let url = item.entry.url, reads = reads
         pending[key]?.preparing = Task { [weak self] in
-            let source = await OwnThread.run { try? ArchiveSource(url) }
+            let source = await OwnThread.run { try? FileReadSource(url) }
             guard !Task.isCancelled, let self, self.pending[key]?.generation == generation else {
                 reads.finish(generation)
                 return

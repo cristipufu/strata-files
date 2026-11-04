@@ -8,10 +8,10 @@ import StrataSupport
 
 extension BookFormat {
     @concurrent package static func cover(_ url: URL, pixels: Int) async throws -> CGImage {
-        return try await cover(ArchiveSource(url), pixels: pixels)
+        return try await cover(FileReadSource(url), pixels: pixels)
     }
 
-    @concurrent package static func cover(_ source: ArchiveSource, pixels: Int) async throws -> CGImage {
+    @concurrent package static func cover(_ source: FileReadSource, pixels: Int) async throws -> CGImage {
         let url = source.chosen.url
         let records = try await ArchiveReader.read(source)
         let path: [String]
@@ -44,7 +44,7 @@ nonisolated package struct EPUBBook: Sendable {
         package let path: [String]
         package let title: String
     }
-    package let source: ArchiveSource
+    package let source: FileReadSource
     package let records: [ArchiveRecord]
     package let title: String
     package let authors: String
@@ -54,7 +54,7 @@ nonisolated package struct EPUBBook: Sendable {
     package let chapters: [Chapter]
     package let assets: Set<String>
 
-    @concurrent package static func open(_ source: ArchiveSource, records existing: [ArchiveRecord]? = nil) async throws -> EPUBBook {
+    @concurrent package static func open(_ source: FileReadSource, records existing: [ArchiveRecord]? = nil) async throws -> EPUBBook {
         let records: [ArchiveRecord]
         if let existing { records = existing } else { records = try await ArchiveReader.read(source) }
         let package = try await packagePath(source, records: records)
@@ -86,7 +86,7 @@ nonisolated package struct EPUBBook: Sendable {
     }
 
     /// Where the package document is, as `META-INF/container.xml` says.
-    private static func packagePath(_ source: ArchiveSource, records: [ArchiveRecord]) async throws -> [String] {
+    private static func packagePath(_ source: FileReadSource, records: [ArchiveRecord]) async throws -> [String] {
         let container = try await bytes(source, records: records, path: ["META-INF", "container.xml"], limit: TextFile.limit)
         let root = try BookXML.parse(container)
         guard root.name == "container", let reference = root.descendants("rootfile").first(where: {
@@ -176,7 +176,7 @@ nonisolated package struct EPUBBook: Sendable {
 
     /// The spine's pages read in order, each titled by the contents, else as the cover or a numbered section.
     private static func readingOrder(_ spine: BookXML.Element, _ manifest: Manifest, titles: [String: String],
-                                     coverPages: Set<String>, cover: [String]?, source: ArchiveSource,
+                                     coverPages: Set<String>, cover: [String]?, source: FileReadSource,
                                      records: [ArchiveRecord]) async throws -> [Chapter] {
         var coverPages = coverPages
         var chapters: [Chapter] = []
@@ -212,7 +212,7 @@ nonisolated package struct EPUBBook: Sendable {
         return try PackagePath.resolve(href, relativeTo: base)
     }
 
-    @concurrent package static func bytes(_ source: ArchiveSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
+    @concurrent package static func bytes(_ source: FileReadSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
         try await PackagePart.read(source, records: records, path: path, limit: limit)
     }
 }

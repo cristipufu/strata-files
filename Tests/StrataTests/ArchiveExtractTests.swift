@@ -249,10 +249,10 @@ struct ArchiveExtractTests {
         let manifest = tree.url("manifest.tar")
         try Data("#mtree\n./leak type=file contents=/etc/hosts\n".utf8).write(to: manifest)
         await #expect(throws: Archiver.Failure.self) { _ = try await extract(manifest, into: tree.url("out")) }
-        let listed = try await ArchiveReader.list(ArchiveSource(manifest), timeout: 20)
+        let listed = try await ArchiveReader.list(FileReadSource(manifest), timeout: 20)
         #expect(listed.records.isEmpty)
         await #expect(throws: (any Error).self) {
-            _ = try await ArchiveReader.read(ArchiveSource(manifest), member: ["leak"])
+            _ = try await ArchiveReader.read(FileReadSource(manifest), member: ["leak"])
         }
         #expect(tree.snapshot() == ["manifest.tar", "out/"])
     }
@@ -381,7 +381,7 @@ struct ArchiveExtractTests {
         let surveyed = await Archiver.inspect(tree.url("own.zip"))
         #expect(surveyed.complete && surveyed.entries == 6 && !surveyed.encrypted)
         // Copied out alone, an item read that way would leave its Mac metadata behind: it takes a full Extract.
-        let mixed = try ArchiveSource(tree.url("mixed.zip"))
+        let mixed = try FileReadSource(tree.url("mixed.zip"))
         await #expect(throws: ArchiveReadError.needsExtraction) {
             try await ArchiveReader.read(mixed, member: ["mixed", "file"])
         }
@@ -462,7 +462,7 @@ struct ArchiveExtractTests {
         let tree = try TestTree("payload/")
         try Data(count: 8 << 20).write(to: tree.url("payload/zeros"))
         try await tar(["-cf", "../big.tar", "zeros"], in: tree.url("payload"))
-        let source = try ArchiveSource(tree.url("big.tar"))
+        let source = try FileReadSource(tree.url("big.tar"))
         struct Refused: Error {}
         // The worker is still writing, its pipe full, when the writer refuses what it read.
         let outcome = await TransferWorker(label: "strata-test-unpack-stop").run {
@@ -491,7 +491,7 @@ struct ArchiveExtractTests {
             let input = try #require(try ArchiveService.requestPipe(request))
             defer { try? input.close() }
             try #require(lseek(archive.fileDescriptor, 0, SEEK_SET) == 0)
-            let run = try await ProcessRunner.run(ArchiveReader.harness.path, unpacking ? ["--unpacking"] : [],
+            let run = try await ProcessRunner.run(ReadWorker.harness.path, unpacking ? ["--unpacking"] : [],
                                                   timeout: 60, standardInput: input, file: archive)
             #expect(run.status == ArchiveService.Status.unreadable.rawValue, "\(mode) \(unpacking)")
         }

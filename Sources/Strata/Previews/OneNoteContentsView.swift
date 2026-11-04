@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import AppKit
 import StrataSupport
@@ -40,7 +41,7 @@ package final class OneNoteContentsView: PreviewView {
 
     /// A file named so that isn't a table of contents goes to Quick Look, as one that isn't a regular file does.
     @concurrent private static func read(_ url: URL) async throws -> OneNoteContents {
-        guard let source = try? ArchiveSource(url) else { throw PreviewError.unsupported }
+        guard let source = try? FileReadSource(url) else { throw PreviewError.unsupported }
         do {
             return try await OneNoteContents.open(source)
         } catch OneStoreError.notOneNote {

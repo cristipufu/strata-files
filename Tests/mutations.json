@@ -4408,32 +4408,32 @@
     "replace": "imageBudget -= 0"
   },
   {
-    "file": "Strata/Previews/SQLiteReader.swift",
+    "file": "CTablePreview/TablePreview.c",
     "rule": "Security review: database menus stay bounded",
     "tests": "SQLitePreviewSafetyTests/menusColumns",
-    "find": "package static let tableLimit = 500",
-    "replace": "package static let tableLimit = 501"
+    "find": "#define TABLE_LIMIT 500",
+    "replace": "#define TABLE_LIMIT 501"
   },
   {
-    "file": "Strata/Previews/SQLiteReader.swift",
+    "file": "CTablePreview/TablePreview.c",
     "rule": "Security review: database columns stay bounded",
     "tests": "SQLitePreviewSafetyTests/menusColumns",
-    "find": "min(columnLimit, Int(sqlite3_column_count(statement)))",
-    "replace": "Int(sqlite3_column_count(statement))"
+    "find": "#define COLUMN_LIMIT 256",
+    "replace": "#define COLUMN_LIMIT 255"
   },
   {
-    "file": "Strata/Previews/SQLiteReader.swift",
+    "file": "CTablePreview/TablePreview.c",
     "rule": "Security review: database text is bounded before String creation",
     "tests": "SQLitePreviewSafetyTests/menusColumns",
-    "find": "min(1200, Int(sqlite3_column_bytes(statement, column)))",
-    "replace": "Int(sqlite3_column_bytes(statement, column))"
+    "find": "emit_string(value,strnlen(value,NAME_LIMIT))",
+    "replace": "emit_string(value,strlen(value))"
   },
   {
     "file": "Strata/Previews/SQLiteReader.swift",
     "rule": "Security review: SQLite reopening never follows directory links",
     "tests": "SQLitePreviewSafetyTests/databaseLinks",
-    "find": "SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOFOLLOW",
-    "replace": "SQLITE_OPEN_READONLY | SQLITE_OPEN_URI"
+    "find": "try await query(FileReadSource(url, resolveParent: false), mode: .tables).tables",
+    "replace": "try await query(FileReadSource(url, resolveParent: true), mode: .tables).tables"
   },
   {
     "file": "Strata/Remote/RemoteFiles.swift",
@@ -5130,7 +5130,7 @@
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "Strata/Archives/ArchiveReader.swift",
+    "file": "Strata/Model/FileReadSource.swift",
     "find": "a.identity == b.identity && a.size == b.size && a.modified.tv_sec == b.modified.tv_sec\n                && a.modified.tv_nsec == b.modified.tv_nsec && a.changed.tv_sec == b.changed.tv_sec\n                && a.changed.tv_nsec == b.changed.tv_nsec",
     "replace": "a.identity == b.identity",
     "rule": "Space preview archives: changed archive contents are read after the choice was captured",
@@ -5158,7 +5158,7 @@
     "tests": "PreviewArchiveTests"
   },
   {
-    "file": "CArchivePreview/ArchivePreview.c",
+    "file": "CArchiveSandbox/ReadWorker.c",
     "find": "if (!strata_archive_sandboxed()) return strata_archive_unsandboxed;",
     "replace": "if (0) return strata_archive_unsandboxed;",
     "rule": "Space preview archives: a worker reads archives without its own sandbox entitlement",
@@ -5172,14 +5172,14 @@
     "tests": "PreviewArchiveTests/aServiceOrWorkerSignedWithoutItsSandboxRefusesToReadAnything"
   },
   {
-    "file": "CArchivePreview/ArchivePreview.c",
+    "file": "CArchiveSandbox/ReadWorker.c",
     "find": "if (task_set_special_port(self, TASK_BOOTSTRAP_PORT, MACH_PORT_NULL) != KERN_SUCCESS) return 0;",
     "replace": "if (0) return 0;",
     "rule": "Space preview archives: a worker keeps its bootstrap port",
     "tests": "PreviewArchiveTests/theWorkerListsWithoutExtractingAndReadsOnlyTheExactChosenMember"
   },
   {
-    "file": "CArchivePreview/ArchivePreview.c",
+    "file": "CArchiveSandbox/ReadWorker.c",
     "find": "if (references && mach_port_mod_refs(self, launchd, MACH_PORT_RIGHT_SEND, all) != KERN_SUCCESS) return 0;",
     "replace": "if (0) return 0;",
     "rule": "Space preview archives: a worker keeps its send rights to launchd",
@@ -5228,16 +5228,16 @@
     "tests": "ArchiveSafetyTests/anEncryptedArchiveIsRefused"
   },
   {
-    "file": "CArchivePreview/ArchivePreview.c",
-    "find": "static int over_cpu(void) { return cpu_used() >= cpu_limit; }",
-    "replace": "static int over_cpu(void) { return 0; }",
+    "file": "CArchiveSandbox/ReadWorker.c",
+    "find": "int strata_read_over_cpu(void) { return cpu_used() >= cpu_limit; }",
+    "replace": "int strata_read_over_cpu(void) { return 0; }",
     "rule": "Space preview archives: a worker ignores its CPU limit",
     "tests": "PreviewArchiveTests/aReadOverItsCPUOrMemoryLimitStopsAsTooLarge"
   },
   {
-    "file": "CArchivePreview/ArchivePreview.c",
-    "find": "static int over_memory(void) { return resident() >= memory_limit; }",
-    "replace": "static int over_memory(void) { return 0; }",
+    "file": "CArchiveSandbox/ReadWorker.c",
+    "find": "int strata_read_over_memory(void) { return resident() >= memory_limit; }",
+    "replace": "int strata_read_over_memory(void) { return 0; }",
     "rule": "Space preview archives: a worker ignores its memory limit",
     "tests": "PreviewArchiveTests/aReadOverItsCPUOrMemoryLimitStopsAsTooLarge"
   },
@@ -5696,7 +5696,7 @@
   {
     "file": "Strata/Views/FileThumbnails.swift",
     "find": "let source = self.pending[key]?.coverSource",
-    "replace": "let source = try? ArchiveSource(entry.url)",
+    "replace": "let source = try? FileReadSource(entry.url)",
     "rule": "Book previews: cover extraction keeps the file chosen before a delayed Quick Look callback",
     "tests": "BookPreviewTests/aCoverRequestPinsTheFileBeforeQuickLookReturns"
   },
@@ -8903,5 +8903,19 @@
     "replace": "guard let self, self.shownURLs == [entry.url], self.canPreview(entry) else { return }",
     "rule": "Inspector old preview fallback replaces a newer preview of the same file",
     "tests": "InspectorPreviewLifecycleTests/oldWorkAndFallbacksCannotReplaceANewPreviewOfTheSameFile"
+  },
+  {
+    "file": "CTablePreview/SQLiteQuota.c",
+    "find": "amount > ceiling-current",
+    "replace": "amount > SIZE_MAX-current",
+    "rule": "SQLite preview heap: computed rows respect the allocation budget before returning values",
+    "tests": "SQLiteWorkerTests/allocationIsRefused"
+  },
+  {
+    "file": "CNativeReaders/NativeXML.m",
+    "find": "    @try {\n        BOOL success = [parser parse];\n        if (!success && error) *error = parser.parserError ?: [NSError errorWithDomain:@\"StrataNativeRead\" code:2 userInfo:nil];\n        return success;\n    } @catch (NSException *exception) {\n        if (error) *error = STNativeReadFailure(@\"XML parsing\", exception);\n        return NO;\n    }",
+    "replace": "    return [parser parse];",
+    "rule": "Workbook XML guard: native parser exceptions never escape into Swift",
+    "tests": "NativeDocumentReaderTests/aNativeXMLExceptionBecomesAnOrdinaryError"
   }
 ]

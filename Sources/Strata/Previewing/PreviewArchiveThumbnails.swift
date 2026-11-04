@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import AppKit
 
@@ -9,13 +10,13 @@ import AppKit
         let path: [String]
         let pixels: Int
         let key: String
-        let source: ArchiveSource
+        let source: FileReadSource
         let finished: (() -> Void)?
         let completion: (NSImage) -> Void
     }
     private let cache = ThumbnailCache(costLimit: 32 << 20, countLimit: 128)
     private let access: PreviewArchiveAccess
-    private var source: ArchiveSource?
+    private var source: FileReadSource?
     private var waiting: [Request] = []
     private var active: [UUID: Task<Void, Never>] = [:]
     private var current: [ObjectIdentifier: UUID] = [:]

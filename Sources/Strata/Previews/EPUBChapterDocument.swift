@@ -1,3 +1,4 @@
+import StrataModel
 import StrataArchives
 import Foundation
 import StrataSupport
@@ -7,7 +8,7 @@ package actor EPUBChapterDocument {
     nonisolated package let url: URL
     private let book: EPUBBook
     private let path: [String]
-    package typealias Reader = @Sendable (ArchiveSource, [ArchiveRecord], [String], Int) async throws -> Data
+    package typealias Reader = @Sendable (FileReadSource, [ArchiveRecord], [String], Int) async throws -> Data
     nonisolated private struct Job: Sendable {
         let id = UUID()
         let task: Task<Data, Error>

@@ -1,5 +1,6 @@
 #ifndef STRATA_ARCHIVE_SANDBOX_H
 #define STRATA_ARCHIVE_SANDBOX_H
+#include <stdint.h>
 /* What the archive service and its workers share. The service links only this, never the parser. */
 
 /* Statuses: a worker's exit status and the service's reply; 0 is success. StrataArchiveClient's ArchiveService.Status
@@ -15,4 +16,8 @@ enum {
 
 /* Read from this process's own code signature: a sandbox the process merely inherited doesn't count. */
 int strata_archive_sandboxed(void);
+/* Shared setup for a sandboxed, read-only parser process. Limits are supplied by its own fixed policy. */
+int strata_read_worker_start(uint64_t cpu_microseconds, uint64_t resident_bytes);
+int strata_read_over_cpu(void);
+int strata_read_over_memory(void);
 #endif
