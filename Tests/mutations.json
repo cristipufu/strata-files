@@ -8917,5 +8917,12 @@
     "replace": "    return [parser parse];",
     "rule": "Workbook XML guard: native parser exceptions never escape into Swift",
     "tests": "NativeDocumentReaderTests/aNativeXMLExceptionBecomesAnOrdinaryError"
+  },
+  {
+    "file": "Strata/Previews/GridView.swift",
+    "find": "        scrollView.layoutSubtreeIfNeeded()\n        scrollToTop()",
+    "replace": "        scrollToTop()",
+    "rule": "Preview table paging: reset scrolling after native layout settles the new page",
+    "tests": "TablePreviewScrollTests"
   }
 ]

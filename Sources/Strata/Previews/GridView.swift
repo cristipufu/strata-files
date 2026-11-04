@@ -113,6 +113,7 @@ package final class GridView: NSView, NSTableViewDataSource, NSTableViewDelegate
             tableView.addTableColumn(tableColumn)
         }
         tableView.reloadData()
+        scrollView.layoutSubtreeIfNeeded()
         scrollToTop()
         tableView.sortDescriptors = sorting
     }
