@@ -35,6 +35,25 @@ struct ViewOptionsTests {
         #expect(item.keyEquivalentModifierMask == .command)
     }
 
+    @Test func viewOptionsKeepsRoomForItsControlsAfterLayoutAndPreferenceChanges() async throws {
+        let preferences = try Prefs.isolated()
+        let controller = ViewOptionsWindowController(preferences: preferences)
+        let window = try #require(controller.window)
+        defer { window.close() }
+        let content = try #require(window.contentView)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            window.appearance = NSAppearance(named: name)
+            preferences.hiddenListColumns = name == .aqua ? [] : Set(ListColumn.allCases.map(\.rawValue))
+            preferences.iconViewOptions = .init(showsInfo: name == .aqua, folderInfo: .size)
+            await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+            content.layoutSubtreeIfNeeded()
+            #expect(window.contentLayoutRect.width >= 400)
+            #expect(window.contentLayoutRect.height >= 500)
+            #expect(content.bounds.width >= 400 && content.bounds.height >= 500)
+            #expect(!window.isVisible)
+        }
+    }
+
     @Test func hidingInfoCancelsItsPendingLabelAndSizeReplacesTheCount() async throws {
         let preferences = try Prefs.isolated()
         let tree = try TestTree("folder/", "folder/a.txt", "folder/b.txt")

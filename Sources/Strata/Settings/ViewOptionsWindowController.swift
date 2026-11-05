@@ -3,10 +3,15 @@ import SwiftUI
 
 final class ViewOptionsWindowController: NSWindowController {
     init(preferences: Prefs) {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 410, height: 650),
+        let contentSize = NSSize(width: 410, height: 650)
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: contentSize),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = String(localized: "View Options", comment: "Title of the window opened with Command-J")
-        panel.contentViewController = NSHostingController(rootView: ViewOptionsView(preferences: preferences))
+        let host = NSHostingController(rootView: ViewOptionsView(preferences: preferences))
+        // The panel owns its size; the scrollable Form has no useful intrinsic height.
+        host.sizingOptions = []
+        panel.contentViewController = host
+        panel.setContentSize(contentSize)
         panel.isReleasedWhenClosed = false
         super.init(window: panel)
         ThemeStyle.bind(panel)
