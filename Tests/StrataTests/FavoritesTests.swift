@@ -69,33 +69,39 @@ import Testing
         #expect(tree.snapshot() == ["a/", "d/"])
     }
 
-    /// A Frequent folder dragged between the favorites joins them there, and leaves Frequent; dropped anywhere else it
-    /// does nothing, since the drag carries a private type and never the folder itself.
-    @Test func aFrequentFolderDraggedAmongTheFavoritesJoinsThem() async throws {
+    @Test(arguments: ["frequent", "locations"])
+    func aSidebarFolderDraggedAmongTheFavoritesJoinsThem(from sourceSection: String) async throws {
         let tree = try TestTree("a/", "b/", "often/")
-        let environment = try PreviewEnvironment(tree)
+        let folder = tree.url("often").lexicallyStandardized
+        let environment = try PreviewEnvironment(tree, cloudFolders: { [CloudFolder(url: folder, title: "often")] })
         defer { withExtendedLifetime(environment) {} }
         let services = environment.services, preferences = services.preferences
         preferences.favoritePaths = ["a", "b"].map { tree.url($0).path }
         services.visits.record(tree.url("often"))
         let sidebar = SidebarViewController(services: services)
         _ = sidebar.view
+        await sidebar.cloudRead?.value
         sidebar.reload()
         let outline = sidebar.outline
         func section(_ id: String) throws -> SidebarSection { try #require(sidebar.sections.first { $0.id == id }) }
-        let favorites = try section("favorites"), frequent = try section("frequent")
-        let often = try #require(frequent.items.first { $0.url?.lastPathComponent == "often" })
+        let favorites = try section("favorites"), source = try section(sourceSection)
+        let often = try #require(source.items.first { $0.url?.path == folder.path })
         #expect(sidebar.canAddToFavorites(often) && !favorites.items.contains { sidebar.canAddToFavorites($0) })
+        #expect(sidebar.isFrequent(often) == (sourceSection == "frequent"))
 
         let writer = try #require(sidebar.outlineView(outline, pasteboardWriterForItem: often) as? NSPasteboardItem)
         #expect(writer.types == [.sidebarFavorite])
-        let drag = FileDrag([])
+        let drag = FileDrag([], offering: .move)
         drag.draggingPasteboard.clearContents()
-        drag.draggingPasteboard.writeObjects([writer])
-        let location = try #require(sidebar.sections.first { $0.id == "locations" }?.items.first { $0.url != nil })
-        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: location,
-                                    proposedChildIndex: NSOutlineViewDropOnItemIndex) == [])
-        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: frequent, proposedChildIndex: 0) == [])
+        #expect(drag.draggingPasteboard.writeObjects([writer]))
+        #expect(FileDrop.urls(drag, copies: services.copies).isEmpty)
+        for section in sidebar.sections where section.id != "favorites" {
+            #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: section, proposedChildIndex: 0) == [])
+            for item in section.items {
+                #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: item,
+                                           proposedChildIndex: NSOutlineViewDropOnItemIndex) == [])
+            }
+        }
         // Between a and b: Recents is row 0, so child 2 is before b.
         #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: favorites, proposedChildIndex: 2) == .move)
         #expect(sidebar.outlineView(outline, acceptDrop: drag, item: favorites, childIndex: 2))
@@ -104,7 +110,35 @@ import Testing
         sidebar.reload()
         // It was the only frequent folder, so the section goes.
         #expect(sidebar.sections.first { $0.id == "frequent" } == nil)
+        #expect(try section("locations").items.allSatisfy { $0.url?.path != folder.path })
         #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["a/", "b/", "often/"])
+    }
+
+    @Test func trashTagsAndEjectableVolumesCannotBeDraggedIntoFavorites() async throws {
+        let tree = try TestTree("folder/")
+        let folder = tree.url("folder").lexicallyStandardized
+        let environment = try PreviewEnvironment(tree, cloudFolders: { [CloudFolder(url: folder, title: "folder")] })
+        defer { withExtendedLifetime(environment) {} }
+        environment.preferences.favoritePaths = []
+        let sidebar = SidebarViewController(services: environment.services)
+        _ = sidebar.view
+        await sidebar.cloudRead?.value
+        let locations = try #require(sidebar.sections.first { $0.id == "locations" })
+        let plainFolder = try #require(locations.items.first { $0.url?.path == folder.path })
+        let trash = try #require(locations.items.first { $0.url.map { Trash.isTrash($0) } == true })
+        let tags = try #require(sidebar.sections.first { $0.id == "tags" })
+        try #require(!tags.items.isEmpty)
+        // The same valid folder, marked as a disk: no real mount is needed or ejected.
+        let volume = SidebarItem(Place(title: "Test disk", url: folder, symbol: "externaldrive", isEjectable: true))
+        locations.items.append(volume)
+        #expect(sidebar.outlineView(sidebar.outline, pasteboardWriterForItem: plainFolder) != nil)
+        for item in [trash, volume] + tags.items {
+            #expect(!sidebar.canAddToFavorites(item), "\(item.title) must not offer Add to Favorites")
+            #expect(sidebar.outlineView(sidebar.outline, pasteboardWriterForItem: item) == nil,
+                    "\(item.title) must not start a Favorites drag")
+        }
+        #expect(environment.preferences.favoritePaths == [])
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["folder/"])
     }
 
     /// Remove from Frequent forgets the folder's visits: it leaves Frequent, stays gone in a new session, and stays on disk.
