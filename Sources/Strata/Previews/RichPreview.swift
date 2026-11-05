@@ -25,7 +25,8 @@ package enum RichPreview {
         case .onenoteContents: OneNoteContentsView(url: url)
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator, clipboard: clipboard)
         case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
-        case .stl: STLPreviewView(url: url)
+        case .stl: ModelPreviewView(url: url)
+        case .threeMF: ModelPreviewView(url: url, format: .threeMF)
         case .xlsx: XLSXPreviewView(url: url, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         }
@@ -47,6 +48,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case delimited(separator: UInt8?)
     case sqlite
     case stl
+    case threeMF
     case xlsx
     case archive(ArchiveKind)
 
@@ -76,6 +78,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .xlsx
         } else if ext == "stl" {
             self = .stl
+        } else if ext == "3mf" {
+            self = .threeMF
         } else if Self.sqliteExtensions.contains(ext) {
             self = .sqlite
         } else if let kind = ArchiveKind(fileName: name) {

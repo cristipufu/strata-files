@@ -19,7 +19,7 @@ import StrataTheme
             defer { renderer.close() }
             let image = try await renderer.render(source, dark: false)
             guard image.size.width > 0, image.size.height > 0 else { throw Invalid.image }
-            print("Packaged themes, STL and Mermaid loaded; the Markdown sample rendered successfully.")
+            print("Packaged themes, 3D model scripts and Mermaid loaded; the Markdown sample rendered successfully.")
         } catch {
             print("Packaged resource check failed: \(error)")
             exit(2)
@@ -27,8 +27,9 @@ import StrataTheme
     }
 
     @concurrent private static func modelScripts() async throws {
-        guard !(try STLDocument.bundledScript("stl")).isEmpty,
-              !(try STLDocument.bundledScript("renderer")).isEmpty else { throw Invalid.sample }
+        for name in ["mesh", "stl", "three-mf", "renderer"] {
+            guard !(try ModelDocument.bundledScript(name)).isEmpty else { throw Invalid.sample }
+        }
     }
 
     @concurrent private static func diagram(_ url: URL) async throws -> String {

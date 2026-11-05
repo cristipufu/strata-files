@@ -1,7 +1,7 @@
 'use strict';
-globalThis.StrataSTL = (() => {
+globalThis.StrataModel = (() => {
     const maximumBytes = 16 * 1024 * 1024;
-    const maximumTriangles = 250000;
+    const maximumTriangles = StrataMesh.maximumTriangles;
     const maximumCoordinate = 1e100;
     function fail(code = 'invalid') { throw new Error(code); }
     function number(token) {
@@ -77,32 +77,7 @@ globalThis.StrataSTL = (() => {
             }
             return count;
         }
-        const minimum = [Infinity, Infinity, Infinity], maximum = [-Infinity, -Infinity, -Infinity];
-        const triangles = visitTriangles(points => {
-            for (let i = 0; i < 9; i++) {
-                const axis = i % 3;
-                minimum[axis] = Math.min(minimum[axis], points[i]);
-                maximum[axis] = Math.max(maximum[axis], points[i]);
-            }
-        });
-        const dimensions = maximum.map((value, axis) => value - minimum[axis]);
-        const span = Math.max(...dimensions);
-        if (!(span > 0) || !Number.isFinite(span)) fail();
-        const center = maximum.map((value, axis) => minimum[axis] + dimensions[axis] / 2);
-        const vertices = new Float32Array(triangles * 18);
-        let offset = 0;
-        visitTriangles(points => {
-            const p = points.map((value, i) => (value - center[i % 3]) / span * 2);
-            const a = [p[3]-p[0], p[4]-p[1], p[5]-p[2]], b = [p[6]-p[0], p[7]-p[1], p[8]-p[2]];
-            const n = [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-            const length = Math.hypot(...n);
-            const normal = length > 1e-12 ? n.map(value => value / length) : [0, 0, 1];
-            for (let vertex = 0; vertex < 3; vertex++) {
-                for (let axis = 0; axis < 3; axis++) vertices[offset++] = p[vertex*3 + axis];
-                for (const value of normal) vertices[offset++] = value;
-            }
-        });
-        return {triangles, dimensions, vertices};
+        return StrataMesh.normalize(visitTriangles);
     }
     return {parse};
 })();

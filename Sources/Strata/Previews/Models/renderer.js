@@ -1,6 +1,7 @@
 'use strict';
-StrataSTL.start = function(options) {
+StrataModel.start = function(options) {
     const canvas = document.querySelector('canvas'), summary = document.querySelector('output');
+    canvas.setAttribute('aria-label', options.format);
     let closed = false, scheduled = false, rotationX = -0.55, rotationY = 0.65, zoom = 0.5;
     let gl, buffer, program, resize;
     function close() {
@@ -15,8 +16,8 @@ StrataSTL.start = function(options) {
         document.body.replaceChildren(Object.assign(document.createElement('p'), {
             textContent: error?.message === 'limit' ? options.large : options.unavailable
         }));
-        StrataSTL.failure = String(error?.message ?? 'gpu').slice(0, 120);
-        StrataSTL.status = 'failed';
+        StrataModel.failure = String(error?.message ?? 'gpu').slice(0, 120);
+        StrataModel.status = 'failed';
     }
     function shader(type, source) {
         const shader = gl.createShader(type);
@@ -37,12 +38,12 @@ StrataSTL.start = function(options) {
         const aspect = canvas.width / canvas.height;
         gl.uniform2f(gl.getUniformLocation(program, 'scale'), zoom / Math.max(1, aspect), zoom * Math.min(1, aspect));
         gl.uniform3fv(gl.getUniformLocation(program, 'color'), options.color);
-        gl.drawArrays(gl.TRIANGLES, 0, StrataSTL.info.triangles * 3);
+        gl.drawArrays(gl.TRIANGLES, 0, StrataModel.info.triangles * 3);
         if (gl.getError() !== gl.NO_ERROR) unavailable(new Error('gpu'));
     }
     function redraw() { if (!closed && !scheduled) { scheduled = true; requestAnimationFrame(draw); } }
-    StrataSTL.reset = () => { rotationX = -0.55; rotationY = 0.65; zoom = 0.5; redraw(); };
-    StrataSTL.theme = (background, color, foreground) => {
+    StrataModel.reset = () => { rotationX = -0.55; rotationY = 0.65; zoom = 0.5; redraw(); };
+    StrataModel.theme = (background, color, foreground) => {
         options.background = background; options.color = color;
         document.body.style.background = `rgb(${background.map(v => v * 255).join(',')})`;
         document.body.style.color = `rgb(${foreground.map(v => v * 255).join(',')})`;
@@ -84,9 +85,9 @@ StrataSTL.start = function(options) {
     function showDetails(mesh) {
         const format = new Intl.NumberFormat(undefined, {maximumFractionDigits: 3});
         summary.textContent = options.triangles + ': ' + format.format(mesh.triangles) + ' · ' + options.bounds + ': '
-            + mesh.dimensions.map(value => format.format(value)).join(' × ');
+            + mesh.dimensions.map(value => format.format(value)).join(' × ') + (mesh.unit ? ' ' + mesh.unit : '');
         document.querySelector('button').textContent = options.reset;
-        document.querySelector('button').onclick = StrataSTL.reset;
+        document.querySelector('button').onclick = StrataModel.reset;
         document.querySelector('aside').textContent = options.help;
     }
     function connectControls() {
@@ -117,7 +118,7 @@ StrataSTL.start = function(options) {
             else if (event.key === 'ArrowDown') rotationX += 0.1;
             else if (event.key === '+' || event.key === '=') zoom = Math.min(10, zoom*1.1);
             else if (event.key === '-') zoom = Math.max(0.05, zoom/1.1);
-            else if (event.key === '0') { StrataSTL.reset(); return; }
+            else if (event.key === '0') { StrataModel.reset(); return; }
             else return;
             event.preventDefault(); redraw();
         };
@@ -127,8 +128,8 @@ StrataSTL.start = function(options) {
         const binary = atob(options.data); options.data = null;
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < bytes.length; i++) bytes[i] = binary.charCodeAt(i);
-        const mesh = StrataSTL.parse(bytes.buffer);
-        StrataSTL.info = {triangles: mesh.triangles, dimensions: mesh.dimensions};
+        const mesh = StrataModel.parse(bytes.buffer);
+        StrataModel.info = {triangles: mesh.triangles, dimensions: mesh.dimensions, unit: mesh.unit};
         gl = canvas.getContext('webgl', {alpha: false, antialias: true, powerPreference: 'low-power'});
         if (!gl) throw new Error('gpu');
         setupProgram();
@@ -137,7 +138,7 @@ StrataSTL.start = function(options) {
         connectControls();
         window.addEventListener('pagehide', close, {once: true});
         resize = new ResizeObserver(redraw); resize.observe(canvas);
-        StrataSTL.theme(options.background, options.color, options.foreground);
-        StrataSTL.status = 'ready';
+        StrataModel.theme(options.background, options.color, options.foreground);
+        StrataModel.status = 'ready';
     } catch (error) { unavailable(error); }
 };

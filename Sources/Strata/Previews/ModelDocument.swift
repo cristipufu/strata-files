@@ -1,7 +1,12 @@
 import Foundation
 import StrataSupport
 
-nonisolated package struct STLDocument: Sendable {
+nonisolated package struct ModelDocument: Sendable {
+    package enum Format: Sendable {
+        case stl, threeMF
+        package var label: String { self == .stl ? "STL" : "3MF" }
+        var parser: String { self == .stl ? "stl" : "three-mf" }
+    }
     nonisolated package struct Settings: Encodable, Sendable {
         package let background: [Double]
         package let color: [Double]
@@ -12,6 +17,7 @@ nonisolated package struct STLDocument: Sendable {
         package let help: String
         package let large: String
         package let unavailable: String
+        package var format = "STL"
     }
     package static let byteLimit = 16 << 20
     private static let reads = WorkAllowance(limit: 2)
@@ -30,10 +36,10 @@ nonisolated package struct STLDocument: Sendable {
             if (!input) throw new Error('input');
             options.data = input.textContent;
             input.remove();
-            StrataSTL.start(options);
+            StrataModel.start(options);
         } catch (error) {
-            StrataSTL.status = 'failed';
-            StrataSTL.failure = String(error.message).slice(0, 120);
+            StrataModel.status = 'failed';
+            StrataModel.failure = String(error.message).slice(0, 120);
             document.body.textContent = options.unavailable;
         }}
         """
@@ -44,22 +50,33 @@ nonisolated package struct STLDocument: Sendable {
         }, limits: .init(requests: 1, bytes: html.count), trustedScript: script)
     }
 
-    @concurrent package static func open(_ url: URL) async throws -> Self {
-        let result = await reads.run {
-            await OwnThread.run { Result { try TextFile.readPrefix(url, limit: byteLimit) } }
+    @concurrent package static func open(_ url: URL, format: Format = .stl) async throws -> Self {
+        let result = await reads.run { () -> Result<Data, Error> in
+            do {
+                let data = switch format {
+                case .stl: try await readSTL(url)
+                case .threeMF: try await ThreeMFPackage.read(url)
+                }
+                return .success(data)
+            } catch { return .failure(error) }
         }
         guard let result else { throw CancellationError() }
-        let (data, truncated) = try result.get()
-        guard !truncated else { throw PreviewError.message(String(localized: "This model is too large to preview.")) }
+        let data = try result.get()
         guard !data.isEmpty else { throw PreviewError.empty }
-        let script = try bundledScript("stl") + "\n" + bundledScript("renderer")
+        let script = try bundledScript("mesh") + "\n" + bundledScript(format.parser) + "\n" + bundledScript("renderer")
         try Task.checkCancellation()
         return Self(encoded: data.base64EncodedString(), script: script)
     }
 
+    @concurrent private static func readSTL(_ url: URL) async throws -> Data {
+        let (data, truncated) = try (await OwnThread.run { Result { try TextFile.readPrefix(url, limit: byteLimit) } }).get()
+        guard !truncated else { throw PreviewError.message(String(localized: "This model is too large to preview.")) }
+        return data
+    }
+
     package static func bundledScript(_ name: String) throws -> String {
-        let bundle = try ResourceBundle.named("Strata_StrataPreviews", in: .main, linkedTo: Bundle(for: STLPreviewView.self))
-        guard let url = bundle.url(forResource: name, withExtension: "js", subdirectory: "STL") else { throw PreviewError.unsupported }
+        let bundle = try ResourceBundle.named("Strata_StrataPreviews", in: .main, linkedTo: Bundle(for: ModelPreviewView.self))
+        guard let url = bundle.url(forResource: name, withExtension: "js", subdirectory: "Models") else { throw PreviewError.unsupported }
         return try String(contentsOf: url, encoding: .utf8)
     }
 
@@ -70,6 +87,6 @@ nonisolated package struct STLDocument: Sendable {
     header { display: flex; align-items: center; gap: 8px; padding: 8px; }
     output { flex: 1; } aside { padding: 0 8px 8px; } p { margin: auto; padding: 24px; }
     button { font: inherit; } </style>
-    <canvas tabindex="0" aria-label="STL"></canvas><header><output></output><button></button></header><aside></aside>
+    <canvas tabindex="0"></canvas><header><output></output><button></button></header><aside></aside>
     """
 }
