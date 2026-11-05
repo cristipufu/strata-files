@@ -17,7 +17,7 @@ spec.loader.exec_module(localize)
 
 GERMAN_COLUMNS = {"Date Added": "Hinzugefügt am", "Width": "Breite", "Height": "Höhe", "Duration": "Dauer"}
 NEW_LABELS = [
-    "Applies to all windows.", "Date Added", "Duration", "Folder info", "Height", "Icon size", "Item count",
+    "Other options apply to all windows.", "Ascending", "Use as Defaults", "Date Added", "Duration", "Folder info", "Height", "Icon size", "Item count",
     "List columns", "Pictures and movies show their dimensions. Other files show their size.",
     "Show View Options…", "Show item info", "Total size", "View Options", "Width",
     "/usr/local/bin/strata isn’t Strata’s command, so it was left as it is. Remove or rename it, then install again.",

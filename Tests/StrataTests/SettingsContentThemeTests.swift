@@ -98,7 +98,9 @@ extension ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try #require(NSAppearance(named: name))
-            let host = NSHostingView(rootView: ViewOptionsView(preferences: .shared))
+            let preferences = try Prefs.isolated()
+            let model = FolderViewOptions(settings: FolderViewSettings(preferences: preferences))
+            let host = NSHostingView(rootView: ViewOptionsView(folderOptions: model))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 410, height: 650),
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.colorSpace = .sRGB

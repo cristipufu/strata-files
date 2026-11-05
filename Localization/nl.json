@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Op deze Mac",
     "Application": "Programma",
     "Applications": "Apps",
-    "Applies to all windows.": "Geldt voor alle vensters.",
     "Applies to the list, columns and icons in every window.": "Geldt voor de lijst, kolommen en symbolen in elk venster.",
     "Apply": "Pas toe",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "“%@”: %@",
     "← Copy": "← Kopieer",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Kies   ↩ Ga   ⇥ Vul aan   esc Sluit",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Volledige schijftoegang staat aan. Je bent klaar."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Volledige schijftoegang staat aan. Je bent klaar.",
+    "Ascending": "Oplopend",
+    "Use as Defaults": "Gebruik als standaard",
+    "Other options apply to all windows.": "De overige opties gelden voor alle vensters."
   }
 }

@@ -576,7 +576,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · На цьому Mac",
     "Application": "Програма",
     "Applications": "Програми",
-    "Applies to all windows.": "Застосовується до всіх вікон.",
     "Applies to the list, columns and icons in every window.": "Застосовується до списку, стовпців та іконок у всіх вікнах.",
     "Apply": "Застосувати",
     "Apply %lld Changes": {
@@ -2213,6 +2212,9 @@
     "“%@”: %@": "«%@»: %@",
     "← Copy": "← Копіювати",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Вибрати   ↩ Перейти   ⇥ Доповнити   esc Закрити",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Повний доступ до диска увімкнено. Усе готово."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Повний доступ до диска увімкнено. Усе готово.",
+    "Ascending": "За зростанням",
+    "Use as Defaults": "Використовувати за замовчуванням",
+    "Other options apply to all windows.": "Інші параметри застосовуються до всіх вікон."
   }
 }

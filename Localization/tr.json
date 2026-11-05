@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Bu Mac’te",
     "Application": "Uygulama",
     "Applications": "Uygulamalar",
-    "Applies to all windows.": "Tüm pencerelere uygulanır.",
     "Applies to the list, columns and icons in every window.": "Her penceredeki liste, sütun ve simgelere uygulanır.",
     "Apply": "Uygula",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "“%@”: %@",
     "← Copy": "← Kopyala",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Seç   ↩ Git   ⇥ Tamamla   esc Kapat",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Tam Disk Erişimi açık. Her şey hazır."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Tam Disk Erişimi açık. Her şey hazır.",
+    "Ascending": "Artan",
+    "Use as Defaults": "Varsayılan olarak kullan",
+    "Other options apply to all windows.": "Diğer seçenekler tüm pencereler için geçerlidir."
   }
 }

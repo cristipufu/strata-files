@@ -348,7 +348,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · このMac上",
     "Application": "アプリケーション",
     "Applications": "アプリケーション",
-    "Applies to all windows.": "すべてのウインドウに適用されます。",
     "Applies to the list, columns and icons in every window.": "すべてのウインドウのリスト、カラム、アイコンに適用されます。",
     "Apply": "適用",
     "Apply %lld Changes": {
@@ -1811,6 +1810,9 @@
     "“%@”: %@": "「%@」: %@",
     "← Copy": "← コピー",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ 選択   ↩ 移動   ⇥ 補完   esc 閉じる",
-    "✓ Full Disk Access is on. You’re all set.": "✓ フルディスクアクセスはオンです。準備完了です。"
+    "✓ Full Disk Access is on. You’re all set.": "✓ フルディスクアクセスはオンです。準備完了です。",
+    "Ascending": "昇順",
+    "Use as Defaults": "デフォルトとして使用",
+    "Other options apply to all windows.": "その他のオプションはすべてのウインドウに適用されます。"
   }
 }

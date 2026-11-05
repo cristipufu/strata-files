@@ -348,7 +348,6 @@
     "Apple Intelligence · On this Mac": "Apple智能 · 在这台Mac上",
     "Application": "应用程序",
     "Applications": "应用程序",
-    "Applies to all windows.": "应用于所有窗口。",
     "Applies to the list, columns and icons in every window.": "应用于所有窗口中的列表、分栏和图标。",
     "Apply": "应用",
     "Apply %lld Changes": {
@@ -1811,6 +1810,9 @@
     "“%@”: %@": "“%@”：%@",
     "← Copy": "← 拷贝",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ 选择   ↩ 前往   ⇥ 补全   esc 关闭",
-    "✓ Full Disk Access is on. You’re all set.": "✓ 完全磁盘访问权限已打开。一切就绪。"
+    "✓ Full Disk Access is on. You’re all set.": "✓ 完全磁盘访问权限已打开。一切就绪。",
+    "Ascending": "升序",
+    "Use as Defaults": "用作默认设置",
+    "Other options apply to all windows.": "其他选项适用于所有窗口。"
   }
 }

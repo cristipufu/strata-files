@@ -500,7 +500,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Pe acest Mac",
     "Application": "Aplicație",
     "Applications": "Aplicații",
-    "Applies to all windows.": "Se aplică tuturor ferestrelor.",
     "Applies to the list, columns and icons in every window.": "Se aplică listei, coloanelor și pictogramelor în toate ferestrele.",
     "Apply": "Aplică",
     "Apply %lld Changes": {
@@ -2079,6 +2078,9 @@
     "“%@”: %@": "„%@”: %@",
     "← Copy": "← Copiază",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Alege   ↩ Mergi   ⇥ Completează   esc Închide",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Accesul complet la disc este activat. Totul este gata."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Accesul complet la disc este activat. Totul este gata.",
+    "Ascending": "Crescător",
+    "Use as Defaults": "Folosește ca valori implicite",
+    "Other options apply to all windows.": "Celelalte opțiuni se aplică tuturor ferestrelor."
   }
 }

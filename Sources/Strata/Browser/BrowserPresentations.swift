@@ -69,7 +69,7 @@ final class BrowserPresentations {
                                             itemInfo: browser.services.itemInfo, copies: browser.services.copies,
                                             clipboard: browser.services.clipboard, statuses: browser.services.statuses)
         controller.fileDelegate = browser
-        controller.setIconSize(CGFloat(browser.preferences.gridIconSize), animated: false)
+        controller.setIconSize(CGFloat(browser.iconSize), animated: false)
         controller.showsItemInfo = browser.preferences.iconViewOptions.showsInfo
         controller.folderSizeText = { [weak browser] entry in
             guard let browser, browser.preferences.iconViewOptions.folderInfo == .size else { return nil }

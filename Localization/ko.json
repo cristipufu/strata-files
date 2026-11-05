@@ -348,7 +348,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · 이 Mac에서",
     "Application": "응용 프로그램",
     "Applications": "응용 프로그램",
-    "Applies to all windows.": "모든 윈도우에 적용됩니다.",
     "Applies to the list, columns and icons in every window.": "모든 윈도우의 목록, 계층 및 아이콘에 적용됩니다.",
     "Apply": "적용",
     "Apply %lld Changes": {
@@ -1811,6 +1810,9 @@
     "“%@”: %@": "‘%@’: %@",
     "← Copy": "← 복사",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ 선택   ↩ 이동   ⇥ 완성   esc 닫기",
-    "✓ Full Disk Access is on. You’re all set.": "✓ 전체 디스크 접근 권한이 켜져 있습니다. 모든 준비가 완료되었습니다."
+    "✓ Full Disk Access is on. You’re all set.": "✓ 전체 디스크 접근 권한이 켜져 있습니다. 모든 준비가 완료되었습니다.",
+    "Ascending": "오름차순",
+    "Use as Defaults": "기본값으로 사용",
+    "Other options apply to all windows.": "다른 옵션은 모든 윈도우에 적용됩니다."
   }
 }

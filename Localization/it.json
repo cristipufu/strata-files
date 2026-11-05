@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Su questo Mac",
     "Application": "Applicazione",
     "Applications": "Applicazioni",
-    "Applies to all windows.": "Si applica a tutte le finestre.",
     "Applies to the list, columns and icons in every window.": "Si applica a elenco, colonne e icone in tutte le finestre.",
     "Apply": "Applica",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "“%@”: %@",
     "← Copy": "← Copia",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Scegli   ↩ Vai   ⇥ Completa   esc Chiudi",
-    "✓ Full Disk Access is on. You’re all set.": "✓ L’accesso completo al disco è attivo. È tutto pronto."
+    "✓ Full Disk Access is on. You’re all set.": "✓ L’accesso completo al disco è attivo. È tutto pronto.",
+    "Ascending": "Crescente",
+    "Use as Defaults": "Usa come predefinite",
+    "Other options apply to all windows.": "Le altre opzioni si applicano a tutte le finestre."
   }
 }

@@ -106,6 +106,7 @@ extension BrowserViewController {
 
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
+        pendingFolderPresentation = nil
         noteNavigationContextChanged()
         inlineRename.dropHeldListing()
         cancelInlineRename()
@@ -124,6 +125,7 @@ extension BrowserViewController {
     }
 
     func stopBackgroundWork() {
+        folderOptions?.detach(self)
         cancelPendingActions()
         filtering.cancel()
         resorting.cancel()
@@ -336,9 +338,11 @@ extension BrowserViewController {
     }
 
     @objc func viewOptionsChanged() {
+        let size = canRememberFolderPresentation ? directory.map { services.folderViews.presentation(for: $0).iconSize } ?? preferences.gridIconSize : preferences.gridIconSize
+        setStoredIconSize(size)
         guard let gridController else { return }
         gridController.showsItemInfo = preferences.iconViewOptions.showsInfo
-        gridController.setIconSize(CGFloat(preferences.gridIconSize), animated: false)
+        gridController.setIconSize(CGFloat(size), animated: false)
         gridController.refreshVisibleItems(reconfigure: true)
     }
 

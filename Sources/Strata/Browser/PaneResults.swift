@@ -5,12 +5,20 @@ import AppKit
 /// folder returns.
 final class PaneResults {
     private(set) var mode = BrowserViewMode.list
+    private var folderIconSize: Double?
 
     static func supports(_ mode: BrowserViewMode) -> Bool { [.list, .grid, .gallery].contains(mode) }
 
     func chooseMode(_ mode: BrowserViewMode) {
         guard Self.supports(mode) else { return }
         self.mode = mode
+    }
+
+    func enter(iconSize: Double) { folderIconSize = iconSize }
+
+    func leave() -> Double? {
+        defer { folderIconSize = nil }
+        return folderIconSize
     }
 
     enum Tally: Equatable {

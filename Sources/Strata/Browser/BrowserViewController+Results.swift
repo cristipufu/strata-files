@@ -125,7 +125,9 @@ extension BrowserViewController {
         if !isShowingResults {
             cancelPendingActions()
             inlineRename.dropHeldListing()
+            results.enter(iconSize: iconSize)
             ordering.enterResults()
+            folderOptions?.refresh()
             installActiveView()
             syncSortDescriptor()
             results.makeRoomForWhere(in: outlineView)
@@ -135,10 +137,13 @@ extension BrowserViewController {
     }
 
     func leaveResults() {
-        if let remembered = ordering.leaveResults() {
-            preferences.sortColumn = remembered.key.rawValue
-            preferences.sortAscending = remembered.ascending
+        ordering.leaveResults()
+        if let size = results.leave() { setIconSize(size, remember: false) }
+        if folderSettingsChangedInResults, let directory {
+            folderSettingsChangedInResults = false
+            restoreFolderPresentation(at: directory, showing: false)
         }
+        folderOptions?.refresh()
         installActiveView()
         results.restoreColumns(in: outlineView)
         fitNameColumn()

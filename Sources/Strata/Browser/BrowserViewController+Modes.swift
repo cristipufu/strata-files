@@ -3,7 +3,7 @@ import Quartz
 
 /// List, icons, columns, gallery and disk usage: the other presentations are child view controllers fed the same rows.
 extension BrowserViewController {
-    @objc func showViewOptions(_ sender: Any?) { services.viewOptions.show() }
+    @objc func showViewOptions(_ sender: Any?) { services.viewOptions.show(for: self) }
 
     var effectiveMode: BrowserViewMode { isShowingResults ? results.mode : mode }
 
@@ -35,6 +35,7 @@ extension BrowserViewController {
 
     /// `remember: false` (a workspace reopening) leaves the view new windows open in as it is.
     func setMode(_ newMode: BrowserViewMode, remember: Bool = true) {
+        if !remember, directory == nil, !isShowingResults { initialMode = newMode }
         guard supportsMode(newMode), newMode != effectiveMode else { return }
         let revision = navigationRevision
         columnController?.cancelPendingRename()
@@ -42,7 +43,10 @@ extension BrowserViewController {
         if isShowingResults { results.chooseMode(newMode) }
         else {
             setStoredMode(newMode)
-            if remember { preferences.viewMode = newMode.rawValue }
+            if remember {
+                if directory != nil { rememberFolderPresentation() }
+                else { preferences.viewMode = newMode.rawValue }
+            }
         }
         installActiveView()
         if !applyHeldListing() { pushContent() }
@@ -56,13 +60,13 @@ extension BrowserViewController {
     @objc func biggerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(1) }
         grid.setIconSize(min(256, grid.iconSize * 1.25), animated: true)
-        preferences.gridIconSize = Double(grid.iconSize)
+        setIconSize(Double(grid.iconSize))
     }
 
     @objc func smallerIcons(_ sender: Any?) {
         guard effectiveMode == .grid else { return stepTextSize(-1) }
         grid.setIconSize(max(32, grid.iconSize / 1.25), animated: true)
-        preferences.gridIconSize = Double(grid.iconSize)
+        setIconSize(Double(grid.iconSize))
     }
 
     /// The text size's range is 11–16 pt; past an end there's nothing to do.

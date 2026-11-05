@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · På denne Macen",
     "Application": "Program",
     "Applications": "Programmer",
-    "Applies to all windows.": "Gjelder alle vinduer.",
     "Applies to the list, columns and icons in every window.": "Gjelder listen, kolonnene og symbolene i alle vinduer.",
     "Apply": "Bruk",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "«%@»: %@",
     "← Copy": "← Kopier",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Velg   ↩ Gå   ⇥ Fullfør   esc Lukk",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Full disktilgang er på. Alt er klart."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Full disktilgang er på. Alt er klart.",
+    "Ascending": "Stigende",
+    "Use as Defaults": "Bruk som standard",
+    "Other options apply to all windows.": "De øvrige valgene gjelder alle vinduer."
   }
 }

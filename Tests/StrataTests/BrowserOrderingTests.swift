@@ -243,7 +243,7 @@ struct BrowserOrderingTests {
             browser.applySort(.size, ascending: false, remember: remember)
             #expect(browser.outlineView.sortDescriptors.first?.key == "size")
             #expect(browser.outlineView.sortDescriptors.first?.ascending == false)
-            #expect(environment.preferences.sortColumn == (remember ? "size" : "name"))
+            #expect(environment.preferences.sortColumn == "name")
             browser.showResults(entries, total: 2)
             browser.select([entries[0].url], scroll: false)
             browser.outlineView.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
@@ -254,8 +254,8 @@ struct BrowserOrderingTests {
             #expect(browser.outlineView.sortDescriptors.first?.key == "size")
             #expect(browser.outlineView.sortDescriptors.first?.ascending == false)
             #expect(browser.topLevelEntries.map(\.url) == entries.reversed().map(\.url))
-            #expect(environment.preferences.sortColumn == (remember ? "size" : "name"))
-            #expect(environment.preferences.sortAscending == !remember)
+            #expect(environment.preferences.sortColumn == "name")
+            #expect(environment.preferences.sortAscending)
         }
         #expect(tree.snapshot() == ["a", "z"])
         withExtendedLifetime(environment) {}

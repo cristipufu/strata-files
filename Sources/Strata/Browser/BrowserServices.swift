@@ -57,7 +57,8 @@ final class BrowserServices {
     lazy var workspaces = Workspaces(services: self)
     lazy var connectionSettings = ServerConnectionSettings(preferences: preferences)
     lazy var savedSearches = SavedSearches(preferences: preferences)
-    lazy var viewOptions = ViewOptionsWindowController(preferences: preferences)
+    lazy var folderViews = FolderViewSettings(preferences: preferences)
+    lazy var viewOptions = ViewOptionsWindowController(settings: folderViews)
     lazy var previews = PreviewCoordinator(preferences: preferences, directories: directories, copies: copies,
                                           thumbnails: thumbnails, clipboard: clipboard, openFile: windows.openFile,
                                           presentPanel: windows.preview)

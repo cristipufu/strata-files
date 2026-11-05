@@ -1367,8 +1367,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "    private func showLoadError() {\n        cancelPendingActions()",
-    "replace": "    private func showLoadError() {",
+    "find": "    private func showLoadError() {\n        folderOptions?.refresh()\n        cancelPendingActions()",
+    "replace": "    private func showLoadError() {\n        folderOptions?.refresh()",
     "rule": "Applied browser actions failed root rename restarts on a later refresh",
     "tests": "DirectoryReadSessionTests/aFailedRootRenameRequestDoesNotRestartOnALaterRefresh"
   },
@@ -3337,15 +3337,15 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.dropHeldListing()\n        cancelInlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        fetches.cancelSelection()",
+    "find": "func cancelPendingActions() {\n        pendingFolderPresentation = nil\n        noteNavigationContextChanged()\n        inlineRename.dropHeldListing()\n        cancelInlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        fetches.cancelSelection()",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "    func stopBackgroundWork() {\n        cancelPendingActions()",
-    "replace": "    func stopBackgroundWork() {",
+    "find": "    func stopBackgroundWork() {\n        folderOptions?.detach(self)\n        cancelPendingActions()",
+    "replace": "    func stopBackgroundWork() {\n        folderOptions?.detach(self)",
     "rule": "Provider fetch ownership closing a pane leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"
   },
@@ -8966,5 +8966,12 @@
     "replace": "        if false { return nil }",
     "rule": "Visual results paste into the folder visited before the search",
     "tests": "ResultPresentationTests/resultsKeepRankSelectionAndCopyPathsAcrossViewsWithoutAWriteDestination"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        pendingFolderPresentation = nil\n        noteNavigationContextChanged()",
+    "replace": "        noteNavigationContextChanged()",
+    "rule": "Folder view choices a cancelled read styles a different folder",
+    "tests": "FolderViewSettingsTests/choicesMadeDuringAReadBelongToItsResolvedFolderAndAreCancelledOnNavigation"
   }
 ]

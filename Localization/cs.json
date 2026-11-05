@@ -500,7 +500,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Na tomto Macu",
     "Application": "Aplikace",
     "Applications": "Aplikace",
-    "Applies to all windows.": "Platí pro všechna okna.",
     "Applies to the list, columns and icons in every window.": "Platí pro seznam, sloupce a ikony ve všech oknech.",
     "Apply": "Použít",
     "Apply %lld Changes": {
@@ -2079,6 +2078,9 @@
     "“%@”: %@": "„%@“: %@",
     "← Copy": "← Kopírovat",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Vybrat   ↩ Otevřít   ⇥ Doplnit   esc Zavřít",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Plný přístup k disku je zapnutý. Vše je připraveno."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Plný přístup k disku je zapnutý. Vše je připraveno.",
+    "Ascending": "Vzestupně",
+    "Use as Defaults": "Použít jako výchozí",
+    "Other options apply to all windows.": "Ostatní možnosti platí pro všechna okna."
   }
 }

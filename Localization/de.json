@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Auf diesem Mac",
     "Application": "Programm",
     "Applications": "Programme",
-    "Applies to all windows.": "Gilt für alle Fenster.",
     "Applies to the list, columns and icons in every window.": "Gilt für Liste, Spalten und Symbole in allen Fenstern.",
     "Apply": "Anwenden",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "„%@“: %@",
     "← Copy": "← Kopieren",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Auswählen   ↩ Öffnen   ⇥ Vervollständigen   esc Schließen",
-    "✓ Full Disk Access is on. You’re all set.": "✓ Festplattenvollzugriff ist aktiviert. Alles bereit."
+    "✓ Full Disk Access is on. You’re all set.": "✓ Festplattenvollzugriff ist aktiviert. Alles bereit.",
+    "Ascending": "Aufsteigend",
+    "Use as Defaults": "Als Standard verwenden",
+    "Other options apply to all windows.": "Die übrigen Optionen gelten für alle Fenster."
   }
 }

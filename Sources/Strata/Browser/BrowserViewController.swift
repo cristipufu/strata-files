@@ -49,6 +49,7 @@ final class BrowserViewController: NSViewController {
     init(services: BrowserServices) {
         self.services = services
         mode = BrowserViewMode(rawValue: services.preferences.viewMode) ?? .list
+        iconSize = services.preferences.gridIconSize
         loading = BrowserLoading(reader: services.directories, capacity: services.volumeSpace)
         mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
         outlineView = FileOutlineView(copies: services.copies)
@@ -148,6 +149,12 @@ final class BrowserViewController: NSViewController {
     let results = PaneResults()
     /// How the folder is presented; results keep their own presentation choice.
     private(set) var mode: BrowserViewMode
+    private(set) var iconSize: Double
+    var initialMode: BrowserViewMode?
+    var initialSort: BrowserOrdering.Choice?
+    var pendingFolderPresentation: FolderPresentation?
+    var folderSettingsChangedInResults = false
+    weak var folderOptions: FolderViewOptions?
     let presentations = BrowserPresentations()
     var gridController: GridViewController? { presentations.gridController }
     var columnController: ColumnBrowserViewController? { presentations.columnController }
@@ -155,6 +162,7 @@ final class BrowserViewController: NSViewController {
     var galleryController: GalleryViewController? { presentations.galleryController }
 
     func setStoredMode(_ newMode: BrowserViewMode) { mode = newMode }
+    func setStoredIconSize(_ size: Double) { iconSize = size }
     var outlineScrollView: NSScrollView { scrollView }
     /// Rows after filtering (what the views show) and all rows of the folder.
     var visibleRows: [FileNode] { rows }
@@ -206,6 +214,7 @@ final class BrowserViewController: NSViewController {
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(folderViewSettingsChanged(_:)), name: .folderViewSettingsChanged, object: preferences)
         services.clipboard.notifications.addObserver(self, selector: #selector(clipboardChanged), name: .clipboardChanged, object: services.clipboard)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
@@ -339,8 +348,11 @@ final class BrowserViewController: NSViewController {
         // Tags may have changed elsewhere (Finder) since they were last read here.
         services.tags.invalidate(url)
         let isNewDirectory = url != directory || isShowingResults
+        let restorePresentation = url != directory || loadError != nil
         if isShowingResults { leaveResults() }
         loading.navigate(to: url, newFolder: isNewDirectory)
+        folderOptions?.refresh()
+        if restorePresentation { restoreFolderPresentation(at: url, showing: false) }
         var watched: Task<Void, Never>?
         if isNewDirectory {
             cancelPendingActions()
@@ -416,6 +428,7 @@ final class BrowserViewController: NSViewController {
     /// watched in its place and read once more when it is, so a change made before that isn't missed.
     private func settle(at folder: URL, asked: URL, landed: Bool) {
         if folder != asked {
+            if pendingFolderPresentation == nil { restoreFolderPresentation(at: folder, showing: false) }
             pending.selection = pending.selection?.map { item in
                 PathSpelling.short(item.deletingLastPathComponent()) == PathSpelling.short(asked)
                     ? folder.appending(path: item.lastPathComponent) : item
@@ -452,12 +465,18 @@ final class BrowserViewController: NSViewController {
             return
         }
         inlineRename.dropHeldListing()
+        initialMode = nil; initialSort = nil
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
         let selection = pending.selection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
         let presorted = sortedBy != nil && sortedBy == ordering.snapshot
         listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
         loading.applied()
+        if let pendingFolderPresentation {
+            self.pendingFolderPresentation = nil
+            if canRememberFolderPresentation, let directory { services.folderViews.save(pendingFolderPresentation, for: directory) }
+        }
+        folderOptions?.refresh()
         outlineView.reloadData()
         if fromTop { scrollToTop() }
         for node in expanded where self.node(for: node.url) === node {
@@ -516,6 +535,7 @@ final class BrowserViewController: NSViewController {
     }
 
     private func showLoadError() {
+        folderOptions?.refresh()
         cancelPendingActions()
         sizer.cancelPending()
         mediaInfo.cancelPending()

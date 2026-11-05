@@ -424,7 +424,6 @@
     "Apple Intelligence · On this Mac": "Apple Intelligence · Ezen a Macen",
     "Application": "Alkalmazás",
     "Applications": "Alkalmazások",
-    "Applies to all windows.": "Minden ablakra érvényes.",
     "Applies to the list, columns and icons in every window.": "Minden ablakban a listára, az oszlopokra és az ikonokra vonatkozik.",
     "Apply": "Alkalmaz",
     "Apply %lld Changes": {
@@ -1945,6 +1944,9 @@
     "“%@”: %@": "„%@”: %@",
     "← Copy": "← Másolás",
     "↑↓ Choose   ↩ Go   ⇥ Complete   esc Close": "↑↓ Kiválasztás   ↩ Ugrás   ⇥ Kiegészítés   esc Bezárás",
-    "✓ Full Disk Access is on. You’re all set.": "✓ A teljes lemezhozzáférés be van kapcsolva. Minden készen áll."
+    "✓ Full Disk Access is on. You’re all set.": "✓ A teljes lemezhozzáférés be van kapcsolva. Minden készen áll.",
+    "Ascending": "Növekvő",
+    "Use as Defaults": "Használat alapértelmezettként",
+    "Other options apply to all windows.": "A többi beállítás minden ablakra érvényes."
   }
 }

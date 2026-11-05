@@ -148,8 +148,12 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
         if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
+        if !remember, directory == nil, !isShowingResults { initialSort = .init(key: key, ascending: direction) }
         syncSortDescriptor()
-        if remember, !isShowingResults { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
+        if remember, !isShowingResults {
+            if directory != nil { rememberFolderPresentation() }
+            else { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
+        }
         let selection = selectedURLs
         listing.sort(using: sort)
         outlineView.reloadData()

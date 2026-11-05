@@ -37,7 +37,7 @@ struct ViewOptionsTests {
 
     @Test func viewOptionsKeepsRoomForItsControlsAfterLayoutAndPreferenceChanges() async throws {
         let preferences = try Prefs.isolated()
-        let controller = ViewOptionsWindowController(preferences: preferences)
+        let controller = ViewOptionsWindowController(settings: FolderViewSettings(preferences: preferences))
         let window = try #require(controller.window)
         defer { window.close() }
         let content = try #require(window.contentView)
