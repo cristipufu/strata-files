@@ -36,12 +36,14 @@ extension BrowserViewController {
         // Results stay in List; a user command must not silently change the folder's saved view.
         guard !remember || !isShowingResults else { return }
         guard newMode != mode else { return }
+        let revision = navigationRevision
         columnController?.cancelPendingRename()
         let selection = selectedURLs
         setStoredMode(newMode)
         if remember { preferences.viewMode = newMode.rawValue }
         installActiveView()
-        pushContent()
+        if !applyHeldListing() { pushContent() }
+        guard navigationRevision == revision, mode == newMode else { return }
         select(selection)
         view.window?.makeFirstResponder(focusView)
         delegate?.browserSelectionDidChange(self)
@@ -72,6 +74,7 @@ extension BrowserViewController {
     /// Shows the active presentation's view on top of the list (the list's scroll view hides).
     func installActiveView() {
         presentations.install(effectiveMode, in: self)
+        if effectiveMode == .list { listNamesChanged() }
     }
 
     /// Hands the current rows (sorted, filtered, with match highlights) to the active presentation.

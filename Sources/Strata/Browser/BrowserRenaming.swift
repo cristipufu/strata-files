@@ -48,14 +48,18 @@ import AppKit
         return (node, name)
     }
 
-    /// Ends the edit without renaming: the name as it was.
-    func cancel() {
-        guard let field, let node else { return }
-        field.stringValue = node.entry.name
+    /// Returns the edited row so its owner can restore the current display label.
+    @discardableResult
+    func cancel() -> FileNode? {
+        let node = self.node, field = self.field
         self.node = nil
         self.field = nil
-        field.abortEditing()
-        Self.showAsLabel(field)
+        if let field, let node {
+            field.stringValue = node.entry.name
+            field.abortEditing()
+            Self.showAsLabel(field)
+        }
+        return node
     }
 
     /// `rows` without the one whose name is being edited: reloading a row gives it a new cell, which ends the edit.

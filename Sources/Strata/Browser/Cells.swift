@@ -116,6 +116,11 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         if thumbnailURL == nil, icon.image !== image { icon.image = image }
     }
 
+    func updateName(_ name: String) {
+        self.name = name
+        render()
+    }
+
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             gitBadge.backgroundStyle = backgroundStyle

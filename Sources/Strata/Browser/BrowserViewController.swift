@@ -202,6 +202,7 @@ final class BrowserViewController: NSViewController {
         installActiveView()
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(alternatingRowsChanged), name: .alternatingRowsChanged, object: preferences)
+        preferences.notifications.addObserver(self, selector: #selector(listNamesChanged), name: .listNamesChanged, object: preferences)
         preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(listColumnsChanged), name: .listColumnsChanged, object: nil)
         preferences.notifications.addObserver(self, selector: #selector(viewOptionsChanged), name: .viewOptionsChanged, object: nil)
@@ -343,7 +344,6 @@ final class BrowserViewController: NSViewController {
         var watched: Task<Void, Never>?
         if isNewDirectory {
             cancelPendingActions()
-            inlineRename.dropHeldListing()
             clearFilter()
             resorting.cancel()
             sizer.cancelPending()

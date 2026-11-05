@@ -30,6 +30,7 @@ struct ViewOptionsView: View {
     @State private var iconSize: Double
     @State private var previews: Bool
     @State private var alternatingRows: Bool
+    @State private var showNameExtensions: Bool
     @State private var hiddenColumns: Set<String>
 
     init(preferences: Prefs) {
@@ -37,6 +38,7 @@ struct ViewOptionsView: View {
         _options = State(initialValue: preferences.iconViewOptions)
         _iconSize = State(initialValue: preferences.gridIconSize)
         _alternatingRows = State(initialValue: preferences.alternatingRows)
+        _showNameExtensions = State(initialValue: preferences.showListNameExtensions)
         _previews = State(initialValue: preferences.showIconPreviews)
         _hiddenColumns = State(initialValue: preferences.hiddenListColumns)
     }
@@ -59,6 +61,7 @@ struct ViewOptionsView: View {
             }
             Section("List columns") {
                 Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; preferences.alternatingRows = $0 }))
+                Toggle("Show extensions in Name column", isOn: Binding(get: { showNameExtensions }, set: { showNameExtensions = $0; preferences.showListNameExtensions = $0 }))
                 ForEach(ListColumn.allCases, id: \.self) { column in
                     Toggle(column.title, isOn: Binding(get: { !hiddenColumns.contains(column.rawValue) }, set: { shown in
                         if shown { hiddenColumns.remove(column.rawValue) } else { hiddenColumns.insert(column.rawValue) }
@@ -79,6 +82,7 @@ struct ViewOptionsView: View {
         }
         .onReceive(preferences.notifications.publisher(for: .appearanceChanged)) { _ in previews = preferences.showIconPreviews }
         .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
+        .onReceive(preferences.notifications.publisher(for: .listNamesChanged, object: preferences)) { _ in showNameExtensions = preferences.showListNameExtensions }
         .onReceive(preferences.notifications.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = preferences.hiddenListColumns }
     }
 }

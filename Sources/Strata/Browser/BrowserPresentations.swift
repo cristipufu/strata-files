@@ -38,7 +38,7 @@ final class BrowserPresentations {
 
     private func attach(_ mode: BrowserViewMode, in browser: BrowserViewController) {
         let active = controller(for: mode, in: browser)
-        if active != nil { browser.inlineRename.cancel() }
+        if active != nil { browser.cancelInlineRename() }
         for controller in cached where controller !== active && controller.isViewLoaded {
             controller.cancelRename()
             controller.view.removeFromSuperview()

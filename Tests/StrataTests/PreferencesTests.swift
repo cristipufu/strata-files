@@ -106,6 +106,7 @@ struct PreferencesTests {
         prefs.defaults.removeObject(forKey: "gridIconSize")
         #expect(prefs.foldersFirst && prefs.gridIconSize == 72)
         #expect(prefs.reopenWindows && prefs.openArchivesAsFolders && prefs.showIconPreviews)
+        #expect(prefs.showListNameExtensions)
         #expect(!prefs.dualPaneAddressBars)
         #expect(prefs.density == 1 && prefs.nameTextSize == 13)
         #expect(prefs.favoritePaths == nil)
@@ -126,6 +127,7 @@ struct PreferencesTests {
         prefs.favoritePaths = ["/one", "/two"]
         prefs.collapsedSidebarSections = ["volumes", "favorites"]
         prefs.hiddenListColumns = ["size", "created"]
+        prefs.showListNameExtensions = false
         prefs.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
         prefs.colorThemeOptions = .init(palette: .teal, tintsWindow: false)
         prefs.lastLocation = URL(fileURLWithPath: "/one", isDirectory: true)
@@ -135,6 +137,7 @@ struct PreferencesTests {
         #expect(reopened.favoritePaths == ["/one", "/two"])
         #expect(reopened.collapsedSidebarSections == ["favorites", "volumes"])
         #expect(reopened.hiddenListColumns == ["size", "created"])
+        #expect(!reopened.showListNameExtensions)
         #expect(reopened.iconViewOptions == .init(showsInfo: false, folderInfo: .size))
         #expect(reopened.colorThemeOptions == .init(palette: .teal, tintsWindow: false))
         #expect(reopened.lastLocation?.path == "/one")
@@ -146,7 +149,7 @@ struct PreferencesTests {
         let second = try Prefs.isolated()
         let events = Mutex<[String]>([])
         let names: [Notification.Name] = [.prefsChanged, .appearanceChanged, .favoritesChanged,
-                                         .viewOptionsChanged, .listColumnsChanged, .colorThemeChanged]
+                                         .viewOptionsChanged, .listColumnsChanged, .listNamesChanged, .colorThemeChanged]
         var observers: [(NotificationCenter, NSObjectProtocol)] = []
         for (label, center) in [("first", first.notifications), ("second", second.notifications),
                                 ("global", NotificationCenter.default)] {
@@ -163,6 +166,8 @@ struct PreferencesTests {
         first.favoritePaths = ["/one"]
         first.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
         first.hiddenListColumns = ["size"]
+        first.showListNameExtensions = false
+        first.showListNameExtensions = false
         first.colorThemeOptions = .init(palette: .rose)
         first.colorThemeOptions = .init(palette: .rose)
         #expect(events.withLock { $0 } == names.map { "first:" + $0.rawValue })
@@ -170,6 +175,7 @@ struct PreferencesTests {
         #expect(second.theme == 0)
         #expect(second.favoritePaths == nil)
         #expect(second.iconViewOptions == IconViewOptions())
+        #expect(second.showListNameExtensions)
         #expect(second.colorThemeOptions == ColorThemeOptions())
         #expect(second.defaults.persistentDomain(forName: second.domainName)?.isEmpty ?? true)
         second.favoritePaths = []

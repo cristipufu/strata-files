@@ -107,11 +107,20 @@ extension BrowserViewController {
     /// Navigation and failed reads must not leave a selection or rename waiting for an unrelated later listing.
     func cancelPendingActions() {
         noteNavigationContextChanged()
-        inlineRename.cancel()
+        inlineRename.dropHeldListing()
+        cancelInlineRename()
         presentations.cached.forEach { $0.cancelRename() }
         fetches.cancelSelection()
         pending.cancel()
         columnController?.cancelPendingRename()
+    }
+
+    func cancelInlineRename() {
+        guard let node = inlineRename.cancel() else { return }
+        let row = outlineView.row(forItem: node), column = outlineView.column(withIdentifier: .name)
+        guard row >= 0, column >= 0,
+              let cell = outlineView.view(atColumn: column, row: row, makeIfNecessary: false) as? NameCellView else { return }
+        cell.updateName(node.entry.listName(showingExtension: preferences.showListNameExtensions))
     }
 
     func stopBackgroundWork() {
@@ -303,6 +312,17 @@ extension BrowserViewController {
     @objc func alternatingRowsChanged() {
         ThemeRowView.updateAlternatingRows(in: outlineView, enabled: preferences.alternatingRows)
         columnController?.updateAlternatingRows()
+    }
+
+    @objc func listNamesChanged() {
+        guard isViewLoaded, effectiveMode == .list else { return }
+        let column = outlineView.column(withIdentifier: .name)
+        guard column >= 0 else { return }
+        outlineView.enumerateAvailableRowViews { rowView, row in
+            guard let node = self.outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil,
+                  let cell = rowView.view(atColumn: column) as? NameCellView else { return }
+            cell.updateName(node.entry.listName(showingExtension: self.preferences.showListNameExtensions))
+        }
     }
 
     /// Density or text size changed: every view takes the new row height and font (nothing is read again).

@@ -3337,7 +3337,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.cancel()\n        presentations.cached.forEach { $0.cancelRename() }\n        fetches.cancelSelection()",
+    "find": "func cancelPendingActions() {\n        noteNavigationContextChanged()\n        inlineRename.dropHeldListing()\n        cancelInlineRename()\n        presentations.cached.forEach { $0.cancelRename() }\n        fetches.cancelSelection()",
     "replace": "func cancelPendingActions() {",
     "rule": "Provider fetch ownership navigation leaves selection prefetch running",
     "tests": "ProviderFetchTests/changingSelectionAndLeavingThePaneCancelItsPrefetch"

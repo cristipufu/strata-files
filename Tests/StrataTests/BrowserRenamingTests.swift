@@ -48,4 +48,19 @@ import Testing
         renaming.dropHeldListing()
         #expect(renaming.takeHeldListing(generation: 5) == nil)
     }
+
+    @Test func cancellingAfterTheFieldDisappearsReleasesTheEditedNode() throws {
+        let tree = try TestTree("report.txt")
+        let renaming = BrowserRenaming(), delegate = Delegate()
+        var field: NSTextField? = NSTextField(labelWithString: "report.txt")
+        var node: FileNode? = FileNode(entry: try #require(FileEntry(url: tree.url("report.txt"))))
+        weak var released = node
+        renaming.begin(try #require(node), in: try #require(field), delegate: delegate, window: nil)
+        node = nil
+        field = nil
+        #expect(renaming.field == nil && released != nil)
+        renaming.cancel()
+        #expect(renaming.node == nil && released == nil)
+        #expect(tree.snapshot() == ["report.txt"])
+    }
 }

@@ -30,6 +30,16 @@ package nonisolated struct FileEntry: Sendable, Hashable {
     /// A folder you navigate into (packages such as apps open instead).
     package var isFolder: Bool { isDirectory && !isPackage }
 
+    package func listName(showingExtension: Bool) -> String {
+        guard !showingExtension, !isFolder else { return displayName }
+        let ext = url.pathExtension
+        guard !ext.isEmpty else { return displayName }
+        let suffix = "." + ext
+        guard let range = displayName.range(of: suffix, options: [.backwards, .anchored, .caseInsensitive]),
+              range.lowerBound != displayName.startIndex else { return displayName }
+        return String(displayName[..<range.lowerBound])
+    }
+
     /// The folder opening `url` should show. A symlink or Finder alias to a folder opens that folder:
     /// listing the link itself fails, because the link is not a directory.
     package static func openedFolder(_ url: URL) -> URL {

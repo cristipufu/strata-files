@@ -65,7 +65,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
                 cell.identifier = .nameCell
                 return cell
             }()
-            cell.configure(name: entry.displayName, icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
+            cell.configure(name: entry.listName(showingExtension: preferences.showListNameExtensions), icon: services.thumbnails.icon(for: entry), matches: node.matchIndices, dimmed: dimmed,
                            git: git.badge(for: entry.url, isDirectory: entry.isDirectory), tags: services.tags.tags(for: entry.url),
                            cloud: services.cloud.status(for: entry.url), thumbnail: preferences.showIconPreviews ? entry : nil,
                            thumbnails: services.thumbnails, scale: outlineView.window?.backingScaleFactor ?? 2,
@@ -161,12 +161,16 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 // MARK: - Rename editing
 
 extension BrowserViewController: NSTextFieldDelegate {
+    func applyHeldListing() -> Bool {
+        guard let held = inlineRename.takeHeldListing(generation: generation) else { return false }
+        apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy)
+        return true
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, let ended = inlineRename.end(field) else { return }
         let node = ended.node, newName = ended.name
-        if let held = inlineRename.takeHeldListing(generation: generation) {
-            apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy)
-        } else {
+        if !applyHeldListing() {
             let row = outlineView.row(forItem: node)
             if row >= 0 {
                 outlineView.reloadData(forRowIndexes: [row], columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
