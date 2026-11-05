@@ -32,6 +32,63 @@ import Testing
         let samples: [Sample]
     }
 
+    nonisolated private struct ReorderReport: Codable, Sendable {
+        let commit: String
+        let configuration: String
+        let os: String
+        let processorCount: Int
+        let thermalState: Int
+        let lowPowerMode: Bool
+        let entries: Int
+        let milliseconds: [Double]
+    }
+
+    @Test func measureNativeMetadataReordering() async throws {
+        let variables = ProcessInfo.processInfo.environment
+        guard variables["STRATA_BENCHMARK_SCENARIO"] == "resort" else { return }
+        let count = Int(variables["STRATA_BENCHMARK_ENTRIES"] ?? "") ?? 10_000
+        let repetitions = Int(variables["STRATA_BENCHMARK_REPETITIONS"] ?? "") ?? 3
+        try #require((100...100_000).contains(count) && (1...10).contains(repetitions))
+        let destination = try #require(variables["STRATA_BENCHMARK_REPORT"])
+        let tree = try TestTree()
+        try await Self.seed(tree.root, count: count)
+        var measurements: [Double] = []
+        for _ in 0..<repetitions {
+            let environment = try IndependentEnvironment()
+            environment.preferences.viewMode = BrowserViewMode.list.rawValue
+            let browser = BrowserViewController(services: environment.services)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+                styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = browser
+            browser.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+            defer { browser.stopBackgroundWork(); window.contentViewController = nil; window.close(); withExtendedLifetime(environment) {} }
+            browser.load(tree.root)
+            await browser.directoryReads.task?.value
+            await environment.services.tags.settled()
+            try #require(browser.visibleRows.count == count)
+            let bitmap = try #require(browser.view.bitmapImageRepForCachingDisplay(in: browser.view.bounds))
+            try draw(browser, bitmap: bitmap)
+            let selected = browser.visibleRows[count / 2].url
+            browser.select([selected], scroll: false)
+            browser.ordering.choose(.init(key: .name, ascending: false), remember: false)
+            let start = ContinuousClock.now
+            browser.resortAfterMetadata()
+            try draw(browser, bitmap: bitmap)
+            measurements.append(Self.milliseconds(since: start))
+            #expect(browser.selectedURLs == [selected])
+            for index in [0, count / 2, count - 1] {
+                #expect((browser.outlineView.item(atRow: index) as? FileNode) === browser.visibleRows[index])
+            }
+        }
+        let process = ProcessInfo.processInfo
+        try await Self.save(ReorderReport(commit: variables["STRATA_BENCHMARK_COMMIT"] ?? "unknown",
+            configuration: variables["STRATA_BENCHMARK_CONFIGURATION"] ?? "unknown", os: process.operatingSystemVersionString,
+            processorCount: process.processorCount, thermalState: process.thermalState.rawValue,
+            lowPowerMode: process.isLowPowerModeEnabled, entries: count,
+            milliseconds: measurements), to: URL(filePath: destination))
+    }
+
     @Test func measureNativeDirectoryRenderingAndScrolling() async throws {
         let variables = ProcessInfo.processInfo.environment
         let count = Int(variables["STRATA_BENCHMARK_ENTRIES"] ?? "") ?? 10_000
@@ -148,7 +205,7 @@ import Testing
             else { try Data("Synthetic benchmark file.\n".utf8).write(to: folder.appending(path: name + ".txt")) }
         }
     }
-    @concurrent private static func save(_ report: Report, to url: URL) async throws {
+    @concurrent private static func save<T: Encodable & Sendable>(_ report: T, to url: URL) async throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(report).write(to: url, options: .atomic)
     }

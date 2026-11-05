@@ -2643,8 +2643,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "if !changedParents.isEmpty {",
-    "replace": "if false {",
+    "find": "if changedParents.isEmpty, sorted.elementsEqual(rows, by: { $0 === $1 }) { return }",
+    "replace": "if sorted.elementsEqual(rows, by: { $0 === $1 }) { return }",
     "rule": "Browser ordering native descendants refresh even when roots stay in place",
     "tests": "BrowserOrderingTests/metadataResortUpdatesNativeDescendantRowsAndKeepsSelection"
   },

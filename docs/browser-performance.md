@@ -6,6 +6,17 @@ icons. `--entries 100000`, `--runs 5` and `--configuration debug` change those c
 keeps the JSON, test log and crash diagnostics at a chosen location. Otherwise the script prints a temporary result
 directory. It does not activate, drive or restart an installed Strata.
 
+`--scenario resort` measures the metadata-driven native row-reordering path separately. It loads the same synthetic
+folder in List, draws it, selects an item, then reverses name ordering through `resortAfterMetadata` and draws again.
+Its timed interval includes sorting, updating native rows and drawing. It checks that native rows match the model
+and that the selected file stays selected. This is a controlled large-permutation workload, not a measurement of
+metadata I/O or a claim that normal metadata changes reverse every row. Results record the revision, configuration,
+OS, core count, power and thermal state. For example:
+
+```sh
+python3 scripts/benchmark-browser.py --scenario resort --entries 10000 --runs 3 --configuration debug
+```
+
 The opt-in `BrowserPerformanceMeasurements` fixture uses the real directory reader, browser controller and native
 views. Every sample creates independent preferences, encrypted storage, credentials, providers and a private
 pasteboard. Source files live only in a temporary fixture. The benchmark is disabled during ordinary correctness
@@ -55,3 +66,37 @@ respectively. One paired run does not establish a stable performance target, and
 for the optimized baseline. Remaining first-frame and actor delay costs need representative profiles before selecting
 a larger loading change. These observations justify removing redundant work; they do not establish that progressive
 loading is the next best change.
+
+## Follow-up profiling, 6 November 2026
+
+The optimized 10,000-entry browsing baseline at `25034e4` (three runs per mode) recorded first-frame medians of
+949 ms in List and 984 ms in Icons, largest main actor delays of 92 ms and 118 ms, and scroll-draw p95 of about 22 ms
+in both modes. A separate 12-second sample of this workload showed `TagStore.load` repeating lexical URL
+normalization for every entry. Bulk tag preparation now uses each entry's existing location key. Cache keys, tag
+invalidation and read ownership are unchanged; injected-reader tests cover private-path aliases, dot components,
+Unicode and escaped filenames.
+
+The new reordering scenario found a larger cost: the previous metadata pass searched the full working array even for
+rows already in place and could ask AppKit to animate thousands of moves. For 10,000 entries, the initial debug
+sample took 6,891 ms. After the change, three debug samples had a median of 54 ms. These measurements are from the
+same machine and scenario; the one-sample baseline does not establish a stable release performance ratio.
+
+`BrowserRowMoves` validates a complete identity permutation before native updates, skips rows already in place and
+plans at most 64 moves. Larger changes use one native reload, preserving expanded folders and exact selection.
+Inactive List views do not animate while Icons, Gallery or another presentation is active. Unchanged orders do no
+native work. Tests exercise all small permutations, invalid identities, the animation limit, a 10,000-row change,
+and materialized native List, Icons and Gallery views. Loosening the limit by one makes the boundary test fail.
+
+The matched optimized browsing follow-up (three samples per mode, same viewport, OS, core count, nominal thermal
+state and Low Power Mode off) measured:
+
+| Measurement | Before | After |
+|---|---:|---:|
+| List: largest main actor delay | 92.0 ms | 37.7 ms |
+| Icons: largest main actor delay | 117.8 ms | 53.4 ms |
+| List: median first native frame | 949 ms | 937 ms |
+| Icons: median first native frame | 984 ms | 946 ms |
+
+Scroll-draw p95 stayed around 22–23 ms; these samples do not establish a scrolling improvement. Idle CPU remained
+below 0.5% of one core. Process peak RSS was 169 MiB for List samples and 235 MiB after Icons, compared with 171 MiB
+and 244 MiB before. These are whole-test-process high-water marks, not per-view allocations or installed-app memory.

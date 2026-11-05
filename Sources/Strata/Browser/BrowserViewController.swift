@@ -655,30 +655,26 @@ final class BrowserViewController: NSViewController {
         let selection = selectedURLs
         var sorted = nodes
         let changedParents = ordering.sort(&sorted)
-        if !changedParents.isEmpty {
+        if changedParents.isEmpty, sorted.elementsEqual(rows, by: { $0 === $1 }) { return }
+        let moves = changedParents.isEmpty && activeView == nil ? BrowserRowMoves.plan(from: rows, to: sorted) : nil
+        if let moves {
+            guard !moves.isEmpty else { return }
+            outlineView.beginUpdates()
+            for move in moves {
+                outlineView.moveItem(at: move.from, inParent: nil, to: move.to, inParent: nil)
+            }
+            listing.reorderRoots(sorted)
+            outlineView.endUpdates()
+        } else {
             let expanded = (0..<outlineView.numberOfRows).compactMap { outlineView.item(atRow: $0) as? FileNode }
                 .filter { outlineView.isItemExpanded($0) }
-            // Root moves alone cannot update the outline's cached child rows. Keep native expansion and selection
-            // while applying changed descendant orders; shallow lists retain the usual animated root moves below.
+            // Large changes and descendant orders use one reload. Cached presentations need no row animations.
             listing.reorderRoots(sorted)
             outlineView.reloadData()
             for node in expanded { outlineView.expandItem(node) }
             select(selection, scroll: false)
             pushContent()
-            return
         }
-        guard sorted.map(ObjectIdentifier.init) != rows.map(ObjectIdentifier.init) else { return }
-        var working = rows
-        outlineView.beginUpdates()
-        for (target, node) in sorted.enumerated() {
-            guard let current = working.firstIndex(where: { $0 === node }), current != target else { continue }
-            outlineView.moveItem(at: current, inParent: nil, to: target, inParent: nil)
-            working.remove(at: current)
-            working.insert(node, at: target)
-        }
-        listing.reorderRoots(sorted)
-        outlineView.endUpdates()
-        if activeView != nil { pushContent() }
     }
 
     private func folderSizeArrived(_ url: URL) {

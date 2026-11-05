@@ -47,6 +47,7 @@ def main():
     parser.add_argument("--entries", type=bounded_integer(100, 100_000), default=10_000)
     parser.add_argument("--runs", type=bounded_integer(1, 10), default=3)
     parser.add_argument("--configuration", choices=["debug", "release"], default="release")
+    parser.add_argument("--scenario", choices=["browse", "resort"], default="browse")
     parser.add_argument("--output", type=Path, help="new result directory; defaults to a temporary directory")
     args = parser.parse_args()
     output = args.output.resolve() if args.output else Path(tempfile.mkdtemp(prefix="strata-browser-measurements-"))
@@ -59,17 +60,24 @@ def main():
     variables = dict(os.environ, DEVELOPER_DIR=os.environ.get("DEVELOPER_DIR", "/Applications/Xcode.app/Contents/Developer"),
         STRATA_BROWSER_BENCHMARK="1", STRATA_BENCHMARK_ENTRIES=str(args.entries), STRATA_BENCHMARK_REPETITIONS=str(args.runs),
         STRATA_BENCHMARK_REPORT=str(report), STRATA_BENCHMARK_CONFIGURATION=args.configuration,
-        STRATA_BENCHMARK_COMMIT=revision)
+        STRATA_BENCHMARK_COMMIT=revision, STRATA_BENCHMARK_SCENARIO=args.scenario)
+    measurement = "measureNativeDirectoryRenderingAndScrolling" if args.scenario == "browse" else "measureNativeMetadataReordering"
     command = [sys.executable, "scripts/run-test-check.py", "--output-directory", str(output / "diagnostics"), "--",
-               "swift", "test", "-c", args.configuration, "--jobs", "4", "--no-parallel", "--filter", "BrowserPerformanceMeasurements"]
-    print(f"Building and measuring {args.entries:,} entries, {args.runs} runs per mode; output: {output}", flush=True)
+               "swift", "test", "-c", args.configuration, "--jobs", "4", "--no-parallel", "--filter", "BrowserPerformanceMeasurements." + measurement]
+    print(f"Building and measuring {args.entries:,} entries, {args.runs} {args.scenario} runs; output: {output}", flush=True)
     with (output / "test.log").open("w") as log:
         result = subprocess.run(command, cwd=ROOT, env=variables, stdout=log, stderr=subprocess.STDOUT)
     if result.returncode:
         print(f"Measurement failed; inspect {output / 'test.log'}", file=sys.stderr)
         return result.returncode
-    summarize(json.loads(report.read_text()))
-    print("Native offscreen frames; filesystem caches are warm. Peak RSS belongs to the whole test process.")
+    data = json.loads(report.read_text())
+    if args.scenario == "browse":
+        summarize(data)
+    else:
+        print(f"Native metadata reorder median: {statistics.median(data['milliseconds']):.2f} ms")
+    print("Native offscreen frames; filesystem caches are warm.")
+    if args.scenario == "browse":
+        print("Peak RSS belongs to the whole test process.")
     return 0
 
 
