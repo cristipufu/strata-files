@@ -133,7 +133,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     private func makeSearchItem(_ id: NSToolbarItem.Identifier, inserted flag: Bool) -> NSToolbarItem {
-        let item = NSSearchToolbarItem(itemIdentifier: id)
+        let item = CollapsibleSearchToolbarItem(itemIdentifier: id)
         item.searchField.placeholderString = String(localized: "Search", comment: "Placeholder of the toolbar search field")
         item.searchField.delegate = self
         item.preferredWidthForSearchField = 200

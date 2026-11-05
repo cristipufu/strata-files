@@ -3,7 +3,7 @@ import AppKit
 /// The window's toolbar items it keeps up to date as it changes: those in its toolbar now, forgotten once removed.
 final class WindowToolbarItems {
     private(set) var pathBar: NSToolbarItem?
-    private(set) var search: NSSearchToolbarItem?
+    private(set) var search: CollapsibleSearchToolbarItem?
     private(set) var viewMode: NSToolbarItemGroup?
     private(set) var sidebarMode: NSToolbarItemGroup?
     private(set) var dualPane: NSToolbarItem?
@@ -12,7 +12,7 @@ final class WindowToolbarItems {
     func adopt(_ item: NSToolbarItem) {
         switch item.itemIdentifier {
         case .pathBar: pathBar = item
-        case .search: search = item as? NSSearchToolbarItem
+        case .search: search = item as? CollapsibleSearchToolbarItem
         case .viewMode: viewMode = item as? NSToolbarItemGroup
         case .sidebarMode: sidebarMode = item as? NSToolbarItemGroup
         case .dualPane: dualPane = item
