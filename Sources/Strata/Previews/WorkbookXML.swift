@@ -1,8 +1,17 @@
 import CNativeReaders
 import Foundation
 
-nonisolated final class XLSXXML: NSObject, XMLParserDelegate {
-    enum Event { case start(String, [String: String]), text(String), end(String) }
+nonisolated final class WorkbookXML: NSObject, XMLParserDelegate {
+    struct Name: Hashable {
+        let local: String
+        let namespace: String
+        init(_ local: String, namespace: String = "") { self.local = local; self.namespace = namespace }
+    }
+    struct Attributes {
+        let values: [Name: String]
+        subscript(_ local: String, namespace namespace: String = "") -> String? { values[Name(local, namespace: namespace)] }
+    }
+    enum Event { case start(Name, Attributes), text(String), end(Name) }
     static let byteLimit = 8 << 20
     private static let depthLimit = 64
     private static let nodeLimit = 250_000
@@ -15,6 +24,8 @@ nonisolated final class XLSXXML: NSObject, XMLParserDelegate {
     private var textBytes = 0
     private var finished = false
     private var failure: Error?
+    private var namespaces: [String: [String]] = ["xml": ["http://www.w3.org/XML/1998/namespace"]]
+    private var mappings = 0
 
     private init(receive: @escaping (Event) throws -> Bool) { self.receive = receive }
 
@@ -23,8 +34,9 @@ nonisolated final class XLSXXML: NSObject, XMLParserDelegate {
     static func read(_ data: Data, receive: @escaping (Event) throws -> Bool) throws {
         try Task.checkCancellation()
         try validate(data)
-        let delegate = XLSXXML(receive: receive), parser = XMLParser(data: data)
+        let delegate = WorkbookXML(receive: receive), parser = XMLParser(data: data)
         parser.shouldProcessNamespaces = true
+        parser.shouldReportNamespacePrefixes = true
         parser.shouldResolveExternalEntities = false
         parser.externalEntityResolvingPolicy = .never
         parser.delegate = delegate
@@ -59,7 +71,17 @@ nonisolated final class XLSXXML: NSObject, XMLParserDelegate {
             failure = Self.limitError; parser.abortParsing(); return
         }
         depth += 1; nodes += 1
-        deliver(.start(name, attributes), parser: parser)
+        var qualified: [Name: String] = [:]
+        for (key, value) in attributes {
+            let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+            let attribute: Name
+            if parts.count == 2 {
+                guard let namespace = namespaces[parts[0]]?.last else { failure = PreviewError.unsupported; parser.abortParsing(); return }
+                attribute = Name(parts[1], namespace: namespace)
+            } else { attribute = Name(key) }
+            guard qualified.updateValue(value, forKey: attribute) == nil else { failure = PreviewError.unsupported; parser.abortParsing(); return }
+        }
+        deliver(.start(Name(name, namespace: namespaceURI ?? ""), Attributes(values: qualified)), parser: parser)
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
@@ -76,6 +98,18 @@ nonisolated final class XLSXXML: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
         guard depth > 0 else { failure = PreviewError.unsupported; parser.abortParsing(); return }
         depth -= 1
-        deliver(.end(name), parser: parser)
+        deliver(.end(Name(name, namespace: namespaceURI ?? "")), parser: parser)
+    }
+
+    func parser(_ parser: XMLParser, didStartMappingPrefix prefix: String, toURI namespaceURI: String) {
+        guard mappings < Self.nodeLimit, prefix.utf8.count <= Self.attributeNameByteLimit,
+              namespaceURI.utf8.count <= Self.attributeValueByteLimit else { failure = Self.limitError; parser.abortParsing(); return }
+        mappings += 1
+        namespaces[prefix, default: []].append(namespaceURI)
+    }
+
+    func parser(_ parser: XMLParser, didEndMappingPrefix prefix: String) {
+        namespaces[prefix]?.removeLast()
+        if namespaces[prefix]?.isEmpty == true { namespaces[prefix] = nil }
     }
 }

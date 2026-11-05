@@ -20,17 +20,17 @@ nonisolated struct XLSXStyles: Sendable {
         guard let epoch = calendar.date(from: components) else { throw PreviewError.unsupported }
         self.epoch = epoch
         guard let data else { kinds = [.number]; return }
-        try XLSXXML.validate(data, limit: 512 << 10)
+        try WorkbookXML.validate(data, limit: 512 << 10)
         let root = try BookXML.parse(data)
         guard root.name == "styleSheet" else { throw PreviewError.unsupported }
         var formats: [Int: String] = [:]
         for item in root.children.first(where: { $0.name == "numFmts" })?.children ?? [] where item.name == "numFmt" {
             guard formats.count < Self.formatLimit, let raw = item.attributes["numFmtId"], let id = Int(raw), id >= 0,
-                  let code = item.attributes["formatCode"], code.utf8.count <= Self.formatByteLimit, formats[id] == nil else { throw XLSXXML.limitError }
+                  let code = item.attributes["formatCode"], code.utf8.count <= Self.formatByteLimit, formats[id] == nil else { throw WorkbookXML.limitError }
             formats[id] = code
         }
         let cells = root.children.first { $0.name == "cellXfs" }?.children.filter { $0.name == "xf" } ?? []
-        guard cells.count <= Self.styleLimit else { throw XLSXXML.limitError }
+        guard cells.count <= Self.styleLimit else { throw WorkbookXML.limitError }
         kinds = cells.isEmpty ? [.number] : try cells.map { cell in
             guard let id = Int(cell.attributes["numFmtId"] ?? "0"), id >= 0 else { throw PreviewError.unsupported }
             if let code = formats[id] { return Self.kind(code) }

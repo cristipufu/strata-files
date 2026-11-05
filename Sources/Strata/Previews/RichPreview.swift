@@ -27,7 +27,8 @@ package enum RichPreview {
         case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
         case .stl: ModelPreviewView(url: url)
         case .threeMF: ModelPreviewView(url: url, format: .threeMF)
-        case .xlsx: XLSXPreviewView(url: url, clipboard: clipboard)
+        case .xlsx: WorkbookPreviewView(url: url, format: .xlsx, clipboard: clipboard)
+        case .ods: WorkbookPreviewView(url: url, format: .ods, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         }
         view.fallback = fallback
@@ -50,6 +51,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case stl
     case threeMF
     case xlsx
+    case ods
     case archive(ArchiveKind)
 
     package init?(url: URL, contentType: UTType?) {
@@ -76,6 +78,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .delimited(separator: 0x7C)
         } else if ext == "xlsx" {
             self = .xlsx
+        } else if ext == "ods" {
+            self = .ods
         } else if ext == "stl" {
             self = .stl
         } else if ext == "3mf" {

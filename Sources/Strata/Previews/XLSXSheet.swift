@@ -1,17 +1,12 @@
 import StrataModel
 import Foundation
 
-nonisolated struct XLSXPage: Sendable {
-    let data: GridData
-    let hasMore: Bool
-}
-
 nonisolated final class XLSXSheet {
-    static let rowLimit = 200
-    static let columnLimit = 256
-    private static let maximumRow = 1_048_576
-    private static let maximumColumn = 16_384
-    private static let pageByteLimit = 2 << 20
+    static let rowLimit = SpreadsheetLimits.rowsPerPage
+    static let columnLimit = SpreadsheetLimits.visibleColumns
+    private static let maximumRow = SpreadsheetLimits.maximumRows
+    private static let maximumColumn = SpreadsheetLimits.maximumColumns
+    private static let pageByteLimit = SpreadsheetLimits.pageBytes
     private let strings: [String]
     private let styles: XLSXStyles
     private let offset: Int
@@ -36,22 +31,23 @@ nonisolated final class XLSXSheet {
         self.strings = strings; self.styles = styles; self.offset = offset
     }
 
-    static func read(_ data: Data, strings: [String], styles: XLSXStyles, offset: Int) throws -> XLSXPage {
+    static func read(_ data: Data, strings: [String], styles: XLSXStyles, offset: Int) throws -> WorkbookPage {
         guard offset >= 0, offset <= maximumRow else { throw PreviewError.unsupported }
         let sheet = XLSXSheet(strings: strings, styles: styles, offset: offset)
-        try XLSXXML.read(data) { try sheet.receive($0) }
-        var grid = GridData(columns: [GridColumn(title: "#", isNumeric: true)] + (0..<sheet.width).map { GridColumn(title: title($0)) },
+        try WorkbookXML.read(data) { try sheet.receive($0) }
+        var grid = GridData(columns: [GridColumn(title: "#", isNumeric: true)] + (0..<sheet.width).map { GridColumn(title: SpreadsheetColumn.title($0)) },
             rows: sheet.rows.map { row in
                 [.text(String(row.number))] + (0..<sheet.width).map { row.cells[$0] ?? .text("") }
             })
         grid.detectNumericColumns()
         grid.measureColumns()
-        return XLSXPage(data: grid, hasMore: sheet.more)
+        return WorkbookPage(data: grid, hasMore: sheet.more)
     }
 
-    private func receive(_ event: XLSXXML.Event) throws -> Bool {
+    private func receive(_ event: WorkbookXML.Event) throws -> Bool {
         switch event {
-        case .start(let name, let attributes):
+        case .start(let element, let attributes):
+            let name = element.local
             try start(name, attributes)
             stack.append(name)
         case .text(let text):
@@ -59,7 +55,8 @@ nonisolated final class XLSXSheet {
             if stack.last == "v" { try append(text, to: &value) }
             if stack.last == "f" { try append(text, to: &formula) }
             if stack.last == "t", stack.contains("is"), !stack.contains("rPh") { try append(text, to: &inline) }
-        case .end(let name):
+        case .end(let element):
+            let name = element.local
             if name == "c" { try finishCell(); column = -1 }
             if name == "row", !row.isEmpty {
                 if rowCount >= offset {
@@ -73,7 +70,7 @@ nonisolated final class XLSXSheet {
         return true
     }
 
-    private func start(_ name: String, _ attributes: [String: String]) throws {
+    private func start(_ name: String, _ attributes: WorkbookXML.Attributes) throws {
         if stack.isEmpty { guard name == "worksheet" else { throw PreviewError.unsupported } }
         if name == "row" {
             guard stack.last == "sheetData", let number = Int(attributes["r"] ?? String(previousRow + 1)),
@@ -108,7 +105,7 @@ nonisolated final class XLSXSheet {
         }
         guard !text.isEmpty else { return }
         if rowCount >= offset, rows.count < Self.rowLimit {
-            guard text.utf8.count <= Self.pageByteLimit - bytes else { throw XLSXXML.limitError }
+            guard text.utf8.count <= Self.pageByteLimit - bytes else { throw WorkbookXML.limitError }
             bytes += text.utf8.count
             row[column] = .text(text)
             width = max(width, column + 1)
@@ -116,7 +113,7 @@ nonisolated final class XLSXSheet {
     }
 
     private func append(_ text: String, to value: inout String) throws {
-        guard text.utf8.count <= XLSXStrings.cellByteLimit - value.utf8.count else { throw XLSXXML.limitError }
+        guard text.utf8.count <= XLSXStrings.cellByteLimit - value.utf8.count else { throw WorkbookXML.limitError }
         value += text
     }
 
@@ -134,12 +131,5 @@ nonisolated final class XLSXSheet {
         }
         guard result > 0, result <= maximumColumn, Int(rowText) == row else { throw PreviewError.unsupported }
         return result - 1
-    }
-
-    static func title(_ index: Int) -> String {
-        guard (0..<maximumColumn).contains(index) else { return "" }
-        var value = index + 1, result = ""
-        while value > 0 { value -= 1; result.insert(Character(UnicodeScalar(UInt8(65 + value % 26))), at: result.startIndex); value /= 26 }
-        return result
     }
 }

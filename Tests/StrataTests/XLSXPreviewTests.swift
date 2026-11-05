@@ -13,7 +13,7 @@ import Testing
         try workbook(first: rows).write(to: tree.url("find.xlsx"))
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
-        let preview = XLSXPreviewView(url: tree.url("find.xlsx"), clipboard: Clipboard(pasteboard: board, notifications: NotificationCenter()))
+        let preview = WorkbookPreviewView(url: tree.url("find.xlsx"), format: .xlsx, clipboard: Clipboard(pasteboard: board, notifications: NotificationCenter()))
         defer { preview.stop() }
         await preview.loadingTask?.value
         let source = try #require(preview.contentView.subviews.first as? GridSourceView)
@@ -75,7 +75,7 @@ import Testing
         let page = try XLSXSheet.read(sparse, strings: [], styles: styles, offset: 0)
         #expect(page.data.rows.count == 1 && page.data.columns.count == 2)
         #expect(text(page.data, 0, 0) == "1048576" && text(page.data, 0, 1) == "7")
-        #expect(XLSXSheet.title(25) == "Z" && XLSXSheet.title(26) == "AA" && XLSXSheet.title(16383) == "XFD")
+        #expect(SpreadsheetColumn.title(25) == "Z" && SpreadsheetColumn.title(26) == "AA" && SpreadsheetColumn.title(16383) == "XFD")
     }
 
     @Test func invalidShapesEntitiesReferencesAndStringIndexesAreRefused() throws {
@@ -95,20 +95,20 @@ import Testing
         for xml in ["<!DOCTYPE worksheet SYSTEM 'https://fixture.invalid/a'><worksheet/>",
                     "<!DOCTYPE worksheet [<!ENTITY a 'x'>]><worksheet>&a;</worksheet>",
                     String(repeating: "<a>", count: 65) + String(repeating: "</a>", count: 65), "<worksheet><broken>"] {
-            #expect(throws: (any Error).self) { try XLSXXML.read(Data(xml.utf8)) { _ in true } }
+            #expect(throws: (any Error).self) { try WorkbookXML.read(Data(xml.utf8)) { _ in true } }
         }
     }
 
     @Test func XMLCellStringAndPageBudgetsFailWithoutAllocatingUnboundedRows() throws {
         let styles = try XLSXStyles()
-        #expect(throws: (any Error).self) { try XLSXXML.read(Data(repeating: 32, count: XLSXXML.byteLimit + 1)) { _ in true } }
+        #expect(throws: (any Error).self) { try WorkbookXML.read(Data(repeating: 32, count: WorkbookXML.byteLimit + 1)) { _ in true } }
         let large = String(repeating: "x", count: XLSXStrings.cellByteLimit + 1)
         #expect(throws: (any Error).self) { try XLSXStrings.read(Data("<sst><si><t>\(large)</t></si></sst>".utf8)) }
         #expect(throws: (any Error).self) { try XLSXSheet.read(sheet("<row r=\"1\"><c t=\"inlineStr\"><is><t>\(large)</t></is></c></row>"), strings: [], styles: styles, offset: 0) }
         let many = Data(("<sst>" + String(repeating: "<si><t/></si>", count: XLSXStrings.entryLimit + 1) + "</sst>").utf8)
         #expect(throws: (any Error).self) { try XLSXStrings.read(many) }
         let value = String(repeating: "x", count: 220 << 10)
-        let cells = (0..<10).map { "<c r=\"\(XLSXSheet.title($0))1\" t=\"inlineStr\"><is><t>\(value)</t></is></c>" }.joined()
+        let cells = (0..<10).map { "<c r=\"\(SpreadsheetColumn.title($0))1\" t=\"inlineStr\"><is><t>\(value)</t></is></c>" }.joined()
         #expect(throws: (any Error).self) { try XLSXSheet.read(sheet("<row r=\"1\">\(cells)</row>"), strings: [], styles: styles, offset: 0) }
     }
 
@@ -144,7 +144,7 @@ import Testing
         let tree = try TestTree("book.xlsx")
         try workbook(second: "<broken>").write(to: tree.url("book.xlsx"))
         let environment = try IndependentEnvironment()
-        let view = XLSXPreviewView(url: tree.url("book.xlsx"), clipboard: environment.services.clipboard)
+        let view = WorkbookPreviewView(url: tree.url("book.xlsx"), format: .xlsx, clipboard: environment.services.clipboard)
         await view.loadingTask?.value
         let source = try #require(find(GridSourceView.self, in: view))
         #expect(source.picker.numberOfItems == 2 && source.picker.indexOfSelectedItem == 0)

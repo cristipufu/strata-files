@@ -1,15 +1,17 @@
 import AppKit
 import StrataModel
 
-package final class XLSXPreviewView: PreviewView {
-    private struct Opened: Sendable { let book: XLSXWorkbook; let first: XLSXPage }
+package final class WorkbookPreviewView: PreviewView {
+    private struct Opened: Sendable { let book: any SpreadsheetWorkbook; let first: WorkbookPage }
     private let sourceView: GridSourceView
-    private var workbook: XLSXWorkbook?
+    private let format: SpreadsheetFormat
+    private var workbook: (any SpreadsheetWorkbook)?
     private var shownSheet = 0
 
     package override var documentSearch: (any PreviewDocumentSearch)? { sourceView.grid }
 
-    package init(url: URL, clipboard: Clipboard) {
+    init(url: URL, format: SpreadsheetFormat, clipboard: Clipboard) {
+        self.format = format
         sourceView = GridSourceView(clipboard: clipboard)
         super.init(frame: .zero)
         sourceView.translatesAutoresizingMaskIntoConstraints = false
@@ -19,7 +21,7 @@ package final class XLSXPreviewView: PreviewView {
         sourceView.onSelect = { [weak self] _ in self?.showPage(0) }
         sourceView.grid.onPage = { [weak self] in self?.showPage($0) }
         load({
-            let book = try await XLSXWorkbook.open(url)
+            let book = try await format.open(url)
             return try await Opened(book: book, first: book.page(sheet: 0, page: 0))
         }, apply: { [weak self] opened in self?.show(opened) })
     }
@@ -37,7 +39,7 @@ package final class XLSXPreviewView: PreviewView {
 
     private func show(_ opened: Opened) {
         workbook = opened.book
-        sourceView.picker.addItems(withTitles: opened.book.sheets.map(\.name))
+        sourceView.picker.addItems(withTitles: opened.book.sheetNames)
         sourceView.picker.selectItem(at: 0)
         sourceView.isHidden = false
         show(opened.first, sheet: 0, page: 0)
@@ -46,7 +48,7 @@ package final class XLSXPreviewView: PreviewView {
     private func showPage(_ page: Int) {
         guard let workbook else { return }
         let index = sourceView.picker.indexOfSelectedItem
-        guard workbook.sheets.indices.contains(index) else { return }
+        guard workbook.sheetNames.indices.contains(index) else { return }
         sourceView.grid.beginPageLoad()
         load({ try await workbook.page(sheet: index, page: page) }, failed: { [weak self] message in
             guard let self else { return }
@@ -55,13 +57,13 @@ package final class XLSXPreviewView: PreviewView {
         }) { [weak self] rows in self?.show(rows, sheet: index, page: page) }
     }
 
-    private func show(_ rows: XLSXPage, sheet: Int, page: Int) {
+    private func show(_ rows: WorkbookPage, sheet: Int, page: Int) {
         shownSheet = sheet
         sourceView.picker.selectItem(at: sheet)
         sourceView.grid.show(rows.data)
         sourceView.grid.setPage(page, hasNext: rows.hasMore)
         sourceView.summary.stringValue = String(localized: "Values only; formulas aren’t recalculated.")
         sourceView.summary.toolTip = sourceView.summary.stringValue
-        footer.show(["XLSX"], note: String(localized: "Nonempty rows; first 256 columns."))
+        footer.show([format.title], note: String(localized: "Nonempty rows; first 256 columns."))
     }
 }

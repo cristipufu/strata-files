@@ -3,7 +3,7 @@ import Foundation
 import StrataArchives
 import StrataSupport
 
-actor XLSXWorkbook {
+actor XLSXWorkbook: SpreadsheetWorkbook {
     nonisolated struct Sheet: Sendable { let name: String; let path: [String] }
     private struct Relationship { let kind: String; let target: String; let external: Bool }
     private static let sheetLimit = 500
@@ -14,6 +14,7 @@ actor XLSXWorkbook {
     private let source: FileReadSource
     private let records: [ArchiveRecord]
     nonisolated let sheets: [Sheet]
+    nonisolated var sheetNames: [String] { sheets.map(\.name) }
     private let strings: [String]
     private let styles: XLSXStyles
     private var cached: (index: Int, data: Data)?
@@ -26,7 +27,7 @@ actor XLSXWorkbook {
         try Task.checkCancellation()
         let source = try FileReadSource(url), records = try await ArchiveReader.read(source)
         guard records.count <= entryLimit, Set(records.map { $0.path.joined(separator: "/") }).count == records.count else {
-            throw XLSXXML.limitError
+            throw WorkbookXML.limitError
         }
         let root = try await relationships(source, records: records, path: ["_rels", ".rels"])
         let offices = root.values.filter { $0.kind == "officeDocument" }
@@ -47,7 +48,7 @@ actor XLSXWorkbook {
             sheets.append(Sheet(name: DisplayText.oneLine(name), path: try resolve(relationship, relativeTo: folder)))
         }
         guard !sheets.isEmpty else { throw PreviewError.message(String(localized: "This workbook has no worksheets.")) }
-        let shared = try await optionalPart("sharedStrings", in: relationships, source: source, records: records, folder: folder, limit: XLSXXML.byteLimit)
+        let shared = try await optionalPart("sharedStrings", in: relationships, source: source, records: records, folder: folder, limit: WorkbookXML.byteLimit)
         let strings = try shared.map(XLSXStrings.read) ?? []
         let styleData = try await optionalPart("styles", in: relationships, source: source, records: records, folder: folder, limit: TextFile.limit)
         let date1904 = ["1", "true"].contains(workbook.children.first(where: { $0.name == "workbookPr" })?.attributes["date1904"] ?? "0")
@@ -56,13 +57,13 @@ actor XLSXWorkbook {
         return XLSXWorkbook(source: source, records: records, sheets: sheets, strings: strings, styles: styles)
     }
 
-    func page(sheet index: Int, page: Int) async throws -> XLSXPage {
+    func page(sheet index: Int, page: Int) async throws -> WorkbookPage {
         try Task.checkCancellation()
         guard sheets.indices.contains(index), (0...(1_048_576 / XLSXSheet.rowLimit)).contains(page) else { throw PreviewError.unsupported }
         let data: Data
         if let cached, cached.index == index { data = cached.data }
         else {
-            data = try await Self.bytes(source, records: records, path: sheets[index].path, limit: XLSXXML.byteLimit)
+            data = try await Self.bytes(source, records: records, path: sheets[index].path, limit: WorkbookXML.byteLimit)
             try Task.checkCancellation()
             cached = (index, data)
         }
@@ -103,12 +104,12 @@ actor XLSXWorkbook {
 
     private static func metadata(_ source: FileReadSource, records: [ArchiveRecord], path: [String]) async throws -> BookXML.Element {
         let data = try await bytes(source, records: records, path: path, limit: TextFile.limit)
-        try XLSXXML.validate(data, limit: TextFile.limit)
+        try WorkbookXML.validate(data, limit: TextFile.limit)
         return try BookXML.parse(data)
     }
 
     private static func bytes(_ source: FileReadSource, records: [ArchiveRecord], path: [String], limit: Int) async throws -> Data {
-        guard let entry = records.first(where: { $0.path == path }), entry.kind == 1, entry.size <= limit else { throw XLSXXML.limitError }
+        guard let entry = records.first(where: { $0.path == path }), entry.kind == 1, entry.size <= limit else { throw WorkbookXML.limitError }
         return try await PackagePart.read(source, records: records, path: path, limit: limit)
     }
 }
