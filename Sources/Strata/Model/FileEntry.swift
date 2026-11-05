@@ -1,9 +1,12 @@
 import Foundation
+import StrataSupport
 import UniformTypeIdentifiers
 
 /// A snapshot of one directory entry, read off the main thread.
 package nonisolated struct FileEntry: Sendable, Hashable {
     package let url: URL
+    /// Normalized while creating the snapshot, so adopting a large listing does not normalize every URL again.
+    package let locationKey: String
     package let name: String
     /// Finder's localized label. Names used to rename, identify extensions or form paths stay in `name` and `url`.
     package let displayName: String
@@ -132,6 +135,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
          size: Int64?, modified: Date?, created: Date?, added: Date?, kind: String, contentType: UTType?, displayName: String? = nil,
          isAlias: Bool = false, isRegular: Bool? = nil, isListed: Bool = true, allocatedSize: Int64? = nil) {
         self.url = url
+        locationKey = PathSpelling.short(url)
         self.name = name
         self.displayName = displayName ?? name
         self.isDirectory = isDirectory
@@ -154,6 +158,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
 
     package init(url: URL, values: URLResourceValues) {
         self.url = url
+        locationKey = PathSpelling.short(url)
         name = values.name ?? url.lastPathComponent
         displayName = values.localizedName ?? name
         isSymlink = values.isSymbolicLink ?? false
@@ -187,7 +192,7 @@ package nonisolated struct FileEntry: Sendable, Hashable {
         FileEntry(url: url, name: name, isDirectory: isDirectory, isPackage: isPackage, isHidden: isHidden, isSymlink: isSymlink,
                   isVolume: isVolume, size: size, modified: modified, created: created, added: added, kind: kind ?? self.kind,
                   contentType: contentType, displayName: displayName ?? self.displayName, isAlias: isAlias,
-                  isRegular: isRegular, isListed: isListed)
+                  isRegular: isRegular, isListed: isListed, allocatedSize: allocatedSize)
     }
 
     /// Filtering accepts both the name on disk and the visible label, without highlighting offsets from another name.

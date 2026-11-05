@@ -51,7 +51,7 @@ final class BrowserListing {
     func replace(_ entries: [FileEntry], preservingNodes: Bool, sort: (inout [FileNode]) -> Void) {
         let previous = preservingNodes ? nodesByPath : [:]
         var replacement = entries.map { entry in
-            if let node = previous[Self.key(entry.url)], node.parent == nil {
+            if preservingNodes, let node = previous[entry.locationKey], node.parent == nil {
                 node.entry = entry
                 return node
             }
@@ -103,11 +103,11 @@ final class BrowserListing {
         guard entries.count == nodes.count, nodes.allSatisfy({ $0.groupTitle == nil && $0.children == nil }) else { return nil }
         var byPath: [String: FileEntry] = [:]
         byPath.reserveCapacity(entries.count)
-        for entry in entries { byPath[Self.key(entry.url)] = entry }
+        for entry in entries { byPath[entry.locationKey] = entry }
         guard byPath.count == entries.count else { return nil }
         var changed: [(FileNode, FileEntry)] = []
         for node in nodes {
-            guard let entry = byPath[Self.key(node.url)] else { return nil }
+            guard let entry = byPath[node.entry.locationKey] else { return nil }
             if entry != node.entry { changed.append((node, entry)) }
         }
         if !changed.isEmpty, sorted { return nil }
@@ -189,7 +189,7 @@ final class BrowserListing {
         nodesByPath.removeAll(keepingCapacity: true)
         var stack = nodes
         while let node = stack.popLast() {
-            if node.groupTitle == nil { nodesByPath[Self.key(node.url)] = node }
+            if node.groupTitle == nil { nodesByPath[node.entry.locationKey] = node }
             if let children = node.children { stack.append(contentsOf: children) }
         }
     }

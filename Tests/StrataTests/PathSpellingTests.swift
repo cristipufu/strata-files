@@ -6,6 +6,20 @@ import Testing
 /// Comparing and keying paths goes by their letters (`lexicallyStandardized`), spelled as `standardizedFileURL`
 /// spells an item that exists, while a typed path is placed where the kernel takes it (`FileEntry.locate`).
 struct PathSpellingTests {
+    @Test func entrySnapshotsKeepTheirNormalizedLocationAndAllocatedBytesThroughLabelChanges() {
+        for (path, expected) in [("/private/tmp/中文 😀/a/../b.txt", "/tmp/中文 😀/b.txt"),
+                                 ("/tmp/中文 😀/b.txt", "/tmp/中文 😀/b.txt"), ("/var/a//b/./", "/var/a/b"), ("/", "/")] {
+            let url = URL(filePath: path)
+            let entry = FileEntry(url: url, name: url.lastPathComponent, isDirectory: false, isPackage: false,
+                isHidden: false, isSymlink: false, isVolume: false, size: 9, modified: nil, created: nil, added: nil,
+                kind: "Document", contentType: nil, allocatedSize: 4096)
+            #expect(entry.locationKey == expected)
+            let renamed = entry.with(kind: "Changed", displayName: "Label")
+            #expect(renamed.locationKey == entry.locationKey && renamed.url == entry.url)
+            #expect(renamed.allocatedSize == 4096 && renamed.size == 9 && renamed.displayName == "Label")
+        }
+    }
+
     @Test func aPathIsSpelledByItsLettersAsTheDiskSpellsAnItemThatExists() throws {
         let tree = try TestTree("a/b/c.txt")
         let base = tree.root.appending(path: "a/b", directoryHint: .isDirectory)
