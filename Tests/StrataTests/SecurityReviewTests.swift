@@ -100,13 +100,17 @@ struct SecurityReviewTests {
         #expect(healthy.status == 0 && healthy.output == Data("kept".utf8) && !healthy.timedOut)
     }
 
-    @Test func aToolStoppedAtItsTimeoutKeepsTheOutputItWritesAsItStops() async throws {
-        let stopped = try await ProcessRunner.run("/bin/sh", ["-c", "trap 'printf flushed; exit 1' TERM; while :; do :; done"],
+    @Test(arguments: ["", "sleep 1; "])
+    func aToolStoppedAtItsTimeoutKeepsTheOutputItWritesAsItStops(_ startup: String) async throws {
+        let stopped = try await ProcessRunner.run("/bin/sh", ["-c", startup + "trap 'printf flushed; exit 1' TERM; while :; do :; done"],
                                                   timeout: 0.2)
-        // A machine too busy to run the trap before the delayed SIGKILL shows nothing either way, so only a shell that
-        // got to write is held to its output.
+        // The deadline can end the shell before its trap is installed, or SIGKILL it before the trap runs. A shell
+        // that exits from its handler must retain everything the handler wrote.
         #expect(stopped.timedOut)
-        #expect(stopped.status == SIGKILL || (stopped.status == 1 && stopped.output == Data("flushed".utf8)))
+        #expect(!stopped.failed && !stopped.truncated)
+        let stoppedBeforeTrap = stopped.status == SIGTERM && stopped.output.isEmpty
+        #expect(stoppedBeforeTrap || stopped.status == SIGKILL || (stopped.status == 1 && stopped.output == Data("flushed".utf8)),
+                "status \(stopped.status), output \(String(decoding: stopped.output, as: UTF8.self))")
     }
 
     @Test func storageFoldersAndCachesArePrivateWithoutChmodThroughLinks() throws {
