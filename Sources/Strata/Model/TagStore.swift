@@ -155,7 +155,7 @@ package final class TagStore {
     package func load(_ entries: [FileEntry]) -> Task<Void, Never> {
         let current = NSWorkspace.shared.fileLabels
         labels.withLock { $0 = current }
-        for entry in entries { request(entry.url.lexicallyStandardized.path) }
+        for entry in entries { request(entry.locationKey) }
         return Task { await reads.settled() }
     }
 

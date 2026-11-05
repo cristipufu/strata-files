@@ -100,6 +100,31 @@ struct TagColumnTests {
         #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/b.txt"])
     }
 
+    @Test func bulkEntryReadsAndURLLookupsAgreeForAliasesUnicodeAndEscapedNames() async throws {
+        let environment = try IndependentEnvironment()
+        let names = ["report % # 😀.txt", "cafe\u{301}.txt", "目标.txt"]
+        let tree = try TestTree()
+        let entries = names.map { name in
+            FileEntry(url: URL(filePath: tree.root.path + "/folder/./missing/../" + name), name: name,
+                isDirectory: false, isPackage: false, isHidden: false, isSymlink: false, isVolume: false,
+                size: nil, modified: nil, created: nil, added: nil, kind: "", contentType: nil)
+        }
+        let read = OSAllocatedUnfairLock(initialState: Set<String>())
+        let store = TagStore(preferences: environment.preferences, copies: environment.services.copies) { paths, _ in
+            read.withLock { $0.formUnion(paths) }
+            return Dictionary(uniqueKeysWithValues: paths.map { ($0, [FinderTag(name: "Read", color: 0)]) })
+        }
+        await store.load(entries).value
+        #expect(read.withLock { $0 } == Set(entries.map { $0.url.lexicallyStandardized.path }))
+        for entry in entries {
+            #expect(store.cachedTags(for: entry.url).map(\.name) == ["Read"])
+            #expect(store.tags(for: entry.url).map(\.name) == ["Read"])
+        }
+        await store.settled()
+        #expect(read.withLock { $0 }.count == names.count)
+        #expect(tree.snapshot().isEmpty)
+    }
+
     /// A row's read under way when its folder is invalidated is read again once it's in: it may be from before.
     @Test func aRowInvalidatedWhileBeingReadIsReadAgain() async throws {
         let tree = try TestTree("folder/a.txt")
