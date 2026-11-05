@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -67,5 +67,71 @@ import Testing
         #expect(preferences.favoritePaths?.map { URL(filePath: $0).lastPathComponent }
             == ["a", "d", Places.home.lastPathComponent])
         #expect(tree.snapshot() == ["a/", "d/"])
+    }
+
+    /// A Frequent folder dragged between the favorites joins them there, and leaves Frequent; dropped anywhere else it
+    /// does nothing, since the drag carries a private type and never the folder itself.
+    @Test func aFrequentFolderDraggedAmongTheFavoritesJoinsThem() async throws {
+        let tree = try TestTree("a/", "b/", "often/")
+        let environment = try PreviewEnvironment(tree)
+        defer { withExtendedLifetime(environment) {} }
+        let services = environment.services, preferences = services.preferences
+        preferences.favoritePaths = ["a", "b"].map { tree.url($0).path }
+        services.visits.record(tree.url("often"))
+        let sidebar = SidebarViewController(services: services)
+        _ = sidebar.view
+        sidebar.reload()
+        let outline = sidebar.outline
+        func section(_ id: String) throws -> SidebarSection { try #require(sidebar.sections.first { $0.id == id }) }
+        let favorites = try section("favorites"), frequent = try section("frequent")
+        let often = try #require(frequent.items.first { $0.url?.lastPathComponent == "often" })
+        #expect(sidebar.canAddToFavorites(often) && !favorites.items.contains { sidebar.canAddToFavorites($0) })
+
+        let writer = try #require(sidebar.outlineView(outline, pasteboardWriterForItem: often) as? NSPasteboardItem)
+        #expect(writer.types == [.sidebarFavorite])
+        let drag = FileDrag([])
+        drag.draggingPasteboard.clearContents()
+        drag.draggingPasteboard.writeObjects([writer])
+        let location = try #require(sidebar.sections.first { $0.id == "locations" }?.items.first { $0.url != nil })
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: location,
+                                    proposedChildIndex: NSOutlineViewDropOnItemIndex) == [])
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: frequent, proposedChildIndex: 0) == [])
+        // Between a and b: Recents is row 0, so child 2 is before b.
+        #expect(sidebar.outlineView(outline, validateDrop: drag, proposedItem: favorites, proposedChildIndex: 2) == .move)
+        #expect(sidebar.outlineView(outline, acceptDrop: drag, item: favorites, childIndex: 2))
+        for _ in 0..<200 where preferences.favoritePaths?.count != 3 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(preferences.favoritePaths?.map { URL(filePath: $0).lastPathComponent } == ["a", "often", "b"])
+        sidebar.reload()
+        // It was the only frequent folder, so the section goes.
+        #expect(sidebar.sections.first { $0.id == "frequent" } == nil)
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["a/", "b/", "often/"])
+    }
+
+    /// Remove from Frequent forgets the folder's visits: it leaves Frequent, stays gone in a new session, and stays on disk.
+    @Test func removeFromFrequentForgetsTheFolderButKeepsIt() async throws {
+        let tree = try TestTree("often/", "also/")
+        let environment = try PreviewEnvironment(tree)
+        defer { withExtendedLifetime(environment) {} }
+        let services = environment.services
+        services.preferences.favoritePaths = []
+        services.visits.record(tree.url("often"))
+        services.visits.record(tree.url("also"))
+        let sidebar = SidebarViewController(services: services)
+        _ = sidebar.view
+        sidebar.reload()
+        func frequent() -> [String] {
+            sidebar.sections.first { $0.id == "frequent" }?.items.compactMap(\.url?.lastPathComponent) ?? []
+        }
+        #expect(Set(frequent()) == ["often", "also"])
+        let often = try #require(sidebar.sections.first { $0.id == "frequent" }?.items.first { $0.url?.lastPathComponent == "often" })
+        let recents = try #require(sidebar.sections.first?.items.first)
+        #expect(sidebar.isFrequent(often) && !sidebar.isFrequent(recents))
+        let entry = NSMenuItem()
+        entry.representedObject = often.url
+        sidebar.removeFrequent(entry)
+        #expect(frequent() == ["also"])
+        let reopened = Frecency(preferences: services.preferences.defaults)
+        #expect(reopened.ranked().map(\.lastPathComponent) == ["also"])
+        #expect(tree.snapshot().filter { !$0.hasPrefix("environment/") } == ["also/", "often/"])
     }
 }

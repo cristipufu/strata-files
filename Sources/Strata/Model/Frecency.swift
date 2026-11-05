@@ -33,6 +33,16 @@ package final class Frecency {
             let keep = ranked().prefix(500).map(\.path)
             visits = visits.filter { keep.contains($0.key) }
         }
+        save()
+    }
+
+    /// Forgets every visit to `url`, so it leaves Frequent until it's opened often enough again.
+    package func forget(_ url: URL) {
+        guard visits.removeValue(forKey: url.lexicallyStandardized.path) != nil else { return }
+        save()
+    }
+
+    private func save() {
         if let data = try? JSONEncoder().encode(visits) { preferences.set(data, forKey: key) }
     }
 
