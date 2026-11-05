@@ -64,12 +64,11 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     private func makeLocationItem(_ id: NSToolbarItem.Identifier, inserted flag: Bool) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
+        item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: item.label)
         if flag {
             item.view = pathBar
             item.isHidden = isDualPane && services.preferences.dualPaneAddressBars
             toolbarItems.adopt(item)
-        } else {
-            item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         }
         item.visibilityPriority = .high
         return item

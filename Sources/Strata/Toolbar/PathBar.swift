@@ -28,7 +28,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// Set its `model` from the git status; hidden while the model is nil.
     let branchPill: GitBranchPill
 
-    private let crumbs = NSStackView()
+    private let crumbs = PathBreadcrumbs()
     private let field = NSTextField()
     private(set) var isEditing = false
     private let suggestions: PathSuggestions
@@ -38,16 +38,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private let copies: CopyProviders
     private let names: FolderNames
     private let embedded: Bool
+    // Breadcrumbs must yield when AppKit measures the toolbar's minimum size.
+    private static let toolbarSizingPriority = NSLayoutConstraint.Priority(
+        rawValue: NSLayoutConstraint.Priority.fittingSizeCompression.rawValue - 1)
 
     var editorField: NSTextField { field }
 
-    var crumbButtons: [CrumbButton] {
-        crumbs.arrangedSubviews.flatMap { view -> [CrumbButton] in
-            if let button = view as? CrumbButton { return [button] }
-            if let stack = view as? NSStackView { return stack.arrangedSubviews.compactMap { $0 as? CrumbButton } }
-            return []
-        }
-    }
+    var crumbButtons: [CrumbButton] { crumbs.buttons }
 
     init(frame: NSRect = .zero, preferences: Prefs, places: PlaceChecks, index: FileIndex, copies: CopyProviders,
          names: FolderNames, clipboard: Clipboard, embedded: Bool = false) {
@@ -70,13 +67,6 @@ final class PathBar: NSView, NSTextFieldDelegate {
     }
 
     private func setUpCrumbs() {
-        crumbs.orientation = .horizontal
-        crumbs.spacing = 0
-        crumbs.alignment = .centerY
-        crumbs.detachesHiddenViews = true
-        // Let a deep path squeeze into the bar by dropping middle crumbs (their visibility priorities below) instead of
-        // forcing the bar wider: past the toolbar's room, AppKit would move every toolbar item into the overflow menu.
-        crumbs.setClippingResistancePriority(embedded ? .init(230) : .defaultLow, for: .horizontal)
         crumbs.translatesAutoresizingMaskIntoConstraints = false
         addSubview(crumbs)
     }
@@ -101,7 +91,7 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private func layOut() {
         var constraints = [
             crumbs.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            crumbs.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
+            crumbs.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             crumbs.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
@@ -111,11 +101,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
             setContentCompressionResistancePriority(.init(199), for: .horizontal)
             setContentHuggingPriority(.init(199), for: .horizontal)
             field.setContentCompressionResistancePriority(.init(199), for: .horizontal)
-            branchPill.setContentCompressionResistancePriority(.init(220), for: .horizontal)
         } else {
             // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
             let preferred = widthAnchor.constraint(equalToConstant: 520)
-            preferred.priority = .fittingSizeCompression
+            preferred.priority = Self.toolbarSizingPriority
             constraints += [
                 heightAnchor.constraint(equalToConstant: 32),
                 widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
@@ -137,15 +126,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
     /// Shows a single non-navigating crumb, for places that aren't folders (Search, Recents).
     func showTitle(_ title: String, symbol: String) {
         if isEditing { endEditing(restoreFocus: false) }
-        if self.title?.text == title, self.title?.symbol == symbol, !crumbs.arrangedSubviews.isEmpty { return }
+        if self.title?.text == title, self.title?.symbol == symbol, !crumbs.buttons.isEmpty { return }
         self.title = (title, symbol)
-        crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let crumb = CrumbButton(title: title, symbol: symbol, emphasized: true)
-        if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
         crumb.target = self
         crumb.action = #selector(titleCrumbClicked)
         crumb.isEnabled = true
-        crumbs.addArrangedSubview(crumb)
+        crumbs.show([PathBreadcrumbs.Step(button: crumb)])
     }
 
     @objc private func titleCrumbClicked() {
@@ -160,25 +147,21 @@ final class PathBar: NSView, NSTextFieldDelegate {
             showTitle(currentTitle.text, symbol: currentTitle.symbol)
             return
         }
-        crumbs.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        guard let url else { return }
+        guard let url else { crumbs.show([]); return }
         let parts = Self.components(of: url, copies: copies, names: names)
         let repoRootPath = gitRoot?.lexicallyStandardized.path
+        var steps: [PathBreadcrumbs.Step] = []
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
             let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast)
-            if embedded { crumb.setContentCompressionResistancePriority(.init(220), for: .horizontal) }
             crumb.toolTip = Format.tildePath(part.url)
             crumb.target = self
             crumb.action = #selector(crumbClicked(_:))
             crumb.destination = part.url
-            let group = NSStackView(views: [crumb])
-            group.spacing = 0
+            var step = PathBreadcrumbs.Step(button: crumb)
             let isRepoRoot = part.url.lexicallyStandardized.path == repoRootPath
             if isRepoRoot {
-                group.addArrangedSubview(branchPill)
-                group.setCustomSpacing(2, after: crumb)
-                group.setCustomSpacing(2, after: branchPill)
+                step.branch = branchPill
             }
             if !isLast {
                 let name = part.title.isEmpty ? part.url.lastPathComponent : part.title
@@ -186,18 +169,11 @@ final class PathBar: NSView, NSTextFieldDelegate {
                     self?.onActivate?()
                     self?.onNavigate?(target, nil)
                 }
-                group.addArrangedSubview(chevron)
+                step.chevron = chevron
             }
-            crumbs.addArrangedSubview(group)
-            // When space runs out, middle folders go first; the root and the current folder stay.
-            let priority: Float
-            if embedded {
-                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 180 : Float(100 + min(index, 70))
-            } else {
-                priority = index == 0 || isLast ? 1000 : isRepoRoot ? 900 : Float(500 + index)
-            }
-            crumbs.setVisibilityPriority(NSStackView.VisibilityPriority(rawValue: priority), for: group)
+            steps.append(step)
         }
+        crumbs.show(steps)
     }
 
     /// Finder's names arrived for folders along the path: the crumbs show them.
@@ -522,14 +498,18 @@ final class CrumbButton: NSButton {
 
     init(title: String, symbol: String?, emphasized: Bool) {
         super.init(frame: .zero)
+        cell = CrumbButtonCell(textCell: "")
         isBordered = false
         setButtonType(.momentaryChange)
         wantsLayer = true
         layer?.cornerRadius = 7
         layer?.cornerCurve = .continuous
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
         attributedTitle = NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: emphasized ? .semibold : .regular),
             .foregroundColor: emphasized ? NSColor.labelColor : NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph,
         ])
         if let symbol {
             image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? String(localized: "Home", comment: "Accessibility: the home folder crumb") : title)
@@ -539,6 +519,7 @@ final class CrumbButton: NSButton {
             imageHugsTitle = true
         }
         (cell as? NSButtonCell)?.lineBreakMode = .byTruncatingTail
+        cell?.usesSingleLineMode = true
     }
 
     @available(*, unavailable)
@@ -546,7 +527,6 @@ final class CrumbButton: NSButton {
 
     override var intrinsicContentSize: NSSize {
         var size = super.intrinsicContentSize
-        size.width += title.isEmpty ? 14 : 16
         size.height = 24
         return size
     }
@@ -562,6 +542,16 @@ final class CrumbButton: NSButton {
     override func mouseEntered(with event: NSEvent) { setHighlight(true) }
     override func mouseExited(with event: NSEvent) { setHighlight(false) }
 
+    override func viewDidHide() {
+        setHighlight(false)
+        super.viewDidHide()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { setHighlight(false) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     fileprivate func setHighlight(_ on: Bool) {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = on ? NSColor.labelColor.withAlphaComponent(0.08).cgColor : nil
@@ -569,17 +559,41 @@ final class CrumbButton: NSButton {
     }
 }
 
+private final class CrumbButtonCell: NSButtonCell {
+    private var horizontalInset: CGFloat { title.isEmpty ? 7 : 8 }
+
+    // AppKit includes these drawing insets when measuring the title and image together.
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        let content = super.drawingRect(forBounds: rect)
+        let inset = min(horizontalInset, max(0, content.width / 2))
+        return content.insetBy(dx: inset, dy: 0)
+    }
+
+    override func hitTest(for event: NSEvent, in cellFrame: NSRect, of controlView: NSView) -> NSCell.HitResult {
+        let point = controlView.convert(event.locationInWindow, from: nil)
+        guard isEnabled, cellFrame.contains(point) else { return [] }
+        return [.contentArea, .trackableArea]
+    }
+}
+
 /// The separator between crumbs; click it to jump to a sibling folder.
 final class ChevronButton: NSButton {
+    typealias FolderReader = @Sendable (URL) async -> [URL]
     private let folder: URL
     private let navigate: (URL) -> Void
+    private let readFolders: FolderReader
+    private let presentMenu: @MainActor (ChevronButton, [URL]) -> Void
     private var tracking: NSTrackingArea?
+    private var readRevision = 0
     /// Its subfolders being read for the menu.
-    private var reading: Task<Void, Never>?
+    private(set) var reading: Task<Void, Never>?
 
-    init(folder: URL, name: String, navigate: @escaping (URL) -> Void) {
+    init(folder: URL, name: String, readFolders: @escaping FolderReader = ChevronButton.subfolders,
+         presentMenu: (@MainActor (ChevronButton, [URL]) -> Void)? = nil, navigate: @escaping (URL) -> Void) {
         self.folder = folder
         self.navigate = navigate
+        self.readFolders = readFolders
+        self.presentMenu = presentMenu ?? { button, folders in button.popUpMenu(listing: folders) }
         super.init(frame: .zero)
         isBordered = false
         image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: String(localized: "Subfolders"))
@@ -597,6 +611,11 @@ final class ChevronButton: NSButton {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit {
+        reading?.cancel()
+        NotificationCenter.default.removeObserver(self)
+    }
 
     override var intrinsicContentSize: NSSize { NSSize(width: 14, height: 22) }
 
@@ -616,13 +635,52 @@ final class ChevronButton: NSButton {
 
     override func mouseExited(with event: NSEvent) { layer?.backgroundColor = nil }
 
-    @objc private func showMenu() {
-        reading?.cancel()
-        reading = Task { [weak self, folder] in
-            let folders = await Self.subfolders(of: folder)
-            guard let self, !Task.isCancelled, window != nil else { return }
-            popUpMenu(listing: folders)
+    override func viewDidHide() {
+        cancelReading()
+        layer?.backgroundColor = nil
+        super.viewDidHide()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window {
+            if let window { NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: window) }
+            cancelReading()
+            layer?.backgroundColor = nil
+            if let newWindow {
+                NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose(_:)),
+                                                       name: NSWindow.willCloseNotification, object: newWindow)
+            }
         }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) { cancelReading() }
+
+    @discardableResult private func cancelReading() -> Int {
+        readRevision &+= 1
+        let revision = readRevision
+        let previous = reading
+        reading = nil
+        previous?.cancel()
+        return revision
+    }
+
+    @objc private func showMenu() {
+        let revision = cancelReading()
+        guard revision == readRevision, let owner = window, canPresentMenu(in: owner) else { return }
+        let read = readFolders
+        reading = Task { [weak self, weak owner, folder] in
+            guard !Task.isCancelled else { return }
+            let folders = await read(folder)
+            guard let self, !Task.isCancelled, revision == readRevision else { return }
+            reading = nil
+            guard let owner, canPresentMenu(in: owner) else { return }
+            presentMenu(self, folders)
+        }
+    }
+
+    private func canPresentMenu(in owner: NSWindow) -> Bool {
+        window === owner && owner.isVisible && owner.attachedSheet == nil && isEnabled && !isHiddenOrHasHiddenAncestor
     }
 
     /// The folders in `folder` a click on the chevron lists: visible ones, not packages, in Finder's order.

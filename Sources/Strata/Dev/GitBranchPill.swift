@@ -50,6 +50,7 @@ package final class GitBranchPill: NSView {
             isHidden = model == nil
             updateAccessibility()
             invalidateIntrinsicContentSize()
+            superview?.needsLayout = true
             needsDisplay = true
         }
     }
@@ -192,8 +193,24 @@ package final class GitBranchPill: NSView {
         tracking = area
     }
 
-    package override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
-    package override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
+    package override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    package override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    package override func viewDidHide() {
+        setHovering(false)
+        super.viewDidHide()
+    }
+
+    package override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { setHovering(false) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func setHovering(_ hovering: Bool) {
+        guard self.hovering != hovering else { return }
+        self.hovering = hovering
+        needsDisplay = true
+    }
 
     // Handled here so a click on the pill doesn't fall through to the path bar and start editing.
     package override func mouseDown(with event: NSEvent) {

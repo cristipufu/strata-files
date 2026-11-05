@@ -215,6 +215,7 @@ enum BrowserViewMode: Int, CaseIterable {
         group.label = String(localized: "View", comment: "Toolbar item label: the view mode control")
         group.paletteLabel = String(localized: "View Mode", comment: "Toolbar customization palette label")
         group.toolTip = String(localized: "Change how items are shown (⌘1–⌘5)")
+        group.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: group.label)
         group.controlRepresentation = .expanded
         for (item, mode) in zip(group.subitems, modes) { item.toolTip = "\(mode.menuTitle) (⌘\(mode.keyEquivalent))" }
         group.selectedIndex = 0
