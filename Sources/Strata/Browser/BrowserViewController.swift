@@ -146,7 +146,7 @@ final class BrowserViewController: NSViewController {
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
     let results = PaneResults()
-    /// How the folder is presented. Results (search, Recents, Duplicates) always use the list.
+    /// How the folder is presented; results keep their own presentation choice.
     private(set) var mode: BrowserViewMode
     let presentations = BrowserPresentations()
     var gridController: GridViewController? { presentations.gridController }
@@ -658,7 +658,7 @@ final class BrowserViewController: NSViewController {
         }
         listing.reorderRoots(sorted)
         outlineView.endUpdates()
-        if mode == .grid || mode == .columns || mode == .gallery { pushContent() }
+        if activeView != nil { pushContent() }
     }
 
     private func folderSizeArrived(_ url: URL) {
@@ -668,7 +668,7 @@ final class BrowserViewController: NSViewController {
         let column = outlineView.column(withIdentifier: .size)
         if row >= 0, column >= 0 { outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column]) }
         if effectiveMode == .treemap { treemapController?.updateFolderSize(folderSize(url), for: url) }
-        if mode == .grid { gridController?.reloadItems([url]) }
+        if effectiveMode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
         if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
     }

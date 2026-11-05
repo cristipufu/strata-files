@@ -47,6 +47,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
 
     private(set) var entries: [FileEntry] = []
     private var matches: [String: [Int]] = [:]
+    private var details: FileCollectionDetails?
     private var indexByKey: [String: Int] = [:]
 
     let collectionView: GridCollectionView
@@ -118,8 +119,9 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     // MARK: - Content
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
-        if directory?.fileViewKey != content.directory.fileViewKey { cancelRename() }
+        if directory?.fileViewKey != content.directory?.fileViewKey { cancelRename() }
         directory = content.directory
+        details = content.details
         setEntries(content.entries, matches: content.matches)
     }
 
@@ -138,7 +140,6 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         self.matches = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
         indexByKey.removeAll(keepingCapacity: true)
         for (i, entry) in entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
-        if directory == nil { directory = entries.first?.url.deletingLastPathComponent() }
         collectionView.reloadData()
         if opensAtTop {
             opensAtTop = false
@@ -260,10 +261,13 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         let badge = git.badge(for: entry.url, isDirectory: entry.isDirectory)
         let tags = statuses.tags.tags(for: entry.url)
         let cloud = statuses.cloud.status(for: entry.url)
+        let context = details?.text(for: entry)
+        let showsInfo = showsItemInfo || context != nil
+        let detail = context ?? (showsItemInfo ? folderSizeText?(entry) : nil)
         if refreshImage {
-            item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsItemInfo,
+            item.configure(entry, matches: matches[entry.url.fileViewKey] ?? [], metrics: layout.metrics, showsInfo: showsInfo,
                            dimmed: dimmed, scale: view.window?.backingScaleFactor ?? 2, git: badge, tags: tags, cloud: cloud,
-                           folderSizeText: showsItemInfo ? folderSizeText?(entry) : nil, preferences: preferences,
+                           detailOverride: detail, preferences: preferences,
                            thumbnails: thumbnails, itemInfo: itemInfo)
         } else {
             item.dimmed = dimmed
@@ -271,10 +275,11 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
             item.itemView.cloudBadge.status = cloud
             item.itemView.setTags(tags)
             item.itemView.configure(name: entry.displayName, matches: matches[entry.url.fileViewKey] ?? [],
-                                    detail: showsItemInfo ? folderSizeText?(entry) ?? itemInfo.immediate(entry, showHidden: preferences.showHidden) : nil,
+                                    detail: detail ?? (showsInfo ? itemInfo.immediate(entry, showHidden: preferences.showHidden) : nil),
                                     metrics: layout.metrics)
             item.updateState()
         }
+        item.view.toolTip = details?.toolTip(for: entry)
     }
 
     /// Redraws visible items (focus, clipboard dimming, appearance), optionally re-reading their content.

@@ -26,6 +26,7 @@ extension BrowserViewController {
         listing.replace(entries, preservingNodes: false, sort: sort)
         localizeResultNames()
         outlineView.reloadData()
+        pushContent()
         select(selection, scroll: false)
         pending.selection = nil
         updateEmptyState()
@@ -44,6 +45,7 @@ extension BrowserViewController {
             if row >= 0 { rowsToReload.insert(row) }
         }
         outlineView.reloadData(forRowIndexes: inlineRename.except(rowsToReload, in: outlineView), columnIndexes: IndexSet(integersIn: 0..<outlineView.numberOfColumns))
+        pushContent()
         delegate?.browserContentDidChange(self)
         if changed.contains(where: { outlineView.selectedRowIndexes.contains(outlineView.row(forItem: $0)) }) {
             delegate?.browserSelectionDidChange(self)
@@ -53,6 +55,7 @@ extension BrowserViewController {
 
     /// Shows groups of files under header rows, all expanded (duplicate sets).
     func showGroups(_ groups: [ResultGroup], summary: String) {
+        let selection = pending.selection ?? selectedURLs
         enterResults()
         loading.showResults()
         sizer.cancelPending()
@@ -62,7 +65,9 @@ extension BrowserViewController {
         localizeResultNames()
         outlineView.reloadData()
         outlineView.expandItem(nil, expandChildren: true)
-        if let selection = pending.takeSelection() { select(selection, scroll: true) }
+        pushContent()
+        select(selection, scroll: false)
+        pending.selection = nil
         updateEmptyState()
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
@@ -94,6 +99,7 @@ extension BrowserViewController {
             }
             outlineView.reloadData()
             for node in expanded { outlineView.expandItem(node) }
+            pushContent()
             select(selection, scroll: false)
             delegate?.browserSelectionDidChange(self)
         }
@@ -102,6 +108,7 @@ extension BrowserViewController {
     /// Replaces the list with a message while results are being computed.
     func showMessage(symbol: String, title: String, message: String = "") {
         noteNavigationContextChanged()
+        activeView?.cancelRename()
         enterResults()
         loading.showResults(loaded: false)
         sizer.cancelPending()
@@ -109,6 +116,7 @@ extension BrowserViewController {
         listing.clear()
         results.tally = .summary("")
         outlineView.reloadData()
+        pushContent()
         emptyState.show(symbol: symbol, title: title, message: message)
         delegate?.browserContentDidChange(self)
     }

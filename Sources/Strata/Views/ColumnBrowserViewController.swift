@@ -117,9 +117,10 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     var insetsContentToSafeArea: Bool { true }
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
+        guard let directory = content.directory else { return }
         sortComparator = metadata.ordered
         sortedBy = metadata.sortedBy
-        setRoot(content.directory, entries: content.entries, matches: content.matches)
+        setRoot(directory, entries: content.entries, matches: content.matches)
     }
 
     /// Shows `folder` in the first column with the browser's (filtered, sorted) entries. Calling again with the same

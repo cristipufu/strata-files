@@ -370,6 +370,7 @@ final class GridItem: NSCollectionViewItem {
     private var itemInfo: ItemInfoLoader?
     private var thumbnailTicket: FileThumbnails.Ticket?
     private var infoTicket: ItemInfoLoader.Ticket?
+    private var infoRevision = 0
     /// Set by the grid; returns whether selections should be drawn emphasized.
     var emphasis: () -> Bool = { false }
     var dimmed = false
@@ -394,6 +395,7 @@ final class GridItem: NSCollectionViewItem {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        infoRevision &+= 1
         thumbnails?.cancel(thumbnailTicket)
         itemInfo?.cancel(infoTicket)
         thumbnailTicket = nil
@@ -417,11 +419,13 @@ final class GridItem: NSCollectionViewItem {
     }
 
     func configure(_ entry: FileEntry, matches: [Int], metrics: GridMetrics, showsInfo: Bool, dimmed: Bool, scale: CGFloat,
-                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, folderSizeText: String? = nil,
+                   git: GitBadge? = nil, tags: [FinderTag] = [], cloud: CloudStatus? = nil, detailOverride: String? = nil,
                    preferences: Prefs, thumbnails: FileThumbnails, itemInfo: ItemInfoLoader) {
         self.itemInfo?.cancel(infoTicket)
         self.itemInfo = itemInfo
         infoTicket = nil
+        infoRevision &+= 1
+        let revision = infoRevision
         itemView.gitBadge.badge = git
         itemView.cloudBadge.status = cloud
         itemView.setTags(tags)
@@ -429,7 +433,7 @@ final class GridItem: NSCollectionViewItem {
         self.entry = entry
         self.dimmed = dimmed
         let showHidden = preferences.showHidden
-        let detail = showsInfo ? folderSizeText ?? itemInfo.immediate(entry, showHidden: showHidden) : nil
+        let detail = showsInfo ? detailOverride ?? itemInfo.immediate(entry, showHidden: showHidden) : nil
         itemView.configure(name: entry.displayName, matches: matches, detail: detail, metrics: metrics)
         itemView.setAccessibilityHelp(entry.kind)
         updateState()
@@ -437,7 +441,7 @@ final class GridItem: NSCollectionViewItem {
         if showsInfo, detail == nil {
             itemInfo.cancel(infoTicket)
             infoTicket = itemInfo.request(entry, showHidden: showHidden) { [weak self] text in
-                guard let self, self.entry == entry else { return }
+                guard let self, self.entry == entry, infoRevision == revision else { return }
                 self.infoTicket = nil
                 self.itemView.setDetail(text)
             }

@@ -30,7 +30,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         switch item.itemIdentifier {
         case .back: return validateMenuItem(StrataCommand.goBack.menuItem())
         case .forward: return validateMenuItem(StrataCommand.goForward.menuItem())
-        case .viewMode: return !browser.isShowingResults
+        case .viewMode: return true
         default: return true
         }
     }
@@ -95,11 +95,19 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
 
     private func makeViewModeItem(_ id: NSToolbarItem.Identifier, inserted flag: Bool) -> NSToolbarItem {
         let item = BrowserViewMode.makeToolbarItem(id, target: self, action: #selector(viewModeChanged(_:)))
-        item.selectedIndex = browser.effectiveMode.position
-        item.isEnabled = !browser.isShowingResults
+        configureViewModeItem(item)
         item.visibilityPriority = .high
         if flag { toolbarItems.adopt(item) }
         return item
+    }
+
+    func configureViewModeItem(_ item: NSToolbarItemGroup) {
+        guard item.subitems.indices.contains(browser.effectiveMode.position) else { item.isEnabled = false; return }
+        item.selectedIndex = browser.effectiveMode.position
+        item.isEnabled = true
+        for (index, subitem) in item.subitems.enumerated() {
+            subitem.isEnabled = BrowserViewMode.ordered.indices.contains(index) && browser.supportsMode(BrowserViewMode.ordered[index])
+        }
     }
 
     private func makeDualPaneItem(_ id: NSToolbarItem.Identifier, inserted flag: Bool) -> NSToolbarItem {

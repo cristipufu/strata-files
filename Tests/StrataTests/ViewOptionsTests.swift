@@ -72,7 +72,7 @@ struct ViewOptionsTests {
         #expect(loaded)
         #expect(item.itemView.accessibilityLabel() == "folder")
         item.configure(entry, matches: [], metrics: metrics, showsInfo: true, dimmed: false, scale: 2,
-                       folderSizeText: "42 KB", preferences: preferences, thumbnails: .shared, itemInfo: .shared)
+                       detailOverride: "42 KB", preferences: preferences, thumbnails: .shared, itemInfo: .shared)
         #expect(item.itemView.accessibilityLabel() == "folder, 42 KB")
         #expect(tree.snapshot() == ["folder/", "folder/a.txt", "folder/b.txt"])
     }

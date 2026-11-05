@@ -642,8 +642,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Points the toolbar's view switcher at the current mode.
     func syncViewModeItem() {
-        toolbarItems.viewMode?.selectedIndex = browser.effectiveMode.position
-        toolbarItems.viewMode?.isEnabled = !browser.isShowingResults
+        if let item = toolbarItems.viewMode { configureViewModeItem(item) }
     }
 
     /// Keeps the toolbar's view switcher in sync when ⌘1–⌘5 change the mode.
@@ -768,7 +767,7 @@ extension BrowserWindowController: NSMenuItemValidation {
         switch item.action {
         case #selector(syncViewMode(_:)):
             item.state = item.tag == browser.effectiveMode.rawValue ? .on : .off
-            return !browser.isShowingResults || item.tag == BrowserViewMode.list.rawValue
+            return BrowserViewMode(rawValue: item.tag).map(browser.supportsMode) ?? false
         case #selector(goBack(_:)): return pane.history.canGo(.back)
         case #selector(goForward(_:)): return pane.history.canGo(.forward)
         case #selector(toggleDualPane(_:)):

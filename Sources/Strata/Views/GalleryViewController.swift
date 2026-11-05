@@ -26,6 +26,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
     required init?(coder: NSCoder) { fatalError() }
 
     private(set) var entries: [FileEntry] = []
+    private var details: FileCollectionDetails?
     private var indexByKey: [String: Int] = [:]
     let strip: GalleryStripView
     private let stripScroll = NSScrollView()
@@ -234,8 +235,9 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
     // MARK: - Content
 
     func apply(_ content: FileCollectionContent, metadata: FileCollectionMetadata, animated: Bool) {
-        if directory?.fileViewKey != content.directory.fileViewKey { cancelRename() }
+        if directory?.fileViewKey != content.directory?.fileViewKey { cancelRename() }
         directory = content.directory
+        details = content.details
         setEntries(content.entries)
     }
 
@@ -372,6 +374,7 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
     /// file); its thumbnail stands in meanwhile.
     private func schedulePreview(now: Bool = false, force: Bool = false) {
         let entry = lead.flatMap { $0 < entries.count ? entries[$0] : nil } ?? selectedEntries.first
+        updateLabels(entry)
         let canThumbnail = entry.map { thumbnails.canThumbnail($0) } ?? false
         let fallback = entry.map { thumbnails.icon(for: $0) }
         let stalePlaceholder = !canThumbnail && (!preview.isHidden || iconView.image !== fallback)
@@ -386,16 +389,8 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
             preview.clear()
             preview.isHidden = true
             iconView.image = nil
-            nameLabel.stringValue = ""
-            detailLabel.stringValue = ""
             return
         }
-        nameLabel.stringValue = entry.displayName
-        nameLabel.setAccessibilityLabel(entry.displayName)
-        var detail = [entry.kind]
-        if let size = entry.size, !entry.isDirectory { detail.append(Format.bytes(size)) }
-        if let modified = entry.modified { detail.append(Format.longDate(modified)) }
-        detailLabel.stringValue = detail.joined(separator: " · ")
         // The same file, changed: Quick Look reads it again.
         if sameItem, !preview.isHidden, canThumbnail {
             preview.refreshPreviewItem()
@@ -430,6 +425,19 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
     }
 
     // MARK: - Selection
+
+    private func updateLabels(_ entry: FileEntry?) {
+        nameLabel.stringValue = entry?.displayName ?? ""
+        nameLabel.setAccessibilityLabel(entry?.displayName)
+        guard let entry else { detailLabel.stringValue = ""; detailLabel.toolTip = nil; return }
+        var detail = [entry.kind]
+        if let size = entry.size, !entry.isDirectory { detail.append(Format.bytes(size)) }
+        if let modified = entry.modified { detail.append(Format.longDate(modified)) }
+        let context = details?.text(for: entry)
+        if let context { detail.append(context) }
+        detailLabel.stringValue = detail.joined(separator: " · ")
+        detailLabel.toolTip = details?.toolTip(for: entry)
+    }
 
     fileprivate func reportSelection() {
         schedulePreview()

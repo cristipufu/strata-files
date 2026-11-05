@@ -203,8 +203,8 @@ extension BrowserWindowController {
         commands.add(.toggleFolderTree, title: services.preferences.sidebarShowsTree ? String(localized: "Show Places in Sidebar") : String(localized: "Show Folder Tree in Sidebar"),
                      keywords: ["Tree", "Folders", "Favorites", "Navigation", "Hierarchy"])
         commands.add(.toggleDualPane, title: isDualPane ? String(localized: "Single Pane") : String(localized: "Dual Pane"))
-        if !browser.isShowingResults {
-            for mode in BrowserViewMode.ordered { commands.add(.view(mode), title: mode.paletteTitle) }
+        for mode in BrowserViewMode.ordered {
+            commands.add(.view(mode), title: mode.paletteTitle)
         }
     }
 

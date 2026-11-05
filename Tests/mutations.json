@@ -1276,8 +1276,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Results.swift",
-    "find": "        let selection = pending.selection ?? selectedURLs\n        enterResults()\n        loading.showResults()",
-    "replace": "        let selection = pending.selection ?? selectedURLs\n        enterResults()",
+    "find": "        let selection = pending.selection ?? selectedURLs\n        enterResults()\n        loading.showResults()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()\n        results.tally = .matched(total)",
+    "replace": "        let selection = pending.selection ?? selectedURLs\n        enterResults()\n        sizer.cancelPending()\n        mediaInfo.cancelPending()\n        results.tally = .matched(total)",
     "rule": "Directory read ownership a folder response replaces search results",
     "tests": "DirectoryReadSessionTests/resultsAndMessagesInvalidateOutstandingFolderReads"
   },
@@ -1682,8 +1682,8 @@
   },
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
-    "find": "setRoot(content.directory, entries: content.entries, matches: content.matches)",
-    "replace": "setRoot(content.directory, entries: content.entries, matches: [:])",
+    "find": "setRoot(directory, entries: content.entries, matches: content.matches)",
+    "replace": "setRoot(directory, entries: content.entries, matches: [:])",
     "rule": "Browser presentations column rows lose match highlights",
     "tests": "BrowserPresentationsTests/columnContentPassesMatchHighlightsIntoNativeText"
   },
@@ -8952,5 +8952,19 @@
     "replace": "func close() { closed = false; cancel() }",
     "rule": "Table page Find: closing refuses reentrant and later queries",
     "tests": "GridSearchTests/closingRejects"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "var selectedEntries: [FileEntry] { activeView?.selectedEntries ?? selectedNodes.map(\\.entry) }",
+    "replace": "var selectedEntries: [FileEntry] { selectedNodes.map(\\.entry) }",
+    "rule": "Visual results hand file commands the hidden list selection",
+    "tests": "ResultPresentationTests/resultsKeepRankSelectionAndCopyPathsAcrossViewsWithoutAWriteDestination|ResultPresentationTests/duplicateGroupsKeepEveryFileOnceAndShowItsGroupAndLocation"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        guard !isShowingResults else { return nil }",
+    "replace": "        if false { return nil }",
+    "rule": "Visual results paste into the folder visited before the search",
+    "tests": "ResultPresentationTests/resultsKeepRankSelectionAndCopyPathsAcrossViewsWithoutAWriteDestination"
   }
 ]

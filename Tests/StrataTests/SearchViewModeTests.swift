@@ -31,17 +31,18 @@ struct SearchViewModeTests {
     }
 
     private func checkControls(_ controller: BrowserWindowController, _ item: NSToolbarItemGroup, results: Bool) {
-        #expect(controller.validateToolbarItem(item) == !results)
-        #expect(item.isEnabled == !results)
+        #expect(controller.validateToolbarItem(item))
+        #expect(item.isEnabled)
         #expect(item.selectedIndex == controller.browser.effectiveMode.position)
         for menu in BrowserViewMode.menuItems(action: #selector(BrowserWindowController.syncViewMode(_:))) {
             let available = controller.validateMenuItem(menu)
-            #expect(available == (!results || menu.tag == BrowserViewMode.list.rawValue))
+            let supported = !results || [BrowserViewMode.list, .grid, .gallery].contains { $0.rawValue == menu.tag }
+            #expect(available == supported)
             #expect(menu.state == (menu.tag == controller.browser.effectiveMode.rawValue ? .on : .off))
         }
     }
 
-    @Test func searchResultsAndMessagesShowListAndRestoreTheFoldersViewWhenCleared() async throws {
+    @Test func searchResultsAndMessagesAllowVisualModesAndRestoreTheFoldersViewWhenCleared() async throws {
         let _ = NSApplication.shared
         let tree = try TestTree("a.zip", "b.zip")
         let controller = BrowserWindowController(location: tree.root, services: testEnvironment.services)
@@ -63,6 +64,7 @@ struct SearchViewModeTests {
                 default: controller.browser.showGroups([(title: "Duplicates", detail: "", entries: entries)], summary: "Duplicates")
                 }
                 checkControls(controller, item, results: true)
+                let previous = controller.browser.effectiveMode
                 item.selectedIndex = mode.position
                 let action = try #require(item.action)
                 #expect(NSApp.sendAction(action, to: controller, from: item))
@@ -71,6 +73,7 @@ struct SearchViewModeTests {
                 menu.tag = mode.rawValue
                 controller.syncViewMode(menu)
                 checkControls(controller, item, results: true)
+                #expect(controller.browser.effectiveMode == ([BrowserViewMode.list, .grid, .gallery].contains(mode) ? mode : previous))
                 #expect(controller.browser.mode == mode)
                 controller.navigate(to: tree.root)
                 try await waitForLoad(controller.browser)
@@ -82,7 +85,7 @@ struct SearchViewModeTests {
         #expect(tree.snapshot() == ["a.zip", "b.zip"])
     }
 
-    @Test func staleViewActionsInResultsKeepTheFolderPreferenceAndExactSelection() throws {
+    @Test func viewActionsInResultsKeepTheFolderPreferenceAndExactSelection() throws {
         let saved = testEnvironment.services.preferences.viewMode
         defer { if testEnvironment.services.preferences.viewMode != saved { testEnvironment.services.preferences.viewMode = saved } }
         let tree = try TestTree("left/", "left/a.zip", "right/", "right/a.zip")
@@ -94,17 +97,19 @@ struct SearchViewModeTests {
         browser.select([tree.url("right/a.zip")])
         let group = BrowserViewMode.makeToolbarItem(.viewMode, target: browser, action: #selector(BrowserViewController.setViewMode(_:)))
         for mode in BrowserViewMode.ordered {
+            let previous = browser.effectiveMode
             group.selectedIndex = mode.position
             browser.setViewMode(group)
             let menu = NSMenuItem(title: mode.title, action: nil, keyEquivalent: "")
             menu.tag = mode.rawValue
             browser.setViewMode(menu)
-            #expect(browser.mode == .columns && browser.effectiveMode == .list)
+            #expect(browser.mode == .columns)
+            #expect(browser.effectiveMode == ([BrowserViewMode.list, .grid, .gallery].contains(mode) ? mode : previous))
             #expect(testEnvironment.services.preferences.viewMode == saved)
             #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         }
         browser.setMode(.grid, remember: false)
-        #expect(browser.mode == .grid && browser.effectiveMode == .list)
+        #expect(browser.mode == .columns && browser.effectiveMode == .grid)
         #expect(testEnvironment.services.preferences.viewMode == saved)
         #expect(browser.selectedURLs == [tree.url("right/a.zip")])
         #expect(tree.snapshot() == ["left/", "left/a.zip", "right/", "right/a.zip"])
@@ -144,7 +149,7 @@ struct SearchViewModeTests {
         #expect(tree.snapshot() == ["left/", "left/a.zip", "right/", "right/b.zip"])
     }
 
-    @Test func resultsHideViewCommandsAndIgnoreAPaletteActionCapturedInTheFolder() async throws {
+    @Test func resultsOfferVisualViewCommandsAndRevalidateCapturedPaletteActions() async throws {
         let _ = NSApplication.shared
         let saved = testEnvironment.services.preferences.viewMode
         defer { if testEnvironment.services.preferences.viewMode != saved { testEnvironment.services.preferences.viewMode = saved } }
@@ -162,8 +167,15 @@ struct SearchViewModeTests {
         #expect(viewCommands.count == BrowserViewMode.ordered.count)
         controller.browser.showResults([try #require(FileEntry(url: tree.url("a.zip")))], total: 1)
         controller.browser.select([tree.url("a.zip")])
-        #expect(!controller.commandItems().contains { titles.contains($0.title) })
-        for command in viewCommands { command.run() }
+        let resultCommands = controller.commandItems().filter { titles.contains($0.title) }
+        let supported = Set([BrowserViewMode.list, .grid, .gallery].map { $0.paletteTitle })
+        #expect(Set(resultCommands.map(\.title)) == supported)
+        for mode in BrowserViewMode.ordered {
+            let command = try #require(viewCommands.first { $0.title == mode.paletteTitle })
+            let previous = controller.browser.effectiveMode
+            command.run()
+            #expect(controller.browser.effectiveMode == (supported.contains(command.title) ? mode : previous))
+        }
         #expect(controller.browser.mode == .gallery)
         #expect(testEnvironment.services.preferences.viewMode == saved)
         #expect(controller.browser.selectedURLs == [tree.url("a.zip")])

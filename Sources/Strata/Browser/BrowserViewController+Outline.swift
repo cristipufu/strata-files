@@ -149,7 +149,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
         syncSortDescriptor()
-        if remember { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
+        if remember, !isShowingResults { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
         let selection = selectedURLs
         listing.sort(using: sort)
         outlineView.reloadData()

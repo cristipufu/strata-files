@@ -274,6 +274,7 @@ struct TagColumnTests {
         let tree = try TestTree("a", "z")
         let state = try TestTree()
         let environment = try PreviewEnvironment(state)
+        let savedSort = environment.preferences.sortColumn
         let browser = BrowserViewController(services: environment.services)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 600),
                               styleMask: [.titled], backing: .buffered, defer: false)
@@ -301,7 +302,8 @@ struct TagColumnTests {
         #expect(browser.topLevelEntries.map(\.name) == ["z", "a"])
         #expect(browser.selectedURLs.map(\.lastPathComponent) == ["a"])
         browser.applySort(.tags, ascending: false)
-        #expect(environment.preferences.sortColumn == "tags")
+        #expect(environment.preferences.sortColumn == savedSort)
+        #expect(browser.ordering.choice == .init(key: .tags, ascending: false))
         #expect(browser.topLevelEntries.map(\.name) == ["a", "z"])
         #expect(!window.isVisible)
         #expect(tree.snapshot() == ["a", "z"])

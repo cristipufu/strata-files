@@ -4,6 +4,15 @@ import AppKit
 /// (duplicate sets, a message while they're found), and the list's column widths from before, put back when the
 /// folder returns.
 final class PaneResults {
+    private(set) var mode = BrowserViewMode.list
+
+    static func supports(_ mode: BrowserViewMode) -> Bool { [.list, .grid, .gallery].contains(mode) }
+
+    func chooseMode(_ mode: BrowserViewMode) {
+        guard Self.supports(mode) else { return }
+        self.mode = mode
+    }
+
     enum Tally: Equatable {
         /// How many matched before the list was capped.
         case matched(Int)

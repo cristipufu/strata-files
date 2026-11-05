@@ -85,11 +85,28 @@ extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool { false }
 }
 
-/// The browser's current folder rows, already sorted and filtered. Views preserve their own selection policy.
+/// Sorted, filtered files for a presentation. Results have no destination folder; details identify their origins.
 struct FileCollectionContent {
-    let directory: URL
+    let directory: URL?
     let entries: [FileEntry]
     let matches: [URL: [Int]]
+    var details: FileCollectionDetails?
+}
+
+/// Only visible items format their location; a large result set does not format every path before its first frame.
+struct FileCollectionDetails {
+    let groups: [String: String]
+    let copies: CopyProviders
+
+    func text(for entry: FileEntry) -> String {
+        let parent = entry.url.deletingLastPathComponent()
+        let location = copies.contains(entry.url) ? copies.clipboardPath(parent) ?? "—" : Format.tildePath(parent)
+        return [groups[entry.locationKey], location].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    func toolTip(for entry: FileEntry) -> String {
+        text(for: entry) + "\n" + (copies.clipboardPath(entry.url) ?? "—")
+    }
 }
 
 nonisolated enum DiskSizeMeasurement: Sendable, Equatable {

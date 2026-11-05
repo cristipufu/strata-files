@@ -9,7 +9,7 @@ extension BrowserViewController {
     }
 
     var isInContainerCopy: Bool {
-        directory.map(services.copies.contains) == true
+        targetDirectory.map(services.copies.contains) == true || selectedURLs.contains(where: services.copies.contains)
     }
 
     var canTagSelection: Bool {
@@ -32,14 +32,14 @@ extension BrowserViewController {
         let selected = selectedEntries
         let containerCopies = services.copies.containerCopies
         let canTag = canTagSelection
-        let folderIsStack = directory.map(containerCopies.isStack) == true
+        let folderIsStack = targetDirectory.map(containerCopies.isStack) == true
         let selectionIsStacks = !selected.isEmpty && selected.allSatisfy { containerCopies.isStack($0.url) }
         let offersStacks = selected.isEmpty ? folderIsStack : selectionIsStacks
         return BrowserContextMenu.Facts(
             selection: selected,
             showsHiddenFiles: preferences.showHidden,
             isOnServer: isOnServer,
-            serverHasShell: directory.flatMap({ services.remote.copies.server(containing: $0)?.server.kind }) == .sftp,
+            serverHasShell: serverKind == .sftp,
             isInsideArchive: isInsideArchive,
             isInContainerCopy: isInContainerCopy,
             isShowingTrash: isShowingTrash,
@@ -56,8 +56,8 @@ extension BrowserViewController {
             canRemoveDownload: selectedCloudStatuses.contains(.downloaded),
             opensAsFolder: selected.count == 1 && opensAsFolder(selected[0]),
             folderIsStack: folderIsStack,
-            folderIsEngine: directory.map(containerCopies.engineFolder) != nil,
-            folderIsArchiveCopy: directory.map(ArchiveCache.contains) == true,
+            folderIsEngine: targetDirectory.map(containerCopies.engineFolder) != nil,
+            folderIsArchiveCopy: targetDirectory.map(ArchiveCache.contains) == true,
             selectionIsStacks: selectionIsStacks,
             hasStackProjects: offersStacks && !stackProjectDirectories().isEmpty,
             appliedTags: { [weak self] in self?.appliedStandardTags(selected.map(\.url)) ?? [:] })

@@ -5,8 +5,9 @@ import Quartz
 extension BrowserViewController {
     @objc func showViewOptions(_ sender: Any?) { services.viewOptions.show() }
 
-    /// Results (search, Recents, Duplicates) have no single folder, so they always use the list.
-    var effectiveMode: BrowserViewMode { isShowingResults ? .list : mode }
+    var effectiveMode: BrowserViewMode { isShowingResults ? results.mode : mode }
+
+    func supportsMode(_ mode: BrowserViewMode) -> Bool { !isShowingResults || PaneResults.supports(mode) }
 
     var activeView: FileCollectionController? {
         presentations.controller(for: effectiveMode, in: self)
@@ -17,6 +18,7 @@ extension BrowserViewController {
 
     /// Where new folders and pastes go: the focused column in column view, otherwise the current folder.
     var targetDirectory: URL? {
+        guard !isShowingResults else { return nil }
         if effectiveMode == .columns, let active = columnController?.activeDirectory { return active }
         return directory
     }
@@ -33,17 +35,18 @@ extension BrowserViewController {
 
     /// `remember: false` (a workspace reopening) leaves the view new windows open in as it is.
     func setMode(_ newMode: BrowserViewMode, remember: Bool = true) {
-        // Results stay in List; a user command must not silently change the folder's saved view.
-        guard !remember || !isShowingResults else { return }
-        guard newMode != mode else { return }
+        guard supportsMode(newMode), newMode != effectiveMode else { return }
         let revision = navigationRevision
         columnController?.cancelPendingRename()
         let selection = selectedURLs
-        setStoredMode(newMode)
-        if remember { preferences.viewMode = newMode.rawValue }
+        if isShowingResults { results.chooseMode(newMode) }
+        else {
+            setStoredMode(newMode)
+            if remember { preferences.viewMode = newMode.rawValue }
+        }
         installActiveView()
         if !applyHeldListing() { pushContent() }
-        guard navigationRevision == revision, mode == newMode else { return }
+        guard navigationRevision == revision, effectiveMode == newMode else { return }
         select(selection)
         view.window?.makeFirstResponder(focusView)
         delegate?.browserSelectionDidChange(self)
@@ -79,13 +82,24 @@ extension BrowserViewController {
 
     /// Hands the current rows (sorted, filtered, with match highlights) to the active presentation.
     func pushContent(animated: Bool = false) {
-        guard let directory, !isShowingResults, let active = activeView else { return }
-        let shown = visibleRows
+        guard let active = activeView else { return }
+        let directory = isShowingResults ? nil : directory
+        guard isShowingResults || directory != nil else { return }
+        let shown = visibleRows.flatMap { $0.groupTitle == nil ? [$0] : $0.children ?? [] }
         var matches: [URL: [Int]] = [:]
         for node in shown where !node.matchIndices.isEmpty { matches[node.url] = node.matchIndices }
-        let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches)
+        var details: FileCollectionDetails?
+        if isShowingResults {
+            var groups: [String: String] = [:]
+            for group in visibleRows where group.groupTitle != nil {
+                let title = [group.groupTitle, group.groupDetail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                for child in group.children ?? [] { groups[child.entry.locationKey] = title }
+            }
+            details = FileCollectionDetails(groups: groups, copies: services.copies)
+        }
+        let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches, details: details)
         let diskSizeReader: (@MainActor (FileEntry) -> DiskSizeMeasurement)?
-        if services.copies.contains(directory) || ArchiveCache.archive(containing: directory) != nil {
+        if directory == nil || directory.map(services.copies.contains) == true || directory.flatMap(ArchiveCache.archive(containing:)) != nil {
             diskSizeReader = nil
         } else {
             diskSizeReader = { [weak self] entry in self?.diskSize(entry) ?? .unavailable }
@@ -152,7 +166,7 @@ extension BrowserViewController: FileCollectionViewDelegate {
     }
 
     func fileView(_ view: NSViewController, canSpringLoad folder: URL, during info: NSDraggingInfo) -> Bool {
-        SpringLoader.canOpen(folder, browsing: directory, during: info)
+        SpringLoader.canOpen(folder, browsing: targetDirectory, during: info)
     }
 
     func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, info: NSDraggingInfo) -> Bool {
