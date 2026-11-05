@@ -9,9 +9,9 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
     let textView = MarkdownTextView(usingTextLayoutManager: false)
     private lazy var search = PreviewTextSearch(textView: textView)
     private var query = ""
-    private(set) var diagramTask: Task<Void, Never>?
-    private var diagramRevision = 0
-    private var diagramsStopped = false
+    private(set) var renderingTask: Task<Void, Never>?
+    private var renderingRevision = 0
+    private var renderingStopped = false
     private let layoutManager = MarkdownLayoutManager()
 
     package init(url: URL) {
@@ -54,6 +54,7 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
 
     private func show(_ document: MarkdownDocument) {
         guard textView.renderingError == nil else { return }
+        layoutSubtreeIfNeeded()
         textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
         textView.tables = document.tables.value
         do {
@@ -65,14 +66,14 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         guard textView.renderingError == nil, textView.useTextStorage(document.storage.value, allowingNonContiguousLayout: document.isSource) else { return }
         search.find(query)
         guard textView.renderingError == nil else { return }
-        renderDiagrams()
+        renderAssets()
         let words = String(localized: "\(document.wordCount) words", comment: "plural")
         let summary = document.isSource ? ["Markdown", String(localized: "Source"), words] : ["Markdown", words]
         footer.show(summary, note: document.isTruncated
             ? String(localized: "Showing first \(TextFile.limitDescription)", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil)
     }
 
-    isolated deinit { diagramTask?.cancel() }
+    isolated deinit { renderingTask?.cancel() }
 
     package func find(_ query: String) {
         guard textView.renderingError == nil else { return }
@@ -87,99 +88,129 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
 
     package override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        if textView.textStorage?.length ?? 0 > 0 { renderDiagrams() }
+        if textView.textStorage?.length ?? 0 > 0 { renderAssets() }
     }
 
     package override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if window != nil, window !== newWindow { stopDiagrams() }
+        if window != nil, window !== newWindow { stopRendering() }
         super.viewWillMove(toWindow: newWindow)
     }
 
     package override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        if superview == nil { stopDiagrams() }
+        if superview == nil { stopRendering() }
     }
 
     package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
         guard let window else { return }
-        NotificationCenter.default.addObserver(self, selector: #selector(stopDiagrams), name: NSWindow.willCloseNotification, object: window)
-        let restart = diagramsStopped || diagramTask?.isCancelled == true
-        diagramsStopped = false
-        if restart { renderDiagrams() }
+        NotificationCenter.default.addObserver(self, selector: #selector(stopRendering), name: NSWindow.willCloseNotification, object: window)
+        let restart = renderingStopped || renderingTask?.isCancelled == true
+        renderingStopped = false
+        if restart { renderAssets() }
     }
 
     package override func viewDidHide() {
         super.viewDidHide()
-        diagramTask?.cancel(); diagramRevision += 1
+        renderingTask?.cancel(); renderingRevision &+= 1
     }
 
     package override func viewDidUnhide() {
         super.viewDidUnhide()
-        renderDiagrams()
+        renderAssets()
     }
 
-    @objc private func stopDiagrams() {
-        diagramsStopped = true
-        diagramTask?.cancel(); diagramRevision += 1
+    @objc private func stopRendering() {
+        renderingStopped = true
+        renderingTask?.cancel(); renderingRevision &+= 1
     }
 
-    @objc package override func stop() { stopDiagrams(); super.stop() }
+    @objc package override func stop() { stopRendering(); super.stop() }
 
     private func renderingFailed() {
-        stopDiagrams()
+        stopRendering()
         cancelLoad()
         scrollView.documentView = nil
         scrollView.removeFromSuperview()
         showMessage(symbol: "eye.slash", String(localized: "No Preview Available"))
     }
 
-    private func renderDiagrams() {
-        guard textView.renderingError == nil, !diagramsStopped, !isHiddenOrHasHiddenAncestor else { return }
-        diagramTask?.cancel(); diagramRevision += 1
-        let revision = diagramRevision
+    private func renderAssets() {
+        guard textView.renderingError == nil, !renderingStopped, !isHiddenOrHasHiddenAncestor else { return }
+        renderingTask?.cancel(); renderingRevision &+= 1
+        let revision = renderingRevision
         guard let storage = textView.textStorage else { return }
-        var diagrams: [(NSRange, String)] = []
-        storage.enumerateAttribute(MarkdownRenderer.mermaidSource, in: NSRange(location: 0, length: storage.length)) { source, range, _ in
-            if let source = source as? String {
-                let trailingNewline = storage.attribute(.attachment, at: range.location, effectiveRange: nil) != nil
-                    && NSMaxRange(range) < storage.length && (storage.string as NSString).substring(with: NSRange(location: NSMaxRange(range), length: 1)) == "\n"
-                diagrams.append((NSRange(location: range.location, length: range.length + (trailingNewline ? 1 : 0)), source))
-            }
-        }
-        guard !diagrams.isEmpty else { return }
+        var placeholders: [MarkdownAsset.Placeholder] = []
+        effectiveAppearance.performAsCurrentDrawingAppearance { placeholders = MarkdownAsset.placeholders(in: storage) }
+        guard !placeholders.isEmpty else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        diagramTask = Task { [weak self] in
-            guard let script = try? await MermaidRenderer.script(), !Task.isCancelled,
-                  let rules = try? await HTMLWebSession.contentRules(), !Task.isCancelled else { return }
-            let renderer = MermaidRenderer(script: script, rules: rules)
-            defer { renderer.close() }
-            for (range, source) in diagrams.reversed() {
+        renderingTask = Task { [weak self] in
+            let renderers = MarkdownAssetRenderers()
+            defer { renderers.close() }
+            var images: [MarkdownAsset.Image] = []
+            for placeholder in placeholders {
                 guard !Task.isCancelled else { return }
-                guard let image = try? await renderer.render(source, dark: dark), !Task.isCancelled else { continue }
-                guard let self, textView.renderingError == nil, diagramRevision == revision, let storage = textView.textStorage,
-                      NSMaxRange(range) <= storage.length else { return }
-                let attachment = NSTextAttachment()
-                image.size = NSSize(width: image.size.width / 2, height: image.size.height / 2)
-                image.accessibilityDescription = source
-                attachment.image = image
-                let previous = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment
-                let width = min(image.size.width, max(40, textView.bounds.width - 48))
-                attachment.bounds = NSRect(x: 0, y: 0, width: width, height: image.size.height * width / image.size.width)
-                let replacement = NSMutableAttributedString(attachment: attachment)
-                let style = (storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-                style.textBlocks.removeAll { $0 is CodeBlockBackground }
-                style.minimumLineHeight = 0; style.maximumLineHeight = 0
-                replacement.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: 1))
-                replacement.addAttribute(MarkdownRenderer.mermaidSource, value: source, range: NSRange(location: 0, length: 1))
-                replacement.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
-                guard textView.replaceCharacters(in: range, with: replacement) else { return }
-                textView.diagrams.removeAll { $0 === previous }
-                textView.diagrams.append(attachment)
-                search.find(query)
+                if let image = try? await renderers.render(placeholder, dark: dark) { images.append(image) }
             }
+            guard !Task.isCancelled, let self, textView.renderingError == nil, renderingRevision == revision else { return }
+            apply(images)
         }
+    }
+
+    private func apply(_ images: [MarkdownAsset.Image]) {
+        guard let storage = textView.textStorage, !images.isEmpty else { return }
+        var ranges: [NSValue] = [], replacements: [NSAttributedString] = []
+        var previous: [NSTextAttachment] = [], attachments: [NSTextAttachment] = []
+        for image in images {
+            let range = image.placeholder.range
+            guard range.location < storage.length, range.length <= storage.length - range.location,
+                  storage.attribute(MarkdownRenderer.assetID, at: range.location, effectiveRange: nil) as? String == image.placeholder.id else { return }
+            if let attachment = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment { previous.append(attachment) }
+            guard let replacement = replacement(for: image, in: storage),
+                  let attachment = replacement.attribute(.attachment, at: (replacement.string.hasPrefix("\n") ? 1 : 0), effectiveRange: nil) as? NSTextAttachment else { return }
+            ranges.append(NSValue(range: range)); replacements.append(replacement); attachments.append(attachment)
+        }
+        guard textView.replaceRanges(ranges, with: replacements) else { return }
+        textView.assets.removeAll { old in previous.contains { $0 === old } }
+        textView.assets.append(contentsOf: attachments)
+        search.find(query)
+    }
+
+    private func replacement(for image: MarkdownAsset.Image, in storage: NSAttributedString) -> NSAttributedString? {
+        let range = image.placeholder.range, asset = image.placeholder.asset
+        let attachment: NSTextAttachment
+        if case .equation = asset {
+            guard let math = MathTextAttachment(image: image.image, descent: image.descent) else { return nil }
+            attachment = math
+        } else { attachment = NSTextAttachment(); attachment.image = image.image }
+        image.image.accessibilityDescription = asset.source
+        let width = min(image.image.size.width, max(1, textView.bounds.width - 48))
+        attachment.bounds = NSRect(x: 0, y: 0, width: width, height: image.image.size.height * width / image.image.size.width)
+        let original = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle ?? NSParagraphStyle()
+        let style = original.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+        if asset.isBlock {
+            style.textBlocks.removeAll { $0 is CodeBlockBackground }
+            style.minimumLineHeight = 0; style.maximumLineHeight = 0
+            if case .equation = asset { style.alignment = .center }
+        }
+        let replacement = NSMutableAttributedString()
+        if asset.isBlock, range.location > 0,
+           (storage.string as NSString).substring(with: NSRange(location: range.location - 1, length: 1)) != "\n" {
+            replacement.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: original]))
+        }
+        var attributes = storage.attributes(at: range.location, effectiveRange: nil)
+        attributes[.attachment] = attachment
+        attributes[.paragraphStyle] = style
+        let picture = NSMutableAttributedString(string: "\u{FFFC}", attributes: attributes)
+        picture.addAttribute(MarkdownRenderer.assetID, value: image.placeholder.id, range: NSRange(location: 0, length: 1))
+        switch asset {
+        case .diagram(let source): picture.addAttribute(MarkdownRenderer.mermaidSource, value: source, range: NSRange(location: 0, length: 1))
+        case .equation(let equation): picture.addAttribute(MarkdownMath.sourceKey, value: equation.attribute, range: NSRange(location: 0, length: 1))
+        }
+        replacement.append(picture)
+        if asset.isBlock { replacement.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style])) }
+        return replacement
     }
 
     /// Markdown comes from untrusted files, so links never launch anything: web and mail links open, links to

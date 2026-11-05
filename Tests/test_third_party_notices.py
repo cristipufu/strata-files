@@ -67,6 +67,19 @@ class ThirdPartyNoticeTests(unittest.TestCase):
         self.assertFalse((ROOT / "Resources" / "ArchivePreviewNotice.txt").exists(),
                          "One notices file, so the repository's and the app's credits cannot drift apart.")
 
+    def test_offline_math_matches_its_pinned_release_and_full_license(self):
+        resource = ROOT / "Sources/Strata/Previews/Math"
+        package = json.loads((resource / "package.json").read_text(encoding="utf-8"))
+        script = (resource / "katex.min.js").read_bytes()
+        license = (resource / "LICENSE").read_bytes()
+        self.assertEqual(package["scriptSHA256"], hashlib.sha256(script).hexdigest())
+        self.assertEqual(package["licenseSHA256"], hashlib.sha256(license).hexdigest())
+        self.assertRegex(self.notices, rf'(?m)^## KaTeX {re.escape(package["version"])}$')
+        self.assertIn(package["scriptSource"], self.notices)
+        self.assertIn(package["scriptSHA256"], self.notices)
+        self.assertIn(license.decode("utf-8").rstrip(), self.notices)
+        self.assertIn('.copy("Math")', self.manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

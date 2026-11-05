@@ -1,34 +1,17 @@
 import AppKit
 import WebKit
 import StrataSupport
-import CNativeReaders
 
 private final class PreviewBundleMarker {}
 
-/// Only the bundled library executes here. Document text crosses the JavaScript boundary as an argument.
-@MainActor package final class MermaidRenderer: NSObject, WKNavigationDelegate {
+@MainActor package final class MermaidRenderer {
     nonisolated package static let textLimit = 50_000
     nonisolated package static let diagramLimit = 12
-    private let webView: WKWebView
-    private var ready = false
-    private var closed = false
-    private var source = ""
-    private var dark = false
-    private var pending: CheckedContinuation<Data, Error>?
-    private var deadline: Task<Void, Never>?
+    private let renderer: OfflineImageRenderer
 
     package init(script: String, rules: WKContentRuleList) {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.userContentController.add(rules)
-        configuration.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1024, height: 768), configuration: configuration)
-        super.init()
-        webView.navigationDelegate = self
+        renderer = OfflineImageRenderer(script: script, document: Self.document, drawing: Self.drawing, rules: rules)
     }
-
-    isolated deinit { deadline?.cancel() }
 
     @concurrent package static func script() async throws -> String {
         let bundle = try ResourceBundle.named("Strata_StrataPreviews", in: .main, linkedTo: Bundle(for: PreviewBundleMarker.self))
@@ -39,75 +22,13 @@ private final class PreviewBundleMarker {}
     }
 
     package func render(_ source: String, dark: Bool) async throws -> NSImage {
-        guard !closed, pending == nil, source.utf8.count <= Self.textLimit else { throw PreviewError.unsupported }
-        let data = try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            return try await withCheckedThrowingContinuation { continuation in
-                self.source = source; self.dark = dark; pending = continuation
-                deadline = Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(8))
-                    guard !Task.isCancelled else { return }
-                    self?.close()
-                }
-                if ready { draw() }
-                else {
-                    webView.loadHTMLString(Self.document, baseURL: nil)
-                }
-            }
-        } onCancel: {
-            Task { @MainActor [weak self] in self?.close() }
-        }
+        guard source.utf8.count <= Self.textLimit else { throw PreviewError.unsupported }
+        let encoded = try await renderer.render(arguments: ["source": source, "dark": dark])
         try Task.checkCancellation()
-        return try await Self.decode(data).value
+        return try await OfflineImageRenderer.decodePNG(encoded).value
     }
 
-    @concurrent private static func decode(_ data: Data) async throws -> Handoff<NSImage> {
-        try Task.checkCancellation()
-        let reader = try STImageReader.open(data, byteLimit: 6_000_000, pixelLimit: 4_000_000, frameLimit: 1)
-        let bitmap = try reader.thumbnail(maximumSide: 2000)
-        try Task.checkCancellation()
-        return Handoff(value: NSImage(cgImage: bitmap.image, size: NSSize(width: bitmap.image.width, height: bitmap.image.height)))
-    }
-
-    package func close() {
-        guard !closed else { return }
-        closed = true
-        finish(.failure(CancellationError()))
-        webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.configuration.userContentController.removeAllUserScripts()
-        webView.loadHTMLString("", baseURL: nil)
-    }
-
-    private func finish(_ result: Result<Data, Error>) {
-        deadline?.cancel(); deadline = nil
-        let continuation = pending
-        pending = nil; source = ""
-        continuation?.resume(with: result)
-    }
-
-    package func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard !closed, pending != nil else { return }
-        ready = true
-        draw()
-    }
-    package func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { close() }
-    package func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { close() }
-    package func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { close() }
-    package func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-        !closed && !ready && navigationAction.request.url?.absoluteString == "about:blank" ? .allow : .cancel
-    }
-
-    private func draw() {
-        webView.callAsyncJavaScript(Self.drawing, arguments: ["source": source, "dark": dark], in: nil, in: .page) { [weak self] result in
-            guard let self, !closed, pending != nil else { return }
-            guard case .success(let value) = result, let encoded = value as? String, encoded.utf8.count <= 6_000_000,
-                  let comma = encoded.firstIndex(of: ","), let data = Data(base64Encoded: String(encoded[encoded.index(after: comma)...])) else {
-                finish(.failure(PreviewError.unsupported)); return
-            }
-            finish(.success(data))
-        }
-    }
+    package func close() { renderer.close() }
 
     private static let document = """
         <!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">

@@ -42,7 +42,16 @@ nonisolated final class MarkdownTable: NSTextTable {
 
 final class MarkdownTextView: STPreviewTextView {
     var tables: [MarkdownTable] = []
-    var diagrams: [NSTextAttachment] = []
+    var assets: [NSTextAttachment] = []
+    override func writeSelection(to pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType]) -> Bool {
+        guard renderingError == nil else { return false }
+        if let storage = textStorage,
+           let source = MarkdownMath.copiedText(in: storage, ranges: selectedRanges.map(\.rangeValue)) {
+            return writePlainText(source, to: pasteboard)
+        }
+        return super.writeSelection(to: pasteboard, types: types)
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         guard renderingError == nil else { return }
         guard newSize.width.isFinite, newSize.height.isFinite, newSize.width >= 0, newSize.height >= 0 else {
@@ -57,7 +66,7 @@ final class MarkdownTextView: STPreviewTextView {
                 retireWithError(error as NSError)
                 return
             }
-            guard resizeAttachments(diagrams, width: width) else { return }
+            guard resizeAttachments(assets, width: width) else { return }
         }
         super.setFrameSize(newSize)
     }

@@ -168,7 +168,7 @@ let package = Package(
             name: "StrataPreviews",
             dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText", "CNativeReaders"],
             path: "Sources/Strata/Previews",
-            resources: [.copy("Mermaid"), .copy("Models")],
+            resources: [.copy("Mermaid"), .copy("Models"), .copy("Math")],
             swiftSettings: strataSwiftSettings
         ),
         .target(

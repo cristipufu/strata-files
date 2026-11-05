@@ -139,14 +139,15 @@ import Testing
         let view = await markdown(tree)
         let storage = STFailingPreviewStorage()
         storage.addAttribute(MarkdownRenderer.mermaidSource, value: "graph TD; A-->B", range: NSRange(location: 0, length: storage.length))
+        storage.addAttribute(MarkdownRenderer.assetID, value: "fixture-diagram", range: NSRange(location: 0, length: storage.length))
         try #require(view.textView.useTextStorage(storage, allowingNonContiguousLayout: false))
         storage.failsEditing = true
         defer { storage.failsEditing = false; view.cancelLoad() }
         try await expectRetirement(view.textView) {
             view.viewDidChangeEffectiveAppearance()
-            await view.diagramTask?.value
+            await view.renderingTask?.value
         }
-        #expect(view.textView.diagrams.isEmpty)
+        #expect(view.textView.assets.isEmpty)
         #expect(view.textView.enclosingScrollView == nil)
         #expect(view.footer.isHidden)
         let next = await markdown(tree)

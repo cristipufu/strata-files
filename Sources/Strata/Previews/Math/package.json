@@ -1,0 +1,8 @@
+{
+  "version": "0.19.1",
+  "scriptSource": "https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.js",
+  "licenseSource": "https://raw.githubusercontent.com/KaTeX/KaTeX/v0.19.1/LICENSE",
+  "scriptSHA256": "fa140498b8cfc8302cbe5e7cb1bdbc1f952bc38b3fa258ede09e73edbf9a74bc",
+  "scriptSRI": "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
+  "licenseSHA256": "766ccc1f306c885aa45542a9846bbd0a505b27a0374f146778171c2254ce18e3"
+}

@@ -97,6 +97,7 @@ nonisolated package final class MarkdownParser {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if indent >= 4, !inParagraph { return .block(indentedCode(lines, from: &i)) }
         if let fence = fence(trimmed) { return .block(fencedCode(lines, from: &i, fence: fence, indent: indent)) }
+        if let math = displayMath(lines, from: &i) { return .block(math) }
         if let (level, text) = atxHeading(trimmed) {
             i += 1
             return .block(.heading(level: level, text: text))
@@ -119,6 +120,20 @@ nonisolated package final class MarkdownParser {
     }
 
     // MARK: - Blocks
+
+    private func displayMath(_ lines: [String], from index: inout Int) -> MarkdownBlock? {
+        let line = lines[index].trimmingCharacters(in: .whitespaces)
+        guard line.hasPrefix("$$") else { return nil }
+        if line.count > 4, line.hasSuffix("$$") {
+            index += 1
+            return .code(language: "math", text: String(line.dropFirst(2).dropLast(2)))
+        }
+        guard line == "$$", index + 1 < lines.count,
+              let end = ((index + 1)..<lines.count).first(where: { lines[$0].trimmingCharacters(in: .whitespaces) == "$$" }) else { return nil }
+        let source = lines[(index + 1)..<end].joined(separator: "\n")
+        index = end + 1
+        return .code(language: "math", text: source)
+    }
 
     /// Lines indented four spaces or more, blank ones between them included, as code.
     private func indentedCode(_ lines: [String], from i: inout Int) -> MarkdownBlock {
@@ -329,7 +344,7 @@ nonisolated package final class MarkdownParser {
 
     private func startsBlock(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        return fence(trimmed) != nil || atxHeading(trimmed) != nil || isRule(trimmed) || trimmed.hasPrefix(">")
+        return fence(trimmed) != nil || atxHeading(trimmed) != nil || isRule(trimmed) || trimmed.hasPrefix(">") || trimmed.hasPrefix("$$")
     }
 
     private func isHTMLBlockStart(_ trimmed: String) -> Bool {

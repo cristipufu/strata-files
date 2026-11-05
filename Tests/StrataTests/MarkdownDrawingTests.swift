@@ -75,6 +75,50 @@ import Testing
         #expect(tree.text("nested.md") == Self.nested)
     }
 
+    @Test func equationsDrawAndResizeInsideHeadingsQuotedTablesAndListsAcrossAppearances() async throws {
+        let source = #"""
+        # Heading $x^2$
+
+        > | Item | Equation |
+        > | --- | --- |
+        > | One | $\frac{a}{b}$ |
+        > | Two | $\sqrt{x^2 + y^2}$ |
+
+        - List with $E=mc^2$.
+
+          ```math
+          \begin{pmatrix}a & b \\ c & d\end{pmatrix}
+          ```
+
+        Final searchable paragraph.
+        """#
+        let tree = try TestTree("nested-math.md")
+        try Data(source.utf8).write(to: tree.url("nested-math.md"))
+        let view = MarkdownPreviewView(url: tree.url("nested-math.md"))
+        defer { view.stop() }
+        view.frame = NSRect(x: 0, y: 0, width: 720, height: 1600)
+        view.layoutSubtreeIfNeeded()
+        await view.loadingTask?.value
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            view.appearance = appearance
+            view.viewDidChangeEffectiveAppearance()
+            await view.renderingTask?.value
+            #expect(view.textView.assets.count == 5)
+            for width: CGFloat in [280, 720, 1100, 280] {
+                let bitmap = try draw(view.textView, width: width, appearance: appearance)
+                #expect(bitmap.pixelsWide == Int(width) && view.textView.renderingError == nil)
+                for asset in view.textView.assets {
+                    #expect(asset.bounds.width.isFinite && asset.bounds.height.isFinite && asset.bounds.minY.isFinite)
+                    #expect(asset.bounds.width > 0 && asset.bounds.height > 0 && asset.bounds.minY <= 0)
+                }
+            }
+            view.find("searchable")
+            #expect(view.textView.selectedRange().length == 10)
+        }
+        #expect(tree.text("nested-math.md") == source)
+    }
+
     @Test func previewSamplesDrawBeforeAndAfterDiagramsArriveAcrossWidthsAndAppearances() async throws {
         _ = NSApplication.shared
         let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -94,16 +138,16 @@ import Testing
                     try #require(view.textView.renderingError == nil, "\(name), before diagrams, \(width)")
                 }
             }
-            await view.diagramTask?.value
+            await view.renderingTask?.value
             let expectedDiagrams = ["01-Mermaid-Diagrams.md": 5, "02-Nested-Mermaid.md": 6,
                                     "05-Mixed-Document.md": 2, "06-Fallbacks.md": 1][name] ?? 0
-            #expect(view.textView.diagrams.count == expectedDiagrams, "\(name) must render its valid diagrams")
+            #expect(view.textView.assets.count == expectedDiagrams, "\(name) must render its valid diagrams")
             for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
                 let appearance = try #require(NSAppearance(named: appearanceName))
                 view.appearance = appearance
                 view.viewDidChangeEffectiveAppearance()
-                await view.diagramTask?.value
-                #expect(view.textView.diagrams.count == expectedDiagrams)
+                await view.renderingTask?.value
+                #expect(view.textView.assets.count == expectedDiagrams)
                 for width: CGFloat in [280, 720, 1100] {
                     _ = try draw(view.textView, width: width, appearance: appearance)
                     try #require(view.textView.renderingError == nil, "\(name), after diagrams, \(width)")
@@ -173,7 +217,7 @@ import Testing
         view.find("Cell")
         view.findNext(backwards: false)
         view.viewDidChangeEffectiveAppearance()
-        #expect(view.diagramTask?.isCancelled != false)
+        #expect(view.renderingTask?.isCancelled != false)
 
         let next = MarkdownPreviewView(url: tree.url("document.md"))
         next.frame = view.frame

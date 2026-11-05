@@ -12,8 +12,10 @@ nonisolated package final class MarkdownRenderer {
     private var imageBudget = imageLimit
     private(set) var tables: [MarkdownTable] = []
     private var diagrams = 0
+    private var equations = 0
     private var budget = MarkdownBudget()
     static let mermaidSource = NSAttributedString.Key("StrataMermaidSource")
+    static let assetID = NSAttributedString.Key("StrataMarkdownAssetID")
 
     private let bodySize: CGFloat = 13
     private let blockSpacing: CGFloat = 10
@@ -29,6 +31,7 @@ nonisolated package final class MarkdownRenderer {
         budget = MarkdownBudget()
         imageBudget = Self.imageLimit
         diagrams = 0
+        equations = 0
         tables.removeAll()
         let output = NSMutableAttributedString()
         try render(blocks, into: output, context: Context())
@@ -145,6 +148,14 @@ nonisolated package final class MarkdownRenderer {
         if language.lowercased() == "mermaid", diagrams < MermaidRenderer.diagramLimit, text.utf8.count <= MermaidRenderer.textLimit {
             diagrams += 1
             output.addAttribute(Self.mermaidSource, value: text, range: NSRange(location: start, length: output.length - start))
+            output.addAttribute(Self.assetID, value: UUID().uuidString, range: NSRange(location: start, length: output.length - start))
+        }
+        if ["math", "latex"].contains(language.lowercased()), equations < MathRenderer.equationLimit,
+           text.utf8.count <= MathRenderer.textLimit {
+            equations += 1
+            let equation = MarkdownMath.Equation(source: text, original: "$$\n" + text + "\n$$", display: true)
+            output.addAttribute(MarkdownMath.sourceKey, value: equation.attribute, range: NSRange(location: start, length: output.length - start))
+            output.addAttribute(Self.assetID, value: UUID().uuidString, range: NSRange(location: start, length: output.length - start))
         }
         if body.utf16.count <= MarkdownLimits.formattingInputUnits, let language = Languages.detect(fenceInfo: language) {
             let tokens = SyntaxHighlighter.tokens(in: body, lexer: language.lexer)
@@ -317,7 +328,10 @@ nonisolated package final class MarkdownRenderer {
                         paragraph: NSParagraphStyle) throws -> NSAttributedString {
         guard markdown.utf16.count <= MarkdownLimits.formattingInputUnits else { throw MarkdownLimitExceeded() }
         try budget.reserveText(markdown)
-        let parsed = try STPreviewTextBuilder.inlineMarkdown(markdown, baseURL: baseURL)
+        let math = MarkdownMath.prepare(markdown, limit: MathRenderer.equationLimit - equations)
+        equations += math.equations.count
+        try Task.checkCancellation()
+        let parsed = try STPreviewTextBuilder.inlineMarkdown(math.markdown, baseURL: baseURL)
         let source = parsed.string as NSString
         let result = NSMutableAttributedString()
         var offset = 0
@@ -360,6 +374,7 @@ nonisolated package final class MarkdownRenderer {
             }
             result.append(NSAttributedString(string: text, attributes: attributes))
         }
+        math.restore(in: result)
         return result
     }
 

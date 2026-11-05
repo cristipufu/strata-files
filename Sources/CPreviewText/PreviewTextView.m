@@ -165,6 +165,56 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
     }
 }
 
+- (BOOL)replaceRanges:(NSArray<NSValue *> *)ranges withStrings:(NSArray<NSAttributedString *> *)strings {
+    if (_renderingError) return NO;
+    @try {
+        if (ranges.count != strings.count) {
+            [self retireWithError:STPreviewError(@"replacement batch", nil)];
+            return NO;
+        }
+        NSUInteger previous = self.textStorage.length;
+        for (NSValue *value in ranges) {
+            NSRange range = value.rangeValue;
+            if (![self containsRange:range] || range.location > previous || range.length > previous - range.location) {
+                [self retireWithError:STPreviewError(@"replacement ranges", nil)];
+                return NO;
+            }
+            previous = range.location;
+        }
+        [self.textStorage beginEditing];
+        for (NSUInteger index = 0; index < ranges.count; index++) {
+            [self.textStorage replaceCharactersInRange:ranges[index].rangeValue withAttributedString:strings[index]];
+            if (_renderingError) return NO;
+        }
+        [self.textStorage endEditing];
+        return _renderingError == nil;
+    } @catch (NSException *exception) {
+        [self retireAfterException:exception operation:@"document replacement batch"];
+        return NO;
+    }
+}
+
+- (BOOL)writeSelectionToPasteboard:(NSPasteboard *)pasteboard types:(NSArray<NSPasteboardType> *)types {
+    if (_renderingError) return NO;
+    @try {
+        return [super writeSelectionToPasteboard:pasteboard types:types];
+    } @catch (NSException *exception) {
+        [self retireAfterException:exception operation:@"selection copying"];
+        return NO;
+    }
+}
+
+- (BOOL)writePlainText:(NSString *)text toPasteboard:(NSPasteboard *)pasteboard {
+    if (_renderingError) return NO;
+    @try {
+        [pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
+        return [pasteboard setString:text forType:NSPasteboardTypeString];
+    } @catch (NSException *exception) {
+        [self retireAfterException:exception operation:@"equation copying"];
+        return NO;
+    }
+}
+
 - (BOOL)highlightRanges:(NSArray<NSValue *> *)ranges clearingRange:(NSRange)whole {
     if (_renderingError) return NO;
     @try {

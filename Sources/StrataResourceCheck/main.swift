@@ -12,6 +12,7 @@ import StrataTheme
             guard CommandLine.arguments.count == 2 else { throw Invalid.sample }
             guard !(try ThemeCatalog.loadBundled()).isEmpty else { throw Invalid.themes }
             try await modelScripts()
+            guard !(try await MathRenderer.script()).isEmpty else { throw Invalid.sample }
             let url = URL(fileURLWithPath: CommandLine.arguments[1])
             _ = try await MarkdownLoader.load(url)
             let source = try await diagram(url)
@@ -19,7 +20,7 @@ import StrataTheme
             defer { renderer.close() }
             let image = try await renderer.render(source, dark: false)
             guard image.size.width > 0, image.size.height > 0 else { throw Invalid.image }
-            print("Packaged themes, 3D model scripts and Mermaid loaded; the Markdown sample rendered successfully.")
+            print("Packaged themes, model scripts, KaTeX and Mermaid loaded; the Markdown sample rendered successfully.")
         } catch {
             print("Packaged resource check failed: \(error)")
             exit(2)

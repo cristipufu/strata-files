@@ -117,7 +117,7 @@ import Testing
         let view = MarkdownPreviewView(url: tree.url("diagram.md"))
         view.setFrameSize(NSSize(width: 700, height: 500))
         await view.loadingTask?.value
-        await view.diagramTask?.value
+        await view.renderingTask?.value
         let storage = try #require(view.textView.textStorage)
         let attachment = try #require(storage.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)
         #expect(attachment.bounds.height > 16)
@@ -126,23 +126,23 @@ import Testing
         #expect(style.maximumLineHeight == 0)
         let count = storage.length
         view.viewDidChangeEffectiveAppearance()
-        await view.diagramTask?.value
-        #expect(storage.length == count && view.textView.diagrams.count == 1)
+        await view.renderingTask?.value
+        #expect(storage.length == count && view.textView.assets.count == 1)
         let holder = NSView()
         holder.addSubview(view)
         view.isHidden = true
         view.viewDidChangeEffectiveAppearance()
-        #expect(view.diagramTask?.isCancelled == true)
+        #expect(view.renderingTask?.isCancelled == true)
         view.isHidden = false
-        await view.diagramTask?.value
-        #expect(view.diagramTask?.isCancelled == false)
+        await view.renderingTask?.value
+        #expect(view.renderingTask?.isCancelled == false)
         view.viewDidChangeEffectiveAppearance()
-        let pending = view.diagramTask
+        let pending = view.renderingTask
         view.removeFromSuperview()
         #expect(pending?.isCancelled == true)
         await pending?.value
         view.viewDidChangeEffectiveAppearance()
-        #expect(view.diagramTask?.isCancelled == true)
+        #expect(view.renderingTask?.isCancelled == true)
         #expect(storage.length == count)
         #expect(tree.text("diagram.md") == "```mermaid\ngraph TD; A-->B\n```\n")
     }

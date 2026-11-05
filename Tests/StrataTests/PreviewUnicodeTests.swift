@@ -28,7 +28,7 @@ import Testing
             view.frame = NSRect(x: 0, y: 0, width: 720, height: 900)
             view.layoutSubtreeIfNeeded()
             await view.loadingTask?.value
-            await view.diagramTask?.value
+            await view.renderingTask?.value
             #expect(view.textView.string.contains("中文"))
             #expect(view.textView.layoutManager?.backgroundLayoutEnabled == false)
             for width: CGFloat in [280, 720, 1100] {
