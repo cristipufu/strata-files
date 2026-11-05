@@ -30,7 +30,7 @@ struct TerminalSettings: View {
                     }
                 }
                 Button("Other…") { pendingChoice = nil; choosing = true }
-            }
+            }.settingAnchor(.terminalApp)
             Text("Automatic picks the first installed of Ghostty, iTerm, Warp and Terminal. ⌃⌘T opens the current folder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)

@@ -23,8 +23,10 @@ final class FolderViewOptions: NSObject, ObservableObject {
 
     func detach(_ browser: BrowserViewController) {
         guard self.browser === browser else { return }
-        browser.folderOptions = nil; self.browser = nil; refresh()
+        unbind()
     }
+
+    func unbind() { browser?.folderOptions = nil; browser = nil; refresh() }
 
     @objc func refresh() {
         let editable = browser?.canRememberFolderPresentation == true

@@ -283,10 +283,10 @@ struct BrowserPreferencesTests {
         #expect(!a.opensAsFolder(entry) && b.opensAsFolder(entry))
         let aOptions = first.services.viewOptions, bOptions = second.services.viewOptions
         #expect(aOptions !== bOptions && aOptions === first.services.viewOptions)
-        let aHost = try #require(aOptions.window?.contentViewController as? NSHostingController<ViewOptionsView>)
-        let bHost = try #require(bOptions.window?.contentViewController as? NSHostingController<ViewOptionsView>)
-        #expect(aHost.rootView.preferences === first.preferences)
-        #expect(bHost.rootView.preferences === second.preferences)
+        let aHost = try #require(aOptions.window?.contentViewController as? NSHostingController<SettingsScrollTarget<ViewOptionsView>>)
+        let bHost = try #require(bOptions.window?.contentViewController as? NSHostingController<SettingsScrollTarget<ViewOptionsView>>)
+        #expect(aHost.rootView.content.preferences === first.preferences)
+        #expect(bHost.rootView.content.preferences === second.preferences)
         #expect(aOptions.window?.isVisible == false && bOptions.window?.isVisible == false)
         #expect(tree.snapshot() == ["a.zip"])
     }

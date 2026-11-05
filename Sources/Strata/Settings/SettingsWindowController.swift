@@ -6,29 +6,33 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
     private let room: SettingsRoom
+    let settingsFocus: SettingsFocus
 
     init() {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         let room = SettingsRoom()
         self.room = room
-        func pane(_ title: String.LocalizationValue, _ symbol: String, _ view: some View) -> NSTabViewItem {
-            let title = String(localized: title)
+        let focus = SettingsFocus()
+        settingsFocus = focus
+        func pane(_ page: SettingsPage, _ symbol: String, _ view: some View) -> NSTabViewItem {
+            let title = page.title
             // Each pane reports its own height, so the window resizes to fit it (like System Settings panes) instead of
             // leaving short panes floating; a longer pane scrolls (see `fitToScreen`). Its title names it.
-            let host = NSHostingController(rootView: SettingsPaneView(room: room, content: view))
+            let host = NSHostingController(rootView: SettingsPaneView(room: room, focus: focus, page: page, content: view))
             host.sizingOptions = [.preferredContentSize]
             host.title = title
             let item = NSTabViewItem(viewController: host)
             item.label = title
+            item.identifier = page.rawValue
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             return item
         }
-        tabs.addTabViewItem(pane("General", "gearshape", GeneralSettings()))
-        tabs.addTabViewItem(pane("Search & Index", "magnifyingglass", IndexSettings()))
-        tabs.addTabViewItem(pane("Terminal", "terminal", TerminalSettings()))
-        tabs.addTabViewItem(pane("Appearance", "paintbrush", AppearanceSettings()))
-        tabs.addTabViewItem(pane("Shortcuts", "keyboard", ShortcutSettings()))
+        tabs.addTabViewItem(pane(.general, "gearshape", GeneralSettings()))
+        tabs.addTabViewItem(pane(.search, "magnifyingglass", IndexSettings()))
+        tabs.addTabViewItem(pane(.terminal, "terminal", TerminalSettings()))
+        tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings()))
+        tabs.addTabViewItem(pane(.shortcuts, "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
         // Settings joins Strata’s full-screen Space instead of taking focus back to its old desktop.
@@ -48,6 +52,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if window?.isVisible != true { window?.center() }
         showWindow(nil)
     }
+
+    static func present(_ id: SettingID) { shared.reveal(id) }
+
+    func reveal(_ id: SettingID, present: Bool = true) {
+        guard let entry = SettingsCatalog.entry(for: id), entry.page != .viewOptions,
+              let tabs = window?.contentViewController as? NSTabViewController,
+              let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == entry.page.rawValue }) else { return }
+        tabs.selectedTabViewItemIndex = index
+        settingsFocus.reveal(entry)
+        if present { show() }
+    }
+
+    func windowWillClose(_ notification: Notification) { settingsFocus.clear() }
 
     func windowDidChangeScreen(_ notification: Notification) {
         fitToScreen()
@@ -74,10 +91,14 @@ private final class SettingsRoom: ObservableObject {
 /// A Settings pane: as tall as its form, up to `room`, scrolling past that.
 private struct SettingsPaneView<Content: View>: View {
     @ObservedObject var room: SettingsRoom
+    @ObservedObject var focus: SettingsFocus
+    let page: SettingsPage
     let content: Content
 
     var body: some View {
-        ScrollView { content.frame(width: 520).fixedSize(horizontal: false, vertical: true) }
+        SettingsScrollTarget(focus: focus, page: page) {
+            ScrollView { content.frame(width: 520).fixedSize(horizontal: false, vertical: true) }
+        }
             .frame(width: 520)
             .frame(maxHeight: room.height)
             .modifier(ThemedFormBackground())
@@ -107,52 +128,52 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            LanguageSection()
+            LanguageSection().settingAnchor(.language)
             Section("Browsing") {
                 PrefToggle(title: "Show hidden files", caption: "Also ⇧⌘. in any window.",
-                           get: { Prefs.shared.showHidden }, set: { Prefs.shared.showHidden = $0 })
+                           get: { Prefs.shared.showHidden }, set: { Prefs.shared.showHidden = $0 }).settingAnchor(.hiddenFiles)
                 PrefToggle(title: "Keep folders on top", caption: nil,
-                           get: { Prefs.shared.foldersFirst }, set: { Prefs.shared.foldersFirst = $0 })
+                           get: { Prefs.shared.foldersFirst }, set: { Prefs.shared.foldersFirst = $0 }).settingAnchor(.foldersFirst)
                 PrefToggle(title: "Address bar in each pane",
                            caption: "In Dual Pane, each side has its own path bar instead of just the folder name.",
-                           get: { Prefs.shared.dualPaneAddressBars }, set: { Prefs.shared.dualPaneAddressBars = $0 })
+                           get: { Prefs.shared.dualPaneAddressBars }, set: { Prefs.shared.dualPaneAddressBars = $0 }).settingAnchor(.addressBars)
                 PrefToggle(title: "Reopen windows from last time", caption: "Windows, tabs and panes come back when Strata starts.",
-                           get: { Prefs.shared.reopenWindows }, set: { Prefs.shared.reopenWindows = $0 })
+                           get: { Prefs.shared.reopenWindows }, set: { Prefs.shared.reopenWindows = $0 }).settingAnchor(.reopenWindows)
                 PrefToggle(title: "Open archives like folders",
                            caption: "Opening a zip (or tar, 7z, rar…) shows what's inside; copy things out from there. Extract unpacks it.",
-                           get: { Prefs.shared.openArchivesAsFolders }, set: { Prefs.shared.openArchivesAsFolders = $0 })
+                           get: { Prefs.shared.openArchivesAsFolders }, set: { Prefs.shared.openArchivesAsFolders = $0 }).settingAnchor(.archives)
                 Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.shared.returnOpens = $0 })) {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)
-                }
-                NewWindowFolderSettings(preferences: .shared)
+                }.settingAnchor(.returnKey)
+                NewWindowFolderSettings(preferences: .shared).settingAnchor(.newWindowFolder)
             }
             Section("New Files") {
-                NewFileExtensionField()
+                NewFileExtensionField().settingAnchor(.newFileExtension)
             }
-            UpdatesSection()
+            UpdatesSection().settingAnchor(.updates)
             Section("Copying") {
                 PrefToggle(title: "Verify copies",
                            caption: "Reads every copied file back and compares it with the original. Slower, but catches failing disks and cables.",
-                           get: { Prefs.shared.verifyCopies }, set: { Prefs.shared.verifyCopies = $0 })
+                           get: { Prefs.shared.verifyCopies }, set: { Prefs.shared.verifyCopies = $0 }).settingAnchor(.verifyCopies)
             }
             Section("Dock") {
                 PrefToggle(title: "Search box in the Dock",
                            caption: "A search box next to Strata in the Dock finds apps, files and folders as you type. Strata needs Accessibility access to place it, and keeps a few empty tiles in the Dock for it.",
-                           get: { Prefs.shared.dockSearch }, set: { Prefs.shared.dockSearch = $0; DockSearch.shared.apply() })
+                           get: { Prefs.shared.dockSearch }, set: { Prefs.shared.dockSearch = $0; DockSearch.shared.apply() }).settingAnchor(.dockSearch)
             }
             Section {
                 Toggle(isOn: Binding(get: { isFileViewer }, set: { isFileViewer = $0; FileViewer.setStrata($0) })) {
                     Text("Open “Reveal in Finder” in Strata")
                     Text("Apps that show files in Finder (Show in Finder, Reveal) open Strata instead. Applies to apps launched after the change.")
-                }
+                }.settingAnchor(.defaultFileBrowser)
             } header: {
                 Text("Default File Browser")
             }
             Section("Command Line") {
                 // The command's name, as typed: not translated.
                 LabeledContent {
-                    Button("Install…") { CommandLineTool.install() }
+                    Button("Install…") { CommandLineTool.install() }.settingAnchor(.commandLine)
                 } label: {
                     Text(verbatim: "strata")
                 }
@@ -203,7 +224,7 @@ private struct IndexSettings: View {
                 LabeledContent(String(localized: "Covers", comment: "Settings ▸ Search & Index: which folders the index includes"),
                                value: String(localized: "Your home folder and Applications"))
                 LabeledContent("Rebuild") {
-                    Button("Rebuild Index") { FileIndex.shared.rebuild() }
+                    Button("Rebuild Index") { FileIndex.shared.rebuild() }.settingAnchor(.rebuildIndex)
                 }
             } header: {
                 Text("Index", comment: "Settings ▸ Search & Index: section about the file index")
@@ -217,6 +238,7 @@ private struct IndexSettings: View {
                         Button("Open Privacy Settings…") { NSWorkspace.shared.open(Privacy.settingsURL) }
                     }
                 }
+                .settingAnchor(.fullDiskAccess)
                 if !hasAccess {
                     Text("Without it, Desktop, Documents and Downloads are indexed only after you open them in Strata, and other apps’ data is skipped.")
                         .font(.callout)
@@ -225,7 +247,7 @@ private struct IndexSettings: View {
             } header: {
                 Text("Access", comment: "Settings ▸ Search & Index: section about Full Disk Access")
             }
-            Section("Search Syntax") {
+            Section {
                 syntax("invoice 2026", "names containing all words")
                 syntax("ext:pdf;png  or  *.pdf", "file extensions")
                 syntax("kind:image|video|audio|doc|code|archive|app|folder", "kind of item")
@@ -233,7 +255,7 @@ private struct IndexSettings: View {
                 syntax("modified:today  modified:<7d  modified:2026", "date modified")
                 syntax("in:~/Documents  in:github", "inside a folder (path or name)")
                 syntax("github/acme  !draft  \"exact phrase\"", "folder/name, exclude a word, phrase")
-            }
+            } header: { Text("Search Syntax").settingAnchor(.searchSyntax) }
         }
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())

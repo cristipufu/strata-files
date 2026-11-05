@@ -1,22 +1,29 @@
 import AppKit
 import SwiftUI
 
-final class ViewOptionsWindowController: NSWindowController {
+final class ViewOptionsWindowController: NSWindowController, NSWindowDelegate {
     private let folderOptions: FolderViewOptions
+    let settingsFocus: SettingsFocus
 
     init(settings: FolderViewSettings) {
-        folderOptions = FolderViewOptions(settings: settings)
+        let model = FolderViewOptions(settings: settings)
+        folderOptions = model
+        let focus = SettingsFocus()
+        settingsFocus = focus
         let contentSize = NSSize(width: 410, height: 650)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: contentSize),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         panel.title = String(localized: "View Options", comment: "Title of the window opened with Command-J")
-        let host = NSHostingController(rootView: ViewOptionsView(folderOptions: folderOptions))
+        let host = NSHostingController(rootView: SettingsScrollTarget(focus: focus, page: .viewOptions) {
+            ViewOptionsView(folderOptions: model)
+        })
         // The panel owns its size; the scrollable Form has no useful intrinsic height.
         host.sizingOptions = []
         panel.contentViewController = host
         panel.setContentSize(contentSize)
         panel.isReleasedWhenClosed = false
         super.init(window: panel)
+        panel.delegate = self
         ThemeStyle.bind(panel)
         panel.center()
     }
@@ -25,6 +32,17 @@ final class ViewOptionsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(for browser: BrowserViewController) { folderOptions.bind(browser); showWindow(nil) }
+
+    func reveal(_ id: SettingID, for browser: BrowserViewController, present: Bool = true) {
+        guard let entry = SettingsCatalog.entry(for: id), entry.page == .viewOptions,
+              browser.preferences === folderOptions.settings.preferences,
+              !id.requiresFolder || browser.canRememberFolderPresentation else { return }
+        folderOptions.bind(browser)
+        settingsFocus.reveal(entry)
+        if present { showWindow(nil) }
+    }
+
+    func windowWillClose(_ notification: Notification) { settingsFocus.clear(); folderOptions.unbind() }
 }
 
 struct ViewOptionsView: View {
@@ -53,12 +71,12 @@ struct ViewOptionsView: View {
                 Text(folderOptions.folderName).lineLimit(1).truncationMode(.middle)
                 Picker("View", selection: Binding(get: { folderOptions.presentation.mode }, set: folderOptions.chooseMode)) {
                     ForEach(BrowserViewMode.ordered, id: \.rawValue) { Text($0.title).tag($0) }
-                }
+                }.settingAnchor(.folderView)
                 Picker("Sort By", selection: Binding(get: { folderOptions.presentation.sort.key }, set: folderOptions.chooseSort)) {
                     ForEach(SortKey.allCases, id: \.rawValue) { key in
                         Text(key == .name ? String(localized: "Name") : ListColumn(rawValue: key.rawValue)?.title ?? key.rawValue).tag(key)
                     }
-                }
+                }.settingAnchor(.folderSort)
                 Toggle(String(localized: "Ascending", comment: "Sort direction for the current folder"), isOn: Binding(get: { folderOptions.presentation.sort.ascending }, set: folderOptions.chooseAscending))
                 HStack {
                     Button(String(localized: "Use as Defaults", comment: "Use this folder’s view, sort and icon size for folders without a saved choice"), action: folderOptions.useAsDefaults)
@@ -71,26 +89,27 @@ struct ViewOptionsView: View {
                     Text("Icon size")
                 }
                 .disabled(!folderOptions.canEditFolder)
-                Toggle("Show item info", isOn: $options.showsInfo)
+                .settingAnchor(.iconSize)
+                Toggle("Show item info", isOn: $options.showsInfo).settingAnchor(.itemInfo)
                 Picker("Folder info", selection: $options.folderInfo) {
                     Text("Item count").tag(FolderIconInfo.itemCount)
                     Text("Total size").tag(FolderIconInfo.size)
                 }
-                .disabled(!options.showsInfo)
+                .disabled(!options.showsInfo).settingAnchor(.folderInfo)
                 Text("Pictures and movies show their dimensions. Other files show their size.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Show icon previews", isOn: Binding(get: { previews }, set: { previews = $0; preferences.showIconPreviews = $0 }))
             }
-            Section("List columns") {
+            Section {
                 Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; preferences.alternatingRows = $0 }))
-                Toggle("Show extensions in Name column", isOn: Binding(get: { showNameExtensions }, set: { showNameExtensions = $0; preferences.showListNameExtensions = $0 }))
+                Toggle("Show extensions in Name column", isOn: Binding(get: { showNameExtensions }, set: { showNameExtensions = $0; preferences.showListNameExtensions = $0 })).settingAnchor(.nameExtensions)
                 ForEach(ListColumn.allCases, id: \.self) { column in
                     Toggle(column.title, isOn: Binding(get: { !hiddenColumns.contains(column.rawValue) }, set: { shown in
                         if shown { hiddenColumns.remove(column.rawValue) } else { hiddenColumns.insert(column.rawValue) }
                         preferences.hiddenListColumns = hiddenColumns
                     }))
                 }
-            }
+            } header: { Text("List columns").settingAnchor(.listColumns) }
             Text(String(localized: "Other options apply to all windows.", comment: "View Options: folder view, sort and icon size are saved per folder; the remaining appearance options are shared")).font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)

@@ -83,7 +83,22 @@ extension BrowserWindowController {
             items.append(PaletteItem(title: place.title, subtitle: Format.tildePath(place.url), icon: IconCache.shared.icon(forPath: place.url.path, folder: true),
                                      kind: .folder, boost: 4, url: place.url) { [weak self] in self?.navigate(to: place.url) })
         }
-        return items + workspaceItems() + commandItems()
+        return items + workspaceItems() + commandItems() + settingItems()
+    }
+
+    func settingItems() -> [PaletteItem] {
+        let source = browser, revision = source.navigationRevision
+        let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil) ?? NSImage()
+        return SettingsCatalog.entries.filter { !$0.id.requiresFolder || source.canRememberFolderPresentation }.map { entry in
+            PaletteItem(title: entry.title, subtitle: entry.page.title, icon: image, kind: .setting,
+                keywords: entry.keywords, boost: 8, settingID: entry.id) { [weak self, weak source] in
+                guard let self, !isClosed, let source, panes.contains(where: { $0.browser === source }) else { return }
+                if entry.page == .viewOptions {
+                    guard source.navigationRevision == revision, !entry.id.requiresFolder || source.canRememberFolderPresentation else { return }
+                    source.services.viewOptions.reveal(entry.id, for: source)
+                } else { services.showSetting(entry.id) }
+            }
+        }
     }
 
     /// Saved workspaces: the one this window came from isn't offered (it's here already).

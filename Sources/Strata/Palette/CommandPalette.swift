@@ -12,6 +12,7 @@ struct PaletteItem {
         case match = "File"
         case workspace = "Workspace"
         case app = "Application"
+        case setting = "Setting"
 
         /// What the row says at its end when it has no shortcut.
         var label: String {
@@ -23,16 +24,18 @@ struct PaletteItem {
             case .match: String(localized: "palette.tag.file", defaultValue: "File", comment: "Command palette row tag: a file found on disk (not the File menu)")
             case .workspace: String(localized: "Workspace", comment: "Command palette row tag: a saved set of tabs and panes")
             case .app: String(localized: "Application", comment: "Kind of item")
+            case .setting: String(localized: "Settings", comment: "Command palette row tag: opens a setting without changing it")
             }
         }
     }
 
     enum ID: Hashable {
-        case location(String), command(String), workspace(String), instance(UUID)
+        case location(String), command(String), workspace(String), setting(SettingID), instance(UUID)
     }
 
     let instanceID = UUID()
     var id: ID {
+        if let settingID { return .setting(settingID) }
         if let url { return .location(url.lexicallyStandardized.path) }
         if let commandID { return .command(commandID) }
         if kind == .workspace { return .workspace(title) }
@@ -55,6 +58,7 @@ struct PaletteItem {
     var url: URL? = nil
     /// Stable native action identity, independent of the displayed or translated title.
     var commandID: String? = nil
+    var settingID: SettingID? = nil
     let run: () -> Void
 }
 

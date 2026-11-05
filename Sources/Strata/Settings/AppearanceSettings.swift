@@ -17,9 +17,9 @@ struct AppearanceSettings: View {
                     Text("Light").tag(1)
                     Text("Dark").tag(2)
                 }
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.radioGroup).settingAnchor(.appearance)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Color theme", comment: "Settings ▸ Appearance: the browser’s color palette")
+                    Text("Color theme", comment: "Settings ▸ Appearance: the browser’s color palette").settingAnchor(.colorTheme)
                     LazyVGrid(columns: Array(repeating: SwiftUI.GridItem(.flexible()), count: 3), spacing: 12) {
                         ForEach(ColorTheme.allCases, id: \.self) { palette in
                             Button {
@@ -43,7 +43,7 @@ struct AppearanceSettings: View {
                     Text("On").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .disabled(colors.palette == .system)
+                .disabled(colors.palette == .system).settingAnchor(.windowTint)
             }
             Section("Files") {
                 Picker("Density", selection: Binding(get: { density }, set: { density = $0; Prefs.shared.density = $0 })) {
@@ -51,7 +51,7 @@ struct AppearanceSettings: View {
                     Text("Regular").tag(1)
                     Text("Spacious").tag(2)
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.segmented).settingAnchor(.density)
                 HStack {
                     Text("Text size")
                     Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.shared.nameTextSize = $0.rounded() }), in: 11...16, step: 1) {
@@ -64,16 +64,16 @@ struct AppearanceSettings: View {
                     // The row has its own label; the slider's is for VoiceOver only.
                     .labelsHidden()
                     Text("\(Int(size)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-                }
+                }.settingAnchor(.textSize)
                 Text("Quarterly Report.pdf", comment: "Settings ▸ Appearance: a sample file name showing the text size")
                     .font(.system(size: size))
                     .padding(.vertical, [2.0, 5.0, 9.0][min(max(density, 0), 2)])
                     .accessibilityLabel("Preview of a file name at this size")
-                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; Prefs.shared.alternatingRows = $0 }))
+                Toggle("Alternating row colors", isOn: Binding(get: { alternatingRows }, set: { alternatingRows = $0; Prefs.shared.alternatingRows = $0 })).settingAnchor(.alternatingRows)
                 Toggle(isOn: Binding(get: { previews }, set: { previews = $0; Prefs.shared.showIconPreviews = $0 })) {
                     Text("Show icon previews")
                     Text("Pictures, documents and movies show a thumbnail of their contents in place of their icon.")
-                }
+                }.settingAnchor(.iconPreviews)
                 Text("Applies to the list, columns and icons in every window.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

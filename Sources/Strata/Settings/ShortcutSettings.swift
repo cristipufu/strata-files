@@ -26,7 +26,7 @@ struct ShortcutSettings: View {
         // Read so a change redraws the rows (each passes its shortcut down; the list keeps its scroll position).
         let _ = version
         VStack(alignment: .leading, spacing: 10) {
-            ThemeTextField(String(localized: "Search commands or shortcuts"), text: $query, search: true)
+            ThemeTextField(String(localized: "Search commands or shortcuts"), text: $query, search: true).settingAnchor(.shortcuts)
             List {
                 ForEach(groups, id: \.menu) { group in
                     Section(group.menu) {
