@@ -1959,6 +1959,11 @@
     "Loading storyboard…": "Storyboard laden…",
     "Storyboard unavailable": "Storyboard niet beschikbaar",
     "Hover to inspect · Click to seek": "Wijs aan voor voorbeeld · Klik om te zoeken",
-    "This media couldn’t be played.": "Dit medium kon niet worden afgespeeld."
+    "This media couldn’t be played.": "Dit medium kon niet worden afgespeeld.",
+    "Analyze waveform": "Golfvorm analyseren",
+    "Analyzing waveform…": "Golfvorm analyseren…",
+    "Waveform unavailable": "Golfvorm niet beschikbaar",
+    "Click waveform to seek": "Klik op de golfvorm om te zoeken",
+    "Waveform covers first %@": "Golfvorm omvat de eerste %@"
   }
 }

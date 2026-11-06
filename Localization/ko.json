@@ -1825,6 +1825,11 @@
     "Loading storyboard…": "스토리보드 로드 중…",
     "Storyboard unavailable": "스토리보드를 사용할 수 없음",
     "Hover to inspect · Click to seek": "마우스를 올려 확인 · 클릭하여 이동",
-    "This media couldn’t be played.": "이 미디어를 재생할 수 없습니다."
+    "This media couldn’t be played.": "이 미디어를 재생할 수 없습니다.",
+    "Analyze waveform": "파형 분석",
+    "Analyzing waveform…": "파형 분석 중…",
+    "Waveform unavailable": "파형을 사용할 수 없음",
+    "Click waveform to seek": "파형을 클릭하여 이동",
+    "Waveform covers first %@": "처음 %@의 파형 표시"
   }
 }

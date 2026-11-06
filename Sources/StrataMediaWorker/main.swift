@@ -10,7 +10,7 @@ private func option(_ name: String, maximum: UInt64) -> UInt64 {
     return min(value, maximum)
 }
 
-private func generate(_ request: MediaFrameRequest, asset: AVURLAsset) async throws -> MediaFrames {
+private func generate(_ request: MediaAnalysisRequest, asset: AVURLAsset) async throws -> MediaFrames {
     let duration = try await asset.load(.duration).seconds
     guard duration.isFinite, duration > 0, duration <= MediaFrames.durationLimit else { throw MediaAnalysisFailure.unsupported }
     let generator = AVAssetImageGenerator(asset: asset)
@@ -18,8 +18,9 @@ private func generate(_ request: MediaFrameRequest, asset: AVURLAsset) async thr
     generator.appliesPreferredTrackTransform = true
     generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
     generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
-    let times = request.time.map { [min($0, max(0, duration - 0.001))] }
-        ?? (0..<MediaFrames.frameLimit).map { duration * (Double($0) + 0.5) / Double(MediaFrames.frameLimit) }
+    let times: [Double]
+    if case .frame(let time) = request.operation { times = [min(time, max(0, duration - 0.001))] }
+    else { times = (0..<MediaFrames.frameLimit).map { duration * (Double($0) + 0.5) / Double(MediaFrames.frameLimit) } }
     var frames: [MediaFrame] = []
     for time in times {
         guard strata_read_over_cpu() == 0, strata_read_over_memory() == 0 else { throw MediaAnalysisFailure.limit }
@@ -52,15 +53,17 @@ private func run() async -> Int32 {
             guard let chunk = try FileHandle.standardInput.read(upToCount: 145 - input.count), !chunk.isEmpty else { break }
             input.append(chunk)
         }
-        let request = try MediaFrameRequest(encoded: input)
+        let request = try MediaAnalysisRequest(encoded: input)
         let resource = PinnedMediaResource(length: info.st_size, type: request.typeIdentifier)
         let ext = UTType(request.typeIdentifier)?.preferredFilenameExtension ?? "mov"
         guard let url = URL(string: "strata-media://file/media.\(ext)") else { throw MediaAnalysisFailure.unsupported }
         let asset = AVURLAsset(url: url)
         asset.resourceLoader.setDelegate(resource, queue: DispatchQueue(label: "dev.strata.media.read"))
-        let result = try await generate(request, asset: asset)
+        let output: Data
+        if case .waveform = request.operation { output = try await AudioWaveformReader.read(asset).encoded }
+        else { output = try await generate(request, asset: asset).encoded }
         withExtendedLifetime(resource) {}
-        try FileHandle.standardOutput.write(contentsOf: result.encoded)
+        try FileHandle.standardOutput.write(contentsOf: output)
         return 0
     } catch MediaAnalysisFailure.limit { return Int32(strata_archive_limit) }
       catch { return Int32(strata_archive_unreadable) }

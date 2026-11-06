@@ -1959,6 +1959,11 @@
     "Loading storyboard…": "Sahne şeridi yükleniyor…",
     "Storyboard unavailable": "Sahne şeridi kullanılamıyor",
     "Hover to inspect · Click to seek": "İncelemek için üzerine gelin · Atlamak için tıklayın",
-    "This media couldn’t be played.": "Bu medya oynatılamadı."
+    "This media couldn’t be played.": "Bu medya oynatılamadı.",
+    "Analyze waveform": "Dalga biçimini analiz et",
+    "Analyzing waveform…": "Dalga biçimi analiz ediliyor…",
+    "Waveform unavailable": "Dalga biçimi kullanılamıyor",
+    "Click waveform to seek": "Atlamak için dalga biçimine tıklayın",
+    "Waveform covers first %@": "Dalga biçimi ilk %@ süresini kapsar"
   }
 }

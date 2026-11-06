@@ -86,7 +86,7 @@ import os
 
     @Test func audioDetailsReadPCMChannelsAndDurationWithoutLoadingSampleDataIntoTheUI() async throws {
         let tree = try TestTree("audio.wav")
-        let bytes = wave()
+        let bytes = MediaFixtures.wave()
         try bytes.write(to: tree.url("audio.wav"))
         let details = await MediaDetails.read(tree.url("audio.wav"), contentType: .wav)
         #expect(details.audio?.codec == "PCM" && details.audio?.channels == 2)
@@ -116,7 +116,7 @@ import os
 
     @Test func mediaReadersRefusePipesLinksAndNonFileURLs() async throws {
         let tree = try TestTree("audio.wav", "link.wav -> ./audio.wav")
-        try wave().write(to: tree.url("audio.wav"))
+        try MediaFixtures.wave().write(to: tree.url("audio.wav"))
         let fifo = tree.url("pipe.wav")
         try #require(mkfifo(fifo.path, 0o600) == 0)
         for url in [fifo, tree.url("link.wav"), URL(string: "https://fixture.invalid/audio.wav")!] {
@@ -338,18 +338,6 @@ import os
         ] as CFDictionary)
         try #require(CGImageDestinationFinalize(writer))
         return data as Data
-    }
-
-    private func wave() -> Data {
-        var data = Data()
-        func word(_ value: UInt16) { var v = value.littleEndian; withUnsafeBytes(of: &v) { data.append(contentsOf: $0) } }
-        func number(_ value: UInt32) { var v = value.littleEndian; withUnsafeBytes(of: &v) { data.append(contentsOf: $0) } }
-        data.append(contentsOf: "RIFF".utf8); number(32_036)
-        data.append(contentsOf: "WAVEfmt ".utf8); number(16)
-        word(1); word(2); number(8000); number(32_000); word(4); word(16)
-        data.append(contentsOf: "data".utf8); number(32_000)
-        data.append(Data(repeating: 0, count: 32_000))
-        return data
     }
 
     private func fourCC(_ text: String) -> FourCharCode { text.utf8.reduce(0) { ($0 << 8) | UInt32($1) } }

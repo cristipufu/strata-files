@@ -1959,6 +1959,11 @@
     "Loading storyboard…": "Chargement du storyboard…",
     "Storyboard unavailable": "Storyboard indisponible",
     "Hover to inspect · Click to seek": "Survolez pour voir · Cliquez pour accéder",
-    "This media couldn’t be played.": "Ce média n’a pas pu être lu."
+    "This media couldn’t be played.": "Ce média n’a pas pu être lu.",
+    "Analyze waveform": "Analyser la forme d’onde",
+    "Analyzing waveform…": "Analyse de la forme d’onde…",
+    "Waveform unavailable": "Forme d’onde indisponible",
+    "Click waveform to seek": "Cliquez sur la forme d’onde pour accéder",
+    "Waveform covers first %@": "La forme d’onde couvre les premiers %@"
   }
 }

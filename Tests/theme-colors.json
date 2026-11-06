@@ -358,5 +358,11 @@
     "code": "NSColor.selectedContentBackgroundColor.setFill()",
     "count": 1,
     "reason": "Native preview table cells use the system selection color for the selected rectangle; document tables retain native control colors."
+  },
+  {
+    "file": "Sources/Strata/Previews/AudioWaveformView.swift",
+    "code": "NSColor.labelColor.setFill()",
+    "count": 1,
+    "reason": "The waveform playhead is native semantic foreground ink over the themed preview, not a surface."
   }
 ]

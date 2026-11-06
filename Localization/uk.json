@@ -2227,6 +2227,11 @@
     "Loading storyboard…": "Завантаження розкадрування…",
     "Storyboard unavailable": "Розкадрування недоступне",
     "Hover to inspect · Click to seek": "Наведіть для перегляду · Натисніть для переходу",
-    "This media couldn’t be played.": "Не вдалося відтворити цей медіафайл."
+    "This media couldn’t be played.": "Не вдалося відтворити цей медіафайл.",
+    "Analyze waveform": "Аналізувати звукову хвилю",
+    "Analyzing waveform…": "Аналіз звукової хвилі…",
+    "Waveform unavailable": "Звукова хвиля недоступна",
+    "Click waveform to seek": "Натисніть на хвилю для переходу",
+    "Waveform covers first %@": "Хвиля охоплює перші %@"
   }
 }

@@ -31,4 +31,16 @@ nonisolated enum MediaFixtures {
     AAAAABj//wAAABhzdHRzAAAAAAAAAAEAAAACAAAAGQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAgAAAAEAAAAUc3RzegAAAAAAAAKB
     AAAAAgAAABRzdGNvAAAAAAAAAAEAAAAk
     """
+    static func wave() -> Data {
+        var data = Data()
+        func word(_ value: UInt16) { var v = value.littleEndian; withUnsafeBytes(of: &v) { data.append(contentsOf: $0) } }
+        func number(_ value: UInt32) { var v = value.littleEndian; withUnsafeBytes(of: &v) { data.append(contentsOf: $0) } }
+        data.append(contentsOf: "RIFF".utf8); number(32_036)
+        data.append(contentsOf: "WAVEfmt ".utf8); number(16)
+        word(1); word(2); number(8000); number(32_000); word(4); word(16)
+        data.append(contentsOf: "data".utf8); number(32_000)
+        data.append(Data(repeating: 0, count: 32_000))
+        return data
+    }
+
 }

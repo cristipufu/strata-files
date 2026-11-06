@@ -1825,6 +1825,11 @@
     "Loading storyboard…": "正在加载分镜预览…",
     "Storyboard unavailable": "分镜预览不可用",
     "Hover to inspect · Click to seek": "悬停查看 · 点击跳转",
-    "This media couldn’t be played.": "无法播放此媒体。"
+    "This media couldn’t be played.": "无法播放此媒体。",
+    "Analyze waveform": "分析波形",
+    "Analyzing waveform…": "正在分析波形…",
+    "Waveform unavailable": "波形不可用",
+    "Click waveform to seek": "点击波形以跳转",
+    "Waveform covers first %@": "波形覆盖前 %@"
   }
 }

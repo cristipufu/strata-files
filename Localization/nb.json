@@ -1959,6 +1959,11 @@
     "Loading storyboard…": "Laster bildeoversikt…",
     "Storyboard unavailable": "Bildeoversikt utilgjengelig",
     "Hover to inspect · Click to seek": "Hold pekeren for å se · Klikk for å spole",
-    "This media couldn’t be played.": "Dette mediet kunne ikke spilles av."
+    "This media couldn’t be played.": "Dette mediet kunne ikke spilles av.",
+    "Analyze waveform": "Analyser bølgeform",
+    "Analyzing waveform…": "Analyserer bølgeform…",
+    "Waveform unavailable": "Bølgeform utilgjengelig",
+    "Click waveform to seek": "Klikk på bølgeformen for å spole",
+    "Waveform covers first %@": "Bølgeformen dekker de første %@"
   }
 }

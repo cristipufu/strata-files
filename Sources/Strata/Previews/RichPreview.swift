@@ -32,6 +32,7 @@ package enum RichPreview {
         case .ods: WorkbookPreviewView(url: url, format: .ods, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         case .video: MediaPreviewView(url: url, type: contentType ?? .movie, reader: media)
+        case .audio: MediaPreviewView(url: url, type: contentType ?? .audio, reader: media)
         }
         view.fallback = fallback
         return view
@@ -56,6 +57,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case ods
     case archive(ArchiveKind)
     case video
+    case audio
 
     package init?(url: URL, contentType: UTType?) {
         if let contentType, contentType.conforms(to: .directory) || contentType.conforms(to: .package) { return nil }
@@ -91,10 +93,12 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .sqlite
         } else if let kind = ArchiveKind(fileName: name) {
             self = .archive(kind)
-        } else if contentType?.conforms(to: .movie) == true {
-            self = .video
         } else if let language = Languages.detect(fileName: name) {
             self = .code(language)
+        } else if contentType?.conforms(to: .movie) == true {
+            self = .video
+        } else if contentType?.conforms(to: .audio) == true {
+            self = .audio
         } else if let contentType, !contentType.conforms(to: .image), !contentType.conforms(to: .audiovisualContent),
                   [UTType.sourceCode, .script, .shellScript, .xml].contains(where: contentType.conforms(to:)) {
             self = .code(Language(name: contentType.localizedDescription ?? String(localized: "Source", comment: "Fallback name of a source code file type"), lexer: .plain))

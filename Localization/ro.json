@@ -2093,6 +2093,11 @@
     "Loading storyboard…": "Se încarcă previzualizarea scenelor…",
     "Storyboard unavailable": "Previzualizarea scenelor nu este disponibilă",
     "Hover to inspect · Click to seek": "Treci cursorul pentru previzualizare · Clic pentru a sări",
-    "This media couldn’t be played.": "Acest fișier media nu a putut fi redat."
+    "This media couldn’t be played.": "Acest fișier media nu a putut fi redat.",
+    "Analyze waveform": "Analizează forma de undă",
+    "Analyzing waveform…": "Se analizează forma de undă…",
+    "Waveform unavailable": "Forma de undă nu este disponibilă",
+    "Click waveform to seek": "Clic pe forma de undă pentru a sări",
+    "Waveform covers first %@": "Forma de undă acoperă primele %@"
   }
 }

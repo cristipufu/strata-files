@@ -34,7 +34,12 @@ package final class MediaStoryboardView: NSView {
         guard !images.isEmpty, bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return }
         let width = bounds.width / Double(images.count)
         for (index, image) in images.enumerated() {
-            image.0.draw(in: NSRect(x: CGFloat(index) * width + 1, y: 0, width: max(0, width - 2), height: bounds.height),
+            let cell = NSRect(x: CGFloat(index) * width + 1, y: 0, width: max(0, width - 2), height: bounds.height)
+            let scale = min(cell.width / image.0.size.width, cell.height / image.0.size.height)
+            guard scale > 0 else { continue }
+            let size = NSSize(width: image.0.size.width * scale, height: image.0.size.height * scale)
+            let rect = NSRect(x: cell.midX - size.width / 2, y: cell.midY - size.height / 2, width: size.width, height: size.height)
+            image.0.draw(in: rect,
                 from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
     }

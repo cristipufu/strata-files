@@ -1,6 +1,7 @@
 import AppKit
 import AVKit
 import StrataModel
+import StrataMediaProtocol
 import UniformTypeIdentifiers
 
 package final class MediaPreviewView: PreviewView {
@@ -11,6 +12,13 @@ package final class MediaPreviewView: PreviewView {
     private let hoverImage = NSImageView()
     private let chapters = NSPopUpButton()
     private let frameSession: MediaFrameSession
+    private let waveformSession: AudioWaveformSession
+    private let waveformView = AudioWaveformView()
+    private let analyzeButton = NSButton()
+    private let waveformProgress = NSProgressIndicator()
+    private var timeObserver: Any?
+    private var duration: Double = 0
+    private var isAudio: Bool { type.conforms(to: .audio) }
     private var navigation = MediaNavigation()
     private var active = false
     private weak var observedWindow: NSWindow?
@@ -20,6 +28,7 @@ package final class MediaPreviewView: PreviewView {
     package init(url: URL, type: UTType, reader: MediaAnalysisReader) {
         self.url = url; self.type = type
         frameSession = MediaFrameSession(reader: reader)
+        waveformSession = AudioWaveformSession(reader: reader)
         super.init(frame: .zero)
         playerView.controlsStyle = .floating
         playerView.showsFullScreenToggleButton = false
@@ -29,9 +38,11 @@ package final class MediaPreviewView: PreviewView {
         chapters.isHidden = true; storyboardView.isHidden = true
         chapters.target = self; chapters.action = #selector(chooseChapter)
         for view in [playerView, storyboardView, hoverImage, chapters] { view.translatesAutoresizingMaskIntoConstraints = false; contentView.addSubview(view) }
+        let playerTop = playerView.topAnchor.constraint(equalTo: contentView.topAnchor)
+        playerTop.isActive = !isAudio
         NSLayoutConstraint.activate([
             playerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor), playerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            playerView.topAnchor.constraint(equalTo: contentView.topAnchor), playerView.bottomAnchor.constraint(equalTo: storyboardView.topAnchor, constant: -4),
+            playerView.bottomAnchor.constraint(equalTo: storyboardView.topAnchor, constant: -4),
             storyboardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8), storyboardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
             storyboardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8), storyboardView.heightAnchor.constraint(equalToConstant: 54),
             hoverImage.centerXAnchor.constraint(equalTo: contentView.centerXAnchor), hoverImage.bottomAnchor.constraint(equalTo: storyboardView.topAnchor, constant: -8),
@@ -42,6 +53,7 @@ package final class MediaPreviewView: PreviewView {
         frameSession.onChange = { [weak self] in self?.updateFrames($0) }
         storyboardView.onInspect = { [weak self] in self?.frameSession.inspect(at: $0) }
         storyboardView.onSeek = { [weak self] in self?.seek($0) }
+        if isAudio { configureAudio() }
     }
 
     @available(*, unavailable) package required init?(coder: NSCoder) { return nil }
@@ -72,8 +84,9 @@ package final class MediaPreviewView: PreviewView {
     private func show(_ source: FileReadSource, details: MediaDetails) {
         guard active, window != nil else { return }
         let player = AVPlayer(url: url)
+        duration = details.basic.duration ?? 0
         let revision = revision
-        itemObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
+        itemObservation = player.currentItem?.observe(\.status, options: [.new]) { @Sendable [weak self] item, _ in
             guard item.status == .failed else { return }
             Task { @MainActor [weak self] in
                 guard let self, active, self.revision == revision else { return }
@@ -86,8 +99,57 @@ package final class MediaPreviewView: PreviewView {
         chapters.removeAllItems()
         for chapter in navigation.chapters ?? [] { chapters.addItem(withTitle: Self.time(chapter.start) + " · " + chapter.title) }
         chapters.isHidden = navigation.chapters?.isEmpty != false
-        frameSession.show(source, type: type.identifier)
-        footer.show([details.basic.durationText ?? ""], note: String(localized: "Loading storyboard…"))
+        if isAudio {
+            timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { @Sendable [weak self] time in
+                MainActor.assumeIsolated {
+                    guard let self, self.active, self.revision == revision else { return }
+                    self.waveformView.playhead = time.seconds
+                }
+            }
+            waveformSession.prepare(source, type: type.identifier, duration: duration)
+        } else {
+            frameSession.show(source, type: type.identifier)
+            footer.show([details.basic.durationText ?? ""], note: String(localized: "Loading storyboard…"))
+        }
+    }
+
+    private func configureAudio() {
+        playerView.controlsStyle = .inline
+        analyzeButton.bezelStyle = .rounded
+        analyzeButton.target = self; analyzeButton.action = #selector(analyzeWaveform)
+        waveformProgress.style = .spinning; waveformProgress.controlSize = .small
+        for view in [waveformView, analyzeButton, waveformProgress] { view.translatesAutoresizingMaskIntoConstraints = false; contentView.addSubview(view) }
+        NSLayoutConstraint.activate([
+            playerView.heightAnchor.constraint(equalToConstant: 64),
+            waveformView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16), waveformView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            waveformView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16), waveformView.bottomAnchor.constraint(equalTo: playerView.topAnchor, constant: -8),
+            analyzeButton.centerXAnchor.constraint(equalTo: storyboardView.centerXAnchor), analyzeButton.centerYAnchor.constraint(equalTo: storyboardView.centerYAnchor),
+            waveformProgress.trailingAnchor.constraint(equalTo: analyzeButton.leadingAnchor, constant: -8), waveformProgress.centerYAnchor.constraint(equalTo: analyzeButton.centerYAnchor),
+        ])
+        waveformSession.onChange = { [weak self] in self?.updateWaveform() }
+        waveformView.onSeek = { [weak self] in self?.seek($0) }
+    }
+
+    @objc private func analyzeWaveform() {
+        if waveformSession.task == nil { waveformSession.analyze() } else { waveformSession.cancel() }
+    }
+
+    private func updateWaveform() {
+        guard active else { return }
+        let loading = waveformSession.task != nil
+        waveformView.waveform = waveformSession.waveform
+        analyzeButton.title = loading ? String(localized: "Cancel") : String(localized: "Analyze waveform")
+        analyzeButton.isHidden = waveformSession.waveform != nil
+        waveformProgress.isHidden = !loading
+        if loading { waveformProgress.startAnimation(nil) } else { waveformProgress.stopAnimation(nil) }
+        let note: String
+        if let waveform = waveformSession.waveform {
+            note = waveform.isComplete ? String(localized: "Click waveform to seek")
+                : String(localized: "Waveform covers first \(Self.time(waveform.covered))", comment: "Audio preview: only the beginning of a recording has been analyzed; inserted text is a duration")
+        } else if loading { note = String(localized: "Analyzing waveform…") }
+        else if waveformSession.failed { note = String(localized: "Waveform unavailable") }
+        else { note = String(localized: "Analyze waveform") }
+        footer.show([Self.time(duration)], note: note)
     }
 
     private func updateFrames(_ change: MediaFrameSession.Change) {
@@ -108,11 +170,16 @@ package final class MediaPreviewView: PreviewView {
         seek(chapters[self.chapters.indexOfSelectedItem].start)
     }
     private func seek(_ seconds: Double) {
-        guard active, seconds.isFinite, seconds >= 0 else { return }
-        playerView.player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        guard active, let time = Self.seekTime(seconds, duration: duration) else { return }
+        playerView.player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+    nonisolated package static func seekTime(_ seconds: Double, duration: Double) -> CMTime? {
+        guard duration.isFinite, duration > 0, duration <= MediaFrames.durationLimit,
+              seconds.isFinite, seconds >= 0, seconds <= duration else { return nil }
+        return CMTime(seconds: seconds, preferredTimescale: 600)
     }
     private static func time(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0, seconds <= 1_000_000_000 else { return "" }
+        guard seconds.isFinite, seconds >= 0, seconds <= MediaFrames.durationLimit else { return "" }
         let whole = Int(seconds)
         return String(format: "%d:%02d:%02d", whole / 3600, whole / 60 % 60, whole % 60)
     }
@@ -123,6 +190,9 @@ package final class MediaPreviewView: PreviewView {
         revision += 1
         active = false
         frameSession.stop(); itemObservation = nil
+        waveformSession.stop(); waveformProgress.stopAnimation(nil); waveformView.waveform = nil
+        if let timeObserver, let player = playerView.player { player.removeTimeObserver(timeObserver) }
+        timeObserver = nil
         storyboardView.show(nil); hoverImage.image = nil
         playerView.player?.pause(); playerView.player?.replaceCurrentItem(with: nil); playerView.player = nil
         super.stop()

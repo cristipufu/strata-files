@@ -1959,6 +1959,11 @@
     "Loading storyboard…": "Läser in bildöversikt…",
     "Storyboard unavailable": "Bildöversikt inte tillgänglig",
     "Hover to inspect · Click to seek": "Håll pekaren för att se · Klicka för att söka",
-    "This media couldn’t be played.": "Det här mediet kunde inte spelas upp."
+    "This media couldn’t be played.": "Det här mediet kunde inte spelas upp.",
+    "Analyze waveform": "Analysera vågform",
+    "Analyzing waveform…": "Analyserar vågform…",
+    "Waveform unavailable": "Vågform inte tillgänglig",
+    "Click waveform to seek": "Klicka på vågformen för att söka",
+    "Waveform covers first %@": "Vågformen omfattar de första %@"
   }
 }

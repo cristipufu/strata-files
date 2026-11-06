@@ -15,7 +15,7 @@ import os
         let movie = try #require(Data(base64Encoded: MediaFixtures.movie, options: .ignoreUnknownCharacters))
         try movie.write(to: tree.url("video.mov"))
         let source = try FileReadSource(tree.url("video.mov"))
-        let request = try MediaFrameRequest()
+        let request = try MediaAnalysisRequest()
         let reply = try await source.read { file in
             try await ReadWorker.send(.init(request.encoded), file: file, timeout: 20,
                 outputLimit: MediaFrames.outputLimit, worker: .media)
@@ -36,9 +36,9 @@ import os
         #expect(try MediaFrames(encoded: valid).frames.count == 1)
         #expect(throws: (any Error).self) { try MediaFrames(encoded: valid.dropLast()) }
         #expect(throws: (any Error).self) { try MediaFrames(encoded: valid + Data([0])) }
-        #expect(throws: (any Error).self) { try MediaFrameRequest(time: .nan) }
-        #expect(throws: (any Error).self) { try MediaFrameRequest(time: -.infinity) }
-        #expect(throws: (any Error).self) { try MediaFrameRequest(typeIdentifier: "../file") }
+        #expect(throws: (any Error).self) { try MediaAnalysisRequest(operation: .frame(.nan)) }
+        #expect(throws: (any Error).self) { try MediaAnalysisRequest(operation: .frame(-.infinity)) }
+        #expect(throws: (any Error).self) { try MediaAnalysisRequest(typeIdentifier: "../file") }
         for offset in valid.indices {
             #expect(throws: (any Error).self) { try MediaFrames(encoded: valid.prefix(offset)) }
         }
@@ -47,7 +47,7 @@ import os
     @Test func mediaWorkersRefuseInvalidFilesAndRespectLoweredMemoryLimits() async throws {
         let tree = try TestTree("video.mov", "bad.mov")
         try #require(Data(base64Encoded: MediaFixtures.movie, options: .ignoreUnknownCharacters)).write(to: tree.url("video.mov"))
-        let request = try MediaFrameRequest().encoded
+        let request = try MediaAnalysisRequest().encoded
         let source = try FileReadSource(tree.url("video.mov"))
         let limited = try await source.read { file in
             try await ReadWorker.send(.init(request), file: file, timeout: 20, worker: .media, limits: .init(memory: 1))
@@ -60,6 +60,49 @@ import os
 }
 
 @MainActor struct MediaFrameSessionTests {
+    @Test func malformedChapterTimesNeverReachTheNativePlayer() throws {
+        for time in [Double.nan, .infinity, -.infinity, -1, .greatestFiniteMagnitude, 11] {
+            #expect(MediaPreviewView.seekTime(time, duration: 10) == nil)
+        }
+        for duration in [Double.nan, .infinity, 0, -1, .greatestFiniteMagnitude] {
+            #expect(MediaPreviewView.seekTime(0, duration: duration) == nil)
+        }
+        let start = try #require(MediaPreviewView.seekTime(0, duration: 10))
+        let end = try #require(MediaPreviewView.seekTime(10, duration: 10))
+        #expect(start.isNumeric && start.seconds == 0 && end.isNumeric && end.seconds == 10)
+    }
+
+    @Test func nativeStoryboardDrawingFitsTheImageAndLeavesLetterboxingClear() throws {
+        let frame = try MediaFrame(requested: 0, actual: 0, width: 2, height: 1, rgba: Data([255, 0, 0, 255, 255, 0, 0, 255]))
+        let view = MediaStoryboardView(frame: NSRect(x: 0, y: 0, width: 24, height: 64))
+        view.show(try MediaFrames(duration: 1, frames: [frame]))
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 24, pixelsHigh: 64,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0))
+        let context = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        NSColor.clear.setFill(); view.bounds.fill(using: .copy)
+        view.draw(view.bounds)
+        #expect(try #require(bitmap.colorAt(x: 12, y: 32)).redComponent > 0.9)
+        #expect(try #require(bitmap.colorAt(x: 12, y: 1)).alphaComponent < 0.01)
+        view.frame.size.width = 1
+        view.draw(view.bounds)
+    }
+
+    @Test func sourceFileDetectionWinsOverAmbiguousSystemMediaTypes() {
+        guard case .code = PreviewFormat(url: URL(fileURLWithPath: "/fixture/source.ts"), contentType: .mpeg2TransportStream) else {
+            Issue.record("TypeScript must keep its source preview"); return
+        }
+        guard case .video = PreviewFormat(url: URL(fileURLWithPath: "/fixture/video.mp4"), contentType: .mpeg4Movie) else {
+            Issue.record("Movies must get their media preview"); return
+        }
+        guard case .audio = PreviewFormat(url: URL(fileURLWithPath: "/fixture/audio.wav"), contentType: .wav) else {
+            Issue.record("Audio must get its waveform preview"); return
+        }
+    }
+
     @Test func nativePlayerNeverAutoplaysAndReleasesItsItemWhenTheWindowCloses() async throws {
         let tree = try TestTree("video.mov")
         try #require(Data(base64Encoded: MediaFixtures.movie, options: .ignoreUnknownCharacters)).write(to: tree.url("video.mov"))

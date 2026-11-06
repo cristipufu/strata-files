@@ -313,3 +313,10 @@ table workers. It still has no network entitlement or access to user files beyon
 policy caps CPU time at 15 seconds, resident memory at 384 MiB, output at eight 256 × 144 frames, and open descriptors
 at 128. The service's 25-second deadline also applies. Decoder failure or a reached limit leaves native playback
 available with a storyboard-unavailable message. Playback itself remains in AVKit in the app process.
+
+Audio waveforms use this worker too. PCM buffers are consumed one at a time into at most 1,024 peak bins; the app
+receives only finite, normalized peaks and validated duration/coverage values. Recordings over ten minutes require
+an explicit analysis request. Each analysis covers at most the first thirty minutes and returns partial coverage
+when its ten-second cooperative budget expires; the hard worker and service limits remain in force if a native call
+stops responding. The preview labels partial coverage and seeks within the analyzed interval. Cancelling analysis
+does not stop playback.

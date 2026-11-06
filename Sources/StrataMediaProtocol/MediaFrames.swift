@@ -2,18 +2,27 @@ import Foundation
 
 package enum MediaAnalysisFailure: Error { case malformed, unsupported, limit }
 
-package struct MediaFrameRequest: Sendable {
-    package let time: Double?
+package struct MediaAnalysisRequest: Sendable {
+    package enum Operation: Sendable { case storyboard, frame(Double), waveform }
+    package let operation: Operation
     package let typeIdentifier: String
-    package init(time: Double? = nil, typeIdentifier: String = "com.apple.quicktime-movie") throws {
-        guard time.map({ $0.isFinite && $0 >= 0 && $0 <= MediaFrames.durationLimit }) ?? true else { throw MediaAnalysisFailure.malformed }
+    package init(operation: Operation = .storyboard, typeIdentifier: String = "com.apple.quicktime-movie") throws {
+        if case .frame(let time) = operation {
+            guard time.isFinite, time >= 0, time <= MediaFrames.durationLimit else { throw MediaAnalysisFailure.malformed }
+        }
         guard !typeIdentifier.isEmpty, typeIdentifier.utf8.count <= 128,
               typeIdentifier.utf8.allSatisfy({ $0 == 45 || $0 == 46 || (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }) else { throw MediaAnalysisFailure.malformed }
-        self.time = time; self.typeIdentifier = typeIdentifier
+        self.operation = operation; self.typeIdentifier = typeIdentifier
     }
     package var encoded: Data {
         var bytes = MediaBytes()
-        bytes.append(UInt32(time == nil ? 1 : 2)); bytes.append((time ?? 0).bitPattern)
+        let mode: UInt32, time: Double
+        switch operation {
+        case .storyboard: mode = 1; time = 0
+        case .frame(let value): mode = 2; time = value
+        case .waveform: mode = 3; time = 0
+        }
+        bytes.append(mode); bytes.append(time.bitPattern)
         bytes.append(UInt32(typeIdentifier.utf8.count)); bytes.data.append(contentsOf: typeIdentifier.utf8)
         return bytes.data
     }
@@ -22,8 +31,9 @@ package struct MediaFrameRequest: Sendable {
         let mode = try bytes.word(), time = Double(bitPattern: try bytes.wide())
         let count = Int(try bytes.word())
         guard count <= 128, let type = String(data: try bytes.take(count), encoding: .utf8) else { throw MediaAnalysisFailure.malformed }
-        guard bytes.isAtEnd, mode == 1 || mode == 2, mode != 1 || time == 0 else { throw MediaAnalysisFailure.malformed }
-        try self.init(time: mode == 1 ? nil : time, typeIdentifier: type)
+        guard bytes.isAtEnd, (1...3).contains(mode), mode == 2 || time == 0 else { throw MediaAnalysisFailure.malformed }
+        let operation: Operation = mode == 1 ? .storyboard : mode == 2 ? .frame(time) : .waveform
+        try self.init(operation: operation, typeIdentifier: type)
     }
 }
 
