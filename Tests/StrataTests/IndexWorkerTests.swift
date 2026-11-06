@@ -111,6 +111,12 @@ struct IndexWorkerTests {
         #expect(phases.withLock { $0.last } == .unavailable)
         #expect(!phases.withLock { $0.contains(.ready) })
         #expect(fixture.store.read { $0.lookup(tree.url("kept.txt").path) } != nil)
+        var changed = fixture.config
+        changed.excluded.insert(tree.url("ignored").path)
+        fixture.worker.update(changed)
+        await save(fixture.worker)
+        #expect(phases.withLock { $0.last } == .unavailable)
+        #expect(!phases.withLock { $0.contains(.ready) })
         #expect(tree.text("kept.txt") == "kept.txt")
     }
 

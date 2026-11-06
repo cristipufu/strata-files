@@ -9250,5 +9250,12 @@
     "replace": "        wordRows.removeAll()",
     "rule": "Semantic progress: reset clears the searchable document count",
     "tests": "SemanticProgressTests"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if watchingFailed { publish(.unavailable); return }",
+    "replace": "        if watchingFailed { return }",
+    "rule": "Index watch status: changing exclusions preserves the watcher failure",
+    "tests": "IndexWorkerTests/failedWatchingDoesNotClaimTheIndexIsCurrent"
   }
 ]

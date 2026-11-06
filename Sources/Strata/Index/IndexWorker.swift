@@ -205,7 +205,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func finishUpdates() {
-        guard !watchingFailed, !awaitingHistory, pending.isEmpty, !rescanNeeded, !interrupted else { return }
+        guard pending.isEmpty, !rescanNeeded, !interrupted else { return }
+        if watchingFailed { publish(.unavailable); return }
+        guard !awaitingHistory else { return }
         publish(.ready)
     }
 
