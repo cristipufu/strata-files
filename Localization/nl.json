@@ -1947,6 +1947,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Volledige schijftoegang staat aan. Je bent klaar.",
     "Ascending": "Oplopend",
     "Use as Defaults": "Gebruik als standaard",
-    "Other options apply to all windows.": "De overige opties gelden voor alle vensters."
+    "Other options apply to all windows.": "De overige opties gelden voor alle vensters.",
+    "Dynamic range": "Dynamisch bereik",
+    "Chapters": "Hoofdstukken",
+    "Subtitles": "Ondertitels",
+    "Focal length": "Brandpuntsafstand",
+    "35 mm equivalent": "35mm-equivalent",
+    "Copy Coordinates": "Kopieer coördinaten",
+    "Open in Maps": "Open in Kaarten",
+    "GPS coordinates": "GPS-coördinaten"
   }
 }

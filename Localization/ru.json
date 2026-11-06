@@ -2217,6 +2217,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Доступ ко всему диску включен. Все готово.",
     "Ascending": "По возрастанию",
     "Use as Defaults": "Использовать по умолчанию",
-    "Other options apply to all windows.": "Остальные параметры применяются ко всем окнам."
+    "Other options apply to all windows.": "Остальные параметры применяются ко всем окнам.",
+    "Dynamic range": "Динамический диапазон",
+    "Chapters": "Главы",
+    "Subtitles": "Субтитры",
+    "Focal length": "Фокусное расстояние",
+    "35 mm equivalent": "Эквивалент 35 мм",
+    "Copy Coordinates": "Скопировать координаты",
+    "Open in Maps": "Открыть в Картах",
+    "GPS coordinates": "Координаты GPS"
   }
 }

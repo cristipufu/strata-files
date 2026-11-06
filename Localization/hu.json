@@ -1947,6 +1947,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ A teljes lemezhozzáférés be van kapcsolva. Minden készen áll.",
     "Ascending": "Növekvő",
     "Use as Defaults": "Használat alapértelmezettként",
-    "Other options apply to all windows.": "A többi beállítás minden ablakra érvényes."
+    "Other options apply to all windows.": "A többi beállítás minden ablakra érvényes.",
+    "Dynamic range": "Dinamikatartomány",
+    "Chapters": "Fejezetek",
+    "Subtitles": "Feliratok",
+    "Focal length": "Gyújtótávolság",
+    "35 mm equivalent": "35 mm-es egyenérték",
+    "Copy Coordinates": "Koordináták másolása",
+    "Open in Maps": "Megnyitás a Térképekben",
+    "GPS coordinates": "GPS-koordináták"
   }
 }

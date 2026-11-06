@@ -2081,6 +2081,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Accesul complet la disc este activat. Totul este gata.",
     "Ascending": "Crescător",
     "Use as Defaults": "Folosește ca valori implicite",
-    "Other options apply to all windows.": "Celelalte opțiuni se aplică tuturor ferestrelor."
+    "Other options apply to all windows.": "Celelalte opțiuni se aplică tuturor ferestrelor.",
+    "Dynamic range": "Interval dinamic",
+    "Chapters": "Capitole",
+    "Subtitles": "Subtitrări",
+    "Focal length": "Distanță focală",
+    "35 mm equivalent": "Echivalent 35 mm",
+    "Copy Coordinates": "Copiază coordonatele",
+    "Open in Maps": "Deschide în Hărți",
+    "GPS coordinates": "Coordonate GPS"
   }
 }

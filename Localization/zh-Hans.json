@@ -1813,6 +1813,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ 完全磁盘访问权限已打开。一切就绪。",
     "Ascending": "升序",
     "Use as Defaults": "用作默认设置",
-    "Other options apply to all windows.": "其他选项适用于所有窗口。"
+    "Other options apply to all windows.": "其他选项适用于所有窗口。",
+    "Dynamic range": "动态范围",
+    "Chapters": "章节",
+    "Subtitles": "字幕",
+    "Focal length": "焦距",
+    "35 mm equivalent": "35 mm 等效焦距",
+    "Copy Coordinates": "复制坐标",
+    "Open in Maps": "在地图中打开",
+    "GPS coordinates": "GPS 坐标"
   }
 }

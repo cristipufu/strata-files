@@ -1813,6 +1813,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ 전체 디스크 접근 권한이 켜져 있습니다. 모든 준비가 완료되었습니다.",
     "Ascending": "오름차순",
     "Use as Defaults": "기본값으로 사용",
-    "Other options apply to all windows.": "다른 옵션은 모든 윈도우에 적용됩니다."
+    "Other options apply to all windows.": "다른 옵션은 모든 윈도우에 적용됩니다.",
+    "Dynamic range": "다이내믹 레인지",
+    "Chapters": "챕터",
+    "Subtitles": "자막",
+    "Focal length": "초점 거리",
+    "35 mm equivalent": "35 mm 환산",
+    "Copy Coordinates": "좌표 복사",
+    "Open in Maps": "지도에서 열기",
+    "GPS coordinates": "GPS 좌표"
   }
 }

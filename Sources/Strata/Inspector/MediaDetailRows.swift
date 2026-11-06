@@ -9,6 +9,7 @@ import StrataSupport
         if let duration = details.basic.durationText { rows.append((String(localized: "Duration"), duration)) }
         if let video = details.video {
             if let codec = video.codec { rows.append((String(localized: "Video codec"), codec)) }
+            if let isHDR = video.isHDR { rows.append((String(localized: "Dynamic range"), isHDR ? "HDR" : "SDR")) }
             if let rate = positive(video.frameRate) {
                 rows.append((String(localized: "Frame rate"), String(localized: "\(number(rate)) fps", comment: "Media frame rate in frames per second")))
             }
@@ -22,6 +23,13 @@ import StrataSupport
                 rows.append((String(localized: "Channels"), channels.formatted()))
             }
         }
+        if let chapters = details.navigation.chapters, !chapters.isEmpty {
+            rows.append((String(localized: "Chapters"), chapters.count.formatted()))
+        }
+        if let subtitles = details.navigation.subtitles, !subtitles.isEmpty {
+            let names = subtitles.prefix(3).joined(separator: ", ") + (subtitles.count > 3 ? ", …" : "")
+            rows.append((String(localized: "Subtitles"), subtitles.count.formatted() + " · " + names))
+        }
         return rows
     }
 
@@ -30,6 +38,8 @@ import StrataSupport
         if let date = photo.taken { rows.append((String(localized: "Date taken"), Format.longDate(date))) }
         if let camera = photo.camera { rows.append((String(localized: "Camera"), camera)) }
         if let lens = photo.lens { rows.append((String(localized: "Lens"), lens)) }
+        if let length = positive(photo.focalLength) { rows.append((String(localized: "Focal length"), number(length) + " mm")) }
+        if let length = positive(photo.focalLength35mm) { rows.append((String(localized: "35 mm equivalent"), number(length) + " mm")) }
         if let seconds = positive(photo.exposure) {
             let reciprocal = 1 / seconds
             let denominator = reciprocal.rounded()

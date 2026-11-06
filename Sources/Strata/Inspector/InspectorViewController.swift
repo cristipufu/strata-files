@@ -46,6 +46,7 @@ final class InspectorViewController: NSViewController {
     private var projectTask: Task<Void, Never>?
     let mediaDetails: InspectorMediaDetails
     let mediaRows = InspectorRows()
+    private var coordinatesView: InspectorCoordinatesView?
     private(set) var mediaCard: InspectorCard!
     private var dimensionsRowIndex: Int?
     /// A native preview for code, Markdown, JSON, CSV, SQLite and archives; Quick Look covers everything else.
@@ -687,8 +688,14 @@ final class InspectorViewController: NSViewController {
     }
 
     private func showMediaRows() {
-        let rows = mediaDetails.value.map(MediaDetailRows.rows) ?? []
-        mediaRows.setText(rows)
+        var rows: [(String, NSView)] = (mediaDetails.value.map(MediaDetailRows.rows) ?? []).map { ($0, InspectorRows.text($1)) }
+        if let location = mediaDetails.value?.photo?.location {
+            if coordinatesView?.location != location {
+                coordinatesView = InspectorCoordinatesView(location: location, clipboard: services.clipboard) { NSWorkspace.shared.open($0) }
+            }
+            if let coordinatesView { rows.append((String(localized: "GPS coordinates"), coordinatesView)) }
+        } else { coordinatesView = nil }
+        mediaRows.set(rows)
         mediaCard.isHidden = rows.isEmpty
     }
 

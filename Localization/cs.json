@@ -2081,6 +2081,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Plný přístup k disku je zapnutý. Vše je připraveno.",
     "Ascending": "Vzestupně",
     "Use as Defaults": "Použít jako výchozí",
-    "Other options apply to all windows.": "Ostatní možnosti platí pro všechna okna."
+    "Other options apply to all windows.": "Ostatní možnosti platí pro všechna okna.",
+    "Dynamic range": "Dynamický rozsah",
+    "Chapters": "Kapitoly",
+    "Subtitles": "Titulky",
+    "Focal length": "Ohnisková vzdálenost",
+    "35 mm equivalent": "Ekvivalent 35 mm",
+    "Copy Coordinates": "Kopírovat souřadnice",
+    "Open in Maps": "Otevřít v Mapách",
+    "GPS coordinates": "Souřadnice GPS"
   }
 }

@@ -62,6 +62,8 @@ import os
         #expect(details.basic.dimensions == "48 × 64")
         #expect(details.photo?.camera == "Maker Body")
         #expect(details.photo?.lens == "35 mm")
+        #expect(details.photo?.focalLength == 35 && details.photo?.focalLength35mm == 50)
+        #expect(details.photo?.location == MediaLocation(latitude: -12.5, longitude: -45.25))
         #expect(details.photo?.iso == 200)
         #expect(abs((details.photo?.aperture ?? 0) - 1.8) < 0.001)
         #expect(abs((details.photo?.exposure ?? 0) - 0.004) < 0.000001)
@@ -103,6 +105,8 @@ import os
         let details = await MediaDetails.read(tree.url("video.mov"), contentType: .quickTimeMovie)
         #expect(details.basic.dimensions == "64 × 48")
         #expect(details.video?.codec == "JPEG")
+        #expect(details.video?.isHDR == false)
+        #expect(details.navigation.chapters == [] && details.navigation.subtitles == [])
         #expect(abs((details.video?.frameRate ?? 0) - 24) < 0.01)
         #expect(details.basic.duration ?? 0 > 0)
         #expect(details.audio == nil && details.photo == nil)
@@ -207,6 +211,58 @@ import os
         try await Self.checkAllowanceOwnership(WorkAllowance(limit: 1))
     }
 
+    @Test func coordinatesAndChapterTimesRefuseMalformedValuesAndKeepValidBoundaries() throws {
+        for (latitude, longitude) in [(Double.nan, 0.0), (0.0, Double.infinity), (90.01, 0.0), (0.0, -180.01)] {
+            #expect(MediaLocation(latitude: latitude, longitude: longitude) == nil)
+        }
+        let location = try #require(MediaLocation(latitude: 0, longitude: -180))
+        #expect(location.coordinates == "0.000000, -180.000000")
+        let components = try #require(location.mapsURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) })
+        #expect(components.host == "maps.apple.com" && components.scheme == "https")
+        #expect(components.queryItems == [URLQueryItem(name: "ll", value: location.coordinates)])
+        for start in [-1.0, .nan, .infinity] { #expect(MediaChapter(start: start, title: "Chapter") == nil) }
+        #expect(MediaChapter(start: 0, title: "First\nchapter")?.title == "First chapter")
+        #expect(MediaChapter(start: 1, title: String(repeating: "x", count: MediaNavigation.titleByteLimit + 1)) == nil)
+    }
+
+    @Test func expandedRowsKeepKnownHDRNavigationAndFocalLengthWithoutInventingMissingValues() throws {
+        let navigation = MediaNavigation(chapters: [try #require(MediaChapter(start: 0, title: "Intro"))], subtitles: ["English", "日本語"])
+        let details = MediaDetails(photo: .init(focalLength: 35, focalLength35mm: 50),
+            video: .init(codec: "HEVC", frameRate: nil, bitRate: nil, isHDR: true), navigation: navigation)
+        let rows = MediaDetailRows.rows(details)
+        #expect(rows.contains { $0.0 == String(localized: "Dynamic range") && $0.1 == "HDR" })
+        #expect(rows.contains { $0.0 == String(localized: "Focal length") && $0.1 == "35 mm" })
+        #expect(rows.contains { $0.0 == String(localized: "Chapters") && $0.1 == "1" })
+        #expect(rows.contains { $0.0 == String(localized: "Subtitles") && $0.1.contains("日本語") })
+        #expect(MediaDetailRows.rows(MediaDetails()).isEmpty)
+    }
+
+    @Test func coordinateActionsUseTheDisplayedLocationAndInjectedClipboard() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let clipboard = Clipboard(pasteboard: board, notifications: NotificationCenter())
+        let location = try #require(MediaLocation(latitude: 12.5, longitude: -45.25))
+        var opened: [URL] = []
+        let view = InspectorCoordinatesView(location: location, clipboard: clipboard) { opened.append($0) }
+        let actions = try #require(view.arrangedSubviews.last as? NSStackView)
+        let copy = try #require(actions.arrangedSubviews.first as? NSButton)
+        let maps = try #require(actions.arrangedSubviews.last as? NSButton)
+        #expect(opened.isEmpty && board.string(forType: .string) == nil)
+        copy.performClick(nil)
+        #expect(board.string(forType: .string) == location.coordinates)
+        maps.performClick(nil)
+        #expect(opened == [try #require(location.mapsURL)])
+    }
+
+    @Test func oversizedOrUnorderedNavigationIsUnknownRatherThanPartiallyTrusted() throws {
+        let first = try #require(MediaChapter(start: 1, title: "First"))
+        let second = try #require(MediaChapter(start: 2, title: "Second"))
+        #expect(MediaNavigation(chapters: [second, first]).chapters == nil)
+        #expect(MediaNavigation(chapters: Array(repeating: first, count: MediaNavigation.chapterLimit + 1)).chapters == nil)
+        #expect(MediaNavigation(subtitles: Array(repeating: "English", count: MediaNavigation.trackLimit + 1)).subtitles == nil)
+        #expect(MediaNavigation(subtitles: [String(repeating: "x", count: MediaNavigation.titleByteLimit + 1)]).subtitles == nil)
+    }
+
     private static func checkAllowanceOwnership(_ allowance: isolated WorkAllowance) async throws {
         let first = UUID(), second = UUID()
         try await allowance.enter(first)
@@ -301,10 +357,13 @@ import os
         CGImageDestinationAddImage(writer, image, [
             kCGImagePropertyOrientation: 6,
             kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "Maker", kCGImagePropertyTIFFModel: camera],
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 12.5, kCGImagePropertyGPSLatitudeRef: "S",
+                kCGImagePropertyGPSLongitude: 45.25, kCGImagePropertyGPSLongitudeRef: "W"],
             kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2026:05:01 12:34:56",
                 kCGImagePropertyExifOffsetTimeOriginal: "+02:00", kCGImagePropertyExifLensModel: "35 mm",
                 kCGImagePropertyExifExposureTime: 0.004, kCGImagePropertyExifFNumber: 1.8,
-                kCGImagePropertyExifISOSpeedRatings: [200]],
+                kCGImagePropertyExifISOSpeedRatings: [200], kCGImagePropertyExifFocalLength: 35,
+                kCGImagePropertyExifFocalLenIn35mmFilm: 50],
         ] as CFDictionary)
         try #require(CGImageDestinationFinalize(writer))
         return data as Data

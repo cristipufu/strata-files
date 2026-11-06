@@ -2215,6 +2215,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Pełny dostęp do dysku jest włączony. Wszystko gotowe.",
     "Ascending": "Rosnąco",
     "Use as Defaults": "Użyj jako domyślnych",
-    "Other options apply to all windows.": "Pozostałe opcje dotyczą wszystkich okien."
+    "Other options apply to all windows.": "Pozostałe opcje dotyczą wszystkich okien.",
+    "Dynamic range": "Zakres dynamiczny",
+    "Chapters": "Rozdziały",
+    "Subtitles": "Napisy",
+    "Focal length": "Ogniskowa",
+    "35 mm equivalent": "Odpowiednik 35 mm",
+    "Copy Coordinates": "Kopiuj współrzędne",
+    "Open in Maps": "Otwórz w Mapach",
+    "GPS coordinates": "Współrzędne GPS"
   }
 }

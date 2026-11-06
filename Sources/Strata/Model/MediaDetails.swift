@@ -15,11 +15,16 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
         package let exposure: Double?
         package let aperture: Double?
         package let iso: Double?
+        package let focalLength: Double?
+        package let focalLength35mm: Double?
+        package let location: MediaLocation?
 
         package init(taken: Date? = nil, camera: String? = nil, lens: String? = nil,
-                     exposure: Double? = nil, aperture: Double? = nil, iso: Double? = nil) {
+                     exposure: Double? = nil, aperture: Double? = nil, iso: Double? = nil,
+                     focalLength: Double? = nil, focalLength35mm: Double? = nil, location: MediaLocation? = nil) {
             self.taken = taken; self.camera = camera; self.lens = lens
             self.exposure = exposure; self.aperture = aperture; self.iso = iso
+            self.focalLength = focalLength; self.focalLength35mm = focalLength35mm; self.location = location
         }
     }
 
@@ -27,6 +32,7 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
         package let codec: String?
         package let frameRate: Double?
         package let bitRate: Double?
+        package var isHDR: Bool? = nil
     }
 
     nonisolated package struct Audio: Equatable, Sendable {
@@ -39,9 +45,12 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
     package let photo: Photo?
     package let video: Video?
     package let audio: Audio?
+    package let navigation: MediaNavigation
 
-    package init(basic: MediaInfo = MediaInfo(), photo: Photo? = nil, video: Video? = nil, audio: Audio? = nil) {
+    package init(basic: MediaInfo = MediaInfo(), photo: Photo? = nil, video: Video? = nil, audio: Audio? = nil,
+                 navigation: MediaNavigation = MediaNavigation()) {
         self.basic = basic; self.photo = photo; self.video = video; self.audio = audio
+        self.navigation = navigation
     }
 
     @concurrent package static func read(_ url: URL, contentType: UTType?) async -> Self {
@@ -57,7 +66,8 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
             async let basic = MediaInfo.readAsset(asset)
             async let video = videoTrack(asset)
             async let audio = audioTrack(asset)
-            let result = await Self(basic: basic, video: video, audio: audio)
+            async let navigation = MediaNavigation.read(asset)
+            let result = await Self(basic: basic, video: video, audio: audio, navigation: navigation)
             return Task.isCancelled ? Self() : result
         } onCancel: { asset.cancelLoading() }
     }
@@ -68,10 +78,15 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
         let camera: String?
         if let make, let model, !model.lowercased().hasPrefix(make.lowercased()) { camera = make + " " + model }
         else { camera = model ?? make }
+        let location: MediaLocation?
+        if let latitude = metadata.latitude?.doubleValue, let longitude = metadata.longitude?.doubleValue {
+            location = MediaLocation(latitude: latitude, longitude: longitude)
+        } else { location = nil }
         return Self(basic: MediaInfo(imageMetadata: metadata), photo: Photo(
             taken: dateTaken(metadata.captureDate, offset: metadata.captureOffset), camera: camera,
             lens: cleaned(metadata.lensModel), exposure: positive(metadata.exposureTime?.doubleValue),
-            aperture: positive(metadata.aperture?.doubleValue), iso: positive(metadata.iso?.doubleValue)))
+            aperture: positive(metadata.aperture?.doubleValue), iso: positive(metadata.iso?.doubleValue),
+            focalLength: positive(metadata.focalLength?.doubleValue), focalLength35mm: positive(metadata.focalLength35mm?.doubleValue), location: location))
     }
 
     private static func videoTrack(_ asset: AVURLAsset) async -> Video? {
@@ -81,7 +96,8 @@ nonisolated package struct MediaDetails: Equatable, Sendable {
         let rate = try? await track.load(.nominalFrameRate)
         guard !Task.isCancelled else { return nil }
         let bits = try? await track.load(.estimatedDataRate)
-        return Video(codec: codec, frameRate: positive(rate.map(Double.init)), bitRate: positive(bits.map(Double.init)))
+        return Video(codec: codec, frameRate: positive(rate.map(Double.init)), bitRate: positive(bits.map(Double.init)),
+                     isHDR: codec == nil ? nil : track.hasMediaCharacteristic(.containsHDRVideo))
     }
 
     private static func audioTrack(_ asset: AVURLAsset) async -> Audio? {

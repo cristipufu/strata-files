@@ -1947,6 +1947,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Tam Disk Erişimi açık. Her şey hazır.",
     "Ascending": "Artan",
     "Use as Defaults": "Varsayılan olarak kullan",
-    "Other options apply to all windows.": "Diğer seçenekler tüm pencereler için geçerlidir."
+    "Other options apply to all windows.": "Diğer seçenekler tüm pencereler için geçerlidir.",
+    "Dynamic range": "Dinamik aralık",
+    "Chapters": "Bölümler",
+    "Subtitles": "Altyazılar",
+    "Focal length": "Odak uzaklığı",
+    "35 mm equivalent": "35 mm eşdeğeri",
+    "Copy Coordinates": "Koordinatları Kopyala",
+    "Open in Maps": "Haritalar’da Aç",
+    "GPS coordinates": "GPS koordinatları"
   }
 }

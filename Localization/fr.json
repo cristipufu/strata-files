@@ -1947,6 +1947,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ L’accès complet au disque est activé. Tout est prêt.",
     "Ascending": "Croissant",
     "Use as Defaults": "Utiliser par défaut",
-    "Other options apply to all windows.": "Les autres options s’appliquent à toutes les fenêtres."
+    "Other options apply to all windows.": "Les autres options s’appliquent à toutes les fenêtres.",
+    "Dynamic range": "Plage dynamique",
+    "Chapters": "Chapitres",
+    "Subtitles": "Sous-titres",
+    "Focal length": "Distance focale",
+    "35 mm equivalent": "Équivalent 35 mm",
+    "Copy Coordinates": "Copier les coordonnées",
+    "Open in Maps": "Ouvrir dans Plans",
+    "GPS coordinates": "Coordonnées GPS"
   }
 }

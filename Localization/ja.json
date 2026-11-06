@@ -1813,6 +1813,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ フルディスクアクセスはオンです。準備完了です。",
     "Ascending": "昇順",
     "Use as Defaults": "デフォルトとして使用",
-    "Other options apply to all windows.": "その他のオプションはすべてのウインドウに適用されます。"
+    "Other options apply to all windows.": "その他のオプションはすべてのウインドウに適用されます。",
+    "Dynamic range": "ダイナミックレンジ",
+    "Chapters": "チャプタ",
+    "Subtitles": "字幕",
+    "Focal length": "焦点距離",
+    "35 mm equivalent": "35 mm換算",
+    "Copy Coordinates": "座標をコピー",
+    "Open in Maps": "マップで開く",
+    "GPS coordinates": "GPS座標"
   }
 }

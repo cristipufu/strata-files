@@ -1947,6 +1947,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓ Fullständig skivåtkomst är på. Allt är klart.",
     "Ascending": "Stigande",
     "Use as Defaults": "Använd som standard",
-    "Other options apply to all windows.": "Övriga alternativ gäller för alla fönster."
+    "Other options apply to all windows.": "Övriga alternativ gäller för alla fönster.",
+    "Dynamic range": "Dynamiskt omfång",
+    "Chapters": "Kapitel",
+    "Subtitles": "Undertexter",
+    "Focal length": "Brännvidd",
+    "35 mm equivalent": "35 mm-ekvivalent",
+    "Copy Coordinates": "Kopiera koordinater",
+    "Open in Maps": "Öppna i Kartor",
+    "GPS coordinates": "GPS-koordinater"
   }
 }

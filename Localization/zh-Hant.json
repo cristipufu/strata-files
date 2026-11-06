@@ -1813,6 +1813,14 @@
     "✓ Full Disk Access is on. You’re all set.": "✓「完全取用磁碟」權限已開啟。一切就緒。",
     "Ascending": "遞增",
     "Use as Defaults": "用作預設設定",
-    "Other options apply to all windows.": "其他選項適用於所有視窗。"
+    "Other options apply to all windows.": "其他選項適用於所有視窗。",
+    "Dynamic range": "動態範圍",
+    "Chapters": "章節",
+    "Subtitles": "字幕",
+    "Focal length": "焦距",
+    "35 mm equivalent": "35 mm 等效焦距",
+    "Copy Coordinates": "拷貝座標",
+    "Open in Maps": "在地圖中打開",
+    "GPS coordinates": "GPS 座標"
   }
 }

@@ -26,6 +26,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly, nullable, copy) NSNumber *exposureTime;
 @property(nonatomic, readonly, nullable, copy) NSNumber *aperture;
 @property(nonatomic, readonly, nullable, copy) NSNumber *iso;
+@property(nonatomic, readonly, nullable, copy) NSNumber *focalLength;
+@property(nonatomic, readonly, nullable, copy) NSNumber *focalLength35mm;
+@property(nonatomic, readonly, nullable, copy) NSNumber *latitude;
+@property(nonatomic, readonly, nullable, copy) NSNumber *longitude;
 @end
 
 @interface STImageReader : NSObject

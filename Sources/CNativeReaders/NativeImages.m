@@ -8,7 +8,7 @@
 @property(nonatomic) NSInteger width, height, orientation;
 @property(nonatomic, copy) NSString *typeIdentifier;
 @property(nonatomic, nullable, copy) NSString *captureDate, *captureOffset, *cameraModel, *cameraMake, *lensModel;
-@property(nonatomic, nullable, copy) NSNumber *exposureTime, *aperture, *iso;
+@property(nonatomic, nullable, copy) NSNumber *exposureTime, *aperture, *iso, *focalLength, *focalLength35mm, *latitude, *longitude;
 @end
 @implementation STImageMetadata
 @end
@@ -29,6 +29,15 @@ static NSNumber *STPositiveMetadataNumber(id value) {
     return isfinite(number) && number > 0 ? value : nil;
 }
 static const NSUInteger STMaximumImageSide = 4096;
+
+static NSNumber *STGPSCoordinate(id value, id reference, NSString *positive, NSString *negative, double maximum) {
+    if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) != CFNumberGetTypeID() ||
+        ![reference isKindOfClass:NSString.class]) return nil;
+    double number = [value doubleValue];
+    if (!isfinite(number) || number < 0 || number > maximum) return nil;
+    if ([reference isEqualToString:negative]) return @(-number);
+    return [reference isEqualToString:positive] ? @(number) : nil;
+}
 
 static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
     CFStringRef type = CGImageSourceGetType(source);
@@ -51,10 +60,19 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
         id ratings = exif[(__bridge NSString *)kCGImagePropertyExifISOSpeedRatings];
         id rating = [ratings isKindOfClass:NSArray.class] ? ([ratings count] ? ratings[0] : nil) : ratings;
         result.iso = STPositiveMetadataNumber(rating);
+        result.focalLength = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifFocalLength]);
+        result.focalLength35mm = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifFocalLenIn35mmFilm]);
     }
     if ([tiff isKindOfClass:NSDictionary.class]) {
         result.cameraModel = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFModel]);
         result.cameraMake = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFMake]);
+    }
+    id gps = properties[(__bridge NSString *)kCGImagePropertyGPSDictionary];
+    if ([gps isKindOfClass:NSDictionary.class]) {
+        result.latitude = STGPSCoordinate(gps[(__bridge NSString *)kCGImagePropertyGPSLatitude],
+            gps[(__bridge NSString *)kCGImagePropertyGPSLatitudeRef], @"N", @"S", 90);
+        result.longitude = STGPSCoordinate(gps[(__bridge NSString *)kCGImagePropertyGPSLongitude],
+            gps[(__bridge NSString *)kCGImagePropertyGPSLongitudeRef], @"E", @"W", 180);
     }
     return result;
 }

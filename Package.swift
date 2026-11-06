@@ -78,6 +78,7 @@ let modelSources = [
     "FolderSizer.swift",
     "LandedFiles.swift",
     "MediaDetails.swift",
+    "MediaNavigation.swift",
     "MediaInfo.swift",
     "NewWindowLocation.swift",
     "PipeRead.swift",
