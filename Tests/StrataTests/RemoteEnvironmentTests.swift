@@ -141,6 +141,10 @@ struct RemoteEnvironmentTests {
         #expect(rightItem.tint == nil && right.remote.status.connected.isEmpty)
         var renamed = a; renamed.name = "Renamed"
         try left.remote.servers.save(renamed)
+        #expect(left.remote.servers.all == [renamed])
+        #expect(left.remote.servers.registry.server(id: a.id) == renamed)
+        let saved = try #require(left.preferences.defaults.data(forKey: "remoteServers"))
+        #expect(try JSONDecoder().decode([RemoteServer].self, from: saved) == [renamed])
         #expect(try items(ls).map(\.title) == ["Renamed"])
         #expect(try items(rs).first === rightItem)
         #expect(lt.currentRoots(hasContainers: false).filter { $0.kind == .server }.map(\.title) == ["Renamed"])
@@ -155,6 +159,8 @@ struct RemoteEnvironmentTests {
         #expect(oldRoot.symbol == "externaldrive.connected.to.line.below")
         renamed.kind = .sftp
         try left.remote.servers.save(renamed)
+        #expect(left.remote.servers.all == [renamed])
+        #expect(left.remote.servers.registry.server(id: a.id) == renamed)
         let newRoot = try #require(lt.currentRoots(hasContainers: false).first { $0.kind == .server })
         #expect(newRoot !== oldRoot && newRoot.symbol == "server.rack")
         #expect(tree.snapshot() == before)
