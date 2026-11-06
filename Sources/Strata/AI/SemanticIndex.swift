@@ -2,6 +2,7 @@ import Accelerate
 import Foundation
 import NaturalLanguage
 import UniformTypeIdentifiers
+import os
 
 /// One document that matches a content search.
 package nonisolated struct SemanticHit: Sendable, Hashable, Identifiable {
@@ -98,10 +99,16 @@ package actor SemanticIndex {
     private let loadWaiters = Waiters()
     private var updating = false
     private var unsavedChanges = 0
-    private var lastSave = ContinuousClock.now
+    private static let checkpointInterval: Duration = .seconds(30)
+    private let log = Logger(subsystem: "dev.strata.app", category: "content-index")
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private var lastSave: ContinuousClock.Instant
 
-    package init(configuration: Configuration, indexEmbedder: Embedder? = nil, queryEmbedder: Embedder? = nil) {
+    package init(configuration: Configuration, indexEmbedder: Embedder? = nil, queryEmbedder: Embedder? = nil,
+                 now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) {
         self.configuration = configuration
+        self.now = now
+        lastSave = now()
         // Disabled sentence embeddings keep an empty matrix, including while loading or recycling passage rows.
         sentenceRows = VectorRows(dimension: configuration.sentenceEmbeddings ? Embedder.sentenceDimension : 0)
         self.indexEmbedder = indexEmbedder ?? Embedder(label: "dev.strata.semantic.index", qos: .utility, sentences: configuration.sentenceEmbeddings)
@@ -156,7 +163,7 @@ package actor SemanticIndex {
                 let record = await Self.process(url, stamp: stamp, configuration: configuration, embedder: indexEmbedder)
                 try Task.checkCancellation()
                 store(record, at: path)
-                if unsavedChanges >= 100 || ContinuousClock.now - lastSave > .seconds(30) { await save() }
+                if now() - lastSave >= Self.checkpointInterval { await save() }
                 try await throttle()
             }
         } catch {
@@ -625,9 +632,16 @@ package actor SemanticIndex {
             }
             stored.files.append(.init(path: path, size: file.size, modified: file.modified, title: file.title, chunks: chunks))
         }
+        let changes = unsavedChanges
         unsavedChanges = 0
-        lastSave = .now
-        await Self.write(stored, to: storeURL, storage: configuration.storage)
+        do {
+            try await Self.write(stored, to: storeURL, storage: configuration.storage)
+        } catch {
+            unsavedChanges += changes
+            log.error("Could not save content index: \(error.localizedDescription)")
+        }
+        // A slow or failed write also gets a full interval before the next automatic checkpoint.
+        lastSave = now()
     }
 
     @concurrent
@@ -637,12 +651,12 @@ package actor SemanticIndex {
     }
 
     @concurrent
-    private static func write(_ index: StoredIndex, to url: URL, storage: SecureStorage.Context) async {
+    private static func write(_ index: StoredIndex, to url: URL, storage: SecureStorage.Context) async throws {
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
-        guard let data = try? encoder.encode(index) else { return }
+        let data = try encoder.encode(index)
         storage.makeFolder(url.deletingLastPathComponent())
-        try? storage.write(data, to: url)
+        try storage.write(data, to: url)
     }
 
     /// Bytes used on disk.

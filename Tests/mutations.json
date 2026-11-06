@@ -9264,5 +9264,26 @@
     "replace": "                // Keep the replaced record.",
     "rule": "Index replacement batches retire the old records and preserve unchanged siblings",
     "tests": "IndexWorkerTests/mixedReplacementsRetireOnlyTheirOldRecordsAndKeepUnchangedSiblings"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "if now() - lastSave >= Self.checkpointInterval { await save() }",
+    "replace": "if unsavedChanges >= 100 || now() - lastSave >= Self.checkpointInterval { await save() }",
+    "rule": "Semantic checkpoint: document counts cannot cause checkpoints before their interval",
+    "tests": "SemanticProgressTests/checkpointsWaitForTheirIntervalAndCompletionAlwaysSaves"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "            unsavedChanges += changes",
+    "replace": "            // Forget the failed snapshot.",
+    "rule": "Semantic checkpoint: failed snapshots remain pending for the next save",
+    "tests": "SemanticProgressTests/aFailedSaveRetainsItsChangesForTheNextAttempt"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "            await save()\n            throw error",
+    "replace": "            throw error",
+    "rule": "Semantic checkpoint: cancellation checkpoints the documents already finished",
+    "tests": "SemanticProgressTests/cancellingAnUpdateSavesFinishedDocumentsBeforeTheCheckpointInterval"
   }
 ]
