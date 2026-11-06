@@ -360,10 +360,10 @@ import AppKit
                 show(summary: String(localized: "Searching “\(name)” directly… \(search.scannedCount) items", comment: "plural"))
             }
             if finished {
-                // The scan answers more searches here for a minute (`canServe`); after that its memory goes.
-                Task { [weak self] in
+                // The pane keeps this scan for a minute; expiry must not retain it after the pane releases it.
+                Task { [weak self, weak search] in
                     try? await Task.sleep(for: .seconds(61))
-                    if let self, folderScan === search { folderScan = nil }
+                    if let self, let search, folderScan === search { folderScan = nil }
                 }
                 return
             }
