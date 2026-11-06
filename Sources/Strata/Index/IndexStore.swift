@@ -628,14 +628,14 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             func equal(_ a: UnsafeRawBufferPointer, _ b: [UInt8]) -> Bool {
                 a.elementsEqual(b)
             }
-            var outputs: [[UInt8]] = []
+            var outputs: Set<[UInt8]> = []
             for item in items where !item.isDirectory {
                 let name = bytes(item)
                 for rule in buildOutputRules {
                     let hit = rule.suffix
                         ? name.count > rule.marker.count && equal(UnsafeRawBufferPointer(rebasing: name[(name.count - rule.marker.count)...]), rule.marker)
                         : equal(name, rule.marker)
-                    if hit { outputs.append(contentsOf: rule.folders) }
+                    if hit { outputs.formUnion(rule.folders) }
                 }
             }
             return items.map { item in

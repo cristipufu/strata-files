@@ -9188,5 +9188,12 @@
     "replace": "                unknownChildCounts[p] = count",
     "rule": "Index allocation counts: removals update ancestor knowledge",
     "tests": "IndexAllocationTests"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "                    if hit { outputs.formUnion(rule.folders) }",
+    "replace": "                    if hit { outputs.formUnion([]) }",
+    "rule": "Index project classification: repeated markers preserve the supported output folder names",
+    "tests": "IndexClassificationTests"
   }
 ]
