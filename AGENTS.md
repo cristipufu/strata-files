@@ -619,6 +619,8 @@ mode, sidebar mode, last location).
 
 - Swift 6 with `defaultIsolation(MainActor)` and `NonisolatedNonsendingByDefault`. Disk and network work runs in
   `@concurrent` functions or `nonisolated` types. Keep the Swift 6.3 hop workaround in `Package.swift`.
+  Standalone classes with an isolated deinitializer name `@MainActor` explicitly: Swift 6.3 can lose inferred
+  isolation when importing them into an optimized module.
 - Follow Clean Code (Robert C. Martin): intention-revealing names, small functions that do one thing, explicit
   dependencies instead of hidden global state, no duplication, no dead code, and errors handled where they occur.
   Where this file is more specific, it wins.

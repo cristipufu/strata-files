@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-final class SettingsFocus: ObservableObject {
+@MainActor final class SettingsFocus: ObservableObject {
     struct Request {
         let token = UUID()
         let entry: SettingEntry
