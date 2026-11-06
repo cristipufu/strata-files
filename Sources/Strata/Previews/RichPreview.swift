@@ -19,6 +19,7 @@ package enum RichPreview {
         let view: PreviewView = switch format {
         case .code(let language): CodePreviewView(url: url, mode: .source(language), preferences: preferences)
         case .json: CodePreviewView(url: url, mode: .json, preferences: preferences)
+        case .pdf: PDFPreviewView(url: url)
         case .markdown: MarkdownPreviewView(url: url)
         case .html: HTMLPreviewView(url: url, preferences: preferences)
         case .epub: EPUBPreviewView(url: url)
@@ -43,6 +44,7 @@ package enum RichPreview {
 nonisolated package enum PreviewFormat: Sendable {
     case code(Language)
     case json
+    case pdf
     case markdown
     case html
     case epub
@@ -60,7 +62,8 @@ nonisolated package enum PreviewFormat: Sendable {
     case audio
 
     package init?(url: URL, contentType: UTType?) {
-        if let contentType, contentType.conforms(to: .directory) || contentType.conforms(to: .package) { return nil }
+        // An alias's extension names its target; the file itself is a bookmark.
+        if let contentType, [UTType.directory, .package, .aliasFile].contains(where: contentType.conforms(to:)) { return nil }
         let name = url.lastPathComponent.lowercased()
         let ext = url.pathExtension.lowercased()
         if ext == "epub" {
@@ -71,6 +74,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .onenoteContents
         } else if ["html", "htm", "xhtml"].contains(ext) {
             self = .html
+        } else if ext == "pdf" || contentType?.conforms(to: .pdf) == true {
+            self = .pdf
         } else if Self.markdownExtensions.contains(ext) {
             self = .markdown
         } else if Self.jsonExtensions.contains(ext) || name == "package.resolved" || name == ".babelrc" {

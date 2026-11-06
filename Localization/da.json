@@ -1712,6 +1712,7 @@
     "This database is encrypted or damaged.": "Denne database er krypteret eller beskadiget.",
     "This file couldn’t be read.": "Denne fil kunne ikke læses.",
     "This file is empty.": "Denne fil er tom.",
+    "This file is too large to preview.": "Denne fil er for stor til at blive vist.",
     "This file no longer exists.": "Denne fil findes ikke længere.",
     "This folder couldn’t be read": "Denne mappe kunne ikke læses",
     "This folder no longer exists": "Denne mappe findes ikke længere",

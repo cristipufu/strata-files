@@ -78,9 +78,10 @@ import WebKit
         let page = try await document.page(settings: .init(background: [0, 0, 0], color: [1, 1, 1], foreground: [1, 1, 1],
             triangles: "Triangles", bounds: "Bounds", reset: "Reset", help: "Help", large: "Large", unavailable: "Unavailable"))
         #expect((page.trustedScript?.utf8.count ?? 0) < 64 << 10)
-        let resource = try await page.read(page.url)
+        guard case .buffered(let read) = page.content else { Issue.record("Model document wasn't buffered"); return }
+        let resource = try await read(page.url)
         #expect(resource.data.count > data.count && resource.data.count <= page.limits.bytes)
-        await #expect(throws: (any Error).self) { try await page.read(URL(string: "https://fixture.invalid/model")!) }
+        await #expect(throws: (any Error).self) { try await read(URL(string: "https://fixture.invalid/model")!) }
         #expect(try Data(contentsOf: tree.url("model.stl")) == data)
         #expect(tree.snapshot() == ["model.stl"])
     }

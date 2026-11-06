@@ -11,14 +11,20 @@ package final class PreviewWebPage: NSView {
 
     nonisolated package struct Document: Sendable {
         package let url: URL
-        package let read: HTMLWebSession.Reader
+        package let content: WebPreviewContent
         package let limits: HTMLWebSession.Limits
         package let trustedScript: String?
         package init(url: URL, read: @escaping HTMLWebSession.Reader, limits: HTMLWebSession.Limits = .init(), trustedScript: String? = nil) {
             self.url = url
-            self.read = read
+            content = .buffered(read)
             self.limits = limits
             self.trustedScript = trustedScript
+        }
+        package init(url: URL, stream: @escaping HTMLWebSession.StreamReader, limits: HTMLWebSession.Limits) {
+            self.url = url
+            content = .streamed(stream)
+            self.limits = limits
+            trustedScript = nil
         }
     }
 
@@ -82,8 +88,7 @@ package final class PreviewWebPage: NSView {
     }
 
     private func load(_ document: Document, rules: WKContentRuleList) {
-        let session = HTMLWebSession(url: document.url, read: document.read, limits: document.limits,
-                                     openLink: openLink)
+        let session = HTMLWebSession(url: document.url, content: document.content, limits: document.limits, openLink: openLink)
         let web = WKWebView(frame: .zero, configuration: session.configuration(rules: rules, trustedScript: document.trustedScript))
         web.navigationDelegate = session; web.uiDelegate = session
         web.allowsLinkPreview = false

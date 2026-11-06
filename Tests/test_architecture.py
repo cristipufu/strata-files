@@ -21,7 +21,7 @@ class ModuleBoundaryTests(unittest.TestCase):
             }
             for target in targets
         }
-        interface = {"Strata", "StrataPreviews", "StrataTheme"}
+        interface = {"Strata", "StrataPreviews", "StrataTheme", "CPreviewText", "CPreviewWeb"}
         for library in ("StrataSupport", "StrataModel", "StrataArchives", "StrataIndex",
                         "StrataConnections", "StrataFiles", "StrataQueue", "StrataAI",
                         "StrataDev", "StrataSearch"):

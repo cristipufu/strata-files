@@ -1585,6 +1585,7 @@
     "This database is encrypted or damaged.": "此数据库已加密或已损坏。",
     "This file couldn’t be read.": "无法读取此文件。",
     "This file is empty.": "此文件是空的。",
+    "This file is too large to preview.": "此文件太大，无法预览。",
     "This file no longer exists.": "此文件已不存在。",
     "This folder couldn’t be read": "无法读取此文件夹",
     "This folder no longer exists": "此文件夹已不存在",

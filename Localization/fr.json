@@ -1712,6 +1712,7 @@
     "This database is encrypted or damaged.": "Cette base de données est chiffrée ou endommagée.",
     "This file couldn’t be read.": "Ce fichier n’a pas pu être lu.",
     "This file is empty.": "Ce fichier est vide.",
+    "This file is too large to preview.": "Ce fichier est trop volumineux pour être prévisualisé.",
     "This file no longer exists.": "Ce fichier n’existe plus.",
     "This folder couldn’t be read": "Ce dossier n’a pas pu être lu",
     "This folder no longer exists": "Ce dossier n’existe plus",

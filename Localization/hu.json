@@ -1712,6 +1712,7 @@
     "This database is encrypted or damaged.": "Az adatbázis titkosított vagy sérült.",
     "This file couldn’t be read.": "A fájlt nem sikerült beolvasni.",
     "This file is empty.": "A fájl üres.",
+    "This file is too large to preview.": "Ez a fájl túl nagy az előnézethez.",
     "This file no longer exists.": "A fájl már nem létezik.",
     "This folder couldn’t be read": "A mappát nem sikerült beolvasni",
     "This folder no longer exists": "A mappa már nem létezik",

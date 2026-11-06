@@ -1585,6 +1585,7 @@
     "This database is encrypted or damaged.": "이 데이터베이스는 암호화되었거나 손상되었습니다.",
     "This file couldn’t be read.": "이 파일을 읽을 수 없습니다.",
     "This file is empty.": "이 파일은 비어 있습니다.",
+    "This file is too large to preview.": "이 파일은 너무 커서 미리 볼 수 없습니다.",
     "This file no longer exists.": "이 파일은 더 이상 존재하지 않습니다.",
     "This folder couldn’t be read": "이 폴더를 읽을 수 없음",
     "This folder no longer exists": "이 폴더는 더 이상 존재하지 않음",

@@ -115,6 +115,8 @@ let package = Package(
     targets: [
         .target(name: "CPreviewText", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
                 linkerSettings: [.linkedFramework("AppKit")]),
+        .target(name: "CPreviewWeb", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
+                linkerSettings: [.linkedFramework("WebKit")]),
         .target(name: "CNativeReaders", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
                 linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("PDFKit"), .linkedFramework("ImageIO")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
@@ -170,7 +172,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "StrataMediaProtocol", "CPreviewText", "CNativeReaders"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "StrataMediaProtocol", "CPreviewText", "CPreviewWeb", "CNativeReaders"],
             path: "Sources/Strata/Previews",
             resources: [.copy("Mermaid"), .copy("Models"), .copy("Math")],
             swiftSettings: strataSwiftSettings
@@ -275,6 +277,8 @@ let package = Package(
                           swiftSettings: strataSwiftSettings),
         .target(name: "CPreviewTextTestSupport", dependencies: ["CPreviewText"], path: "Tests/CPreviewTextTestSupport",
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
+        .target(name: "CPreviewWebTestSupport", dependencies: ["CPreviewWeb"], path: "Tests/CPreviewWebTestSupport",
+                cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .target(name: "CNativeReaderTestSupport", dependencies: ["CNativeReaders"], path: "Tests/CNativeReaderTestSupport",
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .testTarget(
@@ -288,6 +292,8 @@ let package = Package(
                 "StrataMediaProtocol",
                 "CPreviewText",
                 "CPreviewTextTestSupport",
+                "CPreviewWeb",
+                "CPreviewWebTestSupport",
                 "CNativeReaders",
                 "CNativeReaderTestSupport",
                 "StrataArchives",

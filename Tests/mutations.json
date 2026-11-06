@@ -5448,15 +5448,27 @@
   },
   {
     "file": "Strata/Previews/HTMLWebSession.swift",
-    "find": "guard let self, !closed, !Task.isCancelled, requests[key] != nil else { return }",
-    "replace": "guard let self else { return }",
     "rule": "HTML preview: cancelled scheme tasks receive no late response callbacks",
-    "tests": "HTMLPreviewTests/stoppedAndReentrantSchemeTasksCannotReceiveLateCallbacks"
+    "tests": "HTMLPreviewTests/stoppedAndReentrantSchemeTasksCannotReceiveLateCallbacks",
+    "edits": [
+      {
+        "find": "requests.removeValue(forKey: ObjectIdentifier(urlSchemeTask))?.stop()",
+        "replace": "requests[ObjectIdentifier(urlSchemeTask)]?.work?.cancel()"
+      },
+      {
+        "find": "guard let self, !Task.isCancelled, isActive(request, key: key) else { return }",
+        "replace": "guard let self, isActive(request, key: key) else { return }"
+      },
+      {
+        "find": "guard !Task.isCancelled, isActive(request, key: key) else { return }",
+        "replace": "guard isActive(request, key: key) else { return }"
+      }
+    ]
   },
   {
     "file": "Strata/Previews/HTMLWebSession.swift",
-    "find": "guard resource.data.count <= remainingBytes else",
-    "replace": "guard true else",
+    "find": "guard resource.byteCount >= 0, resource.byteCount <= remainingBytes else",
+    "replace": "guard resource.byteCount >= 0 else",
     "rule": "HTML preview: cached resources cannot bypass the total delivery budget",
     "tests": "HTMLPreviewTests/repeatedResourceRequestsAndTotalDeliveryAreBoundedEvenForCachedAssets"
   },
@@ -6455,8 +6467,8 @@
   {
     "file": "Strata/Previews/PreviewWebPage.swift",
     "rule": "Previews: a OneNote page loads more pictures than an HTML page may",
-    "find": "let session = HTMLWebSession(url: document.url, read: document.read, limits: document.limits,",
-    "replace": "let session = HTMLWebSession(url: document.url, read: document.read,",
+    "find": "content: document.content, limits: document.limits,",
+    "replace": "content: document.content,",
     "tests": "OneNotePreviewTests/theViewPagesThroughASectionInOfflineWebKit"
   },
   {
@@ -6589,7 +6601,7 @@
   {
     "file": "Strata/Previews/HTMLWebSession.swift",
     "rule": "Previews: a closed session lets go of what it reads from",
-    "find": "        onFailure = nil; onCommit = nil\n        read = nil\n",
+    "find": "        onFailure = nil; onCommit = nil\n        content = nil\n",
     "replace": "        onFailure = nil; onCommit = nil\n",
     "tests": "OneNotePreviewTests/aClosedSessionLetsGoOfWhatItReadsFrom"
   },
@@ -9036,5 +9048,61 @@
     "replace": "static let incrementalRowLimit = Int.max",
     "rule": "Progressive rows plan unbounded native insertion updates",
     "tests": "ProgressiveDirectoryTests/aLargeNativeReloadKeepsTheChosenFileAndVisibleAnchorWhenEarlierRowsArrive"
+  },
+  {
+    "file": "Strata/Previews/PDFPreviewDocument.swift",
+    "find": "guard source.size <= byteLimit else",
+    "replace": "guard true else",
+    "rule": "PDF preview: oversized files are refused before document delivery",
+    "tests": "PDFPreviewTests/invalidEmptyOversizedAndReplacedFilesFailBeforeSuccessfulDelivery"
+  },
+  {
+    "file": "Strata/Previews/PDFPreviewDocument.swift",
+    "find": "guard requested == self.url else",
+    "replace": "guard true else",
+    "rule": "PDF preview: a resource request cannot name another document or origin",
+    "tests": "PDFPreviewTests/pdfsUseTheWebRendererAndOnlyServeTheirOwnChosenDocument"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "guard data.count <= request.remainingBytes else",
+    "replace": "guard true else",
+    "rule": "Web previews: streamed data never exceeds its declared resource size",
+    "tests": "WebResourceTaskTests/streamedResourcesEnforceLengthsAndStopAtReentrantCancellation"
+  },
+  {
+    "file": "CPreviewWeb/PreviewWebTask.m",
+    "find": "- (void)stop { _task = nil; _receiving = NO; }",
+    "replace": "- (void)stop { _receiving = NO; }",
+    "rule": "Web previews: stopped requests release their native task while reads drain",
+    "tests": "WebResourceTaskTests/cancellingHeldStreamsReleasesTheNativeTaskAndDropsLateData"
+  },
+  {
+    "file": "Strata/Previews/HTMLWebSession.swift",
+    "find": "guard remainingRequests > 0 else { fail(request, error: URLError(.resourceUnavailable)); return }",
+    "replace": "guard remainingRequests > 0 else { request.native.fail(URLError(.resourceUnavailable) as NSError); return }",
+    "rule": "Web previews: native failures while refusing requests retire the renderer",
+    "tests": "WebResourceTaskTests/rejectedRequestsRetireTheRendererWhenTheirNativeFailureCallbackThrows"
+  },
+  {
+    "file": "Strata/Previews/RichPreview.swift",
+    "find": "[UTType.directory, .package, .aliasFile]",
+    "replace": "[UTType.directory, .package]",
+    "rule": "PDF alias previews: a known Finder alias does not enter a content parser",
+    "tests": "PDFPreviewTests/finderAliasesKeepTheirNativePreviewRegardlessOfTheirFilename"
+  },
+  {
+    "file": "Strata/Previews/PDFPreviewDocument.swift",
+    "find": "if try currentURL.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile == true { return false }",
+    "replace": "if false { return false }",
+    "rule": "PDF alias previews: extension-only metadata is checked against the selected file",
+    "tests": "PDFPreviewTests/finderAliasesKeepTheirNativePreviewRegardlessOfTheirFilename"
+  },
+  {
+    "file": "Strata/Previews/PDFPreviewDocument.swift",
+    "find": "guard header.range(of: Data(\"%PDF-\".utf8)) != nil else",
+    "replace": "guard true else",
+    "rule": "PDF alias previews: invalid ordinary files cannot bypass the PDF signature check",
+    "tests": "PDFPreviewTests/invalidPDFContentsShowARetryWithoutEscapingIntoANativeFallback"
   }
 ]

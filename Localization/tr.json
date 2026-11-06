@@ -1712,6 +1712,7 @@
     "This database is encrypted or damaged.": "Bu veritabanı şifreli veya hasarlı.",
     "This file couldn’t be read.": "Bu dosya okunamadı.",
     "This file is empty.": "Bu dosya boş.",
+    "This file is too large to preview.": "Bu dosya önizleme için çok büyük.",
     "This file no longer exists.": "Bu dosya artık yok.",
     "This folder couldn’t be read": "Bu klasör okunamadı",
     "This folder no longer exists": "Bu klasör artık yok",

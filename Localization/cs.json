@@ -1839,6 +1839,7 @@
     "This database is encrypted or damaged.": "Tato databáze je šifrovaná nebo poškozená.",
     "This file couldn’t be read.": "Tento soubor se nepodařilo přečíst.",
     "This file is empty.": "Tento soubor je prázdný.",
+    "This file is too large to preview.": "Tento soubor je příliš velký pro náhled.",
     "This file no longer exists.": "Tento soubor už neexistuje.",
     "This folder couldn’t be read": "Tuto složku se nepodařilo přečíst",
     "This folder no longer exists": "Tato složka už neexistuje",

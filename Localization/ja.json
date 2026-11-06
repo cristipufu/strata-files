@@ -1585,6 +1585,7 @@
     "This database is encrypted or damaged.": "このデータベースは暗号化されているか、破損しています。",
     "This file couldn’t be read.": "このファイルを読み込めませんでした。",
     "This file is empty.": "このファイルは空です。",
+    "This file is too large to preview.": "このファイルは大きすぎるためプレビューできません。",
     "This file no longer exists.": "このファイルはもう存在しません。",
     "This folder couldn’t be read": "このフォルダを読み込めませんでした",
     "This folder no longer exists": "このフォルダはもう存在しません",

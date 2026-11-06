@@ -1968,6 +1968,7 @@
     "This database is encrypted or damaged.": "Эта база данных зашифрована или повреждена.",
     "This file couldn’t be read.": "Не удалось прочитать этот файл.",
     "This file is empty.": "Этот файл пуст.",
+    "This file is too large to preview.": "Этот файл слишком большой для предпросмотра.",
     "This file no longer exists.": "Этот файл больше не существует.",
     "This folder couldn’t be read": "Не удалось прочитать эту папку",
     "This folder no longer exists": "Эта папка больше не существует",

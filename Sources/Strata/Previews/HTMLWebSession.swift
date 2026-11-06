@@ -2,11 +2,13 @@ import AppKit
 import WebKit
 import StrataModel
 import StrataSupport
+import CPreviewWeb
 
 /// One WebKit lifetime. Both resource delivery and navigation are refused after closure.
 @MainActor package final class HTMLWebSession: NSObject, WKURLSchemeHandler, WKNavigationDelegate, WKUIDelegate {
     package enum Navigation: Equatable { case document, anchor, external, refuse }
     package typealias Reader = @Sendable (URL) async throws -> HTMLPreviewResource
+    package typealias StreamReader = @Sendable (URL) async throws -> WebPreviewStream
     /// What one document's WebKit lifetime may ask for and be given in all.
     nonisolated package struct Limits: Sendable {
         package var requests: Int
@@ -19,10 +21,10 @@ import StrataSupport
     }
     private let documentURL: URL
     /// Let go of once the session closes, and what it holds with it, such as a file.
-    private var read: Reader?
+    private var content: WebPreviewContent?
     private let openLink: (URL) -> Void
-    private var requests: [ObjectIdentifier: Task<Void, Never>] = [:]
-    package var pendingTasks: [Task<Void, Never>] { Array(requests.values) }
+    private var requests: [ObjectIdentifier: WebResourceRequest] = [:]
+    package var pendingTasks: [Task<Void, Never>] { requests.values.compactMap(\.work) }
     private var remainingRequests: Int
     private var remainingBytes: Int
     private var initial = true
@@ -32,9 +34,31 @@ import StrataSupport
     package var onCommit: (() -> Void)?
     private static var rules: Task<WKContentRuleList, Error>?
 
-    package init(url: URL, read: @escaping Reader, limits: Limits = Limits(), openLink: @escaping (URL) -> Void) {
-        documentURL = url; self.read = read; self.openLink = openLink
+    private final class WebResourceRequest {
+        let native: STWebResourceTask
+        var work: Task<Void, Never>?
+        var remainingBytes = 0
+        init(_ task: any WKURLSchemeTask) { native = STWebResourceTask(task: task) }
+        func stop() {
+            native.stop()
+            let previous = work
+            work = nil
+            previous?.cancel()
+        }
+    }
+
+    package convenience init(url: URL, read: @escaping Reader, limits: Limits = Limits(), openLink: @escaping (URL) -> Void) {
+        self.init(url: url, content: .buffered(read), limits: limits, openLink: openLink)
+    }
+
+    package convenience init(url: URL, stream: @escaping StreamReader, limits: Limits, openLink: @escaping (URL) -> Void) {
+        self.init(url: url, content: .streamed(stream), limits: limits, openLink: openLink)
+    }
+
+    package init(url: URL, content: WebPreviewContent, limits: Limits = Limits(), openLink: @escaping (URL) -> Void) {
+        documentURL = url; self.content = content; self.openLink = openLink
         remainingRequests = limits.requests; remainingBytes = limits.bytes
+        super.init()
     }
 
     /// A link a click may open in the browser: to a web server, naming no account.
@@ -84,49 +108,95 @@ import StrataSupport
         closed = true
         let pending = requests.values
         requests = [:]
-        pending.forEach { $0.cancel() }
+        pending.forEach { $0.stop() }
         onFailure = nil; onCommit = nil
-        read = nil
+        content = nil
     }
 
     package func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
         let key = ObjectIdentifier(urlSchemeTask)
-        guard !closed, let reader = read, let url = urlSchemeTask.request.url, urlSchemeTask.request.httpMethod == "GET"
-        else {
-            urlSchemeTask.didFailWithError(URLError(.cancelled)); return
-        }
-        guard remainingRequests > 0 else { urlSchemeTask.didFailWithError(URLError(.resourceUnavailable)); return }
+        guard requests[key] == nil else { return }
+        let request = WebResourceRequest(urlSchemeTask)
+        guard !closed, let content, let url = urlSchemeTask.request.url, urlSchemeTask.request.httpMethod == "GET"
+        else { fail(request, error: URLError(.cancelled)); return }
+        guard remainingRequests > 0 else { fail(request, error: URLError(.resourceUnavailable)); return }
         remainingRequests -= 1
-        requests[key] = Task { [weak self] in
-            let result: Result<HTMLPreviewResource, Error>
-            do { try Task.checkCancellation(); result = .success(try await reader(url)) }
-            catch { result = .failure(error) }
-            guard let self, !closed, !Task.isCancelled, requests[key] != nil else { return }
-            switch result {
-            case .success(let resource):
-                guard resource.data.count <= remainingBytes else {
-                    requests.removeValue(forKey: key)
-                    urlSchemeTask.didFailWithError(URLError(.dataLengthExceedsMaximum)); return
-                }
-                remainingBytes -= resource.data.count
-                guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
-                    "Content-Type": resource.mime, "Content-Security-Policy": HTMLPreviewDocument.policy,
-                    "X-DNS-Prefetch-Control": "off", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
-                ]) else { requests.removeValue(forKey: key); urlSchemeTask.didFailWithError(URLError(.badServerResponse)); return }
-                urlSchemeTask.didReceive(response)
-                guard !closed, requests[key] != nil else { return }
-                urlSchemeTask.didReceive(resource.data)
-                guard !closed, requests.removeValue(forKey: key) != nil else { return }
-                urlSchemeTask.didFinish()
-            case .failure(let error):
-                requests.removeValue(forKey: key)
-                urlSchemeTask.didFailWithError(error)
+        requests[key] = request
+        request.work = Task { [weak self] in
+            do {
+                try Task.checkCancellation()
+                let resource = try await content.resource(url)
+                guard let self, !Task.isCancelled, isActive(request, key: key) else { return }
+                try await deliver(resource, url: url, to: request, key: key)
+            } catch {
+                self?.fail(request, key: key, error: error)
             }
         }
     }
 
     package func webView(_ webView: WKWebView, stop urlSchemeTask: any WKURLSchemeTask) {
-        requests.removeValue(forKey: ObjectIdentifier(urlSchemeTask))?.cancel()
+        requests.removeValue(forKey: ObjectIdentifier(urlSchemeTask))?.stop()
+    }
+
+    private func isActive(_ request: WebResourceRequest, key: ObjectIdentifier) -> Bool {
+        !closed && requests[key] === request
+    }
+
+    private func deliver(_ resource: WebPreviewContent.Resource, url: URL, to request: WebResourceRequest, key: ObjectIdentifier) async throws {
+        guard !Task.isCancelled, isActive(request, key: key) else { return }
+        guard resource.byteCount >= 0, resource.byteCount <= remainingBytes else { throw URLError(.dataLengthExceedsMaximum) }
+        remainingBytes -= resource.byteCount
+        request.remainingBytes = resource.byteCount
+        guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+            "Content-Type": resource.mime, "Content-Length": String(resource.byteCount),
+            "Content-Security-Policy": HTMLPreviewDocument.policy, "X-DNS-Prefetch-Control": "off",
+            "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
+        ]) else { throw URLError(.badServerResponse) }
+        guard request.native.receive(response) else { retire(request, key: key); return }
+        switch resource {
+        case .buffered(let value):
+            guard receive(value.data, request: request, key: key) else { return }
+        case .streamed(let stream):
+            try await stream.produce { [weak self] data in
+                self?.receive(data, request: request, key: key) == true
+            }
+        }
+        guard isActive(request, key: key) else { return }
+        guard request.remainingBytes == 0 else { throw URLError(.cannotDecodeContentData) }
+        requests.removeValue(forKey: key)
+        request.work = nil
+        if !request.native.finish(), request.native.failure != nil { onFailure?() }
+    }
+
+    private func receive(_ data: Data, request: WebResourceRequest, key: ObjectIdentifier) -> Bool {
+        guard isActive(request, key: key) else { return false }
+        guard data.count <= request.remainingBytes else {
+            fail(request, key: key, error: URLError(.dataLengthExceedsMaximum))
+            return false
+        }
+        request.remainingBytes -= data.count
+        guard request.native.receive(data) else { retire(request, key: key); return false }
+        return isActive(request, key: key)
+    }
+
+    private func fail(_ request: WebResourceRequest, key: ObjectIdentifier, error: Error) {
+        guard isActive(request, key: key) else { return }
+        requests.removeValue(forKey: key)
+        request.work = nil
+        fail(request, error: error)
+    }
+
+    private func fail(_ request: WebResourceRequest, error: Error) {
+        request.native.fail(error as NSError)
+        if !closed, request.native.failure != nil { onFailure?() }
+    }
+
+    private func retire(_ request: WebResourceRequest, key: ObjectIdentifier) {
+        guard isActive(request, key: key) else { return }
+        let failed = request.native.failure != nil
+        requests.removeValue(forKey: key)
+        request.stop()
+        if failed { onFailure?() }
     }
 
     /// Only the first document load and clicked same-document anchors navigate inside this preview.
