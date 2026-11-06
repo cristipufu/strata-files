@@ -8523,8 +8523,8 @@
   },
   {
     "file": "Strata/Index/IndexStore.swift",
-    "find": "let unknown = flags[i] & Flag.unreadDirectory != 0\n                    || children(of: current).contains",
-    "replace": "let unknown = children(of: current).contains",
+    "find": "let unknown = flags[i] & Flag.unreadDirectory != 0 || unknownChildren(of: current) != 0",
+    "replace": "let unknown = unknownChildren(of: current) != 0",
     "rule": "Storage measurement a child update declares an unread parent complete",
     "tests": "DiskSpaceTests/anUnreadFolderStaysUnknownUntilItsOwnReadFinishes"
   },
@@ -9167,5 +9167,26 @@
     "replace": "",
     "rule": "Index refresh coverage: failed ancestors remain eligible for later child events",
     "tests": "IndexWorkerTests/aFailedAncestorCanRetryForAnUnknownChildInTheSameBatch"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "            unknownChildCounts.removeValue(forKey: parentID)\n",
+    "replace": "",
+    "rule": "Index allocation counts: new children invalidate the cached sibling count",
+    "tests": "IndexAllocationTests"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "            if let count = unknownChildCounts[p] { unknownChildCounts[p] = count + (unknown ? 1 : -1) }\n",
+    "replace": "",
+    "rule": "Index allocation counts: known and unknown transitions update ancestors",
+    "tests": "IndexAllocationTests"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "                unknownChildCounts[p] = count - 1",
+    "replace": "                unknownChildCounts[p] = count",
+    "rule": "Index allocation counts: removals update ancestor knowledge",
+    "tests": "IndexAllocationTests"
   }
 ]

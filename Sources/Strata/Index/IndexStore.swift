@@ -122,6 +122,8 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package var entryLimit = Int(Int32.max)
         package var nameByteLimit = Int(UInt32.max)
         package var capacityExceeded = false
+        // Derived from the live child lists; loaded and compacted stores populate these lazily.
+        private var unknownChildCounts: [Int32: Int] = [:]
 
         package func canAppend(entries: Int, nameBytes: Int) -> Bool {
             let maximumEntries = min(max(0, entryLimit), Int(Int32.max))
@@ -187,6 +189,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             for id in first..<(last - 1) { nextSibling[Int(id)] = id + 1 }
             nextSibling[Int(last - 1)] = firstChild[Int(parentID)]
             firstChild[Int(parentID)] = first
+            unknownChildCounts.removeValue(forKey: parentID)
             return first..<last
         }
 
@@ -212,6 +215,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
 
         /// Sums file sizes and counts into every folder. Run once after a full scan.
         package mutating func aggregate() {
+            unknownChildCounts.removeAll(keepingCapacity: true)
             for i in stride(from: parent.count - 1, through: 0, by: -1) {
                 let p = parent[i]
                 guard p >= 0, flags[i] & Flag.deleted == 0 else { continue }
@@ -231,7 +235,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 if p >= first {
                     size[Int(p)] = size[Int(p)].saturatingAdd(size[i])
                     allocated[Int(p)] = allocated[Int(p)].saturatingAdd(allocated[i])
-                    flags[Int(p)] |= flags[i] & Flag.unknownAllocation
+                    if flags[i] & Flag.unknownAllocation != 0 { _ = setAllocationUnknown(true, of: p) }
                     fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
                 } else {
                     propagate(from: Int32(i), bytes: size[i], files: Int64(fileCount[i]))
@@ -286,10 +290,12 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             guard flags[Int(id)] & Flag.deleted == 0 else { return }
             propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
             propagateAllocation(from: id, bytes: -allocated[Int(id)])
+            removingAllocationChild(id)
             unlink(id)
             if flags[Int(id)] & Flag.unknownAllocation != 0 { refreshAllocationKnown(from: parent[Int(id)]) }
             var stack: [Int32] = [id]
             while let current = stack.popLast() {
+                unknownChildCounts.removeValue(forKey: current)
                 flags[Int(current)] |= Flag.deleted
                 var child = firstChild[Int(current)]
                 while child >= 0 {
@@ -354,10 +360,12 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             let gone = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
             guard !gone.isEmpty else { return }
             for id in gone {
+                removingAllocationChild(id)
                 propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
                 propagateAllocation(from: id, bytes: -allocated[Int(id)])
                 var stack: [Int32] = [id]
                 while let current = stack.popLast() {
+                    unknownChildCounts.removeValue(forKey: current)
                     flags[Int(current)] |= Flag.deleted
                     var child = firstChild[Int(current)]
                     while child >= 0 {
@@ -394,13 +402,10 @@ nonisolated package final class IndexStore: @unchecked Sendable {
 
         package mutating func setAllocation(_ bytes: Int64?, of id: Int32) {
             let i = Int(id)
-            let wasUnknown = flags[i] & Flag.unknownAllocation != 0
             let next = max(0, bytes ?? 0)
             propagateAllocation(from: id, bytes: next - allocated[i])
             allocated[i] = next
-            if bytes == nil { flags[i] |= Flag.unknownAllocation }
-            else { flags[i] &= ~Flag.unknownAllocation }
-            if wasUnknown != (bytes == nil) { refreshAllocationKnown(from: parent[i]) }
+            if setAllocationUnknown(bytes == nil, of: id) { refreshAllocationKnown(from: parent[i]) }
         }
 
         private mutating func propagateAllocation(from id: Int32, bytes: Int64) {
@@ -412,16 +417,41 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             }
         }
 
+        private mutating func unknownChildren(of directory: Int32) -> Int {
+            if let count = unknownChildCounts[directory] { return count }
+            var count = 0
+            var child = firstChild[Int(directory)]
+            while child >= 0 {
+                if flags[Int(child)] & Flag.unknownAllocation != 0 { count += 1 }
+                child = nextSibling[Int(child)]
+            }
+            unknownChildCounts[directory] = count
+            return count
+        }
+
+        private mutating func removingAllocationChild(_ id: Int32) {
+            let p = parent[Int(id)]
+            if flags[Int(id)] & Flag.unknownAllocation != 0, let count = unknownChildCounts[p] {
+                unknownChildCounts[p] = count - 1
+            }
+        }
+
+        private mutating func setAllocationUnknown(_ unknown: Bool, of id: Int32) -> Bool {
+            let i = Int(id)
+            guard unknown != (flags[i] & Flag.unknownAllocation != 0) else { return false }
+            let p = parent[i]
+            if let count = unknownChildCounts[p] { unknownChildCounts[p] = count + (unknown ? 1 : -1) }
+            if unknown { flags[i] |= Flag.unknownAllocation }
+            else { flags[i] &= ~Flag.unknownAllocation }
+            return true
+        }
+
         private mutating func refreshAllocationKnown(from id: Int32) {
             var current = id
             while current >= 0 {
                 let i = Int(current)
-                let wasUnknown = flags[i] & Flag.unknownAllocation != 0
-                let unknown = flags[i] & Flag.unreadDirectory != 0
-                    || children(of: current).contains { flags[Int($0)] & Flag.unknownAllocation != 0 }
-                if unknown { flags[i] |= Flag.unknownAllocation }
-                else { flags[i] &= ~Flag.unknownAllocation }
-                if unknown == wasUnknown { return }
+                let unknown = flags[i] & Flag.unreadDirectory != 0 || unknownChildren(of: current) != 0
+                guard setAllocationUnknown(unknown, of: current) else { return }
                 current = parent[i]
             }
         }
