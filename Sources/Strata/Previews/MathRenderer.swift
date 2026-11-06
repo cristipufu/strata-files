@@ -5,6 +5,7 @@ import WebKit
 private final class MathBundleMarker {}
 
 @MainActor package final class MathRenderer {
+    static let usualTimeLimit: OfflineImageRenderer.TimeLimit = { try? await Task.sleep(for: .seconds(2)) }
     nonisolated static let textLimit = 8192
     nonisolated static let equationLimit = 64
     nonisolated static let pixelBudget = 8_000_000
@@ -21,9 +22,10 @@ private final class MathBundleMarker {}
     }
     private let renderer: OfflineImageRenderer
 
-    init(script: String, rules: WKContentRuleList) {
+    init(script: String, rules: WKContentRuleList,
+         timeLimit: @escaping OfflineImageRenderer.TimeLimit = usualTimeLimit) {
         renderer = OfflineImageRenderer(script: script, document: Self.document, drawing: Self.drawing, rules: rules,
-            timeLimit: { try? await Task.sleep(for: .seconds(2)) })
+            timeLimit: timeLimit)
     }
 
     @concurrent package static func script() async throws -> String {

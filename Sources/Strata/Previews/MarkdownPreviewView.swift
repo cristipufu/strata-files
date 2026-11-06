@@ -3,7 +3,7 @@ import CPreviewText
 import StrataSupport
 
 /// Rendered Markdown: headings, lists, quotes, highlighted code blocks, tables and clickable links.
-package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, PreviewDocumentSearch {
+@MainActor package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, PreviewDocumentSearch {
     private let scrollView = NSScrollView()
     // TextKit 1 draws NSTextBlock backgrounds and NSTextTable cells.
     let textView = MarkdownTextView(usingTextLayoutManager: false)
@@ -13,8 +13,14 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
     private var renderingRevision = 0
     private var renderingStopped = false
     private let layoutManager = MarkdownLayoutManager()
+    private let mathTimeLimit: OfflineImageRenderer.TimeLimit
 
-    package init(url: URL) {
+    package convenience init(url: URL) {
+        self.init(url: url, mathTimeLimit: MathRenderer.usualTimeLimit)
+    }
+
+    init(url: URL, mathTimeLimit: @escaping OfflineImageRenderer.TimeLimit) {
+        self.mathTimeLimit = mathTimeLimit
         super.init(frame: .zero)
         configure()
         load({ try await MarkdownLoader.load(url) }) { [weak self] document in
@@ -145,8 +151,9 @@ package final class MarkdownPreviewView: PreviewView, NSTextViewDelegate, Previe
         effectiveAppearance.performAsCurrentDrawingAppearance { placeholders = MarkdownAsset.placeholders(in: storage) }
         guard !placeholders.isEmpty else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let mathTimeLimit = mathTimeLimit
         renderingTask = Task { [weak self] in
-            let renderers = MarkdownAssetRenderers()
+            let renderers = MarkdownAssetRenderers(mathTimeLimit: mathTimeLimit)
             defer { renderers.close() }
             var images: [MarkdownAsset.Image] = []
             for placeholder in placeholders {

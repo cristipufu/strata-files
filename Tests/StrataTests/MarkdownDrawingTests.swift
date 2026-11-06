@@ -1,5 +1,6 @@
 import AppKit
 import CPreviewText
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataPreviews
@@ -75,7 +76,8 @@ import Testing
         #expect(tree.text("nested.md") == Self.nested)
     }
 
-    @Test func equationsDrawAndResizeInsideHeadingsQuotedTablesAndListsAcrossAppearances() async throws {
+    @Test(.timeLimit(.minutes(2)))
+    func equationsDrawAndResizeInsideHeadingsQuotedTablesAndListsAcrossAppearances() async throws {
         let source = #"""
         # Heading $x^2$
 
@@ -94,7 +96,8 @@ import Testing
         """#
         let tree = try TestTree("nested-math.md")
         try Data(source.utf8).write(to: tree.url("nested-math.md"))
-        let view = MarkdownPreviewView(url: tree.url("nested-math.md"))
+        // Drawing assertions are independent of WebKit's startup speed; deadline behavior has controlled tests.
+        let view = MarkdownPreviewView(url: tree.url("nested-math.md"), mathTimeLimit: PreviewWebPage.noTimeLimit)
         defer { view.stop() }
         view.frame = NSRect(x: 0, y: 0, width: 720, height: 1600)
         view.layoutSubtreeIfNeeded()
@@ -117,6 +120,28 @@ import Testing
             #expect(view.textView.selectedRange().length == 10)
         }
         #expect(tree.text("nested-math.md") == source)
+    }
+
+    @Test(.timeLimit(.minutes(2)))
+    func aTimedOutEquationKeepsItsSourceAndDoesNotCloseAnotherPreview() async throws {
+        let source = "Before $x^2$ after."
+        let tree = try TestTree("math.md")
+        try Data(source.utf8).write(to: tree.url("math.md"))
+        let expired = Mutex(false)
+        let timedOut = MarkdownPreviewView(url: tree.url("math.md"), mathTimeLimit: {
+            expired.withLock { $0 = true }
+        })
+        defer { timedOut.stop() }
+        await timedOut.loadingTask?.value
+        await timedOut.renderingTask?.value
+        #expect(expired.withLock { $0 } && timedOut.textView.assets.isEmpty)
+        #expect(timedOut.textView.string == source && timedOut.textView.renderingError == nil)
+        let independent = MarkdownPreviewView(url: tree.url("math.md"), mathTimeLimit: PreviewWebPage.noTimeLimit)
+        defer { independent.stop() }
+        await independent.loadingTask?.value
+        await independent.renderingTask?.value
+        #expect(independent.textView.assets.count == 1 && independent.textView.renderingError == nil)
+        #expect(tree.text("math.md") == source && tree.snapshot() == ["math.md"])
     }
 
     @Test func previewSamplesDrawBeforeAndAfterDiagramsArriveAcrossWidthsAndAppearances() async throws {

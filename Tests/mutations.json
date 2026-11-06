@@ -9085,6 +9085,20 @@
     "tests": "WebResourceTaskTests/rejectedRequestsRetireTheRendererWhenTheirNativeFailureCallbackThrows"
   },
   {
+    "file": "Strata/Previews/OfflineImageRenderer.swift",
+    "find": "self?.retire(URLError(.timedOut))",
+    "replace": "self?.close()",
+    "rule": "Web image previews: timed out rendering is reported as a timeout",
+    "tests": "MathPreviewTests/rendererTimeoutAndProcessFailureEndOnlyTheirOwnPendingRequest"
+  },
+  {
+    "file": "Strata/Previews/OfflineImageRenderer.swift",
+    "find": "retire(WKError(.webContentProcessTerminated))",
+    "replace": "close()",
+    "rule": "Web image previews: a renderer process failure is kept distinct from cancellation",
+    "tests": "MathPreviewTests/rendererTimeoutAndProcessFailureEndOnlyTheirOwnPendingRequest"
+  },
+  {
     "file": "Strata/Previews/RichPreview.swift",
     "find": "[UTType.directory, .package, .aliasFile]",
     "replace": "[UTType.directory, .package]",
@@ -9104,5 +9118,12 @@
     "replace": "guard true else",
     "rule": "PDF alias previews: invalid ordinary files cannot bypass the PDF signature check",
     "tests": "PDFPreviewTests/invalidPDFContentsShowARetryWithoutEscapingIntoANativeFallback"
+  },
+  {
+    "file": "Strata/Previews/MarkdownAssets.swift",
+    "find": "math = MathRenderer(script: script, rules: rules, timeLimit: mathTimeLimit)",
+    "replace": "math = MathRenderer(script: script, rules: rules)",
+    "rule": "Markdown math: the document renderer keeps its injected deadline",
+    "tests": "MarkdownDrawingTests/aTimedOutEquationKeepsItsSourceAndDoesNotCloseAnotherPreview"
   }
 ]

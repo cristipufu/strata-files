@@ -7,7 +7,8 @@ import WebKit
 
 @MainActor struct MathPreviewTests {
     @Test func equationsRenderOfflineAsBoundedTransparentBitmapsWithBaselines() async throws {
-        let renderer = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules())
+        let renderer = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules(),
+                                    timeLimit: PreviewWebPage.noTimeLimit)
         defer { renderer.close() }
         for source in [#"\frac{a}{b} = \sqrt{x^2 + y^2}"#, #"\sum_{i=1}^{n} i = \frac{n(n+1)}{2}"#,
                        #"\begin{pmatrix}a & b \\ c & d\end{pmatrix}"#] {
@@ -25,7 +26,8 @@ import WebKit
     }
 
     @Test func malformedOversizedRecursiveAndResourceLoadingEquationsFailWithoutClosingOtherWork() async throws {
-        let renderer = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules())
+        let renderer = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules(),
+                                    timeLimit: PreviewWebPage.noTimeLimit)
         defer { renderer.close() }
         for source in [#"\frac{"#, #"\unknownCommand{x}"#, #"\def\loop{\loop}\loop"#,
                        #"\includegraphics{https://fixture.invalid/secret}"#, String(repeating: "x", count: MathRenderer.textLimit + 1)] {
@@ -112,7 +114,7 @@ import WebKit
         """#
         let tree = try TestTree("math.md")
         try Data(source.utf8).write(to: tree.url("math.md"))
-        let view = MarkdownPreviewView(url: tree.url("math.md"))
+        let view = MarkdownPreviewView(url: tree.url("math.md"), mathTimeLimit: PreviewWebPage.noTimeLimit)
         defer { view.stop() }
         view.frame = NSRect(x: 0, y: 0, width: 720, height: 900)
         view.layoutSubtreeIfNeeded()
@@ -156,7 +158,7 @@ import WebKit
     @Test func equationsKeepTheirHeadingFontAndLinkWhenTheirBitmapsAreReplaced() async throws {
         let tree = try TestTree("style.md")
         try Data("# Heading $x^2$\n\n[Equation $y^2$](https://fixture.invalid/chosen)".utf8).write(to: tree.url("style.md"))
-        let view = MarkdownPreviewView(url: tree.url("style.md"))
+        let view = MarkdownPreviewView(url: tree.url("style.md"), mathTimeLimit: PreviewWebPage.noTimeLimit)
         defer { view.stop() }
         view.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
         view.layoutSubtreeIfNeeded()
@@ -189,12 +191,36 @@ import WebKit
         await gate.waitUntilStarted()
         if processFailure { renderer.webViewWebContentProcessDidTerminate(try #require(created)) }
         gate.finish(.success(()))
-        await #expect(throws: (any Error).self) { try await request.value }
+        if processFailure {
+            await #expect(throws: WKError(.webContentProcessTerminated)) { try await request.value }
+        } else {
+            await #expect(throws: URLError(.timedOut)) { try await request.value }
+        }
         await #expect(throws: (any Error).self) { try await renderer.render(arguments: [:]) }
-        let independent = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules())
+        let independent = MathRenderer(script: try await MathRenderer.script(), rules: try await HTMLWebSession.contentRules(),
+                                       timeLimit: PreviewWebPage.noTimeLimit)
         defer { independent.close() }
         let image = try await independent.render("x", display: false, pointSize: 13, color: [0, 0, 0])
         #expect(image.image.size.width > 1)
+    }
+
+    @Test(arguments: [false, true])
+    func navigationFailuresKeepTheirOriginalError(_ provisional: Bool) async throws {
+        let gate = PreviewReadGate<Void>()
+        var created: WKWebView?
+        let renderer = OfflineImageRenderer(script: "", document: "<!doctype html><p>Fixture</p>", drawing: "return '';",
+            rules: try await HTMLWebSession.contentRules(), timeLimit: { _ = try? await gate.read() },
+            makeWebView: { configuration in
+                let web = WKWebView(frame: .zero, configuration: configuration); created = web; return web
+            })
+        defer { renderer.close(); gate.finish(.success(())) }
+        let request = Task { try await renderer.render(arguments: [:]) }
+        await gate.waitUntilStarted()
+        let web = try #require(created), error = URLError(.cannotLoadFromNetwork)
+        if provisional { renderer.webView(web, didFailProvisionalNavigation: nil, withError: error) }
+        else { renderer.webView(web, didFail: nil, withError: error) }
+        await #expect(throws: error) { try await request.value }
+        #expect(web.navigationDelegate == nil)
     }
 
     @Test func nativeReplacementBatchesRefuseBadRangesBeforeChangingAnythingAndCatchEditingExceptions() throws {

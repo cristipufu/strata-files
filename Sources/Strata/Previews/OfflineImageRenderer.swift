@@ -48,7 +48,7 @@ import WebKit
                 let timeLimit = timeLimit
                 deadline = Task { [weak self] in
                     await timeLimit()
-                    if !Task.isCancelled { self?.close() }
+                    if !Task.isCancelled { self?.retire(URLError(.timedOut)) }
                 }
                 if ready { draw() } else { webView.loadHTMLString(document, baseURL: nil) }
             }
@@ -60,10 +60,12 @@ import WebKit
         }
     }
 
-    func close() {
+    func close() { retire(CancellationError()) }
+
+    private func retire(_ error: Error) {
         guard !closed else { return }
         closed = true; revision &+= 1
-        finish(.failure(CancellationError()))
+        finish(.failure(error))
         webView.stopLoading(); webView.navigationDelegate = nil
         webView.configuration.userContentController.removeAllUserScripts()
         webView.loadHTMLString("", baseURL: nil)
@@ -91,9 +93,9 @@ import WebKit
         guard !closed, pending != nil else { return }
         ready = true; draw()
     }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { close() }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { close() }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { close() }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { retire(error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { retire(error) }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { retire(WKError(.webContentProcessTerminated)) }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         !closed && !ready && navigationAction.request.url?.absoluteString == "about:blank" ? .allow : .cancel
     }

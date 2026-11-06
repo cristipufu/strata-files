@@ -56,9 +56,12 @@ enum MarkdownAsset {
 
 /// One document request owns its renderers and its retained bitmap allowance.
 @MainActor final class MarkdownAssetRenderers {
+    private let mathTimeLimit: OfflineImageRenderer.TimeLimit
     private var diagrams: MermaidRenderer?
     private var math: MathRenderer?
     private var pixels = MathRenderer.pixelBudget
+
+    init(mathTimeLimit: @escaping OfflineImageRenderer.TimeLimit) { self.mathTimeLimit = mathTimeLimit }
 
     func render(_ placeholder: MarkdownAsset.Placeholder, dark: Bool) async throws -> MarkdownAsset.Image {
         let image: NSImage
@@ -78,7 +81,7 @@ enum MarkdownAsset {
             if math == nil {
                 let script = try await MathRenderer.script(), rules = try await HTMLWebSession.contentRules()
                 try Task.checkCancellation()
-                math = MathRenderer(script: script, rules: rules)
+                math = MathRenderer(script: script, rules: rules, timeLimit: mathTimeLimit)
             }
             guard let math else { throw PreviewError.unsupported }
             let result = try await math.render(equation.source, display: equation.display, pointSize: placeholder.pointSize, color: placeholder.color)
