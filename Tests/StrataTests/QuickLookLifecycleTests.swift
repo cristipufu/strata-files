@@ -127,4 +127,38 @@ struct QuickLookLifecycleTests {
         #expect(try Data(contentsOf: tree.url("binary.swift")) == Data([0, 1, 0, 2]))
     }
 
+    @Test func theNativePanelKeepsEditingShortcutsAndOnlyForwardsPlainArrowNavigation() async throws {
+        let tree = try TestTree("a.pdf", "b.pdf")
+        let browser = BrowserViewController(services: testEnvironment.services)
+        _ = browser.view
+        browser.load(tree.root)
+        await browser.directoryReads.task?.value
+        defer { browser.stopBackgroundWork() }
+        browser.select([tree.url("a.pdf")])
+        let clipboard = testEnvironment.services.clipboard.pasteboard
+        clipboard.setString("Keep this clipboard", forType: .string)
+        let clipboardChange = clipboard.changeCount
+        let localKeys: [(String, UInt16, NSEvent.ModifierFlags)] = [
+            ("c", 8, .command), ("a", 0, .command), ("f", 3, .command),
+            (" ", 49, []), ("\u{1b}", 53, []), ("\u{7f}", 51, []), ("x", 7, []),
+            ("\u{F701}", 125, .shift), ("\u{F701}", 125, .option),
+            ("\u{F701}", 125, .control), ("\u{F701}", 125, .command),
+        ]
+        for (characters, keyCode, modifiers) in localKeys {
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                timestamp: 0, windowNumber: 0, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
+            #expect(!browser.previewPanel(nil, handle: event))
+            #expect(browser.selectedURLs == [tree.url("a.pdf")])
+        }
+        #expect(clipboard.changeCount == clipboardChange)
+        let down = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function],
+            timestamp: 0, windowNumber: 0, context: nil, characters: "\u{F701}",
+            charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
+        #expect(browser.previewPanel(nil, handle: down))
+        #expect(browser.selectedURLs == [tree.url("b.pdf")])
+        #expect(clipboard.changeCount == clipboardChange)
+        #expect(tree.snapshot() == ["a.pdf", "b.pdf"])
+    }
+
 }
