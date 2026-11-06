@@ -625,6 +625,9 @@ mode, sidebar mode, last location).
 - Comment only what the code can't say: a decision that isn't obvious, or why something deliberately differs. Never
   write a comment that restates a name or the code beside it, doc comments on new properties and functions included.
   Use plain sentences in the app's own words (Trash, Put Back, Delete Immediately).
+- Keep review summaries and test-run results in the conversation or pull request. Do not commit session diaries,
+  audit reports, temporary log paths or local process measurements unless explicitly requested. Repository docs
+  describe current behavior, architecture and reproducible tooling.
 
 ## Commits and releases
 

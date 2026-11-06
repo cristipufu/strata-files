@@ -1,9 +1,8 @@
 # Memory measurements
 
-These changes live on `perf/memory-usage`, based on main `8cad325`. Each optimization is measured before its commit,
-with the same fixture and optimized compiler settings on both sides. Values below are medians of three fresh
-processes on the same Apple silicon Mac (macOS 26.7.1, Apple Swift 6.4 / Xcode 27.1, build 27A9275),
-in MiB (1,048,576 bytes).
+The benchmarks below compare the original policies at `8cad325` with the optimized implementations, using the
+same fixtures and compiler settings. Measurements from 19 October 2026 are medians of three fresh processes on an
+Apple silicon Mac (macOS 26.7.1, Apple Swift 6.4 / Xcode 27.1, build 27A9275), in MiB (1,048,576 bytes).
 They describe the measured workloads, not a promised reduction for every running Strata instance.
 
 Run `scripts/benchmark-memory.sh semantic 50000`. The benchmark compiles production code with optimization and
@@ -30,7 +29,7 @@ The measured load-footprint reduction is **135.39 MiB (47.3%)**. Load-footprint 
 and allocator reuse; the observed process saving is larger than the eliminated matrix's reserved capacity.
 
 Validation: exact keyword hit and snippet, disabled vectors on load/refresh/row reuse, enabled vectors preserved,
-encrypted save/reopen, forgetting exactly one document, and reset. The new memory assertions fail on the old code.
+encrypted save/reopen, forgetting exactly one document, and reset.
 
 ## 2. Thumbnails stay within a decoded-image budget
 
@@ -57,7 +56,7 @@ folders; it does not reduce thumbnail resolution. The fill-time ranges overlap (
 Validation: deterministic eviction and recency, replacements, oversized entries, count limit, releasing offscreen
 images while visible images remain usable, coalesced requests, last-reader cancellation, ignoring stale completions,
 regeneration with identical pixels, fallback size buckets, changed files, failed/cancelled requests and cropped backing
-cost. Restoring the 400 MiB default makes the budget regression fail.
+cost.
 
 ## 3. Loading reserves room for the first burst of index changes
 
@@ -90,98 +89,4 @@ document-index and thumbnail measurements, so their savings must not be added in
 Validation: all eleven column buffers stay at the same addresses through a real append/integration burst; original
 and added items retain sizes, timestamps, file identities, hidden/link flags and folder totals after save/reopen.
 Saving a freshly loaded index produces identical decrypted version-6 bytes, proving spare capacity is neither read
-nor serialized as file entries. Removing the reserve makes the buffer regression fail.
-
-## Candidates rejected by measurement
-
-- Releasing an otherwise unused word-embedding model reduced the measured process footprint by **0 bytes** in three
-  runs. No model-unloading behavior was added.
-- A bounded filename-pooling prototype preserved paths and metadata and reduced filename data from 25,399,345 to
-  13,551,234 bytes in a one-million-file fixture. Its temporary allocations raised process footprint by about 14 MiB,
-  including after allocator cleanup and a settling interval. That prototype was discarded; the file index continues
-  to store all entries and its existing names unchanged.
-
-## Follow-up review, 19 October 2026
-
-Reviewed all production changes in the three optimization commits, their callers in List, Icons, Columns and
-Gallery, and the benchmark's storage isolation. No new functional regression was found. The review did find an
-inherited reader bug: converting an authenticated but invalid UInt64 column length to Int could trap before the
-sanity check. The new regression reproduced that crash. The reader now uses a checked conversion and checks the
-capacity addition before allocating; UInt64.max, Int.max and Int.max + 1 are refused without changing the store.
-Three paired optimized runs against af1e88a, before these extra bounds checks, had identical load and post-burst
-footprint increases on both sides: 107.63 MiB and 108.58 MiB respectively. The hardening has no measured memory cost.
-
-Additional checks cover:
-
-- Empty and small indexes, both sides of the reserve threshold, and additions beyond the reserve; all eleven columns
-  and the decrypted saved bytes round-trip. Authenticated partial columns, truncated ciphertext and invalid tags
-  are refused, leaving the index and unrelated files unchanged.
-- A remaining thumbnail reader still receives its image after another cancels; a background generator returns to
-  the main thread; old tickets cannot cancel a later request. Zero/maximum cache budgets preserve recency without
-  overflowing, and the pressure observer does not retain the cache.
-- Empty content indexes and both mismatched sentence-embedding settings allocate no rows and leave the saved index
-  untouched. Enabled sentence-vector persistence and the default keyword/search path remain covered.
-
-Validation: 338 Swift tests and 24 Python tests pass. All 20 tests in IndexGrowthTests, ThumbnailCacheTests,
-FileThumbnailsTests and SemanticMemoryTests also pass with Address Sanitizer, with no sanitizer reports:
-
-```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test \
-  --scratch-path /tmp/strata-memory-audit-asan --sanitize address \
-  --filter 'IndexGrowthTests|ThumbnailCacheTests|FileThumbnailsTests|SemanticMemoryTests'
-```
-
-Encryption, the per-store authenticated identity, Keychain access, test storage isolation and file-changing behavior
-are unchanged. The benchmark's public synthetic key exists only in a temporary compiler input; its executable must
-confirm it is a test run before it does work. The content benchmark retains its 200,000-passage input limit.
-The smaller thumbnail cache's regeneration tradeoff and the workload-specific measurement limits still apply.
-
-## Local app session, 19 October 2026
-
-The installed 0.6.2 (27) session was sampled 26 times over its final 50.1 seconds, after the user had browsed.
-An optimized local build of 82975cd was then sampled for 128.2 seconds while the user tried it. The executable paths
-and process IDs were checked; the local build used the same version label to avoid an unrelated updater prompt.
-Both sessions used the real index and preferences. Sampling used proc_pid_rusage every two seconds, without
-attaching a debugger or reading document contents; CPU counters were converted using this Mac's Mach timebase.
-
-| Physical footprint | Installed 0.6.2 | Local memory branch |
-| --- | ---: | ---: |
-| Last recorded sample | 1,004.9 MiB | 834.2 MiB |
-| Highest recorded sample | 1,412.1 MiB | 970.9 MiB |
-
-The last sample is **170.7 MiB (17.0%) lower**. This is an observation from two short, different interactive sessions,
-not a controlled replay or a guaranteed idle saving. The installed session's earlier startup and browsing were not
-recorded, so these maxima do not establish a startup-peak comparison. Recording stopped before the subsequent
-footer-divider reproduction and repair.
-
-## Index refresh regression check, 19 October 2026
-
-macOS recorded a CPU resource warning for the earlier `Strata-footer-check.app` debug build (PID 25355),
-12:05:30–12:08:05: 90 CPU seconds over 155 seconds, averaging 58% of one core. Its samples point to
-`IndexWorker.flush`, `refreshFolder` and `getattrlistbulk`. No crash or termination accompanied that report.
-The worker, scanner, event handling and store sources on this branch are byte-for-byte identical to main 8cad325;
-the index reader's reserved capacity and invalid-length checks are the changes relevant to this path.
-
-Compared two optimized standalone executables with the same compiler settings and a synthetic encrypted index of
-98,304 one-byte files in 96 folders. Each fresh process loads the same saved fixture and receives 1,000 identical
-deep folder events, followed by `saveNow` to finish pending work. CPU time comes from `getrusage` user plus system
-time, measured after loading through completion of the refresh and any save. The baseline uses main's reader;
-the other uses this branch's reader. Runs alternate their order. `DEBUG` isolation and a public synthetic key in
-a temporary compiler input keep the real index and Keychain untouched.
-
-| Workload | Main CPU time | Memory branch CPU time |
-| --- | ---: | ---: |
-| Unchanged folder, ten pairs after two warm-up pairs | 210.41 ms | 210.39 ms |
-| 8,192 additions, one resized file and one deletion, five pairs | 144.07 ms | 142.76 ms |
-
-Values are medians. Unchanged-folder ranges were 205.57–234.15 ms and 202.09–224.49 ms; changed-folder ranges were
-141.83–151.48 ms and 141.85–147.79 ms. An initial five-pair unchanged trial measured 134.10 vs 138.64 ms with
-overlapping ranges; that small difference prompted the longer repeat above. These runs show no consistent CPU
-regression in this workload, rather than a universal performance guarantee or an explanation of the event volume
-that caused the warning.
-
-Both versions kept an unchanged encrypted store byte-identical and issued no change notification. Both applied
-the real changes with exactly one notification and reopened with exactly 106,495 files totaling 110,590 bytes;
-the added path, removed path and resized file were checked individually. The experimental incremental-write
-branch is not included. Final functional validation passes all 343 Swift tests in 46 suites, all 24 Python tests,
-complete translations and the destructive-action audit. The user also verified Columns scrolling in the local build.
+nor serialized as file entries.
