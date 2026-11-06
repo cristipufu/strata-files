@@ -69,15 +69,15 @@ struct ViewOptionsView: View {
         Form {
             Section("Folder") {
                 Text(folderOptions.folderName).lineLimit(1).truncationMode(.middle)
-                Picker("View", selection: Binding(get: { folderOptions.presentation.mode }, set: folderOptions.chooseMode)) {
+                Picker("View", selection: Binding(get: { folderOptions.presentation.mode }, set: { folderOptions.chooseMode($0) })) {
                     ForEach(BrowserViewMode.ordered, id: \.rawValue) { Text($0.title).tag($0) }
                 }.settingAnchor(.folderView)
-                Picker("Sort By", selection: Binding(get: { folderOptions.presentation.sort.key }, set: folderOptions.chooseSort)) {
+                Picker("Sort By", selection: Binding(get: { folderOptions.presentation.sort.key }, set: { folderOptions.chooseSort($0) })) {
                     ForEach(SortKey.allCases, id: \.rawValue) { key in
                         Text(key == .name ? String(localized: "Name") : ListColumn(rawValue: key.rawValue)?.title ?? key.rawValue).tag(key)
                     }
                 }.settingAnchor(.folderSort)
-                Toggle(String(localized: "Ascending", comment: "Sort direction for the current folder"), isOn: Binding(get: { folderOptions.presentation.sort.ascending }, set: folderOptions.chooseAscending))
+                Toggle(String(localized: "Ascending", comment: "Sort direction for the current folder"), isOn: Binding(get: { folderOptions.presentation.sort.ascending }, set: { folderOptions.chooseAscending($0) }))
                 HStack {
                     Button(String(localized: "Use as Defaults", comment: "Use this folder’s view, sort and icon size for folders without a saved choice"), action: folderOptions.useAsDefaults)
                     Button("Reset", action: folderOptions.reset)
@@ -85,7 +85,8 @@ struct ViewOptionsView: View {
             }
             .disabled(!folderOptions.canEditFolder)
             Section("Icons") {
-                Slider(value: Binding(get: { folderOptions.presentation.iconSize }, set: folderOptions.chooseIconSize), in: FolderPresentation.iconSizeRange) {
+                // Swift 6.3 crashes compiling an actor-isolated method reference as this binding's setter.
+                Slider(value: Binding(get: { folderOptions.presentation.iconSize }, set: { folderOptions.chooseIconSize($0) }), in: FolderPresentation.iconSizeRange) {
                     Text("Icon size")
                 }
                 .disabled(!folderOptions.canEditFolder)
