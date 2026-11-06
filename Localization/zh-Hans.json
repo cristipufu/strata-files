@@ -1833,6 +1833,8 @@
     "Click waveform to seek": "点击波形以跳转",
     "Waveform covers first %@": "波形覆盖前 %@",
     "Loaded": "已加载",
-    "Listing incomplete": "列表不完整"
+    "Listing incomplete": "列表不完整",
+    "Updating index…": "正在更新索引…",
+    "Index updates unavailable": "索引更新不可用"
   }
 }

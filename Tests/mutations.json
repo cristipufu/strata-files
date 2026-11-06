@@ -3696,22 +3696,22 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "if deep, refreshed.complete { deepRoots.append(target) }",
-    "replace": "if deep, refreshed.complete { deepRoots.append(path) }",
+    "find": "if pass.begin(folder.id) {",
+    "replace": "if true {",
     "rule": "Index refresh coverage: stale paths make the same surviving parent scan repeatedly",
-    "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce"
+    "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce|IndexWorkerTests/overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "if deep, refreshed.complete { deepRoots.append(target) }",
-    "replace": "if deep { deepRoots.append(target) }",
+    "find": "guard error == 0 else { return nil }",
+    "replace": "guard error == 0 else { interrupted = true; return nil }",
     "rule": "Index refresh coverage: a failed parent read hides later child events",
     "tests": "IndexWorkerTests/failedParentReadsDoNotHideLaterChildEvents"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "path == $0 || path.hasPrefix($0 == \"/\" ? \"/\" : $0 + \"/\")",
-    "replace": "path.hasPrefix($0)",
+    "find": "attempted.insert(id).inserted",
+    "replace": "attempted.insert(0).inserted",
     "rule": "Index refresh coverage: a folder suppresses its lookalike sibling's event",
     "tests": "IndexWorkerTests/aDeepRefreshDoesNotCoverALookalikeSibling"
   },
@@ -9125,5 +9125,47 @@
     "replace": "math = MathRenderer(script: script, rules: rules)",
     "rule": "Markdown math: the document renderer keeps its injected deadline",
     "tests": "MarkdownDrawingTests/aTimedOutEquationKeepsItsSourceAndDoesNotCloseAnotherPreview"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        excluded.insert(RealPath.of(storage.caches.path))\n",
+    "replace": "",
+    "rule": "Index cache activity: private caches must not feed their own index",
+    "tests": "IndexWorkerTests/anIndexLeavesOutItsOwnEnvironmentsStateAndCopies"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                    work.append(contentsOf: changes.newFolders.map { ($0, true) })\n",
+    "replace": "",
+    "rule": "Index live updates: new folders are scanned in the same read pass",
+    "tests": "IndexWorkerTests/newSubtreesAndOverlappingEventsShareOneReadPass"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        publish(.updating)\n        events.handler",
+    "replace": "        publish(.ready)\n        events.handler",
+    "rule": "Index status: saved indexes stay updating until history replay finishes",
+    "tests": "IndexWorkerTests/readyWaitsForHistoryAndItsPendingChanges"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        store = fresh\n        dirty = true\n        lastEventID",
+    "replace": "        store = fresh\n        lastEventID",
+    "rule": "Index recovery: a rebuilt corrupt cache must be saved instead of rebuilt on every launch",
+    "tests": "IndexWorkerTests/rebuildingAnUnreadableSavedIndexReplacesItForTheNextLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            log.error(\"Could not save index: \\(error.localizedDescription)\")",
+    "replace": "            dirty = false",
+    "rule": "Index persistence: failed saves retain dirty contents for another attempt",
+    "tests": "IndexWorkerTests/failedSavingRetainsChangesForTheNextAttempt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                    pass.failed(folder.id)\n",
+    "replace": "",
+    "rule": "Index refresh coverage: failed ancestors remain eligible for later child events",
+    "tests": "IndexWorkerTests/aFailedAncestorCanRetryForAnUnknownChildInTheSameBatch"
   }
 ]

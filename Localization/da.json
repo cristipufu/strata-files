@@ -1967,6 +1967,8 @@
     "Click waveform to seek": "Klik på bølgeformen for at spole",
     "Waveform covers first %@": "Bølgeformen dækker de første %@",
     "Loaded": "Indlæst",
-    "Listing incomplete": "Listen er ufuldstændig"
+    "Listing incomplete": "Listen er ufuldstændig",
+    "Updating index…": "Opdaterer indeks…",
+    "Index updates unavailable": "Indeksopdateringer er utilgængelige"
   }
 }

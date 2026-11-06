@@ -53,7 +53,7 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
     package init() {}
 
     /// Starts watching `paths`, replaying everything since `since` (or only new changes when `nil`).
-    package func start(paths: [String], since: FSEventStreamEventId?, latency: TimeInterval = 0.4) {
+    package func start(paths: [String], since: FSEventStreamEventId?, latency: TimeInterval = 0.4) -> Bool {
         stop()
         let box = CallbackContext(handler)
         let retained = Unmanaged.passRetained(box)
@@ -83,12 +83,13 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
         guard let stream = FSEventStreamCreate(nil, callback, &context, paths as CFArray,
                                                since ?? FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags) else {
             retained.release()
-            return
+            return false
         }
         contextBox = box
         FSEventStreamSetDispatchQueue(stream, queue)
-        FSEventStreamStart(stream)
         self.stream = stream
+        guard FSEventStreamStart(stream) else { stop(); return false }
+        return true
     }
 
     package func stop() {

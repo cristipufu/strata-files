@@ -1833,6 +1833,8 @@
     "Click waveform to seek": "波形をクリックして移動",
     "Waveform covers first %@": "波形の範囲：最初の%@",
     "Loaded": "読み込み済み",
-    "Listing incomplete": "一覧は不完全です"
+    "Listing incomplete": "一覧は不完全です",
+    "Updating index…": "インデックスを更新中…",
+    "Index updates unavailable": "インデックスの更新を利用できません"
   }
 }

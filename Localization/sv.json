@@ -1967,6 +1967,8 @@
     "Click waveform to seek": "Klicka på vågformen för att söka",
     "Waveform covers first %@": "Vågformen omfattar de första %@",
     "Loaded": "Inlästa",
-    "Listing incomplete": "Ofullständig lista"
+    "Listing incomplete": "Ofullständig lista",
+    "Updating index…": "Uppdaterar index…",
+    "Index updates unavailable": "Indexuppdateringar är inte tillgängliga"
   }
 }

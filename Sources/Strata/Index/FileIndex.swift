@@ -35,9 +35,9 @@ package final class FileIndex {
     package func start() {
         guard !started else { return }
         started = true
-        worker.onStore = { [weak self] store in Task { @MainActor in self?.store = store } }
-        worker.onPhase = { [weak self] phase in Task { @MainActor in self?.setPhase(phase) } }
-        worker.onChange = { [weak self] in Task { @MainActor in self?.changed() } }
+        worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.store = store; self?.changed() } }
+        worker.onPhase = { [weak self] phase in DispatchQueue.main.async { self?.setPhase(phase) } }
+        worker.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
         configuring = Task { [weak self] in
             guard let self else { return }
             let config = await currentConfig()
@@ -83,9 +83,9 @@ package final class FileIndex {
     }
 
     private func setPhase(_ phase: IndexWorker.Phase) {
+        guard self.phase != phase else { return }
         self.phase = phase
         NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)
-        if phase == .ready { changed() }
     }
 
     private func changed() {
@@ -279,6 +279,7 @@ package final class FileIndex {
         var excluded = guarded
         // Saving the index must not index that save and trigger another full rewrite of the index.
         excluded.insert(RealPath.of(storage.directory.path))
+        excluded.insert(RealPath.of(storage.caches.path))
         // Containers' files aren't this Mac's: their not-yet-fetched placeholders would count as their full size.
         excluded.insert(RealPath.of(copies.containerCopies.root.path))
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.

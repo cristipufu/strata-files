@@ -276,6 +276,8 @@ private struct IndexSettings: View {
         hasAccess = Privacy.hasFullDiskAccess
         switch FileIndex.shared.phase {
         case .loading: status = String(localized: "Loading…")
+        case .updating: status = String(localized: "Updating index…")
+        case .unavailable: status = String(localized: "Index updates unavailable")
         case .scanning(let items): status = String(localized: "Indexing… \(items) items so far", comment: "plural")
         case .ready: status = String(localized: "\(FileIndex.shared.itemCount) items · up to date", comment: "plural")
         }

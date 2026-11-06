@@ -1967,6 +1967,8 @@
     "Click waveform to seek": "Atlamak için dalga biçimine tıklayın",
     "Waveform covers first %@": "Dalga biçimi ilk %@ süresini kapsar",
     "Loaded": "Yüklendi",
-    "Listing incomplete": "Liste tamamlanmadı"
+    "Listing incomplete": "Liste tamamlanmadı",
+    "Updating index…": "Dizin güncelleniyor…",
+    "Index updates unavailable": "Dizin güncellemeleri kullanılamıyor"
   }
 }

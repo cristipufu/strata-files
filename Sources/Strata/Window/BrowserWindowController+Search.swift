@@ -85,7 +85,6 @@ extension BrowserWindowController {
     }
 
     @objc func indexPhaseChanged() {
-        for p in panes where p.destination == .recents && services.index.isReady { p.search.refresh() }
         refreshPanels()
     }
 }

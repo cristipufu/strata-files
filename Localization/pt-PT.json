@@ -1967,6 +1967,8 @@
     "Click waveform to seek": "Clique na forma de onda para avançar",
     "Waveform covers first %@": "A forma de onda abrange os primeiros %@",
     "Loaded": "Carregados",
-    "Listing incomplete": "Lista incompleta"
+    "Listing incomplete": "Lista incompleta",
+    "Updating index…": "A atualizar o índice…",
+    "Index updates unavailable": "Atualizações do índice indisponíveis"
   }
 }

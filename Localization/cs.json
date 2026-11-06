@@ -2101,6 +2101,8 @@
     "Click waveform to seek": "Kliknutím na průběh přejdete na místo",
     "Waveform covers first %@": "Průběh zahrnuje prvních %@",
     "Loaded": "Načteno",
-    "Listing incomplete": "Výpis je neúplný"
+    "Listing incomplete": "Výpis je neúplný",
+    "Updating index…": "Aktualizace indexu…",
+    "Index updates unavailable": "Aktualizace indexu nejsou dostupné"
   }
 }

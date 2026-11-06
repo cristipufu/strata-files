@@ -2235,6 +2235,8 @@
     "Click waveform to seek": "Kliknij przebieg fali, aby przejść",
     "Waveform covers first %@": "Przebieg fali obejmuje pierwsze %@",
     "Loaded": "Wczytano",
-    "Listing incomplete": "Lista jest niepełna"
+    "Listing incomplete": "Lista jest niepełna",
+    "Updating index…": "Uaktualnianie indeksu…",
+    "Index updates unavailable": "Uaktualnienia indeksu są niedostępne"
   }
 }

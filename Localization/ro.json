@@ -2101,6 +2101,8 @@
     "Click waveform to seek": "Clic pe forma de undă pentru a sări",
     "Waveform covers first %@": "Forma de undă acoperă primele %@",
     "Loaded": "Încărcate",
-    "Listing incomplete": "Listare incompletă"
+    "Listing incomplete": "Listare incompletă",
+    "Updating index…": "Se actualizează indexul…",
+    "Index updates unavailable": "Actualizările indexului nu sunt disponibile"
   }
 }

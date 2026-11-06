@@ -1967,6 +1967,8 @@
     "Click waveform to seek": "Klik op de golfvorm om te zoeken",
     "Waveform covers first %@": "Golfvorm omvat de eerste %@",
     "Loaded": "Geladen",
-    "Listing incomplete": "Onvolledige lijst"
+    "Listing incomplete": "Onvolledige lijst",
+    "Updating index…": "Index bijwerken…",
+    "Index updates unavailable": "Indexupdates niet beschikbaar"
   }
 }

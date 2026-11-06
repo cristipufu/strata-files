@@ -12,6 +12,163 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test(arguments: [false, true])
+    func overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails(unreadable: Bool) async throws {
+        let tree = try TestTree(".state/", "gone-a/a.txt", "gone-b/b.txt", "other/z.txt", "survivor/deep/kept.txt", "blocked/keep.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let blocked = tree.url("blocked").path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            if unreadable && path == blocked { return EACCES }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try FileManager.default.removeItem(at: tree.url("gone-a"))
+        try FileManager.default.removeItem(at: tree.url("gone-b"))
+        try Data("updated".utf8).write(to: tree.url("survivor/deep/kept.txt"))
+        fixture.worker.receive(["gone-a", "gone-a/deep", "gone-b", "survivor/deep"].enumerated().map { offset, path in
+            .init(path: tree.url(path).path,
+                  flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
+        })
+        await save(fixture.worker)
+        let counts = reads.withLock { $0 }
+        #expect(counts[tree.root.path] == 1)
+        #expect(counts[tree.url("other").path] == 1)
+        #expect(counts[tree.url("survivor/deep").path] == 1)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        let kept = try #require(loaded.read { $0.lookup(tree.url("survivor/deep/kept.txt").path) })
+        #expect(loaded.read { $0.size[Int(kept)] } == 7)
+        #expect(tree.text("blocked/keep.txt") == "blocked/keep.txt")
+    }
+
+    @Test(arguments: [false, true])
+    func newSubtreesAndOverlappingEventsShareOneReadPass(descendantEvents: Bool) async throws {
+        let tree = try TestTree(".state/", "existing/deep/kept.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try tree.add(["added/deep/file.txt"])
+        let paths = descendantEvents ? ["", "added", "added/deep", "existing/deep"] : [""]
+        fixture.worker.receive(paths.enumerated().map { offset, path in
+            .init(path: path.isEmpty ? tree.root.path : tree.url(path).path,
+                  flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
+        })
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == Dictionary(uniqueKeysWithValues:
+            [tree.root.path, tree.url("added").path, tree.url("added/deep").path,
+             tree.url("existing").path, tree.url("existing/deep").path].map { ($0, 1) }))
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        let root = try #require(loaded.read { $0.lookup(tree.root.path) })
+        #expect(loaded.read { $0.fileCount[Int(root)] } == 2)
+        #expect(loaded.read { $0.size[Int(root)] } == Int64("added/deep/file.txt".utf8.count + "existing/deep/kept.txt".utf8.count))
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "added/", "added/deep/", "added/deep/file.txt",
+                                    "existing/", "existing/deep/", "existing/deep/kept.txt"])
+    }
+
+    @Test func failedReadsCanRecoverInALaterBatch() async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        let blocked = OSAllocatedUnfairLock(initialState: true)
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            if blocked.withLock({ $0 }) { return EACCES }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try tree.add(["files/new.txt"])
+        let event = FSEventsStream.Event(path: tree.url("files").path, flags: 0, id: 1)
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/new.txt").path) } == nil)
+        blocked.withLock { $0 = false }
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(tree.text("files/kept.txt") == "files/kept.txt")
+    }
+
+    @Test(arguments: [false, true])
+    func readyWaitsForHistoryAndItsPendingChanges(saved: Bool) async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        if saved { _ = try await start(tree) }
+        let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
+        let fixture = try await start(tree, startEvents: { _, _ in true }, onPhase: { phase in phases.withLock { $0.append(phase) } })
+        #expect(phases.withLock { $0.last } == .updating)
+        #expect(!phases.withLock { $0.contains(.ready) })
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive([
+            .init(path: tree.url("files").path, flags: 0, id: 1),
+            .init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 2)
+        ])
+        await save(fixture.worker)
+        #expect(phases.withLock { $0.last } == .ready)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(tree.text("files/kept.txt") == "files/kept.txt")
+    }
+
+    @Test func failedWatchingDoesNotClaimTheIndexIsCurrent() async throws {
+        let tree = try TestTree(".state/", "kept.txt")
+        let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
+        let fixture = try await start(tree, startEvents: { _, _ in false }, onPhase: { phase in phases.withLock { $0.append(phase) } })
+        #expect(phases.withLock { $0.last } == .unavailable)
+        #expect(!phases.withLock { $0.contains(.ready) })
+        #expect(fixture.store.read { $0.lookup(tree.url("kept.txt").path) } != nil)
+        #expect(tree.text("kept.txt") == "kept.txt")
+    }
+
+    @Test func cancelledReadsDoNotSaveTheirEventCheckpoint() async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        let fixture = try await start(tree, readDirectory: { _, _, _, _, _ in ECANCELED })
+        let saved = try Data(contentsOf: fixture.config.file)
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: UInt64.max - 1)])
+        await save(fixture.worker)
+        #expect(try Data(contentsOf: fixture.config.file) == saved)
+        #expect(tree.text("files/kept.txt") == "files/kept.txt")
+    }
+
+    @Test func rebuildingAnUnreadableSavedIndexReplacesItForTheNextLaunch() async throws {
+        let tree = try TestTree(".state/index.sealed", "kept.txt")
+        let fixture = try await start(tree)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("kept.txt").path) } != nil)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "kept.txt"])
+    }
+
+    @Test func failedSavingRetainsChangesForTheNextAttempt() async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        let fixture = try await start(tree)
+        let previous = try Data(contentsOf: fixture.config.file)
+        try tree.add(["files/new.txt"])
+        try FileManager.default.removeItem(at: fixture.config.file)
+        try FileManager.default.createDirectory(at: fixture.config.file, withIntermediateDirectories: false)
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        try FileManager.default.removeItem(at: fixture.config.file)
+        try previous.write(to: fixture.config.file)
+        await save(fixture.worker)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(tree.snapshot() == [".state/", ".state/index.sealed", "files/", "files/kept.txt", "files/new.txt"])
+    }
+
+    @Test func aFailedAncestorCanRetryForAnUnknownChildInTheSameBatch() async throws {
+        let tree = try TestTree(".state/", "kept.txt")
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let root = tree.root.path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            if path == root, attempts.withLock({ $0 += 1; return $0 == 1 }) { return EACCES }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try tree.add(["new/deep/added.txt"])
+        fixture.worker.receive([
+            .init(path: root, flags: 0, id: 1),
+            .init(path: tree.url("new/deep").path, flags: 0, id: 2)
+        ])
+        await save(fixture.worker)
+        #expect(attempts.withLock { $0 } == 2)
+        #expect(fixture.store.read { $0.lookup(tree.url("new/deep/added.txt").path) } != nil)
+        #expect(tree.text("kept.txt") == "kept.txt")
+    }
+
     private struct Fixture {
         let worker: IndexWorker
         let config: IndexConfig
@@ -19,13 +176,16 @@ struct IndexWorkerTests {
         let changes: OSAllocatedUnfairLock<Int>
     }
 
-    private func start(_ tree: TestTree, readDirectory: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read) async throws -> Fixture {
+    private func start(_ tree: TestTree, readDirectory: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
+                       startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
+                       onPhase: @escaping @Sendable (IndexWorker.Phase) -> Void = { _ in }) async throws -> Fixture {
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
                                  file: tree.url(".state/index.sealed"), storage: .shared)
-        let worker = IndexWorker(watchesChanges: false, readDirectory: readDirectory)
+        let worker = IndexWorker(watchesChanges: startEvents != nil, readDirectory: readDirectory, startEvents: startEvents)
         let store = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         let changes = OSAllocatedUnfairLock(initialState: 0)
         let started = OSAllocatedUnfairLock(initialState: false)
+        worker.onPhase = onPhase
         worker.onStore = { value in store.withLock { $0 = value } }
         worker.onChange = { changes.withLock { $0 += 1 } }
         worker.start(config) { started.withLock { $0 = true } }
@@ -69,18 +229,18 @@ struct IndexWorkerTests {
     }
 
     @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() async throws {
-        let tree = try TestTree("state/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
-        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("state/Caches"), key: nil)
+        let tree = try TestTree("state/", "Caches/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
+        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
         let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
                                    containerCopies: ContainerCopyStore(root: tree.url("Containers")),
                                    clipboardRoot: tree.url("Clipboard"))
         let config = await FileIndex(storage: storage, copies: copies).currentConfig()
-        for name in ["state", "Servers", "Containers", "Clipboard"] {
+        for name in ["state", "Caches", "Servers", "Containers", "Clipboard"] {
             #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }
         #expect(!config.excluded.contains(tree.url("elsewhere").path))
         #expect(config.file == storage.url(IndexPersistence.cacheName) && config.storage === storage)
-        #expect(tree.snapshot() == ["Clipboard/", "Containers/", "Servers/", "elsewhere/", "state/", "state/Caches/"])
+        #expect(tree.snapshot() == ["Caches/", "Clipboard/", "Containers/", "Servers/", "elsewhere/", "state/"])
     }
 
     @Test func stateFolderEventsDoNotNotifyOrRewriteTheIndex() async throws {

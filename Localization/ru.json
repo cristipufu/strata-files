@@ -2237,6 +2237,8 @@
     "Click waveform to seek": "Нажмите на волну для перехода",
     "Waveform covers first %@": "Волна охватывает первые %@",
     "Loaded": "Загружено",
-    "Listing incomplete": "Список неполный"
+    "Listing incomplete": "Список неполный",
+    "Updating index…": "Обновление индекса…",
+    "Index updates unavailable": "Обновления индекса недоступны"
   }
 }
