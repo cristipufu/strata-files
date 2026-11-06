@@ -81,14 +81,14 @@ alongside, and filter, sort, open or copy just what you need without leaving you
 
 | Format | What you can do |
 |---|---|
-| **Markdown** | Read rendered text, tables and code blocks, with Mermaid diagrams right in the document. |
+| **Markdown** | Read rendered text, tables and code blocks, with Mermaid diagrams and LaTeX equations right in the document. |
 | **Code and configuration** | Syntax highlighting, line numbers, Find and word wrap for Swift, Python, JavaScript, TypeScript, Rust, Go, C/C++, shell scripts, YAML, TOML, XML, Dockerfiles and more. |
 | **JSON** | Read formatted JSON, JSONC and JSON5 without opening an editor. |
 | **HTML** | Switch between the rendered page and its source. |
 | **CSV, TSV and PSV** | Page through data, sort columns, find values and copy individual cells or rectangles. |
 | **SQLite** | Choose a table or view, page through its rows, sort, find and copy cells. |
-| **Excel (`.xlsx`)** | Switch worksheets and explore their saved values with the same table controls. |
-| **STL models** | Rotate and zoom 3D models, with triangle counts and dimensions. |
+| **Excel and OpenDocument (`.xlsx`, `.ods`)** | Switch worksheets and explore their saved values with the same table controls. |
+| **STL and 3MF models** | Rotate and zoom 3D models, with triangle counts and dimensions. |
 | **EPUB and comics** | Read book chapters and browse comic pages in EPUB, CBZ, CBR, CB7 and CBT files. |
 | **OneNote** | Navigate notebook contents and read section pages (`.one`, `.onetoc2`), or browse packaged notebooks (`.onepkg`). |
 | **Archives and packages** | Browse ZIP, 7z, RAR, TAR, ISO and CAB, plus packages such as JAR, APK, IPA and WHL. Preview or copy individual files inside. |

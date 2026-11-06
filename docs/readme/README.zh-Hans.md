@@ -64,14 +64,14 @@ Finder 本来够用，直到你需要寻找文件、查明磁盘被什么占满�
 
 | 格式 | 可用功能 |
 |---|---|
-| **Markdown** | 直接在文档中阅读排版后的文字、表格、代码块和 Mermaid 图表。 |
+| **Markdown** | 直接在文档中阅读排版后的文字、表格、代码块、Mermaid 图表和 LaTeX 公式。 |
 | **代码与配置** | 为 Swift、Python、JavaScript、TypeScript、Rust、Go、C/C++、Shell 脚本、YAML、TOML、XML、Dockerfile 等提供语法高亮、行号、查找和自动换行。 |
 | **JSON** | 无需打开编辑器即可阅读格式化的 JSON、JSONC 和 JSON5。 |
 | **HTML** | 在渲染后的页面和源代码之间切换。 |
 | **CSV、TSV 和 PSV** | 逐页浏览数据，对列排序，查找值，并复制单个单元格或矩形区域。 |
 | **SQLite** | 选择表或视图，逐页浏览数据行，排序、查找并复制单元格。 |
-| **Excel (`.xlsx`)** | 切换工作表，使用相同的表格操作查看已保存的值。 |
-| **STL 模型** | 旋转和缩放 3D 模型，查看三角形数量与尺寸。 |
+| **Excel 和 OpenDocument (`.xlsx`, `.ods`)** | 切换工作表，使用相同的表格操作查看已保存的值。 |
+| **STL 和 3MF 模型** | 旋转和缩放 3D 模型，查看三角形数量与尺寸。 |
 | **EPUB 与漫画** | 阅读 EPUB、CBZ、CBR、CB7 和 CBT 文件中的图书章节与漫画页面。 |
 | **OneNote** | 浏览笔记本目录，阅读分区页面（`.one`、`.onetoc2`），或查看打包的笔记本（`.onepkg`）。 |
 | **归档与软件包** | 浏览 ZIP、7z、RAR、TAR、ISO 和 CAB，以及 JAR、APK、IPA、WHL 等软件包。预览或复制其中的单个文件。 |
