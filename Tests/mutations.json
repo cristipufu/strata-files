@@ -3696,10 +3696,22 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "if pass.begin(folder.id) {",
-    "replace": "if true {",
     "rule": "Index refresh coverage: stale paths make the same surviving parent scan repeatedly",
-    "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce|IndexWorkerTests/overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails"
+    "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce|IndexWorkerTests/overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails",
+    "edits": [
+      {
+        "find": "            if pass.covers(path) { continue }\n",
+        "replace": ""
+      },
+      {
+        "find": "            if pass.covers(target) { continue }\n",
+        "replace": ""
+      },
+      {
+        "find": "if pass.begin(folder.id) {",
+        "replace": "if true {"
+      }
+    ]
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
@@ -9163,7 +9175,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "                    pass.failed(folder.id)\n",
+    "find": "                    pass.failed(folder)\n",
     "replace": "",
     "rule": "Index refresh coverage: failed ancestors remain eligible for later child events",
     "tests": "IndexWorkerTests/aFailedAncestorCanRetryForAnUnknownChildInTheSameBatch"
@@ -9195,5 +9207,20 @@
     "replace": "                    if hit { outputs.formUnion([]) }",
     "rule": "Index project classification: repeated markers preserve the supported output folder names",
     "tests": "IndexClassificationTests"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "edits": [
+      {
+        "find": "            guard failureAncestors[path] == nil else { return false }\n",
+        "replace": ""
+      },
+      {
+        "find": "                if failures.contains(ancestor) { return false }\n",
+        "replace": ""
+      }
+    ],
+    "rule": "Index covered paths: failed descendants remain eligible after a deep parent refresh",
+    "tests": "IndexWorkerTests/aFailedDescendantCanRecoverAfterItsParentsDeepRead"
   }
 ]

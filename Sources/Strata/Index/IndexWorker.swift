@@ -312,6 +312,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         var changed = false
         for (path, deep) in work {
             if interrupted || stopForQuit() { break }
+            if pass.covers(path) { continue }
             if isExcluded(path, config) { continue }
             // The folder may be new: refresh the nearest ancestor we already know about.
             var target = path
@@ -321,6 +322,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 id = store.read { store in store.lookup(target) }
             }
             guard let id, store.read({ store in store.isDirectory(id) }) else { continue }
+            if pass.covers(target) { continue }
             if refreshFolder(id, target, deep: deep, pass: &pass) { changed = true }
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
@@ -363,11 +365,45 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private struct RefreshPass {
         private var attempted: Set<Int32> = []
         private var children: [Int32: [Folder]] = [:]
+        private var deepRoots: Set<String> = []
+        private var failures: Set<String> = []
+        private var failureAncestors: [String: Int] = [:]
 
         mutating func begin(_ id: Int32) -> Bool { attempted.insert(id).inserted }
-        mutating func failed(_ id: Int32) { attempted.remove(id) }
-        mutating func listed(_ id: Int32, children: [Folder]) { self.children[id] = children }
+        mutating func failed(_ folder: Folder) {
+            attempted.remove(folder.id)
+            if failures.insert(folder.path).inserted { changeFailureAncestors(folder.path, by: 1) }
+        }
+        mutating func listed(_ folder: Folder, children: [Folder]) {
+            self.children[folder.id] = children
+            if failures.remove(folder.path) != nil { changeFailureAncestors(folder.path, by: -1) }
+        }
         mutating func descend(_ id: Int32) -> [Folder] { children.removeValue(forKey: id) ?? [] }
+        mutating func finishedDeepRead(_ path: String) { deepRoots.insert(path) }
+
+        func covers(_ path: String) -> Bool {
+            // Failed reads remain eligible, including events whose unknown children resolve to an ancestor.
+            guard failureAncestors[path] == nil else { return false }
+            var covered = false
+            var ancestor = path
+            while !ancestor.isEmpty {
+                if failures.contains(ancestor) { return false }
+                covered = covered || deepRoots.contains(ancestor)
+                if ancestor == "/" { break }
+                ancestor = (ancestor as NSString).deletingLastPathComponent
+            }
+            return covered
+        }
+
+        private mutating func changeFailureAncestors(_ path: String, by delta: Int) {
+            var ancestor = path
+            while !ancestor.isEmpty {
+                let count = failureAncestors[ancestor, default: 0] + delta
+                failureAncestors[ancestor] = count == 0 ? nil : count
+                if ancestor == "/" { break }
+                ancestor = (ancestor as NSString).deletingLastPathComponent
+            }
+        }
     }
 
     private func refreshFolder(_ id: Int32, _ path: String, deep: Bool, pass: inout RefreshPass) -> Bool {
@@ -379,14 +415,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if pass.begin(folder.id) {
                 if let changes = readFolder(folder.id, folder.path) {
                     changed = changed || changes.changed
-                    pass.listed(folder.id, children: changes.existingFolders)
+                    pass.listed(folder, children: changes.existingFolders)
                     work.append(contentsOf: changes.newFolders.map { ($0, true) })
                 } else {
-                    pass.failed(folder.id)
+                    pass.failed(folder)
                 }
             }
             if next.deep { work.append(contentsOf: pass.descend(folder.id).map { ($0, true) }) }
         }
+        if deep, !interrupted { pass.finishedDeepRead(path) }
         return changed
     }
 

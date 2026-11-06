@@ -169,6 +169,25 @@ struct IndexWorkerTests {
         #expect(tree.text("kept.txt") == "kept.txt")
     }
 
+    @Test func aFailedDescendantCanRecoverAfterItsParentsDeepRead() async throws {
+        let tree = try TestTree(".state/", "blocked/kept.txt", "healthy/kept.txt")
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let blocked = tree.url("blocked").path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            if path == blocked, attempts.withLock({ $0 += 1; return $0 == 1 }) { return EACCES }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try tree.add(["blocked/new.txt"])
+        fixture.worker.receive([
+            .init(path: tree.root.path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: 1),
+            .init(path: blocked, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: 2)
+        ])
+        await save(fixture.worker)
+        #expect(attempts.withLock { $0 } == 2)
+        #expect(fixture.store.read { $0.lookup(tree.url("blocked/new.txt").path) } != nil)
+        #expect(tree.text("healthy/kept.txt") == "healthy/kept.txt")
+    }
+
     private struct Fixture {
         let worker: IndexWorker
         let config: IndexConfig
