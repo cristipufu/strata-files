@@ -1955,6 +1955,10 @@
     "35 mm equivalent": "35mm-equivalent",
     "Copy Coordinates": "Kopieer coördinaten",
     "Open in Maps": "Open in Kaarten",
-    "GPS coordinates": "GPS-coördinaten"
+    "GPS coordinates": "GPS-coördinaten",
+    "Loading storyboard…": "Storyboard laden…",
+    "Storyboard unavailable": "Storyboard niet beschikbaar",
+    "Hover to inspect · Click to seek": "Wijs aan voor voorbeeld · Klik om te zoeken",
+    "This media couldn’t be played.": "Dit medium kon niet worden afgespeeld."
   }
 }

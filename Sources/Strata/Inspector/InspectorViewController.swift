@@ -80,7 +80,7 @@ final class InspectorViewController: NSViewController {
         self.previewScheduler = previewScheduler
         self.makePreview = makePreview ?? { entry, fallback in
             RichPreview.makeView(for: entry.url, contentType: entry.contentType, preferences: services.preferences,
-                                 clipboard: services.clipboard, fallback: fallback)
+                                 clipboard: services.clipboard, media: services.mediaAnalysis, fallback: fallback)
         }
         infoEditor = InfoEditor(readFacts: InfoEditor.Facts.read(_:opensWithApps:))
         super.init(nibName: nil, bundle: nil)

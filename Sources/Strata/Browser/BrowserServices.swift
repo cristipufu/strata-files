@@ -63,7 +63,7 @@ final class BrowserServices {
     lazy var folderViews = FolderViewSettings(preferences: preferences)
     lazy var viewOptions = ViewOptionsWindowController(settings: folderViews)
     lazy var previews = PreviewCoordinator(preferences: preferences, directories: directories, copies: copies,
-                                          thumbnails: thumbnails, clipboard: clipboard, openFile: windows.openFile,
+                                          thumbnails: thumbnails, clipboard: clipboard, media: mediaAnalysis, openFile: windows.openFile,
                                           presentPanel: windows.preview)
 
     let transfers: TransferQueue
@@ -82,6 +82,7 @@ final class BrowserServices {
     let directories: DirectoryReader
     let mediaReader: MediaInfoLoader.Reader
     let mediaDetailsReader: MediaDetails.Reader
+    let mediaAnalysis = MediaAnalysisReader()
     let thumbnails: FileThumbnails
     let itemInfo: ItemInfoLoader
     let volumeSpace: @Sendable (URL) async -> VolumeSpace?

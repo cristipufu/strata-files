@@ -52,13 +52,15 @@ static void *watch_memory(void *unused) {
     return NULL;
 }
 
-int strata_read_worker_start(uint64_t cpu, uint64_t memory) {
+static int start(uint64_t cpu, uint64_t memory, int media) {
     if (!strata_archive_sandboxed()) return strata_archive_unsandboxed;
     cpu_limit = cpu;
     memory_limit = memory;
     const rlim_t seconds = cpu_limit == UINT64_MAX ? RLIM_INFINITY
         : (rlim_t)(cpu_limit / 1000000 + (cpu_limit % 1000000 != 0));
-    struct rlimit time = {seconds, seconds}, files = {32,32}, core = {0,0}, processes = {0,0}, size = {0,0};
+    const rlim_t file_limit = media ? 128 : 32;
+    const rlim_t cache_limit = media ? 8 << 20 : 0;
+    struct rlimit time = {seconds, seconds}, files = {file_limit,file_limit}, core = {0,0}, processes = {0,0}, size = {cache_limit,cache_limit};
     if (setrlimit(RLIMIT_CPU, &time) || setrlimit(RLIMIT_NOFILE, &files) || setrlimit(RLIMIT_CORE, &core) ||
         setrlimit(RLIMIT_NPROC, &processes) || setrlimit(RLIMIT_FSIZE, &size) ||
         fcntl(STDOUT_FILENO, F_SETNOSIGPIPE, 1)) return strata_archive_unreadable;
@@ -66,5 +68,8 @@ int strata_read_worker_start(uint64_t cpu, uint64_t memory) {
     pthread_t monitor;
     if (pthread_create(&monitor, NULL, watch_memory, NULL)) return strata_archive_unreadable;
     pthread_detach(monitor);
-    return drop_bootstrap() ? 0 : strata_archive_unsandboxed;
+    return media || drop_bootstrap() ? 0 : strata_archive_unsandboxed;
 }
+
+int strata_read_worker_start(uint64_t cpu, uint64_t memory) { return start(cpu, memory, 0); }
+int strata_media_worker_start(uint64_t cpu, uint64_t memory) { return start(cpu, memory, 1); }

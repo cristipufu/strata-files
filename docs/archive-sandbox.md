@@ -284,7 +284,7 @@ of it, and refuses links that lead out, special files and unsafe paths.
 ## SQLite previews
 
 SQLite previews use the same service and descriptor transport, with a separate `StrataTableWorker` built from
-`CTablePreview`. The service selects only these two bundled executables; a request cannot name another program.
+`CTablePreview`. The service selects only its bundled archive, table and media workers; a request cannot name another program.
 The app and service do not link this reader. SQLite used by Strata's own search indexes stays separate.
 
 The worker registers a read-only SQLite VFS over the supplied descriptor. It cannot open another database, journal,
@@ -299,3 +299,17 @@ protocol output. Queries have a three-second progress budget; the worker also ha
 a 256 MiB sampled resident-memory ceiling and the service's deadline. At most two SQLite reads run concurrently.
 The app validates lengths, counts and tags before allocating or displaying any worker output. Closing or replacing
 a preview cancels its own read; worker failure leaves the app running and another preview can be opened normally.
+
+## Media analysis
+
+`StrataMediaWorker` generates video storyboard frames. It inherits the same App Sandbox through the service and
+receives only a pinned regular-file descriptor. AVFoundation reads bounded byte ranges through a resource-loader
+delegate; the worker never receives a source pathname. Its output is a validated sequence of small raw RGBA frames,
+so the app does not decode worker-provided image formats. The service cancels and reaps it like the other workers.
+
+AVFoundation needs sandbox-allowed media services and may write framework caches in the service's own container.
+This worker consequently keeps its bootstrap port and permits cache files up to 8 MiB each, unlike the archive and
+table workers. It still has no network entitlement or access to user files beyond the supplied descriptor. Its
+policy caps CPU time at 15 seconds, resident memory at 384 MiB, output at eight 256 × 144 frames, and open descriptors
+at 128. The service's 25-second deadline also applies. Decoder failure or a reached limit leaves native playback
+available with a storyboard-unavailable message. Playback itself remains in AVKit in the app process.

@@ -18,6 +18,8 @@ enum {
 int strata_archive_sandboxed(void);
 /* Shared setup for a sandboxed, read-only parser process. Limits are supplied by its own fixed policy. */
 int strata_read_worker_start(uint64_t cpu_microseconds, uint64_t resident_bytes);
+/* AVFoundation uses sandbox-allowed media services; this worker retains its bootstrap port. */
+int strata_media_worker_start(uint64_t cpu_microseconds, uint64_t resident_bytes);
 int strata_read_over_cpu(void);
 int strata_read_over_memory(void);
 #endif

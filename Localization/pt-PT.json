@@ -1955,6 +1955,10 @@
     "35 mm equivalent": "Equivalente a 35 mm",
     "Copy Coordinates": "Copiar coordenadas",
     "Open in Maps": "Abrir no Mapas",
-    "GPS coordinates": "Coordenadas GPS"
+    "GPS coordinates": "Coordenadas GPS",
+    "Loading storyboard…": "A carregar storyboard…",
+    "Storyboard unavailable": "Storyboard indisponível",
+    "Hover to inspect · Click to seek": "Passe o cursor para ver · Clique para avançar",
+    "This media couldn’t be played.": "Não foi possível reproduzir este conteúdo."
   }
 }

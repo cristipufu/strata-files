@@ -1955,6 +1955,10 @@
     "35 mm equivalent": "35 mm-es egyenérték",
     "Copy Coordinates": "Koordináták másolása",
     "Open in Maps": "Megnyitás a Térképekben",
-    "GPS coordinates": "GPS-koordináták"
+    "GPS coordinates": "GPS-koordináták",
+    "Loading storyboard…": "Jelenetképek betöltése…",
+    "Storyboard unavailable": "A jelenetképek nem érhetők el",
+    "Hover to inspect · Click to seek": "Mutasson rá az előnézethez · Kattintson az ugráshoz",
+    "This media couldn’t be played.": "Ez a média nem játszható le."
   }
 }

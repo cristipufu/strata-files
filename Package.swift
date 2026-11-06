@@ -129,6 +129,8 @@ let package = Package(
         .executableTarget(name: "StrataArchiveWorker", dependencies: ["CArchivePreview"], exclude: ["ArchiveWorker.entitlements"]),
         .target(name: "CTablePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("sqlite3")]),
         .executableTarget(name: "StrataTableWorker", dependencies: ["CTablePreview"]),
+        .target(name: "StrataMediaProtocol"),
+        .executableTarget(name: "StrataMediaWorker", dependencies: ["CArchiveSandbox", "StrataMediaProtocol"], swiftSettings: compilerWorkarounds),
         .target(name: "StrataArchiveClient", path: "Sources/StrataArchiveClient", swiftSettings: strataSwiftSettings),
         // Test and development builds reach the service through this host, inside an app built around it.
         .executableTarget(
@@ -167,7 +169,7 @@ let package = Package(
         ),
         .target(
             name: "StrataPreviews",
-            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "CPreviewText", "CNativeReaders"],
+            dependencies: ["StrataSupport", "StrataTheme", "StrataModel", "StrataArchives", "StrataMediaProtocol", "CPreviewText", "CNativeReaders"],
             path: "Sources/Strata/Previews",
             resources: [.copy("Mermaid"), .copy("Models"), .copy("Math")],
             swiftSettings: strataSwiftSettings
@@ -282,6 +284,7 @@ let package = Package(
                 "StrataTheme",
                 "StrataModel",
                 "StrataPreviews",
+                "StrataMediaProtocol",
                 "CPreviewText",
                 "CPreviewTextTestSupport",
                 "CNativeReaders",

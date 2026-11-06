@@ -34,6 +34,7 @@ nonisolated package enum ReadWorker {
             defer { try? input.close() }
             var arguments = ["--timeout-ms", String(Int((timeout * 1000).rounded())), "--output-limit", String(outputLimit)]
             if worker == .table { arguments.append("--table") }
+            if worker == .media { arguments.append("--media") }
             if let heap = limits.heap { arguments += ["--heap-limit", String(max(1, heap))] }
             if let memory = limits.memory { arguments += ["--memory-limit", String(max(1, memory))] }
             if let microseconds = limits.cpuMicroseconds {

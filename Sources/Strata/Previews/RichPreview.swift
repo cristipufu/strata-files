@@ -13,7 +13,8 @@ package enum RichPreview {
     /// A view that loads its content off the main thread and fills whatever frame it's given.
     /// `fallback` runs if the file turns out not to suit a rich preview after all (a `.ts` video, a `.db` that isn't
     /// SQLite, binary data under a text extension); show Quick Look then. Without it, the view says "No Preview Available".
-    package static func makeView(for url: URL, contentType: UTType?, preferences: any PreviewTextSettings, clipboard: Clipboard, fallback: (() -> Void)? = nil) -> NSView? {
+    package static func makeView(for url: URL, contentType: UTType?, preferences: any PreviewTextSettings, clipboard: Clipboard,
+                                 media: MediaAnalysisReader = MediaAnalysisReader(), fallback: (() -> Void)? = nil) -> NSView? {
         guard let format = PreviewFormat(url: url, contentType: contentType) else { return nil }
         let view: PreviewView = switch format {
         case .code(let language): CodePreviewView(url: url, mode: .source(language), preferences: preferences)
@@ -30,6 +31,7 @@ package enum RichPreview {
         case .xlsx: WorkbookPreviewView(url: url, format: .xlsx, clipboard: clipboard)
         case .ods: WorkbookPreviewView(url: url, format: .ods, clipboard: clipboard)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
+        case .video: MediaPreviewView(url: url, type: contentType ?? .movie, reader: media)
         }
         view.fallback = fallback
         return view
@@ -53,6 +55,7 @@ nonisolated package enum PreviewFormat: Sendable {
     case xlsx
     case ods
     case archive(ArchiveKind)
+    case video
 
     package init?(url: URL, contentType: UTType?) {
         if let contentType, contentType.conforms(to: .directory) || contentType.conforms(to: .package) { return nil }
@@ -88,6 +91,8 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .sqlite
         } else if let kind = ArchiveKind(fileName: name) {
             self = .archive(kind)
+        } else if contentType?.conforms(to: .movie) == true {
+            self = .video
         } else if let language = Languages.detect(fileName: name) {
             self = .code(language)
         } else if let contentType, !contentType.conforms(to: .image), !contentType.conforms(to: .audiovisualContent),

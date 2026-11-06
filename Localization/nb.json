@@ -1955,6 +1955,10 @@
     "35 mm equivalent": "35 mm-ekvivalent",
     "Copy Coordinates": "Kopier koordinater",
     "Open in Maps": "Åpne i Kart",
-    "GPS coordinates": "GPS-koordinater"
+    "GPS coordinates": "GPS-koordinater",
+    "Loading storyboard…": "Laster bildeoversikt…",
+    "Storyboard unavailable": "Bildeoversikt utilgjengelig",
+    "Hover to inspect · Click to seek": "Hold pekeren for å se · Klikk for å spole",
+    "This media couldn’t be played.": "Dette mediet kunne ikke spilles av."
   }
 }

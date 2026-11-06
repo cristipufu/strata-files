@@ -13,12 +13,12 @@
 #include <unistd.h>
 
 /* Strata's archive service: an XPC service with an App Sandbox of its own that never parses file contents itself. Each
- * request selects one of two fixed workers in Contents/Helpers, which inherits the sandbox, reads one file with
+ * request selects one of the fixed workers in Contents/Helpers, which inherits the sandbox, reads one file with
  * limits of its own and exits with its status. The service ends a worker as soon as the app cancels its request, and
  * after 25 seconds, except Extract's, which reads as long as the archive takes. */
 static int refusal;
-static char workers[2][PATH_MAX];
-static const char *worker_names[2] = {"StrataArchiveWorker", "StrataTableWorker"};
+static char workers[3][PATH_MAX];
+static const char *worker_names[3] = {"StrataArchiveWorker", "StrataTableWorker", "StrataMediaWorker"};
 
 static int find_worker(void) {
     char self[PATH_MAX];
@@ -27,7 +27,7 @@ static int find_worker(void) {
     char *name = strrchr(self, '/');
     if (!name) return 0;
     *name = 0;
-    for (unsigned i=0; i<2; ++i) {
+    for (unsigned i=0; i<3; ++i) {
         int written = snprintf(workers[i], sizeof(workers[i]), "%s/../Helpers/%s", self, worker_names[i]);
         if (written <= 0 || written >= (int)sizeof(workers[i])) return 0;
     }
@@ -82,7 +82,7 @@ static pid_t start(xpc_object_t message) {
     xpc_object_t selected = xpc_dictionary_get_value(message, "worker");
     if (selected && xpc_get_type(selected) != XPC_TYPE_UINT64) return -1;
     uint64_t kind = xpc_dictionary_get_uint64(message, "worker");
-    if (kind > 1 || (kind && xpc_dictionary_get_bool(message, "unpacking"))) return -1;
+    if (kind > 2 || (kind && xpc_dictionary_get_bool(message, "unpacking"))) return -1;
     int request = above_standard(xpc_dictionary_dup_fd(message, "request"));
     int archive = above_standard(xpc_dictionary_dup_fd(message, "archive"));
     int output = above_standard(xpc_dictionary_dup_fd(message, "output"));

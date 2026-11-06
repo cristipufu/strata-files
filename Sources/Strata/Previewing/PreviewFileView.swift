@@ -9,6 +9,7 @@ import StrataPreviews
     private let copies: CopyProviders
     private let preferences: Prefs
     private let clipboard: Clipboard
+    private let media: MediaAnalysisReader
     private let native = QuickLookPreviewView(frame: .zero, style: .normal)
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
@@ -22,11 +23,12 @@ import StrataPreviews
     private var generation = 0
     private var isClosed = false
 
-    init(thumbnails: FileThumbnails, copies: CopyProviders, preferences: Prefs, clipboard: Clipboard) {
+    init(thumbnails: FileThumbnails, copies: CopyProviders, preferences: Prefs, clipboard: Clipboard, media: MediaAnalysisReader = MediaAnalysisReader()) {
         self.thumbnails = thumbnails
         self.copies = copies
         self.preferences = preferences
         self.clipboard = clipboard
+        self.media = media
         super.init(frame: .zero)
         ThemeStyle.bind(self, to: .preview)
         icon.imageScaling = .scaleProportionallyDown
@@ -88,7 +90,7 @@ import StrataPreviews
         guard item != nil || ArchiveKind(fileName: entry.name) == nil else { return }
         let url = entry.url
         shownURL = url
-        if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, preferences: preferences, clipboard: clipboard, fallback: { [weak self] in
+        if let rich = RichPreview.makeView(for: url, contentType: entry.contentType, preferences: preferences, clipboard: clipboard, media: media, fallback: { [weak self] in
             guard let self, self.generation == generation, shownURL == url else { return }
             (self.rich as? PreviewView)?.stop()
             self.rich?.removeFromSuperview()

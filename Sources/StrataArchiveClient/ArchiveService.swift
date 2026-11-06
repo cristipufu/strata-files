@@ -61,7 +61,7 @@ nonisolated package enum ArchiveService {
         }
     }
 
-    package enum Worker: UInt64, Sendable { case archive = 0, table = 1 }
+    package enum Worker: UInt64, Sendable { case archive = 0, table = 1, media = 2 }
 
     /// Lower limits than the worker's own, which it never raises; nil keeps the worker's. Even a tiny or negative limit
     /// stays a limit.

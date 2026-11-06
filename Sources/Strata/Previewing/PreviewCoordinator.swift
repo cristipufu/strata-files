@@ -9,6 +9,7 @@ import Quartz
     private let copies: CopyProviders
     private let thumbnails: FileThumbnails
     private let clipboard: Clipboard
+    private let media: MediaAnalysisReader
     private let openFile: (URL) -> Void
     private let presentPanel: (NSPanel, NSView) -> Bool
     private weak var owner: BrowserViewController?
@@ -22,12 +23,13 @@ import Quartz
     var isOpen: Bool { content != nil }
 
     init(preferences: Prefs, directories: DirectoryReader, copies: CopyProviders, thumbnails: FileThumbnails,
-         clipboard: Clipboard, openFile: @escaping (URL) -> Void, presentPanel: @escaping (NSPanel, NSView) -> Bool) {
+         clipboard: Clipboard, media: MediaAnalysisReader = MediaAnalysisReader(), openFile: @escaping (URL) -> Void, presentPanel: @escaping (NSPanel, NSView) -> Bool) {
         self.preferences = preferences
         self.directories = directories
         self.copies = copies
         self.thumbnails = thumbnails
         self.clipboard = clipboard
+        self.media = media
         self.openFile = openFile
         self.presentPanel = presentPanel
         super.init()
@@ -43,7 +45,7 @@ import Quartz
                 return await prompt.request(name, in: self?.panel)
             }
             session.archiveAccess.cancelPassword = { [weak self] in self?.passwordPrompt.cancel() }
-            let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies, clipboard: clipboard)
+            let content = PreviewBrowserController(session: session, preferences: preferences, thumbnails: thumbnails, copies: copies, clipboard: clipboard, media: media)
             let panel = PreviewPanel(contentRect: NSRect(origin: .zero, size: PreviewLayout.defaultSize),
                                      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             panel.isReleasedWhenClosed = false

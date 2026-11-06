@@ -52,7 +52,7 @@ func run() async -> Int32 {
         guard lseek(3, 0, SEEK_SET) == 0 else { throw POSIXError(.EIO) }
         return try await ArchiveService.send(encoded: request, limits: limits, to: service, archive: archive,
                                              timeout: timeout, outputLimit: outputLimit ?? ArchiveService.outputLimit,
-                                             worker: CommandLine.arguments.contains("--table") ? .table : .archive)
+                                             worker: CommandLine.arguments.contains("--media") ? .media : CommandLine.arguments.contains("--table") ? .table : .archive)
     }
     do {
         let limits = ArchiveService.Limits(cpu: option("--cpu-limit").map { .microseconds($0) },

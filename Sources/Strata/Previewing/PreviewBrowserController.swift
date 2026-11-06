@@ -41,7 +41,7 @@ import StrataPreviews
     private var comicMode: PreviewViewMode?
     var focusView: NSView { if mode == .icons, let grid { return grid.collection }; return outline }
 
-    init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard) {
+    init(session: PreviewSession, preferences: Prefs, thumbnails: FileThumbnails, copies: CopyProviders, clipboard: Clipboard, media: MediaAnalysisReader = MediaAnalysisReader()) {
         self.session = session
         self.preferences = preferences
         self.thumbnails = thumbnails
@@ -50,7 +50,7 @@ import StrataPreviews
         providerContent = PreviewProviderContent(copies: copies)
         measurement = PreviewMeasurement(copies: copies)
         archiveContent = PreviewArchiveContent(copies: copies)
-        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies, preferences: preferences, clipboard: clipboard)
+        fileView = PreviewFileView(thumbnails: thumbnails, copies: copies, preferences: preferences, clipboard: clipboard, media: media)
         let tree = NSViewController()
         tree.view = treeHost
         treeController = tree

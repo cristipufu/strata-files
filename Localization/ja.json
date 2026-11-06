@@ -1821,6 +1821,10 @@
     "35 mm equivalent": "35 mm換算",
     "Copy Coordinates": "座標をコピー",
     "Open in Maps": "マップで開く",
-    "GPS coordinates": "GPS座標"
+    "GPS coordinates": "GPS座標",
+    "Loading storyboard…": "ストーリーボードを読み込み中…",
+    "Storyboard unavailable": "ストーリーボードを表示できません",
+    "Hover to inspect · Click to seek": "ポイントして確認 · クリックして移動",
+    "This media couldn’t be played.": "このメディアは再生できませんでした。"
   }
 }
