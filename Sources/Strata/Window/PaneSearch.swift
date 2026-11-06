@@ -21,15 +21,21 @@ import AppKit
     private var folderScanScope: URL?
     private let scans: DispatchQueue
     private let waitForRefresh: () async -> Void
+    private let waitForScanProgress: (Duration) async -> Void
+    private static let largeScanEntryCount = 200_000
+    private static let scanRefreshInterval: Duration = .milliseconds(400)
+    private static let largeScanRefreshInterval: Duration = .seconds(1)
     private var refreshPending = false
     private var refreshTask: Task<Void, Never>?
 
     init(pane: Pane, services: BrowserServices, scans: DispatchQueue = FolderSearch.scanQueue,
-         waitForRefresh: @escaping () async -> Void = { try? await Task.sleep(for: .seconds(2)) }) {
+         waitForRefresh: @escaping () async -> Void = { try? await Task.sleep(for: .seconds(2)) },
+         waitForScanProgress: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
         self.pane = pane
         self.services = services
         self.scans = scans
         self.waitForRefresh = waitForRefresh
+        self.waitForScanProgress = waitForScanProgress
     }
 
     isolated deinit { stop() }
@@ -319,8 +325,18 @@ import AppKit
         // Small folders are done almost at once: give them a moment so they don't flash "Searching…".
         if !search.isFinished { try? await Task.sleep(for: .milliseconds(120)) }
         var shown = -1
+        var lastScannedCount: Int?
         while isCurrent(generation, p, target) {
+            if let count = lastScannedCount {
+                // Searching takes the store's read lock, so large scans get more time between queries.
+                await waitForScanProgress(count > Self.largeScanEntryCount ? Self.largeScanRefreshInterval : Self.scanRefreshInterval)
+                guard isCurrent(generation, p, target) else { return }
+            }
             let finished = search.isFinished
+            let scanned = search.scannedCount
+            // A stalled reader adds no searchable data. Completion still needs a final query, even for an empty folder.
+            guard finished || lastScannedCount != scanned else { continue }
+            lastScannedCount = scanned
             let found = await search.search(text)
             guard isCurrent(generation, p, target) else { return }
             if finished || found.total > 0, finished || found.total != shown {
@@ -351,8 +367,6 @@ import AppKit
                 }
                 return
             }
-            // Searching the store takes its read lock, which pauses the scan: check less often once it's big.
-            try? await Task.sleep(for: .milliseconds(search.scannedCount > 200_000 ? 1000 : 400))
         }
     }
 

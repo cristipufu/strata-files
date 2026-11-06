@@ -9306,5 +9306,19 @@
     "replace": "            // Keep the completed request active.",
     "rule": "Index rebuild coalescing: a completed request releases the next rebuild",
     "tests": "IndexWorkerTests/repeatedRebuildRequestsShareOnePendingOrRunningScan"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "            guard finished || lastScannedCount != scanned else { continue }",
+    "replace": "            // Re-query unchanged scans.",
+    "rule": "Direct search polling: unchanged directory progress does not rerun the query",
+    "tests": "SearchRefreshTests/stalledFolderScansDoNotRepeatQueriesAndCompletionStillUpdatesTheView"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "            guard finished || lastScannedCount != scanned else { continue }",
+    "replace": "            guard lastScannedCount != scanned else { continue }",
+    "rule": "Direct search polling: completion updates even an empty directory",
+    "tests": "SearchRefreshTests/stalledFolderScansDoNotRepeatQueriesAndCompletionStillUpdatesTheView"
   }
 ]
