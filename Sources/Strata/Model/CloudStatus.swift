@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// iCloud Drive and File Provider (Dropbox, OneDrive, Google Drive…) state of an item: in the cloud only, on its way
 /// down or up, or here. Read only for items in such folders, so ordinary folders pay nothing.
@@ -195,13 +196,32 @@ extension Notification.Name {
 /// The cloud states of the items in the folders being shown, read off the main thread and only for cloud folders (others
 /// cost one check per folder). Folders a window shows are kept; while anything in them is moving, they're read again
 /// every couple of seconds, so badges follow the transfer.
-package final class CloudStore {
+@MainActor package final class CloudStore {
     package static let shared = CloudStore()
 
     /// The folders the app's windows show, as the app tells it at launch: only those are polled and kept.
     package var foldersShown: () -> Set<String> = { [] }
 
-    package init() {}
+    package typealias Reader = @concurrent @Sendable ([String], String) async -> (paths: [String], statuses: [String: CloudStatus])?
+    private let reader: Reader
+    private let allowance = WorkAllowance(limit: 2)
+    private final class FolderRead {
+        let id = UUID()
+        var paths: [String] = []
+        var known: Set<String> = []
+        func append(_ additions: [String]) -> [String] {
+            additions.filter { path in
+                guard known.insert(path).inserted else { return false }
+                paths.append(path)
+                return true
+            }
+        }
+    }
+    private var generations: [String: FolderRead] = [:]
+    private var requests: [UUID: (folder: String, task: Task<Void, Never>)] = [:]
+
+    package init(reader: @escaping Reader = CloudStore.read) { self.reader = reader }
+    isolated deinit { poll?.invalidate(); for request in requests.values { request.task.cancel() } }
 
     private var statuses: [String: CloudStatus] = [:]
     /// Cloud folders read, most recently loaded last.
@@ -218,16 +238,48 @@ package final class CloudStore {
         statuses[url.lexicallyStandardized.path]
     }
 
-    /// Reads the states of `urls`, the items of `folder`, when it's a cloud folder.
-    package func load(_ urls: [URL], in folder: URL) {
+    /// Reads listed items by their captured, lexically normalized path keys, without renormalizing URLs on the UI thread.
+    @discardableResult package func load(paths: [String], in folder: URL) -> Task<Void, Never>? {
         let key = folder.lexicallyStandardized.path
-        Task {
-            guard let (paths, read) = await Self.read(urls, in: key) else {
-                if items[key] != nil { forget(key) }
+        let generation = FolderRead()
+        generations[key] = generation
+        let added = generation.append(paths)
+        cancelReads(in: key)
+        guard generations[key] === generation else { return nil }
+        return enqueue(added, in: key, generation: generation.id)
+    }
+
+    @discardableResult package func append(paths: [String], in folder: URL) -> Task<Void, Never>? {
+        let key = folder.lexicallyStandardized.path
+        guard let generation = generations[key] else { return load(paths: paths, in: folder) }
+        let added = generation.append(paths)
+        return added.isEmpty ? nil : enqueue(added, in: key, generation: generation.id)
+    }
+
+    @discardableResult private func enqueue(_ paths: [String], in key: String, generation: UUID) -> Task<Void, Never> {
+        let id = UUID(), reader = reader, allowance = allowance
+        let task = Task { [weak self] in
+            defer { self?.requests[id] = nil }
+            guard !Task.isCancelled else { return }
+            let result = await allowance.run { await reader(paths, key) }
+            guard let self else { return }
+            guard !Task.isCancelled, generations[key]?.id == generation, let result else { return }
+            guard let result else {
+                let hadStates = items[key]?.contains { statuses[$0] != nil } == true
+                forget(key)
+                if hadStates { NotificationCenter.default.post(name: .cloudStatusChanged, object: self) }
                 return
             }
-            remember(key, paths: paths, read)
+            remember(key, paths: generations[key]?.paths ?? [], checked: result.paths, result.statuses)
         }
+        requests[id] = (key, task)
+        return task
+    }
+
+    private func cancelReads(in key: String) {
+        let old = requests.filter { $0.value.folder == key }
+        for id in old.keys { requests[id] = nil }
+        for request in old.values { request.task.cancel() }
     }
 
     /// Reads these folders again (after Download Now or Remove Download), and keeps reading them for a while.
@@ -240,11 +292,12 @@ package final class CloudStore {
         }
     }
 
-    private func remember(_ key: String, paths: [String], _ read: [String: CloudStatus]) {
+    private func remember(_ key: String, paths: [String], checked: [String], _ read: [String: CloudStatus]) {
         let previous = items[key] ?? []
-        let changed = previous != paths || paths.contains { statuses[$0] != read[$0] }
-        for path in previous { statuses[path] = nil }
-        for (path, status) in read { statuses[path] = status }
+        let changed = previous != paths || checked.contains { statuses[$0] != read[$0] }
+        let wanted = generations[key]?.known ?? Set(paths)
+        for path in previous where !wanted.contains(path) { statuses[path] = nil }
+        for path in checked where wanted.contains(path) { statuses[path] = read[path] }
         items[key] = paths
         folders.removeAll { $0 == key }
         folders.append(key)
@@ -261,6 +314,8 @@ package final class CloudStore {
     }
 
     private func forget(_ key: String) {
+        generations[key] = nil
+        cancelReads(in: key)
         for path in items.removeValue(forKey: key) ?? [] { statuses[path] = nil }
         folders.removeAll { $0 == key }
         forced[key] = nil
@@ -290,22 +345,18 @@ package final class CloudStore {
     }
 
     private func readAgain(_ key: String) {
-        guard let paths = items[key] else { return }
-        let urls = paths.map { URL(fileURLWithPath: $0) }
-        Task {
-            guard let (_, read) = await Self.read(urls, in: key), items[key] == paths else { return }
-            remember(key, paths: paths, read)
-        }
+        guard let paths = items[key], let generation = generations[key], !requests.values.contains(where: { $0.folder == key }) else { return }
+        enqueue(paths, in: key, generation: generation.id)
     }
 
-    /// The paths of `urls` and their states, or nil when `folder` isn't a cloud folder (checked first: ordinary
+    /// The listed paths and their states, or nil when `folder` isn't a cloud folder (checked first: ordinary
     /// folders cost nothing more).
     @concurrent
-    private static func read(_ urls: [URL], in folder: String) async -> (paths: [String], statuses: [String: CloudStatus])? {
+    package static func read(_ paths: [String], in folder: String) async -> (paths: [String], statuses: [String: CloudStatus])? {
         guard CloudStatus.isCloudFolder(URL(fileURLWithPath: folder)) else { return nil }
-        let paths = urls.map { $0.lexicallyStandardized.path }
         var result: [String: CloudStatus] = [:]
         for path in paths {
+            if Task.isCancelled { return nil }
             if let status = CloudStatus.read(URL(fileURLWithPath: path)) { result[path] = status }
         }
         return (paths, result)

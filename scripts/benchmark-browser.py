@@ -30,15 +30,16 @@ def percentile(values, fraction):
 
 
 def summarize(report):
-    print("mode   first frame median ms   scroll p95 ms   actor delay max ms   idle CPU %   peak RSS MiB")
+    print("mode   first frame median ms   complete median ms   scroll p95 ms   actor delay max ms   idle CPU %   peak RSS MiB")
     for mode in ["list", "icons"]:
         samples = [sample for sample in report["samples"] if sample["mode"] == mode]
         first = [sample["firstNativeFrameMilliseconds"] for sample in samples]
+        complete = [sample["completeFolderMilliseconds"] for sample in samples]
         scrolling = [value for sample in samples for value in sample["scrollFrameMilliseconds"]]
         delays = [value for sample in samples for value in sample["mainActorDelayMilliseconds"]]
         idle = [sample["idleCPUPercentOfOneCore"] for sample in samples]
         peak = max(sample["processPeakResidentBytes"] for sample in samples) / 2**20
-        print(f"{mode:5} {statistics.median(first):23.2f} {percentile(scrolling, .95):15.2f} "
+        print(f"{mode:5} {statistics.median(first):23.2f} {statistics.median(complete):20.2f} {percentile(scrolling, .95):15.2f} "
               f"{percentile(delays, 1):20.2f} {statistics.median(idle):12.2f} {peak:14.1f}")
 
 

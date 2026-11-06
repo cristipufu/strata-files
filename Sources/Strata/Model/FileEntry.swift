@@ -233,6 +233,37 @@ package nonisolated struct Listing: Sendable {
 }
 
 package nonisolated enum DirectoryLoader {
+    package struct Batch: Sendable {
+        package let folder: URL
+        package let entries: [FileEntry]
+        package let complete: Bool
+        package init(folder: URL, entries: [FileEntry], complete: Bool) {
+            self.folder = folder; self.entries = entries; self.complete = complete
+        }
+    }
+
+    package typealias Receive = @Sendable (Batch) async throws -> Void
+    @concurrent package static func stream(_ requested: URL, showHidden: Bool, applications: ApplicationsFolders,
+                                           copies: CopyProviders, receive: @escaping Receive) async throws {
+        try Task.checkCancellation()
+        if copies.contains(requested) {
+            let listing = try await load(requested, showHidden: showHidden, applications: applications, copies: copies)
+            try await receive(Batch(folder: listing.folder, entries: listing.entries, complete: true))
+            return
+        }
+        guard let cursor = await OwnThread.runUnlessCancelled({ DirectoryEnumeration(requested, showHidden: showHidden, applications: applications) }) else { throw CancellationError() }
+        try await withTaskCancellationHandler {
+            while true {
+                try Task.checkCancellation()
+                guard let result = await OwnThread.runUnlessCancelled({ Result { try cursor.next() } }) else { throw CancellationError() }
+                let batch = try result.get()
+                try Task.checkCancellation()
+                try await receive(batch)
+                if batch.complete { return }
+            }
+        } onCancel: { cursor.cancel() }
+    }
+
     /// A preview reads one level and stops before allocating an unbounded URL array. Expanded children have their
     /// own request; hidden files, Applications merging and provider routing match the main browser.
     @concurrent

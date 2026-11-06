@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Analyserar vågform…",
     "Waveform unavailable": "Vågform inte tillgänglig",
     "Click waveform to seek": "Klicka på vågformen för att söka",
-    "Waveform covers first %@": "Vågformen omfattar de första %@"
+    "Waveform covers first %@": "Vågformen omfattar de första %@",
+    "Loaded": "Inlästa",
+    "Listing incomplete": "Ofullständig lista"
   }
 }

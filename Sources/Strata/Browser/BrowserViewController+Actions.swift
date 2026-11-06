@@ -384,7 +384,7 @@ extension BrowserViewController {
         guard let directory, !isShowingResults else { return }
         services.tags.invalidate(directory)
         services.tags.load(nodes.map(\.entry))
-        services.cloud.load(nodes.map(\.url), in: directory)
+        services.cloud.load(paths: nodes.map(\.entry.locationKey), in: directory)
     }
 
     /// Tags changed (here or in another window) or were read: redraw what's shown.

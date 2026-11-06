@@ -2098,6 +2098,8 @@
     "Analyzing waveform…": "Se analizează forma de undă…",
     "Waveform unavailable": "Forma de undă nu este disponibilă",
     "Click waveform to seek": "Clic pe forma de undă pentru a sări",
-    "Waveform covers first %@": "Forma de undă acoperă primele %@"
+    "Waveform covers first %@": "Forma de undă acoperă primele %@",
+    "Loaded": "Încărcate",
+    "Listing incomplete": "Listare incompletă"
   }
 }

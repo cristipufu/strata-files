@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Wellenform wird analysiert…",
     "Waveform unavailable": "Wellenform nicht verfügbar",
     "Click waveform to seek": "Zum Springen auf die Wellenform klicken",
-    "Waveform covers first %@": "Wellenform umfasst die ersten %@"
+    "Waveform covers first %@": "Wellenform umfasst die ersten %@",
+    "Loaded": "Geladen",
+    "Listing incomplete": "Auflistung unvollständig"
   }
 }

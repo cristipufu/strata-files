@@ -245,6 +245,28 @@ struct BrowserListingTests {
         #expect(tree.snapshot() == ["other/"])
     }
 
+    @Test func aBackgroundMatchWaitsForTheNativeEditorAndIsCancelledByNavigation() async throws {
+        let listing = BrowserListing()
+        let entries = (0..<BrowserFiltering.matchedAwayAbove + 1).map { entry("item-\($0).txt") } + [entry("archive.zip")]
+        listing.replace(entries, preservingNodes: false, sort: { _ in })
+        var editing = true, shown: [String] = []
+        let filtering = BrowserFiltering(listing: listing, canPublish: { !editing }) { text, _ in shown.append(text) }
+        filtering.set("zip")
+        await filtering.matching?.task.value
+        #expect(listing.filter.isEmpty && filtering.typed == "zip" && shown.isEmpty)
+        editing = false
+        filtering.resumeDeferredMatch()
+        await filtering.matching?.task.value
+        #expect(listing.rows.map(\.entry.name) == ["archive.zip"] && shown == ["zip"])
+        editing = true
+        filtering.set("item")
+        await filtering.matching?.task.value
+        filtering.clear()
+        editing = false
+        filtering.resumeDeferredMatch()
+        #expect(filtering.matching == nil && filtering.typed.isEmpty)
+    }
+
     @Test func everyViewTypesDeletesAndClearsTheFilterAlike() async throws {
         let tree = try TestTree("alpha.txt", "beta.txt", "gamma.txt")
         let environment = try IndependentEnvironment()

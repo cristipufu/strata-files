@@ -99,7 +99,9 @@ final class BrowserViewController: NSViewController {
     }
 
     var filter: String { listing.filter }
-    private(set) lazy var filtering = BrowserFiltering(listing: listing) { [weak self] in self?.showFilter($0) }
+    private(set) lazy var filtering = BrowserFiltering(listing: listing, canPublish: { [weak self] in self?.inlineRename.isEditing != true }) {
+        [weak self] in self?.showFilter($0, preservingSelection: $1)
+    }
     var volumeSpace: VolumeSpace? { loading.volumeSpace }
 
     let outlineView: FileOutlineView
@@ -133,6 +135,8 @@ final class BrowserViewController: NSViewController {
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
                         tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
     let pending = BrowserPendingActions()
+    var isApplyingListing = false
+    var appliedSelection: Set<String> = []
     /// Opens the folder row a drag rests on (only rows still on screen).
     private(set) lazy var springLoader = SpringLoader(view: outlineView, frame: { [weak self] folder in
         guard let self, let node = node(for: folder) else { return nil }
@@ -408,14 +412,19 @@ final class BrowserViewController: NSViewController {
             guard let self else { return }
             switch result {
             case .success(let delivery):
+                let generation = generation
                 settle(at: delivery.folder, asked: url, landed: delivery.landed)
-                services.tags.load(delivery.entries)
-                services.cloud.load(delivery.entries.map(\.url), in: delivery.folder)
+                guard self.generation == generation else { return }
                 if Privacy.markAccessible(delivery.folder) { services.index.refreshConfig() }
+                guard self.generation == generation else { return }
                 apply(delivery.entries, preservingState: !delivery.fromTop, fromTop: delivery.fromTop,
-                      sortedBy: delivery.sortedBy)
+                      sortedBy: delivery.sortedBy, complete: delivery.complete, progressive: delivery.progressive)
             case .failure:
-                showLoadError()
+                if loading.hasPartialListing {
+                    cancelPendingActions()
+                    emptyState.isHidden = true
+                    delegate?.browserContentDidChange(self)
+                } else { showLoadError() }
             }
         } capacityChanged: { [weak self] in
             guard let self else { return }
@@ -427,7 +436,7 @@ final class BrowserViewController: NSViewController {
     /// waiting to be selected follows it there, and the window hears where it has `landed`. A folder elsewhere is
     /// watched in its place and read once more when it is, so a change made before that isn't missed.
     private func settle(at folder: URL, asked: URL, landed: Bool) {
-        if folder != asked {
+        if folder != asked, watching.folder != folder {
             if pendingFolderPresentation == nil { restoreFolderPresentation(at: folder, showing: false) }
             pending.selection = pending.selection?.map { item in
                 PathSpelling.short(item.deletingLastPathComponent()) == PathSpelling.short(asked)
@@ -457,39 +466,67 @@ final class BrowserViewController: NSViewController {
     /// `sortedBy`: the order `entries` were sorted in as they were read, if any; they're sorted here unless it's still
     /// the order chosen.
     func apply(_ entries: [FileEntry], preservingState: Bool, fromTop: Bool = false,
-               sortedBy: BrowserOrdering.Snapshot? = nil) {
+               sortedBy: BrowserOrdering.Snapshot? = nil, complete: Bool = true, progressive: Bool = false) {
         // Reloading the list would end a rename in progress, half typed.
         if inlineRename.isEditing {
             inlineRename.hold(.init(entries: entries, preservingState: preservingState, fromTop: fromTop,
-                                    sortedBy: sortedBy, generation: generation))
+                                    sortedBy: sortedBy, generation: generation, complete: complete, progressive: progressive))
             return
         }
         inlineRename.dropHeldListing()
+        let appliedGeneration = generation
+        isApplyingListing = true
+        defer { isApplyingListing = false }
         initialMode = nil; initialSort = nil
         // A refresh may wait on a provider or native editing. Preserve the latest selection, not its starting one.
         let selection = pending.selection ?? (preservingState ? selectedURLs : [])
         let expanded = preservingState ? nodes.filter { outlineView.isItemExpanded($0) } : []
+        let viewport = progressive && preservingState ? TableViewport.capture(outlineView) { ($0 as? FileNode)?.entry.locationKey } : nil
         let presorted = sortedBy != nil && sortedBy == ordering.snapshot
-        listing.replace(entries, preservingNodes: preservingState, sort: presorted ? sortOpenFolders : sort)
-        loading.applied()
+        let metadataEntries = progressive && preservingState
+            ? entries.filter { listing.node(forKey: $0.locationKey) == nil } : entries
+        let insertions = progressive && preservingState && presorted && filter.isEmpty
+            ? FileInsertions.plan(from: nodes.map(\.entry), to: entries) : nil
+        let deferredFilter = preservingState && !filtering.typed.isEmpty
+            && entries.count > BrowserFiltering.matchedAwayAbove
+        listing.replace(entries, preservingNodes: preservingState, filterSynchronously: !deferredFilter,
+                        sort: presorted ? (progressive ? { _ in } : sortOpenFolders) : sort)
+        loading.applied(preservingChildren: progressive && preservingState, complete: complete)
         if let pendingFolderPresentation {
             self.pendingFolderPresentation = nil
             if canRememberFolderPresentation, let directory { services.folderViews.save(pendingFolderPresentation, for: directory) }
         }
         folderOptions?.refresh()
-        outlineView.reloadData()
+        if let insertions {
+            outlineView.beginUpdates()
+            outlineView.insertItems(at: insertions, inParent: nil, withAnimation: [])
+            outlineView.endUpdates()
+        } else { outlineView.reloadData() }
+        guard generation == appliedGeneration else { return }
         if fromTop { scrollToTop() }
         for node in expanded where self.node(for: node.url) === node {
             outlineView.expandItem(node)
-            loadChildren(of: node, selecting: selection.filter { $0.path.hasPrefix(node.url.path + "/") })
+            if !progressive || node.children == nil {
+                loadChildren(of: node, selecting: selection.filter { $0.path.hasPrefix(node.url.path + "/") })
+            }
         }
         // Icons, columns and disk usage get the new rows first: selecting or renaming before that looked in the
         // previous folder's items, so a revealed file or a new folder came up unselected outside the list.
         pushContent(animated: preservingState)
-        select(selection)
-        pending.selection = nil
-        beginPendingRename()
+        guard generation == appliedGeneration else { return }
+        select(selection, scroll: !progressive || pending.selection != nil)
+        guard generation == appliedGeneration else { return }
+        appliedSelection = Set(selectedURLs.map(\.fileViewKey))
+        if !deferredFilter, complete || pending.selection?.allSatisfy({ node(for: $0) != nil }) == true { pending.selection = nil }
+        if let viewport { viewport.restore(in: outlineView) { key in listing.node(forKey: key).map { outlineView.row(forItem: $0) } } }
+        if let directory, !isShowingResults, !metadataEntries.isEmpty || !preservingState || !progressive {
+            services.tags.load(metadataEntries)
+            if progressive && preservingState { services.cloud.append(paths: metadataEntries.map(\.locationKey), in: directory) }
+            else { services.cloud.load(paths: metadataEntries.map(\.locationKey), in: directory) }
+        }
+        if !deferredFilter { beginPendingRename() }
         updateEmptyState()
+        if deferredFilter { filtering.refresh() }
         delegate?.browserContentDidChange(self)
         delegate?.browserSelectionDidChange(self)
     }
@@ -498,7 +535,7 @@ final class BrowserViewController: NSViewController {
         loading.loadChildren(of: node, showHidden: preferences.showHidden, applications: applicationFolders) { [weak self, weak node] entries in
             guard let self, let node, self.node(for: node.url) === node else { return }
             services.tags.load(entries)
-            services.cloud.load(entries.map(\.url), in: node.url)
+            services.cloud.load(paths: entries.map(\.locationKey), in: node.url)
             listing.replaceChildren(of: node, with: entries, sort: sort)
             outlineView.reloadItem(node, reloadChildren: true)
             if !selecting.isEmpty, activeView == nil {
@@ -550,6 +587,7 @@ final class BrowserViewController: NSViewController {
     }
 
     func updateEmptyState() {
+        if loading.hasPartialListing { emptyState.isHidden = true; return }
         if let error = loadError as NSError? {
             let posix = (error.userInfo[NSUnderlyingErrorKey] as? NSError)?.code
             if error.code == NSFileReadNoPermissionError || posix == Int(EPERM) || posix == Int(EACCES) {
@@ -627,17 +665,33 @@ final class BrowserViewController: NSViewController {
         filterPill.update(query: "", matches: 0)
     }
 
-    private func showFilter(_ text: String) {
+    private func showFilter(_ text: String, preservingSelection: Bool = false) {
+        let appliedGeneration = generation
         // Metadata that arrived while filtered (sizes, say) orders the rows now.
         if text.isEmpty { scheduleResort() }
+        let selection = preservingSelection ? (pending.selection ?? selectedURLs) : []
+        let requestedSelection = preservingSelection && pending.selection != nil
+        let wasApplying = isApplyingListing
+        if preservingSelection { isApplyingListing = true }
+        defer { isApplyingListing = wasApplying }
+        let viewport = preservingSelection ? TableViewport.capture(outlineView) { ($0 as? FileNode)?.entry.locationKey } : nil
         outlineView.reloadData()
-        if let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
+        guard generation == appliedGeneration else { return }
+        if !preservingSelection, let firstRow = (0..<outlineView.numberOfRows).first(where: { (outlineView.item(atRow: $0) as? FileNode)?.groupTitle == nil }) {
             outlineView.selectRowIndexes([firstRow], byExtendingSelection: false)
             outlineView.scrollRowToVisible(firstRow)
         }
         filterPill.update(query: text, matches: rows.count)
         pushContent()
-        if let first = rows.first(where: { $0.groupTitle == nil }), activeView != nil { activeView?.select([first.url], scroll: true) }
+        guard generation == appliedGeneration else { return }
+        if preservingSelection {
+            select(selection, scroll: requestedSelection)
+            guard generation == appliedGeneration else { return }
+            appliedSelection = Set(selectedURLs.map(\.fileViewKey))
+            if !loading.hasPartialListing || pending.selection?.allSatisfy({ node(for: $0) != nil }) == true { pending.selection = nil }
+            beginPendingRename()
+            viewport?.restore(in: outlineView) { key in listing.node(forKey: key).map { outlineView.row(forItem: $0) } }
+        } else if let first = rows.first(where: { $0.groupTitle == nil }), activeView != nil { activeView?.select([first.url], scroll: true) }
         updateEmptyState()
         delegate?.browserContentDidChange(self)
     }
@@ -737,7 +791,7 @@ final class BrowserViewController: NSViewController {
     }
 
     var statusText: String {
-        guard isLoaded, loadError == nil else { return "" }
+        guard isLoaded, loadError == nil || loading.hasPartialListing else { return "" }
         var parts: [String]
         if isShowingResults {
             parts = results.status(shown: filter.isEmpty ? nodes.count : rows.count)
@@ -745,6 +799,10 @@ final class BrowserViewController: NSViewController {
             parts = [filter.isEmpty
                 ? String(localized: "\(nodes.count) items", comment: "plural")
                 : String(localized: "\(rows.count.formatted()) of \(nodes.count) items", comment: "plural")]
+        }
+        if loading.hasPartialListing {
+            parts.insert(String(localized: "Loaded"), at: 0)
+            parts.append(loadError == nil ? String(localized: "Loading…") : String(localized: "Listing incomplete"))
         }
         let selected = selectedEntries
         if !selected.isEmpty {

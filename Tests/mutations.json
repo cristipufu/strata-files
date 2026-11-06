@@ -1682,8 +1682,8 @@
   },
   {
     "file": "Strata/Views/ColumnBrowserViewController.swift",
-    "find": "setRoot(directory, entries: content.entries, matches: content.matches)",
-    "replace": "setRoot(directory, entries: content.entries, matches: [:])",
+    "find": "setRoot(directory, entries: content.entries, matches: content.matches, complete: content.complete)",
+    "replace": "setRoot(directory, entries: content.entries, matches: [:], complete: content.complete)",
     "rule": "Browser presentations column rows lose match highlights",
     "tests": "BrowserPresentationsTests/columnContentPassesMatchHighlightsIntoNativeText"
   },
@@ -2678,15 +2678,15 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "let landed = opensAtTop, fromTop = scrollToTop || opensAtTop",
-    "replace": "let landed = opensAtTop, fromTop = scrollToTop",
+    "find": "let landed = opensAtTop, fromTop = opensAtTop || (scrollToTop && !hasPartialListing)",
+    "replace": "let landed = opensAtTop, fromTop = scrollToTop && !hasPartialListing",
     "rule": "Browser loading a superseding refresh loses the new folders scroll policy",
     "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "            case .success(let listing):\n                error = nil",
-    "replace": "            case .success(let listing):\n                isLoaded = true\n                error = nil",
+    "find": "        error = nil\n        directory = listing.folder",
+    "replace": "        isLoaded = true\n        error = nil\n        directory = listing.folder",
     "rule": "Browser loading a completed read claims deferred entries are already on screen",
     "tests": "BrowserLoadingTests/refreshedFirstLoadsStillStartAtTopAndApplyingBelongsToThePresentation"
   },
@@ -2720,15 +2720,15 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "        cancelAuxiliaryReads()\n        reads.load",
-    "replace": "        reads.load",
+    "find": "        cancelAuxiliaryReads()\n        let progressive = opensAtTop",
+    "replace": "        let progressive = opensAtTop",
     "rule": "Browser loading root refresh leaves earlier expanded reads active",
     "tests": "BrowserLoadingTests/childReadsCoalesceByNodeAndRootRefreshCancelsTheirOwnership"
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "    func applied() {\n        cancelChildren()",
-    "replace": "    func applied() {",
+    "find": "        if !preservingChildren { cancelChildren() }",
+    "replace": "",
     "rule": "Browser loading applying a root listing leaves old child reads active",
     "tests": "BrowserLoadingTests/applyingResultsOrReleasingTheOwnerCancelsExpandedReads"
   },
@@ -3239,8 +3239,8 @@
   },
   {
     "file": "Strata/Browser/DirectoryReadSession.swift",
-    "find": "await reader.invalidate(folder)\n                    try Task.checkCancellation()",
-    "replace": "await reader.invalidate(folder)",
+    "find": "await reader.invalidate(folder)\n                }\n                try Task.checkCancellation()",
+    "replace": "await reader.invalidate(folder)\n                }",
     "rule": "Provider directory ownership cancelled invalidation starts another listing",
     "tests": "InspectorFolderOpeningTests/navigatingDuringInvalidationCannotReloadTheNewFolder|InspectorFolderOpeningTests/repeatedReloadsDiscardSupersededInvalidationsInEitherCompletionOrder|InspectorFolderOpeningTests/aPendingInvalidationCannotKeepItsReadSessionAlive"
   },
@@ -4942,8 +4942,8 @@
   },
   {
     "file": "Strata/Browser/BrowserFiltering.swift",
-    "find": "    func cancel() {\n        matching?.task.cancel()\n        matching = nil\n    }",
-    "replace": "    func cancel() {\n        matching = nil\n    }",
+    "find": "    func cancel() {\n        matching?.task.cancel()\n        matching = nil\n        deferredText = nil\n    }",
+    "replace": "    func cancel() {\n        matching = nil\n        deferredText = nil\n    }",
     "rule": "Type-to-filter: a big folder's match still being worked out applies after the pane moved on",
     "tests": "BrowserListingTests/aBigFolderIsFilteredAsTypedAwayFromTheMainThread"
   },
@@ -7845,7 +7845,7 @@
   },
   {
     "file": "Strata/Browser/BrowserLoading.swift",
-    "find": "                self.directory = listing.folder\n",
+    "find": "        directory = listing.folder\n",
     "replace": "",
     "rule": "A browser keeps reading a link after it has led to its folder",
     "tests": "LinkNavigationTests/aLinkToAFolderShowsThatFolderAndBackAndForwardStepBetweenRealPlaces"
@@ -8973,5 +8973,68 @@
     "replace": "        noteNavigationContextChanged()",
     "rule": "Folder view choices a cancelled read styles a different folder",
     "tests": "FolderViewSettingsTests/choicesMadeDuringAReadBelongToItsResolvedFolderAndAreCancelledOnNavigation"
+  },
+  {
+    "file": "Strata/Browser/DirectoryReadSession.swift",
+    "find": "guard self.generation == generation, task != nil, !Task.isCancelled else { return }",
+    "replace": "guard task != nil else { return }",
+    "rule": "Progressive listing a late batch takes over a newer folder",
+    "tests": "ProgressiveDirectoryTests/navigatingCancelsOldBatchesAndMalformedBatchesNeverPartiallyMutate"
+  },
+  {
+    "file": "Strata/Views/FileInsertions.swift",
+    "find": "guard previous[next] == entry else { return nil }",
+    "replace": "guard true else { return nil }",
+    "rule": "Progressive rows retain stale metadata cells",
+    "tests": "ProgressiveDirectoryTests/insertionPlansRefuseChangedRowsReorderingAndDuplicates"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "loading.applied(preservingChildren: progressive && preservingState, complete: complete)",
+    "replace": "loading.applied(complete: complete)",
+    "rule": "Progressive root batches cancel an expanded folders owned read",
+    "tests": "ProgressiveDirectoryTests/anExpandedFoldersPendingReadSurvivesLaterRootBatches"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "filterSynchronously: !deferredFilter,",
+    "replace": "filterSynchronously: true,",
+    "rule": "Progressive filtering runs large replacement matching on the main actor",
+    "tests": "ProgressiveDirectoryTests/largeFilteredBatchesAreMatchedOffThreadAndKeepTheLatestSelection"
+  },
+  {
+    "file": "Strata/Browser/BrowserFiltering.swift",
+    "find": "        deferredText = nil\n",
+    "replace": "",
+    "rule": "Progressive filtering revives an edited folders query after navigation",
+    "tests": "BrowserListingTests/aBackgroundMatchWaitsForTheNativeEditorAndIsCancelledByNavigation"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "? entries.filter { listing.node(forKey: $0.locationKey) == nil } : entries",
+    "replace": "? entries : entries",
+    "rule": "Progressive metadata arriving batches reread all earlier files",
+    "tests": "ProgressiveDirectoryTests/arrivingBatchesReadOnlyNewMetadataAndAnExplicitRefreshRereadsTheFolder"
+  },
+  {
+    "file": "Strata/Views/ColumnPane.swift",
+    "find": "(entries.filter { rowByKey[$0.url.fileViewKey] == nil }, folder, wasLoaded)",
+    "replace": "(entries, folder, wasLoaded)",
+    "rule": "Progressive metadata deeper columns reread earlier batches",
+    "tests": "ProgressiveDirectoryTests/deeperColumnsPublishBatchesWithoutLosingTheirOwnSelection"
+  },
+  {
+    "file": "Strata/Model/CloudStatus.swift",
+    "find": "for path in previous where !wanted.contains(path)",
+    "replace": "for path in previous where true",
+    "rule": "Progressive cloud arrivals discard earlier cloud badges",
+    "tests": "ProgressiveCloudTests/additionsKeepEarlierStatusesInEitherCompletionOrderAndReadOnlyNewItems"
+  },
+  {
+    "file": "Strata/Views/FileInsertions.swift",
+    "find": "static let incrementalRowLimit = 8192",
+    "replace": "static let incrementalRowLimit = Int.max",
+    "rule": "Progressive rows plan unbounded native insertion updates",
+    "tests": "ProgressiveDirectoryTests/aLargeNativeReloadKeepsTheChosenFileAndVisibleAnchorWhenEarlierRowsArrive"
   }
 ]

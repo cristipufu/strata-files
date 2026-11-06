@@ -2098,6 +2098,8 @@
     "Analyzing waveform…": "Analyzování průběhu zvuku…",
     "Waveform unavailable": "Průběh zvuku není dostupný",
     "Click waveform to seek": "Kliknutím na průběh přejdete na místo",
-    "Waveform covers first %@": "Průběh zahrnuje prvních %@"
+    "Waveform covers first %@": "Průběh zahrnuje prvních %@",
+    "Loaded": "Načteno",
+    "Listing incomplete": "Výpis je neúplný"
   }
 }

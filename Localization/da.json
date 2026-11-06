@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Analyserer bølgeform…",
     "Waveform unavailable": "Bølgeform utilgængelig",
     "Click waveform to seek": "Klik på bølgeformen for at spole",
-    "Waveform covers first %@": "Bølgeformen dækker de første %@"
+    "Waveform covers first %@": "Bølgeformen dækker de første %@",
+    "Loaded": "Indlæst",
+    "Listing incomplete": "Listen er ufuldstændig"
   }
 }

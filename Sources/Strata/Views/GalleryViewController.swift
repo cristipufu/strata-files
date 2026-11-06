@@ -238,28 +238,35 @@ final class GalleryViewController: NSViewController, FileItemCollection, FileCol
         if directory?.fileViewKey != content.directory?.fileViewKey { cancelRename() }
         directory = content.directory
         details = content.details
-        setEntries(content.entries)
+        setEntries(content.entries, incremental: !content.complete || hasPartialListing)
+        hasPartialListing = !content.complete
     }
 
     /// Shows `entries` in order, keeping the selection for items still there (or the first item).
-    func setEntries(_ entries: [FileEntry]) {
+    private var hasPartialListing = false
+    func setEntries(_ entries: [FileEntry], incremental: Bool = false) {
         loadViewIfNeeded()
         if renameField != nil {
             deferredEntries = entries
             return
         }
         let selection = Set(selectedURLs)
+        let viewport = CollectionViewport.capture(strip, entries: self.entries)
         let leadURL = lead.flatMap { $0 < self.entries.count ? self.entries[$0].url : nil }
+        let insertions = incremental ? FileInsertions.plan(from: self.entries, to: entries) : nil
         self.entries = entries
         indexByKey.removeAll(keepingCapacity: true)
         for (i, entry) in entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
-        strip.reloadData()
+        if let insertions {
+            strip.insertItems(at: Set(insertions.map { IndexPath(item: $0, section: 0) }))
+        } else { strip.reloadData() }
         var kept = selection.compactMap { indexByKey[$0.fileViewKey] }
         if kept.isEmpty, !entries.isEmpty { kept = [0] }
         strip.selectionIndexPaths = Set(kept.map { IndexPath(item: $0, section: 0) })
         let newLead = leadURL.flatMap { indexByKey[$0.fileViewKey] } ?? kept.min()
         // A refresh (a download growing, say) leaves the strip where you scrolled it.
-        if newLead != lead || leadURL.flatMap({ indexByKey[$0.fileViewKey] }) == nil, let newLead { scrollToItem(newLead) }
+        if leadURL.flatMap({ indexByKey[$0.fileViewKey] }) == nil, let newLead { scrollToItem(newLead) }
+        else { viewport?.restore(in: strip) { indexByKey[$0] } }
         lead = newLead
         anchor = lead
         reportSelection()

@@ -122,12 +122,14 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         if directory?.fileViewKey != content.directory?.fileViewKey { cancelRename() }
         directory = content.directory
         details = content.details
-        setEntries(content.entries, matches: content.matches)
+        setEntries(content.entries, matches: content.matches, incremental: !content.complete || hasPartialListing)
+        hasPartialListing = !content.complete
     }
 
     /// Shows `entries` in the given order. `matches` holds fuzzy-match character offsets per URL for highlighting.
     /// Selection is kept for items that are still present.
-    func setEntries(_ entries: [FileEntry], matches: [URL: [Int]] = [:]) {
+    private var hasPartialListing = false
+    func setEntries(_ entries: [FileEntry], matches: [URL: [Int]] = [:], incremental: Bool = false) {
         loadViewIfNeeded()
         // A refresh while renaming would reload under the field; apply it once the rename ends.
         if renameField != nil {
@@ -135,12 +137,16 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
             return
         }
         let selection = Set(selectedURLs)
+        let viewport = opensAtTop ? nil : CollectionViewport.capture(collectionView, entries: self.entries)
         let leadURL = lead.flatMap { $0 < self.entries.count ? self.entries[$0].url : nil }
+        let insertions = incremental && !opensAtTop ? FileInsertions.plan(from: self.entries, to: entries) : nil
         self.entries = entries
         self.matches = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
         indexByKey.removeAll(keepingCapacity: true)
         for (i, entry) in entries.enumerated() { indexByKey[entry.url.fileViewKey] = i }
-        collectionView.reloadData()
+        if let insertions {
+            collectionView.insertItems(at: Set(insertions.map { IndexPath(item: $0, section: 0) }))
+        } else { collectionView.reloadData() }
         if opensAtTop {
             opensAtTop = false
             let clip = scrollView.contentView
@@ -151,6 +157,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         collectionView.selectionIndexPaths = Set(kept.map { IndexPath(item: $0, section: 0) })
         lead = leadURL.flatMap { indexByKey[$0.fileViewKey] } ?? kept.min()
         anchor = lead
+        viewport?.restore(in: collectionView) { indexByKey[$0] }
         reportSelection()
     }
 

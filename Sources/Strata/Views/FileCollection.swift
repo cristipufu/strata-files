@@ -87,6 +87,7 @@ extension FileCollectionViewDelegate {
 
 /// Sorted, filtered files for a presentation. Results have no destination folder; details identify their origins.
 struct FileCollectionContent {
+    var complete = true
     let directory: URL?
     let entries: [FileEntry]
     let matches: [URL: [Int]]

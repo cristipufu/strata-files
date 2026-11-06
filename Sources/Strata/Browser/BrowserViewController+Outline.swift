@@ -131,6 +131,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        if !isApplyingListing, loading.hasPartialListing || filtering.matching != nil { pending.cancel() }
         delegate?.browserSelectionDidChange(self)
         prefetchSelection()
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {
@@ -159,6 +160,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         outlineView.reloadData()
         pushContent()
         select(selection, scroll: false)
+        if loading.hasPartialListing { refresh() }
     }
 }
 
@@ -166,8 +168,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
 extension BrowserViewController: NSTextFieldDelegate {
     func applyHeldListing() -> Bool {
+        defer { filtering.resumeDeferredMatch() }
         guard let held = inlineRename.takeHeldListing(generation: generation) else { return false }
-        apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy)
+        apply(held.entries, preservingState: held.preservingState, fromTop: held.fromTop, sortedBy: held.sortedBy,
+              complete: held.complete, progressive: held.progressive)
         return true
     }
 

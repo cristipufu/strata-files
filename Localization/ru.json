@@ -2234,6 +2234,8 @@
     "Analyzing waveform…": "Анализ звуковой волны…",
     "Waveform unavailable": "Звуковая волна недоступна",
     "Click waveform to seek": "Нажмите на волну для перехода",
-    "Waveform covers first %@": "Волна охватывает первые %@"
+    "Waveform covers first %@": "Волна охватывает первые %@",
+    "Loaded": "Загружено",
+    "Listing incomplete": "Список неполный"
   }
 }

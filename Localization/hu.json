@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Hullámforma elemzése…",
     "Waveform unavailable": "A hullámforma nem érhető el",
     "Click waveform to seek": "Kattintson a hullámformára az ugráshoz",
-    "Waveform covers first %@": "A hullámforma az első %@ időtartamot fedi le"
+    "Waveform covers first %@": "A hullámforma az első %@ időtartamot fedi le",
+    "Loaded": "Betöltve",
+    "Listing incomplete": "Hiányos lista"
   }
 }

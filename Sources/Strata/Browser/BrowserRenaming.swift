@@ -10,6 +10,8 @@ import AppKit
         let fromTop: Bool
         let sortedBy: BrowserOrdering.Snapshot?
         let generation: Int
+        var complete = true
+        var progressive = false
     }
 
     private(set) var node: FileNode?

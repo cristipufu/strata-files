@@ -13,6 +13,8 @@ import Testing
         let viewportPixelWidth: Int
         let viewportPixelHeight: Int
         let firstNativeFrameMilliseconds: Double
+        let firstLoadedEntryCount: Int
+        let completeFolderMilliseconds: Double
         let scrollFrameMilliseconds: [Double]
         let mainActorDelayMilliseconds: [Double]
         let idleCPUPercentOfOneCore: Double
@@ -128,11 +130,22 @@ import Testing
         defer { heartbeat.stop() }
         await Task.yield()
         let memoryBefore = try Self.footprint(), start = ContinuousClock.now
+        var firstFrame: Double?, firstCount = 0
+        let observer = BrowserContentObserver { browser in
+            guard firstFrame == nil, !browser.visibleRows.isEmpty else { return }
+            do {
+                try draw(browser, bitmap: bitmap)
+                firstFrame = Self.milliseconds(since: start)
+                firstCount = browser.visibleRows.count
+            } catch { Issue.record(error) }
+        }
+        browser.delegate = observer
         browser.load(folder)
         await browser.directoryReads.task?.value
         try #require(browser.visibleRows.count == count)
         try draw(browser, bitmap: bitmap)
-        let firstFrame = Self.milliseconds(since: start)
+        let completeFrame = Self.milliseconds(since: start)
+        withExtendedLifetime(observer) {}
         let scroll = try #require(mode == .list ? browser.outlineScrollView : browser.gridController?.collectionView.enclosingScrollView)
         let scrolling = try await measureScrolling(scroll, browser: browser, bitmap: bitmap)
         heartbeat.stop()
@@ -140,7 +153,8 @@ import Testing
         var usage = rusage()
         try #require(getrusage(RUSAGE_SELF, &usage) == 0)
         return Sample(mode: mode == .list ? "list" : "icons", iteration: iteration,
-            viewportPixelWidth: bitmap.pixelsWide, viewportPixelHeight: bitmap.pixelsHigh, firstNativeFrameMilliseconds: firstFrame,
+            viewportPixelWidth: bitmap.pixelsWide, viewportPixelHeight: bitmap.pixelsHigh, firstNativeFrameMilliseconds: firstFrame ?? completeFrame,
+            firstLoadedEntryCount: firstCount, completeFolderMilliseconds: completeFrame,
             scrollFrameMilliseconds: scrolling, mainActorDelayMilliseconds: heartbeat.delays, idleCPUPercentOfOneCore: cpu,
             startingFootprintBytes: memoryBefore, endingFootprintBytes: try Self.footprint(), processPeakResidentBytes: Int64(usage.ru_maxrss))
     }

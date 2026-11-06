@@ -21,10 +21,24 @@ final class BrowserOrdering {
     }
 
     @concurrent static func sorted(_ entries: [FileEntry], by snapshot: Snapshot) async -> [FileEntry] {
-        entries.sorted {
-            order($0, $1, choice: snapshot.choice, foldersFirst: snapshot.foldersFirst, size: { $0.size ?? 0 },
+        merged([], adding: entries, by: snapshot)
+    }
+
+    nonisolated static func merged(_ existing: [FileEntry], adding incoming: [FileEntry], by snapshot: Snapshot) -> [FileEntry] {
+        func precedes(_ a: FileEntry, _ b: FileEntry) -> Bool {
+            order(a, b, choice: snapshot.choice, foldersFirst: snapshot.foldersFirst, size: { $0.size ?? 0 },
                   tags: { _ in [] }, media: { _ in nil })
         }
+        let batch = incoming.sorted(by: precedes)
+        var result: [FileEntry] = []
+        result.reserveCapacity(existing.count + batch.count)
+        var old = 0, next = 0
+        while old < existing.count, next < batch.count {
+            if precedes(batch[next], existing[old]) { result.append(batch[next]); next += 1 }
+            else { result.append(existing[old]); old += 1 }
+        }
+        result.append(contentsOf: existing[old...]); result.append(contentsOf: batch[next...])
+        return result
     }
 
     struct Metadata {

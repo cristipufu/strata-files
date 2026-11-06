@@ -120,12 +120,12 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
         guard let directory = content.directory else { return }
         sortComparator = metadata.ordered
         sortedBy = metadata.sortedBy
-        setRoot(directory, entries: content.entries, matches: content.matches)
+        setRoot(directory, entries: content.entries, matches: content.matches, complete: content.complete)
     }
 
     /// Shows `folder` in the first column with the browser's (filtered, sorted) entries. Calling again with the same
     /// folder updates the first column and keeps the columns opened from it as long as their folder is still selected.
-    func setRoot(_ folder: URL, entries: [FileEntry], matches: [URL: [Int]] = [:]) {
+    func setRoot(_ folder: URL, entries: [FileEntry], matches: [URL: [Int]] = [:], complete: Bool = true) {
         loadViewIfNeeded()
         let keyed = Dictionary(matches.map { ($0.key.fileViewKey, $0.value) }, uniquingKeysWith: { a, _ in a })
         if root?.fileViewKey != folder.fileViewKey || panes.isEmpty {
@@ -139,14 +139,14 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             pane.isRoot = true
             panes = [pane]
             activeIndex = 0
-            pane.setEntries(entries, matches: keyed)
+            pane.setEntries(entries, matches: keyed, partial: !complete)
             layoutColumns()
             scrollView.contentView.scroll(to: .zero)
             reportLocation()
             if hadFocus || view.window?.firstResponder === view.window { view.window?.makeFirstResponder(pane.tableView) }
             return
         }
-        panes[0].setEntries(entries, matches: keyed)
+        panes[0].setEntries(entries, matches: keyed, partial: !complete)
         if let preview, let selected = activePane?.selectedEntries, selected.count == 1 {
             preview.show(selected[0])
         }
@@ -196,7 +196,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     private func continueReveal() {
         guard let next = pendingReveal.first, let pane = panes.last, pane.isLoaded else { return }
         guard pane.row(for: next) != nil else {
-            pendingReveal = []
+            if !pane.hasPartialListing { pendingReveal = [] }
             return
         }
         pendingReveal.removeFirst()
@@ -325,11 +325,13 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
                     view.window?.makeFirstResponder(pane.tableView)
                 }
             }
-            continueReveal()
         }
+        continueReveal()
         if let pending = selectWhenLoaded, pending.pane === pane {
-            selectWhenLoaded = nil
-            pane.select(pending.urls, scroll: pending.scroll)
+            if !pane.hasPartialListing || pending.urls.allSatisfy({ pane.row(for: $0) != nil }) {
+                selectWhenLoaded = nil
+                pane.select(pending.urls, scroll: pending.scroll)
+            }
         }
         if renameWhenLoaded === pane, let url = pendingRename, pane.row(for: url) != nil {
             cancelPendingRename()

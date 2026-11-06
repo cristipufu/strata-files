@@ -2232,6 +2232,8 @@
     "Analyzing waveform…": "Analizowanie przebiegu fali…",
     "Waveform unavailable": "Przebieg fali niedostępny",
     "Click waveform to seek": "Kliknij przebieg fali, aby przejść",
-    "Waveform covers first %@": "Przebieg fali obejmuje pierwsze %@"
+    "Waveform covers first %@": "Przebieg fali obejmuje pierwsze %@",
+    "Loaded": "Wczytano",
+    "Listing incomplete": "Lista jest niepełna"
   }
 }

@@ -1830,6 +1830,8 @@
     "Analyzing waveform…": "波形を解析中…",
     "Waveform unavailable": "波形を表示できません",
     "Click waveform to seek": "波形をクリックして移動",
-    "Waveform covers first %@": "波形の範囲：最初の%@"
+    "Waveform covers first %@": "波形の範囲：最初の%@",
+    "Loaded": "読み込み済み",
+    "Listing incomplete": "一覧は不完全です"
   }
 }

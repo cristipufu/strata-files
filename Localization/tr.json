@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Dalga biçimi analiz ediliyor…",
     "Waveform unavailable": "Dalga biçimi kullanılamıyor",
     "Click waveform to seek": "Atlamak için dalga biçimine tıklayın",
-    "Waveform covers first %@": "Dalga biçimi ilk %@ süresini kapsar"
+    "Waveform covers first %@": "Dalga biçimi ilk %@ süresini kapsar",
+    "Loaded": "Yüklendi",
+    "Listing incomplete": "Liste tamamlanmadı"
   }
 }

@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Analyse de la forme d’onde…",
     "Waveform unavailable": "Forme d’onde indisponible",
     "Click waveform to seek": "Cliquez sur la forme d’onde pour accéder",
-    "Waveform covers first %@": "La forme d’onde couvre les premiers %@"
+    "Waveform covers first %@": "La forme d’onde couvre les premiers %@",
+    "Loaded": "Chargés",
+    "Listing incomplete": "Liste incomplète"
   }
 }

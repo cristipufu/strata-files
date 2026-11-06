@@ -8,6 +8,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var width: CGFloat = 230
     private(set) var entries: [FileEntry] = []
     private(set) var isLoaded = false
+    private(set) var hasPartialListing = false
     private var matches: [String: [Int]] = [:]
     private var rowByKey: [String: Int] = [:]
     weak var controller: ColumnBrowserViewController?
@@ -33,6 +34,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let spinner = NSProgressIndicator()
     /// Shown instead of rows when the folder can't be read.
     private let message = NSTextField(wrappingLabelWithString: "")
+    private let listingStatus = NSTextField(labelWithString: "")
     private var watchers: [DirectoryWatcher] = []
     private var watchedFolder: URL?
     private var watchersOpening: Task<Void, Never>?
@@ -41,16 +43,20 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var suppressSelection = false
     private var order: (@MainActor (FileEntry, FileEntry) -> Bool)?
     private var sortedBy: BrowserOrdering.Snapshot?
+    private var listingFailed = false
     private struct DeferredEntries {
         let entries: [FileEntry]
         let matches: [String: [Int]]
+        var partial = false
+        var metadata = MetadataRefresh.none
     }
+    enum MetadataRefresh { case none, all(URL), added(URL) }
     private var deferred: DeferredEntries?
 
     func applyDeferred() {
         guard let deferred else { refreshVisibleRows(); return }
         self.deferred = nil
-        setEntries(deferred.entries, matches: deferred.matches)
+        setEntries(deferred.entries, matches: deferred.matches, partial: deferred.partial, metadata: deferred.metadata)
     }
     private var showHidden = false
 
@@ -121,6 +127,11 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         message.alignment = .center
         message.isHidden = true
         addSubview(message)
+        listingStatus.font = .systemFont(ofSize: 11)
+        listingStatus.textColor = .secondaryLabelColor
+        listingStatus.lineBreakMode = .byTruncatingTail
+        listingStatus.isHidden = true
+        addSubview(listingStatus)
     }
 
     /// The handle on the column's edge: dragged, it resizes this column (or all of them); double-clicked, it fits it.
@@ -144,7 +155,9 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     override func layout() {
         super.layout()
-        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - 1, height: bounds.height)
+        let statusHeight: CGFloat = listingStatus.isHidden ? 0 : 20
+        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - 1, height: max(0, bounds.height - statusHeight))
+        listingStatus.frame = NSRect(x: 8, y: bounds.height - statusHeight, width: max(0, bounds.width - 16), height: statusHeight)
         divider.frame = NSRect(x: bounds.width - 5, y: 0, width: 5, height: bounds.height)
         spinner.sizeToFit()
         spinner.frame.origin = NSPoint(x: (bounds.width - spinner.frame.width) / 2, y: 40)
@@ -200,6 +213,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func reload(after watched: Task<Void, Never>? = nil) {
+        listingFailed = false
         let gen = generation + 1
         let folder = folder
         let showHidden = showHidden
@@ -213,16 +227,21 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             }
         }
         let sortedBy = sortedBy
+        let progressive = !isLoaded && sortedBy != nil
+        statuses.tags.invalidate(folder)
         directoryReads.load(folder, showHidden: showHidden, applications: applications,
-                            sortedBy: sortedBy, after: watched) { [weak self] result, _ in
+                            sortedBy: sortedBy, after: watched, progressive: progressive,
+                            progress: { [weak self] listing, _ in
+                                guard let self else { return }
+                                spinner.stopAnimation(nil)
+                                message.isHidden = true
+                                setEntries(listing.entries, matches: [:], partial: true, metadata: .added(listing.folder))
+                            }) { [weak self] result, _ in
             guard let self else { return }
             self.spinner.stopAnimation(nil)
             switch result {
             case .success(let listing):
                 let entries = listing.entries
-                statuses.tags.invalidate(listing.folder)
-                statuses.tags.load(entries)
-                statuses.cloud.load(entries.map(\.url), in: listing.folder)
                 // Where a link or alias led is watched in its place, and read once more when it is.
                 if listing.folder != self.watchedFolder {
                     let watched = self.watch(listing.folder), listed = listing.folder
@@ -234,9 +253,15 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 }
                 self.message.isHidden = true
                 let presorted = sortedBy != nil && sortedBy == self.controller?.sortedBy
-                self.setEntries(presorted ? entries : self.order.map { entries.sorted(by: $0) } ?? entries, matches: [:])
+                self.setEntries(presorted ? entries : self.order.map { entries.sorted(by: $0) } ?? entries,
+                                matches: [:], metadata: progressive ? .added(listing.folder) : .all(listing.folder))
             case .failure(let error):
                 self.controller?.paneFailed(self)
+                if hasPartialListing {
+                    listingFailed = true
+                    listingStatus.stringValue = String(localized: "Listing incomplete")
+                    return
+                }
                 // An unreadable folder says so instead of looking empty.
                 let code = (error as NSError).code
                 let denied = code == NSFileReadNoPermissionError
@@ -250,24 +275,46 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     /// Replaces the rows, keeping the selection by URL. If selected items disappeared, the controller hears about it.
-    func setEntries(_ entries: [FileEntry], matches: [String: [Int]]) {
+    func setEntries(_ entries: [FileEntry], matches: [String: [Int]], partial: Bool = false, metadata: MetadataRefresh = .none) {
         // A refresh while renaming in this column would reload under the field; apply it afterwards.
         if tableView.subviews.contains(where: { $0 is InlineRenameField }) {
-            deferred = DeferredEntries(entries: entries, matches: matches)
+            deferred = DeferredEntries(entries: entries, matches: matches, partial: partial, metadata: metadata)
             return
         }
         let wasLoaded = isLoaded
+        let metadataRead: (entries: [FileEntry], folder: URL, append: Bool)? = switch metadata {
+        case .none: nil
+        case .all(let folder): (entries, folder, false)
+        case .added(let folder): (entries.filter { rowByKey[$0.url.fileViewKey] == nil }, folder, wasLoaded)
+        }
         let before = selectedKeys
+        let insertions = partial || hasPartialListing
+            ? FileInsertions.plan(from: self.entries, to: entries) : nil
+        let viewport = TableViewport.capture(tableView) { item in
+            guard let row = item as? Int, self.entries.indices.contains(row) else { return nil }
+            return self.entries[row].locationKey
+        }
         self.entries = entries
+        hasPartialListing = partial
+        listingStatus.isHidden = !partial
+        listingStatus.stringValue = partial ? String(localized: "Loaded") + " · " + String(localized: "\(entries.count) items", comment: "plural") + " · " + (listingFailed ? String(localized: "Listing incomplete") : String(localized: "Loading…")) : ""
+        needsLayout = true
         self.matches = matches
         rowByKey.removeAll(keepingCapacity: true)
         for (i, entry) in entries.enumerated() { rowByKey[entry.url.fileViewKey] = i }
         isLoaded = true
         suppressSelection = true
-        tableView.reloadData()
+        if let insertions { tableView.insertRows(at: insertions, withAnimation: []) }
+        else { tableView.reloadData() }
         let rows = IndexSet(before.compactMap { rowByKey[$0] })
         tableView.selectRowIndexes(rows, byExtendingSelection: false)
+        viewport?.restore(in: tableView) { rowByKey[$0] }
         suppressSelection = false
+        if let metadataRead, !metadataRead.entries.isEmpty || !metadataRead.append {
+            statuses.tags.load(metadataRead.entries)
+            if metadataRead.append { statuses.cloud.append(paths: metadataRead.entries.map(\.locationKey), in: metadataRead.folder) }
+            else { statuses.cloud.load(paths: metadataRead.entries.map(\.locationKey), in: metadataRead.folder) }
+        }
         if rows.count != before.count { controller?.selectionChanged(in: self, afterReload: true) }
         controller?.paneLoaded(self, firstLoad: !wasLoaded)
     }

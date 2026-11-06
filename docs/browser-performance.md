@@ -22,9 +22,10 @@ views. Every sample creates independent preferences, encrypted storage, credenti
 pasteboard. Source files live only in a temporary fixture. The benchmark is disabled during ordinary correctness
 test runs; the wrapper explicitly enables it.
 
-- **First native frame:** navigation starts the timer. The real folder read, sorting, view installation, native layout
-  and bitmap drawing of the viewport must finish before it stops. The fixture requires the correct entry count and
-  materialized native rows/items. Read completion alone is insufficient.
+- **First native frame:** navigation starts the timer. The first nonempty batch must finish sorting, view installation,
+  native layout and bitmap drawing before it stops. The report records how many entries were loaded at that point.
+- **Complete folder:** the whole read, final native layout and bitmap drawing must finish. The fixture verifies the
+  final entry count; an earlier partial frame never substitutes for this measurement.
 - **Scroll frames:** 60 deterministic viewport jumps down and back through the folder, each followed by native layout
   and drawing, with 16 milliseconds between samples. The report contains every duration, and the summary shows p95.
 - **Main actor delay:** a 16 millisecond heartbeat records how late the main actor answers during loading and scrolling.
@@ -42,8 +43,12 @@ promise about every workload. JSON includes revision, build configuration, macOS
 and thermal state, plus each native bitmap's pixel dimensions. Keep those conditions, fixture sizes and viewport fixed when comparing revisions; use a quiet
 machine and compare several independent invocations. Debug and sanitizer results are not release performance targets.
 
-Progressive directory loading needs a separate decision based on these measurements and representative manual or
-Instruments traces. A faster partial listing must preserve ordering, selection, refresh ownership and cancellation.
+New local folders stream batches for sorts that can be calculated from their directory metadata. Refreshes, provider
+listings and sorts that require cached folder sizes, tags or media details remain atomic. Compare both first-frame
+and completion times: more frequent partial frames must not hide slower completion, UI stalls or increased memory.
+Partial batches request tags and cloud states only for newly displayed items. Cloud reads merge those additions,
+reject replaced requests and run at most two readers. Native insertion planning is limited to 8,192 rows; larger
+snapshots use a reload with selection and viewport restoration rather than repeatedly planning the whole insertion set.
 
 ## Initial measurements, 5 November 2026
 

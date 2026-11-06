@@ -1964,6 +1964,8 @@
     "Analyzing waveform…": "Golfvorm analyseren…",
     "Waveform unavailable": "Golfvorm niet beschikbaar",
     "Click waveform to seek": "Klik op de golfvorm om te zoeken",
-    "Waveform covers first %@": "Golfvorm omvat de eerste %@"
+    "Waveform covers first %@": "Golfvorm omvat de eerste %@",
+    "Loaded": "Geladen",
+    "Listing incomplete": "Onvolledige lijst"
   }
 }

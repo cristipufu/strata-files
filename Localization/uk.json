@@ -2232,6 +2232,8 @@
     "Analyzing waveform…": "Аналіз звукової хвилі…",
     "Waveform unavailable": "Звукова хвиля недоступна",
     "Click waveform to seek": "Натисніть на хвилю для переходу",
-    "Waveform covers first %@": "Хвиля охоплює перші %@"
+    "Waveform covers first %@": "Хвиля охоплює перші %@",
+    "Loaded": "Завантажено",
+    "Listing incomplete": "Список неповний"
   }
 }

@@ -101,7 +101,7 @@ extension BrowserViewController {
             }
             details = FileCollectionDetails(groups: groups, copies: services.copies)
         }
-        let content = FileCollectionContent(directory: directory, entries: shown.map(\.entry), matches: matches, details: details)
+        let content = FileCollectionContent(complete: !loading.hasPartialListing, directory: directory, entries: shown.map(\.entry), matches: matches, details: details)
         let diskSizeReader: (@MainActor (FileEntry) -> DiskSizeMeasurement)?
         if directory == nil || directory.map(services.copies.contains) == true || directory.flatMap(ArchiveCache.archive(containing:)) != nil {
             diskSizeReader = nil
@@ -154,6 +154,9 @@ extension BrowserViewController: FileCollectionViewDelegate {
     }
 
     func fileView(_ view: NSViewController, selectionDidChange urls: [URL]) {
+        guard view === activeView else { return }
+        if !isApplyingListing, loading.hasPartialListing || filtering.matching != nil,
+           Set(urls.map(\.fileViewKey)) != appliedSelection { pending.cancel() }
         delegate?.browserSelectionDidChange(self)
         prefetchSelection()
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible {

@@ -40,6 +40,7 @@ final class BrowserListing {
     static func key(_ url: URL) -> String { PathSpelling.short(url) }
 
     func node(for url: URL) -> FileNode? { nodesByPath[Self.key(url)] }
+    func node(forKey key: String) -> FileNode? { nodesByPath[key] }
 
     func clear() {
         generation += 1
@@ -48,7 +49,8 @@ final class BrowserListing {
         nodesByPath = [:]
     }
 
-    func replace(_ entries: [FileEntry], preservingNodes: Bool, sort: (inout [FileNode]) -> Void) {
+    func replace(_ entries: [FileEntry], preservingNodes: Bool, filterSynchronously: Bool = true, sort: (inout [FileNode]) -> Void) {
+        let displayed = rows
         let previous = preservingNodes ? nodesByPath : [:]
         var replacement = entries.map { entry in
             if preservingNodes, let node = previous[entry.locationKey], node.parent == nil {
@@ -61,7 +63,8 @@ final class BrowserListing {
         generation += 1
         nodes = replacement
         rebuildIndex()
-        applyFilter()
+        if filterSynchronously { applyFilter() }
+        else { rows = displayed.compactMap { nodesByPath[$0.entry.locationKey] } }
     }
 
     func replaceChildren(of node: FileNode, with entries: [FileEntry], sort: (inout [FileNode]) -> Void) {

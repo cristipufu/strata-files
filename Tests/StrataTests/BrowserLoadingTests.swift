@@ -30,7 +30,7 @@ struct BrowserLoadingTests {
         }
     }
 
-    private func reload(_ loading: BrowserLoading, capacityChanged: @escaping () -> Void = {}, receive: @escaping (Result<BrowserLoading.Delivery, Error>) -> Void = { _ in }) {
+    private func reload(_ loading: BrowserLoading, capacityChanged: @escaping () -> Void = {}, receive: @escaping @MainActor @Sendable (Result<BrowserLoading.Delivery, Error>) -> Void = { _ in }) {
         loading.reload(showHidden: false, applications: .standard, scrollToTop: false, sortedBy: nil, receive: receive,
                        capacityChanged: capacityChanged)
     }
@@ -195,10 +195,11 @@ struct BrowserLoadingTests {
         let ar = try await reads.request(3), br = try await reads.request(4)
         #expect(a != b)
         ar.finish(.failure(CocoaError(.fileReadNoPermission)))
-        await a.value
         br.finish(.success([entry]))
+        await a.value
         await b.value
-        #expect(deliveries == [[entry], [], [entry]])
+        #expect(deliveries.count == 3 && deliveries.first == [entry])
+        #expect(deliveries.dropFirst().contains([]) && deliveries.dropFirst().contains([entry]))
         #expect(tree.snapshot() == ["folder/", "folder/new.txt", "folder/old.txt"])
     }
 

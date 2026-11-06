@@ -1830,6 +1830,8 @@
     "Analyzing waveform…": "正在分析波形…",
     "Waveform unavailable": "波形不可用",
     "Click waveform to seek": "点击波形以跳转",
-    "Waveform covers first %@": "波形覆盖前 %@"
+    "Waveform covers first %@": "波形覆盖前 %@",
+    "Loaded": "已加载",
+    "Listing incomplete": "列表不完整"
   }
 }

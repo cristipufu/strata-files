@@ -291,6 +291,13 @@ These apply everywhere below; the sections that follow add only what is specific
   the listing that follows are one cancellable request: check cancellation after invalidation, and an old Reload never
   starts a read after navigation or a newer Reload. Selections made during I/O survive when entries are applied; keep
   explicit pending selections (including an empty one) distinct from that fallback. Inject `DirectoryReader` in tests.
+- New local folders with a metadata-independent sort stream lossless batches, awaiting each delivery before reading
+  more. Directory enumeration belongs to an owned thread, sorted snapshots to the read's accumulator, and row identity,
+  selection, scroll anchors and editing to the presentation. Refreshes, provider listings and sorts requiring cached
+  folder, tag or media metadata remain atomic. A partial read failure keeps displayed entries and marks them incomplete;
+  Select All never includes entries that arrive afterward. Cover deeper Columns as well as every root presentation.
+  Large active filters rank replacement snapshots away from the main actor, preserve current selection, and defer
+  publishing matches while an inline filename edit is active.
 - **`BrowserLoading`** owns folder state, expanded-row reads and free-space work. Invalidate child reads before reusing
   rows, coalesce them by node identity and keep that identity alive until the read ends. Free-space results stay with
   their folder, also when applying entries navigates again. AppKit marks entries applied only when it displays them;
