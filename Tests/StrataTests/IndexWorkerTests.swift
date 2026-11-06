@@ -12,6 +12,44 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func mixedReplacementsRetireOnlyTheirOldRecordsAndKeepUnchangedSiblings() async throws {
+        let tree = try TestTree([".state/"] + (0..<60).map { "files/file-\($0).txt" })
+        let fixture = try await start(tree)
+        let directory = try #require(fixture.store.read { $0.lookup(tree.url("files").path) })
+        let old = fixture.store.read { s in Dictionary(uniqueKeysWithValues: s.children(of: directory).map { (s.name($0), $0) }) }
+        for i in 0..<60 {
+            let url = tree.url("files/file-\(i).txt")
+            if i % 3 == 0 { try Data("updated-\(i)".utf8).write(to: url, options: .atomic) }
+            if i % 3 == 1 { try FileManager.default.removeItem(at: url) }
+        }
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        let (saved, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        var expected = [".state/", ".state/index.sealed", "files/", "files/new.txt"]
+        var bytes = "files/new.txt".utf8.count
+        for i in 0..<60 {
+            let name = "file-\(i).txt", path = "files/\(name)"
+            let previous = try #require(old[name])
+            let current = saved.read { $0.lookup(tree.url(path).path) }
+            if i % 3 == 1 {
+                #expect(current == nil)
+            } else {
+                let id = try #require(current)
+                #expect((id == previous) == (i % 3 == 2))
+                let content = i % 3 == 0 ? "updated-\(i)" : path
+                #expect(saved.read { $0.size[Int(id)] } == Int64(content.utf8.count))
+                #expect(tree.text(path) == content)
+                expected.append(path)
+                bytes += content.utf8.count
+            }
+            #expect((saved.read { $0.flags[Int(previous)] } & IndexStore.Flag.deleted != 0) == (i % 3 != 2))
+        }
+        #expect(saved.read { $0.fileCount[Int(directory)] } == 41)
+        #expect(saved.read { $0.size[Int(directory)] } == Int64(bytes))
+        #expect(tree.snapshot() == expected.sorted())
+    }
+
     @Test(arguments: [false, true])
     func overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails(unreadable: Bool) async throws {
         let tree = try TestTree(".state/", "gone-a/a.txt", "gone-b/b.txt", "other/z.txt", "survivor/deep/kept.txt", "blocked/keep.txt")

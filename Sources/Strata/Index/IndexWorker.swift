@@ -503,6 +503,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func reconcile(_ listing: FolderListing, with id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
                            changes: inout FolderChanges) {
         var existing: [String: Int32] = [:]
+        var removals: [Int32] = []
         for child in store.children(of: id) { existing[store.name(child)] = child }
         let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
                          hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
@@ -516,7 +517,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
                 changes.changed = true
-                store.remove(old)
+                removals.append(old)
                 changes.add(item, noise: listing.ownNoise[index])
             } else if item.isDirectory {
                 update(folder: old, at: listing.prefix + name, to: item, in: &store, config: config,
@@ -530,9 +531,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 store.mtime[Int(old)] = item.mtime
             }
         }
-        if !existing.isEmpty {
+        // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
+        removals.append(contentsOf: existing.values)
+        if !removals.isEmpty {
             changes.changed = true
-            store.removeChildren(Array(existing.values), of: id)
+            store.removeChildren(removals, of: id)
         }
     }
 

@@ -995,7 +995,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            store.removeChildren(Array(existing.values), of: id)\n",
+    "find": "            store.removeChildren(removals, of: id)\n",
     "replace": "",
     "rule": "Index: items gone from a refreshed folder stay in the index",
     "tests": "IndexWorkerTests/aChildGoneFromItsFolderLeavesTheIndex"
@@ -9257,5 +9257,12 @@
     "replace": "        if watchingFailed { return }",
     "rule": "Index watch status: changing exclusions preserves the watcher failure",
     "tests": "IndexWorkerTests/failedWatchingDoesNotClaimTheIndexIsCurrent"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                removals.append(old)",
+    "replace": "                // Keep the replaced record.",
+    "rule": "Index replacement batches retire the old records and preserve unchanged siblings",
+    "tests": "IndexWorkerTests/mixedReplacementsRetireOnlyTheirOldRecordsAndKeepUnchangedSiblings"
   }
 ]
