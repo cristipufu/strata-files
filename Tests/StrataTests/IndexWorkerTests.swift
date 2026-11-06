@@ -12,6 +12,59 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func repeatedRebuildRequestsShareOnePendingOrRunningScan() async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let holdRead = OSAllocatedUnfairLock(initialState: false)
+        let scans = OSAllocatedUnfairLock(initialState: 0)
+        let duringScan = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+        defer { release.signal() }
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            let held = holdRead.withLock { let held = $0; $0 = false; return held }
+            if held {
+                entered.signal()
+                guard release.wait(timeout: .now() + 20) == .success else { return ECANCELED }
+            }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        }, onPhase: { phase in
+            guard phase == .scanning(items: 0) else { return }
+            scans.withLock { $0 += 1 }
+            let action = duringScan.withLock { let action = $0; $0 = nil; return action }
+            action?()
+        })
+        scans.withLock { $0 = 0 }
+        holdRead.withLock { $0 = true }
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
+        try #require(try await TestWork.run { entered.wait(timeout: .now() + 20) == .success })
+        duringScan.withLock { $0 = { [weak worker = fixture.worker] in worker?.rebuildNow() } }
+        for _ in 0..<10 { fixture.worker.rebuildNow() }
+        release.signal()
+        // Starting from the saved index also drains earlier requests, without saveNow's quit deadline.
+        await withCheckedContinuation { done in fixture.worker.start(fixture.config) { done.resume() } }
+        #expect(scans.withLock { $0 } == 1)
+        fixture.worker.rebuildNow()
+        await withCheckedContinuation { done in fixture.worker.start(fixture.config) { done.resume() } }
+        #expect(scans.withLock { $0 } == 2, "A new request after completion must still rebuild")
+        #expect(tree.text("files/kept.txt") == "files/kept.txt")
+    }
+
+    @Test func aRebuildDuringTheInitialScanDoesNotQueueAnotherFullScan() async throws {
+        let tree = try TestTree(".state/", "kept.txt")
+        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false)
+        let scans = OSAllocatedUnfairLock(initialState: 0)
+        worker.onPhase = { [weak worker] phase in
+            guard phase == .scanning(items: 0) else { return }
+            let first = scans.withLock { $0 += 1; return $0 == 1 }
+            if first { worker?.rebuildNow() }
+        }
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        #expect(scans.withLock { $0 } == 1)
+        #expect(tree.text("kept.txt") == "kept.txt")
+    }
+
     @Test func mixedReplacementsRetireOnlyTheirOldRecordsAndKeepUnchangedSiblings() async throws {
         let tree = try TestTree([".state/"] + (0..<60).map { "files/file-\($0).txt" })
         let fixture = try await start(tree)

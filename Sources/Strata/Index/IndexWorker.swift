@@ -47,6 +47,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var saveScheduled = false
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
     private let scanning = OSAllocatedUnfairLock(initialState: false)
+    private let rebuildRequested = OSAllocatedUnfairLock(initialState: false)
     /// Set at quit: catching up (a deep refresh can take minutes on a busy disk) gives up past it rather than hold quit.
     private let quitDeadline = OSAllocatedUnfairLock<UInt64?>(initialState: nil)
     /// Catching up stopped part way: the index isn't saved, so the file on disk keeps its older event ID and the next
@@ -97,7 +98,17 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     package func rebuildNow() {
-        queue.async { self.rebuild() }
+        guard !scanning.withLock({ $0 }) else { return }
+        let accepted = rebuildRequested.withLock { requested in
+            guard !requested else { return false }
+            requested = true
+            return true
+        }
+        guard accepted else { return }
+        queue.async {
+            defer { self.rebuildRequested.withLock { $0 = false } }
+            self.rebuild()
+        }
     }
 
     /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
@@ -156,6 +167,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             interrupted = true
             return
         }
+        scanning.withLock { $0 = true }
+        defer { scanning.withLock { $0 = false } }
         events.stop()
         let startEventID = FSEventsStream.currentEventID
         let fresh = IndexStore()
@@ -163,8 +176,6 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
         let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) }.filter { $0.0 >= 0 } }
         publish(.scanning(items: 0))
-        scanning.withLock { $0 = true }
-        defer { scanning.withLock { $0 = false } }
         let progress = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
         progress.schedule(deadline: .now() + 0.5, repeating: 0.5)
         let reporting = OSAllocatedUnfairLock(initialState: true)

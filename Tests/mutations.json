@@ -9285,5 +9285,26 @@
     "replace": "            throw error",
     "rule": "Semantic checkpoint: cancellation checkpoints the documents already finished",
     "tests": "SemanticProgressTests/cancellingAnUpdateSavesFinishedDocumentsBeforeTheCheckpointInterval"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            guard !requested else { return false }",
+    "replace": "            // Queue another full scan.",
+    "rule": "Index rebuild coalescing: pending requests share one scan",
+    "tests": "IndexWorkerTests/repeatedRebuildRequestsShareOnePendingOrRunningScan"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard !scanning.withLock({ $0 }) else { return }\n        let accepted",
+    "replace": "        let accepted",
+    "rule": "Index rebuild coalescing: an initial scan absorbs a rebuild request",
+    "tests": "IndexWorkerTests/aRebuildDuringTheInitialScanDoesNotQueueAnotherFullScan"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            defer { self.rebuildRequested.withLock { $0 = false } }",
+    "replace": "            // Keep the completed request active.",
+    "rule": "Index rebuild coalescing: a completed request releases the next rebuild",
+    "tests": "IndexWorkerTests/repeatedRebuildRequestsShareOnePendingOrRunningScan"
   }
 ]
