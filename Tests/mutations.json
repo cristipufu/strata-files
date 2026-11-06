@@ -9222,5 +9222,33 @@
     ],
     "rule": "Index covered paths: failed descendants remain eligible after a deep parent refresh",
     "tests": "IndexWorkerTests/aFailedDescendantCanRecoverAfterItsParentsDeepRead"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        if !chunks.isEmpty { indexedFileCount += 1 }\n        unsavedChanges += 1",
+    "replace": "        unsavedChanges += 1",
+    "rule": "Semantic progress: new searchable documents increment their count",
+    "tests": "SemanticProgressTests"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "            if !chunks.isEmpty { indexedFileCount += 1 }",
+    "replace": "            // Forget the loaded searchable document.",
+    "rule": "Semantic progress: loaded duplicate records count each searchable path once",
+    "tests": "SemanticProgressTests"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        if !file.chunks.isEmpty { indexedFileCount -= 1 }",
+    "replace": "        // Leave removed records counted.",
+    "rule": "Semantic progress: replaced and removed documents update their count",
+    "tests": "SemanticProgressTests"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        indexedFileCount = 0\n        wordRows.removeAll()",
+    "replace": "        wordRows.removeAll()",
+    "rule": "Semantic progress: reset clears the searchable document count",
+    "tests": "SemanticProgressTests"
   }
 ]

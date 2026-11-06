@@ -112,7 +112,8 @@ package actor SemanticIndex {
         configuration.roots = roots
     }
 
-    package var indexedFileCount: Int { files.values.filter { !$0.chunks.isEmpty }.count }
+    /// Maintained with the records so progress does not traverse the entire index after every document.
+    package private(set) var indexedFileCount = 0
 
     /// Reserved vector storage, including reusable rows, for memory measurements.
     package var vectorStorageBytes: (word: Int, sentence: Int) { (wordRows.storageBytes, sentenceRows.storageBytes) }
@@ -193,6 +194,7 @@ package actor SemanticIndex {
     /// Deletes everything stored on disk and in memory.
     package func reset() {
         files = [:]
+        indexedFileCount = 0
         wordRows.removeAll()
         sentenceRows.removeAll()
         rowCount = 0
@@ -225,11 +227,13 @@ package actor SemanticIndex {
                                             counts: chunk.counts, length: chunk.length, row: row))
         }
         files[path] = IndexedFile(size: record.stamp.size, modified: record.stamp.modified, title: record.title, chunks: chunks)
+        if !chunks.isEmpty { indexedFileCount += 1 }
         unsavedChanges += 1
     }
 
     private func remove(_ path: String) {
         guard let file = files.removeValue(forKey: path) else { return }
+        if !file.chunks.isEmpty { indexedFileCount -= 1 }
         for chunk in file.chunks {
             wordRows.set(chunk.row, nil)
             sentenceRows.set(chunk.row, nil)
@@ -604,6 +608,7 @@ package actor SemanticIndex {
                                                 row: row))
             }
             files[file.path] = IndexedFile(size: file.size, modified: file.modified, title: file.title, chunks: chunks)
+            if !chunks.isEmpty { indexedFileCount += 1 }
         }
     }
 
