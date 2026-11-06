@@ -338,7 +338,7 @@ extension BrowserViewController {
     }
 
     @objc func viewOptionsChanged() {
-        let size = canRememberFolderPresentation ? directory.map { services.folderViews.presentation(for: $0).iconSize } ?? preferences.gridIconSize : preferences.gridIconSize
+        let size = iconSizeForViewOptions
         setStoredIconSize(size)
         guard let gridController else { return }
         gridController.showsItemInfo = preferences.iconViewOptions.showsInfo

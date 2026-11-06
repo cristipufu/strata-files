@@ -84,6 +84,49 @@ import Testing
         }
     }
 
+    @Test func globalViewOptionsPreserveSavedAndPendingIconSizesDuringARead() async throws {
+        let tree = try TestTree("folder/a"), gate = PreviewReadGate<Listing>()
+        defer { gate.finish(.failure(CancellationError())) }
+        let folder = tree.url("folder")
+        let reader = DirectoryReader(listing: { _, _, _ in try await gate.read() })
+        let environment = try IndependentEnvironment(directories: reader), browser = makeBrowser(environment)
+        defer { browser.stopBackgroundWork() }
+        var saved = environment.services.folderViews.defaults
+        saved.mode = .grid; saved.iconSize = 256
+        environment.services.folderViews.save(saved, for: folder)
+        browser.load(folder)
+        let read = try #require(browser.directoryReads.task)
+        await gate.waitUntilStarted()
+        environment.preferences.iconViewOptions.showsInfo.toggle()
+        #expect(browser.iconSize == 256 && browser.grid.iconSize == 256)
+        browser.setIconSize(128)
+        environment.preferences.iconViewOptions.showsInfo.toggle()
+        #expect(browser.iconSize == 128 && browser.grid.iconSize == 128)
+        gate.finish(.success(Listing(folder: folder, entries: [])))
+        await read.value
+        #expect(browser.iconSize == 128 && browser.grid.iconSize == 128)
+        #expect(environment.services.folderViews.presentation(for: folder).iconSize == 128)
+        #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
+    @Test(arguments: [BrowserViewMode.grid, .gallery])
+    func globalViewOptionsPreserveTransientResultsIconSize(mode: BrowserViewMode) async throws {
+        let tree = try TestTree("folder/a"), environment = try IndependentEnvironment(), browser = makeBrowser(environment)
+        defer { browser.stopBackgroundWork() }
+        browser.load(tree.url("folder")); await browser.directoryReads.task?.value
+        browser.setIconSize(96)
+        let saved = browser.folderPresentation
+        browser.showResults(browser.topLevelEntries, total: 1)
+        browser.setMode(mode); browser.setIconSize(160)
+        environment.preferences.iconViewOptions.showsInfo.toggle()
+        #expect(browser.iconSize == 160)
+        #expect(browser.grid.iconSize == 160)
+        #expect(environment.services.folderViews.presentation(for: tree.url("folder")) == saved)
+        browser.load(tree.url("folder")); await browser.directoryReads.task?.value
+        #expect(browser.folderPresentation == saved)
+        #expect(tree.snapshot() == ["folder/", "folder/a"])
+    }
+
     @Test func temporaryWorkspaceChoicesApplyOnceAndNeverOverwriteRememberedFolderChoices() async throws {
         let tree = try TestTree("first/a", "second/b"), environment = try IndependentEnvironment()
         let settings = environment.services.folderViews

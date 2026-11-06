@@ -9,6 +9,13 @@ extension BrowserViewController {
         folder.isFileURL && !services.copies.contains(folder) && !ArchiveCache.contains(folder)
     }
 
+    var iconSizeForViewOptions: Double {
+        if isShowingResults { return iconSize }
+        if let pendingFolderPresentation { return pendingFolderPresentation.iconSize }
+        guard let directory, canSaveFolderView(at: directory) else { return preferences.gridIconSize }
+        return services.folderViews.presentation(for: directory).iconSize
+    }
+
     var folderPresentation: FolderPresentation {
         FolderPresentation(mode: mode, sort: ordering.choice ?? services.folderViews.defaults.sort, iconSize: iconSize)
     }
