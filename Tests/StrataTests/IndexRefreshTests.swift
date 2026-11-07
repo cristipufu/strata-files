@@ -59,6 +59,21 @@ struct IndexRefreshTests {
         #expect(recovery.path == path && recovery.refresh.isDeep)
         let ordinary = request(path, 0)
         #expect(ordinary.path == path && !ordinary.refresh.isDeep && ordinary.refresh.names == nil)
+        let rootChild = request("/root.txt", FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile))
+        #expect(rootChild.path == "/" && rootChild.refresh.names == ["root.txt"])
+        let trailingSlash = request(path + "/b.txt/", FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile))
+        #expect(trailingSlash.path == path && trailingSlash.refresh.names == ["b.txt"])
+        let combiningMark = request(path + "/\u{0301}x.txt", FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile))
+        #expect(combiningMark.path == path && combiningMark.refresh.names == ["\u{0301}x.txt"])
+        #expect(IndexRefresh.splitPath("/Users/me/Documents/\u{0301}x.txt") == ("/Users/me/Documents", "\u{0301}x.txt"))
+        #expect(IndexRefresh.splitPath("/Users/me/Documents/\u{093F}x.txt") == ("/Users/me/Documents", "\u{093F}x.txt"))
+        #expect(IndexRefresh.splitPath("/Users/me/Documents/\u{200D}x.txt") == ("/Users/me/Documents", "\u{200D}x.txt"))
+        #expect(IndexRefresh.splitPath("/") == ("/", "/"))
+        #expect(IndexRefresh.splitPath("///") == ("/", "/"))
+        #expect(IndexRefresh.splitPath("//root") == ("/", "root"))
+        #expect(IndexRefresh.splitPath("/a//b/") == ("/a", "b"))
+        #expect(IndexRefresh.splitPath("relative/") == ("", "relative"))
+        #expect(IndexRefresh.splitPath("") == ("", ""))
     }
 
     @Test func itemReadsMatchBulkMetadataWithoutReadingSparseFileContents() throws {

@@ -334,13 +334,17 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if pass.covers(path) { continue }
             if isExcluded(path, config) { continue }
             // The folder may be new: refresh the nearest ancestor we already know about.
-            var target = path
-            var id = store.read { store in store.lookup(target) }
-            while id == nil, target.count > 1 {
-                target = (target as NSString).deletingLastPathComponent
-                id = store.read { store in store.lookup(target) }
+            let resolved: (id: Int32, path: String)? = store.read { store in
+                var target = path
+                var id = store.lookup(target)
+                while id == nil, target.count > 1 {
+                    target = IndexRefresh.splitPath(target).parent
+                    id = store.lookup(target)
+                }
+                guard let id, store.isDirectory(id) else { return nil }
+                return (id, target)
             }
-            guard let id, store.read({ store in store.isDirectory(id) }) else { continue }
+            guard let (id, target) = resolved else { continue }
             if pass.covers(target) { continue }
             if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
         }
@@ -410,7 +414,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 if failures.contains(ancestor) { return false }
                 covered = covered || deepRoots.contains(ancestor)
                 if ancestor == "/" { break }
-                ancestor = (ancestor as NSString).deletingLastPathComponent
+                ancestor = IndexRefresh.splitPath(ancestor).parent
             }
             return covered
         }
@@ -421,7 +425,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 let count = failureAncestors[ancestor, default: 0] + delta
                 failureAncestors[ancestor] = count == 0 ? nil : count
                 if ancestor == "/" { break }
-                ancestor = (ancestor as NSString).deletingLastPathComponent
+                ancestor = IndexRefresh.splitPath(ancestor).parent
             }
         }
     }

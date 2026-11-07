@@ -10,7 +10,7 @@ nonisolated package enum BulkDirectoryReader {
         var info = stat()
         guard lstat(path, &info) == 0 else { return errno == ENOENT ? missingItemStatus(path) : errno }
         guard info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { return ENOTSUP }
-        let name = Array((path as NSString).lastPathComponent.utf8)
+        let name = Array(IndexRefresh.splitPath(path).name.utf8)
         guard !name.isEmpty else { return EINVAL }
         items.append(ScannedItem(nameOffset: names.count, nameLength: name.count,
             isDirectory: false, isPackage: false, isSymlink: false,
@@ -25,7 +25,7 @@ nonisolated package enum BulkDirectoryReader {
     /// ENOENT means only this child is missing. A missing or redirected parent needs a complete directory refresh.
     private static func missingItemStatus(_ path: String) -> Int32 {
         var parent = stat()
-        guard lstat((path as NSString).deletingLastPathComponent, &parent) == 0,
+        guard lstat(IndexRefresh.splitPath(path).parent, &parent) == 0,
               parent.st_mode & S_IFMT == S_IFDIR else { return ENOTSUP }
         return ENOENT
     }
