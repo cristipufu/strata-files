@@ -616,10 +616,10 @@ nonisolated final class DockReader: Sendable {
         var gapItems: Range<Int>?
         var tileItem: Int?
         var refreshed = Date.distantPast
-        var asking = false
     }
 
     private let state = Mutex(State())
+    @MainActor private var asking = false
     private let queue = DispatchQueue(label: "dev.strata.dock-reader", qos: .userInitiated)
     /// How long a question to the Dock may take: the system's default is six seconds. Set on the Dock and on this app's
     /// Accessibility as a whole, since what each covers isn't documented.
@@ -638,22 +638,24 @@ nonisolated final class DockReader: Sendable {
               let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first,
               let primary = NSScreen.screens.first else { return found(nil) }
         let pid = dock.processIdentifier, screens = NSScreen.screens.map(\.frame), top = primary.frame.maxY
-        guard startAsking() else { return }
-        queue.async { [self] in
-            let layout = state.withLock { state in
-                defer { state.asking = false }
-                return Self.read(&state, dock: pid, anchor: bundleID, screens: screens, top: top)
-            }
-            Task { @MainActor in found(layout) }
-        }
+        request({ [self] in
+            state.withLock { Self.read(&$0, dock: pid, anchor: bundleID, screens: screens, top: top) }
+        }, then: found)
     }
 
-    /// True when no question was out; it is now.
-    private func startAsking() -> Bool {
-        state.withLock { state in
-            defer { state.asking = true }
-            return !state.asking
+    /// The main actor owns admission; it never acquires the cache lock held during Accessibility reads.
+    @MainActor @discardableResult
+    func request(_ read: @escaping @Sendable () -> DockLayout?, then found: @escaping @MainActor (DockLayout?) -> Void) -> Bool {
+        guard !asking else { return false }
+        asking = true
+        queue.async { [self] in
+            let layout = read()
+            Task { @MainActor in
+                asking = false
+                found(layout)
+            }
         }
+        return true
     }
 
     private static func read(_ state: inout State, dock pid: pid_t, anchor bundleID: String, screens: [NSRect],

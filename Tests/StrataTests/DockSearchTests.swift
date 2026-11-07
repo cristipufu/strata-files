@@ -10,6 +10,39 @@ import Testing
 @testable import StrataSearch
 
 struct DockSearchTests {
+    @Test func aSlowDockReadNeverQueuesAnotherPollOrBlocksItsCaller() async throws {
+        let reader = DockReader()
+        let release = DispatchSemaphore(value: 0)
+        let (started, start) = AsyncStream<Void>.makeStream()
+        let (completed, complete) = AsyncStream<Void>.makeStream()
+        defer { release.signal(); start.finish(); complete.finish() }
+        let accepted = reader.request({
+            start.yield(())
+            release.wait()
+            return nil
+        }, then: { result in
+            #expect(result == nil)
+            complete.yield(())
+        })
+        #expect(accepted)
+        for await _ in started { break }
+        // The first native read is held. All polling calls return without waiting for it or retaining more work.
+        for _ in 0..<100 {
+            let queued = reader.request({ Issue.record("A busy Dock queued another read"); return nil }, then: { _ in })
+            #expect(!queued)
+        }
+        release.signal()
+        for await _ in completed { break }
+        let expected = DockLayout(gap: NSRect(x: 100, y: 10, width: 200, height: 60),
+                                  tile: NSRect(x: 40, y: 10, width: 50, height: 60))
+        let again = reader.request({ expected }, then: { result in
+            #expect(result == expected)
+            complete.yield(())
+        })
+        #expect(again)
+        for await _ in completed { break }
+    }
+
     private static let strata = "dev.strata.app"
 
     private func app(_ id: String, guid: Int) -> [String: Any] {

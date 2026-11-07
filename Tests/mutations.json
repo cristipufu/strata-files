@@ -9418,5 +9418,12 @@
     "replace": "for _ in removals {}",
     "rule": "Scoped index updates lose removed paths",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
+  },
+  {
+    "file": "Strata/Dock/DockSearch.swift",
+    "find": "guard !asking else { return false }",
+    "replace": "guard true else { return false }",
+    "rule": "Dock polling queues reads while its worker is busy",
+    "tests": "DockSearchTests/aSlowDockReadNeverQueuesAnotherPollOrBlocksItsCaller"
   }
 ]
