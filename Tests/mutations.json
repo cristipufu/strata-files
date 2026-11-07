@@ -9203,8 +9203,8 @@
   },
   {
     "file": "Strata/Index/IndexStore.swift",
-    "find": "                    if hit { outputs.formUnion(rule.folders) }",
-    "replace": "                    if hit { outputs.formUnion([]) }",
+    "find": "                    if matches(name, rule: rule) { outputs.formUnion(rule.folders) }",
+    "replace": "                    if matches(name, rule: rule) { outputs.formUnion([]) }",
     "rule": "Index project classification: repeated markers preserve the supported output folder names",
     "tests": "IndexClassificationTests"
   },
@@ -9320,5 +9320,82 @@
     "replace": "            guard lastScannedCount != scanned else { continue }",
     "rule": "Direct search polling: completion updates even an empty directory",
     "tests": "SearchRefreshTests/stalledFolderScansDoNotRepeatQueriesAndCompletionStillUpdatesTheView"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if listing.selectedNames == nil || listing.selectedNames?.contains(name) == true { existing[name] = child }",
+    "replace": "            existing[name] = child",
+    "rule": "Partial file refresh drops unchanged siblings",
+    "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store) }",
+    "replace": "        var listing: FolderListing? = nil",
+    "rule": "Partial file refresh enumerates all siblings",
+    "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "        guard info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { return ENOTSUP }",
+    "replace": "        guard info.st_mode & S_IFMT == S_IFREG else { return ENOTSUP }",
+    "rule": "Partial file refresh misses a hard linked sibling",
+    "tests": "IndexWorkerTests/hardLinkedFileEventsRefreshAllSiblingNames"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard !requested.contains(where: IndexStore.Storage.isBuildMarker),",
+    "replace": "        guard !requested.isEmpty,",
+    "rule": "Partial file refresh misses project marker classification",
+    "tests": "IndexWorkerTests/fileEventsReclassifyBuildFoldersWhenProjectMarkersArriveOrLeave"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.changed = true }",
+    "replace": "            if store.finishedAllocationRead(of: id) { changes.changed = true }",
+    "rule": "Partial file refresh falsely completes unreadable directory totals",
+    "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
+  },
+  {
+    "file": "Strata/Index/IndexRefresh.swift",
+    "find": "            self = names.count > Self.fileReadLimit ? .directory(deep: false) : .files(names)",
+    "replace": "            self = .files(names)",
+    "rule": "Partial file refresh fails to bound individual file reads",
+    "tests": "IndexWorkerTests/largeFileEventBatchesFallBackToOneDirectoryRead"
+  },
+  {
+    "file": "Strata/Index/FSEventsStream.swift",
+    "find": "            | kFSEventStreamCreateFlagFileEvents)",
+    "replace": "            )",
+    "rule": "File event indexing requests directory notifications instead of individual files",
+    "tests": "IndexRefreshTests/nativeWatchingReportsTheChangedFileInsideItsTemporaryRoot"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "            guard !state.scheduled else { return false }",
+    "replace": "            // Every callback queues another delivery.",
+    "rule": "File event inbox queues repeated callbacks separately",
+    "tests": "IndexEventInboxTests/repeatedCallbacksShareOneDeliveryAndPreserveRecoveryFlags"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "            guard !events.isEmpty, generation == nil || generation == state.generation else { return false }",
+    "replace": "            guard !events.isEmpty else { return false }",
+    "rule": "File event inbox accepts a retired stream callback",
+    "tests": "IndexEventInboxTests/replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "IndexRefresh.directory(deep: true)",
+    "replace": "IndexRefresh.directory(deep: false)",
+    "rule": "File event inbox loses recursive recovery after overflowing",
+    "tests": "IndexEventInboxTests/anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "if state.excluded.contains(where: { path == $0 || path.hasPrefix($0 + \"/\") }) { continue }",
+    "replace": "if state.excluded.contains(path) { continue }",
+    "rule": "File event inbox admits changes inside excluded state folders",
+    "tests": "IndexEventInboxTests/excludedItemEventsNeverRefreshTheirParentOrHideLookalikes"
   }
 ]

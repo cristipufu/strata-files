@@ -1,8 +1,27 @@
 import Foundation
+import StrataModel
 
 /// Reads directories with `getattrlistbulk`, which returns names, types, sizes and dates for a whole batch of entries
 /// in one system call: several times faster than `readdir` + `lstat` per file.
 nonisolated package enum BulkDirectoryReader {
+    /// A regular file's metadata needs no sibling listing. Directories, links and multiply linked files use the
+    /// complete listing so replacements, descendants and other names of the same file remain consistent.
+    package static func readItem(_ path: String, items: inout [ScannedItem], names: inout [UInt8]) -> Int32 {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return errno }
+        guard info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { return ENOTSUP }
+        let name = Array((path as NSString).lastPathComponent.utf8)
+        guard !name.isEmpty else { return EINVAL }
+        items.append(ScannedItem(nameOffset: names.count, nameLength: name.count,
+            isDirectory: false, isPackage: false, isSymlink: false,
+            isHidden: name[0] == 46 || info.st_flags & UInt32(UF_HIDDEN) != 0, isMountPoint: false,
+            size: max(0, info.st_size), mtime: UInt32(clamping: info.st_mtimespec.tv_sec),
+            fileKey: UInt32(truncatingIfNeeded: info.st_ino ^ (info.st_ino >> 32)),
+            allocatedSize: FootprintReader.allocatedBytes(blocks: info.st_blocks)))
+        names.append(contentsOf: name)
+        return 0
+    }
+
     private static let packageExtensions: Set<String> = [
         "app", "bundle", "framework", "plugin", "kext", "appex", "xpc", "qlgenerator", "mdimporter", "prefPane",
         "xcodeproj", "xcworkspace", "playground", "photoslibrary", "musiclibrary", "tvlibrary", "rtfd", "pages",

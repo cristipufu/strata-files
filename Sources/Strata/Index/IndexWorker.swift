@@ -25,6 +25,7 @@ nonisolated package struct IndexConfig: Sendable {
 /// Owns the index on a private serial queue: loads or builds it, applies FSEvents changes, saves it.
 nonisolated package final class IndexWorker: @unchecked Sendable {
     package typealias DirectoryRead = @Sendable (String, inout [ScannedItem], inout [UInt8], UnsafeMutableRawBufferPointer, () -> Bool) -> Int32
+    package typealias ItemRead = @Sendable (String, inout [ScannedItem], inout [UInt8]) -> Int32
 
     private let log = Logger(subsystem: "dev.strata.app", category: "index")
     package enum Phase: Sendable, Equatable {
@@ -41,7 +42,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var store: IndexStore?
     private var lastEventID: UInt64 = 0
     private var dirty = false
-    private var pending: [String: Bool] = [:] // folder path → deep
+    private var pending: [String: IndexRefresh] = [:]
     private var rescanNeeded = false
     private var flushScheduled = false
     private var saveScheduled = false
@@ -54,8 +55,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// launch replays those changes.
     private var interrupted = false
     private let events = FSEventsStream()
+    private let incoming = IndexEventInbox()
     private let watchesChanges: Bool
     private let readDirectory: DirectoryRead
+    private let readItem: ItemRead
     private let startEvents: (@Sendable ([String], UInt64) -> Bool)?
     private var awaitingHistory = false
     private var watchingFailed = false
@@ -76,9 +79,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
     package init(watchesChanges: Bool = true, readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
+                 readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil) {
         self.watchesChanges = watchesChanges
         self.readDirectory = readDirectory
+        self.readItem = readItem
         self.startEvents = startEvents
     }
 
@@ -203,6 +208,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func startWatching(_ config: IndexConfig) {
         eventGeneration = UUID()
         let generation = eventGeneration
+        incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded)
         awaitingHistory = watchesChanges
         watchingFailed = false
         guard watchesChanges else { publish(.ready); return }
@@ -226,6 +232,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         guard let old = previous ?? self.config?.excluded else { return }
         let rootsChanged = self.config.map { $0.roots != config.roots } ?? true
         self.config = config
+        incoming.exclude(config.excluded)
         guard let store else { return }
         if rootsChanged {
             log.info("Roots changed, full scan")
@@ -272,20 +279,19 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func receive(_ batch: [FSEventsStream.Event], generation: UUID?) {
+        guard incoming.append(batch, generation: generation) else { return }
         queue.async {
-            if let generation, generation != self.eventGeneration { return }
-            for event in batch {
-                self.lastEventID = max(self.lastEventID, event.id)
-                if event.isHistoryDone { self.awaitingHistory = false; continue }
-                if event.invalidatesIndex {
-                    self.log.info("Event invalidates index: \(event.path) flags \(event.flags)")
-                    self.rescanNeeded = true
-                    continue
-                }
-                var path = event.path
-                while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+            guard let delivery = self.incoming.take(), delivery.generation == self.eventGeneration else { return }
+            self.lastEventID = max(self.lastEventID, delivery.lastID)
+            if delivery.historyDone { self.awaitingHistory = false }
+            if let event = delivery.invalidation {
+                self.log.info("Event invalidates index: \(event.path) flags \(event.flags)")
+                self.rescanNeeded = true
+            }
+            for (path, refresh) in delivery.folders {
                 if let config = self.config, self.isExcluded(path, config) { continue }
-                self.pending[path] = (self.pending[path] ?? false) || event.mustScanSubdirectories
+                if self.pending[path] != nil { self.pending[path]?.merge(refresh) }
+                else { self.pending[path] = refresh }
             }
             if self.rescanNeeded || !self.pending.isEmpty {
                 self.publish(.updating)
@@ -323,7 +329,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         pending.removeAll()
         var pass = RefreshPass()
         var changed = false
-        for (path, deep) in work {
+        for (path, refresh) in work {
             if interrupted || stopForQuit() { break }
             if pass.covers(path) { continue }
             if isExcluded(path, config) { continue }
@@ -336,7 +342,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             guard let id, store.read({ store in store.isDirectory(id) }) else { continue }
             if pass.covers(target) { continue }
-            if refreshFolder(id, target, deep: deep, pass: &pass) { changed = true }
+            if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
         if changed { markChanged() }
@@ -419,14 +425,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
-    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool, pass: inout RefreshPass) -> Bool {
+    private func refreshFolder(_ id: Int32, _ path: String, deep: Bool, names: Set<String>? = nil, pass: inout RefreshPass) -> Bool {
         var work: [(folder: Folder, deep: Bool)] = [((id, path), deep)]
         var changed = false
         while let next = work.popLast() {
             if interrupted || stopForQuit() { break }
             let folder = next.folder
             if pass.begin(folder.id) {
-                if let changes = readFolder(folder.id, folder.path) {
+                if let changes = readFolder(folder.id, folder.path, selectedNames: folder.id == id ? names : nil) {
                     changed = changed || changes.changed
                     pass.listed(folder, children: changes.existingFolders)
                     work.append(contentsOf: changes.newFolders.map { ($0, true) })
@@ -440,29 +446,49 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         return changed
     }
 
-    private func readFolder(_ id: Int32, _ path: String) -> FolderChanges? {
+    private func readFolder(_ id: Int32, _ path: String, selectedNames: Set<String>? = nil) -> FolderChanges? {
         guard let config, let store else { return nil }
-        var items: [ScannedItem] = []
-        var names: [UInt8] = []
-        let error = readDirectory(path, &items, &names, readBuffer) { self.pastQuitDeadline }
-        if error == ECANCELED {
-            interrupted = true
-            return nil
+        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store) }
+        guard !interrupted else { return nil }
+        if listing == nil {
+            var items: [ScannedItem] = [], names: [UInt8] = []
+            let error = readDirectory(path, &items, &names, readBuffer) { self.pastQuitDeadline }
+            if error == ECANCELED {
+                interrupted = true
+                return nil
+            }
+            if error == ENOENT || error == ENOTDIR {
+                return FolderChanges(changed: store.write { Self.removeGone(id, from: &$0) })
+            }
+            guard error == 0 else { return nil }
+            listing = FolderListing(items: items, names: names, path: path)
         }
-        if error == ENOENT || error == ENOTDIR {
-            return FolderChanges(changed: store.write { Self.removeGone(id, from: &$0) })
-        }
-        guard error == 0 else { return nil }
-        let listing = FolderListing(items: items, names: names, path: path)
+        guard let listing else { return nil }
         return store.write { store in
             var changes = FolderChanges()
             let firstNew = Int32(store.count)
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
             store.integrateNew(from: firstNew)
-            if store.finishedAllocationRead(of: id) { changes.changed = true }
+            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.changed = true }
             return changes
         }
+    }
+
+    private func readSelected(_ requested: Set<String>, in path: String, id: Int32, store: IndexStore) -> FolderListing? {
+        guard !requested.contains(where: IndexStore.Storage.isBuildMarker),
+              !store.read({ storage in storage.children(of: id).contains { storage.isDirectory($0) && requested.contains(storage.name($0)) } })
+        else { return nil }
+        var items: [ScannedItem] = [], names: [UInt8] = []
+        let prefix = path.hasSuffix("/") ? path : path + "/"
+        for name in requested.sorted() {
+            if stopForQuit() { return nil }
+            let error = readItem(prefix + name, &items, &names)
+            if error == ECANCELED { interrupted = true; return nil }
+            guard error == 0 || error == ENOENT else { return nil }
+        }
+        guard !stopForQuit(), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }
+        return FolderListing(items: items, names: names, path: path, selectedNames: requested)
     }
 
     /// One folder as read: its items, their names in one buffer, and each one's own noise (see `IndexStore.ownNoise`).
@@ -470,12 +496,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let items: [ScannedItem]
         let names: [UInt8]
         let ownNoise: [Bool]
+        let selectedNames: Set<String>?
         /// The folder's path, ending in "/".
         let prefix: String
 
-        init(items: [ScannedItem], names: [UInt8], path: String) {
+        init(items: [ScannedItem], names: [UInt8], path: String, selectedNames: Set<String>? = nil) {
             self.items = items
             self.names = names
+            self.selectedNames = selectedNames
             ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
             prefix = path.hasSuffix("/") ? path : path + "/"
         }
@@ -515,7 +543,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                            changes: inout FolderChanges) {
         var existing: [String: Int32] = [:]
         var removals: [Int32] = []
-        for child in store.children(of: id) { existing[store.name(child)] = child }
+        for child in store.children(of: id) {
+            let name = store.name(child)
+            if listing.selectedNames == nil || listing.selectedNames?.contains(name) == true { existing[name] = child }
+        }
         let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
                          hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
         for (index, item) in listing.items.enumerated() {

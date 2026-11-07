@@ -1,7 +1,7 @@
 import CoreServices
 import Foundation
 
-/// A folder-level FSEvents subscription. Events arrive on a private serial queue, batched by `latency`.
+/// File-level changes and directory recovery events, delivered on a private serial queue in batches.
 nonisolated package final class FSEventsStream: @unchecked Sendable {
     package struct Event: Sendable {
         package let path: String
@@ -79,7 +79,8 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
             }
             box.emit(events)
         }
-        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagWatchRoot)
+        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagWatchRoot
+            | kFSEventStreamCreateFlagFileEvents)
         guard let stream = FSEventStreamCreate(nil, callback, &context, paths as CFArray,
                                                since ?? FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags) else {
             retained.release()

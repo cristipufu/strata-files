@@ -12,6 +12,167 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func directoryEventsAndFileTypeChangesRefreshTheCompleteSubtree() async throws {
+        let tree = try TestTree(".state/", "files/old/deep/kept.txt", "files/plain", "files/neighbor.txt")
+        let fixture = try await start(tree)
+        try FileManager.default.moveItem(at: tree.url("files/old"), to: tree.url("files/renamed"))
+        fixture.worker.receive(["old", "renamed"].map { .init(path: tree.url("files/" + $0).path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir | kFSEventStreamEventFlagItemRenamed), id: 1) })
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/old").path) } == nil)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/renamed/deep/kept.txt").path) } != nil)
+
+        try FileManager.default.removeItem(at: tree.url("files/plain"))
+        try tree.add(["files/plain/deep/new.txt"])
+        let event = FSEventsStream.Event(path: tree.url("files/plain").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 2)
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/plain/deep/new.txt").path) } != nil)
+
+        try FileManager.default.removeItem(at: tree.url("files/plain"))
+        try tree.add(["files/plain"])
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/plain/deep/new.txt").path) } == nil)
+        let plain = try #require(fixture.store.read { $0.lookup(tree.url("files/plain").path) })
+        #expect(!fixture.store.read { $0.isDirectory(plain) })
+        #expect(tree.text("files/renamed/deep/kept.txt") == "files/old/deep/kept.txt")
+        #expect(tree.text("files/neighbor.txt") == "files/neighbor.txt")
+    }
+
+    @Test func partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete() async throws {
+        let tree = try TestTree(".state/", "files/keep.txt")
+        let fixture = try await start(tree)
+        let directory = try #require(fixture.store.read { $0.lookup(tree.url("files").path) })
+        fixture.store.write { storage in
+            storage.flags[Int(directory)] |= IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation
+        }
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive([.init(path: tree.url("files/new.txt").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 1)])
+        await save(fixture.worker)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(loaded.read { $0.allocatedSize(directory) } == nil)
+        #expect(loaded.read { $0.flags[Int(directory)] & IndexStore.Flag.unreadDirectory != 0 })
+        #expect(tree.text("files/keep.txt") == "files/keep.txt")
+    }
+
+    @Test func hardLinkedFileEventsRefreshAllSiblingNames() async throws {
+        let tree = try TestTree(".state/", "files/original.txt", "files/keep.txt")
+        try FileManager.default.linkItem(at: tree.url("files/original.txt"), to: tree.url("files/alias.txt"))
+        let fixture = try await start(tree)
+        try Data("changed".utf8).write(to: tree.url("files/original.txt"))
+        fixture.worker.receive([.init(path: tree.url("files/original.txt").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemModified), id: 1)])
+        await save(fixture.worker)
+        for name in ["original.txt", "alias.txt"] {
+            let id = try #require(fixture.store.read { $0.lookup(tree.url("files/" + name).path) })
+            #expect(fixture.store.read { $0.size[Int(id)] } == 7)
+            #expect(tree.text("files/" + name) == "changed")
+        }
+        #expect(tree.text("files/keep.txt") == "files/keep.txt")
+    }
+
+    @Test(arguments: [false, true])
+    func largeFileEventBatchesFallBackToOneDirectoryRead(large: Bool) async throws {
+        let count = IndexRefresh.fileReadLimit + (large ? 1 : 0)
+        let tree = try TestTree([".state/"] + (0..<count).map { "files/file-\($0).txt" })
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0 += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        try Data("changed".utf8).write(to: tree.url("files/file-0.txt"))
+        fixture.worker.receive((0..<count).map { .init(path: tree.url("files/file-\($0).txt").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: UInt64($0 + 1)) })
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == (large ? 1 : 0))
+        let id = try #require(fixture.store.read { $0.lookup(tree.url("files/file-0.txt").path) })
+        #expect(fixture.store.read { $0.size[Int(id)] } == 7)
+        #expect(tree.text("files/file-0.txt") == "changed")
+    }
+
+    @Test(arguments: [Int32(EACCES), Int32(ECANCELED)])
+    func failedItemReadsNeverBecomeRemovalsOrSaveCancelledWork(error: Int32) async throws {
+        let tree = try TestTree(".state/", "files/a.txt", "files/b.txt")
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let fixture = try await start(tree, readDirectory: { _, _, _, _, _ in
+            reads.withLock { $0 += 1 }; return EACCES
+        }, readItem: { path, items, names in
+            if path.hasSuffix("/b.txt") { return error }
+            return BulkDirectoryReader.readItem(path, items: &items, names: &names)
+        })
+        let previous = try Data(contentsOf: fixture.config.file)
+        try Data("changed".utf8).write(to: tree.url("files/a.txt"))
+        fixture.worker.receive(["a.txt", "b.txt"].map { .init(path: tree.url("files/" + $0).path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: UInt64.max - 1) })
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == (error == ECANCELED ? 0 : 1))
+        #expect(try Data(contentsOf: fixture.config.file) == previous)
+        let original = try #require(fixture.store.read { $0.lookup(tree.url("files/a.txt").path) })
+        #expect(fixture.store.read { $0.size[Int(original)] } == "files/a.txt".utf8.count)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/b.txt").path) } != nil)
+        #expect(tree.text("files/a.txt") == "changed")
+        #expect(tree.text("files/b.txt") == "files/b.txt")
+    }
+
+    @Test func fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings() async throws {
+        let tree = try TestTree([".state/"] + (0..<1000).map { "files/file-\($0).txt" })
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0 += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        let unchanged = try #require(fixture.store.read { $0.lookup(tree.url("files/file-99.txt").path) })
+        let replaced = try #require(fixture.store.read { $0.lookup(tree.url("files/file-1.txt").path) })
+        try Data("changed".utf8).write(to: tree.url("files/file-0.txt"))
+        try Data("replacement".utf8).write(to: tree.url("files/file-1.txt"), options: .atomic)
+        try FileManager.default.removeItem(at: tree.url("files/file-2.txt"))
+        try tree.add(["files/new.txt"])
+        fixture.worker.receive(["file-0.txt", "file-1.txt", "file-2.txt", "new.txt"].enumerated().map { index, name in
+            .init(path: tree.url("files/" + name).path,
+                  flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemModified),
+                  id: UInt64(index + 1))
+        })
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == 0, "A few file changes must not enumerate their thousand siblings")
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        let changed = try #require(loaded.read { $0.lookup(tree.url("files/file-0.txt").path) })
+        let replacement = try #require(loaded.read { $0.lookup(tree.url("files/file-1.txt").path) })
+        #expect(loaded.read { $0.size[Int(changed)] } == 7)
+        #expect(loaded.read { $0.size[Int(replacement)] } == 11)
+        #expect(replacement != replaced)
+        #expect(loaded.read { $0.lookup(tree.url("files/file-2.txt").path) } == nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/new.txt").path) } != nil)
+        #expect(loaded.read { $0.lookup(tree.url("files/file-99.txt").path) } == unchanged)
+        let folder = try #require(loaded.read { $0.lookup(tree.url("files").path) })
+        #expect(loaded.read { $0.fileCount[Int(folder)] } == 1000)
+        #expect(tree.text("files/file-99.txt") == "files/file-99.txt")
+        #expect(tree.text("files/file-0.txt") == "changed")
+    }
+
+    @Test func fileEventsReclassifyBuildFoldersWhenProjectMarkersArriveOrLeave() async throws {
+        let tree = try TestTree(".state/", "project/target/kept.txt")
+        let fixture = try await start(tree)
+        let target = tree.url("project/target").path
+        try tree.add(["project/Cargo.toml"])
+        let event = FSEventsStream.Event(path: tree.url("project/Cargo.toml").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 1)
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        let noisy = try #require(fixture.store.read { $0.lookup(target) })
+        #expect(fixture.store.read { $0.flags[Int(noisy)] & IndexStore.Flag.noise != 0 })
+        try FileManager.default.removeItem(at: tree.url("project/Cargo.toml"))
+        fixture.worker.receive([event])
+        await save(fixture.worker)
+        let ordinary = try #require(fixture.store.read { $0.lookup(target) })
+        #expect(fixture.store.read { $0.flags[Int(ordinary)] & IndexStore.Flag.noise == 0 })
+        #expect(fixture.store.read { $0.lookup(tree.url("project/Cargo.toml").path) } == nil)
+        #expect(tree.text("project/target/kept.txt") == "project/target/kept.txt")
+    }
+
     @Test func repeatedRebuildRequestsShareOnePendingOrRunningScan() async throws {
         let tree = try TestTree(".state/", "files/kept.txt")
         let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
@@ -293,11 +454,12 @@ struct IndexWorkerTests {
     }
 
     private func start(_ tree: TestTree, readDirectory: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
+                       readItem: @escaping IndexWorker.ItemRead = BulkDirectoryReader.readItem,
                        startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
                        onPhase: @escaping @Sendable (IndexWorker.Phase) -> Void = { _ in }) async throws -> Fixture {
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
                                  file: tree.url(".state/index.sealed"), storage: .shared)
-        let worker = IndexWorker(watchesChanges: startEvents != nil, readDirectory: readDirectory, startEvents: startEvents)
+        let worker = IndexWorker(watchesChanges: startEvents != nil, readDirectory: readDirectory, readItem: readItem, startEvents: startEvents)
         let store = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         let changes = OSAllocatedUnfairLock(initialState: 0)
         let started = OSAllocatedUnfairLock(initialState: false)

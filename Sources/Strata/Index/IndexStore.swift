@@ -613,6 +613,18 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             ("package.json", false, ["dist", "out", "coverage"]), ("pom.xml", false, ["target"]),
         ].map { (Array($0.0.utf8), $0.1, $0.2.map { Array($0.utf8) }) }
 
+        package static func isBuildMarker(_ name: String) -> Bool {
+            Array(name.utf8).withUnsafeBytes { bytes in buildOutputRules.contains { matches(bytes, rule: $0) } }
+        }
+
+        private static func matches(_ name: UnsafeRawBufferPointer,
+                                    rule: (marker: [UInt8], suffix: Bool, folders: [[UInt8]])) -> Bool {
+            if rule.suffix {
+                return name.count > rule.marker.count && name.suffix(rule.marker.count).elementsEqual(rule.marker)
+            }
+            return name.elementsEqual(rule.marker)
+        }
+
         /// Which of `items` are folders that are noise in their own right: caches and VCS internals by name, or build
         /// output beside the project file that produces it. Pure and lock-free (raw byte comparisons only).
         package static func ownNoise(_ items: [ScannedItem], nameBuffer: UnsafeRawBufferPointer) -> [Bool] {
@@ -632,10 +644,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             for item in items where !item.isDirectory {
                 let name = bytes(item)
                 for rule in buildOutputRules {
-                    let hit = rule.suffix
-                        ? name.count > rule.marker.count && equal(UnsafeRawBufferPointer(rebasing: name[(name.count - rule.marker.count)...]), rule.marker)
-                        : equal(name, rule.marker)
-                    if hit { outputs.formUnion(rule.folders) }
+                    if matches(name, rule: rule) { outputs.formUnion(rule.folders) }
                 }
             }
             return items.map { item in

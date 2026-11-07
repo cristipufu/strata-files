@@ -1,0 +1,79 @@
+import CoreServices
+import Foundation
+import Testing
+@testable import StrataIndex
+
+struct IndexEventInboxTests {
+    @Test func aWideFolderBurstNeedsOnlyOneShallowListing() throws {
+        let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture"])
+        for index in 0..<10_000 {
+            _ = inbox.append([.init(path: "/fixture/wide/file-\(index)",
+                flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: UInt64(index))], generation: generation)
+        }
+        let delivery = try #require(inbox.take())
+        #expect(delivery.folders.count == 1)
+        let refresh = try #require(delivery.folders["/fixture/wide"])
+        #expect(!refresh.isDeep && refresh.names == nil)
+        #expect(delivery.lastID == 9999)
+    }
+
+    @Test func excludedItemEventsNeverRefreshTheirParentOrHideLookalikes() throws {
+        let inbox = IndexEventInbox(), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture"], excluded: ["/fixture/private"])
+        _ = inbox.append([
+            .init(path: "/fixture/private/", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir), id: 1),
+            .init(path: "/fixture/private/cache", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 2),
+            .init(path: "/fixture/private-copy/file", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 3)
+        ], generation: generation)
+        let delivery = try #require(inbox.take())
+        #expect(Set(delivery.folders.keys) == ["/fixture/private-copy"])
+        #expect(delivery.lastID == 3)
+        inbox.exclude([])
+        _ = inbox.append([.init(path: "/fixture/private/cache", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 4)], generation: generation)
+        #expect(try #require(inbox.take()).folders["/fixture/private"]?.names == ["cache"])
+    }
+
+    @Test func repeatedCallbacksShareOneDeliveryAndPreserveRecoveryFlags() throws {
+        let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture"])
+        for index in 0..<1000 {
+            let flags = index == 0 ? FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs) : 0
+            #expect(inbox.append([.init(path: "/fixture/folder", flags: flags, id: UInt64(index))], generation: generation) == (index == 0))
+        }
+        let delivery = try #require(inbox.take())
+        #expect(delivery.generation == generation && delivery.folders.count == 1)
+        #expect(delivery.folders["/fixture/folder"]?.isDeep == true && delivery.lastID == 999)
+        #expect(inbox.take() == nil)
+        #expect(inbox.append([.init(path: "/fixture/folder", flags: 0, id: 1000)], generation: generation))
+    }
+
+    @Test func anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion() throws {
+        let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture", "/other"])
+        for index in 0..<1000 {
+            _ = inbox.append([.init(path: "/fixture/file-\(index)", flags: 0, id: UInt64(index))], generation: generation)
+        }
+        _ = inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 1000)], generation: generation)
+        let delivery = try #require(inbox.take())
+        #expect(delivery.folders.count == 2)
+        #expect(Set(delivery.folders.filter { $0.value.isDeep }.keys) == ["/fixture", "/other"])
+        #expect(delivery.historyDone)
+        #expect(delivery.lastID == 1000)
+    }
+
+    @Test func replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation() throws {
+        let inbox = IndexEventInbox(folderLimit: 1), old = UUID(), current = UUID()
+        inbox.reset(generation: old, roots: ["/old"])
+        _ = inbox.append([.init(path: "/old/first", flags: 0, id: 1)], generation: old)
+        inbox.reset(generation: current, roots: ["/new"])
+        #expect(!inbox.append([.init(path: "/old/late", flags: 0, id: 2)], generation: old))
+        #expect(inbox.take() == nil)
+        #expect(inbox.append([.init(path: "/new/a", flags: 0, id: 3), .init(path: "/new/b", flags: 0, id: 4),
+            .init(path: "/new", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged), id: 0)], generation: current))
+        let delivery = try #require(inbox.take())
+        #expect(delivery.invalidation?.invalidatesIndex == true)
+        #expect(delivery.folders["/new"]?.isDeep == true)
+        #expect(!delivery.folders.keys.contains { $0.hasPrefix("/old") })
+    }
+}
