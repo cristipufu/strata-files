@@ -9351,8 +9351,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }",
-    "replace": "            if store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }",
+    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))\n            }",
+    "replace": "            if store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))\n            }",
     "rule": "Partial file refresh falsely completes unreadable directory totals",
     "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
   },
@@ -9414,7 +9414,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "for removed in removals { changes.record(listing.prefix + store.name(removed)) }",
+    "find": "for removed in removals { changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed)) }",
     "replace": "for _ in removals {}",
     "rule": "Scoped index updates lose removed paths",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
@@ -9463,8 +9463,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "changes.record(path, descendants: false)\n            store.mtime[Int(old)] = item.mtime",
-    "replace": "changes.record(path)\n            store.mtime[Int(old)] = item.mtime",
+    "find": "changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old))\n            store.mtime[Int(old)] = item.mtime",
+    "replace": "changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old))\n            store.mtime[Int(old)] = item.mtime",
     "rule": "Folder mtime changes mark untouched descendant folders as changed",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
   },
@@ -9474,5 +9474,19 @@
     "replace": "        } else if false {\n            store.refreshAllocationKnown(from: id)",
     "rule": "Batched file updates refresh ancestor allocation knowledge when no children were removed",
     "tests": "IndexWorkerTests/allocationChangesUpdateTheIndexWithoutChangingFileLengthOrDate"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Search.swift",
+    "find": "guard panes.contains(where: { $0.search.affects(incoming) }) else { return }",
+    "replace": "_ = incoming",
+    "rule": "Scoped searches and Recents ignore unrelated and noise-only index changes",
+    "tests": "SearchRefreshTests/unrelatedAndNoiseIndexChangesDoNotRefreshScopedSearchesOrRecents"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "return !isShowingResults || changes.affects(node.url.path)",
+    "replace": "return !isShowingResults",
+    "rule": "Shown folder results update their size cells only when their own subtree changes",
+    "tests": "SearchRefreshTests/searchResultFoldersRefreshSizesAndInspectorWhenTheirSubtreeChanges"
   }
 ]

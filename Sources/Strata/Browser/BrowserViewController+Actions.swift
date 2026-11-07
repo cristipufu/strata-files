@@ -350,13 +350,23 @@ extension BrowserViewController {
     @objc func indexChanged(_ notification: Notification? = nil) {
         refreshVolumeSpaceIfVisible()
         let changes = notification?.userInfo?[FileIndex.changesKey] as? IndexChanges ?? .all
-        if let directory, !changes.affects(directory.path) { return }
+        if !isShowingResults {
+            if let directory, !changes.affects(directory.path) { return }
+        }
         // Folder sizes come from the index; a file's is its own.
         let column = outlineView.column(withIdentifier: .size)
         let visible = outlineView.rows(in: outlineView.visibleRect)
         let folders = IndexSet((visible.location..<NSMaxRange(visible)).filter { row in
-            (outlineView.item(atRow: row) as? FileNode)?.entry.isDirectory == true
+            guard let node = outlineView.item(atRow: row) as? FileNode, node.entry.isDirectory else { return false }
+            return !isShowingResults || changes.affects(node.url.path)
         })
+        if isShowingResults {
+            let checksAll = effectiveMode != .list || ordering.choice?.key == .size
+            let affectsOther = checksAll
+                ? nodes.contains { $0.entry.isDirectory && changes.affects($0.url.path) }
+                : selectedEntries.contains { $0.isDirectory && changes.affects($0.url.path) }
+            guard !folders.isEmpty || affectsOther else { return }
+        }
         if column >= 0, !folders.isEmpty {
             outlineView.reloadData(forRowIndexes: inlineRename.except(folders, in: outlineView), columnIndexes: [column])
         }

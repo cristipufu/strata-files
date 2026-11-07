@@ -319,3 +319,14 @@ extension FileEntry {
                   contentType: type, isListed: false, allocatedSize: hit.allocatedSize)
     }
 }
+
+extension FileIndex {
+    /// Whether `scopePath` is inside a hidden or noise subtree in the index (or the index is busy/not ready yet).
+    package func includesHiddenOrNoise(_ scopePath: String) -> Bool {
+        guard let store else { return true }
+        return store.tryRead { store in
+            guard let id = store.lookup(scopePath) else { return true }
+            return store.isHiddenOrNoise(id) || store.isOpaquePackage(id)
+        } ?? true
+    }
+}

@@ -427,4 +427,27 @@ import AppKit
         pane.browser.emptyState.show(symbol: "square.on.square", title: String(localized: "Looking for duplicates…"),
                                      message: String(localized: "Checked \(done.formatted()) of \(total) size groups.", comment: "plural"))
     }
+
+    /// Whether `changes` can alter what this pane's active search or Recents view shows.
+    func affects(_ changes: IndexChanges) -> Bool {
+        guard let pane else { return false }
+        switch pane.destination {
+        case .folder, .duplicates:
+            return false
+        case .recents:
+            return changes.affectsRecents
+        case .search(let text, let scope):
+            if SpotlightQuery.parse(text) != nil {
+                return scope.map { changes.affects($0.path) } ?? true
+            }
+            let parsed = IndexQuery.parse(text)
+            let scopePath = scope?.lexicallyStandardized.path ?? parsed.scopePath
+            let includeHiddenAndNoise = parsed.includeHidden || parsed.includeNoise
+                || (scopePath.map { services.index.includesHiddenOrNoise($0) } ?? false)
+            if let scopePath {
+                return changes.affects(scopePath, includeHiddenAndNoise: includeHiddenAndNoise)
+            }
+            return includeHiddenAndNoise ? changes.hasChanges : changes.affectsSearch
+        }
+    }
 }

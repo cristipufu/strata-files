@@ -73,13 +73,16 @@ extension BrowserWindowController {
         split.sidebar.highlight(.search(saved))
     }
 
-    @objc func indexChanged() {
+    @objc func indexChanged(_ notification: Notification? = nil) {
+        let incoming = notification?.userInfo?[FileIndex.changesKey] as? IndexChanges ?? .all
+        guard panes.contains(where: { $0.search.affects(incoming) }) else { return }
+        pendingSearchChanges.formUnion(incoming)
         indexRefresh.request { [weak self] in
-            for p in self?.panes ?? [] {
-                switch p.destination {
-                case .search, .recents: p.search.refresh()
-                case .folder, .duplicates: break
-                }
+            guard let self else { return }
+            let changes = self.pendingSearchChanges
+            self.pendingSearchChanges = IndexChanges()
+            for p in self.panes where p.search.affects(changes) {
+                p.search.refresh()
             }
         }
     }

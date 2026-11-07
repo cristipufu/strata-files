@@ -500,6 +500,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
 
         package func isLive(_ id: Int32) -> Bool { flags[Int(id)] & Flag.deleted == 0 }
         package func isDirectory(_ id: Int32) -> Bool { flags[Int(id)] & Flag.directory != 0 }
+        package func isHiddenOrNoise(_ id: Int32) -> Bool { flags[Int(id)] & (Flag.noise | Flag.hidden) != 0 }
 
         package func name(_ id: Int32) -> String {
             let start = Int(nameStart[Int(id)])

@@ -461,7 +461,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             if error == ENOENT || error == ENOTDIR {
                 var changes = FolderChanges()
-                if store.write({ Self.removeGone(id, from: &$0) }) { changes.record(path) }
+                store.write { store in
+                    let hiddenOrNoise = store.isHiddenOrNoise(id)
+                    if Self.removeGone(id, from: &store) { changes.record(path, hiddenOrNoise: hiddenOrNoise) }
+                }
                 return changes
             }
             guard error == 0 else { return nil }
@@ -474,7 +477,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
             store.integrateNew(from: firstNew)
-            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }
+            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {
+                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))
+            }
             return changes
         }
     }
@@ -522,9 +527,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         private(set) var changed = false
         var paths = IndexChanges()
 
-        mutating func record(_ path: String, descendants: Bool = true) {
+        mutating func record(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false) {
             changed = true
-            paths.insert(path, descendants: descendants)
+            paths.insert(path, descendants: descendants, hiddenOrNoise: hiddenOrNoise)
         }
 
         /// Listed items the index doesn't have (or no longer has as they are), with their own noise.
@@ -568,7 +573,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             let expectedNoise = item.isDirectory
                 && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
-                changes.record(listing.prefix + name)
+                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old))
                 removals.append(old)
                 changes.add(item, noise: listing.ownNoise[index])
             } else if item.isDirectory {
@@ -576,7 +581,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                        changes: &changes)
             } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime
                         || store.allocatedSize(old) != item.allocatedSize {
-                changes.record(listing.prefix + name)
+                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old))
                 store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
                                  bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
             }
@@ -585,7 +590,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
         removals.append(contentsOf: existing.values)
         if !removals.isEmpty {
-            for removed in removals { changes.record(listing.prefix + store.name(removed)) }
+            for removed in removals { changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed)) }
             store.removeChildren(removals, of: id)
         } else if unknownChanged {
             store.refreshAllocationKnown(from: id)
@@ -612,7 +617,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
         let excluded = isExcluded(path, config)
         if !excluded, store.mtime[Int(old)] != item.mtime {
-            changes.record(path, descendants: false)
+            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old))
             store.mtime[Int(old)] = item.mtime
         }
         if !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }
@@ -622,16 +627,22 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func addNew(_ listing: FolderListing, to id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
                         changes: inout FolderChanges) {
         guard !changes.additions.isEmpty else { return }
-        for item in changes.additions { changes.record(listing.prefix + listing.name(of: item)) }
         let ids = listing.names.withUnsafeBytes {
             store.appendChildren(changes.additions, nameBuffer: $0, of: id, ownNoise: changes.additionNoise)
         }
-        guard ids.count == changes.additions.count else { interrupted = true; return }
-        for (offset, item) in changes.additions.enumerated() where item.isDirectory && !item.isMountPoint {
+        guard ids.count == changes.additions.count else {
+            for item in changes.additions { changes.record(listing.prefix + listing.name(of: item)) }
+            interrupted = true
+            return
+        }
+        for (offset, item) in changes.additions.enumerated() {
             let childPath = listing.prefix + listing.name(of: item)
             let childID = ids.lowerBound + Int32(offset)
-            if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
-            if !isExcluded(childPath, config) { changes.newFolders.append((childID, childPath)) }
+            if item.isDirectory && !item.isMountPoint {
+                if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
+                if !isExcluded(childPath, config) { changes.newFolders.append((childID, childPath)) }
+            }
+            changes.record(childPath, hiddenOrNoise: store.isHiddenOrNoise(childID))
         }
     }
 
