@@ -31,15 +31,15 @@ struct IndexAllocationTests {
             let files = Self.append(4, directory: false, allocation: nil, to: folder, in: &s)
             s.integrateNew(from: first)
             #expect(s.allocatedSize(root) == nil)
-            s.setAllocation(10, of: files[0])
-            s.setAllocation(20, of: files[1])
+            s.setTestAllocation(10, of: files[0])
+            s.setTestAllocation(20, of: files[1])
             s.remove(files[2])
             #expect(s.allocatedSize(root) == nil)
             s.removeChildren([files[3], files[3]], of: folder)
             #expect(s.allocatedSize(root) == 30)
-            s.setAllocation(nil, of: files[0])
+            s.setTestAllocation(nil, of: files[0])
             #expect(s.allocatedSize(root) == nil)
-            s.setAllocation(40, of: files[0])
+            s.setTestAllocation(40, of: files[0])
             #expect(s.allocatedSize(root) == 60)
             s.removeChildren([folder], of: root)
             #expect(s.allocatedSize(root) == 0)
@@ -48,6 +48,34 @@ struct IndexAllocationTests {
             #expect(s.allocatedSize(root) == nil)
             _ = s.finishedAllocationRead(of: replacement)
             #expect(s.allocatedSize(root) == 0)
+        }
+    }
+
+    @Test func batchedFileUpdatesAndRemovalsPropagateSizesAndAllocationAcrossAncestors() {
+        let store = IndexStore()
+        store.write { s in
+            let root = s.addRoot(path: "/fixture", mtime: 0)
+            let parent = Self.append(1, directory: true, allocation: nil, to: root, in: &s)[0]
+            let leaf = Self.append(1, directory: true, allocation: nil, to: parent, in: &s)[0]
+            _ = s.finishedAllocationRead(of: root)
+            _ = s.finishedAllocationRead(of: parent)
+            _ = s.finishedAllocationRead(of: leaf)
+            let first = Int32(s.count)
+            let files = Self.append(3, directory: false, allocation: 100, to: leaf, in: &s)
+            s.integrateNew(from: first)
+            #expect(s.allocatedSize(root) == 300)
+            var bytesDelta: Int64 = 0, allocatedDelta: Int64 = 0, unknownChanged = false
+            s.updateFile(files[0], size: 50, allocatedSize: 250, mtime: 10,
+                         bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
+            s.updateFile(files[1], size: 70, allocatedSize: nil, mtime: 10,
+                         bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
+            s.propagateTotals(from: leaf, bytes: bytesDelta, files: 0, allocatedBytes: allocatedDelta)
+            if unknownChanged { s.refreshAllocationKnown(from: leaf) }
+            #expect(s.size[Int(root)] == 120 && s.size[Int(parent)] == 120 && s.size[Int(leaf)] == 120)
+            #expect(s.allocatedSize(root) == nil && s.allocatedSize(leaf) == nil)
+            s.removeChildren([files[1], files[2]], of: leaf)
+            #expect(s.size[Int(root)] == 50 && s.fileCount[Int(root)] == 1)
+            #expect(s.allocatedSize(root) == 250 && s.allocatedSize(parent) == 250 && s.allocatedSize(leaf) == 250)
         }
     }
 
@@ -61,7 +89,7 @@ struct IndexAllocationTests {
             s.aggregate()
             _ = s.finishedAllocationRead(of: root)
             s.remove(ids[0])
-            s.setAllocation(10, of: ids[1])
+            s.setTestAllocation(10, of: ids[1])
         }
         let store: IndexStore
         if compact {
@@ -79,9 +107,9 @@ struct IndexAllocationTests {
             let unknownID = s.lookup("/fixture/item-2")
             let unknown = try #require(unknownID)
             #expect(s.allocatedSize(root) == nil)
-            s.setAllocation(20, of: unknown)
+            s.setTestAllocation(20, of: unknown)
             #expect(s.allocatedSize(root) == 30)
-            s.setAllocation(nil, of: known)
+            s.setTestAllocation(nil, of: known)
             #expect(s.allocatedSize(root) == nil)
             s.remove(known)
             #expect(s.allocatedSize(root) == 20)

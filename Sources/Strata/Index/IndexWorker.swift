@@ -554,6 +554,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                            changes: inout FolderChanges) {
         var existing = store.children(of: id, matching: listing.selectedNames)
         var removals: [Int32] = []
+        var bytesDelta: Int64 = 0
+        var allocatedDelta: Int64 = 0
+        var unknownChanged = false
         let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
                          hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
         for (index, item) in listing.items.enumerated() {
@@ -574,17 +577,18 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime
                         || store.allocatedSize(old) != item.allocatedSize {
                 changes.record(listing.prefix + name)
-                store.propagate(from: old, bytes: item.size - store.size[Int(old)], files: 0)
-                store.size[Int(old)] = item.size
-                store.setAllocation(item.allocatedSize, of: old)
-                store.mtime[Int(old)] = item.mtime
+                store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
+                                 bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
             }
         }
+        store.propagateTotals(from: id, bytes: bytesDelta, files: 0, allocatedBytes: allocatedDelta)
         // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
         removals.append(contentsOf: existing.values)
         if !removals.isEmpty {
             for removed in removals { changes.record(listing.prefix + store.name(removed)) }
             store.removeChildren(removals, of: id)
+        } else if unknownChanged {
+            store.refreshAllocationKnown(from: id)
         }
     }
 

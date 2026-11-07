@@ -230,6 +230,17 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         /// folders' totals, and those totals into every older ancestor.
         package mutating func integrateNew(from first: Int32) {
             guard Int(first) < parent.count else { return }
+            var olderParent: Int32 = -1
+            var bytesDelta: Int64 = 0
+            var filesDelta: Int64 = 0
+            var allocatedDelta: Int64 = 0
+            var hasUnknown = false
+            func flushOlderParent() {
+                guard olderParent >= 0 else { return }
+                propagateTotals(from: olderParent, bytes: bytesDelta, files: filesDelta, allocatedBytes: allocatedDelta)
+                if hasUnknown { refreshAllocationKnown(from: olderParent) }
+                bytesDelta = 0; filesDelta = 0; allocatedDelta = 0; hasUnknown = false
+            }
             for i in stride(from: parent.count - 1, through: Int(first), by: -1) where flags[i] & Flag.deleted == 0 {
                 let p = parent[i]
                 if p >= first {
@@ -237,12 +248,18 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                     allocated[Int(p)] = allocated[Int(p)].saturatingAdd(allocated[i])
                     if flags[i] & Flag.unknownAllocation != 0 { _ = setAllocationUnknown(true, of: p) }
                     fileCount[Int(p)] = UInt32(clamping: UInt64(fileCount[Int(p)]) + UInt64(fileCount[i]))
-                } else {
-                    propagate(from: Int32(i), bytes: size[i], files: Int64(fileCount[i]))
-                    propagateAllocation(from: Int32(i), bytes: allocated[i])
-                    if flags[i] & Flag.unknownAllocation != 0 { refreshAllocationKnown(from: p) }
+                } else if p >= 0 {
+                    if p != olderParent {
+                        flushOlderParent()
+                        olderParent = p
+                    }
+                    bytesDelta = bytesDelta.saturatingAdd(size[i])
+                    filesDelta = filesDelta.saturatingAdd(Int64(fileCount[i]))
+                    allocatedDelta = allocatedDelta.saturatingAdd(allocated[i])
+                    if flags[i] & Flag.unknownAllocation != 0 { hasUnknown = true }
                 }
             }
+            flushOlderParent()
         }
 
         /// Reserves room for `entries` up front. Untouched reserved pages cost no memory, while growing by doubling
@@ -274,22 +291,24 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return volumes.values.reduce(100_000) { min(60_000_000, $0 + $1) }
         }
 
-        /// Adds a size/count change to every ancestor of `id` (not to `id` itself).
-        package mutating func propagate(from id: Int32, bytes: Int64, files: Int64) {
-            guard bytes != 0 || files != 0 else { return }
-            var p = parent[Int(id)]
+        /// Adds a batched size, file count and allocated byte delta starting at `directory` and walking its ancestors.
+        package mutating func propagateTotals(from directory: Int32, bytes: Int64, files: Int64, allocatedBytes: Int64) {
+            guard bytes != 0 || files != 0 || allocatedBytes != 0 else { return }
+            var p = directory
             while p >= 0 {
-                size[Int(p)] = size[Int(p)].saturatingAdd(bytes)
-                fileCount[Int(p)] = UInt32(clamping: Int64(fileCount[Int(p)]) + files)
-                p = parent[Int(p)]
+                let i = Int(p)
+                if bytes != 0 { size[i] = size[i].saturatingAdd(bytes) }
+                if files != 0 { fileCount[i] = UInt32(clamping: Int64(fileCount[i]).saturatingAdd(files)) }
+                if allocatedBytes != 0 { allocated[i] = allocated[i].saturatingAdd(allocatedBytes) }
+                p = parent[i]
             }
         }
 
         /// Flags `id` and everything under it as deleted, unlinks it, and subtracts its totals from its ancestors.
         package mutating func remove(_ id: Int32) {
             guard flags[Int(id)] & Flag.deleted == 0 else { return }
-            propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
-            propagateAllocation(from: id, bytes: -allocated[Int(id)])
+            propagateTotals(from: parent[Int(id)], bytes: -max(0, size[Int(id)]), files: -Int64(fileCount[Int(id)]),
+                            allocatedBytes: -max(0, allocated[Int(id)]))
             removingAllocationChild(id)
             unlink(id)
             if flags[Int(id)] & Flag.unknownAllocation != 0 { refreshAllocationKnown(from: parent[Int(id)]) }
@@ -359,10 +378,14 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package mutating func removeChildren(_ ids: [Int32], of parentID: Int32) {
             let gone = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
             guard !gone.isEmpty else { return }
+            var bytesDelta: Int64 = 0
+            var filesDelta: Int64 = 0
+            var allocatedDelta: Int64 = 0
             for id in gone {
                 removingAllocationChild(id)
-                propagate(from: id, bytes: -size[Int(id)], files: -Int64(fileCount[Int(id)]))
-                propagateAllocation(from: id, bytes: -allocated[Int(id)])
+                bytesDelta = bytesDelta.saturatingAdd(-max(0, size[Int(id)]))
+                filesDelta = filesDelta.saturatingAdd(-Int64(fileCount[Int(id)]))
+                allocatedDelta = allocatedDelta.saturatingAdd(-max(0, allocated[Int(id)]))
                 var stack: [Int32] = [id]
                 while let current = stack.popLast() {
                     unknownChildCounts.removeValue(forKey: current)
@@ -374,6 +397,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                     }
                 }
             }
+            propagateTotals(from: parentID, bytes: bytesDelta, files: filesDelta, allocatedBytes: allocatedDelta)
             var head: Int32 = -1, tail: Int32 = -1
             var child = firstChild[Int(parentID)]
             while child >= 0 {
@@ -400,21 +424,19 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return wasUnknown != (allocatedSize(directory) == nil)
         }
 
-        package mutating func setAllocation(_ bytes: Int64?, of id: Int32) {
+        /// Updates a file child's size, allocation and date, accumulating parent deltas so a folder reconcile walks
+        /// its ancestor chain once rather than per modified file.
+        package mutating func updateFile(_ id: Int32, size newSize: Int64, allocatedSize newAllocated: Int64?, mtime newMtime: UInt32,
+                                         bytesDelta: inout Int64, allocatedDelta: inout Int64, unknownChanged: inout Bool) {
             let i = Int(id)
-            let next = max(0, bytes ?? 0)
-            propagateAllocation(from: id, bytes: next - allocated[i])
-            allocated[i] = next
-            if setAllocationUnknown(bytes == nil, of: id) { refreshAllocationKnown(from: parent[i]) }
-        }
-
-        private mutating func propagateAllocation(from id: Int32, bytes: Int64) {
-            guard bytes != 0 else { return }
-            var p = parent[Int(id)]
-            while p >= 0 {
-                allocated[Int(p)] = allocated[Int(p)].saturatingAdd(bytes)
-                p = parent[Int(p)]
-            }
+            let nextSize = max(0, newSize)
+            bytesDelta = bytesDelta.saturatingAdd(nextSize - max(0, size[i]))
+            size[i] = nextSize
+            let nextAllocated = max(0, newAllocated ?? 0)
+            allocatedDelta = allocatedDelta.saturatingAdd(nextAllocated - max(0, allocated[i]))
+            allocated[i] = nextAllocated
+            mtime[i] = newMtime
+            if setAllocationUnknown(newAllocated == nil, of: id) { unknownChanged = true }
         }
 
         private mutating func unknownChildren(of directory: Int32) -> Int {
@@ -446,7 +468,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return true
         }
 
-        private mutating func refreshAllocationKnown(from id: Int32) {
+        package mutating func refreshAllocationKnown(from id: Int32) {
             var current = id
             while current >= 0 {
                 let i = Int(current)

@@ -9467,5 +9467,12 @@
     "replace": "changes.record(path)\n            store.mtime[Int(old)] = item.mtime",
     "rule": "Folder mtime changes mark untouched descendant folders as changed",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        } else if unknownChanged {\n            store.refreshAllocationKnown(from: id)",
+    "replace": "        } else if false {\n            store.refreshAllocationKnown(from: id)",
+    "rule": "Batched file updates refresh ancestor allocation knowledge when no children were removed",
+    "tests": "IndexWorkerTests/allocationChangesUpdateTheIndexWithoutChangingFileLengthOrDate"
   }
 ]
