@@ -215,7 +215,6 @@ private struct NewFileExtensionField: View {
 private struct IndexSettings: View {
     @State private var status = ""
     @State private var hasAccess = Privacy.hasFullDiskAccess
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Form {
@@ -260,7 +259,12 @@ private struct IndexSettings: View {
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())
         .onAppear(perform: refresh)
-        .onReceive(timer) { _ in refresh() }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if !Task.isCancelled { refresh() }
+            }
+        }
     }
 
     private func syntax(_ example: String, _ meaning: String.LocalizationValue) -> some View {
