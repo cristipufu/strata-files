@@ -79,21 +79,29 @@ struct IndexWorkerTests {
     }
 
     @Test func changeNotificationsNameChangedItemsIncludingRemovedAndReplacedFolders() async throws {
-        let tree = try TestTree(".state/", "files/keep.txt", "files/modify.txt", "files/remove.txt", "files/old/deep/note.txt")
+        let tree = try TestTree(".state/", "files/keep.txt", "files/modify.txt", "files/remove.txt",
+                                "files/old/deep/note.txt", "files/subfolder/untouched/keep.txt")
         let fixture = try await start(tree)
         let changes = OSAllocatedUnfairLock(initialState: IndexChanges())
         fixture.worker.onChange = { incoming in changes.withLock { $0.formUnion(incoming) } }
         try Data("new contents".utf8).write(to: tree.url("files/modify.txt"))
         try FileManager.default.removeItem(at: tree.url("files/remove.txt"))
         try FileManager.default.moveItem(at: tree.url("files/old"), to: tree.url("files/renamed"))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)],
+                                              ofItemAtPath: tree.url("files/subfolder").path)
         fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
         await save(fixture.worker)
         let published = changes.withLock { $0 }
-        for path in ["files", "files/modify.txt", "files/remove.txt", "files/old/deep", "files/renamed/deep/note.txt"] {
+        for path in ["files", "files/modify.txt", "files/remove.txt", "files/old/deep", "files/renamed/deep/note.txt",
+                     "files/subfolder"] {
             #expect(published.affects(tree.url(path).path))
         }
-        for path in ["files/keep.txt", "other", "files/old-copy"] { #expect(!published.affects(tree.url(path).path)) }
+        for path in ["files/keep.txt", "other", "files/old-copy", "files/subfolder/untouched",
+                     "files/subfolder/untouched/keep.txt"] {
+            #expect(!published.affects(tree.url(path).path))
+        }
         #expect(tree.text("files/keep.txt") == "files/keep.txt")
+        #expect(tree.text("files/subfolder/untouched/keep.txt") == "files/subfolder/untouched/keep.txt")
     }
 
     @Test func directoryEventsAndFileTypeChangesRefreshTheCompleteSubtree() async throws {

@@ -16,6 +16,17 @@ struct IndexChangesTests {
         #expect(changes.affects("/elsewhere"))
     }
 
+    @Test func shallowFolderChangesAffectTheFolderAndItsAncestorsWithoutMarkingDescendants() {
+        var changes = IndexChanges()
+        changes.insert("/home/Documents", descendants: false)
+        #expect(changes.affects("/") && changes.affects("/home") && changes.affects("/home/Documents"))
+        #expect(!changes.affects("/home/Documents/Subfolder") && !changes.affects("/home/Documents/note.txt"))
+        var removed = IndexChanges()
+        removed.insert("/home/Documents")
+        changes.formUnion(removed)
+        #expect(changes.affects("/home/Documents/Subfolder"))
+    }
+
     @Test func systemAndBrowserSpellingsReferToTheSamePath() {
         var changes = IndexChanges()
         changes.insert("/private/var/folders/fixture/note.txt")

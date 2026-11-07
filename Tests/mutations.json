@@ -9351,8 +9351,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path) }",
-    "replace": "            if store.finishedAllocationRead(of: id) { changes.record(path) }",
+    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }",
+    "replace": "            if store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }",
     "rule": "Partial file refresh falsely completes unreadable directory totals",
     "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
   },
@@ -9460,5 +9460,12 @@
     "replace": "return errno",
     "rule": "Missing file events forget to validate their parent",
     "tests": "IndexWorkerTests/aMissingFilesParent|IndexRefreshTests/aMissingItemIsDistinguished"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "changes.record(path, descendants: false)\n            store.mtime[Int(old)] = item.mtime",
+    "replace": "changes.record(path)\n            store.mtime[Int(old)] = item.mtime",
+    "rule": "Folder mtime changes mark untouched descendant folders as changed",
+    "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
   }
 ]

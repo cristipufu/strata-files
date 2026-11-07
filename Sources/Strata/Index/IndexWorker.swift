@@ -474,7 +474,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
             store.integrateNew(from: firstNew)
-            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path) }
+            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path, descendants: false) }
             return changes
         }
     }
@@ -522,9 +522,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         private(set) var changed = false
         var paths = IndexChanges()
 
-        mutating func record(_ path: String) {
+        mutating func record(_ path: String, descendants: Bool = true) {
             changed = true
-            paths.insert(path)
+            paths.insert(path, descendants: descendants)
         }
 
         /// Listed items the index doesn't have (or no longer has as they are), with their own noise.
@@ -612,7 +612,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
         let excluded = isExcluded(path, config)
         if !excluded, store.mtime[Int(old)] != item.mtime {
-            changes.record(path)
+            changes.record(path, descendants: false)
             store.mtime[Int(old)] = item.mtime
         }
         if !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }
