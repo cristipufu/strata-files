@@ -154,7 +154,8 @@ struct IndexStoreAccessTests {
         let photo = try #require(compact.read { $0.lookup("/synthetic/café/photo.jpg") })
         #expect(photo == 2)
         #expect(compact.read { $0.path(of: photo) } == "/synthetic/café/photo.jpg")
-        compact.write { $0.remove(1) }
+        compact.write { $0.removeChildren([1], of: 0) }
+        #expect(compact.read { $0.deletedCount() } == 2)
         #expect(compact.read { $0.size[0] } == 31)
         #expect(store.read { $0.size[0] } == 54)
         #expect(store.read { $0.lookup("/synthetic/café/photo.jpg") } == 3)

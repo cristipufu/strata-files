@@ -71,6 +71,7 @@ nonisolated package enum IndexPersistence {
             store.roots = header.roots
             try file.reader.finish()
             guard validStructure(store) else { throw IndexFile.Corrupt() }
+            store.recountDeletedEntries()
         }
         return (store, header)
     }

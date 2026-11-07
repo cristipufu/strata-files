@@ -124,6 +124,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         package var capacityExceeded = false
         // Derived from the live child lists; loaded and compacted stores populate these lazily.
         private var unknownChildCounts: [Int32: Int] = [:]
+        private var deletedEntries = 0
 
         package func canAppend(entries: Int, nameBytes: Int) -> Bool {
             let maximumEntries = min(max(0, entryLimit), Int(Int32.max))
@@ -315,7 +316,10 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             var stack: [Int32] = [id]
             while let current = stack.popLast() {
                 unknownChildCounts.removeValue(forKey: current)
-                flags[Int(current)] |= Flag.deleted
+                if flags[Int(current)] & Flag.deleted == 0 {
+                    flags[Int(current)] |= Flag.deleted
+                    deletedEntries += 1
+                }
                 var child = firstChild[Int(current)]
                 while child >= 0 {
                     stack.append(child)
@@ -325,8 +329,12 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         }
 
         /// Entries flagged deleted (they stay until `compacted()`).
-        package func deletedCount() -> Int {
-            flags.withUnsafeBufferPointer { flags in flags.reduce(0) { $0 + ($1 & Flag.deleted != 0 ? 1 : 0) } }
+        package func deletedCount() -> Int { deletedEntries }
+
+        package mutating func recountDeletedEntries() {
+            deletedEntries = flags.withUnsafeBufferPointer { flags in
+                flags.reduce(0) { $0 + ($1 & Flag.deleted != 0 ? 1 : 0) }
+            }
         }
 
         /// A copy without deleted entries (ids change; parents still precede children). Callers hold the read lock.
@@ -389,7 +397,10 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 var stack: [Int32] = [id]
                 while let current = stack.popLast() {
                     unknownChildCounts.removeValue(forKey: current)
-                    flags[Int(current)] |= Flag.deleted
+                    if flags[Int(current)] & Flag.deleted == 0 {
+                        flags[Int(current)] |= Flag.deleted
+                        deletedEntries += 1
+                    }
                     var child = firstChild[Int(current)]
                     while child >= 0 {
                         stack.append(child)
