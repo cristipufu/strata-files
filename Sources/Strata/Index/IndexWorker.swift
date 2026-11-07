@@ -491,7 +491,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if error == ECANCELED { interrupted = true; return nil }
             guard error == 0 || error == ENOENT else { return nil }
         }
-        guard !stopForQuit(), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }
+        guard !stopForQuit(), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }
         return FolderListing(items: items, names: names, path: path, selectedNames: requested)
     }
 

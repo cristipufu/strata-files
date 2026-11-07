@@ -9446,5 +9446,19 @@
     "replace": "",
     "rule": "Index replay delays invalidation of a moved root",
     "tests": "IndexEventInboxTests/anInvalidatedRoot"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "guard !stopForQuit(), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
+    "replace": "guard !stopForQuit(), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
+    "rule": "Missing file events enumerate unchanged siblings",
+    "tests": "IndexWorkerTests/fileRemovalEvents"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "return errno == ENOENT ? missingItemStatus(path) : errno",
+    "replace": "return errno",
+    "rule": "Missing file events forget to validate their parent",
+    "tests": "IndexWorkerTests/aMissingFilesParent|IndexRefreshTests/aMissingItemIsDistinguished"
   }
 ]

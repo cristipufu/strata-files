@@ -12,6 +12,44 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func fileRemovalEventsDoNotEnumerateUnchangedSiblings() async throws {
+        let tree = try TestTree([".state/"] + (0..<1000).map { "files/file-\($0).txt" })
+        let reads = OSAllocatedUnfairLock(initialState: 0)
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0 += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        let keptPath = tree.url("files/file-1.txt").path
+        let keptID = try #require(fixture.store.read { $0.lookup(keptPath) })
+        try FileManager.default.removeItem(at: tree.url("files/file-0.txt"))
+        let transient = FSEventsStream.Event(path: tree.url("files/already-removed.tmp").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemRemoved), id: UInt64.max - 1)
+        fixture.worker.receive([transient, .init(path: tree.url("files/file-0.txt").path, flags: transient.flags, id: transient.id)])
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == 0)
+        #expect(fixture.store.read { $0.lookup(keptPath) } == keptID)
+        #expect(fixture.store.read { $0.lookup(tree.url("files/file-0.txt").path) } == nil)
+        let saved = try Data(contentsOf: fixture.config.file)
+        fixture.worker.receive([transient])
+        await save(fixture.worker)
+        #expect(reads.withLock { $0 } == 0)
+        #expect(try Data(contentsOf: fixture.config.file) == saved)
+        #expect(tree.snapshot().filter { $0.hasPrefix("files/") }.count == 1000)
+        #expect(tree.text("files/file-1.txt") == "files/file-1.txt")
+    }
+
+    @Test func aMissingFilesParentStillLeavesTheIndexWhenTheParentIsGone() async throws {
+        let tree = try TestTree(".state/", "gone/file.txt", "kept/file.txt")
+        let fixture = try await start(tree)
+        try FileManager.default.removeItem(at: tree.url("gone"))
+        fixture.worker.receive([.init(path: tree.url("gone/file.txt").path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 1)])
+        await save(fixture.worker)
+        #expect(fixture.store.read { $0.lookup(tree.url("gone").path) } == nil)
+        #expect(fixture.store.read { $0.lookup(tree.url("kept/file.txt").path) } != nil)
+        #expect(tree.text("kept/file.txt") == "kept/file.txt")
+    }
+
     @Test func replayBatchesWaitForHistoryCompletionAndRefreshEachFolderOnce() async throws {
         let tree = try TestTree(".state/", "files/kept.txt")
         let reads = OSAllocatedUnfairLock(initialState: [String: Int]())

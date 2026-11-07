@@ -5,6 +5,18 @@ import Testing
 @testable import StrataIndex
 
 struct IndexRefreshTests {
+    @Test func aMissingItemIsDistinguishedFromAMissingOrRedirectedParent() throws {
+        let tree = try TestTree("folder/kept.txt", "link -> folder", "plain")
+        var items: [ScannedItem] = [], names: [UInt8] = []
+        #expect(BulkDirectoryReader.readItem(tree.url("folder/missing").path, items: &items, names: &names) == ENOENT)
+        for path in ["gone/missing", "link/missing"] {
+            #expect(BulkDirectoryReader.readItem(tree.url(path).path, items: &items, names: &names) == ENOTSUP)
+        }
+        #expect(BulkDirectoryReader.readItem(tree.url("plain/missing").path, items: &items, names: &names) == ENOTDIR)
+        #expect(items.isEmpty && names.isEmpty)
+        #expect(tree.snapshot() == ["folder/", "folder/kept.txt", "link -> folder", "plain"])
+    }
+
     @Test func nativeWatchingReportsTheChangedFileInsideItsTemporaryRoot() async throws {
         let tree = try TestTree("keep.txt")
         let root = tree.root.path

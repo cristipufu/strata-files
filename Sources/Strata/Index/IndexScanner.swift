@@ -8,7 +8,7 @@ nonisolated package enum BulkDirectoryReader {
     /// complete listing so replacements, descendants and other names of the same file remain consistent.
     package static func readItem(_ path: String, items: inout [ScannedItem], names: inout [UInt8]) -> Int32 {
         var info = stat()
-        guard lstat(path, &info) == 0 else { return errno }
+        guard lstat(path, &info) == 0 else { return errno == ENOENT ? missingItemStatus(path) : errno }
         guard info.st_mode & S_IFMT == S_IFREG, info.st_nlink == 1 else { return ENOTSUP }
         let name = Array((path as NSString).lastPathComponent.utf8)
         guard !name.isEmpty else { return EINVAL }
@@ -20,6 +20,14 @@ nonisolated package enum BulkDirectoryReader {
             allocatedSize: FootprintReader.allocatedBytes(blocks: info.st_blocks)))
         names.append(contentsOf: name)
         return 0
+    }
+
+    /// ENOENT means only this child is missing. A missing or redirected parent needs a complete directory refresh.
+    private static func missingItemStatus(_ path: String) -> Int32 {
+        var parent = stat()
+        guard lstat((path as NSString).deletingLastPathComponent, &parent) == 0,
+              parent.st_mode & S_IFMT == S_IFDIR else { return ENOTSUP }
+        return ENOENT
     }
 
     private static let packageExtensions: Set<String> = [
