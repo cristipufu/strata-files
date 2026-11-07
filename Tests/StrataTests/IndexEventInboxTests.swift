@@ -4,6 +4,29 @@ import Testing
 @testable import StrataIndex
 
 struct IndexEventInboxTests {
+    @Test func replayStaysBoundedUntilHistoryEndsAndLiveChangesThenFlowNormally() throws {
+        let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true)
+        for index in 0..<1000 {
+            #expect(!inbox.append([.init(path: "/fixture/folder-\(index)", flags: 0, id: UInt64(index))], generation: generation))
+            #expect(inbox.take() == nil)
+        }
+        #expect(inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 1000)], generation: generation))
+        let replay = try #require(inbox.take())
+        #expect(replay.historyDone && replay.lastID == 1000)
+        #expect(replay.folders.count == 1 && replay.folders["/fixture"]?.isDeep == true)
+        #expect(inbox.append([.init(path: "/fixture/next", flags: 0, id: 1001)], generation: generation))
+        let live = try #require(inbox.take())
+        #expect(!live.historyDone && live.folders.count == 1 && live.folders["/fixture/next"]?.isDeep == false)
+    }
+
+    @Test func anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish() throws {
+        let inbox = IndexEventInbox(), generation = UUID()
+        inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true)
+        #expect(inbox.append([.init(path: "/fixture", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged), id: 0)], generation: generation))
+        #expect(try #require(inbox.take()).invalidation?.invalidatesIndex == true)
+    }
+
     @Test func aWideFolderBurstNeedsOnlyOneShallowListing() throws {
         let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
         inbox.reset(generation: generation, roots: ["/fixture"])

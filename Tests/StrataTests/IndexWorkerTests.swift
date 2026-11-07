@@ -12,6 +12,34 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func replayBatchesWaitForHistoryCompletionAndRefreshEachFolderOnce() async throws {
+        let tree = try TestTree(".state/", "files/kept.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        }, startEvents: { _, _ in true })
+        let saved = try Data(contentsOf: fixture.config.file)
+        try tree.add(["files/first.txt"])
+        let recovery = FSEventsStream.Event(path: tree.root.path,
+            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64.max - 2)
+        fixture.worker.receive([recovery])
+        // Quitting before the journal's end preserves its previous checkpoint, without beginning a recovery scan.
+        await save(fixture.worker)
+        #expect(reads.withLock { $0.isEmpty })
+        #expect(try Data(contentsOf: fixture.config.file) == saved)
+        try tree.add(["files/second.txt"])
+        fixture.worker.receive([recovery,
+            .init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: UInt64.max - 1)])
+        await save(fixture.worker)
+        let counts = reads.withLock { $0 }
+        #expect(counts == [tree.root.path: 1, tree.url("files").path: 1])
+        let (stored, header) = try IndexPersistence.load(from: fixture.config.file, storage: fixture.config.storage)
+        #expect(header.eventID == UInt64.max - 1)
+        for name in ["first.txt", "second.txt"] { #expect(stored.read { $0.lookup(tree.url("files/" + name).path) } != nil) }
+        #expect(tree.text("files/kept.txt") == "files/kept.txt")
+    }
+
     @Test func changeNotificationsNameChangedItemsIncludingRemovedAndReplacedFolders() async throws {
         let tree = try TestTree(".state/", "files/keep.txt", "files/modify.txt", "files/remove.txt", "files/old/deep/note.txt")
         let fixture = try await start(tree)

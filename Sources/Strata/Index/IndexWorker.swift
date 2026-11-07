@@ -208,7 +208,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func startWatching(_ config: IndexConfig) {
         eventGeneration = UUID()
         let generation = eventGeneration
-        incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded)
+        incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded, waitingForHistory: watchesChanges)
         awaitingHistory = watchesChanges
         watchingFailed = false
         guard watchesChanges else { publish(.ready); return }

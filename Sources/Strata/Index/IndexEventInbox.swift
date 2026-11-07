@@ -22,6 +22,7 @@ nonisolated package final class IndexEventInbox: Sendable {
         var invalidation: FSEventsStream.Event?
         var overflowed = false
         var scheduled = false
+        var waitingForHistory = false
 
         mutating func clear() {
             folders.removeAll(keepingCapacity: true)
@@ -38,12 +39,13 @@ nonisolated package final class IndexEventInbox: Sendable {
 
     package init(folderLimit: Int = 4096) { self.folderLimit = max(1, folderLimit) }
 
-    package func reset(generation: UUID, roots: [String], excluded: Set<String> = []) {
+    package func reset(generation: UUID, roots: [String], excluded: Set<String> = [], waitingForHistory: Bool = false) {
         pending.withLock {
             $0.clear()
             $0.generation = generation
             $0.roots = roots
             $0.excluded = excluded
+            $0.waitingForHistory = waitingForHistory
         }
     }
 
@@ -71,6 +73,9 @@ nonisolated package final class IndexEventInbox: Sendable {
                     state.overflowed = true
                 }
             }
+            // Recovery notices can arrive across many replay callbacks. Start one recovery after the journal's end,
+            // rather than scanning a root while subsequent callbacks are already requesting it again.
+            guard !state.waitingForHistory || state.historyDone || state.invalidation != nil else { return false }
             guard !state.scheduled else { return false }
             state.scheduled = true
             return true
@@ -80,6 +85,7 @@ nonisolated package final class IndexEventInbox: Sendable {
     package func take() -> Delivery? {
         pending.withLock { state in
             guard state.scheduled else { return nil }
+            if state.historyDone { state.waitingForHistory = false }
             defer { state.clear() }
             let folders = state.overflowed
                 ? Dictionary(state.roots.map { ($0, IndexRefresh.directory(deep: true)) }, uniquingKeysWith: { first, _ in first })

@@ -9425,5 +9425,26 @@
     "replace": "guard true else { return false }",
     "rule": "Dock polling queues reads while its worker is busy",
     "tests": "DockSearchTests/aSlowDockReadNeverQueuesAnotherPollOrBlocksItsCaller"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "guard !state.waitingForHistory || state.historyDone || state.invalidation != nil else { return false }",
+    "replace": "guard true else { return false }",
+    "rule": "Index replay starts scans before historical batches finish",
+    "tests": "IndexEventInboxTests/replayStaysBounded|IndexWorkerTests/replayBatchesWait"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "if state.historyDone { state.waitingForHistory = false }",
+    "replace": "if state.historyDone { state.waitingForHistory = true }",
+    "rule": "Index replay keeps live updates waiting after completion",
+    "tests": "IndexEventInboxTests/replayStaysBounded"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "|| state.invalidation != nil",
+    "replace": "",
+    "rule": "Index replay delays invalidation of a moved root",
+    "tests": "IndexEventInboxTests/anInvalidatedRoot"
   }
 ]
