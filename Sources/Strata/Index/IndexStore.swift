@@ -511,6 +511,52 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return result
         }
 
+        /// Live children of `id` keyed by name, or only those in `selectedNames` without allocating sibling strings.
+        package func children(of id: Int32, matching selectedNames: Set<String>?) -> [String: Int32] {
+            var existing: [String: Int32] = [:]
+            guard let selectedNames else {
+                var child = firstChild[Int(id)]
+                while child >= 0 {
+                    existing[name(child)] = child
+                    child = nextSibling[Int(child)]
+                }
+                return existing
+            }
+            guard !selectedNames.isEmpty else { return existing }
+            existing.reserveCapacity(selectedNames.count)
+            let wanted = selectedNames.map { (name: $0, bytes: Array($0.utf8)) }
+            let hasNonASCII = wanted.contains { $0.bytes.contains { $0 >= 0x80 } }
+            var child = firstChild[Int(id)]
+            while child >= 0 {
+                if let match = wanted.first(where: { nameEquals(child, $0.bytes) }) {
+                    existing[match.name] = child
+                } else if flags[Int(child)] & Flag.unicodeName != 0 || hasNonASCII {
+                    let childName = name(child)
+                    if selectedNames.contains(childName) { existing[childName] = child }
+                }
+                child = nextSibling[Int(child)]
+            }
+            return existing
+        }
+
+        /// Whether any directory child of `id` has a name in `selectedNames`, without allocating sibling strings.
+        package func hasDirectoryChild(in id: Int32, matching selectedNames: Set<String>) -> Bool {
+            guard !selectedNames.isEmpty else { return false }
+            let wanted = selectedNames.map { Array($0.utf8) }
+            let hasNonASCII = wanted.contains { $0.contains { $0 >= 0x80 } }
+            var child = firstChild[Int(id)]
+            while child >= 0 {
+                if isDirectory(child) {
+                    if wanted.contains(where: { nameEquals(child, $0) })
+                        || ((flags[Int(child)] & Flag.unicodeName != 0 || hasNonASCII) && selectedNames.contains(name(child))) {
+                        return true
+                    }
+                }
+                child = nextSibling[Int(child)]
+            }
+            return false
+        }
+
         /// The live entry at an absolute path, walking down from the root that contains it.
         package func lookup(_ path: String) -> Int32? {
             guard let root = roots.first(where: { path == $0.path || path.hasPrefix($0.path == "/" ? "/" : $0.path + "/") }) else { return nil }

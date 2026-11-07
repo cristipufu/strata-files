@@ -84,4 +84,25 @@ struct IndexRefreshTests {
         #expect(items.isEmpty && names.isEmpty)
         #expect(tree.text("plain.txt") == "plain.txt")
     }
+
+    @Test func canonicalEquivalentNamesMatchInBothDirectionsDuringSelectiveChildLookups() {
+        let store = IndexStore()
+        store.write { s in
+            let root = s.addRoot(path: "/fixture", mtime: 0)
+            let kelvin = Array("\u{212A}".utf8)
+            let ascii = Array("K2".utf8)
+            let buffer = kelvin + ascii
+            let items = [
+                ScannedItem(nameOffset: 0, nameLength: kelvin.count, isDirectory: true, isPackage: false,
+                            isSymlink: false, isHidden: false, isMountPoint: false, size: 0, mtime: 0),
+                ScannedItem(nameOffset: kelvin.count, nameLength: ascii.count, isDirectory: false, isPackage: false,
+                            isSymlink: false, isHidden: false, isMountPoint: false, size: 10, mtime: 0),
+            ]
+            let ids = buffer.withUnsafeBytes { s.appendChildren(items, nameBuffer: $0, of: root) }
+            let matchesK = s.children(of: root, matching: ["K"])["K"] == ids.lowerBound
+            let hasDirK = s.hasDirectoryChild(in: root, matching: ["K"])
+            let matchesKelvin2 = s.children(of: root, matching: ["\u{212A}2"])["K2"] == ids.lowerBound + 1
+            #expect(matchesK && hasDirK && matchesKelvin2)
+        }
+    }
 }

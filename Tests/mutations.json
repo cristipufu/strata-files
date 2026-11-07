@@ -9323,8 +9323,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listing.selectedNames == nil || listing.selectedNames?.contains(name) == true { existing[name] = child }",
-    "replace": "            existing[name] = child",
+    "find": "        var existing = store.children(of: id, matching: listing.selectedNames)",
+    "replace": "        var existing = store.children(of: id, matching: nil)",
     "rule": "Partial file refresh drops unchanged siblings",
     "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
   },

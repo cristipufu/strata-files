@@ -243,6 +243,14 @@ struct IndexWorkerTests {
         #expect(loaded.read { $0.fileCount[Int(folder)] } == 1000)
         #expect(tree.text("files/file-99.txt") == "files/file-99.txt")
         #expect(tree.text("files/file-0.txt") == "changed")
+        let decomposed = "cafe\u{0301}.txt", composed = "caf\u{00E9}.txt"
+        try tree.add(["files/\(composed)"])
+        fixture.worker.receive([.init(path: tree.url("files/\(decomposed)").path,
+                                      flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 10)])
+        await save(fixture.worker)
+        let unicodeID = try #require(fixture.store.read { $0.lookup(tree.url("files/\(composed)").path) })
+        #expect(fixture.store.read { $0.children(of: folder, matching: [decomposed])[decomposed] ?? $0.children(of: folder, matching: [decomposed])[composed] } == unicodeID)
+        #expect(!fixture.store.read { $0.hasDirectoryChild(in: folder, matching: [decomposed, "file-0.txt"]) })
     }
 
     @Test func fileEventsReclassifyBuildFoldersWhenProjectMarkersArriveOrLeave() async throws {

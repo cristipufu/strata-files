@@ -481,7 +481,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func readSelected(_ requested: Set<String>, in path: String, id: Int32, store: IndexStore) -> FolderListing? {
         guard !requested.contains(where: IndexStore.Storage.isBuildMarker),
-              !store.read({ storage in storage.children(of: id).contains { storage.isDirectory($0) && requested.contains(storage.name($0)) } })
+              !store.read({ $0.hasDirectoryChild(in: id, matching: requested) })
         else { return nil }
         var items: [ScannedItem] = [], names: [UInt8] = []
         let prefix = path.hasSuffix("/") ? path : path + "/"
@@ -552,12 +552,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// when what they are changed, and ones no longer listed are removed.
     private func reconcile(_ listing: FolderListing, with id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
                            changes: inout FolderChanges) {
-        var existing: [String: Int32] = [:]
+        var existing = store.children(of: id, matching: listing.selectedNames)
         var removals: [Int32] = []
-        for child in store.children(of: id) {
-            let name = store.name(child)
-            if listing.selectedNames == nil || listing.selectedNames?.contains(name) == true { existing[name] = child }
-        }
         let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
                          hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
         for (index, item) in listing.items.enumerated() {
