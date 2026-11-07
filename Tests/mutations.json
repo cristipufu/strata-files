@@ -9463,10 +9463,17 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old))\n            store.mtime[Int(old)] = item.mtime",
-    "replace": "changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old))\n            store.mtime[Int(old)] = item.mtime",
+    "find": "changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: false)\n            store.mtime[Int(old)] = item.mtime",
+    "replace": "changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: true)\n            store.mtime[Int(old)] = item.mtime",
     "rule": "Folder mtime changes mark untouched descendant folders as changed",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
+  },
+  {
+    "file": "Strata/Browser/BrowserLoading.swift",
+    "find": "if didChange || force { changed() }",
+    "replace": "changed()",
+    "rule": "Unchanged background volume capacity reads do not notify the browser",
+    "tests": "BrowserLoadingTests/freeSpaceRefreshesAreCoalescedAndUseTheInjectedClock"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",

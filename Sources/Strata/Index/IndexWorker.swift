@@ -527,9 +527,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         private(set) var changed = false
         var paths = IndexChanges()
 
-        mutating func record(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false) {
+        mutating func record(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false,
+                             affectsCapacity: Bool = true) {
             changed = true
-            paths.insert(path, descendants: descendants, hiddenOrNoise: hiddenOrNoise)
+            paths.insert(path, descendants: descendants, hiddenOrNoise: hiddenOrNoise,
+                         affectsCapacity: affectsCapacity)
         }
 
         /// Listed items the index doesn't have (or no longer has as they are), with their own noise.
@@ -579,11 +581,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else if item.isDirectory {
                 update(folder: old, at: listing.prefix + name, to: item, in: &store, config: config,
                        changes: &changes)
-            } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime
-                        || store.allocatedSize(old) != item.allocatedSize {
-                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old))
-                store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
-                                 bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
+            } else {
+                let sizeChanged = store.size[Int(old)] != item.size || store.allocatedSize(old) != item.allocatedSize
+                if sizeChanged || store.mtime[Int(old)] != item.mtime {
+                    changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old),
+                                   affectsCapacity: sizeChanged)
+                    store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
+                                     bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
+                }
             }
         }
         store.propagateTotals(from: id, bytes: bytesDelta, files: 0, allocatedBytes: allocatedDelta)
@@ -617,7 +622,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
         let excluded = isExcluded(path, config)
         if !excluded, store.mtime[Int(old)] != item.mtime {
-            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old))
+            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: false)
             store.mtime[Int(old)] = item.mtime
         }
         if !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }

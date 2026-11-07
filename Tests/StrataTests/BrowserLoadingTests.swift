@@ -55,6 +55,12 @@ struct BrowserLoadingTests {
         #expect(loading.capacityTask == nil)
         clock.advance(by: 5)
         loading.refreshVolumeSpace { changes += 1 }
+        let unchangedWork = try #require(loading.capacityTask), unchanged = await capacity.next()
+        unchanged.reply.resume(returning: 100)
+        await unchangedWork.value
+        #expect(loading.volumeSpace?.free == 100 && changes == 1)
+        clock.advance(by: 5)
+        loading.refreshVolumeSpace { changes += 1 }
         let secondWork = try #require(loading.capacityTask), second = await capacity.next()
         second.reply.resume(returning: 200)
         await secondWork.value

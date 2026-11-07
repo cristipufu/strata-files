@@ -84,14 +84,22 @@ struct IndexWorkerTests {
         let fixture = try await start(tree)
         let changes = OSAllocatedUnfairLock(initialState: IndexChanges())
         fixture.worker.onChange = { incoming in changes.withLock { $0.formUnion(incoming) } }
-        try Data("new contents".utf8).write(to: tree.url("files/modify.txt"))
-        try FileManager.default.removeItem(at: tree.url("files/remove.txt"))
-        try FileManager.default.moveItem(at: tree.url("files/old"), to: tree.url("files/renamed"))
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)],
                                               ofItemAtPath: tree.url("files/subfolder").path)
         fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
         await save(fixture.worker)
+        let mtimeOnly = changes.withLock { let value = $0; $0 = IndexChanges(); return value }
+        #expect(mtimeOnly.affects(tree.url("files/subfolder").path) && !mtimeOnly.affectsCapacity)
+
+        try Data("new contents".utf8).write(to: tree.url("files/modify.txt"))
+        try FileManager.default.removeItem(at: tree.url("files/remove.txt"))
+        try FileManager.default.moveItem(at: tree.url("files/old"), to: tree.url("files/renamed"))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_700_000_001)],
+                                              ofItemAtPath: tree.url("files/subfolder").path)
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 2)])
+        await save(fixture.worker)
         let published = changes.withLock { $0 }
+        #expect(published.affectsCapacity)
         for path in ["files", "files/modify.txt", "files/remove.txt", "files/old/deep", "files/renamed/deep/note.txt",
                      "files/subfolder"] {
             #expect(published.affects(tree.url(path).path))

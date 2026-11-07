@@ -18,13 +18,14 @@ struct IndexChangesTests {
 
     @Test func shallowFolderChangesAffectTheFolderAndItsAncestorsWithoutMarkingDescendants() {
         var changes = IndexChanges()
-        changes.insert("/home/Documents", descendants: false)
+        changes.insert("/home/Documents", descendants: false, affectsCapacity: false)
         #expect(changes.affects("/") && changes.affects("/home") && changes.affects("/home/Documents"))
         #expect(!changes.affects("/home/Documents/Subfolder") && !changes.affects("/home/Documents/note.txt"))
+        #expect(!changes.affectsCapacity)
         var removed = IndexChanges()
         removed.insert("/home/Documents")
         changes.formUnion(removed)
-        #expect(changes.affects("/home/Documents/Subfolder"))
+        #expect(changes.affects("/home/Documents/Subfolder") && changes.affectsCapacity)
     }
 
     @Test func hiddenAndNoiseChangesAreFilteredOutUnlessRequested() {

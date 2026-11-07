@@ -71,6 +71,7 @@ nonisolated struct VolumeSpace: Sendable, Equatable {
             opensAtTop = true
             isLoadingFolder = true
             volumeSpace = nil
+            capacityReadAt = nil
         }
     }
 
@@ -129,9 +130,10 @@ nonisolated struct VolumeSpace: Sendable, Equatable {
         capacityTask = Task { [weak self] in
             let value = await capacity(directory)
             guard let self, !Task.isCancelled, reads.generation == generation, self.directory == directory else { return }
+            let didChange = volumeSpace != value
             volumeSpace = value
             capacityTask = nil
-            changed()
+            if didChange || force { changed() }
         }
     }
 
@@ -155,6 +157,7 @@ nonisolated struct VolumeSpace: Sendable, Equatable {
     }
 
     private func cancelAuxiliaryReads() {
+        if capacityTask != nil { capacityReadAt = nil }
         capacityTask?.cancel()
         capacityTask = nil
         cancelChildren()

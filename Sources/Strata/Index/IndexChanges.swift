@@ -6,11 +6,15 @@ nonisolated package struct IndexChanges: Sendable, Equatable {
     private var shallowPaths: Set<String> = []
     private var visiblePaths: Set<String> = []
     private var shallowVisiblePaths: Set<String> = []
+    private var capacityAffected = false
     package static let pathLimit = 256
-    package static let all = IndexChanges(paths: nil)
+    package static let all = IndexChanges(paths: nil, capacityAffected: true)
 
     package init() {}
-    private init(paths: Set<String>?) { self.paths = paths }
+    private init(paths: Set<String>?, capacityAffected: Bool) {
+        self.paths = paths
+        self.capacityAffected = capacityAffected
+    }
 
     package var hasChanges: Bool {
         paths == nil || !(paths?.isEmpty ?? true) || !shallowPaths.isEmpty
@@ -24,8 +28,14 @@ nonisolated package struct IndexChanges: Sendable, Equatable {
         paths == nil || !visiblePaths.isEmpty || !shallowVisiblePaths.isEmpty
     }
 
-    package mutating func insert(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false) {
+    package var affectsCapacity: Bool {
+        paths == nil || capacityAffected
+    }
+
+    package mutating func insert(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false,
+                                 affectsCapacity: Bool = true) {
         guard paths != nil else { return }
+        if affectsCapacity { capacityAffected = true }
         let path = Self.canonical(path)
         if descendants {
             shallowPaths.remove(path)
@@ -53,14 +63,17 @@ nonisolated package struct IndexChanges: Sendable, Equatable {
 
     package mutating func formUnion(_ other: Self) {
         guard let incoming = other.paths else { self = .all; return }
+        if other.capacityAffected { capacityAffected = true }
         for path in incoming {
-            insert(path, descendants: true, hiddenOrNoise: !other.visiblePaths.contains(path))
+            insert(path, descendants: true, hiddenOrNoise: !other.visiblePaths.contains(path),
+                   affectsCapacity: false)
         }
         for path in other.shallowPaths {
-            insert(path, descendants: false, hiddenOrNoise: !other.shallowVisiblePaths.contains(path))
+            insert(path, descendants: false, hiddenOrNoise: !other.shallowVisiblePaths.contains(path),
+                   affectsCapacity: false)
         }
         for path in other.shallowVisiblePaths where !other.shallowPaths.contains(path) {
-            insert(path, descendants: false, hiddenOrNoise: false)
+            insert(path, descendants: false, hiddenOrNoise: false, affectsCapacity: false)
         }
     }
 
