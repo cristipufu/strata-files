@@ -967,8 +967,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        if changed { markChanged() }",
-    "replace": "        markChanged()",
+    "find": "        if changed { markChanged(pass.changes) }",
+    "replace": "        markChanged(pass.changes)",
     "rule": "Index performance: unchanged folder events never rewrite the index",
     "tests": "IndexWorkerTests/unchangedFolderEventsDoNotNotifyOrRewriteTheIndex"
   },
@@ -9351,8 +9351,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.changed = true }",
-    "replace": "            if store.finishedAllocationRead(of: id) { changes.changed = true }",
+    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path) }",
+    "replace": "            if store.finishedAllocationRead(of: id) { changes.record(path) }",
     "rule": "Partial file refresh falsely completes unreadable directory totals",
     "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
   },
@@ -9397,5 +9397,26 @@
     "replace": "if state.excluded.contains(path) { continue }",
     "rule": "File event inbox admits changes inside excluded state folders",
     "tests": "IndexEventInboxTests/excludedItemEventsNeverRefreshTheirParentOrHideLookalikes"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Search.swift",
+    "find": "refreshStatus()",
+    "replace": "refreshPanels()",
+    "rule": "Scoped index updates restart Inspector reads for phase changes",
+    "tests": "InspectorBackgroundTests/indexStatusUpdates"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "if let directory, !changes.affects(directory.path) { return }",
+    "replace": "_ = changes",
+    "rule": "Scoped index updates redraw unrelated folders",
+    "tests": "InspectorBackgroundTests/unrelatedIndexChanges"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "for removed in removals { changes.record(listing.prefix + store.name(removed)) }",
+    "replace": "for _ in removals {}",
+    "rule": "Scoped index updates lose removed paths",
+    "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
   }
 ]

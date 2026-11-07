@@ -12,6 +12,24 @@ import os
 @testable import StrataSearch
 
 struct IndexWorkerTests {
+    @Test func changeNotificationsNameChangedItemsIncludingRemovedAndReplacedFolders() async throws {
+        let tree = try TestTree(".state/", "files/keep.txt", "files/modify.txt", "files/remove.txt", "files/old/deep/note.txt")
+        let fixture = try await start(tree)
+        let changes = OSAllocatedUnfairLock(initialState: IndexChanges())
+        fixture.worker.onChange = { incoming in changes.withLock { $0.formUnion(incoming) } }
+        try Data("new contents".utf8).write(to: tree.url("files/modify.txt"))
+        try FileManager.default.removeItem(at: tree.url("files/remove.txt"))
+        try FileManager.default.moveItem(at: tree.url("files/old"), to: tree.url("files/renamed"))
+        fixture.worker.receive([.init(path: tree.url("files").path, flags: 0, id: 1)])
+        await save(fixture.worker)
+        let published = changes.withLock { $0 }
+        for path in ["files", "files/modify.txt", "files/remove.txt", "files/old/deep", "files/renamed/deep/note.txt"] {
+            #expect(published.affects(tree.url(path).path))
+        }
+        for path in ["files/keep.txt", "other", "files/old-copy"] { #expect(!published.affects(tree.url(path).path)) }
+        #expect(tree.text("files/keep.txt") == "files/keep.txt")
+    }
+
     @Test func directoryEventsAndFileTypeChangesRefreshTheCompleteSubtree() async throws {
         let tree = try TestTree(".state/", "files/old/deep/kept.txt", "files/plain", "files/neighbor.txt")
         let fixture = try await start(tree)
@@ -465,7 +483,7 @@ struct IndexWorkerTests {
         let started = OSAllocatedUnfairLock(initialState: false)
         worker.onPhase = onPhase
         worker.onStore = { value in store.withLock { $0 = value } }
-        worker.onChange = { changes.withLock { $0 += 1 } }
+        worker.onChange = { _ in changes.withLock { $0 += 1 } }
         worker.start(config) { started.withLock { $0 = true } }
         let deadline = ContinuousClock.now + .seconds(15)
         while !started.withLock({ $0 }) || store.withLock({ $0 == nil }) || !FileManager.default.fileExists(atPath: config.file.path) {

@@ -75,6 +75,10 @@ extension BrowserWindowController: BrowserViewControllerDelegate {
         if browser === pane.browser { refreshPanels() }
     }
 
+    func browserCapacityDidChange(_ browser: BrowserViewController) {
+        refreshStatus()
+    }
+
     func browserContentDidChange(_ browser: BrowserViewController) {
         if browser === pane.browser {
             refreshPanels()

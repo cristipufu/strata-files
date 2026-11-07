@@ -8,6 +8,7 @@ import AppKit
     func browserContentDidChange(_ browser: BrowserViewController) { changed(browser) }
     func browser(_ browser: BrowserViewController, navigateTo url: URL) {}
     func browserShowInspector(_ browser: BrowserViewController) {}
+    func browserCapacityDidChange(_ browser: BrowserViewController) {}
     func browserSelectionDidChange(_ browser: BrowserViewController) {}
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL) {}
     func browser(_ browser: BrowserViewController, landedAt folder: URL, asked: URL) { onLanding?(browser) }

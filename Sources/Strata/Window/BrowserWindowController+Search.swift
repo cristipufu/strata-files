@@ -85,7 +85,7 @@ extension BrowserWindowController {
     }
 
     @objc func indexPhaseChanged() {
-        refreshPanels()
+        refreshStatus()
     }
 }
 

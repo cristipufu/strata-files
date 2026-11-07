@@ -96,6 +96,7 @@ let modelSources = [
 let indexSources = [
     "DuplicateFinder.swift",
     "FSEventsStream.swift",
+    "IndexChanges.swift",
     "IndexEventInbox.swift",
     "IndexPersistence.swift",
     "IndexRefresh.swift",

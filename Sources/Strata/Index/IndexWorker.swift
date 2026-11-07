@@ -75,7 +75,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     package var onStore: (@Sendable (IndexStore) -> Void)?
     package var onPhase: (@Sendable (Phase) -> Void)?
     /// Called after changes were applied (sizes or entries).
-    package var onChange: (@Sendable () -> Void)?
+    package var onChange: (@Sendable (IndexChanges) -> Void)?
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
     package init(watchesChanges: Bool = true, readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
@@ -345,7 +345,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
-        if changed { markChanged() }
+        if changed { markChanged(pass.changes) }
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
@@ -365,9 +365,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         log.info("Compacted index: \(total) → \(fresh.read { $0.count }) entries")
     }
 
-    private func markChanged() {
+    private func markChanged(_ changes: IndexChanges = .all) {
         dirty = true
-        onChange?()
+        onChange?(changes)
         guard !saveScheduled else { return }
         saveScheduled = true
         queue.asyncAfter(deadline: .now() + 120) { [weak self] in
@@ -382,6 +382,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Coverage belongs to one batch and node identity, so a replacement at the same path is read again.
     private struct RefreshPass {
+        var changes = IndexChanges()
         private var attempted: Set<Int32> = []
         private var children: [Int32: [Folder]] = [:]
         private var deepRoots: Set<String> = []
@@ -434,6 +435,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if pass.begin(folder.id) {
                 if let changes = readFolder(folder.id, folder.path, selectedNames: folder.id == id ? names : nil) {
                     changed = changed || changes.changed
+                    pass.changes.formUnion(changes.paths)
                     pass.listed(folder, children: changes.existingFolders)
                     work.append(contentsOf: changes.newFolders.map { ($0, true) })
                 } else {
@@ -458,7 +460,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 return nil
             }
             if error == ENOENT || error == ENOTDIR {
-                return FolderChanges(changed: store.write { Self.removeGone(id, from: &$0) })
+                var changes = FolderChanges()
+                if store.write({ Self.removeGone(id, from: &$0) }) { changes.record(path) }
+                return changes
             }
             guard error == 0 else { return nil }
             listing = FolderListing(items: items, names: names, path: path)
@@ -470,7 +474,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
             store.integrateNew(from: firstNew)
-            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.changed = true }
+            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) { changes.record(path) }
             return changes
         }
     }
@@ -515,7 +519,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// What a folder's listing changed in the index, and what's left to read below it.
     private struct FolderChanges {
-        var changed = false
+        private(set) var changed = false
+        var paths = IndexChanges()
+
+        mutating func record(_ path: String) {
+            changed = true
+            paths.insert(path)
+        }
+
         /// Listed items the index doesn't have (or no longer has as they are), with their own noise.
         var additions: [ScannedItem] = []
         var additionNoise: [Bool] = []
@@ -558,7 +569,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             let expectedNoise = item.isDirectory
                 && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
-                changes.changed = true
+                changes.record(listing.prefix + name)
                 removals.append(old)
                 changes.add(item, noise: listing.ownNoise[index])
             } else if item.isDirectory {
@@ -566,7 +577,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                        changes: &changes)
             } else if store.size[Int(old)] != item.size || store.mtime[Int(old)] != item.mtime
                         || store.allocatedSize(old) != item.allocatedSize {
-                changes.changed = true
+                changes.record(listing.prefix + name)
                 store.propagate(from: old, bytes: item.size - store.size[Int(old)], files: 0)
                 store.size[Int(old)] = item.size
                 store.setAllocation(item.allocatedSize, of: old)
@@ -576,7 +587,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
         removals.append(contentsOf: existing.values)
         if !removals.isEmpty {
-            changes.changed = true
+            for removed in removals { changes.record(listing.prefix + store.name(removed)) }
             store.removeChildren(removals, of: id)
         }
     }
@@ -601,7 +612,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
         let excluded = isExcluded(path, config)
         if !excluded, store.mtime[Int(old)] != item.mtime {
-            changes.changed = true
+            changes.record(path)
             store.mtime[Int(old)] = item.mtime
         }
         if !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }
@@ -611,7 +622,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func addNew(_ listing: FolderListing, to id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
                         changes: inout FolderChanges) {
         guard !changes.additions.isEmpty else { return }
-        changes.changed = true
+        for item in changes.additions { changes.record(listing.prefix + listing.name(of: item)) }
         let ids = listing.names.withUnsafeBytes {
             store.appendChildren(changes.additions, nameBuffer: $0, of: id, ownNoise: changes.additionNoise)
         }

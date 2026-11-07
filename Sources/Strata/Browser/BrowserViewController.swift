@@ -5,6 +5,7 @@ protocol BrowserViewControllerDelegate: AnyObject {
     func browserShowInspector(_ browser: BrowserViewController)
     func browserSelectionDidChange(_ browser: BrowserViewController)
     func browserContentDidChange(_ browser: BrowserViewController)
+    func browserCapacityDidChange(_ browser: BrowserViewController)
     /// Column view moved deeper without changing the browser's folder.
     func browser(_ browser: BrowserViewController, columnLocationChanged url: URL)
     /// The browser, asked to show `asked`, has listed `folder` for the first time since: `asked` itself, or where a
@@ -428,7 +429,7 @@ final class BrowserViewController: NSViewController {
             }
         } capacityChanged: { [weak self] in
             guard let self else { return }
-            delegate?.browserContentDidChange(self)
+            delegate?.browserCapacityDidChange(self)
         }
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+@testable import StrataIndex
 @testable import Strata
 @testable import StrataAI
 @testable import StrataConnections
@@ -12,6 +13,46 @@ import Testing
 /// The Inspector keeps the main thread free: hidden, it reads nothing about the selection, and shown, it reads an
 /// item's settings and an image's size away from the main thread, keeping only the newest item's.
 @MainActor struct InspectorBackgroundTests {
+    @Test func unrelatedIndexChangesLeaveTheInspectorAloneButCurrentFolderChangesRefreshIt() async throws {
+        let tree = try TestTree("Documents/note.txt", "Library/cache.txt")
+        let environment = try IndependentEnvironment()
+        let window = BrowserWindowController(location: tree.url("Documents"), services: environment.services)
+        defer { window.close(); withExtendedLifetime(environment) {} }
+        await window.browser.directoryReads.task?.value
+        window.split.inspectorItem.isCollapsed = false
+        window.browser.select([tree.url("Documents/note.txt")])
+        let editor = window.split.inspector.infoEditor
+        let reading = try #require(editor.factsTask)
+        func notify(_ path: String) {
+            var changes = IndexChanges()
+            changes.insert(tree.url(path).path)
+            NotificationCenter.default.post(name: .indexDidChange, object: environment.services.index,
+                                            userInfo: [FileIndex.changesKey: changes])
+        }
+        notify("Library/cache.txt")
+        #expect(editor.factsTask == reading && !reading.isCancelled)
+        notify("Documents/note.txt")
+        #expect(editor.factsTask != reading && reading.isCancelled)
+        #expect(tree.snapshot() == ["Documents/", "Documents/note.txt", "Library/", "Library/cache.txt"])
+    }
+
+    @Test func indexStatusUpdatesLeaveTheInspectorsCurrentReadAlone() async throws {
+        let tree = try TestTree("note.txt")
+        let environment = try IndependentEnvironment()
+        let window = BrowserWindowController(location: tree.root, services: environment.services)
+        defer { window.close(); withExtendedLifetime(environment) {} }
+        await window.browser.directoryReads.task?.value
+        window.split.inspectorItem.isCollapsed = false
+        window.browser.select([tree.url("note.txt")])
+        let editor = window.split.inspector.infoEditor
+        let reading = try #require(editor.factsTask)
+        NotificationCenter.default.post(name: .indexPhaseDidChange, object: environment.services.index)
+        window.browserCapacityDidChange(window.browser)
+        #expect(editor.factsTask == reading && !reading.isCancelled)
+        #expect(window.split.status.text == window.browser.statusText)
+        #expect(tree.snapshot() == ["note.txt"])
+    }
+
     @Test func aHiddenInspectorReadsNothingAndCatchesUpWhenShown() async throws {
         let tree = try TestTree("a.txt", "b.txt")
         let environment = try PreviewEnvironment(tree)

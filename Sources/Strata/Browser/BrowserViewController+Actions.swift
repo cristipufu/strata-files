@@ -347,8 +347,10 @@ extension BrowserViewController {
     }
 
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
-    @objc func indexChanged() {
+    @objc func indexChanged(_ notification: Notification? = nil) {
         refreshVolumeSpaceIfVisible()
+        let changes = notification?.userInfo?[FileIndex.changesKey] as? IndexChanges ?? .all
+        if let directory, !changes.affects(directory.path) { return }
         // Folder sizes come from the index; a file's is its own.
         let column = outlineView.column(withIdentifier: .size)
         let visible = outlineView.rows(in: outlineView.visibleRect)
@@ -368,7 +370,7 @@ extension BrowserViewController {
         guard let view = viewIfLoaded, view.window?.isVisible == true, !view.isHiddenOrHasHiddenAncestor else { return }
         loading.refreshVolumeSpace { [weak self] in
             guard let self else { return }
-            delegate?.browserContentDidChange(self)
+            delegate?.browserCapacityDidChange(self)
         }
     }
 

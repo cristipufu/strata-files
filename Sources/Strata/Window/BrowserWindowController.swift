@@ -739,6 +739,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func refreshPanels() {
         guard !isClosed else { return }
         syncViewModeItem()
+        refreshStatus()
+        refreshInspector()
+    }
+
+    func refreshStatus() {
+        guard !isClosed else { return }
         var status = browser.statusText
         if case .scanning(let items) = services.index.phase {
             status += (status.isEmpty ? "" : "  ·  ") + String(localized: "Indexing \(items) items…", comment: "plural")
@@ -748,6 +754,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // Two panes: each shows its own counts under its list; the shared bar would sit across both.
         split.status.isHidden = isDualPane
         for p in panes { p.host.setStatus(isDualPane ? p.browser.statusText : nil, details: p.browser.volumeSpaceDescription) }
+    }
+
+    private func refreshInspector() {
         let folder: FileEntry? = { if case .folder = destination { return pane.folderEntry } else { return nil } }()
         let browser = browser
         split.inspector.onShowFolder = { [weak self] folder, item in self?.navigate(to: folder, select: item) }

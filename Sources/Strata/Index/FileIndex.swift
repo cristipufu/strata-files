@@ -29,6 +29,8 @@ package final class FileIndex {
     /// The configuration being worked out away from the main thread, before the worker starts or takes it.
     private var configuring: Task<Void, Never>?
     private var changePosted = false
+    private var pendingChanges = IndexChanges()
+    package static let changesKey = "changes"
 
     package var isReady: Bool { store != nil }
 
@@ -37,7 +39,7 @@ package final class FileIndex {
         started = true
         worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.store = store; self?.changed() } }
         worker.onPhase = { [weak self] phase in DispatchQueue.main.async { self?.setPhase(phase) } }
-        worker.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
+        worker.onChange = { [weak self] changes in DispatchQueue.main.async { self?.changed(changes) } }
         configuring = Task { [weak self] in
             guard let self else { return }
             let config = await currentConfig()
@@ -88,12 +90,15 @@ package final class FileIndex {
         NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)
     }
 
-    private func changed() {
+    private func changed(_ changes: IndexChanges = .all) {
+        pendingChanges.formUnion(changes)
         guard !changePosted else { return }
         changePosted = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.changePosted = false
-            NotificationCenter.default.post(name: .indexDidChange, object: self)
+            let changes = self.pendingChanges
+            self.pendingChanges = IndexChanges()
+            NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: changes])
         }
     }
 
