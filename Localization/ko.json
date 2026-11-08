@@ -1566,6 +1566,8 @@
     "System Default": "시스템 기본값",
     "Table": "테이블",
     "Tables": "테이블",
+    "Tabs above the address bar": "주소 막대 위의 탭",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "파일 탐색기처럼 윈도우 상단에 탭이 있고 그 아래에 주소 막대(뒤로, 앞으로, 위로, 경로, 검색, 전송)가 있습니다. 도구 막대는 가려지며, 그 명령은 메뉴와 단축키에 그대로 남습니다.",
     "Tag “%@”": "‘%@’ 태그 지정",
     "Tagged %@": "태그: %@",
     "Tags": "태그",

@@ -105,14 +105,43 @@ final class PathBar: NSView, NSTextFieldDelegate {
             // A wish, weaker than the toolbar's own sizing: the bar gives up width before other items overflow.
             let preferred = widthAnchor.constraint(equalToConstant: 520)
             preferred.priority = Self.toolbarSizingPriority
-            constraints += [
+            toolbarSizing = [
                 heightAnchor.constraint(equalToConstant: 32),
                 widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
                 widthAnchor.constraint(lessThanOrEqualToConstant: 720),
                 preferred,
             ]
+            constraints += toolbarSizing
         }
         NSLayoutConstraint.activate(constraints)
+    }
+
+    private var toolbarSizing: [NSLayoutConstraint] = []
+    private lazy var rowSizing = [heightAnchor.constraint(equalToConstant: 28)]
+    private var toolbarPriorities: (compression: NSLayoutConstraint.Priority, hugging: NSLayoutConstraint.Priority,
+                                    field: NSLayoutConstraint.Priority)?
+
+    /// The window's bar sits in the toolbar or, with Tabs above the address bar, in the address row, where it takes
+    /// the width the row leaves it instead of wishing for the toolbar's.
+    var isInAddressRow = false {
+        didSet {
+            guard !embedded, isInAddressRow != oldValue else { return }
+            if isInAddressRow {
+                toolbarPriorities = (contentCompressionResistancePriority(for: .horizontal), contentHuggingPriority(for: .horizontal),
+                                     field.contentCompressionResistancePriority(for: .horizontal))
+                NSLayoutConstraint.deactivate(toolbarSizing)
+                NSLayoutConstraint.activate(rowSizing)
+                setContentCompressionResistancePriority(.init(199), for: .horizontal)
+                setContentHuggingPriority(.init(199), for: .horizontal)
+                field.setContentCompressionResistancePriority(.init(199), for: .horizontal)
+            } else if let toolbarPriorities {
+                NSLayoutConstraint.deactivate(rowSizing)
+                NSLayoutConstraint.activate(toolbarSizing)
+                setContentCompressionResistancePriority(toolbarPriorities.compression, for: .horizontal)
+                setContentHuggingPriority(toolbarPriorities.hugging, for: .horizontal)
+                field.setContentCompressionResistancePriority(toolbarPriorities.field, for: .horizontal)
+            }
+        }
     }
 
     @available(*, unavailable)

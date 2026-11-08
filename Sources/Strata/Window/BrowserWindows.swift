@@ -20,6 +20,8 @@ struct BrowserWindows {
         guard let main = NSScreen.main?.visibleFrame else { return screens }
         return [main] + screens.filter { $0 != main }
     }
+    /// Shows or hides a window's native tab bar. AppKit saves that choice in the app's defaults, so tests never do it.
+    var toggleTabBar: (NSWindow) -> Void = { _ in }
 
     static let headless = BrowserWindows(controllers: { [] }, open: { _, _, _, _, _ in nil })
 
@@ -45,5 +47,6 @@ struct BrowserWindows {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         },
-        restoreLegacyFrame: { $0.setFrameUsingName("StrataBrowserWindow") })
+        restoreLegacyFrame: { $0.setFrameUsingName("StrataBrowserWindow") },
+        toggleTabBar: { $0.toggleTabBar(nil) })
 }

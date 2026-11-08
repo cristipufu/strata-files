@@ -20,7 +20,8 @@ import Testing
             ("verify copies", .verifyCopies), ("filename extensions", .nameExtensions), ("font size", .textSize),
             ("full disk access", .fullDiskAccess), ("settings terminal", .terminalApp), ("icon size", .iconSize),
             ("explorer layout", .explorerLayout), ("windows columns", .explorerLayout),
-            ("this mac", .sidebarThisMac), ("this pc", .sidebarThisMac), ("windows drives", .sidebarThisMac)]
+            ("this mac", .sidebarThisMac), ("this pc", .sidebarThisMac), ("windows drives", .sidebarThisMac),
+            ("tabs", .explorerTabs), ("tabs above the address bar", .explorerTabs), ("windows address bar", .explorerTabs)]
         for (query, expected) in queries {
             ranker.rank(query)
             #expect(ranker.results.contains { $0.item.settingID == expected }, "\(query)")

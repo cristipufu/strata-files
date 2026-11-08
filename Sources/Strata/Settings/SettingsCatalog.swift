@@ -16,7 +16,7 @@ nonisolated enum SettingsPage: String, CaseIterable, Sendable {
 }
 
 nonisolated enum SettingID: String, CaseIterable, Sendable {
-    case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder, windowsKeyboard, explorerLayout, sidebarThisMac
+    case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder, windowsKeyboard, explorerLayout, sidebarThisMac, explorerTabs
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case rebuildIndex, fullDiskAccess, searchSyntax, terminalApp
     case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, shortcuts
@@ -45,6 +45,7 @@ enum SettingsCatalog {
         entry(.windowsKeyboard, .general, "Windows keyboard", "coming from windows explorer pc keyboard f2 rename delete trash backspace back return enter open"),
         entry(.explorerLayout, .general, "Explorer layout", "coming from windows explorer pc layout list view columns date modified kind type size inspector preview pane details"),
         entry(.sidebarThisMac, .general, "This Mac in the sidebar", "coming from windows explorer pc this pc this mac computer sidebar disks drives desktop documents downloads pictures music movies"),
+        entry(.explorerTabs, .general, "Tabs above the address bar", "coming from windows explorer pc tabs tab bar address bar location path toolbar hidden back forward up"),
         entry(.newFileExtension, .general, "Extension", "new file default extension txt markdown"),
         entry(.updates, .general, "Updates", "automatic updates download release"),
         entry(.verifyCopies, .general, "Verify copies", "verify copies checksum integrity copying"),

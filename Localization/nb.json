@@ -1698,6 +1698,8 @@
     "System Default": "Systemstandard",
     "Table": "Tabell",
     "Tables": "Tabeller",
+    "Tabs above the address bar": "Faner over adresselinjen",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "Fanene er øverst i vinduet, med en adresselinje under dem som i Filutforsker: Tilbake, Frem, Opp, banen, søk og Overføringer. Verktøylinjen er skjult; kommandoene blir værende i menyene og snarveiene deres.",
     "Tag “%@”": "Merk med «%@»",
     "Tagged %@": "Merket %@",
     "Tags": "Merker",

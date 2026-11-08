@@ -6,6 +6,7 @@ final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowCont
     let panes: PaneContainerViewController
     let inspector: InspectorViewController
     let status: StatusBarController
+    let addressRow: AddressRow
     let scopeBar = SearchScopeBar()
     let noticeBar = NoticeBar()
     let inspectorItem: NSSplitViewItem
@@ -13,6 +14,7 @@ final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowCont
     init(firstPane: PaneHostViewController) {
         let services = firstPane.browser.services
         status = StatusBarController(clipboard: services.clipboard)
+        addressRow = AddressRow(transfers: services.transfers)
         sidebar = SidebarViewController(services: services)
         panes = PaneContainerViewController(first: firstPane)
         inspector = InspectorViewController(services: services)
@@ -44,6 +46,8 @@ final class MainSplitViewController: NSSplitViewController, ThemeSplitWindowCont
         let contentItem = NSSplitViewItem(viewController: content)
         contentItem.minimumThickness = 320
         contentItem.addBottomAlignedAccessoryViewController(status)
+        addressRow.isHidden = true
+        contentItem.addTopAlignedAccessoryViewController(addressRow)
         scopeBar.isHidden = true
         contentItem.addTopAlignedAccessoryViewController(scopeBar)
         noticeBar.isHidden = true

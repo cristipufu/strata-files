@@ -1698,6 +1698,8 @@
     "System Default": "Langue du système",
     "Table": "Table",
     "Tables": "Tables",
+    "Tabs above the address bar": "Onglets au-dessus de la barre d’adresse",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "Les onglets sont en haut de la fenêtre, avec une barre d’adresse en dessous comme dans l’Explorateur de fichiers : Précédent, Suivant, Dossier parent, le chemin, la recherche et Transferts. La barre d’outils est masquée ; ses commandes restent dans les menus et leurs raccourcis.",
     "Tag “%@”": "Ajouter le tag « %@ »",
     "Tagged %@": "Avec le tag %@",
     "Tags": "Tags",

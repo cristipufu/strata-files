@@ -206,6 +206,7 @@ private struct ComingFromWindowsSettings: View {
             }.settingAnchor(.windowsKeyboard)
             ExplorerLayoutSettings(preferences: .shared).settingAnchor(.explorerLayout)
             ThisMacSidebarSetting(preferences: .shared).settingAnchor(.sidebarThisMac)
+            TabsLayoutSetting(preferences: .shared).settingAnchor(.explorerTabs)
         }
     }
 }

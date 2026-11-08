@@ -1566,6 +1566,8 @@
     "System Default": "システムのデフォルト",
     "Table": "テーブル",
     "Tables": "テーブル",
+    "Tabs above the address bar": "アドレスバーの上にタブ",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "エクスプローラーのように、ウインドウの上部にタブが並び、その下にアドレスバー（戻る、進む、上へ、パス、検索、転送）が表示されます。ツールバーは隠れますが、そのコマンドはメニューとショートカットで使えます。",
     "Tag “%@”": "タグ「%@」を付ける",
     "Tagged %@": "タグ: %@",
     "Tags": "タグ",

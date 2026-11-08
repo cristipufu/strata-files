@@ -1566,6 +1566,8 @@
     "System Default": "系統預設",
     "Table": "表格",
     "Tables": "資料表",
+    "Tabs above the address bar": "標籤頁在位址列上方",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "標籤頁位於視窗頂端，下方是與檔案總管一樣的位址列：上一頁、下一頁、向上、路徑、搜尋和傳輸。工具列會被隱藏，其指令仍保留在選單與快速鍵中。",
     "Tag “%@”": "加上標籤「%@」",
     "Tagged %@": "標籤為%@",
     "Tags": "標籤",

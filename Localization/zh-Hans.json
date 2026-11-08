@@ -1566,6 +1566,8 @@
     "System Default": "系统默认",
     "Table": "表",
     "Tables": "表",
+    "Tabs above the address bar": "标签页在地址栏上方",
+    "Tabs sit at the top of the window, with an address bar under them as in File Explorer: Back, Forward, Up, the path, search and Transfers. The toolbar is hidden; its commands stay in the menus and their shortcuts.": "标签页位于窗口顶部，下方是与文件资源管理器一样的地址栏：后退、前进、向上、路径、搜索和传输。工具栏会被隐藏，其命令仍保留在菜单和快捷键中。",
     "Tag “%@”": "添加标签“%@”",
     "Tagged %@": "标签为%@",
     "Tags": "标签",

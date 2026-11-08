@@ -10,6 +10,7 @@ words such as "explorer", "windows" and "pc".
 | Windows keyboard | The keys work as in File Explorer (below). |
 | Explorer layout | A button, Use Explorer Layout, that sets up the List view as in File Explorer's Details view (below). |
 | This Mac in the sidebar | A This Mac section in the sidebar, like This PC: your standard folders and your disks (below). |
+| Tabs above the address bar | The tabs at the top of the window and an address bar under them, instead of the toolbar (below). |
 
 ## Windows keyboard
 
@@ -74,3 +75,29 @@ right after Favorites and Frequent; the other sections keep their order below it
 `Places.thisMac` decides the rows and `SidebarLayout.sectionIDs` the order; `ThisMacSidebarTests` covers both, missing
 folders and localized names, the disks leaving Locations and coming back, Add to Favorites, hiding the section, the
 Folders tree, turning the option off and on twice, open sidebars following, and another environment left alone.
+
+## Tabs above the address bar
+
+With Tabs above the address bar on, a window looks like File Explorer: the tabs sit at the top, and an address bar
+under them holds Back, Forward, Up, the path, a search field and Transfers. Open windows follow at once.
+
+- The toolbar is hidden, not removed. Its commands stay in the menus and keep their shortcuts.
+- The tab bar shows even with one tab. Strata shows it only when the window doesn't already, and hides it again when
+  you turn the option off only if Strata showed it and the window still has one tab.
+- The address bar's buttons run the same commands as the menu items Go ▸ Back, Forward and Enclosing Folder, and are
+  dimmed exactly when those are. Its path is the window's own path bar, moved, not a copy.
+- ⌘L and ⌘⇧G edit the path in the address bar, and ⌘F goes to its search field; the toolbar stays hidden. Search
+  works as from the toolbar, and clearing the field goes back to the folder.
+- Transfers shows and follows the transfer queue as the toolbar button does.
+- View ▸ Customize Toolbar is off while the toolbar is hidden.
+- In Dual Pane with Address bar in each pane on, each pane keeps its own path bar: the address bar shows no path,
+  and ⌘L edits the focused pane's. With that setting off, the address bar shows the window's path as in one pane.
+- New tabs (⌘T) and the windows a Workspace opens start in this layout.
+- Full screen keeps the tab bar and the address bar: the toolbar is hidden, so nothing hides with the menu bar.
+- Turning the option off gives back the toolbar as you had set it up, its items and whether it was shown.
+
+`WindowChromeLayout.decide` decides what the window shows, `WindowChromeLayout.tabBarStep` when to show or hide the
+tab bar and `fullScreenOptions` what full screen hides; `ExplorerTabsTests` covers all three, open windows following,
+the buttons against their menu commands, ⌘L and ⌘F, Transfers, Customize Toolbar, Dual Pane with and without its
+address bars, new tabs and restored Workspaces, full screen, turning the option off twice, and another environment
+left alone.
