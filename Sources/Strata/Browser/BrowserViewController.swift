@@ -767,13 +767,22 @@ final class BrowserViewController: NSViewController {
     var itemCount: Int { nodes.count }
     var topLevelEntries: [FileEntry] { nodes.map(\.entry) }
 
-    /// Cached size of a folder; with `request`, starts measuring it when unknown and allowed.
+    /// Cached size of a folder; with `request`, starts measuring it when outside the index, unknown and allowed.
     func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
         if services.copies.contains(url) { return nil }
-        if let size = services.index.folderSize(url) { return size }
-        if let size = FolderSizer.cached(url) { return size }
-        if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
-        return nil
+        if let entry = node(for: url)?.entry, !entry.isDirectory || entry.isSymlink || entry.isVolume { return nil }
+        switch services.index.folderSizeLookup(url) {
+        case .indexed(let size):
+            if sizer.hasPending { sizer.cancel(url) }
+            return size
+        case .pending:
+            if sizer.hasPending { sizer.cancel(url) }
+            return nil
+        case .unindexed:
+            if let size = FolderSizer.cached(url) { return size }
+            if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
+            return nil
+        }
     }
 
     /// Re-measures folders after Full Disk Access is granted.

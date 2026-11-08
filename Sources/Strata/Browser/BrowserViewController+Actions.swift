@@ -349,6 +349,9 @@ extension BrowserViewController {
     /// Index totals moved: refresh visible sizes (and the order, when sorting by size).
     @objc func indexChanged(_ notification: Notification? = nil) {
         let changes = notification?.userInfo?[FileIndex.changesKey] as? IndexChanges ?? .all
+        if sizer.hasPending {
+            sizer.cancel { [index = services.index] url in index.folderSizeLookup(url) != .unindexed }
+        }
         if changes.affectsCapacity { refreshVolumeSpaceIfVisible() }
         if !isShowingResults {
             if let directory, !changes.affects(directory.path) { return }

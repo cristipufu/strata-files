@@ -436,7 +436,8 @@ final class InspectorViewController: NSViewController {
         let place = placement(of: entry.url)
         let isCopy = services.copies.contains(entry.url)
         titleLabel.stringValue = title(of: entry, place: place)
-        let directorySize = entry.isDirectory && !isCopy ? folderSize(entry.url) : nil
+        let directorySize = entry.isDirectory && !isCopy && !entry.isSymlink && !entry.isVolume && canMeasure(entry)
+            ? folderSize(entry.url) : nil
         let allocated = entry.isDirectory && !entry.isSymlink ? directorySize?.allocatedBytes : entry.allocatedSize
         let allocation = allocationText(allocated, complete: directorySize?.allocationComplete != false)
         let size = isCopy || place.apparent != nil

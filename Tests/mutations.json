@@ -3486,8 +3486,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "if services.copies.contains(node.url) { return \"—\" }",
-    "replace": "",
+    "find": "guard canMeasure(node.entry) else { return \"—\" }",
+    "replace": "guard true else { return \"—\" }",
     "rule": "Provider thumbnail and info ownership List Size column shows ellipsis for a provider folder",
     "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
   },
@@ -8361,7 +8361,7 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "guard pending[key] == id else { return }",
+    "find": "guard pending[key]?.id == id else { return }",
     "replace": "guard true else { return }",
     "rule": "Folder sizing publishes an obsolete completion over its replacement",
     "tests": "FolderSizerCancellationTests"

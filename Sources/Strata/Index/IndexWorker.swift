@@ -114,8 +114,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
-    package func update(_ config: IndexConfig) {
-        queue.async(qos: .default, flags: .enforceQoS) { self.reconfigure(config) }
+    package func update(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
+        queue.async(qos: .default, flags: .enforceQoS) {
+            self.reconfigure(config)
+            completion()
+        }
     }
 
     package func rebuildNow() {

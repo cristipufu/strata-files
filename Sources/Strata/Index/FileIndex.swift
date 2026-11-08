@@ -12,14 +12,30 @@ extension Notification.Name {
 package final class FileIndex {
     package static let shared = FileIndex(storage: .shared, copies: .live)
 
+    package enum FolderSizeLookup: Sendable, Equatable {
+        /// The index owns this folder and has its current total.
+        case indexed(FolderSize)
+        /// The index owns this folder, but its total isn't readable on this frame (the saved index is still loading,
+        /// a newly allowed or created folder is being scanned, or a writer holds the lock). Callers wait for
+        /// `.indexDidChange` rather than starting a competing `FolderSizer` walk.
+        case pending
+        /// The folder is outside the index (another disk, `/tmp`, an excluded folder, or an unstarted index).
+        case unindexed
+    }
+
     /// Where it's saved, which it leaves out like its environment's server and container copies and clipboard staging.
     private let storage: SecureStorage.Context
     private let copies: CopyProviders
 
-    package init(storage: SecureStorage.Context, copies: CopyProviders, store: IndexStore? = nil) {
+    package init(storage: SecureStorage.Context, copies: CopyProviders, store: IndexStore? = nil,
+                 configuredRoots: [String] = [], excludedPaths: Set<String> = [], started: Bool = false) {
         self.storage = storage
         self.copies = copies
         self.store = store
+        self.configuredRoots = Self.shortPaths(configuredRoots)
+        self.storeRoots = Self.shortPaths(store?.tryRead { $0.roots.map(\.path) } ?? [])
+        self.excludedPaths = Self.shortPaths(excludedPaths)
+        self.started = started
     }
 
     package private(set) var phase: IndexWorker.Phase = .loading
@@ -28,23 +44,43 @@ package final class FileIndex {
     private var started = false
     /// The configuration being worked out away from the main thread, before the worker starts or takes it.
     private var configuring: Task<Void, Never>?
+    private var pendingConfigCount = 0
+    private var configuredRoots: [String] = []
+    private var storeRoots: [String] = []
+    private var hadPendingLookup = false
     private var changePosted = false
     private var pendingChanges = IndexChanges()
     package static let changesKey = "changes"
 
     package var isReady: Bool { store != nil }
 
+    private var isActivelyUpdating: Bool {
+        guard started else { return false }
+        if pendingConfigCount > 0 { return true }
+        switch phase {
+        case .loading, .scanning, .updating:
+            return true
+        case .ready, .unavailable:
+            return false
+        }
+    }
+
     package func start() {
         guard !started else { return }
         started = true
-        worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.store = store; self?.changed() } }
+        syncPendingScope()
+        pendingConfigCount += 1
+        worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.receiveStore(store) } }
         worker.onPhase = { [weak self] phase in DispatchQueue.main.async { self?.setPhase(phase) } }
         worker.onChange = { [weak self] changes in DispatchQueue.main.async { self?.changed(changes) } }
         configuring = Task { [weak self] in
             guard let self else { return }
             let config = await currentConfig()
-            excludedPaths = config.excluded
-            worker.start(config)
+            configuredRoots = Self.shortPaths(config.roots)
+            excludedPaths = Self.shortPaths(config.excluded)
+            worker.start(config) { [weak self] in
+                DispatchQueue.main.async { self?.finishConfigUpdate() }
+            }
         }
     }
 
@@ -52,13 +88,18 @@ package final class FileIndex {
     /// its turn after the start and earlier ones, so the worker gets them in order.
     package func refreshConfig() {
         guard started else { return }
+        syncPendingScope()
+        pendingConfigCount += 1
         let previous = configuring
         configuring = Task { [weak self] in
             await previous?.value
             guard let self else { return }
             let config = await currentConfig()
-            excludedPaths = config.excluded
-            worker.update(config)
+            configuredRoots = Self.shortPaths(config.roots)
+            excludedPaths = Self.shortPaths(config.excluded)
+            worker.update(config) { [weak self] in
+                DispatchQueue.main.async { self?.finishConfigUpdate() }
+            }
         }
     }
 
@@ -89,35 +130,121 @@ package final class FileIndex {
         worker.saveWhenIdle()
     }
 
-    private func setPhase(_ phase: IndexWorker.Phase) {
-        guard self.phase != phase else { return }
-        self.phase = phase
-        NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)
+    package func receiveStore(_ store: IndexStore) {
+        self.store = store
+        if let roots = store.tryRead({ $0.roots.map(\.path) }) {
+            storeRoots = Self.shortPaths(roots)
+        }
+        publishChangesNow(.all)
     }
 
-    private func changed(_ changes: IndexChanges = .all) {
+    package func setPhase(_ phase: IndexWorker.Phase) {
+        let changedPhase = self.phase != phase
+        self.phase = phase
+        if changedPhase {
+            NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)
+        }
+        resolvePendingLookupsIfIdle()
+    }
+
+    private func finishConfigUpdate() {
+        pendingConfigCount = max(0, pendingConfigCount - 1)
+        resolvePendingLookupsIfIdle()
+    }
+
+    private func resolvePendingLookupsIfIdle() {
+        guard !isActivelyUpdating, hadPendingLookup else { return }
+        publishChangesNow(.all)
+    }
+
+    package func changed(_ changes: IndexChanges = .all) {
         pendingChanges.formUnion(changes)
         guard !changePosted else { return }
         changePosted = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.changePosted = false
             let changes = self.pendingChanges
+            guard changes.hasChanges else { return }
             self.pendingChanges = IndexChanges()
+            self.hadPendingLookup = false
             NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: changes])
         }
     }
 
+    private func publishChangesNow(_ changes: IndexChanges = .all) {
+        pendingChanges.formUnion(changes)
+        let published = pendingChanges
+        pendingChanges = IndexChanges()
+        hadPendingLookup = false
+        NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: published])
+    }
+
     // MARK: - Queries
 
-    /// Total size and file count of a folder, if it's indexed.
+    /// Whether the index owns `url`, is still working on it, or leaves it to `FolderSizer`.
+    package func folderSizeLookup(_ url: URL) -> FolderSizeLookup {
+        let path = url.lexicallyStandardized.path
+        guard let store else {
+            if isActivelyUpdating, isWithinConfiguredScope(path) {
+                hadPendingLookup = true
+                return .pending
+            }
+            return .unindexed
+        }
+        var readRoots: [String]?
+        let lookup = store.tryRead { store -> FolderSizeLookup in
+            if storeRoots.isEmpty, !store.roots.isEmpty {
+                readRoots = Self.shortPaths(store.roots.map(\.path))
+            }
+            guard let id = self.lookup(path, in: store), store.isDirectory(id), !isExcludedLocked(store, id) else {
+                return .unindexed
+            }
+            if isActivelyUpdating, isUnreadLocked(store, id) {
+                return .pending
+            }
+            return .indexed(FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]),
+                                       allocatedBytes: store.allocated[Int(id)],
+                                       allocationComplete: store.allocatedSize(id) != nil))
+        }
+        if let readRoots { storeRoots = readRoots }
+        if let lookup {
+            switch lookup {
+            case .indexed(let size):
+                return .indexed(size)
+            case .pending:
+                hadPendingLookup = true
+                return .pending
+            case .unindexed:
+                if isActivelyUpdating, isWithinConfiguredScope(path) {
+                    hadPendingLookup = true
+                    return .pending
+                }
+                return .unindexed
+            }
+        }
+        if isWithinIndexedScope(path) {
+            hadPendingLookup = true
+            return .pending
+        }
+        return .unindexed
+    }
+
+    /// Total size and file count of a folder, if it's currently readable from the index.
     package func folderSize(_ url: URL) -> FolderSize? {
         guard let store else { return nil }
         let path = url.lexicallyStandardized.path
-        return store.tryRead { store -> FolderSize? in
-            guard let id = store.lookup(path), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
+        var readRoots: [String]?
+        let result = store.tryRead { store -> FolderSize? in
+            if storeRoots.isEmpty, !store.roots.isEmpty {
+                readRoots = Self.shortPaths(store.roots.map(\.path))
+            }
+            guard let id = self.lookup(path, in: store), store.isDirectory(id), !isExcludedLocked(store, id) else { return nil }
+            if isActivelyUpdating, isUnreadLocked(store, id) { return nil }
             return FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]), allocatedBytes: store.allocated[Int(id)],
                               allocationComplete: store.allocatedSize(id) != nil)
         } ?? nil
+        if let readRoots { storeRoots = readRoots }
+        return result
     }
 
     /// Sizes of every indexed subfolder of `folder`, by path, from one walk of its children (looking each up by path
@@ -125,11 +252,13 @@ package final class FileIndex {
     package func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
         let base = folder.lexicallyStandardized.path
+        let updating = isActivelyUpdating
         return store.tryRead { store -> [String: FolderSize] in
-            guard let id = store.lookup(base) else { return [:] }
+            guard let id = self.lookup(base, in: store) else { return [:] }
             var sizes: [String: FolderSize] = [:]
             let prefix = base == "/" ? "/" : base + "/"
-            for child in store.children(of: id) where store.isDirectory(child) && !isExcludedLocked(store, child) {
+            for child in store.children(of: id) where store.isDirectory(child) && !isExcludedLocked(store, child)
+                && (!updating || !isUnreadLocked(store, child)) {
                 sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]),
                                                               allocatedBytes: store.allocated[Int(child)], allocationComplete: store.allocatedSize(child) != nil)
             }
@@ -137,9 +266,43 @@ package final class FileIndex {
         } ?? [:]
     }
 
+    private func lookup(_ path: String, in store: borrowing IndexStore.Storage) -> Int32? {
+        if let id = store.lookup(path) { return id }
+        let system = PathSpelling.system(path)
+        return system == path ? nil : store.lookup(system)
+    }
+
     /// Excluded folders are present as entries but never descended into, so their size would read as zero.
     private func isExcludedLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
-        store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0 && excludedPaths.contains(store.path(of: id))
+        store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0 && excludedPaths.contains(PathSpelling.short(store.path(of: id)))
+    }
+
+    private func isUnreadLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
+        store.parent[Int(id)] >= 0 && store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0
+            && (store.flags[Int(id)] & IndexStore.Flag.unreadDirectory != 0)
+    }
+
+    private func isWithinConfiguredScope(_ path: String) -> Bool {
+        guard !IndexRefresh.isExcluded(path, in: excludedPaths) else { return false }
+        return configuredRoots.contains { Self.isSameOrDescendant(path, of: $0) }
+    }
+
+    private func isWithinIndexedScope(_ path: String) -> Bool {
+        guard !IndexRefresh.isExcluded(path, in: excludedPaths) else { return false }
+        let roots = storeRoots.isEmpty ? configuredRoots : storeRoots
+        return roots.contains { Self.isSameOrDescendant(path, of: $0) }
+    }
+
+    private static func isSameOrDescendant(_ path: String, of root: String) -> Bool {
+        path == root || path.hasPrefix(root == "/" ? "/" : root + "/")
+    }
+
+    private static func shortPaths(_ paths: [String]) -> [String] {
+        paths.map(PathSpelling.short)
+    }
+
+    private static func shortPaths(_ paths: Set<String>) -> Set<String> {
+        Set(paths.map(PathSpelling.short))
     }
 
     package func search(_ text: String, in scope: URL? = nil, limit: Int = 500) async -> (hits: [IndexHit], total: Int)? {
@@ -265,7 +428,35 @@ package final class FileIndex {
 
     // MARK: - Configuration
 
+    private static let guardedRelatives = [
+        "Desktop", "Documents", "Downloads", "Library/Containers", "Library/Group Containers",
+        "Library/Mobile Documents", "Pictures/Photos Library.photoslibrary", ".Trash",
+    ]
+
     private var excludedPaths: Set<String> = []
+
+    /// Seeds the indexed roots and exclusions on the main actor before the off-main `RealPath` pass completes,
+    /// so opening a window at launch or right after `Privacy.markAccessible` sees the updated scope immediately.
+    private func syncPendingScope() {
+        let home = PathSpelling.short(Places.home.path)
+        if configuredRoots.isEmpty {
+            configuredRoots = Self.shortPaths(Self.roots(home: home))
+        }
+        var excluded: Set<String> = [
+            storage.directory.lexicallyStandardized.path,
+            storage.caches.lexicallyStandardized.path,
+            copies.containerCopies.root.lexicallyStandardized.path,
+            copies.remoteCopies.root.lexicallyStandardized.path,
+            copies.clipboardRoot.lexicallyStandardized.path,
+        ]
+        if !Privacy.hasFullDiskAccess {
+            for relative in Self.guardedRelatives {
+                let path = home + "/" + relative
+                if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
+            }
+        }
+        excludedPaths = excluded
+    }
 
     /// What the worker indexes now: the paths are read away from the main thread, which folders you've let Strata
     /// read is the app's own record.
@@ -275,8 +466,7 @@ package final class FileIndex {
         if !Privacy.hasFullDiskAccess {
             // Reading these without Full Disk Access pops a consent prompt (or reads other apps' data);
             // folders you've opened in Strata are already allowed.
-            for relative in ["Desktop", "Documents", "Downloads", "Library/Containers", "Library/Group Containers",
-                             "Library/Mobile Documents", "Pictures/Photos Library.photoslibrary", ".Trash"] {
+            for relative in Self.guardedRelatives {
                 let path = home + "/" + relative
                 if !Privacy.isKnownAccessible(path) { guarded.insert(path) }
             }

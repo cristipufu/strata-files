@@ -105,21 +105,18 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     private func sizeText(_ node: FileNode) -> String {
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
-        // A container's folder holds only what's been browsed: its size isn't known.
-        if services.copies.contains(node.url) { return "—" }
-        if let size = services.index.folderSize(node.url) ?? FolderSizer.cached(node.url) {
+        guard canMeasure(node.entry) else { return "—" }
+        if let size = folderSize(node.url, request: true) {
             return Format.bytes(size.bytes)
         }
-        guard canMeasure(node.entry) else { return "—" }
-        sizer.request(node.url)
         return "…"
     }
 
     /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
     func canMeasure(_ entry: FileEntry) -> Bool {
         guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
-        if services.index.folderSize(entry.url) != nil { return true }
-        return !Privacy.measuringWouldPrompt(entry.url, browsing: directory)
+        if !Privacy.measuringWouldPrompt(entry.url, browsing: directory) { return true }
+        return services.index.folderSizeLookup(entry.url) != .unindexed || FolderSizer.cached(entry.url) != nil
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {

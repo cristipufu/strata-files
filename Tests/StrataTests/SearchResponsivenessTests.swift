@@ -95,12 +95,17 @@ import Testing
         }
         let count = index.itemCount
         let size = index.folderSize(URL(fileURLWithPath: "/synthetic"))
+        let lookup = index.folderSizeLookup(URL(fileURLWithPath: "/synthetic"))
+        let unindexedLookup = index.folderSizeLookup(URL(fileURLWithPath: "/outside"))
         let children = index.childFolderSizes(URL(fileURLWithPath: "/synthetic"))
         release.signal()
         await withCheckedContinuation { done in DispatchQueue.global().async { finished.wait(); done.resume() } }
         #expect(!timedOut.withLock { $0 })
         #expect(count == 4 && size == nil && children.isEmpty)
+        #expect(lookup == .pending)
+        #expect(unindexedLookup == .unindexed)
         #expect(index.folderSize(URL(fileURLWithPath: "/synthetic"))?.files == 3)
+        #expect(index.folderSizeLookup(URL(fileURLWithPath: "/synthetic")) == .indexed(FolderSize(bytes: 3, files: 3, allocatedBytes: 0, allocationComplete: false)))
     }
 
     @Test func extensionAndPathQueriesDoNotRequestDocumentEmbeddings() {

@@ -1,7 +1,7 @@
 import Foundation
 import StrataSupport
 
-nonisolated package struct FolderSize: Sendable {
+nonisolated package struct FolderSize: Equatable, Sendable {
     package let bytes: Int64
     package let files: Int
     package let allocatedBytes: Int64?
@@ -20,13 +20,19 @@ nonisolated package struct FolderSize: Sendable {
 @MainActor package final class FolderSizer {
     private static var cache: [String: FolderSize] = [:]
 
+    private struct Pending {
+        let id: UUID
+        let url: URL
+        let operation: SizeOperation
+    }
+
     package var onUpdate: ((URL) -> Void)?
     private let queue = OperationQueue()
     package typealias Reader = @Sendable (String, @Sendable () -> Bool) -> FolderSize?
     package typealias Delivery = @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
     private let deliver: Delivery
     private let reader: Reader
-    private var pending: [String: UUID] = [:]
+    private var pending: [String: Pending] = [:]
 
     package init(reader: @escaping Reader = FolderSizer.measure,
                  deliver: @escaping Delivery = { action in Task { @MainActor in action() } }) {
@@ -40,19 +46,37 @@ nonisolated package struct FolderSize: Sendable {
 
     private static func key(_ url: URL) -> String { url.lexicallyStandardized.path }
     package static func cached(_ url: URL) -> FolderSize? { cache[key(url)] }
+    package var hasPending: Bool { !pending.isEmpty }
+
+    package func isPending(_ url: URL) -> Bool {
+        !pending.isEmpty && pending[Self.key(url)] != nil
+    }
 
     package func request(_ url: URL) {
         let key = Self.key(url)
         guard Self.cache[key] == nil, pending[key] == nil else { return }
         let id = UUID()
-        pending[key] = id
         let op = SizeOperation(path: url.path, reader: reader)
+        pending[key] = Pending(id: id, url: url, operation: op)
         let deliver = deliver
         op.completionBlock = { [unowned op, weak self] in
             let result = op.result
             deliver { [weak self] in self?.finish(url, id: id, result) }
         }
         queue.addOperation(op)
+    }
+
+    package func cancel(_ url: URL) {
+        guard !pending.isEmpty, let entry = pending.removeValue(forKey: Self.key(url)) else { return }
+        entry.operation.cancel()
+    }
+
+    package func cancel(where shouldCancel: (URL) -> Bool) {
+        guard !pending.isEmpty else { return }
+        for (key, entry) in pending where shouldCancel(entry.url) {
+            pending.removeValue(forKey: key)
+            entry.operation.cancel()
+        }
     }
 
     package func cancelPending() {
@@ -71,7 +95,7 @@ nonisolated package struct FolderSize: Sendable {
 
     private func finish(_ url: URL, id: UUID, _ result: FolderSize?) {
         let key = Self.key(url)
-        guard pending[key] == id else { return }
+        guard pending[key]?.id == id else { return }
         pending[key] = nil
         guard let result else { return }
         if Self.cache.count >= 4096 { Self.cache.removeAll(keepingCapacity: true) }
