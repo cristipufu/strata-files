@@ -110,6 +110,8 @@ struct IndexEventInboxTests {
         #expect(delivery.folders["/fixture/work"]?.isDeep == true)
         #expect(delivery.folders["/fixture/deep/chain/notes"]?.names == ["note.txt"])
         #expect(delivery.folders["/fixture"] == nil && delivery.folders["/other"] == nil)
+        #expect(delivery.folderEventIDs["/fixture/deep/chain/notes"] == 1)
+        #expect(delivery.folderEventIDs["/fixture/work"] == 2)
         #expect(delivery.historyDone)
         #expect(delivery.lastID == 1002)
 
@@ -122,12 +124,13 @@ struct IndexEventInboxTests {
         #expect(rootDelivery.folders["/fixture"]?.isDeep == true && rootDelivery.folders["/other"] == nil)
 
         var tree = IndexRefreshTree()
-        tree.insert("/fixture/deep/chain/notes", .files(["note.txt"]))
-        tree.insert("/fixture/work/run-1", .directory(deep: false))
-        tree.insert("/fixture/work/run-2", .directory(deep: false))
+        tree.insert("/fixture/deep/chain/notes", .files(["note.txt"]), eventID: 50)
+        tree.insert("/fixture/work/run-1", .directory(deep: false), eventID: 30)
+        tree.insert("/fixture/work/run-2", .directory(deep: false), eventID: 20)
         tree.collapse(roots: ["/fixture"], limit: 2)
-        tree.insert("/fixture/work/run-3/leaf", .directory(deep: false))
+        tree.insert("/fixture/work/run-3/leaf", .directory(deep: false), eventID: 10)
         #expect(tree.count == 2 && tree.folders["/fixture/work/run-3/leaf"] == nil)
+        #expect(tree.folderEventIDs["/fixture/work"] == 10 && tree.minEventID == 10)
     }
 
     @Test func replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation() throws {

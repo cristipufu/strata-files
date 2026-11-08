@@ -1226,8 +1226,12 @@ struct IndexWorkerTests {
         let scans = OSAllocatedUnfairLock(initialState: 0)
         let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
         let fixture = try await start(tree, startEvents: { _, _ in true }, onPhase: { phase in
-            phases.withLock { $0.append(phase) }
-            if phase == .scanning(items: 0) { scans.withLock { $0 += 1 } }
+            phases.withLock { history in
+                let wasScanning: Bool
+                if case .scanning = history.last { wasScanning = true } else { wasScanning = false }
+                if case .scanning = phase, !wasScanning { scans.withLock { $0 += 1 } }
+                history.append(phase)
+            }
         })
         #expect(scans.withLock { $0 } == 0)
 
@@ -1335,5 +1339,78 @@ struct IndexWorkerTests {
             #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
         }
         #expect(tree.text("a/one.txt") == "a/one.txt")
+    }
+
+    @Test func hotFoldersCoalesceOnTheDeferredTierWhileInteractiveFoldersFlushImmediatelyAndHoldBackTheSavedCheckpoint() async throws {
+        let tree = try TestTree(".state/", "hot/file.txt", "calm/note.txt")
+        let hotPath = tree.url("hot").path
+        let calmPath = tree.url("calm").path
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(1_000_000_000))
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
+        let deferredStarted = DispatchSemaphore(value: 0)
+        let releaseDeferred = DispatchSemaphore(value: 0)
+        defer { releaseDeferred.signal() }
+        let workerBox = OSAllocatedUnfairLock<IndexWorker?>(initialState: nil)
+        let secondHotEventID = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false, saveInterval: 0.005, fastFlushInterval: 0.005,
+                                 deferredFlushInterval: 0.06, now: { clock.withLock { $0 } },
+                                 readDirectory: { path, items, names, buffer, stop in
+            let count = reads.withLock {
+                $0[path, default: 0] += 1
+                return $0[path, default: 0]
+            }
+            if path == calmPath, count == 1 {
+                let nextID = secondHotEventID.withLock { $0 }
+                if nextID > 0 {
+                    workerBox.withLock { $0 }?.receive([.init(path: hotPath, flags: 0, id: nextID)])
+                }
+            }
+            if path == hotPath, count == 2 {
+                deferredStarted.signal()
+                _ = releaseDeferred.wait(timeout: .now() + 20)
+            }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        workerBox.withLock { $0 = worker }
+        worker.onPhase = { phase in phases.withLock { $0.append(phase) } }
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+        reads.withLock { $0.removeAll() }
+
+        // First touch on `hot` flushes and marks `hot` as recently refreshed at the current clock tick.
+        try Data("v1".utf8).write(to: tree.url("hot/file.txt"))
+        worker.receive([.init(path: hotPath, flags: 0, id: initialHeader.eventID + 10)])
+        await withCheckedContinuation { done in worker.saveWhenIdle { done.resume() } }
+        #expect(reads.withLock { $0[hotPath] } == 1)
+
+        // Immediate follow-up churn on `hot` is deferred while `calm` flushes on the fast tier and saves at `minDeferredID - 1`.
+        try Data("version-two".utf8).write(to: tree.url("hot/file.txt"))
+        try Data("updated calm".utf8).write(to: tree.url("calm/note.txt"))
+        secondHotEventID.withLock { $0 = initialHeader.eventID + 21 }
+        worker.receive([
+            .init(path: hotPath, flags: 0, id: initialHeader.eventID + 20),
+            .init(path: calmPath, flags: 0, id: initialHeader.eventID + 30),
+        ])
+        try #require(try await TestWork.run { deferredStarted.wait(timeout: .now() + 20) == .success })
+        #expect(reads.withLock { $0[calmPath] } == 1)
+        #expect(phases.withLock { $0.last } == .updating)
+        let (partialStore, partialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+        let calmFileID = try #require(partialStore.read { $0.lookup(tree.url("calm/note.txt").path) })
+        #expect(partialStore.read { $0.size[Int(calmFileID)] } == 12)
+        #expect(partialHeader.eventID == initialHeader.eventID + 19)
+
+        // Once the deferred read finishes, both `hot` events (+20 and +21) were coalesced into a single read.
+        releaseDeferred.signal()
+        await save(worker)
+        #expect(reads.withLock { $0[hotPath] } == 2)
+        #expect(phases.withLock { $0.last } == .ready)
+        let (finalStore, finalHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+        let hotFileID = try #require(finalStore.read { $0.lookup(tree.url("hot/file.txt").path) })
+        #expect(finalStore.read { $0.size[Int(hotFileID)] } == 11)
+        #expect(finalHeader.eventID == initialHeader.eventID + 30)
+        #expect(tree.text("calm/note.txt") == "updated calm")
     }
 }

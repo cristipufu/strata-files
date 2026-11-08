@@ -9603,7 +9603,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        for (path, refresh) in remaining {\n            pending.insert(path, refresh)\n        }",
+    "find": "        for entry in remaining {\n            pending.insert(entry.path, entry.refresh, eventID: entry.firstEventID)\n        }",
     "replace": "        _ = remaining",
     "rule": "Unfinished folders from an interrupted refresh remain pending for the next batch",
     "tests": "IndexWorkerTests/unfinishedFoldersFromAnInterruptedBatchHoldBackTheSavedEventIDAndFinishInTheNextBatch"
@@ -9635,5 +9635,19 @@
     "replace": "        // Ignore the prefetched directory listing.",
     "rule": "Prefetched directory listings are reused without reading the directory a second time",
     "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if !includeDeferred, isHot(path: path, now: nowNs) || Self.isCovered(path, by: deferredDeep) {",
+    "replace": "            if false {",
+    "rule": "Hot folders coalesce repeated changes on the deferred flush tier",
+    "tests": "IndexWorkerTests/hotFoldersCoalesceOnTheDeferredTierWhileInteractiveFoldersFlushImmediatelyAndHoldBackTheSavedCheckpoint"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if let minDeferredID = pending.minEventID {",
+    "replace": "        if let minDeferredID: UInt64 = nil {",
+    "rule": "A fast-tier flush holds back the saved event ID behind deferred folders",
+    "tests": "IndexWorkerTests/hotFoldersCoalesceOnTheDeferredTierWhileInteractiveFoldersFlushImmediatelyAndHoldBackTheSavedCheckpoint"
   }
 ]

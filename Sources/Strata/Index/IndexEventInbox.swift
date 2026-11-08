@@ -5,8 +5,21 @@ import os
 /// A component-keyed path trie of pending folder refreshes. Component keys are `String` values (fitting inline in
 /// Swift's small-string representation for typical names without retaining the full event path buffer).
 nonisolated package struct IndexRefreshTree: Sendable {
+    package struct Entry: Sendable {
+        package let path: String
+        package let refresh: IndexRefresh
+        package let firstEventID: UInt64
+
+        package init(path: String, refresh: IndexRefresh, firstEventID: UInt64 = 0) {
+            self.path = path
+            self.refresh = refresh
+            self.firstEventID = firstEventID
+        }
+    }
+
     private struct Node: Sendable {
         var refresh: IndexRefresh?
+        var firstEventID: UInt64 = 0
         var isCollapsed = false
         var children: [String: Node] = [:]
     }
@@ -18,15 +31,20 @@ nonisolated package struct IndexRefreshTree: Sendable {
 
     package var isEmpty: Bool { count == 0 }
 
+    package var minEventID: UInt64? {
+        let minimum = Self.subtreeMinEventID(of: root)
+        return minimum > 0 ? minimum : nil
+    }
+
     package mutating func removeAll(keepingCapacity: Bool = false) {
         root = Node()
         count = 0
     }
 
     /// Inserts or merges `refresh` at `path`, ignoring descendants of subtrees already collapsed on overflow.
-    package mutating func insert(_ path: String, _ refresh: IndexRefresh) {
+    package mutating func insert(_ path: String, _ refresh: IndexRefresh, eventID: UInt64 = 0) {
         let segments = Self.segments(of: path)
-        Self.insert(segments[...], refresh: refresh, into: &root, count: &count)
+        Self.insert(segments[...], refresh: refresh, eventID: eventID, into: &root, count: &count)
     }
 
     package var folders: [String: IndexRefresh] {
@@ -36,10 +54,24 @@ nonisolated package struct IndexRefreshTree: Sendable {
         return result
     }
 
+    package var folderEventIDs: [String: UInt64] {
+        var result: [String: UInt64] = [:]
+        result.reserveCapacity(count)
+        Self.collectEventIDs(from: root, path: "", into: &result)
+        return result
+    }
+
     package func sortedWork() -> [(key: String, value: IndexRefresh)] {
         var result: [(key: String, value: IndexRefresh)] = []
         result.reserveCapacity(count)
         Self.collectSorted(from: root, path: "", into: &result)
+        return result
+    }
+
+    package func sortedEntries() -> [Entry] {
+        var result: [Entry] = []
+        result.reserveCapacity(count)
+        Self.collectSortedEntries(from: root, path: "", into: &result)
         return result
     }
 
@@ -95,39 +127,55 @@ nonisolated package struct IndexRefreshTree: Sendable {
         Self.applyCollapse(to: &root, path: "", newlyCollapsed: newlyCollapsed, count: &count)
     }
 
-    private static func insert(_ segments: ArraySlice<String>, refresh: IndexRefresh, into node: inout Node, count: inout Int) {
+    private static func insert(_ segments: ArraySlice<String>, refresh: IndexRefresh, eventID: UInt64,
+                               into node: inout Node, count: inout Int) {
+        if node.isCollapsed { node.firstEventID = minPositive(node.firstEventID, eventID) }
         if node.isCollapsed { return }
         guard let head = segments.first else {
             if node.refresh != nil {
                 node.refresh?.merge(refresh)
+                node.firstEventID = minPositive(node.firstEventID, eventID)
             } else {
                 node.refresh = refresh
+                node.firstEventID = eventID
                 count += 1
             }
             return
         }
-        insert(segments.dropFirst(), refresh: refresh, into: &node.children[head, default: Node()], count: &count)
+        insert(segments.dropFirst(), refresh: refresh, eventID: eventID,
+               into: &node.children[head, default: Node()], count: &count)
     }
 
+    @discardableResult
     private static func pruneUnderDeep(node: inout Node, path: String, underRoot: Bool, rootSet: Set<String>,
-                                       hasDeepAncestor: Bool, count: inout Int) {
+                                       hasDeepAncestor: Bool, count: inout Int) -> UInt64 {
         let currentPath = path.isEmpty ? "/" : path
         let currentUnderRoot = underRoot || (!path.isEmpty && rootSet.contains(currentPath))
+        var absorbedEventID: UInt64 = 0
         if hasDeepAncestor, node.refresh != nil {
+            absorbedEventID = node.firstEventID
             node.refresh = nil
+            node.firstEventID = 0
             count -= 1
         }
-        let nextDeep = hasDeepAncestor || (currentUnderRoot && node.refresh?.isDeep == true)
+        let becomesDeepAncestor = !hasDeepAncestor && currentUnderRoot && node.refresh?.isDeep == true
+        let nextDeep = hasDeepAncestor || becomesDeepAncestor
         for key in Array(node.children.keys) {
             let childPath = path.isEmpty ? "/" + key : path + "/" + key
             if var child = node.children.removeValue(forKey: key) {
-                pruneUnderDeep(node: &child, path: childPath, underRoot: currentUnderRoot, rootSet: rootSet,
-                               hasDeepAncestor: nextDeep, count: &count)
+                let childAbsorbed = pruneUnderDeep(node: &child, path: childPath, underRoot: currentUnderRoot,
+                                                   rootSet: rootSet, hasDeepAncestor: nextDeep, count: &count)
+                absorbedEventID = minPositive(absorbedEventID, childAbsorbed)
                 if child.refresh != nil || !child.children.isEmpty || child.isCollapsed {
                     node.children[key] = child
                 }
             }
         }
+        if becomesDeepAncestor {
+            node.firstEventID = minPositive(node.firstEventID, absorbedEventID)
+            return 0
+        }
+        return absorbedEventID
     }
 
     private static func gatherCounts(from node: Node, path: String, depth: Int, underRoot: Bool, rootSet: Set<String>,
@@ -152,6 +200,7 @@ nonisolated package struct IndexRefreshTree: Sendable {
         let currentPath = path.isEmpty ? "/" : path
         if (!path.isEmpty || newlyCollapsed.contains("/")), newlyCollapsed.contains(currentPath) {
             count -= subtreeActiveCount(of: node) - 1
+            node.firstEventID = subtreeMinEventID(of: node)
             node.isCollapsed = true
             node.refresh = IndexRefresh.directory(deep: true)
             node.children.removeAll()
@@ -174,12 +223,35 @@ nonisolated package struct IndexRefreshTree: Sendable {
         return total
     }
 
+    private static func subtreeMinEventID(of node: Node) -> UInt64 {
+        var minimum: UInt64 = node.refresh != nil ? node.firstEventID : 0
+        for child in node.children.values {
+            minimum = minPositive(minimum, subtreeMinEventID(of: child))
+        }
+        return minimum
+    }
+
+    private static func minPositive(_ lhs: UInt64, _ rhs: UInt64) -> UInt64 {
+        if lhs == 0 { return rhs }
+        if rhs == 0 { return lhs }
+        return min(lhs, rhs)
+    }
+
     private static func collect(from node: Node, path: String, into result: inout [String: IndexRefresh]) {
         if let refresh = node.refresh {
             result[path.isEmpty ? "/" : path] = refresh
         }
         for (key, child) in node.children {
             collect(from: child, path: path.isEmpty ? "/" + key : path + "/" + key, into: &result)
+        }
+    }
+
+    private static func collectEventIDs(from node: Node, path: String, into result: inout [String: UInt64]) {
+        if node.refresh != nil, node.firstEventID > 0 {
+            result[path.isEmpty ? "/" : path] = node.firstEventID
+        }
+        for (key, child) in node.children {
+            collectEventIDs(from: child, path: path.isEmpty ? "/" + key : path + "/" + key, into: &result)
         }
     }
 
@@ -190,6 +262,17 @@ nonisolated package struct IndexRefreshTree: Sendable {
         for key in node.children.keys.sorted() {
             if let child = node.children[key] {
                 collectSorted(from: child, path: path.isEmpty ? "/" + key : path + "/" + key, into: &result)
+            }
+        }
+    }
+
+    private static func collectSortedEntries(from node: Node, path: String, into result: inout [Entry]) {
+        if let refresh = node.refresh {
+            result.append(Entry(path: path.isEmpty ? "/" : path, refresh: refresh, firstEventID: node.firstEventID))
+        }
+        for key in node.children.keys.sorted() {
+            if let child = node.children[key] {
+                collectSortedEntries(from: child, path: path.isEmpty ? "/" + key : path + "/" + key, into: &result)
             }
         }
     }
@@ -228,6 +311,7 @@ nonisolated package final class IndexEventInbox: Sendable {
     package struct Delivery: Sendable {
         package let generation: UUID
         package let folders: [String: IndexRefresh]
+        package let folderEventIDs: [String: UInt64]
         package let lastID: UInt64
         package let historyDone: Bool
         package let invalidation: FSEventsStream.Event?
@@ -306,7 +390,7 @@ nonisolated package final class IndexEventInbox: Sendable {
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
                 if state.excluded.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { continue }
                 let request = IndexRefresh.request(for: event, path: path, roots: state.roots)
-                state.tree.insert(request.path, request.refresh)
+                state.tree.insert(request.path, request.refresh, eventID: event.id)
                 if state.tree.count >= collapseThreshold {
                     state.tree.collapse(roots: state.roots, limit: folderLimit)
                 }
@@ -329,9 +413,10 @@ nonisolated package final class IndexEventInbox: Sendable {
             if state.historyDone { state.waitingForHistory = false }
             if state.historyDone { state.canRebuildOnDrop = true }
             let folders = state.tree.folders
+            let folderEventIDs = state.tree.folderEventIDs
             defer { state.clear() }
-            return Delivery(generation: state.generation, folders: folders, lastID: state.lastID,
-                            historyDone: state.historyDone, invalidation: state.invalidation)
+            return Delivery(generation: state.generation, folders: folders, folderEventIDs: folderEventIDs,
+                            lastID: state.lastID, historyDone: state.historyDone, invalidation: state.invalidation)
         }
     }
 }

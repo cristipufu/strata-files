@@ -47,9 +47,16 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var pending = IndexRefreshTree()
     private var rescanNeeded = false
     private var flushScheduled = false
+    private var deferredFlushScheduled = false
     private var saveScheduled = false
+    private var recentRefreshes: [String: UInt64] = [:]
+    private var recentDeepRefreshes: [String: UInt64] = [:]
     package static let defaultSaveInterval: TimeInterval = 1800
+    package static let defaultFastFlushInterval: TimeInterval = 0.25
+    package static let defaultDeferredFlushInterval: TimeInterval = 2.0
     private let saveInterval: TimeInterval
+    private let fastFlushInterval: TimeInterval
+    private let deferredFlushInterval: TimeInterval
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
     private let scanning = OSAllocatedUnfairLock(initialState: false)
     private let rebuildRequested = OSAllocatedUnfairLock(initialState: false)
@@ -64,6 +71,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private let readDirectory: DirectoryRead
     private let readItem: ItemRead
     private let startEvents: (@Sendable ([String], UInt64) -> Bool)?
+    private let now: @Sendable () -> UInt64
     private var awaitingHistory = false
     private var watchingFailed = false
     private var eventGeneration = UUID()
@@ -83,13 +91,19 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
     package init(watchesChanges: Bool = true, saveInterval: TimeInterval = IndexWorker.defaultSaveInterval,
+                 fastFlushInterval: TimeInterval = IndexWorker.defaultFastFlushInterval,
+                 deferredFlushInterval: TimeInterval = IndexWorker.defaultDeferredFlushInterval,
                  replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
+                 now: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
                  readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil) {
         self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
+        self.fastFlushInterval = max(0, fastFlushInterval)
+        self.deferredFlushInterval = max(0, deferredFlushInterval)
+        self.now = now
         self.readDirectory = readDirectory
         self.readItem = readItem
         self.startEvents = startEvents
@@ -119,6 +133,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         guard accepted else { return }
         queue.async {
+            guard self.rebuildRequested.withLock({ $0 }) else { return }
             defer { self.rebuildRequested.withLock { $0 = false } }
             self.rebuild()
         }
@@ -171,6 +186,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func boot(_ config: IndexConfig) {
         self.config = config
         pending.removeAll()
+        recentRefreshes.removeAll()
+        recentDeepRefreshes.removeAll()
         rescanNeeded = false
         interrupted = false
         publish(.loading)
@@ -207,6 +224,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         lastEventID = startEventID
         pendingEventID = startEventID
         pending.removeAll()
+        recentRefreshes.removeAll()
+        recentDeepRefreshes.removeAll()
         rescanNeeded = false
         interrupted = false
         // Start listening from `startEventID` before scanning so changes during the scan buffer in `incoming`
@@ -297,14 +316,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         markChanged(scheduleSave: !interrupted)
     }
 
-    private func save() {
+    private func save(includeDeferred: Bool = true) {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
         // at the next launch and rebuilds then.
         guard !rescanNeeded else { return }
         // Apply events already received first, as far as quit's deadline allows. If catching up stops partway through
         // a batch, `lastEventID` stays at the previous completed batch while keeping the folder updates already made,
         // so the next launch replays the interrupted batch without redoing the rest.
-        if !pending.isEmpty, !interrupted { flush() }
+        if !pending.isEmpty, !interrupted { flush(includeDeferred: includeDeferred) }
         guard !rescanNeeded, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         do {
             try IndexPersistence.save(store, eventID: lastEventID, excluded: Array(savedExcluded), to: config.file,
@@ -331,9 +350,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 self.log.info("Event invalidates index: \(event.path) flags \(event.flags)")
                 self.rescanNeeded = true
             }
+            let nowNs = self.now()
+            self.pruneHotFolders(now: nowNs)
+            var hasFastFolder = false
             for (path, refresh) in delivery.folders {
                 if let config = self.config, self.isExcluded(path, config) { continue }
-                self.pending.insert(path, refresh)
+                self.pending.insert(path, refresh, eventID: delivery.folderEventIDs[path] ?? delivery.lastID)
+                if !self.isHot(path: path, now: nowNs) {
+                    hasFastFolder = true
+                }
             }
             if !delivery.folders.isEmpty, !self.pastQuitDeadline {
                 self.interrupted = false
@@ -343,10 +368,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             if self.rescanNeeded {
                 self.publish(.updating)
-                self.flush()
+                self.flush(includeDeferred: true)
             } else if !self.pending.isEmpty {
                 self.publish(.updating)
-                self.scheduleFlush()
+                if hasFastFolder {
+                    self.scheduleFlush()
+                } else {
+                    self.scheduleDeferredFlush()
+                }
             } else {
                 if !self.interrupted { self.lastEventID = max(self.lastEventID, self.pendingEventID) }
                 self.finishUpdates()
@@ -357,14 +386,25 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func scheduleFlush() {
         guard !flushScheduled else { return }
         flushScheduled = true
-        queue.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        queue.asyncAfter(deadline: .now() + fastFlushInterval) { [weak self] in
             guard let self else { return }
             self.flushScheduled = false
-            self.flush()
+            self.flush(includeDeferred: false)
         }
     }
 
-    private func flush() {
+    private func scheduleDeferredFlush() {
+        guard !deferredFlushScheduled else { return }
+        deferredFlushScheduled = true
+        let delay = max(fastFlushInterval, deferredFlushInterval)
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.deferredFlushScheduled = false
+            self.flush(includeDeferred: true)
+        }
+    }
+
+    private func flush(includeDeferred: Bool = false) {
         defer { finishUpdates() }
         if rescanNeeded {
             pending.removeAll()
@@ -377,19 +417,29 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             return
         }
         guard let config, let store, !pending.isEmpty else { return }
-        let work = pending.sortedWork()
-        let targetEventID = pendingEventID
+        let nowNs = now()
+        pruneHotFolders(now: nowNs)
+        let entries = pending.sortedEntries()
+        var targetEventID = pendingEventID
         pending.removeAll()
         interrupted = false
         var pass = RefreshPass()
+        var deferredDeep: Set<String> = []
         var changed = false
-        for (index, (path, refresh)) in work.enumerated() {
+        for (index, entry) in entries.enumerated() {
+            let path = entry.path
+            let refresh = entry.refresh
             if interrupted || stopForQuit() {
-                restoreUnfinished(work[index...])
+                restoreUnfinished(entries[index...])
                 break
             }
             if pass.covers(path) { continue }
             if isExcluded(path, config) { continue }
+            if !includeDeferred, isHot(path: path, now: nowNs) || Self.isCovered(path, by: deferredDeep) {
+                pending.insert(path, refresh, eventID: entry.firstEventID)
+                if refresh.isDeep { deferredDeep.insert(path) }
+                continue
+            }
             // The folder may be new: refresh the nearest ancestor we already know about.
             let resolved: (id: Int32, path: String)? = store.read { store in
                 var target = path
@@ -403,23 +453,80 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             guard let (id, target) = resolved else { continue }
             if pass.covers(target) { continue }
+            if !includeDeferred, target != path, isHot(path: target, now: nowNs) || Self.isCovered(target, by: deferredDeep) {
+                pending.insert(path, refresh, eventID: entry.firstEventID)
+                if refresh.isDeep { deferredDeep.insert(path) }
+                continue
+            }
             if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
             if interrupted {
-                restoreUnfinished(work[index...])
+                restoreUnfinished(entries[index...])
                 break
             }
+            if !pass.hasFailed(target) {
+                markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: nowNs)
+            }
+        }
+        if interrupted, rebuildRequested.withLock({ $0 }) {
+            defer { rebuildRequested.withLock { $0 = false } }
+            rebuild()
+            return
+        }
+        if let minDeferredID = pending.minEventID {
+            targetEventID = min(targetEventID, minDeferredID > 0 ? minDeferredID - 1 : 0)
         }
         if !interrupted {
             lastEventID = max(lastEventID, targetEventID)
+        }
+        if !interrupted, !pending.isEmpty {
+            scheduleDeferredFlush()
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
         if changed { markChanged(pass.changes, scheduleSave: pass.nonNoiseChanged && !interrupted) }
     }
 
-    private func restoreUnfinished(_ remaining: ArraySlice<(key: String, value: IndexRefresh)>) {
-        for (path, refresh) in remaining {
-            pending.insert(path, refresh)
+    private func restoreUnfinished(_ remaining: ArraySlice<IndexRefreshTree.Entry>) {
+        for entry in remaining {
+            pending.insert(entry.path, entry.refresh, eventID: entry.firstEventID)
         }
+    }
+
+    private func pruneHotFolders(now: UInt64) {
+        guard !recentRefreshes.isEmpty || !recentDeepRefreshes.isEmpty else { return }
+        let windowNs = UInt64(max(0, deferredFlushInterval) * 1_000_000_000)
+        recentRefreshes = recentRefreshes.filter { now < $0.value &+ windowNs }
+        recentDeepRefreshes = recentDeepRefreshes.filter { now < $0.value &+ windowNs }
+    }
+
+    private func isHot(path: String, now: UInt64) -> Bool {
+        guard deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return false }
+        if recentRefreshes[path] != nil { return true }
+        guard !recentDeepRefreshes.isEmpty else { return false }
+        var ancestor = path
+        while !ancestor.isEmpty {
+            if recentDeepRefreshes[ancestor] != nil { return true }
+            if ancestor == "/" { break }
+            ancestor = IndexRefresh.splitPath(ancestor).parent
+        }
+        return false
+    }
+
+    private func markHot(path: String, target: String, deep: Bool, now: UInt64) {
+        guard deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return }
+        recentRefreshes[target] = now
+        if path != target { recentRefreshes[path] = now }
+        if deep { recentDeepRefreshes[target] = now }
+    }
+
+    private static func isCovered(_ path: String, by roots: Set<String>) -> Bool {
+        guard !roots.isEmpty else { return false }
+        var ancestor = path
+        while !ancestor.isEmpty {
+            if roots.contains(ancestor) { return true }
+            if ancestor == "/" { break }
+            ancestor = IndexRefresh.splitPath(ancestor).parent
+        }
+        return false
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
@@ -448,7 +555,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             guard let self else { return }
             self.saveScheduled = false
             self.compactIfNeeded()
-            self.save()
+            self.save(includeDeferred: false)
         }
     }
 
@@ -470,6 +577,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             return attempted.insert(id).inserted
         }
         func hasListedFull(_ id: Int32) -> Bool { listedFull.contains(id) }
+        func hasFailed(_ path: String) -> Bool { failures.contains(path) || failureAncestors[path] != nil }
         mutating func failed(_ folder: Folder) {
             attempted.remove(folder.id)
             listedFull.remove(folder.id)
@@ -595,7 +703,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 names.removeAll(keepingCapacity: true)
                 let folder = foldersToRead[index]
                 let error = self.readDirectory(folder.path, &items, &names, buffer) {
-                    batchCancelled.withLock({ $0 }) || self.shouldStopRefresh
+                    self.shouldStopRefresh
                 }
                 if error == ECANCELED {
                     batchCancelled.withLock { $0 = true }
