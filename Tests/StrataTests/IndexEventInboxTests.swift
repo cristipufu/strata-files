@@ -131,6 +131,11 @@ struct IndexEventInboxTests {
         tree.insert("/fixture/work/run-3/leaf", .directory(deep: false), eventID: 10)
         #expect(tree.count == 2 && tree.folders["/fixture/work/run-3/leaf"] == nil)
         #expect(tree.folderEventIDs["/fixture/work"] == 10 && tree.minEventID == 10)
+        tree.insert("/fixture", .directory(deep: true), eventID: 40)
+        tree.insert("/fixture/extra", .directory(deep: false), eventID: 45)
+        tree.collapse(roots: ["/fixture"], limit: 1)
+        tree.insert("/fixture/work/run-4/leaf", .directory(deep: false), eventID: 5)
+        #expect(tree.count == 1 && tree.folderEventIDs["/fixture"] == 5 && tree.minEventID == 5)
     }
 
     @Test func replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation() throws {

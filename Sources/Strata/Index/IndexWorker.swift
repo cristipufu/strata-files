@@ -101,8 +101,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
-        self.fastFlushInterval = max(0, fastFlushInterval)
-        self.deferredFlushInterval = max(0, deferredFlushInterval)
+        self.fastFlushInterval = fastFlushInterval.isFinite ? max(0, fastFlushInterval) : 0
+        self.deferredFlushInterval = deferredFlushInterval.isFinite ? max(0, deferredFlushInterval) : 0
         self.now = now
         self.readDirectory = readDirectory
         self.readItem = readItem
@@ -352,15 +352,17 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             let nowNs = self.now()
             self.pruneHotFolders(now: nowNs)
+            var insertedFolder = false
             var hasFastFolder = false
             for (path, refresh) in delivery.folders {
                 if let config = self.config, self.isExcluded(path, config) { continue }
                 self.pending.insert(path, refresh, eventID: delivery.folderEventIDs[path] ?? delivery.lastID)
+                insertedFolder = true
                 if !self.isHot(path: path, now: nowNs) {
                     hasFastFolder = true
                 }
             }
-            if !delivery.folders.isEmpty, !self.pastQuitDeadline {
+            if insertedFolder, !self.pastQuitDeadline {
                 self.interrupted = false
             }
             if self.pending.count > IndexEventInbox.defaultFolderLimit {
@@ -453,7 +455,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             guard let (id, target) = resolved else { continue }
             if pass.covers(target) { continue }
-            if !includeDeferred, target != path, isHot(path: target, now: nowNs) || Self.isCovered(target, by: deferredDeep) {
+            if !includeDeferred, target != path, !pass.hasListedFull(id), isHot(path: target, now: nowNs) || Self.isCovered(target, by: deferredDeep) {
                 pending.insert(path, refresh, eventID: entry.firstEventID)
                 if refresh.isDeep { deferredDeep.insert(path) }
                 continue
@@ -491,15 +493,27 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
+    private var hotWindowNanoseconds: UInt64 {
+        guard deferredFlushInterval.isFinite, deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return 0 }
+        let scaled = deferredFlushInterval * 1_000_000_000
+        guard scaled < Double(UInt64.max) else { return UInt64.max }
+        return UInt64(scaled)
+    }
+
     private func pruneHotFolders(now: UInt64) {
         guard !recentRefreshes.isEmpty || !recentDeepRefreshes.isEmpty else { return }
-        let windowNs = UInt64(max(0, deferredFlushInterval) * 1_000_000_000)
-        recentRefreshes = recentRefreshes.filter { now < $0.value &+ windowNs }
-        recentDeepRefreshes = recentDeepRefreshes.filter { now < $0.value &+ windowNs }
+        let windowNs = hotWindowNanoseconds
+        guard windowNs > 0 else {
+            recentRefreshes.removeAll()
+            recentDeepRefreshes.removeAll()
+            return
+        }
+        recentRefreshes = recentRefreshes.filter { now >= $0.value && now - $0.value < windowNs }
+        recentDeepRefreshes = recentDeepRefreshes.filter { now >= $0.value && now - $0.value < windowNs }
     }
 
     private func isHot(path: String, now: UInt64) -> Bool {
-        guard deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return false }
+        guard hotWindowNanoseconds > 0 else { return false }
         if recentRefreshes[path] != nil { return true }
         guard !recentDeepRefreshes.isEmpty else { return false }
         var ancestor = path
@@ -512,9 +526,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func markHot(path: String, target: String, deep: Bool, now: UInt64) {
-        guard deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return }
+        guard hotWindowNanoseconds > 0 else { return }
         recentRefreshes[target] = now
-        if path != target { recentRefreshes[path] = now }
+        if path != target {
+            recentRefreshes[path] = now
+            recentDeepRefreshes[path] = now
+        }
         if deep { recentDeepRefreshes[target] = now }
     }
 
@@ -628,9 +645,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         var prefetched: [Int32: PrefetchedFolder] = [:]
         var changed = false
         while var next = work.popLast() {
-            if !prefetched.isEmpty, prefetched[next.folder.id] == nil,
-               let index = work.lastIndex(where: { prefetched[$0.folder.id] != nil }) {
-                swap(&next, &work[index])
+            if !prefetched.isEmpty, prefetched[next.folder.id] == nil {
+                if let index = work.lastIndex(where: { prefetched[$0.folder.id] != nil }) {
+                    swap(&next, &work[index])
+                } else {
+                    prefetched.removeAll(keepingCapacity: true)
+                }
             }
             if interrupted || stopForQuit() { break }
             if prefetched.isEmpty, !work.isEmpty {
@@ -687,10 +707,6 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         DispatchQueue.concurrentPerform(iterations: workers) { _ in
             let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 256 * 1024, alignment: 16)
             defer { buffer.deallocate() }
-            var items: [ScannedItem] = []
-            var names: [UInt8] = []
-            items.reserveCapacity(128)
-            names.reserveCapacity(4096)
             while true {
                 if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
                 let index = nextIndex.withLock { current -> Int? in
@@ -699,8 +715,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                     return current
                 }
                 guard let index else { break }
-                items.removeAll(keepingCapacity: true)
-                names.removeAll(keepingCapacity: true)
+                var items: [ScannedItem] = []
+                var names: [UInt8] = []
                 let folder = foldersToRead[index]
                 let error = self.readDirectory(folder.path, &items, &names, buffer) {
                     self.shouldStopRefresh

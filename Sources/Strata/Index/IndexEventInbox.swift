@@ -61,6 +61,15 @@ nonisolated package struct IndexRefreshTree: Sendable {
         return result
     }
 
+    package func collectDelivery() -> (folders: [String: IndexRefresh], folderEventIDs: [String: UInt64]) {
+        var folders: [String: IndexRefresh] = [:]
+        var folderEventIDs: [String: UInt64] = [:]
+        folders.reserveCapacity(count)
+        folderEventIDs.reserveCapacity(count)
+        Self.collectDelivery(from: root, path: "", folders: &folders, folderEventIDs: &folderEventIDs)
+        return (folders, folderEventIDs)
+    }
+
     package func sortedWork() -> [(key: String, value: IndexRefresh)] {
         var result: [(key: String, value: IndexRefresh)] = []
         result.reserveCapacity(count)
@@ -152,11 +161,14 @@ nonisolated package struct IndexRefreshTree: Sendable {
         let currentPath = path.isEmpty ? "/" : path
         let currentUnderRoot = underRoot || (!path.isEmpty && rootSet.contains(currentPath))
         var absorbedEventID: UInt64 = 0
-        if hasDeepAncestor, node.refresh != nil {
-            absorbedEventID = node.firstEventID
-            node.refresh = nil
-            node.firstEventID = 0
-            count -= 1
+        if hasDeepAncestor {
+            if node.refresh != nil {
+                absorbedEventID = node.firstEventID
+                node.refresh = nil
+                node.firstEventID = 0
+                count -= 1
+            }
+            node.isCollapsed = false
         }
         let becomesDeepAncestor = !hasDeepAncestor && currentUnderRoot && node.refresh?.isDeep == true
         let nextDeep = hasDeepAncestor || becomesDeepAncestor
@@ -173,6 +185,7 @@ nonisolated package struct IndexRefreshTree: Sendable {
         }
         if becomesDeepAncestor {
             node.firstEventID = minPositive(node.firstEventID, absorbedEventID)
+            node.isCollapsed = true
             return 0
         }
         return absorbedEventID
@@ -252,6 +265,22 @@ nonisolated package struct IndexRefreshTree: Sendable {
         }
         for (key, child) in node.children {
             collectEventIDs(from: child, path: path.isEmpty ? "/" + key : path + "/" + key, into: &result)
+        }
+    }
+
+    private static func collectDelivery(from node: Node, path: String,
+                                        folders: inout [String: IndexRefresh],
+                                        folderEventIDs: inout [String: UInt64]) {
+        if let refresh = node.refresh {
+            let resolvedPath = path.isEmpty ? "/" : path
+            folders[resolvedPath] = refresh
+            if node.firstEventID > 0 {
+                folderEventIDs[resolvedPath] = node.firstEventID
+            }
+        }
+        for (key, child) in node.children {
+            collectDelivery(from: child, path: path.isEmpty ? "/" + key : path + "/" + key,
+                            folders: &folders, folderEventIDs: &folderEventIDs)
         }
     }
 
@@ -408,15 +437,19 @@ nonisolated package final class IndexEventInbox: Sendable {
     }
 
     package func take() -> Delivery? {
-        pending.withLock { state in
+        let taken: (generation: UUID, tree: IndexRefreshTree, lastID: UInt64, historyDone: Bool, invalidation: FSEventsStream.Event?)? = pending.withLock { state in
             guard state.scheduled else { return nil }
             if state.historyDone { state.waitingForHistory = false }
             if state.historyDone { state.canRebuildOnDrop = true }
-            let folders = state.tree.folders
-            let folderEventIDs = state.tree.folderEventIDs
-            defer { state.clear() }
-            return Delivery(generation: state.generation, folders: folders, folderEventIDs: folderEventIDs,
-                            lastID: state.lastID, historyDone: state.historyDone, invalidation: state.invalidation)
+            var tree = IndexRefreshTree()
+            swap(&tree, &state.tree)
+            let result = (state.generation, tree, state.lastID, state.historyDone, state.invalidation)
+            state.clear()
+            return result
         }
+        guard let taken else { return nil }
+        let (folders, folderEventIDs) = taken.tree.collectDelivery()
+        return Delivery(generation: taken.generation, folders: folders, folderEventIDs: folderEventIDs,
+                        lastID: taken.lastID, historyDone: taken.historyDone, invalidation: taken.invalidation)
     }
 }
