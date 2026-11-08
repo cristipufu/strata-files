@@ -1292,4 +1292,48 @@ struct IndexWorkerTests {
         }
         #expect(tree.text("a/one.txt") == "a/one.txt")
     }
+
+    @Test func deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees() async throws {
+        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt")
+        let aPath = tree.url("a").path
+        let bPath = tree.url("b").path
+        let checkParallel = OSAllocatedUnfairLock(initialState: false)
+        let entered = OSAllocatedUnfairLock(initialState: 0)
+        let parallelObserved = OSAllocatedUnfairLock(initialState: false)
+        let pairReady = DispatchSemaphore(value: 0)
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            if checkParallel.withLock({ $0 }), (path == aPath || path == bPath), IndexScanner.performanceCores >= 2 {
+                let count = entered.withLock { $0 += 1; return $0 }
+                defer { entered.withLock { $0 -= 1 } }
+                if count == 2 {
+                    parallelObserved.withLock { $0 = true }
+                    pairReady.signal()
+                } else if count == 1 {
+                    _ = pairReady.wait(timeout: .now() + .milliseconds(250))
+                }
+            }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        reads.withLock { $0.removeAll() }
+        checkParallel.withLock { $0 = true }
+        try tree.add(["a/added-a.txt", "b/added-b.txt"] + (0..<300).map { "large/sub-\($0 % 4)/file-\($0).txt" })
+
+        fixture.worker.receive([
+            .init(path: tree.root.path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: 100),
+        ])
+        await save(fixture.worker)
+
+        if IndexScanner.performanceCores >= 2 {
+            #expect(parallelObserved.withLock { $0 })
+        }
+        #expect(reads.withLock { $0[aPath] } == 1 && reads.withLock { $0[bPath] } == 1)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        for item in ["a/added-a.txt", "b/added-b.txt", "large/sub-0/file-0.txt", "large/sub-3/file-299.txt"] {
+            #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
+        }
+        #expect(tree.text("a/one.txt") == "a/one.txt")
+    }
 }

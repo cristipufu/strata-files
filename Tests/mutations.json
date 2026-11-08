@@ -9617,9 +9617,23 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listedFull.contains(id) { return false }",
-    "replace": "            if attempted.contains(id) { return false }",
+    "find": "            if full, !listedFull.contains(id) { attempted.remove(id); listedFull.insert(id) }",
+    "replace": "            _ = full",
     "rule": "A partial file read of a parent folder does not prevent listing it for a new child folder in the same batch",
     "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if prefetched.isEmpty, !work.isEmpty {",
+    "replace": "            if false, prefetched.isEmpty, !work.isEmpty {",
+    "rule": "Deep index refreshes prefetch sibling directory listings in parallel",
+    "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if listing == nil { listing = prefetched?.listing }",
+    "replace": "        // Ignore the prefetched directory listing.",
+    "rule": "Prefetched directory listings are reused without reading the directory a second time",
+    "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
   }
 ]
