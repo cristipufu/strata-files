@@ -9338,7 +9338,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store) }",
+    "find": "        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }",
     "replace": "        var listing: FolderListing? = nil",
     "rule": "Partial file refresh enumerates all siblings",
     "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
@@ -9457,8 +9457,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "guard !stopForQuit(), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
-    "replace": "guard !stopForQuit(), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
+    "find": "guard !stopForQuit(&pass), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
+    "replace": "guard !stopForQuit(&pass), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
     "rule": "Missing file events enumerate unchanged siblings",
     "tests": "IndexWorkerTests/fileRemovalEvents"
   },
@@ -9657,5 +9657,54 @@
     "replace": "        if let minDeferredID: UInt64 = nil {",
     "rule": "A fast-tier flush holds back the saved event ID behind deferred folders",
     "tests": "IndexWorkerTests/hotFoldersCoalesceOnTheDeferredTierWhileInteractiveFoldersFlushImmediatelyAndHoldBackTheSavedCheckpoint"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "                guard hasNonASCII || unicodeRemaining > 0 else { return nil }",
+    "replace": "                if true { return nil }",
+    "rule": "Full-folder child lookup falls back to canonical string matching when UTF-8 bytes differ",
+    "tests": "IndexRefreshTests/canonicalEquivalentNamesMatchInBothDirectionsDuringSelectiveChildLookups"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "                if fallback == nil {",
+    "replace": "                if true {",
+    "rule": "Full-folder child lookup builds its Unicode fallback dictionary once",
+    "tests": "IndexRefreshTests/canonicalEquivalentNamesMatchInBothDirectionsDuringSelectiveChildLookups"
+  },
+  {
+    "file": "Strata/Index/IndexStore.swift",
+    "find": "                    if !goneList.contains(id) { goneList.append(id) }",
+    "replace": "                    // Drop small-list removals.",
+    "rule": "Small-batch child removal retires all listed children",
+    "tests": "IndexRefreshTests/canonicalEquivalentNamesMatchInBothDirectionsDuringSelectiveChildLookups"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            for (index, folder) in folders.enumerated() where index < fetched.count {\n                if let result = fetched[index] {\n                    prefetched[folder.id] = result\n                }\n            }",
+    "replace": "            _ = (folders, fetched)",
+    "rule": "Background-prefetched wavefront listings are reused instead of reading directories twice",
+    "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if scanner.isCancelled, pastQuitDeadline {\n            events.stop()\n            lastEventID = previousEventID\n            pendingEventID = previousPendingID\n            rescanNeeded = previousRescanNeeded\n            interrupted = true\n            return\n        }",
+    "replace": "        if scanner.isCancelled, pastQuitDeadline {\n            interrupted = true\n            return\n        }",
+    "rule": "A rebuild cancelled at quit restores the previous event checkpoint and rescan state",
+    "tests": "IndexWorkerTests/scannerPreservesCallerPriorityAndCancelledRebuildsKeepThePreviousCheckpoint"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "        guard let qos else {\n            DispatchQueue.concurrentPerform(iterations: workerCount) { _ in work(threads: workerCount) }\n            return\n        }",
+    "replace": "        let qos = qos ?? .utility",
+    "rule": "Unindexed folder scans keep their caller's priority unless a scan QoS is specified",
+    "tests": "IndexWorkerTests/scannerPreservesCallerPriorityAndCancelledRebuildsKeepThePreviousCheckpoint"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        BulkDirectoryReader.run(qos: deep ? .default : nil) {",
+    "replace": "        BulkDirectoryReader.run(qos: nil) {",
+    "rule": "Deep folder refreshes reconcile at default QoS instead of utility",
+    "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
   }
 ]

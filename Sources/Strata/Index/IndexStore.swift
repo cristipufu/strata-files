@@ -571,6 +571,9 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             private var slots: [Int32] = []
             private var mask = 0
             private var unicodeRemaining = 0
+            private var fallback: [String: [Int]]?
+            private var asciiFallbackIncluded = false
+            package private(set) var fallbackBuilds = 0
 
             fileprivate init(selected: [String: Int32]) {
                 self.selected = selected
@@ -620,7 +623,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 var hash: UInt64 = 0xcbf29ce484222325
                 var hasNonASCII = false
                 let end = offset + length
-                return listingNames.withUnsafeBufferPointer { buffer in
+                let matchedByBytes: Int32? = listingNames.withUnsafeBufferPointer { buffer in
                     guard let base = buffer.baseAddress, offset >= 0, end <= buffer.count else { return nil }
                     for i in offset..<end {
                         let byte = base[i]
@@ -640,19 +643,44 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                         }
                         slot = (slot + 1) & mask
                     }
-                    guard hasNonASCII || unicodeRemaining > 0 else { return nil }
-                    let target = String(decoding: UnsafeBufferPointer(rebasing: buffer[offset..<end]), as: UTF8.self)
-                    for index in ids.indices {
-                        let child = ids[index]
-                        guard child >= 0, hasNonASCII || (store.flags[Int(child)] & Flag.unicodeName != 0) else { continue }
-                        if store.name(child) == target {
-                            ids[index] = -1
-                            if store.flags[Int(child)] & Flag.unicodeName != 0 { unicodeRemaining -= 1 }
-                            return child
-                        }
-                    }
                     return nil
                 }
+                if let matchedByBytes { return matchedByBytes }
+                guard hasNonASCII || unicodeRemaining > 0 else { return nil }
+                if fallback == nil {
+                    fallbackBuilds += 1
+                    var map: [String: [Int]] = [:]
+                    let includeASCII = hasNonASCII
+                    for index in ids.indices {
+                        let child = ids[index]
+                        guard child >= 0 else { continue }
+                        let isUnicode = store.flags[Int(child)] & Flag.unicodeName != 0
+                        guard isUnicode || includeASCII else { continue }
+                        map[store.name(child), default: []].append(index)
+                    }
+                    fallback = map
+                    asciiFallbackIncluded = includeASCII
+                } else if hasNonASCII, !asciiFallbackIncluded {
+                    for index in ids.indices {
+                        let child = ids[index]
+                        guard child >= 0, store.flags[Int(child)] & Flag.unicodeName == 0 else { continue }
+                        fallback?[store.name(child), default: []].append(index)
+                    }
+                    asciiFallbackIncluded = true
+                }
+                let target = String(decoding: listingNames[offset..<end], as: UTF8.self)
+                guard var candidates = fallback?[target] else { return nil }
+                while !candidates.isEmpty {
+                    let index = candidates.removeFirst()
+                    let child = ids[index]
+                    guard child >= 0 else { continue }
+                    ids[index] = -1
+                    if store.flags[Int(child)] & Flag.unicodeName != 0 { unicodeRemaining -= 1 }
+                    fallback?[target] = candidates.isEmpty ? nil : candidates
+                    return child
+                }
+                fallback?[target] = nil
+                return nil
             }
 
             package func appendRemaining(to removals: inout [Int32]) {

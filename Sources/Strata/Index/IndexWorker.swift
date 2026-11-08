@@ -37,7 +37,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private let queue = DispatchQueue(label: "dev.strata.index", qos: .utility)
-    private let readBuffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 256 * 1024, alignment: 16)
+    private let readBuffer = BulkDirectoryReader.ReadBuffer()
     private var config: IndexConfig?
     private var store: IndexStore?
     private var lastEventID: UInt64 = 0
@@ -46,17 +46,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var dirty = false
     private var pending = IndexRefreshTree()
     private var rescanNeeded = false
-    private var flushScheduled = false
-    private var deferredFlushScheduled = false
     private var saveScheduled = false
-    private var recentRefreshes: [String: UInt64] = [:]
-    private var recentDeepRefreshes: [String: UInt64] = [:]
+    private var hotFolders: IndexHotFolders
     package static let defaultSaveInterval: TimeInterval = 1800
     package static let defaultFastFlushInterval: TimeInterval = 0.25
     package static let defaultDeferredFlushInterval: TimeInterval = 2.0
     private let saveInterval: TimeInterval
-    private let fastFlushInterval: TimeInterval
-    private let deferredFlushInterval: TimeInterval
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
     private let scanning = OSAllocatedUnfairLock(initialState: false)
     private let rebuildRequested = OSAllocatedUnfairLock(initialState: false)
@@ -101,8 +96,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
-        self.fastFlushInterval = fastFlushInterval.isFinite ? max(0, fastFlushInterval) : 0
-        self.deferredFlushInterval = deferredFlushInterval.isFinite ? max(0, deferredFlushInterval) : 0
+        self.hotFolders = IndexHotFolders(fastInterval: fastFlushInterval, deferredInterval: deferredFlushInterval)
         self.now = now
         self.readDirectory = readDirectory
         self.readItem = readItem
@@ -139,13 +133,13 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
-    /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
-    /// the index on disk (or the next launch's scan) covers it. Catching up stops after 0.5 s, and the write waits up
-    /// to 5 s; if the queue is still busy (a disk slow to answer), the next launch catches up from the last save
-    /// (saves are atomic, so one cut short by quitting leaves the previous file).
+    /// Writes the index now (used at quit). Sets the quit deadline so a running scan or refresh stops after 0.5 s;
+    /// if a full scan is in progress, returns without waiting on `queue` since the index on disk (or the next launch's
+    /// scan) covers it. Otherwise the write waits up to 5 s; if the queue is still busy (a disk slow to answer), the
+    /// next launch catches up from the last save (saves are atomic, so one cut short by quitting leaves the previous file).
     package func saveNow() {
-        guard !scanning.withLock({ $0 }) else { return }
         quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 500_000_000 }
+        guard !scanning.withLock({ $0 }) else { return }
         let saved = DispatchSemaphore(value: 0)
         queue.async(qos: .userInitiated, flags: .enforceQoS) {
             self.save()
@@ -175,9 +169,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Past the quit deadline or superseded by a requested rebuild: work in progress stops (and marks the batch
     /// as unfinished until the rebuild replaces it). On `queue`.
-    private func stopForQuit() -> Bool {
+    private func stopForQuit(_ pass: inout RefreshPass) -> Bool {
         guard shouldStopRefresh else { return false }
-        interrupted = true
+        pass.interrupted = true
         return true
     }
 
@@ -186,8 +180,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func boot(_ config: IndexConfig) {
         self.config = config
         pending.removeAll()
-        recentRefreshes.removeAll()
-        recentDeepRefreshes.removeAll()
+        hotFolders.removeAll()
         rescanNeeded = false
         interrupted = false
         publish(.loading)
@@ -219,13 +212,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         scanning.withLock { $0 = true }
         defer { scanning.withLock { $0 = false } }
+        let previousEventID = lastEventID
+        let previousPendingID = pendingEventID
+        let previousRescanNeeded = rescanNeeded
         events.stop()
         let startEventID = FSEventsStream.currentEventID
         lastEventID = startEventID
         pendingEventID = startEventID
         pending.removeAll()
-        recentRefreshes.removeAll()
-        recentDeepRefreshes.removeAll()
+        hotFolders.removeAll()
         rescanNeeded = false
         interrupted = false
         // Start listening from `startEventID` before scanning so changes during the scan buffer in `incoming`
@@ -248,10 +243,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
         }
         progress.resume()
-        scanner.scan(roots.map { (id: $0.0, path: $0.1) })
+        scanner.scan(roots.map { (id: $0.0, path: $0.1) }, qos: .default)
         progress.cancel()
         reporting.withLock { $0 = false }
         if scanner.isCancelled, pastQuitDeadline {
+            events.stop()
+            lastEventID = previousEventID
+            pendingEventID = previousPendingID
+            rescanNeeded = previousRescanNeeded
             interrupted = true
             return
         }
@@ -305,19 +304,20 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Newly allowed folders get scanned; newly excluded ones are emptied.
         publish(.updating)
         defer { finishUpdates() }
-        interrupted = false
         var pass = RefreshPass()
         for path in old.subtracting(config.excluded).sorted() {
-            if interrupted || stopForQuit() { break }
+            if pass.interrupted || stopForQuit(&pass) { break }
             if let id = store.read({ store in store.lookup(path) }) { _ = refreshFolder(id, path, deep: true, pass: &pass) }
         }
         for path in config.excluded.subtracting(old).sorted() {
-            if interrupted || stopForQuit() { break }
+            if pass.interrupted || stopForQuit(&pass) { break }
             store.write { store in
                 guard let id = store.lookup(path) else { return }
                 store.removeChildren(store.children(of: id), of: id)
             }
         }
+        let interrupted = pass.interrupted
+        self.interrupted = interrupted
         if interrupted, rebuildRequested.withLock({ $0 }) {
             defer { rebuildRequested.withLock { $0 = false } }
             rebuild()
@@ -373,7 +373,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 return
             }
             let nowNs = self.now()
-            self.pruneHotFolders(now: nowNs)
+            self.hotFolders.prune(now: nowNs)
             var insertedFolder = false
             var hasFastFolder = false
             for (path, refresh) in delivery.folders {
@@ -405,22 +405,21 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func scheduleFlush() {
-        guard !flushScheduled else { return }
-        flushScheduled = true
-        queue.asyncAfter(deadline: .now() + fastFlushInterval) { [weak self] in
+        guard !hotFolders.flushScheduled else { return }
+        hotFolders.flushScheduled = true
+        queue.asyncAfter(deadline: .now() + hotFolders.fastInterval) { [weak self] in
             guard let self else { return }
-            self.flushScheduled = false
+            self.hotFolders.flushScheduled = false
             self.flush(includeDeferred: false)
         }
     }
 
     private func scheduleDeferredFlush() {
-        guard !deferredFlushScheduled else { return }
-        deferredFlushScheduled = true
-        let delay = max(fastFlushInterval, deferredFlushInterval)
-        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+        guard !hotFolders.deferredFlushScheduled else { return }
+        hotFolders.deferredFlushScheduled = true
+        queue.asyncAfter(deadline: .now() + hotFolders.deferredDelay) { [weak self] in
             guard let self else { return }
-            self.deferredFlushScheduled = false
+            self.hotFolders.deferredFlushScheduled = false
             self.flush(includeDeferred: true)
         }
     }
@@ -439,18 +438,17 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         guard let config, let store, !pending.isEmpty else { return }
         let nowNs = now()
-        pruneHotFolders(now: nowNs)
+        hotFolders.prune(now: nowNs)
         let entries = pending.sortedEntries()
         var targetEventID = pendingEventID
         pending.removeAll()
-        interrupted = false
         var pass = RefreshPass()
         var deferredDeep: Set<String> = []
         var changed = false
         for (index, entry) in entries.enumerated() {
             let path = entry.path
             let refresh = entry.refresh
-            if interrupted || stopForQuit() {
+            if pass.interrupted || stopForQuit(&pass) {
                 restoreUnfinished(entries[index...])
                 break
             }
@@ -480,14 +478,16 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 continue
             }
             if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
-            if interrupted {
+            if pass.interrupted {
                 restoreUnfinished(entries[index...])
                 break
             }
             if !pass.hasFailed(target) {
-                markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: nowNs)
+                hotFolders.markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: nowNs)
             }
         }
+        let interrupted = pass.interrupted
+        self.interrupted = interrupted
         if interrupted, rebuildRequested.withLock({ $0 }) {
             defer { rebuildRequested.withLock { $0 = false } }
             rebuild()
@@ -512,57 +512,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
-    private var hotWindowNanoseconds: UInt64 {
-        guard deferredFlushInterval.isFinite, deferredFlushInterval > fastFlushInterval, deferredFlushInterval > 0 else { return 0 }
-        let scaled = deferredFlushInterval * 1_000_000_000
-        guard scaled < Double(UInt64.max) else { return UInt64.max }
-        return UInt64(scaled)
-    }
-
-    private func pruneHotFolders(now: UInt64) {
-        guard !recentRefreshes.isEmpty || !recentDeepRefreshes.isEmpty else { return }
-        let windowNs = hotWindowNanoseconds
-        guard windowNs > 0 else {
-            recentRefreshes.removeAll()
-            recentDeepRefreshes.removeAll()
-            return
-        }
-        recentRefreshes = recentRefreshes.filter { now >= $0.value && now - $0.value < windowNs }
-        recentDeepRefreshes = recentDeepRefreshes.filter { now >= $0.value && now - $0.value < windowNs }
-    }
-
-    private func isHot(path: String, now: UInt64) -> Bool {
-        guard hotWindowNanoseconds > 0 else { return false }
-        if recentRefreshes[path] != nil { return true }
-        guard !recentDeepRefreshes.isEmpty else { return false }
-        var ancestor = path
-        while !ancestor.isEmpty {
-            if recentDeepRefreshes[ancestor] != nil { return true }
-            if ancestor == "/" { break }
-            ancestor = IndexRefresh.splitPath(ancestor).parent
-        }
-        return false
-    }
-
-    private func markHot(path: String, target: String, deep: Bool, now: UInt64) {
-        guard hotWindowNanoseconds > 0 else { return }
-        recentRefreshes[target] = now
-        if path != target {
-            recentRefreshes[path] = now
-            recentDeepRefreshes[path] = now
-        }
-        if deep { recentDeepRefreshes[target] = now }
-    }
-
+    private func isHot(path: String, now: UInt64) -> Bool { hotFolders.isHot(path: path, now: now) }
     private static func isCovered(_ path: String, by roots: Set<String>) -> Bool {
-        guard !roots.isEmpty else { return false }
-        var ancestor = path
-        while !ancestor.isEmpty {
-            if roots.contains(ancestor) { return true }
-            if ancestor == "/" { break }
-            ancestor = IndexRefresh.splitPath(ancestor).parent
-        }
-        return false
+        IndexHotFolders.isCovered(path, by: roots)
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
@@ -601,6 +553,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private struct RefreshPass {
         var changes = IndexChanges()
         var nonNoiseChanged = false
+        var interrupted = false
         private var attempted: Set<Int32> = []
         private var listedFull: Set<Int32> = []
         private var children: [Int32: [Folder]] = [:]
@@ -657,17 +610,19 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let listing: FolderListing?
     }
 
-    private struct ReadBuffer: @unchecked Sendable {
-        let raw: UnsafeMutableRawBufferPointer
-    }
-
     private static let prefetchBatchLimit = 256
 
     private func refreshFolder(_ id: Int32, _ path: String, deep: Bool, names: Set<String>? = nil, pass: inout RefreshPass) -> Bool {
+        BulkDirectoryReader.run(qos: deep ? .default : nil) {
+            refreshFolderTree(id, path, deep: deep, names: names, pass: &pass)
+        }
+    }
+
+    private func refreshFolderTree(_ id: Int32, _ path: String, deep: Bool, names: Set<String>? = nil, pass: inout RefreshPass) -> Bool {
         var work: [(folder: Folder, deep: Bool)] = [((id, path), deep)]
         var prefetched: [Int32: PrefetchedFolder] = [:]
-        var workerBuffers: [ReadBuffer] = []
-        var backgroundBuffers: [ReadBuffer] = []
+        var workerBuffers: [BulkDirectoryReader.ReadBuffer] = []
+        var backgroundBuffers: [BulkDirectoryReader.ReadBuffer] = []
         let inFlightGroup = DispatchGroup()
         var inFlightFolders: [Folder] = []
         var inFlightResults: OSAllocatedUnfairLock<[PrefetchedFolder?]>?
@@ -690,8 +645,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         defer {
             inFlightGroup.wait()
-            for buffer in workerBuffers { buffer.raw.deallocate() }
-            for buffer in backgroundBuffers { buffer.raw.deallocate() }
+            BulkDirectoryReader.ReadBuffer.deallocateAll(&workerBuffers)
+            BulkDirectoryReader.ReadBuffer.deallocateAll(&backgroundBuffers)
         }
         var changed = false
         while var next = work.popLast() {
@@ -705,7 +660,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else if prefetched.isEmpty, !inFlightFolders.isEmpty {
                 collectBackgroundPrefetch()
             }
-            if interrupted || stopForQuit() { break }
+            if pass.interrupted || stopForQuit(&pass) { break }
             if prefetched.isEmpty, !work.isEmpty {
                 prefetchFolders(current: &next, remaining: &work, rootID: id, rootNames: names, pass: pass,
                                 buffers: &workerBuffers, into: &prefetched)
@@ -715,7 +670,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             let preloaded = prefetched.removeValue(forKey: folder.id)
             if pass.begin(folder.id, full: selectedNames == nil) {
                 if let changes = readFolder(folder.id, folder.path, selectedNames: selectedNames,
-                                            prefetched: preloaded, allPathsChanged: pass.changes == .all) {
+                                            prefetched: preloaded, allPathsChanged: pass.changes == .all, pass: &pass) {
                     changed = changed || changes.changed
                     if changes.nonNoiseChanged { pass.nonNoiseChanged = true }
                     pass.changes.formUnion(changes.paths)
@@ -726,7 +681,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 }
             }
             if next.deep { work.append(contentsOf: pass.descend(folder.id).map { ($0, true) }) }
-            if !prefetched.isEmpty, inFlightFolders.isEmpty, !work.isEmpty, !interrupted, !shouldStopRefresh {
+            if !prefetched.isEmpty, inFlightFolders.isEmpty, !work.isEmpty, !pass.interrupted, !shouldStopRefresh {
                 startBackgroundPrefetch(from: work, rootID: id, rootNames: names, pass: pass, prefetched: prefetched,
                                         buffers: &backgroundBuffers, group: inFlightGroup,
                                         inFlightFolders: &inFlightFolders,
@@ -734,134 +689,53 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                                         inFlightCancelled: &inFlightCancelled)
             }
         }
-        if deep, !interrupted { pass.finishedDeepRead(path) }
+        if deep, !pass.interrupted { pass.finishedDeepRead(path) }
         return changed
     }
 
     private func startBackgroundPrefetch(from work: [(folder: Folder, deep: Bool)],
                                          rootID: Int32, rootNames: Set<String>?, pass: RefreshPass,
                                          prefetched: [Int32: PrefetchedFolder],
-                                         buffers backgroundBuffers: inout [ReadBuffer],
+                                         buffers backgroundBuffers: inout [BulkDirectoryReader.ReadBuffer],
                                          group: DispatchGroup,
                                          inFlightFolders: inout [Folder],
                                          inFlightResults: inout OSAllocatedUnfairLock<[PrefetchedFolder?]>?,
                                          inFlightCancelled: inout OSAllocatedUnfairLock<Bool>?) {
-        var candidates: [Folder] = []
-        candidates.reserveCapacity(min(Self.prefetchBatchLimit, work.count))
-        var seen: Set<Int32> = []
-        seen.reserveCapacity(min(Self.prefetchBatchLimit, work.count))
-        for entry in work.reversed() {
-            let folder = entry.folder
-            guard prefetched[folder.id] == nil,
-                  folder.id != rootID || rootNames == nil,
-                  !pass.hasListedFull(folder.id),
-                  seen.insert(folder.id).inserted else { continue }
-            candidates.append(folder)
-            if candidates.count >= Self.prefetchBatchLimit { break }
-        }
-        let foldersToRead = candidates
+        let foldersToRead = selectPrefetchCandidates(from: work, rootID: rootID, rootNames: rootNames,
+                                                     pass: pass, excluding: prefetched)
         let workers = min(foldersToRead.count, max(1, IndexScanner.performanceCores))
         guard foldersToRead.count >= 4, workers >= 2 else { return }
-        while backgroundBuffers.count < workers {
-            backgroundBuffers.append(ReadBuffer(raw: .allocate(byteCount: 256 * 1024, alignment: 16)))
-        }
+        BulkDirectoryReader.ReadBuffer.ensure(&backgroundBuffers, count: workers)
         let buffers = backgroundBuffers
         let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
-        let nextIndex = OSAllocatedUnfairLock(initialState: 0)
         let batchCancelled = OSAllocatedUnfairLock(initialState: false)
         inFlightFolders = foldersToRead
         inFlightResults = results
         inFlightCancelled = batchCancelled
-        group.enter()
-        DispatchQueue.global(qos: .default).async(qos: .default, flags: .enforceQoS) {
-            defer { group.leave() }
-            DispatchQueue.concurrentPerform(iterations: workers) { workerIndex in
-                let buffer = buffers[workerIndex].raw
-                while true {
-                    if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
-                    let index = nextIndex.withLock { current -> Int? in
-                        guard current < foldersToRead.count else { return nil }
-                        defer { current += 1 }
-                        return current
-                    }
-                    guard let index else { break }
-                    var items: [ScannedItem] = []
-                    var names: [UInt8] = []
-                    let folder = foldersToRead[index]
-                    let error = self.readDirectory(folder.path, &items, &names, buffer) {
-                        self.shouldStopRefresh
-                    }
-                    if error == ECANCELED {
-                        batchCancelled.withLock { $0 = true }
-                    }
-                    let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
-                    results.withLock { $0[index] = PrefetchedFolder(error: error, listing: listing) }
-                }
-            }
-        }
+        readPrefetchBatch(foldersToRead, workers: workers, buffers: buffers, group: group,
+                          results: results, batchCancelled: batchCancelled)
     }
 
     private func prefetchFolders(current: inout (folder: Folder, deep: Bool),
                                  remaining: inout [(folder: Folder, deep: Bool)],
                                  rootID: Int32, rootNames: Set<String>?, pass: RefreshPass,
-                                 buffers workerBuffers: inout [ReadBuffer],
+                                 buffers workerBuffers: inout [BulkDirectoryReader.ReadBuffer],
                                  into prefetched: inout [Int32: PrefetchedFolder]) {
         let takeCount = min(Self.prefetchBatchLimit - 1, remaining.count)
         let startIndex = remaining.count - takeCount
         var window = Array(remaining[startIndex...])
         window.append(current)
 
-        var candidates: [Folder] = []
-        candidates.reserveCapacity(window.count)
-        var seen: Set<Int32> = []
-        seen.reserveCapacity(window.count)
-        for entry in window.reversed() {
-            let folder = entry.folder
-            guard folder.id != rootID || rootNames == nil,
-                  !pass.hasListedFull(folder.id),
-                  seen.insert(folder.id).inserted else { continue }
-            candidates.append(folder)
-        }
-        let foldersToRead = candidates
+        let foldersToRead = selectPrefetchCandidates(from: window, rootID: rootID, rootNames: rootNames, pass: pass)
         let workers = min(foldersToRead.count, max(1, IndexScanner.performanceCores))
         guard foldersToRead.count >= 2, workers >= 2 else { return }
-        while workerBuffers.count < workers {
-            workerBuffers.append(ReadBuffer(raw: .allocate(byteCount: 256 * 1024, alignment: 16)))
-        }
+        BulkDirectoryReader.ReadBuffer.ensure(&workerBuffers, count: workers)
         let buffers = workerBuffers
 
         let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
-        let nextIndex = OSAllocatedUnfairLock(initialState: 0)
         let batchCancelled = OSAllocatedUnfairLock(initialState: false)
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: .default).async(qos: .default, flags: .enforceQoS) {
-            defer { group.leave() }
-            DispatchQueue.concurrentPerform(iterations: workers) { workerIndex in
-                let buffer = buffers[workerIndex].raw
-                while true {
-                    if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
-                    let index = nextIndex.withLock { current -> Int? in
-                        guard current < foldersToRead.count else { return nil }
-                        defer { current += 1 }
-                        return current
-                    }
-                    guard let index else { break }
-                    var items: [ScannedItem] = []
-                    var names: [UInt8] = []
-                    let folder = foldersToRead[index]
-                    let error = self.readDirectory(folder.path, &items, &names, buffer) {
-                        self.shouldStopRefresh
-                    }
-                    if error == ECANCELED {
-                        batchCancelled.withLock { $0 = true }
-                    }
-                    let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
-                    results.withLock { $0[index] = PrefetchedFolder(error: error, listing: listing) }
-                }
-            }
-        }
-        group.wait()
+        readPrefetchBatch(foldersToRead, workers: workers, buffers: buffers,
+                          results: results, batchCancelled: batchCancelled)
 
         let fetched = results.withLock { $0 }
         let wasCancelled = batchCancelled.withLock { $0 }
@@ -889,17 +763,54 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
+    private func selectPrefetchCandidates(from entries: [(folder: Folder, deep: Bool)],
+                                          rootID: Int32, rootNames: Set<String>?, pass: RefreshPass,
+                                          excluding prefetched: [Int32: PrefetchedFolder] = [:]) -> [Folder] {
+        let cap = min(Self.prefetchBatchLimit, entries.count)
+        var candidates: [Folder] = []
+        candidates.reserveCapacity(cap)
+        var seen: Set<Int32> = []
+        seen.reserveCapacity(cap)
+        for entry in entries.reversed() {
+            let folder = entry.folder
+            guard prefetched[folder.id] == nil,
+                  folder.id != rootID || rootNames == nil,
+                  !pass.hasListedFull(folder.id),
+                  seen.insert(folder.id).inserted else { continue }
+            candidates.append(folder)
+            if candidates.count >= Self.prefetchBatchLimit { break }
+        }
+        return candidates
+    }
+
+    private func readPrefetchBatch(_ foldersToRead: [Folder], workers: Int,
+                                   buffers: [BulkDirectoryReader.ReadBuffer],
+                                   group: DispatchGroup? = nil,
+                                   results: OSAllocatedUnfairLock<[PrefetchedFolder?]>,
+                                   batchCancelled: OSAllocatedUnfairLock<Bool>) {
+        BulkDirectoryReader.readBatch(
+            foldersToRead, workers: workers, buffers: buffers, group: group,
+            path: { $0.path }, read: readDirectory,
+            shouldStop: { self.shouldStopRefresh },
+            results: results, cancelled: batchCancelled
+        ) { folder, error, items, names in
+            let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
+            return PrefetchedFolder(error: error, listing: listing)
+        }
+    }
+
     private func readFolder(_ id: Int32, _ path: String, selectedNames: Set<String>? = nil,
-                            prefetched: PrefetchedFolder? = nil, allPathsChanged: Bool = false) -> FolderChanges? {
+                            prefetched: PrefetchedFolder? = nil, allPathsChanged: Bool = false,
+                            pass: inout RefreshPass) -> FolderChanges? {
         guard let config, let store else { return nil }
-        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store) }
+        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }
         if listing == nil { listing = prefetched?.listing }
-        guard !interrupted else { return nil }
+        guard !pass.interrupted else { return nil }
         if listing == nil {
             var items: [ScannedItem] = [], names: [UInt8] = []
-            let error = prefetched?.error ?? readDirectory(path, &items, &names, readBuffer) { self.shouldStopRefresh }
+            let error = prefetched?.error ?? readDirectory(path, &items, &names, readBuffer.raw) { self.shouldStopRefresh }
             if error == ECANCELED {
-                interrupted = true
+                pass.interrupted = true
                 return nil
             }
             if error == ENOENT || error == ENOTDIR {
@@ -918,13 +829,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             listing = FolderListing(items: items, names: names, path: path)
         }
         guard let listing else { return nil }
-        return store.write { store in
+        var overflowed = false
+        let folderChanges = store.write { store in
             guard store.isLive(id), store.isDirectory(id) else { return FolderChanges() }
             var changes = FolderChanges(wasPartial: listing.selectedNames != nil,
                                         paths: allPathsChanged ? .all : IndexChanges())
             let firstNew = Int32(store.count)
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
-            addNew(listing, to: id, in: &store, config: config, changes: &changes)
+            addNew(listing, to: id, in: &store, config: config, changes: &changes, overflowed: &overflowed)
             store.integrateNew(from: firstNew)
             if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {
                 changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),
@@ -932,21 +844,24 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             return changes
         }
+        if overflowed { pass.interrupted = true }
+        return folderChanges
     }
 
-    private func readSelected(_ requested: Set<String>, in path: String, id: Int32, store: IndexStore) -> FolderListing? {
+    private func readSelected(_ requested: Set<String>, in path: String, id: Int32, store: IndexStore,
+                              pass: inout RefreshPass) -> FolderListing? {
         guard !requested.contains(where: IndexStore.Storage.isBuildMarker),
               !store.read({ $0.hasDirectoryChild(in: id, matching: requested) })
         else { return nil }
         var items: [ScannedItem] = [], names: [UInt8] = []
         let prefix = path.hasSuffix("/") ? path : path + "/"
         for name in requested.sorted() {
-            if stopForQuit() { return nil }
+            if stopForQuit(&pass) { return nil }
             let error = readItem(prefix + name, &items, &names)
-            if error == ECANCELED { interrupted = true; return nil }
+            if error == ECANCELED { pass.interrupted = true; return nil }
             guard error == 0 || error == ENOENT else { return nil }
         }
-        guard !stopForQuit(), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }
+        guard !stopForQuit(&pass), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }
         return FolderListing(items: items, names: names, path: path, selectedNames: requested)
     }
 
@@ -1107,14 +1022,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Adds what the listing has that the index doesn't, noting the new folders to scan.
     private func addNew(_ listing: FolderListing, to id: Int32, in store: inout IndexStore.Storage, config: IndexConfig,
-                        changes: inout FolderChanges) {
+                        changes: inout FolderChanges, overflowed: inout Bool) {
         guard !changes.additions.isEmpty else { return }
         let ids = listing.names.withUnsafeBytes {
             store.appendChildren(changes.additions, nameBuffer: $0, of: id, ownNoise: changes.additionNoise)
         }
         guard ids.count == changes.additions.count else {
             for item in changes.additions { changes.record(listing.prefix + listing.name(of: item)) }
-            interrupted = true
+            overflowed = true
             return
         }
         for (offset, item) in changes.additions.enumerated() {

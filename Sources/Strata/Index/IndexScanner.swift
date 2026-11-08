@@ -136,6 +136,113 @@ nonisolated package enum BulkDirectoryReader {
         let ext = String(decoding: UnsafeRawBufferPointer(rebasing: name[(dot + 1)...]), as: UTF8.self)
         return packageExtensions.contains(ext)
     }
+
+    /// Reusable 256 KB kernel buffer for `getattrlistbulk` worker threads.
+    package struct ReadBuffer: @unchecked Sendable {
+        package let raw: UnsafeMutableRawBufferPointer
+
+        package init(byteCount: Int = 256 * 1024) {
+            raw = .allocate(byteCount: byteCount, alignment: 16)
+        }
+
+        package func deallocate() {
+            raw.deallocate()
+        }
+
+        package static func ensure(_ buffers: inout [ReadBuffer], count: Int) {
+            while buffers.count < count {
+                buffers.append(ReadBuffer())
+            }
+        }
+
+        package static func deallocateAll(_ buffers: inout [ReadBuffer]) {
+            for buffer in buffers { buffer.deallocate() }
+            buffers.removeAll()
+        }
+    }
+
+    /// Runs `body` synchronously at `qos` (or on the caller's thread when `qos` is `nil`).
+    package static func run<T>(qos: DispatchQoS? = nil, body: () -> T) -> T {
+        guard let qos else { return body() }
+        return withoutActuallyEscaping(body) { escapable in
+            nonisolated(unsafe) let call = escapable
+            nonisolated(unsafe) var result: T!
+            let group = DispatchGroup()
+            group.enter()
+            DispatchQueue.global(qos: qos.qosClass).async(qos: qos, flags: .enforceQoS) {
+                defer { group.leave() }
+                result = call()
+            }
+            group.wait()
+            return result
+        }
+    }
+
+    /// Runs `workers` parallel reader closures, preserving the caller's priority when `qos` is `nil` or enforcing `qos`.
+    package static func runParallel(workers: Int, qos: DispatchQoS? = nil, body: @escaping @Sendable (Int) -> Void) {
+        let count = max(1, workers)
+        guard let qos else {
+            DispatchQueue.concurrentPerform(iterations: count, execute: body)
+            return
+        }
+        let group = DispatchGroup()
+        startParallel(workers: count, qos: qos, group: group, body: body)
+        group.wait()
+    }
+
+    /// Starts `workers` parallel reader closures asynchronously on `group`, enforcing `qos` on every worker thread.
+    package static func startParallel(workers: Int, qos: DispatchQoS = .default, group: DispatchGroup,
+                                      body: @escaping @Sendable (Int) -> Void) {
+        let count = max(1, workers)
+        let queue = DispatchQueue.global(qos: qos.qosClass)
+        for workerIndex in 0..<count {
+            group.enter()
+            queue.async(qos: qos, flags: .enforceQoS) {
+                defer { group.leave() }
+                body(workerIndex)
+            }
+        }
+    }
+
+    /// Reads a batch of folders across `workers` threads using `buffers`, transforming each listing before storing it.
+    package static func readBatch<Folder: Sendable, Output: Sendable>(
+        _ folders: [Folder], workers: Int, buffers: [ReadBuffer],
+        qos: DispatchQoS = .default, group: DispatchGroup? = nil,
+        path: @escaping @Sendable (Folder) -> String,
+        read: @escaping @Sendable (String, inout [ScannedItem], inout [UInt8], UnsafeMutableRawBufferPointer, () -> Bool) -> Int32 = BulkDirectoryReader.read,
+        shouldStop: @escaping @Sendable () -> Bool,
+        results: OSAllocatedUnfairLock<[Output?]>,
+        cancelled: OSAllocatedUnfairLock<Bool>,
+        transform: @escaping @Sendable (Folder, Int32, [ScannedItem], [UInt8]) -> Output
+    ) {
+        let nextIndex = OSAllocatedUnfairLock(initialState: 0)
+        let work: @Sendable (Int) -> Void = { workerIndex in
+            let buffer = buffers[workerIndex].raw
+            while true {
+                if cancelled.withLock({ $0 }) || shouldStop() { break }
+                let index = nextIndex.withLock { current -> Int? in
+                    guard current < folders.count else { return nil }
+                    defer { current += 1 }
+                    return current
+                }
+                guard let index else { break }
+                var items: [ScannedItem] = []
+                var names: [UInt8] = []
+                let folder = folders[index]
+                let error = read(path(folder), &items, &names, buffer, shouldStop)
+                if error == ECANCELED {
+                    cancelled.withLock { $0 = true }
+                }
+                let output = transform(folder, error, items, names)
+                results.withLock { $0[index] = output }
+            }
+        }
+        if let group {
+            startParallel(workers: workers, qos: qos, group: group, body: work)
+        } else {
+            runParallel(workers: workers, qos: qos, body: work)
+        }
+    }
 }
 
 /// Walks directory trees in parallel and records everything in an `IndexStore`.
@@ -207,18 +314,16 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
 
     /// Scans each folder's subtree (the folder itself must already be in the store). Blocks until done.
     package func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores,
-                      qos: DispatchQoS = .default) {
+                      qos: DispatchQoS? = nil) {
         let workerCount = max(1, threads)
         condition.lock()
         jobs.append(contentsOf: folders.map { Job(id: $0.id, path: $0.path) })
         condition.unlock()
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: qos.qosClass).async(qos: qos, flags: .enforceQoS) {
-            defer { group.leave() }
-            DispatchQueue.concurrentPerform(iterations: workerCount) { _ in self.work(threads: workerCount) }
+        guard let qos else {
+            DispatchQueue.concurrentPerform(iterations: workerCount) { _ in work(threads: workerCount) }
+            return
         }
-        group.wait()
+        BulkDirectoryReader.runParallel(workers: workerCount, qos: qos) { _ in self.work(threads: workerCount) }
     }
 
     /// How many threads should read `path`'s volume. Measured on a 10+4-core Mac: a writable volume peaked at one
@@ -239,7 +344,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     }()
 
     private func work(threads: Int) {
-        let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 256 * 1024, alignment: 16)
+        let buffer = BulkDirectoryReader.ReadBuffer()
         defer { buffer.deallocate() }
         var batchResults: [ScannedFolder] = []
         batchResults.reserveCapacity(Self.batchLimit)
@@ -253,7 +358,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
                 if isCancelled { break }
                 var items: [ScannedItem] = []
                 var names: [UInt8] = []
-                let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
+                let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer.raw) { self.isCancelled }
                 if error == ECANCELED { break }
                 // Work out child folder paths and noise classification before taking the store lock.
                 let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"

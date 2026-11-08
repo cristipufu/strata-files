@@ -118,6 +118,45 @@ struct IndexRefreshTests {
             let hasDirK = s.hasDirectoryChild(in: root, matching: ["K"])
             let matchesKelvin2 = s.children(of: root, matching: ["\u{212A}2"])["K2"] == ids.lowerBound + 1
             #expect(matchesK && hasDirK && matchesKelvin2)
+
+            let fullRoot = s.addRoot(path: "/full", mtime: 0)
+            let storedNames = ["\u{212A}", "K2", "caf\u{00E9}.txt", "dup.txt", "dup.txt", "dup-\u{00E9}.txt", "dup-\u{00E9}.txt", "gone-1.txt", "gone-2.txt"]
+            var rawStored: [UInt8] = []
+            var storedItems: [ScannedItem] = []
+            for name in storedNames {
+                let utf8 = Array(name.utf8)
+                storedItems.append(ScannedItem(nameOffset: rawStored.count, nameLength: utf8.count, isDirectory: false,
+                                               isPackage: false, isSymlink: false, isHidden: false, isMountPoint: false,
+                                               size: 4, mtime: 1))
+                rawStored.append(contentsOf: utf8)
+            }
+            let fullIDs = rawStored.withUnsafeBytes { s.appendChildren(storedItems, nameBuffer: $0, of: fullRoot) }
+            var lookup = s.children(of: fullRoot, matching: nil)
+            #expect(lookup.fallbackBuilds == 0)
+            func take(_ text: String) -> Int32? {
+                let bytes = Array(text.utf8)
+                return lookup.removeValue(in: bytes, offset: 0, length: bytes.count, from: s)
+            }
+            let firstDup = take("dup.txt"), secondDup = take("dup.txt")
+            #expect(Set([firstDup, secondDup]) == [fullIDs.lowerBound + 3, fullIDs.lowerBound + 4])
+            #expect(lookup.fallbackBuilds == 0)
+            #expect(take("miss-ascii.txt") == nil)
+            #expect(lookup.fallbackBuilds == 1)
+            #expect(take("K") == fullIDs.lowerBound)
+            #expect(take("miss-unicode-\u{00E9}.txt") == nil)
+            #expect(take("\u{212A}2") == fullIDs.lowerBound + 1)
+            #expect(take("cafe\u{0301}.txt") == fullIDs.lowerBound + 2)
+            #expect(take("dup.txt") == nil)
+            let firstUnicodeDup = take("dup-e\u{0301}.txt"), secondUnicodeDup = take("dup-e\u{0301}.txt")
+            #expect(Set([firstUnicodeDup, secondUnicodeDup]) == [fullIDs.lowerBound + 5, fullIDs.lowerBound + 6])
+            #expect(take("dup-e\u{0301}.txt") == nil)
+            for i in 0..<32 { #expect(take("na\u{00EF}ve-\(i).mp3") == nil) }
+            #expect(lookup.fallbackBuilds == 1)
+            var removals: [Int32] = []
+            lookup.appendRemaining(to: &removals)
+            #expect(Set(removals) == [fullIDs.lowerBound + 7, fullIDs.lowerBound + 8])
+            s.removeChildren(removals + removals, of: fullRoot)
+            #expect(Set(s.children(of: fullRoot)) == Set((0..<7).map { fullIDs.lowerBound + Int32($0) }))
         }
     }
 }

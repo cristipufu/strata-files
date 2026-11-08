@@ -1301,25 +1301,36 @@ struct IndexWorkerTests {
     }
 
     @Test func deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees() async throws {
-        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt")
+        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt", "b/sub-0/x.txt", "b/sub-1/x.txt", "b/sub-2/x.txt", "b/sub-3/x.txt")
+        let rootPath = tree.root.path
         let aPath = tree.url("a").path
         let bPath = tree.url("b").path
         let checkParallel = OSAllocatedUnfairLock(initialState: false)
         let entered = OSAllocatedUnfairLock(initialState: 0)
         let parallelObserved = OSAllocatedUnfairLock(initialState: false)
+        let rootReadQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
+        let prefetchQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
         let pairReady = DispatchSemaphore(value: 0)
         let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
 
         let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
             reads.withLock { $0[path, default: 0] += 1 }
+            if checkParallel.withLock({ $0 }), path == rootPath {
+                rootReadQoS.withLock { $0 = qos_class_self() }
+            }
             if checkParallel.withLock({ $0 }), (path == aPath || path == bPath), IndexScanner.performanceCores >= 2 {
+                prefetchQoS.withLock { current in
+                    if current == QOS_CLASS_UNSPECIFIED || qos_class_self() != QOS_CLASS_DEFAULT {
+                        current = qos_class_self()
+                    }
+                }
                 let count = entered.withLock { $0 += 1; return $0 }
                 defer { entered.withLock { $0 -= 1 } }
                 if count == 2 {
                     parallelObserved.withLock { $0 = true }
                     pairReady.signal()
                 } else if count == 1 {
-                    _ = pairReady.wait(timeout: .now() + .milliseconds(250))
+                    _ = pairReady.wait(timeout: .now() + .seconds(5))
                 }
             }
             return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
@@ -1333,10 +1344,13 @@ struct IndexWorkerTests {
         ])
         await save(fixture.worker)
 
+        #expect(rootReadQoS.withLock { $0 } == QOS_CLASS_DEFAULT)
         if IndexScanner.performanceCores >= 2 {
             #expect(parallelObserved.withLock { $0 })
+            #expect(prefetchQoS.withLock { $0 } == QOS_CLASS_DEFAULT)
         }
         #expect(reads.withLock { $0[aPath] } == 1 && reads.withLock { $0[bPath] } == 1)
+        #expect(reads.withLock { $0.values.allSatisfy { $0 == 1 } })
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         for item in ["a/added-a.txt", "b/added-b.txt", "large/sub-0/file-0.txt", "large/sub-3/file-299.txt"] {
             #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
@@ -1415,5 +1429,75 @@ struct IndexWorkerTests {
         #expect(finalStore.read { $0.size[Int(hotFileID)] } == 11)
         #expect(finalHeader.eventID == initialHeader.eventID + 30)
         #expect(tree.text("calm/note.txt") == "updated calm")
+    }
+
+    @Test func scannerPreservesCallerPriorityAndCancelledRebuildsKeepThePreviousCheckpoint() async throws {
+        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt")
+        let rootPath = tree.root.path
+        let statePath = tree.url(".state").path
+        let callerQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
+        let enforcedQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
+
+        await withCheckedContinuation { done in
+            FolderSearch.scanQueue.async {
+                let store = IndexStore()
+                let root = store.write { $0.addRoot(path: rootPath, mtime: 0) }
+                let scanner = IndexScanner(store: store, excluded: [statePath], noiseFolders: []) {
+                    callerQoS.withLock { $0 = qos_class_self() }
+                    return false
+                }
+                scanner.scan([(id: root, path: rootPath)], threads: 1)
+                done.resume()
+            }
+        }
+        #expect(callerQoS.withLock { $0 } == QOS_CLASS_USER_INITIATED)
+
+        await withCheckedContinuation { done in
+            DispatchQueue.global(qos: .utility).async {
+                let store = IndexStore()
+                let root = store.write { $0.addRoot(path: rootPath, mtime: 0) }
+                let scanner = IndexScanner(store: store, excluded: [statePath], noiseFolders: []) {
+                    enforcedQoS.withLock { $0 = qos_class_self() }
+                    return true
+                }
+                scanner.scan([(id: root, path: rootPath)], threads: 1, qos: .default)
+                #expect(scanner.isCancelled)
+                #expect(store.read { $0.count } == 1)
+                done.resume()
+            }
+        }
+        #expect(enforcedQoS.withLock { $0 } == QOS_CLASS_DEFAULT)
+
+        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false, saveInterval: .infinity, fastFlushInterval: 0.005)
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+
+        // Apply an ordinary file change without saving yet (`dirty == true`, `lastEventID == initialHeader.eventID + 10`),
+        // then cancel a requested rebuild at quit: the subsequent save must write the pre-rebuild checkpoint (+10), not `startEventID`.
+        let firstChangeApplied = DispatchSemaphore(value: 0)
+        worker.onChange = { _ in firstChangeApplied.signal() }
+        try tree.add(["a/dirty-before-rebuild.txt"])
+        worker.receive([
+            .init(path: tree.url("a/dirty-before-rebuild.txt").path,
+                  flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
+                  id: initialHeader.eventID + 10),
+        ])
+        try #require(try await TestWork.run { firstChangeApplied.wait(timeout: .now() + 20) == .success })
+        worker.onChange = nil
+
+        worker.onPhase = { [weak worker] phase in
+            guard phase == .scanning(items: 0) else { return }
+            worker?.saveNow()
+            Thread.sleep(forTimeInterval: 0.55)
+        }
+        worker.rebuildNow()
+        await withCheckedContinuation { done in worker.saveWhenIdle { done.resume() } }
+
+        let (storeAfterRebuildCancel, headerAfterRebuildCancel) = try IndexPersistence.load(from: config.file, storage: .shared)
+        #expect(headerAfterRebuildCancel.eventID == initialHeader.eventID + 10)
+        #expect(storeAfterRebuildCancel.read { $0.lookup(tree.url("a/dirty-before-rebuild.txt").path) } != nil)
+        #expect(tree.text("a/one.txt") == "a/one.txt")
     }
 }
