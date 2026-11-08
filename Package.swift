@@ -100,6 +100,7 @@ let indexSources = [
     "IndexEventInbox.swift",
     "IndexHotFolders.swift",
     "IndexPersistence.swift",
+    "IndexReconciler.swift",
     "IndexRefresh.swift",
     "IndexScanner.swift",
     "IndexSearch.swift",

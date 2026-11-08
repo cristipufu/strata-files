@@ -1311,11 +1311,14 @@ struct IndexWorkerTests {
         let rootReadQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
         let prefetchQoS = OSAllocatedUnfairLock<qos_class_t>(initialState: QOS_CLASS_UNSPECIFIED)
         let pairReady = DispatchSemaphore(value: 0)
+        let ready = DispatchSemaphore(value: 0)
         let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
-
-        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false, fastFlushInterval: 0.001, deferredFlushInterval: 0.005,
+                                 readDirectory: { path, items, names, buffer, stop in
             reads.withLock { $0[path, default: 0] += 1 }
-            if checkParallel.withLock({ $0 }), path == rootPath {
+            if path == rootPath {
                 rootReadQoS.withLock { $0 = qos_class_self() }
             }
             if checkParallel.withLock({ $0 }), (path == aPath || path == bPath), IndexScanner.performanceCores >= 2 {
@@ -1335,14 +1338,21 @@ struct IndexWorkerTests {
             }
             return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
         })
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
         reads.withLock { $0.removeAll() }
+        rootReadQoS.withLock { $0 = QOS_CLASS_UNSPECIFIED }
         checkParallel.withLock { $0 = true }
+        worker.onPhase = { phase in
+            if phase == .ready { ready.signal() }
+        }
         try tree.add(["a/added-a.txt", "b/added-b.txt"] + (0..<300).map { "large/sub-\($0 % 4)/file-\($0).txt" })
 
-        fixture.worker.receive([
-            .init(path: tree.root.path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: 100),
+        worker.receive([
+            .init(path: tree.root.path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs),
+                  id: initialHeader.eventID + 1),
         ])
-        await save(fixture.worker)
+        try #require(try await TestWork.run { ready.wait(timeout: .now() + .seconds(20)) == .success })
 
         #expect(rootReadQoS.withLock { $0 } == QOS_CLASS_DEFAULT)
         if IndexScanner.performanceCores >= 2 {
@@ -1351,7 +1361,20 @@ struct IndexWorkerTests {
         }
         #expect(reads.withLock { $0[aPath] } == 1 && reads.withLock { $0[bPath] } == 1)
         #expect(reads.withLock { $0.values.allSatisfy { $0 == 1 } })
-        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+
+        checkParallel.withLock { $0 = false }
+        for iteration in 0..<20 {
+            rootReadQoS.withLock { $0 = QOS_CLASS_UNSPECIFIED }
+            worker.receive([
+                .init(path: tree.root.path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs),
+                      id: initialHeader.eventID + UInt64(iteration + 2)),
+            ])
+            try #require(try await TestWork.run { ready.wait(timeout: .now() + .seconds(20)) == .success })
+            #expect(rootReadQoS.withLock { $0 } == QOS_CLASS_DEFAULT)
+        }
+        await save(worker)
+
+        let (loaded, _) = try IndexPersistence.load(from: config.file, storage: .shared)
         for item in ["a/added-a.txt", "b/added-b.txt", "large/sub-0/file-0.txt", "large/sub-3/file-299.txt"] {
             #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
         }

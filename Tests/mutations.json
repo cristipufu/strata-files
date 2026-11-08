@@ -980,21 +980,21 @@
     "tests": "IndexWorkerTests/unchangedConfigurationDoesNotRewriteTheIndex"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        if !excluded, store.mtime[Int(old)] != item.mtime {",
     "replace": "        if store.mtime[Int(old)] != item.mtime {",
     "rule": "Index performance: parent events ignore activity inside excluded state",
     "tests": "IndexWorkerTests/aCoalescedParentEventDoesNotResaveChangesOnlyInsideExcludedState"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        let noiseChanged = item.isDirectory && expectedNoise != (flags & IndexStore.Flag.noise != 0)\n",
     "replace": "        let noiseChanged = false\n",
     "rule": "Index: a folder keeps its old noise status when its project file appears or goes",
     "tests": "IndexWorkerTests/buildOutputBecomesNoiseWithItsWholeSubtree"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            store.removeChildren(removals, of: id)\n",
     "replace": "",
     "rule": "Index: items gone from a refreshed folder stay in the index",
@@ -3695,33 +3695,21 @@
     "tests": "FinderLooksTests/anOldReadCannotOverwriteAReopenedFoldersLook"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "rule": "Index refresh coverage: stale paths make the same surviving parent scan repeatedly",
     "tests": "IndexWorkerTests/overlappingEventsReadTheResolvedParentOnlyOnce|IndexWorkerTests/overlappingEventsDoNotRepeatHealthyBranchesAfterAChildReadFails",
-    "edits": [
-      {
-        "find": "            if pass.covers(path) { continue }\n",
-        "replace": ""
-      },
-      {
-        "find": "            if pass.covers(target) { continue }\n",
-        "replace": ""
-      },
-      {
-        "find": "if pass.begin(folder.id, full: selectedNames == nil) {",
-        "replace": "if true {"
-      }
-    ]
+    "find": "            if pass.begin(folder.id, full: selectedNames == nil) {",
+    "replace": "            if true {"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "guard error == 0 else { return nil }",
-    "replace": "guard error == 0 else { interrupted = true; return nil }",
+    "replace": "guard error == 0 else { pass.interrupted = true; return nil }",
     "rule": "Index refresh coverage: a failed parent read hides later child events",
     "tests": "IndexWorkerTests/failedParentReadsDoNotHideLaterChildEvents"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "attempted.insert(id).inserted",
     "replace": "attempted.insert(0).inserted",
     "rule": "Index refresh coverage: a folder suppresses its lookalike sibling's event",
@@ -9146,7 +9134,7 @@
     "tests": "IndexWorkerTests/anIndexLeavesOutItsOwnEnvironmentsStateAndCopies"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "                    work.append(contentsOf: changes.newFolders.map { ($0, true) })\n",
     "replace": "",
     "rule": "Index live updates: new folders are scanned in the same read pass",
@@ -9174,7 +9162,7 @@
     "tests": "IndexWorkerTests/failedSavingRetainsChangesForTheNextAttempt"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "                    pass.failed(folder)\n",
     "replace": "",
     "rule": "Index refresh coverage: failed ancestors remain eligible for later child events",
@@ -9209,14 +9197,14 @@
     "tests": "IndexClassificationTests"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "edits": [
       {
-        "find": "            guard failureAncestors[path] == nil else { return false }\n",
+        "find": "        guard failureAncestors[path] == nil else { return false }\n",
         "replace": ""
       },
       {
-        "find": "                if failures.contains(ancestor) { return false }\n",
+        "find": "            if failures.contains(ancestor) { return false }\n",
         "replace": ""
       }
     ],
@@ -9259,7 +9247,7 @@
     "tests": "IndexWorkerTests/failedWatchingDoesNotClaimTheIndexIsCurrent"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "                removals.append(old)",
     "replace": "                // Keep the replaced record.",
     "rule": "Index replacement batches retire the old records and preserve unchanged siblings",
@@ -9330,14 +9318,14 @@
     "tests": "SearchRefreshTests/stalledFolderScansDoNotRepeatQueriesAndCompletionStillUpdatesTheView"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        var existing = store.children(of: id, matching: listing.selectedNames)",
     "replace": "        var existing = store.children(of: id, matching: nil)",
     "rule": "Partial file refresh drops unchanged siblings",
     "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }",
     "replace": "        var listing: FolderListing? = nil",
     "rule": "Partial file refresh enumerates all siblings",
@@ -9351,14 +9339,14 @@
     "tests": "IndexWorkerTests/hardLinkedFileEventsRefreshAllSiblingNames"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        guard !requested.contains(where: IndexStore.Storage.isBuildMarker),",
     "replace": "        guard !requested.isEmpty,",
     "rule": "Partial file refresh misses project marker classification",
     "tests": "IndexWorkerTests/fileEventsReclassifyBuildFoldersWhenProjectMarkersArriveOrLeave"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),\n                               noise: store.isNoise(id))\n            }",
     "replace": "            if store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),\n                               noise: store.isNoise(id))\n            }",
     "rule": "Partial file refresh falsely completes unreadable directory totals",
@@ -9421,7 +9409,7 @@
     "tests": "InspectorBackgroundTests/unrelatedIndexChanges"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            for removed in removals {\n                if !changes.needsPath, changes.changed, changes.nonNoiseChanged { break }\n                let removedPath = changes.needsPath ? listing.prefix + store.name(removed) : \"\"\n                changes.record(removedPath, hiddenOrNoise: store.isHiddenOrNoise(removed),\n                               noise: store.isNoise(removed))\n            }",
     "replace": "            for _ in removals {}",
     "rule": "Scoped index updates lose removed paths",
@@ -9456,7 +9444,7 @@
     "tests": "IndexEventInboxTests/anInvalidatedRoot"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "guard !stopForQuit(&pass), !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
     "replace": "guard !stopForQuit(&pass), !items.isEmpty, !items.contains(where: { $0.isDirectory || $0.isSymlink }) else { return nil }",
     "rule": "Missing file events enumerate unchanged siblings",
@@ -9470,7 +9458,7 @@
     "tests": "IndexWorkerTests/aMissingFilesParent|IndexRefreshTests/aMissingItemIsDistinguished"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old),\n                           noise: store.isNoise(old), affectsCapacity: false)\n            store.mtime[Int(old)] = item.mtime",
     "replace": "            changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old),\n                           noise: store.isNoise(old), affectsCapacity: true)\n            store.mtime[Int(old)] = item.mtime",
     "rule": "Folder mtime changes mark untouched descendant folders as changed",
@@ -9491,7 +9479,7 @@
     "tests": "IndexPersistenceSafetyTests/unlinkedDeletedEntriesStillLoad"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        } else if unknownChanged {\n            store.refreshAllocationKnown(from: id)",
     "replace": "        } else if false {\n            store.refreshAllocationKnown(from: id)",
     "rule": "Batched file updates refresh ancestor allocation knowledge when no children were removed",
@@ -9533,7 +9521,7 @@
     "tests": "IndexWorkerTests/allowingAFolderThenQuittingPartwayStillFinishesItNextLaunch"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            if store.flags[Int(old)] & IndexStore.Flag.unreadDirectory != 0 {\n                changes.newFolders.append((old, path))\n            } else {",
     "replace": "            if false {\n                changes.newFolders.append((old, path))\n            } else {",
     "rule": "A folder added before an interrupted refresh is still scanned deeply on the next parent refresh",
@@ -9583,8 +9571,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }",
-    "replace": "if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }",
+    "find": "if reconciler.refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, in: store, config: config, pass: &pass) { changed = true }",
+    "replace": "if reconciler.refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, in: store, config: config, pass: &pass) { changed = true }",
     "rule": "Resolving a new or deleted folder to an indexed ancestor lists that ancestor shallowly",
     "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
   },
@@ -9624,21 +9612,21 @@
     "tests": "IndexEventInboxTests/anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if full, !listedFull.contains(id) { attempted.remove(id); listedFull.insert(id) }",
-    "replace": "            _ = full",
+    "file": "Strata/Index/IndexReconciler.swift",
+    "find": "        if full, !listedFull.contains(id) { attempted.remove(id); listedFull.insert(id) }",
+    "replace": "        _ = full",
     "rule": "A partial file read of a parent folder does not prevent listing it for a new child folder in the same batch",
     "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            if prefetched.isEmpty, !work.isEmpty {",
     "replace": "            if false, prefetched.isEmpty, !work.isEmpty {",
     "rule": "Deep index refreshes prefetch sibling directory listings in parallel",
     "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "        if listing == nil { listing = prefetched?.listing }",
     "replace": "        // Ignore the prefetched directory listing.",
     "rule": "Prefetched directory listings are reused without reading the directory a second time",
@@ -9680,7 +9668,7 @@
     "tests": "IndexRefreshTests/canonicalEquivalentNamesMatchInBothDirectionsDuringSelectiveChildLookups"
   },
   {
-    "file": "Strata/Index/IndexWorker.swift",
+    "file": "Strata/Index/IndexReconciler.swift",
     "find": "            for (index, folder) in folders.enumerated() where index < fetched.count {\n                if let result = fetched[index] {\n                    prefetched[folder.id] = result\n                }\n            }",
     "replace": "            _ = (folders, fetched)",
     "rule": "Background-prefetched wavefront listings are reused instead of reading directories twice",
@@ -9702,8 +9690,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        BulkDirectoryReader.run(qos: deep ? .default : nil) {",
-    "replace": "        BulkDirectoryReader.run(qos: nil) {",
+    "find": "        let qos: DispatchQoS = pending.hasDeep ? .default : .utility\n        let flags: DispatchWorkItemFlags = pending.hasDeep ? .enforceQoS : []\n        queue.asyncAfter(deadline: .now() + hotFolders.fastInterval, qos: qos, flags: flags)",
+    "replace": "        queue.asyncAfter(deadline: .now() + hotFolders.fastInterval)",
     "rule": "Deep folder refreshes reconcile at default QoS instead of utility",
     "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
   }

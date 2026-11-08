@@ -26,6 +26,7 @@ nonisolated package struct IndexRefreshTree: Sendable {
 
     private var root = Node()
     package private(set) var count = 0
+    package private(set) var hasDeep = false
 
     package init() {}
 
@@ -39,10 +40,12 @@ nonisolated package struct IndexRefreshTree: Sendable {
     package mutating func removeAll(keepingCapacity: Bool = false) {
         root = Node()
         count = 0
+        hasDeep = false
     }
 
     /// Inserts or merges `refresh` at `path`, ignoring descendants of subtrees already collapsed on overflow.
     package mutating func insert(_ path: String, _ refresh: IndexRefresh, eventID: UInt64 = 0) {
+        if refresh.isDeep { hasDeep = true }
         let utf8 = path.utf8
         Self.insert(utf8: utf8, from: utf8.startIndex, refresh: refresh, eventID: eventID, into: &root, count: &count)
     }
@@ -132,6 +135,7 @@ nonisolated package struct IndexRefreshTree: Sendable {
         }
 
         guard !newlyCollapsed.isEmpty else { return }
+        hasDeep = true
         Self.applyCollapse(to: &root, path: "", newlyCollapsed: newlyCollapsed, count: &count)
     }
 

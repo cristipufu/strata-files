@@ -161,23 +161,6 @@ nonisolated package enum BulkDirectoryReader {
         }
     }
 
-    /// Runs `body` synchronously at `qos` (or on the caller's thread when `qos` is `nil`).
-    package static func run<T>(qos: DispatchQoS? = nil, body: () -> T) -> T {
-        guard let qos else { return body() }
-        return withoutActuallyEscaping(body) { escapable in
-            nonisolated(unsafe) let call = escapable
-            nonisolated(unsafe) var result: T!
-            let group = DispatchGroup()
-            group.enter()
-            DispatchQueue.global(qos: qos.qosClass).async(qos: qos, flags: .enforceQoS) {
-                defer { group.leave() }
-                result = call()
-            }
-            group.wait()
-            return result
-        }
-    }
-
     /// Runs `workers` parallel reader closures, preserving the caller's priority when `qos` is `nil` or enforcing `qos`.
     package static func runParallel(workers: Int, qos: DispatchQoS? = nil, body: @escaping @Sendable (Int) -> Void) {
         let count = max(1, workers)
