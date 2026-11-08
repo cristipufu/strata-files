@@ -44,7 +44,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var pendingEventID: UInt64 = 0
     private var savedExcluded: Set<String> = []
     private var dirty = false
-    private var pending: [String: IndexRefresh] = [:]
+    private var pending = IndexRefreshTree()
     private var rescanNeeded = false
     private var flushScheduled = false
     private var saveScheduled = false
@@ -333,16 +333,13 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             for (path, refresh) in delivery.folders {
                 if let config = self.config, self.isExcluded(path, config) { continue }
-                if self.pending[path] != nil { self.pending[path]?.merge(refresh) }
-                else { self.pending[path] = refresh }
+                self.pending.insert(path, refresh)
             }
             if !delivery.folders.isEmpty, !self.pastQuitDeadline {
                 self.interrupted = false
             }
             if self.pending.count > IndexEventInbox.defaultFolderLimit {
-                var collapsed: Set<String> = []
-                IndexEventInbox.collapse(&self.pending, collapsed: &collapsed, roots: self.config?.roots ?? [],
-                                         limit: IndexEventInbox.defaultFolderLimit)
+                self.pending.collapse(roots: self.config?.roots ?? [], limit: IndexEventInbox.defaultFolderLimit)
             }
             if self.rescanNeeded {
                 self.publish(.updating)
@@ -380,7 +377,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             return
         }
         guard let config, let store, !pending.isEmpty else { return }
-        let work = pending.sorted { $0.key < $1.key }
+        let work = pending.sortedWork()
         let targetEventID = pendingEventID
         pending.removeAll()
         interrupted = false
@@ -421,8 +418,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func restoreUnfinished(_ remaining: ArraySlice<(key: String, value: IndexRefresh)>) {
         for (path, refresh) in remaining {
-            if pending[path] != nil { pending[path]?.merge(refresh) }
-            else { pending[path] = refresh }
+            pending.insert(path, refresh)
         }
     }
 
@@ -463,17 +459,28 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         var changes = IndexChanges()
         var nonNoiseChanged = false
         private var attempted: Set<Int32> = []
+        private var listedFull: Set<Int32> = []
         private var children: [Int32: [Folder]] = [:]
         private var deepRoots: Set<String> = []
         private var failures: Set<String> = []
         private var failureAncestors: [String: Int] = [:]
 
-        mutating func begin(_ id: Int32) -> Bool { attempted.insert(id).inserted }
+        mutating func begin(_ id: Int32, full: Bool) -> Bool {
+            if listedFull.contains(id) { return false }
+            if full {
+                listedFull.insert(id)
+                attempted.insert(id)
+                return true
+            }
+            return attempted.insert(id).inserted
+        }
         mutating func failed(_ folder: Folder) {
             attempted.remove(folder.id)
+            listedFull.remove(folder.id)
             if failures.insert(folder.path).inserted { changeFailureAncestors(folder.path, by: 1) }
         }
-        mutating func listed(_ folder: Folder, children: [Folder]) {
+        mutating func listed(_ folder: Folder, children: [Folder], full: Bool) {
+            if full { listedFull.insert(folder.id) }
             self.children[folder.id] = children
             if failures.remove(folder.path) != nil { changeFailureAncestors(folder.path, by: -1) }
         }
@@ -511,12 +518,13 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         while let next = work.popLast() {
             if interrupted || stopForQuit() { break }
             let folder = next.folder
-            if pass.begin(folder.id) {
-                if let changes = readFolder(folder.id, folder.path, selectedNames: folder.id == id ? names : nil) {
+            let selectedNames = folder.id == id ? names : nil
+            if pass.begin(folder.id, full: selectedNames == nil) {
+                if let changes = readFolder(folder.id, folder.path, selectedNames: selectedNames) {
                     changed = changed || changes.changed
                     if changes.nonNoiseChanged { pass.nonNoiseChanged = true }
                     pass.changes.formUnion(changes.paths)
-                    pass.listed(folder, children: changes.existingFolders)
+                    pass.listed(folder, children: changes.existingFolders, full: !changes.wasPartial)
                     work.append(contentsOf: changes.newFolders.map { ($0, true) })
                 } else {
                     pass.failed(folder)
@@ -555,7 +563,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         guard let listing else { return nil }
         return store.write { store in
-            var changes = FolderChanges()
+            var changes = FolderChanges(wasPartial: listing.selectedNames != nil)
             let firstNew = Int32(store.count)
             reconcile(listing, with: id, in: &store, config: config, changes: &changes)
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
@@ -608,6 +616,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// What a folder's listing changed in the index, and what's left to read below it.
     private struct FolderChanges {
+        var wasPartial = false
         private(set) var changed = false
         private(set) var nonNoiseChanged = false
         var paths = IndexChanges()

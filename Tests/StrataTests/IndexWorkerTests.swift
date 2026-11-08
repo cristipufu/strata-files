@@ -1158,26 +1158,35 @@ struct IndexWorkerTests {
 
     @Test(arguments: [false, true])
     func anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged(stillOnDisk: Bool) async throws {
-        let tree = try TestTree(".state/", "calm/a/one.txt", "calm/b/two.txt", "notes/note.txt", "projects/x/y/z.txt")
+        let tree = try TestTree(".state/", "root-file.txt", "calm/a/one.txt", "calm/b/two.txt", "notes/note.txt", "projects/x/y/z.txt")
         let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let itemReads = OSAllocatedUnfairLock(initialState: [String: Int]())
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
                                  file: tree.url(".state/index.sealed"), storage: .shared)
         let worker = IndexWorker(watchesChanges: false, readDirectory: { path, items, names, buffer, stop in
             reads.withLock { $0[path, default: 0] += 1 }
             return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        }, readItem: { path, items, names in
+            itemReads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.readItem(path, items: &items, names: &names)
         })
         await withCheckedContinuation { done in worker.start(config) { done.resume() } }
         let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
         reads.withLock { $0.removeAll() }
+        itemReads.withLock { $0.removeAll() }
+        try Data("updated root".utf8).write(to: tree.url("root-file.txt"))
         if stillOnDisk {
             try tree.add([".probe/d-0/kept/f.bin", ".probe/d-1/g.bin"])
         }
 
-        let events = (0..<4200).map { index in
+        var events = (0..<4200).map { index in
             FSEventsStream.Event(path: tree.url(".probe/d-\(index % 48)/run-\(index)/f.bin").path,
                                  flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
                                  id: initialHeader.eventID + UInt64(index + 1))
         }
+        events.append(.init(path: tree.url("root-file.txt").path,
+                            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
+                            id: initialHeader.eventID + 5000))
         worker.receive(events)
         await withCheckedContinuation { done in worker.saveWhenIdle { done.resume() } }
 
@@ -1188,6 +1197,21 @@ struct IndexWorkerTests {
             for item in [".probe/d-0/kept/f.bin", ".probe/d-1/g.bin"] {
                 #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
             }
+            let rootFileID = try #require(loaded.read { $0.lookup(tree.url("root-file.txt").path) })
+            #expect(loaded.read { $0.size[Int(rootFileID)] } == 12)
+
+            // A non-overflowing burst in a new folder scans that subtree once and covers remaining file events in it.
+            reads.withLock { $0.removeAll() }
+            itemReads.withLock { $0.removeAll() }
+            try tree.add([".probe-small/sub-0/f.bin", ".probe-small/sub-1/g.bin"])
+            worker.receive([
+                .init(path: tree.url(".probe-small/sub-0/f.bin").path,
+                      flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: initialHeader.eventID + 5001),
+                .init(path: tree.url(".probe-small/sub-1/g.bin").path,
+                      flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: initialHeader.eventID + 5002),
+            ])
+            await withCheckedContinuation { done in worker.saveWhenIdle { done.resume() } }
+            #expect(itemReads.withLock { $0.isEmpty })
         } else {
             #expect(reads.withLock { $0 } == [tree.root.path: 1])
         }

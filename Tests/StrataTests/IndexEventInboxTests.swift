@@ -120,6 +120,14 @@ struct IndexEventInboxTests {
         let rootDelivery = try #require(inbox.take())
         #expect(rootDelivery.folders.count == 1)
         #expect(rootDelivery.folders["/fixture"]?.isDeep == true && rootDelivery.folders["/other"] == nil)
+
+        var tree = IndexRefreshTree()
+        tree.insert("/fixture/deep/chain/notes", .files(["note.txt"]))
+        tree.insert("/fixture/work/run-1", .directory(deep: false))
+        tree.insert("/fixture/work/run-2", .directory(deep: false))
+        tree.collapse(roots: ["/fixture"], limit: 2)
+        tree.insert("/fixture/work/run-3/leaf", .directory(deep: false))
+        #expect(tree.count == 2 && tree.folders["/fixture/work/run-3/leaf"] == nil)
     }
 
     @Test func replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation() throws {

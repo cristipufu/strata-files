@@ -3708,7 +3708,7 @@
         "replace": ""
       },
       {
-        "find": "if pass.begin(folder.id) {",
+        "find": "if pass.begin(folder.id, full: selectedNames == nil) {",
         "replace": "if true {"
       }
     ]
@@ -9603,9 +9603,23 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        for (path, refresh) in remaining {\n            if pending[path] != nil { pending[path]?.merge(refresh) }\n            else { pending[path] = refresh }\n        }",
+    "find": "        for (path, refresh) in remaining {\n            pending.insert(path, refresh)\n        }",
     "replace": "        _ = remaining",
     "rule": "Unfinished folders from an interrupted refresh remain pending for the next batch",
     "tests": "IndexWorkerTests/unfinishedFoldersFromAnInterruptedBatchHoldBackTheSavedEventIDAndFinishInTheNextBatch"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "        if node.isCollapsed { return }",
+    "replace": "        // Allow descendant events under a collapsed node.",
+    "rule": "A collapsed refresh subtree absorbs later descendant events",
+    "tests": "IndexEventInboxTests/anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if listedFull.contains(id) { return false }",
+    "replace": "            if attempted.contains(id) { return false }",
+    "rule": "A partial file read of a parent folder does not prevent listing it for a new child folder in the same batch",
+    "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
   }
 ]
