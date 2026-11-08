@@ -84,6 +84,11 @@ package final class FileIndex {
         worker.saveNow()
     }
 
+    package func saveWhenIdle() {
+        guard started else { return }
+        worker.saveWhenIdle()
+    }
+
     private func setPhase(_ phase: IndexWorker.Phase) {
         guard self.phase != phase else { return }
         self.phase = phase

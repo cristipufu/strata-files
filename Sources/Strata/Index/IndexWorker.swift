@@ -41,11 +41,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var config: IndexConfig?
     private var store: IndexStore?
     private var lastEventID: UInt64 = 0
+    private var pendingEventID: UInt64 = 0
+    private var savedExcluded: Set<String> = []
     private var dirty = false
     private var pending: [String: IndexRefresh] = [:]
     private var rescanNeeded = false
     private var flushScheduled = false
     private var saveScheduled = false
+    package static let defaultSaveInterval: TimeInterval = 1800
+    private let saveInterval: TimeInterval
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
     private let scanning = OSAllocatedUnfairLock(initialState: false)
     private let rebuildRequested = OSAllocatedUnfairLock(initialState: false)
@@ -78,10 +82,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     package var onChange: (@Sendable (IndexChanges) -> Void)?
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
-    package init(watchesChanges: Bool = true, readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
+    package init(watchesChanges: Bool = true, saveInterval: TimeInterval = IndexWorker.defaultSaveInterval,
+                 readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil) {
         self.watchesChanges = watchesChanges
+        self.saveInterval = saveInterval
         self.readDirectory = readDirectory
         self.readItem = readItem
         self.startEvents = startEvents
@@ -122,13 +128,23 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// save (saves are atomic, so one cut short by quitting leaves the previous file).
     package func saveNow() {
         guard !scanning.withLock({ $0 }) else { return }
-        quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 2_000_000_000 }
+        quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 500_000_000 }
         let saved = DispatchSemaphore(value: 0)
-        queue.async {
+        queue.async(qos: .userInitiated, flags: .enforceQoS) {
             self.save()
             saved.signal()
         }
-        if saved.wait(timeout: .now() + 3) == .timedOut { log.info("Index still busy at quit; the next launch catches up") }
+        if saved.wait(timeout: .now() + 5) == .timedOut { log.info("Index still busy at quit; the next launch catches up") }
+    }
+
+    /// Writes any pending changes without a quit deadline (used before sleep).
+    package func saveWhenIdle(completion: @escaping @Sendable () -> Void = {}) {
+        guard !scanning.withLock({ $0 }) else { completion(); return }
+        queue.async {
+            self.compactIfNeeded()
+            self.save()
+            completion()
+        }
     }
 
     /// Whether quit's deadline has passed (any thread).
@@ -154,10 +170,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             store = loaded
             onStore?(loaded)
             lastEventID = header.eventID
+            pendingEventID = header.eventID
+            savedExcluded = Set(header.excluded)
             // Catch up on everything that changed since the save, then keep listening.
             startWatching(config)
-            if Set(header.excluded) != config.excluded {
-                reconfigure(config, previous: Set(header.excluded))
+            if savedExcluded != config.excluded {
+                reconfigure(config, previous: savedExcluded)
             }
         } else {
             log.info("Full scan: \(String(describing: loadResult.map { $0.1.roots.map(\.path) }))")
@@ -198,6 +216,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         store = fresh
         dirty = true
         lastEventID = startEventID
+        pendingEventID = startEventID
+        savedExcluded = config.excluded
         rescanNeeded = false
         onStore?(fresh)
         save()
@@ -229,7 +249,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func reconfigure(_ config: IndexConfig, previous: Set<String>? = nil) {
-        guard let old = previous ?? self.config?.excluded else { return }
+        let old = previous ?? savedExcluded
         let rootsChanged = self.config.map { $0.roots != config.roots } ?? true
         self.config = config
         incoming.exclude(config.excluded)
@@ -245,26 +265,31 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         defer { finishUpdates() }
         var pass = RefreshPass()
         for path in old.subtracting(config.excluded).sorted() {
+            if interrupted || stopForQuit() { break }
             if let id = store.read({ store in store.lookup(path) }) { _ = refreshFolder(id, path, deep: true, pass: &pass) }
         }
         for path in config.excluded.subtracting(old).sorted() {
+            if interrupted || stopForQuit() { break }
             store.write { store in
                 guard let id = store.lookup(path) else { return }
                 store.removeChildren(store.children(of: id), of: id)
             }
         }
-        markChanged()
+        if !interrupted { savedExcluded = config.excluded }
+        markChanged(scheduleSave: !interrupted)
     }
 
     private func save() {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
-        // at the next launch and rebuilds then. The same goes for one whose catching up was cut short at quit.
-        guard !rescanNeeded, !interrupted else { return }
-        // Apply events already received first: the saved event ID says they're in the file.
-        if !pending.isEmpty { flush() }
-        guard !interrupted, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
+        // at the next launch and rebuilds then.
+        guard !rescanNeeded else { return }
+        // Apply events already received first, as far as quit's deadline allows. If catching up stops partway through
+        // a batch, `lastEventID` stays at the previous completed batch while keeping the folder updates already made,
+        // so the next launch replays the interrupted batch without redoing the rest.
+        if !pending.isEmpty, !interrupted { flush() }
+        guard !rescanNeeded, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         do {
-            try IndexPersistence.save(store, eventID: lastEventID, excluded: Array(config.excluded), to: config.file,
+            try IndexPersistence.save(store, eventID: lastEventID, excluded: Array(savedExcluded), to: config.file,
                                       storage: config.storage)
             dirty = false
         } catch {
@@ -282,7 +307,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         guard incoming.append(batch, generation: generation) else { return }
         queue.async {
             guard let delivery = self.incoming.take(), delivery.generation == self.eventGeneration else { return }
-            self.lastEventID = max(self.lastEventID, delivery.lastID)
+            self.pendingEventID = max(self.pendingEventID, delivery.lastID)
             if delivery.historyDone { self.awaitingHistory = false }
             if let event = delivery.invalidation {
                 self.log.info("Event invalidates index: \(event.path) flags \(event.flags)")
@@ -297,6 +322,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 self.publish(.updating)
                 self.scheduleFlush()
             } else {
+                if !self.interrupted { self.lastEventID = max(self.lastEventID, self.pendingEventID) }
                 self.finishUpdates()
             }
         }
@@ -326,6 +352,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         guard let config, let store, !pending.isEmpty else { return }
         let work = pending.sorted { $0.key < $1.key }
+        let targetEventID = pendingEventID
         pending.removeAll()
         var pass = RefreshPass()
         var changed = false
@@ -348,8 +375,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if pass.covers(target) { continue }
             if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
         }
+        if !interrupted {
+            lastEventID = max(lastEventID, targetEventID)
+        }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
-        if changed { markChanged(pass.changes) }
+        if changed { markChanged(pass.changes, scheduleSave: pass.nonNoiseChanged && !interrupted) }
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
@@ -369,12 +399,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         log.info("Compacted index: \(total) → \(fresh.read { $0.count }) entries")
     }
 
-    private func markChanged(_ changes: IndexChanges = .all) {
+    private func markChanged(_ changes: IndexChanges = .all, scheduleSave: Bool = true) {
         dirty = true
         onChange?(changes)
-        guard !saveScheduled else { return }
+        guard scheduleSave, !saveScheduled, saveInterval < .infinity else { return }
         saveScheduled = true
-        queue.asyncAfter(deadline: .now() + 120) { [weak self] in
+        queue.asyncAfter(deadline: .now() + max(0, saveInterval)) { [weak self] in
             guard let self else { return }
             self.saveScheduled = false
             self.compactIfNeeded()
@@ -387,6 +417,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// Coverage belongs to one batch and node identity, so a replacement at the same path is read again.
     private struct RefreshPass {
         var changes = IndexChanges()
+        var nonNoiseChanged = false
         private var attempted: Set<Int32> = []
         private var children: [Int32: [Folder]] = [:]
         private var deepRoots: Set<String> = []
@@ -439,6 +470,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if pass.begin(folder.id) {
                 if let changes = readFolder(folder.id, folder.path, selectedNames: folder.id == id ? names : nil) {
                     changed = changed || changes.changed
+                    if changes.nonNoiseChanged { pass.nonNoiseChanged = true }
                     pass.changes.formUnion(changes.paths)
                     pass.listed(folder, children: changes.existingFolders)
                     work.append(contentsOf: changes.newFolders.map { ($0, true) })
@@ -467,7 +499,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 var changes = FolderChanges()
                 store.write { store in
                     let hiddenOrNoise = store.isHiddenOrNoise(id)
-                    if Self.removeGone(id, from: &store) { changes.record(path, hiddenOrNoise: hiddenOrNoise) }
+                    let noise = store.isNoise(id)
+                    if Self.removeGone(id, from: &store) {
+                        changes.record(path, hiddenOrNoise: hiddenOrNoise, noise: noise)
+                    }
                 }
                 return changes
             }
@@ -482,7 +517,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             addNew(listing, to: id, in: &store, config: config, changes: &changes)
             store.integrateNew(from: firstNew)
             if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {
-                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))
+                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),
+                               noise: store.isNoise(id))
             }
             return changes
         }
@@ -529,12 +565,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// What a folder's listing changed in the index, and what's left to read below it.
     private struct FolderChanges {
         private(set) var changed = false
+        private(set) var nonNoiseChanged = false
         var paths = IndexChanges()
 
         mutating func record(_ path: String, descendants: Bool = true, hiddenOrNoise: Bool = false,
-                             affectsCapacity: Bool = true) {
+                             noise: Bool = false, affectsCapacity: Bool = true) {
             changed = true
-            paths.insert(path, descendants: descendants, hiddenOrNoise: hiddenOrNoise,
+            if !noise { nonNoiseChanged = true }
+            paths.insert(path, descendants: descendants, hiddenOrNoise: hiddenOrNoise || noise,
                          affectsCapacity: affectsCapacity)
         }
 
@@ -579,7 +617,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             let expectedNoise = item.isDirectory
                 && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
-                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old))
+                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old),
+                               noise: store.isNoise(old) && ( !item.isDirectory || expectedNoise ))
                 removals.append(old)
                 changes.add(item, noise: listing.ownNoise[index])
             } else if item.isDirectory {
@@ -589,7 +628,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 let sizeChanged = store.size[Int(old)] != item.size || store.allocatedSize(old) != item.allocatedSize
                 if sizeChanged || store.mtime[Int(old)] != item.mtime {
                     changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old),
-                                   affectsCapacity: sizeChanged)
+                                   noise: store.isNoise(old), affectsCapacity: sizeChanged)
                     store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
                                      bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
                 }
@@ -599,7 +638,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
         removals.append(contentsOf: existing.values)
         if !removals.isEmpty {
-            for removed in removals { changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed)) }
+            for removed in removals {
+                changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed),
+                               noise: store.isNoise(removed))
+            }
             store.removeChildren(removals, of: id)
         } else if unknownChanged {
             store.refreshAllocationKnown(from: id)
@@ -626,10 +668,17 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
         let excluded = isExcluded(path, config)
         if !excluded, store.mtime[Int(old)] != item.mtime {
-            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: false)
+            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old),
+                           noise: store.isNoise(old), affectsCapacity: false)
             store.mtime[Int(old)] = item.mtime
         }
-        if !item.isMountPoint, !excluded { changes.existingFolders.append((old, path)) }
+        if !item.isMountPoint, !excluded {
+            if store.flags[Int(old)] & IndexStore.Flag.unreadDirectory != 0 {
+                changes.newFolders.append((old, path))
+            } else {
+                changes.existingFolders.append((old, path))
+            }
+        }
     }
 
     /// Adds what the listing has that the index doesn't, noting the new folders to scan.
@@ -651,7 +700,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
                 if !isExcluded(childPath, config) { changes.newFolders.append((childID, childPath)) }
             }
-            changes.record(childPath, hiddenOrNoise: store.isHiddenOrNoise(childID))
+            changes.record(childPath, hiddenOrNoise: store.isHiddenOrNoise(childID),
+                           noise: store.isNoise(childID))
         }
     }
 

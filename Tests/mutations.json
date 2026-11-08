@@ -967,8 +967,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        if changed { markChanged(pass.changes) }",
-    "replace": "        markChanged(pass.changes)",
+    "find": "        if changed { markChanged(pass.changes, scheduleSave: pass.nonNoiseChanged && !interrupted) }",
+    "replace": "        markChanged(pass.changes, scheduleSave: true)",
     "rule": "Index performance: unchanged folder events never rewrite the index",
     "tests": "IndexWorkerTests/unchangedFolderEventsDoNotNotifyOrRewriteTheIndex"
   },
@@ -9351,8 +9351,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))\n            }",
-    "replace": "            if store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id))\n            }",
+    "find": "            if listing.selectedNames == nil, store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),\n                               noise: store.isNoise(id))\n            }",
+    "replace": "            if store.finishedAllocationRead(of: id) {\n                changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(id),\n                               noise: store.isNoise(id))\n            }",
     "rule": "Partial file refresh falsely completes unreadable directory totals",
     "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
   },
@@ -9414,8 +9414,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "for removed in removals { changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed)) }",
-    "replace": "for _ in removals {}",
+    "find": "            for removed in removals {\n                changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed),\n                               noise: store.isNoise(removed))\n            }",
+    "replace": "            for _ in removals {}",
     "rule": "Scoped index updates lose removed paths",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
   },
@@ -9463,8 +9463,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: false)\n            store.mtime[Int(old)] = item.mtime",
-    "replace": "changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old), affectsCapacity: true)\n            store.mtime[Int(old)] = item.mtime",
+    "find": "            changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old),\n                           noise: store.isNoise(old), affectsCapacity: false)\n            store.mtime[Int(old)] = item.mtime",
+    "replace": "            changes.record(path, hiddenOrNoise: store.isHiddenOrNoise(old),\n                           noise: store.isNoise(old), affectsCapacity: true)\n            store.mtime[Int(old)] = item.mtime",
     "rule": "Folder mtime changes mark untouched descendant folders as changed",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"
   },
@@ -9502,5 +9502,26 @@
     "replace": "return !isShowingResults",
     "rule": "Shown folder results update their size cells only when their own subtree changes",
     "tests": "SearchRefreshTests/searchResultFoldersRefreshSizesAndInspectorWhenTheirSubtreeChanges"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if !interrupted {\n            lastEventID = max(lastEventID, targetEventID)\n        }",
+    "replace": "        lastEventID = max(lastEventID, targetEventID)",
+    "rule": "Quitting partway through a deep index refresh does not advance the saved event ID past unfinished branches",
+    "tests": "IndexWorkerTests/quittingPartwayThroughADeepRefreshKeepsCompletedBranchesAndCatchesUpOnNextLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if !interrupted { savedExcluded = config.excluded }",
+    "replace": "        savedExcluded = config.excluded",
+    "rule": "An interrupted exclusion update saves the exclusions the index actually reflects",
+    "tests": "IndexWorkerTests/allowingAFolderThenQuittingPartwayStillFinishesItNextLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if store.flags[Int(old)] & IndexStore.Flag.unreadDirectory != 0 {\n                changes.newFolders.append((old, path))\n            } else {",
+    "replace": "            if false {\n                changes.newFolders.append((old, path))\n            } else {",
+    "rule": "A folder added before an interrupted refresh is still scanned deeply on the next parent refresh",
+    "tests": "IndexWorkerTests/quittingPartwayThroughADeepRefreshKeepsCompletedBranchesAndCatchesUpOnNextLaunch"
   }
 ]

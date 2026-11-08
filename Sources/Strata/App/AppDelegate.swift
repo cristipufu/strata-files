@@ -41,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows)
             }
         }
+        let index = browserServices.index
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification,
+                                                          object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { index.saveWhenIdle() }
+        }
         NSApp.mainMenu = MainMenu.build()
         // Your own shortcuts (Settings ▸ Shortcuts) over the built-in ones.
         if let menu = NSApp.mainMenu { ShortcutStore.shared.install(menu) }
