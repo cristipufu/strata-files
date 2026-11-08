@@ -9498,10 +9498,17 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "return !isShowingResults || changes.affects(node.url.path)",
-    "replace": "return !isShowingResults",
-    "rule": "Shown folder results update their size cells only when their own subtree changes",
-    "tests": "SearchRefreshTests/searchResultFoldersRefreshSizesAndInspectorWhenTheirSubtreeChanges"
+    "find": "            guard let node = outlineView.item(atRow: row) as? FileNode, node.entry.isDirectory else { return false }\n            return changes.affects(node.url.path)",
+    "replace": "            guard let node = outlineView.item(atRow: row) as? FileNode, node.entry.isDirectory else { return false }\n            return true",
+    "rule": "Shown folder rows update their size cells only when their own subtree changes",
+    "tests": "SearchRefreshTests/searchResultFoldersRefreshSizesAndInspectorWhenTheirSubtreeChanges|InspectorBackgroundTests/unrelatedIndexChangesLeaveTheInspectorAloneButCurrentFolderChangesRefreshIt"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        if affectsInspected {\n            delegate?.browserContentDidChange(self)\n        }",
+    "replace": "        delegate?.browserContentDidChange(self)",
+    "rule": "Sibling folder index changes do not restart the Inspector for an unaffected selection",
+    "tests": "InspectorBackgroundTests/unrelatedIndexChangesLeaveTheInspectorAloneButCurrentFolderChangesRefreshIt"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",

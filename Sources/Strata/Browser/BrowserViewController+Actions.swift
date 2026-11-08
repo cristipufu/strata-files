@@ -358,13 +358,14 @@ extension BrowserViewController {
         let visible = outlineView.rows(in: outlineView.visibleRect)
         let folders = IndexSet((visible.location..<NSMaxRange(visible)).filter { row in
             guard let node = outlineView.item(atRow: row) as? FileNode, node.entry.isDirectory else { return false }
-            return !isShowingResults || changes.affects(node.url.path)
+            return changes.affects(node.url.path)
         })
+        let affectsInspected = selectionAffected(by: changes)
         if isShowingResults {
             let checksAll = effectiveMode != .list || ordering.choice?.key == .size
             let affectsOther = checksAll
                 ? nodes.contains { $0.entry.isDirectory && changes.affects($0.url.path) }
-                : selectedEntries.contains { $0.isDirectory && changes.affects($0.url.path) }
+                : affectsInspected
             guard !folders.isEmpty || affectsOther else { return }
         }
         if column >= 0, !folders.isEmpty {
@@ -373,7 +374,25 @@ extension BrowserViewController {
         if ordering.choice?.key == .size { scheduleResort() }
         if effectiveMode == .treemap { pushContent(animated: true) }
         if effectiveMode == .grid { gridController?.refreshVisibleItems(reconfigure: true) }
-        delegate?.browserContentDidChange(self)
+        if affectsInspected {
+            delegate?.browserContentDidChange(self)
+        }
+    }
+
+    private func selectionAffected(by changes: IndexChanges) -> Bool {
+        if activeView == nil {
+            let rows = outlineView.selectedRowIndexes
+            if rows.isEmpty { return !isShowingResults && directory != nil }
+            if rows.count > 128 { return !isShowingResults }
+            return rows.contains { row in
+                guard let node = outlineView.item(atRow: row) as? FileNode, node.groupTitle == nil else { return false }
+                return changes.affects(node.url.path)
+            }
+        }
+        let selected = selectedEntries
+        if selected.isEmpty { return !isShowingResults && directory != nil }
+        if selected.count > 128 { return !isShowingResults }
+        return selected.contains { changes.affects($0.url.path) }
     }
 
     func refreshVolumeSpaceIfVisible() {
