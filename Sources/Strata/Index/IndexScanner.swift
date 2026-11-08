@@ -1,4 +1,5 @@
 import Foundation
+import os
 import StrataModel
 
 /// Reads directories with `getattrlistbulk`, which returns names, types, sizes and dates for a whole batch of entries
@@ -147,7 +148,9 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     private let store: IndexStore
     private let excluded: Set<String>
     private let noiseFolders: Set<String>
+    private let shouldStop: @Sendable () -> Bool
     private let condition = NSCondition()
+    private let cancelledState = OSAllocatedUnfairLock(initialState: false)
     private var jobs: [Job] = []
     private var active = 0
     private var cancelled = false
@@ -163,13 +166,21 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     /// - Parameters:
     ///   - excluded: absolute paths not to descend into (they still appear as entries).
     ///   - noiseFolders: absolute paths whose subtree is kept out of default search results.
-    package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>) {
+    package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>,
+                 shouldStop: @escaping @Sendable () -> Bool = { false }) {
         self.store = store
         self.excluded = excluded
         self.noiseFolders = noiseFolders
+        self.shouldStop = shouldStop
     }
 
     package func cancel() {
+        let first = cancelledState.withLock { state -> Bool in
+            guard !state else { return false }
+            state = true
+            return true
+        }
+        guard first else { return }
         condition.lock()
         cancelled = true
         condition.broadcast()
@@ -177,9 +188,10 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     }
 
     package var isCancelled: Bool {
-        condition.lock()
-        defer { condition.unlock() }
-        return cancelled
+        if cancelledState.withLock({ $0 }) { return true }
+        guard shouldStop() else { return false }
+        cancel()
+        return true
     }
 
     private static let batchLimit = 32
@@ -194,12 +206,19 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     }
 
     /// Scans each folder's subtree (the folder itself must already be in the store). Blocks until done.
-    package func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores) {
+    package func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores,
+                      qos: DispatchQoS = .default) {
         let workerCount = max(1, threads)
         condition.lock()
         jobs.append(contentsOf: folders.map { Job(id: $0.id, path: $0.path) })
         condition.unlock()
-        DispatchQueue.concurrentPerform(iterations: workerCount) { _ in work(threads: workerCount) }
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: qos.qosClass).async(qos: qos, flags: .enforceQoS) {
+            defer { group.leave() }
+            DispatchQueue.concurrentPerform(iterations: workerCount) { _ in self.work(threads: workerCount) }
+        }
+        group.wait()
     }
 
     /// How many threads should read `path`'s volume. Measured on a 10+4-core Mac: a writable volume peaked at one
@@ -235,6 +254,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
                 var items: [ScannedItem] = []
                 var names: [UInt8] = []
                 let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
+                if error == ECANCELED { break }
                 // Work out child folder paths and noise classification before taking the store lock.
                 let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
                 var folders: [(offset: Int, path: String, noise: Bool)] = []

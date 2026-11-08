@@ -381,10 +381,16 @@ nonisolated package final class IndexEventInbox: Sendable {
             for event in events {
                 state.lastID = max(state.lastID, event.id)
                 if event.isHistoryDone { state.historyDone = true; continue }
-                if event.invalidatesIndex { state.invalidation = event; continue }
+                if event.invalidatesIndex {
+                    state.invalidation = event
+                    if state.waitingForHistory { state.tree.removeAll(keepingCapacity: true) }
+                    continue
+                }
+                if state.waitingForHistory, state.invalidation != nil { continue }
                 if state.canRebuildOnDrop, event.droppedEvents {
                     state.canRebuildOnDrop = false
                     state.invalidation = event
+                    if state.waitingForHistory { state.tree.removeAll(keepingCapacity: true) }
                     continue
                 }
                 if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {
@@ -392,10 +398,10 @@ nonisolated package final class IndexEventInbox: Sendable {
                     if state.replayedEvents > replayEventLimit {
                         state.canRebuildOnDrop = false
                         state.invalidation = event
+                        state.tree.removeAll(keepingCapacity: true)
                         continue
                     }
                 }
-                if state.waitingForHistory, state.invalidation != nil { continue }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
                 if IndexRefresh.isExcluded(path, in: state.excluded) { continue }

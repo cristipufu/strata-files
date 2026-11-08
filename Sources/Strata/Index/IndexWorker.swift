@@ -233,7 +233,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         startWatching(config, canRebuildOnDrop: false)
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
-        let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
+        let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise) { [weak self] in
+            self?.pastQuitDeadline == true
+        }
         let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) }.filter { $0.0 >= 0 } }
         publish(.scanning(items: 0))
         let progress = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
@@ -249,6 +251,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         scanner.scan(roots.map { (id: $0.0, path: $0.1) })
         progress.cancel()
         reporting.withLock { $0 = false }
+        if scanner.isCancelled, pastQuitDeadline {
+            interrupted = true
+            return
+        }
         fresh.write { fresh in fresh.aggregate() }
         store = fresh
         dirty = true
@@ -361,6 +367,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 }
                 self.rescanNeeded = true
             }
+            if self.rescanNeeded {
+                self.publish(.updating)
+                self.flush(includeDeferred: true)
+                return
+            }
             let nowNs = self.now()
             self.pruneHotFolders(now: nowNs)
             var insertedFolder = false
@@ -379,10 +390,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             if self.pending.count > IndexEventInbox.defaultFolderLimit {
                 self.pending.collapse(roots: self.config?.roots ?? [], limit: IndexEventInbox.defaultFolderLimit)
             }
-            if self.rescanNeeded {
-                self.publish(.updating)
-                self.flush(includeDeferred: true)
-            } else if !self.pending.isEmpty {
+            if !self.pending.isEmpty {
                 self.publish(.updating)
                 if hasFastFolder {
                     self.scheduleFlush()
@@ -659,7 +667,32 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         var work: [(folder: Folder, deep: Bool)] = [((id, path), deep)]
         var prefetched: [Int32: PrefetchedFolder] = [:]
         var workerBuffers: [ReadBuffer] = []
-        defer { for buffer in workerBuffers { buffer.raw.deallocate() } }
+        var backgroundBuffers: [ReadBuffer] = []
+        let inFlightGroup = DispatchGroup()
+        var inFlightFolders: [Folder] = []
+        var inFlightResults: OSAllocatedUnfairLock<[PrefetchedFolder?]>?
+        var inFlightCancelled: OSAllocatedUnfairLock<Bool>?
+        func collectBackgroundPrefetch() {
+            guard !inFlightFolders.isEmpty else { return }
+            inFlightGroup.wait()
+            let folders = inFlightFolders
+            inFlightFolders.removeAll(keepingCapacity: true)
+            let fetched = inFlightResults?.withLock { $0 } ?? []
+            let wasCancelled = inFlightCancelled?.withLock { $0 } ?? false
+            inFlightResults = nil
+            inFlightCancelled = nil
+            guard !wasCancelled else { return }
+            for (index, folder) in folders.enumerated() where index < fetched.count {
+                if let result = fetched[index] {
+                    prefetched[folder.id] = result
+                }
+            }
+        }
+        defer {
+            inFlightGroup.wait()
+            for buffer in workerBuffers { buffer.raw.deallocate() }
+            for buffer in backgroundBuffers { buffer.raw.deallocate() }
+        }
         var changed = false
         while var next = work.popLast() {
             if !prefetched.isEmpty, prefetched[next.folder.id] == nil {
@@ -667,7 +700,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                     swap(&next, &work[index])
                 } else {
                     prefetched.removeAll(keepingCapacity: true)
+                    collectBackgroundPrefetch()
                 }
+            } else if prefetched.isEmpty, !inFlightFolders.isEmpty {
+                collectBackgroundPrefetch()
             }
             if interrupted || stopForQuit() { break }
             if prefetched.isEmpty, !work.isEmpty {
@@ -690,9 +726,79 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 }
             }
             if next.deep { work.append(contentsOf: pass.descend(folder.id).map { ($0, true) }) }
+            if !prefetched.isEmpty, inFlightFolders.isEmpty, !work.isEmpty, !interrupted, !shouldStopRefresh {
+                startBackgroundPrefetch(from: work, rootID: id, rootNames: names, pass: pass, prefetched: prefetched,
+                                        buffers: &backgroundBuffers, group: inFlightGroup,
+                                        inFlightFolders: &inFlightFolders,
+                                        inFlightResults: &inFlightResults,
+                                        inFlightCancelled: &inFlightCancelled)
+            }
         }
         if deep, !interrupted { pass.finishedDeepRead(path) }
         return changed
+    }
+
+    private func startBackgroundPrefetch(from work: [(folder: Folder, deep: Bool)],
+                                         rootID: Int32, rootNames: Set<String>?, pass: RefreshPass,
+                                         prefetched: [Int32: PrefetchedFolder],
+                                         buffers backgroundBuffers: inout [ReadBuffer],
+                                         group: DispatchGroup,
+                                         inFlightFolders: inout [Folder],
+                                         inFlightResults: inout OSAllocatedUnfairLock<[PrefetchedFolder?]>?,
+                                         inFlightCancelled: inout OSAllocatedUnfairLock<Bool>?) {
+        var candidates: [Folder] = []
+        candidates.reserveCapacity(min(Self.prefetchBatchLimit, work.count))
+        var seen: Set<Int32> = []
+        seen.reserveCapacity(min(Self.prefetchBatchLimit, work.count))
+        for entry in work.reversed() {
+            let folder = entry.folder
+            guard prefetched[folder.id] == nil,
+                  folder.id != rootID || rootNames == nil,
+                  !pass.hasListedFull(folder.id),
+                  seen.insert(folder.id).inserted else { continue }
+            candidates.append(folder)
+            if candidates.count >= Self.prefetchBatchLimit { break }
+        }
+        let foldersToRead = candidates
+        let workers = min(foldersToRead.count, max(1, IndexScanner.performanceCores))
+        guard foldersToRead.count >= 4, workers >= 2 else { return }
+        while backgroundBuffers.count < workers {
+            backgroundBuffers.append(ReadBuffer(raw: .allocate(byteCount: 256 * 1024, alignment: 16)))
+        }
+        let buffers = backgroundBuffers
+        let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
+        let nextIndex = OSAllocatedUnfairLock(initialState: 0)
+        let batchCancelled = OSAllocatedUnfairLock(initialState: false)
+        inFlightFolders = foldersToRead
+        inFlightResults = results
+        inFlightCancelled = batchCancelled
+        group.enter()
+        DispatchQueue.global(qos: .default).async(qos: .default, flags: .enforceQoS) {
+            defer { group.leave() }
+            DispatchQueue.concurrentPerform(iterations: workers) { workerIndex in
+                let buffer = buffers[workerIndex].raw
+                while true {
+                    if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
+                    let index = nextIndex.withLock { current -> Int? in
+                        guard current < foldersToRead.count else { return nil }
+                        defer { current += 1 }
+                        return current
+                    }
+                    guard let index else { break }
+                    var items: [ScannedItem] = []
+                    var names: [UInt8] = []
+                    let folder = foldersToRead[index]
+                    let error = self.readDirectory(folder.path, &items, &names, buffer) {
+                        self.shouldStopRefresh
+                    }
+                    if error == ECANCELED {
+                        batchCancelled.withLock { $0 = true }
+                    }
+                    let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
+                    results.withLock { $0[index] = PrefetchedFolder(error: error, listing: listing) }
+                }
+            }
+        }
     }
 
     private func prefetchFolders(current: inout (folder: Folder, deep: Bool),
@@ -727,29 +833,35 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
         let nextIndex = OSAllocatedUnfairLock(initialState: 0)
         let batchCancelled = OSAllocatedUnfairLock(initialState: false)
-        DispatchQueue.concurrentPerform(iterations: workers) { workerIndex in
-            let buffer = buffers[workerIndex].raw
-            while true {
-                if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
-                let index = nextIndex.withLock { current -> Int? in
-                    guard current < foldersToRead.count else { return nil }
-                    defer { current += 1 }
-                    return current
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .default).async(qos: .default, flags: .enforceQoS) {
+            defer { group.leave() }
+            DispatchQueue.concurrentPerform(iterations: workers) { workerIndex in
+                let buffer = buffers[workerIndex].raw
+                while true {
+                    if batchCancelled.withLock({ $0 }) || self.shouldStopRefresh { break }
+                    let index = nextIndex.withLock { current -> Int? in
+                        guard current < foldersToRead.count else { return nil }
+                        defer { current += 1 }
+                        return current
+                    }
+                    guard let index else { break }
+                    var items: [ScannedItem] = []
+                    var names: [UInt8] = []
+                    let folder = foldersToRead[index]
+                    let error = self.readDirectory(folder.path, &items, &names, buffer) {
+                        self.shouldStopRefresh
+                    }
+                    if error == ECANCELED {
+                        batchCancelled.withLock { $0 = true }
+                    }
+                    let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
+                    results.withLock { $0[index] = PrefetchedFolder(error: error, listing: listing) }
                 }
-                guard let index else { break }
-                var items: [ScannedItem] = []
-                var names: [UInt8] = []
-                let folder = foldersToRead[index]
-                let error = self.readDirectory(folder.path, &items, &names, buffer) {
-                    self.shouldStopRefresh
-                }
-                if error == ECANCELED {
-                    batchCancelled.withLock { $0 = true }
-                }
-                let listing = error == 0 ? FolderListing(items: items, names: names, path: folder.path) : nil
-                results.withLock { $0[index] = PrefetchedFolder(error: error, listing: listing) }
             }
         }
+        group.wait()
 
         let fetched = results.withLock { $0 }
         let wasCancelled = batchCancelled.withLock { $0 }
@@ -858,6 +970,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         func name(of item: ScannedItem) -> String {
             String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
         }
+
+        func path(of item: ScannedItem) -> String {
+            prefix + name(of: item)
+        }
     }
 
     /// What a folder's listing changed in the index, and what's left to read below it.
@@ -914,16 +1030,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let inherited = (noise: store.flags[Int(id)] & IndexStore.Flag.noise != 0 || store.isOpaquePackage(id),
                          hidden: store.flags[Int(id)] & IndexStore.Flag.hidden != 0)
         for (index, item) in listing.items.enumerated() {
-            let name = listing.name(of: item)
-            guard let old = existing.removeValue(forKey: name) else {
+            guard let old = existing.removeValue(in: listing.names, offset: item.nameOffset, length: item.nameLength, from: store) else {
                 changes.add(item, noise: listing.ownNoise[index])
                 continue
             }
-            let childPath = item.isDirectory ? listing.prefix + name : ""
+            let childPath = item.isDirectory ? listing.path(of: item) : ""
             let expectedNoise = item.isDirectory
                 && (inherited.noise || listing.ownNoise[index] || (!config.noise.isEmpty && config.noise.contains(childPath)))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
-                changes.record(changes.needsPath ? (item.isDirectory ? childPath : listing.prefix + name) : "",
+                changes.record(changes.needsPath ? (item.isDirectory ? childPath : listing.path(of: item)) : "",
                                hiddenOrNoise: store.isHiddenOrNoise(old),
                                noise: store.isNoise(old) && ( !item.isDirectory || expectedNoise ))
                 removals.append(old)
@@ -934,7 +1049,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else {
                 let sizeChanged = store.size[Int(old)] != item.size || store.allocatedSize(old) != item.allocatedSize
                 if sizeChanged || store.mtime[Int(old)] != item.mtime {
-                    changes.record(changes.needsPath ? listing.prefix + name : "", hiddenOrNoise: store.isHiddenOrNoise(old),
+                    changes.record(changes.needsPath ? listing.path(of: item) : "", hiddenOrNoise: store.isHiddenOrNoise(old),
                                    noise: store.isNoise(old), affectsCapacity: sizeChanged)
                     store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
                                      bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
@@ -943,7 +1058,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
         store.propagateTotals(from: id, bytes: bytesDelta, files: 0, allocatedBytes: allocatedDelta)
         // Replacements share the same bulk removal as missing items; unchanged siblings must not be walked per item.
-        removals.append(contentsOf: existing.values)
+        existing.appendRemaining(to: &removals)
         if !removals.isEmpty {
             for removed in removals {
                 if !changes.needsPath, changes.changed, changes.nonNoiseChanged { break }

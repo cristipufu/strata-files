@@ -384,12 +384,24 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         /// Removes several children of one folder with a single pass over its child list (removing them one by one
         /// walks the list each time: deleting 60k files in one folder took over a second under the write lock).
         package mutating func removeChildren(_ ids: [Int32], of parentID: Int32) {
-            let gone = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
-            guard !gone.isEmpty else { return }
+            guard !ids.isEmpty else { return }
+            var goneList: [Int32] = []
+            var goneSet: Set<Int32>?
+            if ids.count <= 8 {
+                goneList.reserveCapacity(ids.count)
+                for id in ids where flags[Int(id)] & Flag.deleted == 0 && parent[Int(id)] == parentID {
+                    if !goneList.contains(id) { goneList.append(id) }
+                }
+                guard !goneList.isEmpty else { return }
+            } else {
+                let set = Set(ids.filter { flags[Int($0)] & Flag.deleted == 0 && parent[Int($0)] == parentID })
+                guard !set.isEmpty else { return }
+                goneSet = set
+            }
             var bytesDelta: Int64 = 0
             var filesDelta: Int64 = 0
             var allocatedDelta: Int64 = 0
-            for id in gone {
+            func retire(_ id: Int32) {
                 removingAllocationChild(id)
                 bytesDelta = bytesDelta.saturatingAdd(-max(0, size[Int(id)]))
                 filesDelta = filesDelta.saturatingAdd(-Int64(fileCount[Int(id)]))
@@ -408,12 +420,18 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                     }
                 }
             }
+            if let goneSet {
+                for id in goneSet { retire(id) }
+            } else {
+                for id in goneList { retire(id) }
+            }
             propagateTotals(from: parentID, bytes: bytesDelta, files: filesDelta, allocatedBytes: allocatedDelta)
             var head: Int32 = -1, tail: Int32 = -1
             var child = firstChild[Int(parentID)]
             while child >= 0 {
                 let next = nextSibling[Int(child)]
-                if !gone.contains(child) {
+                let isGone = goneSet?.contains(child) ?? goneList.contains(child)
+                if !isGone {
                     if tail < 0 { head = child } else { nextSibling[Int(tail)] = child }
                     tail = child
                 }
@@ -546,18 +564,113 @@ nonisolated package final class IndexStore: @unchecked Sendable {
             return result
         }
 
-        /// Live children of `id` keyed by name, or only those in `selectedNames` without allocating sibling strings.
-        package func children(of id: Int32, matching selectedNames: Set<String>?) -> [String: Int32] {
-            var existing: [String: Int32] = [:]
-            guard let selectedNames else {
-                var child = firstChild[Int(id)]
-                while child >= 0 {
-                    existing[name(child)] = child
-                    child = nextSibling[Int(child)]
-                }
-                return existing
+        /// Matches listed UTF-8 names against a folder's live children without allocating per-child `String`s.
+        package struct ChildLookup {
+            private var selected: [String: Int32]?
+            private var ids: [Int32] = []
+            private var slots: [Int32] = []
+            private var mask = 0
+            private var unicodeRemaining = 0
+
+            fileprivate init(selected: [String: Int32]) {
+                self.selected = selected
             }
-            guard !selectedNames.isEmpty else { return existing }
+
+            fileprivate init(of parentID: Int32, in store: borrowing Storage) {
+                var child = store.firstChild[Int(parentID)]
+                while child >= 0 {
+                    ids.append(child)
+                    if store.flags[Int(child)] & Flag.unicodeName != 0 { unicodeRemaining += 1 }
+                    child = store.nextSibling[Int(child)]
+                }
+                guard !ids.isEmpty else { return }
+                var capacity = 8
+                let needed = max(8, ids.count * 2)
+                while capacity < needed { capacity <<= 1 }
+                mask = capacity - 1
+                slots = [Int32](repeating: -1, count: capacity)
+                store.names.withUnsafeBufferPointer { buffer in
+                    guard let base = buffer.baseAddress else { return }
+                    for (index, id) in ids.enumerated() {
+                        let start = Int(store.nameStart[Int(id)])
+                        let length = Int(store.nameLength[Int(id)])
+                        var hash: UInt64 = 0xcbf29ce484222325
+                        for offset in start..<(start + length) {
+                            hash ^= UInt64(base[offset])
+                            hash &*= 0x100000001b3
+                        }
+                        var slot = Int(truncatingIfNeeded: hash) & mask
+                        while slots[slot] >= 0 { slot = (slot + 1) & mask }
+                        slots[slot] = Int32(index)
+                    }
+                }
+            }
+
+            package subscript(_ name: String) -> Int32? {
+                selected?[name]
+            }
+
+            package mutating func removeValue(in listingNames: [UInt8], offset: Int, length: Int,
+                                              from store: borrowing Storage) -> Int32? {
+                if selected != nil {
+                    let key = String(decoding: listingNames[offset..<(offset + length)], as: UTF8.self)
+                    return selected?.removeValue(forKey: key)
+                }
+                guard !ids.isEmpty else { return nil }
+                var hash: UInt64 = 0xcbf29ce484222325
+                var hasNonASCII = false
+                let end = offset + length
+                return listingNames.withUnsafeBufferPointer { buffer in
+                    guard let base = buffer.baseAddress, offset >= 0, end <= buffer.count else { return nil }
+                    for i in offset..<end {
+                        let byte = base[i]
+                        if byte >= 0x80 { hasNonASCII = true }
+                        hash ^= UInt64(byte)
+                        hash &*= 0x100000001b3
+                    }
+                    var slot = Int(truncatingIfNeeded: hash) & mask
+                    while true {
+                        let index = slots[slot]
+                        if index < 0 { break }
+                        let child = ids[Int(index)]
+                        if child >= 0, store.nameEquals(child, base + offset, length: length) {
+                            ids[Int(index)] = -1
+                            if store.flags[Int(child)] & Flag.unicodeName != 0 { unicodeRemaining -= 1 }
+                            return child
+                        }
+                        slot = (slot + 1) & mask
+                    }
+                    guard hasNonASCII || unicodeRemaining > 0 else { return nil }
+                    let target = String(decoding: UnsafeBufferPointer(rebasing: buffer[offset..<end]), as: UTF8.self)
+                    for index in ids.indices {
+                        let child = ids[index]
+                        guard child >= 0, hasNonASCII || (store.flags[Int(child)] & Flag.unicodeName != 0) else { continue }
+                        if store.name(child) == target {
+                            ids[index] = -1
+                            if store.flags[Int(child)] & Flag.unicodeName != 0 { unicodeRemaining -= 1 }
+                            return child
+                        }
+                    }
+                    return nil
+                }
+            }
+
+            package func appendRemaining(to removals: inout [Int32]) {
+                if let selected {
+                    removals.append(contentsOf: selected.values)
+                } else {
+                    for id in ids where id >= 0 { removals.append(id) }
+                }
+            }
+        }
+
+        /// Live children of `id` keyed by name, or only those in `selectedNames` without allocating sibling strings.
+        package func children(of id: Int32, matching selectedNames: Set<String>?) -> ChildLookup {
+            guard let selectedNames else {
+                return ChildLookup(of: id, in: self)
+            }
+            var existing: [String: Int32] = [:]
+            guard !selectedNames.isEmpty else { return ChildLookup(selected: existing) }
             existing.reserveCapacity(selectedNames.count)
             let wanted = selectedNames.map { (name: $0, bytes: Array($0.utf8)) }
             let hasNonASCII = wanted.contains { $0.bytes.contains { $0 >= 0x80 } }
@@ -571,7 +684,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 }
                 child = nextSibling[Int(child)]
             }
-            return existing
+            return ChildLookup(selected: existing)
         }
 
         /// Whether any directory child of `id` has a name in `selectedNames`, without allocating sibling strings.
@@ -640,15 +753,20 @@ nonisolated package final class IndexStore: @unchecked Sendable {
         }
 
         package func nameEquals(_ id: Int32, _ bytes: [UInt8]) -> Bool {
-            let length = Int(nameLength[Int(id)])
-            guard length == bytes.count else { return false }
-            guard length > 0 else { return true }
+            bytes.withUnsafeBufferPointer { wanted in
+                guard let wantedBase = wanted.baseAddress else { return nameLength[Int(id)] == 0 && bytes.isEmpty }
+                return nameEquals(id, wantedBase, length: bytes.count)
+            }
+        }
+
+        package func nameEquals(_ id: Int32, _ wantedBase: UnsafePointer<UInt8>, length: Int) -> Bool {
+            let storedLength = Int(nameLength[Int(id)])
+            guard storedLength == length else { return false }
+            guard storedLength > 0 else { return true }
             let start = Int(nameStart[Int(id)])
             return names.withUnsafeBufferPointer { buffer in
-                bytes.withUnsafeBufferPointer { wanted in
-                    guard let base = buffer.baseAddress, let wantedBase = wanted.baseAddress else { return false }
-                    return memcmp(base + start, wantedBase, length) == 0
-                }
+                guard let base = buffer.baseAddress else { return false }
+                return memcmp(base + start, wantedBase, storedLength) == 0
             }
         }
 
