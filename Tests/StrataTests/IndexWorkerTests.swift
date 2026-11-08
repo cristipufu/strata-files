@@ -1200,13 +1200,8 @@ struct IndexWorkerTests {
         try tree.add(["a/added.txt", "b/new.txt"])
 
         let scans = OSAllocatedUnfairLock(initialState: 0)
-        let watchStarts = OSAllocatedUnfairLock(initialState: 0)
-        let rebuilt = DispatchSemaphore(value: 0)
         let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
-        let fixture = try await start(tree, startEvents: { _, _ in
-            if watchStarts.withLock({ $0 += 1; return $0 }) == 2 { rebuilt.signal() }
-            return true
-        }, onPhase: { phase in
+        let fixture = try await start(tree, startEvents: { _, _ in true }, onPhase: { phase in
             phases.withLock { $0.append(phase) }
             if phase == .scanning(items: 0) { scans.withLock { $0 += 1 } }
         })
@@ -1214,7 +1209,7 @@ struct IndexWorkerTests {
 
         let dropFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped)
         fixture.worker.receive([.init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 10)])
-        try #require(try await TestWork.run { rebuilt.wait(timeout: .now() + 20) == .success })
+        await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
 
         #expect(scans.withLock { $0 } == 1)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
@@ -1229,6 +1224,48 @@ struct IndexWorkerTests {
         await save(fixture.worker)
         #expect(scans.withLock { $0 } == 1)
         #expect(phases.withLock { $0.last } == .ready)
+        #expect(tree.text("a/one.txt") == "a/one.txt")
+    }
+
+    @Test func unfinishedFoldersFromAnInterruptedBatchHoldBackTheSavedEventIDAndFinishInTheNextBatch() async throws {
+        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt", "c/three.txt")
+        let cancelB = OSAllocatedUnfairLock(initialState: true)
+        let bPath = tree.url("b").path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            if path == bPath, cancelB.withLock({ $0 }) { return ECANCELED }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        let (_, initialHeader) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+
+        try tree.add(["a/added-a.txt", "b/added-b.txt", "c/added-c.txt"])
+        fixture.worker.receive([
+            .init(path: tree.url("a").path, flags: 0, id: initialHeader.eventID + 10),
+            .init(path: bPath, flags: 0, id: initialHeader.eventID + 11),
+        ])
+        await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
+
+        let (afterFirst, firstHeader) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(firstHeader.eventID == initialHeader.eventID)
+        #expect(afterFirst.read { $0.lookup(tree.url("a/added-a.txt").path) } != nil)
+        #expect(afterFirst.read { $0.lookup(tree.url("b/added-b.txt").path) } == nil)
+
+        // A later batch cannot advance the saved event ID while `b` from the first batch is still unfinished.
+        fixture.worker.receive([.init(path: tree.url("c").path, flags: 0, id: initialHeader.eventID + 20)])
+        await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
+
+        let (_, secondHeader) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(secondHeader.eventID == initialHeader.eventID)
+
+        // Once `b` can be read, the next batch finishes `b` and `c` and advances the saved event ID.
+        cancelB.withLock { $0 = false }
+        fixture.worker.receive([.init(path: tree.url("c").path, flags: 0, id: initialHeader.eventID + 30)])
+        await save(fixture.worker)
+
+        let (finalStore, finalHeader) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(finalHeader.eventID == initialHeader.eventID + 30)
+        for item in ["a/added-a.txt", "b/added-b.txt", "c/added-c.txt"] {
+            #expect(finalStore.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
+        }
         #expect(tree.text("a/one.txt") == "a/one.txt")
     }
 }

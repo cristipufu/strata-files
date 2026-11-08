@@ -9593,5 +9593,19 @@
     "replace": "        startWatching(config, canRebuildOnDrop: true)",
     "rule": "A dropped event during post-rebuild catch-up does not start a second full rebuild",
     "tests": "IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {",
+    "replace": "                if false {",
+    "rule": "Replay event budget escalates huge historical replays to an immediate rebuild",
+    "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        for (path, refresh) in remaining {\n            if pending[path] != nil { pending[path]?.merge(refresh) }\n            else { pending[path] = refresh }\n        }",
+    "replace": "        _ = remaining",
+    "rule": "Unfinished folders from an interrupted refresh remain pending for the next batch",
+    "tests": "IndexWorkerTests/unfinishedFoldersFromAnInterruptedBatchHoldBackTheSavedEventIDAndFinishInTheNextBatch"
   }
 ]

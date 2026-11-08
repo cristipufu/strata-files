@@ -39,6 +39,14 @@ struct IndexEventInboxTests {
         #expect(postRebuild.invalidation == nil && postRebuild.folders["/fixture"]?.isDeep == true)
         #expect(inbox.append([.init(path: "/fixture", flags: dropFlags, id: 13)], generation: generation))
         #expect(try #require(inbox.take()).invalidation?.droppedEvents == true)
+
+        let budgeted = IndexEventInbox(replayEventLimit: 3)
+        budgeted.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true, canRebuildOnDrop: true)
+        for index in 1...3 {
+            #expect(!budgeted.append([.init(path: "/fixture/f-\(index)", flags: 0, id: UInt64(20 + index))], generation: generation))
+        }
+        #expect(budgeted.append([.init(path: "/fixture/f-4", flags: 0, id: 24)], generation: generation))
+        #expect(try #require(budgeted.take()).invalidation?.id == 24)
     }
 
     @Test func aWideFolderBurstNeedsOnlyOneShallowListing() throws {

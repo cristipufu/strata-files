@@ -5,6 +5,7 @@ import os
 /// Coalesces callbacks before they reach the worker queue, including while that queue is scanning a slow folder.
 nonisolated package final class IndexEventInbox: Sendable {
     package static let defaultFolderLimit = 4096
+    package static let defaultReplayEventLimit = 250_000
 
     package struct Delivery: Sendable {
         package let generation: UUID
@@ -20,6 +21,7 @@ nonisolated package final class IndexEventInbox: Sendable {
         var excluded: Set<String> = []
         var folders: [String: IndexRefresh] = [:]
         var collapsed: Set<String> = []
+        var replayedEvents = 0
         var lastID: UInt64 = 0
         var historyDone = false
         var invalidation: FSEventsStream.Event?
@@ -30,6 +32,7 @@ nonisolated package final class IndexEventInbox: Sendable {
         mutating func clear() {
             folders.removeAll(keepingCapacity: true)
             collapsed.removeAll(keepingCapacity: true)
+            replayedEvents = 0
             lastID = 0
             historyDone = false
             invalidation = nil
@@ -39,9 +42,12 @@ nonisolated package final class IndexEventInbox: Sendable {
 
     private let pending = OSAllocatedUnfairLock(initialState: Pending())
     private let folderLimit: Int
+    private let replayEventLimit: Int
 
-    package init(folderLimit: Int = IndexEventInbox.defaultFolderLimit) {
+    package init(folderLimit: Int = IndexEventInbox.defaultFolderLimit,
+                 replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit) {
         self.folderLimit = max(1, folderLimit)
+        self.replayEventLimit = max(1, replayEventLimit)
     }
 
     package func reset(generation: UUID, roots: [String], excluded: Set<String> = [], waitingForHistory: Bool = false,
@@ -71,6 +77,14 @@ nonisolated package final class IndexEventInbox: Sendable {
                     state.canRebuildOnDrop = false
                     state.invalidation = event
                     continue
+                }
+                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {
+                    state.replayedEvents += 1
+                    if state.replayedEvents > replayEventLimit {
+                        state.canRebuildOnDrop = false
+                        state.invalidation = event
+                        continue
+                    }
                 }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }

@@ -59,7 +59,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     /// launch replays those changes.
     private var interrupted = false
     private let events = FSEventsStream()
-    private let incoming = IndexEventInbox()
+    private let incoming: IndexEventInbox
     private let watchesChanges: Bool
     private let readDirectory: DirectoryRead
     private let readItem: ItemRead
@@ -83,9 +83,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
     package init(watchesChanges: Bool = true, saveInterval: TimeInterval = IndexWorker.defaultSaveInterval,
+                 replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
                  readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil) {
+        self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
         self.readDirectory = readDirectory
@@ -139,7 +141,6 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Writes any pending changes without a quit deadline (used before sleep).
     package func saveWhenIdle(completion: @escaping @Sendable () -> Void = {}) {
-        guard !scanning.withLock({ $0 }) else { completion(); return }
         queue.async {
             self.compactIfNeeded()
             self.save()
@@ -203,6 +204,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         defer { scanning.withLock { $0 = false } }
         events.stop()
         let startEventID = FSEventsStream.currentEventID
+        lastEventID = startEventID
+        pendingEventID = startEventID
+        pending.removeAll()
+        rescanNeeded = false
+        interrupted = false
+        // Start listening from `startEventID` before scanning so changes during the scan buffer in `incoming`
+        // instead of replaying from disk afterwards; a drop in this window refreshes folders rather than starting a second scan.
+        startWatching(config, canRebuildOnDrop: false)
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise)
@@ -225,15 +234,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         store = fresh
         dirty = true
         lastEventID = startEventID
-        pendingEventID = startEventID
         savedExcluded = config.excluded
-        pending.removeAll()
-        rescanNeeded = false
-        interrupted = false
         onStore?(fresh)
         save()
-        // Replays whatever changed during the scan; a drop in this short window refreshes folders rather than starting a second scan.
-        startWatching(config, canRebuildOnDrop: false)
+        if watchesChanges, !watchingFailed { publish(.updating) }
+        finishUpdates()
     }
 
     private func startWatching(_ config: IndexConfig, canRebuildOnDrop: Bool = true) {
@@ -275,6 +280,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // Newly allowed folders get scanned; newly excluded ones are emptied.
         publish(.updating)
         defer { finishUpdates() }
+        interrupted = false
         var pass = RefreshPass()
         for path in old.subtracting(config.excluded).sorted() {
             if interrupted || stopForQuit() { break }
@@ -330,6 +336,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 if self.pending[path] != nil { self.pending[path]?.merge(refresh) }
                 else { self.pending[path] = refresh }
             }
+            if !delivery.folders.isEmpty, !self.pastQuitDeadline {
+                self.interrupted = false
+            }
             if self.pending.count > IndexEventInbox.defaultFolderLimit {
                 var collapsed: Set<String> = []
                 IndexEventInbox.collapse(&self.pending, collapsed: &collapsed, roots: self.config?.roots ?? [],
@@ -374,10 +383,14 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let work = pending.sorted { $0.key < $1.key }
         let targetEventID = pendingEventID
         pending.removeAll()
+        interrupted = false
         var pass = RefreshPass()
         var changed = false
-        for (path, refresh) in work {
-            if interrupted || stopForQuit() { break }
+        for (index, (path, refresh)) in work.enumerated() {
+            if interrupted || stopForQuit() {
+                restoreUnfinished(work[index...])
+                break
+            }
             if pass.covers(path) { continue }
             if isExcluded(path, config) { continue }
             // The folder may be new: refresh the nearest ancestor we already know about.
@@ -394,12 +407,23 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             guard let (id, target) = resolved else { continue }
             if pass.covers(target) { continue }
             if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
+            if interrupted {
+                restoreUnfinished(work[index...])
+                break
+            }
         }
         if !interrupted {
             lastEventID = max(lastEventID, targetEventID)
         }
         // Coalesced events may cover unchanged folders. Only actual differences need a save and a UI refresh.
         if changed { markChanged(pass.changes, scheduleSave: pass.nonNoiseChanged && !interrupted) }
+    }
+
+    private func restoreUnfinished(_ remaining: ArraySlice<(key: String, value: IndexRefresh)>) {
+        for (path, refresh) in remaining {
+            if pending[path] != nil { pending[path]?.merge(refresh) }
+            else { pending[path] = refresh }
+        }
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
