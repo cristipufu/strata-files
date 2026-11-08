@@ -69,7 +69,8 @@ package nonisolated enum TextExtractor {
 
     @concurrent
     package static func extract(_ url: URL, options: Options = Options()) async -> ExtractedText? {
-        guard !Task.isCancelled, options.maxCharacters > 0, options.maxFileBytes >= 0 else { return nil }
+        guard !Task.isCancelled, options.maxCharacters > 0, options.maxFileBytes >= 0,
+              !DatalessFile.isDataless(url.path) else { return nil }
         let ext = url.pathExtension.lowercased()
         let type = UTType(filenameExtension: ext)
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
@@ -135,15 +136,17 @@ package nonisolated enum TextExtractor {
 
     package static func rich(_ url: URL, type: NSAttributedString.DocumentType, maxBytes: Int = 50 << 20,
                              maxCharacters: Int = 120_000) -> ExtractedText? {
-        guard !Task.isCancelled, maxBytes >= 0, maxCharacters > 0 else { return nil }
-        let document: STExtractedDocument?
-        if type == .rtfd {
-            var info = stat()
-            guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return nil }
-            document = try? STDocumentReader.richText(url, type: type, maxCharacters: UInt(maxCharacters))
-        } else {
-            guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maxBytes), !truncated else { return nil }
-            document = try? STDocumentReader.richText(data, type: type, maxCharacters: UInt(maxCharacters))
+        guard !Task.isCancelled, maxBytes >= 0, maxCharacters > 0, !DatalessFile.isDataless(url.path) else { return nil }
+        let document: STExtractedDocument? = DatalessFile.withoutMaterializing {
+            if type == .rtfd {
+                var info = stat()
+                guard lstat(url.path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR,
+                      !DatalessFile.isDataless(info), !DatalessFile.containsDataless(url) else { return nil }
+                return try? STDocumentReader.richText(url, type: type, maxCharacters: UInt(maxCharacters))
+            } else {
+                guard let (data, truncated) = try? TextFile.readPrefix(url, limit: maxBytes), !truncated else { return nil }
+                return try? STDocumentReader.richText(data, type: type, maxCharacters: UInt(maxCharacters))
+            }
         }
         guard !Task.isCancelled, let document else { return nil }
         return ExtractedText(text: document.text.replacingOccurrences(of: "\u{FFFC}", with: " "),
@@ -180,25 +183,28 @@ package nonisolated enum TextExtractor {
     }
 
     private static func boundedData(_ url: URL, limit: Int64) -> Data? {
-        guard limit >= 0, limit < Int64(Int.max) else { return nil }
-        let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return nil }
-        let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        defer { try? file.close() }
-        var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0, info.st_size <= limit else { return nil }
-        var data = Data()
-        data.reserveCapacity(Int(info.st_size))
-        let chunkSize = 64 * 1024
-        do {
-            while !Task.isCancelled {
-                let remaining = Int(limit) - data.count
-                guard let chunk = try FileRead.chunk(file, upToCount: min(chunkSize, remaining + 1)), !chunk.isEmpty else { return data }
-                guard chunk.count <= remaining else { return nil }
-                data.append(chunk)
-            }
-        } catch { return nil }
-        return nil
+        guard limit >= 0, limit < Int64(Int.max), !DatalessFile.isDataless(url.path) else { return nil }
+        return DatalessFile.withoutMaterializing {
+            let fd = open(url.path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
+            guard fd >= 0 else { return nil }
+            let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            defer { try? file.close() }
+            var info = stat()
+            guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, !DatalessFile.isDataless(info),
+                  info.st_size >= 0, info.st_size <= limit else { return nil }
+            var data = Data()
+            data.reserveCapacity(Int(info.st_size))
+            let chunkSize = 64 * 1024
+            do {
+                while !Task.isCancelled {
+                    let remaining = Int(limit) - data.count
+                    guard let chunk = try FileRead.chunk(file, upToCount: min(chunkSize, remaining + 1)), !chunk.isEmpty else { return data }
+                    guard chunk.count <= remaining else { return nil }
+                    data.append(chunk)
+                }
+            } catch { return nil }
+            return nil
+        }
     }
 
     private static let ocrPixelLimit: UInt = 120_000_000

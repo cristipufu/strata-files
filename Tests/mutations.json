@@ -8395,8 +8395,8 @@
   },
   {
     "file": "Strata/AI/SemanticIndex.swift",
-    "find": "        guard !Task.isCancelled else { return }\n        store(record, at: path)",
-    "replace": "        store(record, at: path)",
+    "find": "        guard !Task.isCancelled else { return }\n        if let record { store(record, at: path) }",
+    "replace": "        if let record { store(record, at: path) }",
     "rule": "Semantic cancellation preserves existing passages after a cancelled refresh",
     "tests": "EmbedderCancellationTests/aCancelledRefreshPreservesItsExistingPassagesAndSavedIndex"
   },
@@ -9523,5 +9523,26 @@
     "replace": "            if false {\n                changes.newFolders.append((old, path))\n            } else {",
     "rule": "A folder added before an interrupted refresh is still scanned deeply on the next parent refresh",
     "tests": "IndexWorkerTests/quittingPartwayThroughADeepRefreshKeepsCompletedBranchesAndCatchesUpOnNextLaunch"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "                if isDataless(url, isPackage: isRTFD, configuration: configuration) {\n                    dataless.insert(path)\n                    continue\n                }",
+    "replace": "",
+    "rule": "Content indexing skips dataless cloud files without stamping them",
+    "tests": "SemanticProgressTests/datalessCloudFilesAreSkippedWithoutStampingAndIndexedOnceDownloadedWithUnchangedMetadata"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "        for path in files.keys where scanned.found[path] == nil && !Self.isDatalessOrInsideDataless(path, dataless: scanned.dataless) {",
+    "replace": "        for path in files.keys where scanned.found[path] == nil {",
+    "rule": "Documents offloaded to iCloud stay in the content index",
+    "tests": "SemanticProgressTests/datalessCloudFilesAreSkippedWithoutStampingAndIndexedOnceDownloadedWithUnchangedMetadata"
+  },
+  {
+    "file": "Strata/AI/SemanticIndex.swift",
+    "find": "                    if configuration.isDataless(url) {\n                        dataless.insert(url.lexicallyStandardized.path)\n                        enumerator.skipDescendants()\n                        continue\n                    }",
+    "replace": "",
+    "rule": "Dataless folders are skipped without materializing or dropping their indexed documents",
+    "tests": "SemanticProgressTests/datalessCloudFilesAreSkippedWithoutStampingAndIndexedOnceDownloadedWithUnchangedMetadata"
   }
 ]

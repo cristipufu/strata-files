@@ -147,4 +147,69 @@ struct SemanticProgressTests {
         try await index.update()
         #expect(await index.indexedFileCount == 1)
     }
+
+    @Test func datalessCloudFilesAreSkippedWithoutStampingAndIndexedOnceDownloadedWithUnchangedMetadata() async throws {
+        let tree = try TestTree("documents/local.txt", "documents/cloud.txt", "documents/evicted-during-pass.txt",
+                                "documents/package.rtfd/TXT.rtf", "documents/archived/inside.txt")
+        let cloudURL = tree.url("documents/cloud.txt")
+        let evictedURL = tree.url("documents/evicted-during-pass.txt")
+        let packageMemberURL = tree.url("documents/package.rtfd/TXT.rtf")
+        let archivedFolderURL = tree.url("documents/archived")
+        try Data("{\\rtf1\\ansi bundled note}".utf8).write(to: packageMemberURL)
+        let initialCloudAttrs = try FileManager.default.attributesOfItem(atPath: cloudURL.path)
+        let datalessNames = Mutex<Set<String>>([
+            cloudURL.lastPathComponent, packageMemberURL.lastPathComponent, archivedFolderURL.lastPathComponent,
+        ])
+        let embeddedCount = Mutex(0)
+
+        var config = configuration(tree)
+        config.minimumScore = 0
+        config.isDataless = { url in datalessNames.withLock { $0.contains(url.lastPathComponent) } }
+        let embedder = Embedder(label: "strata.tests.semantic-dataless", qos: .utility, sentences: false) { _, _ in
+            embeddedCount.withLock { $0 += 1 }
+            return PassageEmbedding()
+        }
+        let index = SemanticIndex(configuration: config, indexEmbedder: embedder, queryEmbedder: embedder)
+        let firstPassTotal = Mutex<Int?>(nil)
+
+        try await index.update { report in
+            if report.phase == .indexing {
+                firstPassTotal.withLock { if $0 == nil { $0 = report.total } }
+                if report.current?.lastPathComponent == evictedURL.lastPathComponent {
+                    datalessNames.withLock { _ = $0.insert(evictedURL.lastPathComponent) }
+                }
+            }
+        }
+        await index.refresh(cloudURL)
+        #expect(firstPassTotal.withLock { $0 } == 2)
+        #expect(await index.indexedFileCount == 1)
+        #expect(embeddedCount.withLock { $0 } == 1)
+
+        // Downloading a dataless file clears SF_DATALESS without changing its size or modification date.
+        let afterSkipAttrs = try FileManager.default.attributesOfItem(atPath: cloudURL.path)
+        #expect(afterSkipAttrs[.size] as? NSNumber == initialCloudAttrs[.size] as? NSNumber)
+        #expect(afterSkipAttrs[.modificationDate] as? Date == initialCloudAttrs[.modificationDate] as? Date)
+
+        datalessNames.withLock { $0.removeAll() }
+        try await index.update()
+        #expect(await index.indexedFileCount == 5)
+        #expect(embeddedCount.withLock { $0 } == 5)
+
+        // Offloading an already-indexed document or folder to the cloud keeps its indexed content searchable.
+        datalessNames.withLock {
+            $0 = [cloudURL.lastPathComponent, packageMemberURL.lastPathComponent, archivedFolderURL.lastPathComponent]
+        }
+        try await index.update()
+        #expect(await index.indexedFileCount == 5)
+        #expect(embeddedCount.withLock { $0 } == 5)
+        #expect(await index.search("cloud").map(\.url.lastPathComponent) == ["cloud.txt"])
+        #expect(await index.search("bundled").map(\.url.lastPathComponent) == ["package.rtfd"])
+        #expect(await index.search("inside").map(\.url.lastPathComponent) == ["inside.txt"])
+
+        // Deleting an offloaded document removes it from the index.
+        try FileManager.default.removeItem(at: cloudURL)
+        try await index.update()
+        #expect(await index.indexedFileCount == 4)
+        #expect(tree.text("documents/local.txt") == "documents/local.txt")
+    }
 }

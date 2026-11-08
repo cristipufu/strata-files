@@ -68,6 +68,8 @@ package actor SemanticIndex {
         ]
         /// Results below this blended score are dropped.
         package var minimumScore: Float = 0.2
+        /// Whether a file is a dataless cloud placeholder (`SF_DATALESS`) that must not be materialized by indexing.
+        package var isDataless: @Sendable (URL) -> Bool = { DatalessFile.isDataless($0.path) }
 
         package init(roots: [URL], storage: SecureStorage.Context) {
             self.roots = roots
@@ -137,13 +139,13 @@ package actor SemanticIndex {
         defer { updating = false }
 
         progress?(SemanticIndexProgress(phase: .scanning, indexedFiles: indexedFileCount))
-        let found = await Self.scan(configuration)
+        let scanned = await Self.scan(configuration)
         try Task.checkCancellation()
 
-        for path in files.keys where found[path] == nil {
+        for path in files.keys where scanned.found[path] == nil && !Self.isDatalessOrInsideDataless(path, dataless: scanned.dataless) {
             remove(path)
         }
-        let todo = found.filter { path, stamp in
+        let todo = scanned.found.filter { path, stamp in
             guard let existing = files[path] else { return true }
             return existing.size != stamp.size || existing.modified != stamp.modified
         }
@@ -162,7 +164,7 @@ package actor SemanticIndex {
 
                 let record = await Self.process(url, stamp: stamp, configuration: configuration, embedder: indexEmbedder)
                 try Task.checkCancellation()
-                store(record, at: path)
+                if let record { store(record, at: path) }
                 if now() - lastSave >= Self.checkpointInterval { await save() }
                 try await throttle()
             }
@@ -184,13 +186,16 @@ package actor SemanticIndex {
         await loadIfNeeded()
         guard !Task.isCancelled else { return }
         let path = url.lexicallyStandardized.path
+        let isRTFD = (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage == true
+            && url.pathExtension.lowercased() == "rtfd"
+        guard !Self.isDataless(url, isPackage: isRTFD, configuration: configuration) else { return }
         guard let stamp = Self.stamp(url) else {
             remove(path)
             return
         }
         let record = await Self.process(url, stamp: stamp, configuration: configuration, embedder: indexEmbedder)
         guard !Task.isCancelled else { return }
-        store(record, at: path)
+        if let record { store(record, at: path) }
     }
 
     /// Forgets a file (deleted or moved out of the roots).
@@ -501,23 +506,29 @@ package actor SemanticIndex {
     // MARK: - Scanning and processing (off the actor)
 
     @concurrent
-    private static func scan(_ configuration: Configuration) async -> [String: FileStamp] {
-        scanSync(configuration)
+    private static func scan(_ configuration: Configuration) async -> (found: [String: FileStamp], dataless: Set<String>) {
+        DatalessFile.withoutMaterializing { scanSync(configuration) }
     }
 
-    private nonisolated static func scanSync(_ configuration: Configuration) -> [String: FileStamp] {
+    private nonisolated static func scanSync(_ configuration: Configuration) -> (found: [String: FileStamp], dataless: Set<String>) {
         var found: [String: FileStamp] = [:]
+        var dataless: Set<String> = []
         let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey,
                                       .contentTypeKey]
         let fm = FileManager.default
         for root in configuration.roots {
-            guard !Task.isCancelled else { return found }
+            guard !Task.isCancelled else { return (found, dataless) }
             guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: keys,
                                                  options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
             for case let url as URL in enumerator {
-                guard !Task.isCancelled, found.count < configuration.maxFiles else { return found }
+                guard !Task.isCancelled, found.count < configuration.maxFiles else { return (found, dataless) }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
                 if values.isDirectory == true, values.isPackage != true {
+                    if configuration.isDataless(url) {
+                        dataless.insert(url.lexicallyStandardized.path)
+                        enumerator.skipDescendants()
+                        continue
+                    }
                     // Source repositories are code, not documents: they'd crowd out real documents under `maxFiles`.
                     if configuration.excludedFolderNames.contains(url.lastPathComponent)
                         || (configuration.skipsRepositories && fm.fileExists(atPath: url.appending(path: ".git").path)) {
@@ -527,12 +538,32 @@ package actor SemanticIndex {
                 }
                 let isRTFD = values.isPackage == true && url.pathExtension.lowercased() == "rtfd"
                 guard values.isRegularFile == true || isRTFD,
-                      TextExtractor.canExtract(url, contentType: values.contentType, options: configuration.extraction),
-                      let stamp = isRTFD ? stamp(url) : FileStamp(values) else { continue }
-                found[url.lexicallyStandardized.path] = stamp
+                      TextExtractor.canExtract(url, contentType: values.contentType, options: configuration.extraction) else { continue }
+                let path = url.lexicallyStandardized.path
+                if isDataless(url, isPackage: isRTFD, configuration: configuration) {
+                    dataless.insert(path)
+                    continue
+                }
+                guard let stamp = isRTFD ? stamp(url) : FileStamp(values) else { continue }
+                found[path] = stamp
             }
         }
-        return found
+        return (found, dataless)
+    }
+
+    private nonisolated static func isDataless(_ url: URL, isPackage: Bool, configuration: Configuration) -> Bool {
+        isPackage ? DatalessFile.containsDataless(url, isDataless: configuration.isDataless) : configuration.isDataless(url)
+    }
+
+    private nonisolated static func isDatalessOrInsideDataless(_ path: String, dataless: Set<String>) -> Bool {
+        guard !dataless.isEmpty else { return false }
+        if dataless.contains(path) { return true }
+        var current = path
+        while let slash = current.lastIndex(of: "/"), slash > current.startIndex {
+            current = String(current[..<slash])
+            if dataless.contains(current) { return true }
+        }
+        return false
     }
 
     package nonisolated static func stamp(_ url: URL) -> FileStamp? {
@@ -550,9 +581,13 @@ package actor SemanticIndex {
     }
 
     @concurrent
-    private static func process(_ url: URL, stamp: FileStamp, configuration: Configuration, embedder: Embedder) async -> IndexedFile.Pending {
-        guard !Task.isCancelled, let extracted = await TextExtractor.extract(url, options: configuration.extraction),
+    private static func process(_ url: URL, stamp: FileStamp, configuration: Configuration, embedder: Embedder) async -> IndexedFile.Pending? {
+        let isRTFD = url.pathExtension.lowercased() == "rtfd"
+        guard !Task.isCancelled, !isDataless(url, isPackage: isRTFD, configuration: configuration) else { return nil }
+        guard let extracted = await TextExtractor.extract(url, options: configuration.extraction),
               !Task.isCancelled else {
+            // Never save a stamp for a dataless cloud file: downloading it later does not change its size or mtime.
+            guard !isDataless(url, isPackage: isRTFD, configuration: configuration) else { return nil }
             // Remember unreadable files too, so they aren't retried until they change.
             return IndexedFile.Pending(stamp: stamp, title: nil, chunks: [])
         }

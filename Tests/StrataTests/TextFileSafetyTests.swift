@@ -8,6 +8,7 @@ import Testing
 @testable import StrataQueue
 @testable import StrataModel
 @testable import StrataSearch
+@testable import StrataSupport
 
 struct TextFileSafetyTests {
     @Test func previewsRejectNamedPipesWithoutConsumingTheirContents() async throws {
@@ -41,5 +42,21 @@ struct TextFileSafetyTests {
         #expect(throws: (any Error).self) { try TextFile.readPrefix(tree.url("folder"), limit: 10) }
         #expect(throws: (any Error).self) { try TextFile.readPrefix(tree.url("missing"), limit: 10) }
         #expect(tree.snapshot() == ["alias.txt -> file.txt", "file.txt", "folder/"])
+    }
+
+    @Test func datalessFilesAndThreadMaterializationPolicyAreGuarded() {
+        let localStat = stat()
+        #expect(!DatalessFile.isDataless(localStat))
+        var datalessStat = stat()
+        datalessStat.st_flags = UInt32(SF_DATALESS)
+        #expect(DatalessFile.isDataless(datalessStat))
+
+        let before = getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD)
+        let during = DatalessFile.withoutMaterializing {
+            getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD)
+        }
+        let after = getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD)
+        #expect(during == IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
+        #expect(after == before)
     }
 }

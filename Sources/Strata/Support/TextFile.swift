@@ -1,4 +1,39 @@
+import Darwin
 import Foundation
+
+/// Guards background text reads and content indexing against materializing dataless cloud placeholders (`SF_DATALESS`).
+nonisolated package enum DatalessFile {
+    package static func isDataless(_ status: stat) -> Bool {
+        status.st_flags & UInt32(SF_DATALESS) != 0
+    }
+
+    package static func isDataless(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && isDataless(info)
+    }
+
+    package static func containsDataless(_ url: URL, isDataless: (URL) -> Bool = { isDataless($0.path) }) -> Bool {
+        if isDataless(url) { return true }
+        let members = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
+        return members.contains(where: isDataless)
+    }
+
+    /// Runs `body` with thread-scoped VFS materialization disabled so opening or reading a dataless file fails
+    /// immediately (`EDEADLK`) instead of blocking on a cloud download.
+    package static func withoutMaterializing<T>(_ body: () throws -> T) rethrows -> T {
+        let previous = getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD)
+        if previous >= 0, previous != IOPOL_MATERIALIZE_DATALESS_FILES_OFF {
+            _ = setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD,
+                               IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
+        }
+        defer {
+            if previous >= 0, previous != IOPOL_MATERIALIZE_DATALESS_FILES_OFF {
+                _ = setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD, previous)
+            }
+        }
+        return try body()
+    }
+}
 
 /// The start of a text file, decoded, with line endings normalized to `\n`.
 nonisolated package struct TextFile: Sendable {
@@ -29,17 +64,20 @@ nonisolated package struct TextFile: Sendable {
 
     /// Up to `limit` bytes from the start of `url`, and whether there was more.
     package static func readPrefix(_ url: URL, limit: Int) throws -> (Data, Bool) {
-        guard limit >= 0, limit < Int.max else { throw NotText() }
-        // A name ending in .txt can still be a FIFO or a device. Open without waiting for a writer and
-        // inspect that descriptor, so a path replacement cannot bypass the regular-file check.
-        let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        defer { try? handle.close() }
-        var status = stat()
-        guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { throw NotText() }
-        let data = try handle.read(upToCount: limit + 1) ?? Data()
-        return data.count > limit ? (data.prefix(limit), true) : (data, false)
+        guard limit >= 0, limit < Int.max, !DatalessFile.isDataless(url.path) else { throw NotText() }
+        return try DatalessFile.withoutMaterializing {
+            // A name ending in .txt can still be a FIFO or a device. Open without waiting for a writer and
+            // inspect that descriptor, so a path replacement cannot bypass the regular-file check.
+            let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+            guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? handle.close() }
+            var status = stat()
+            guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
+                  !DatalessFile.isDataless(status) else { throw NotText() }
+            let data = try handle.read(upToCount: limit + 1) ?? Data()
+            return data.count > limit ? (data.prefix(limit), true) : (data, false)
+        }
     }
 
     /// Decodes UTF-8 (with or without BOM), UTF-16 with a BOM, or falls back to Windows Latin 1. Nil for binary data.
