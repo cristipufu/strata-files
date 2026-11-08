@@ -123,9 +123,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     /// Writes the index now (used at quit). Skipped while a full scan is still running: the scan holds the queue, and
-    /// the index on disk (or the next launch's scan) covers it. Never waits much past quit's deadline: work in progress
-    /// stops by then, and if the queue is still busy (a disk slow to answer), the next launch catches up from the last
-    /// save (saves are atomic, so one cut short by quitting leaves the previous file).
+    /// the index on disk (or the next launch's scan) covers it. Catching up stops after 0.5 s, and the write waits up
+    /// to 5 s; if the queue is still busy (a disk slow to answer), the next launch catches up from the last save
+    /// (saves are atomic, so one cut short by quitting leaves the previous file).
     package func saveNow() {
         guard !scanning.withLock({ $0 }) else { return }
         quitDeadline.withLock { $0 = DispatchTime.now().uptimeNanoseconds + 500_000_000 }
@@ -147,14 +147,20 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
+    /// Whether quit's deadline has passed or a full rebuild has been requested (any thread).
+    private var shouldStopRefresh: Bool {
+        pastQuitDeadline || rebuildRequested.withLock { $0 }
+    }
+
     /// Whether quit's deadline has passed (any thread).
     private var pastQuitDeadline: Bool {
         quitDeadline.withLock { $0.map { DispatchTime.now().uptimeNanoseconds > $0 } ?? false }
     }
 
-    /// Past the quit deadline: work in progress stops (and marks the index as not to be saved). On `queue`.
+    /// Past the quit deadline or superseded by a requested rebuild: work in progress stops (and marks the batch
+    /// as unfinished until the rebuild replaces it). On `queue`.
     private func stopForQuit() -> Bool {
-        guard pastQuitDeadline else { return false }
+        guard shouldStopRefresh else { return false }
         interrupted = true
         return true
     }
@@ -163,6 +169,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func boot(_ config: IndexConfig) {
         self.config = config
+        pending.removeAll()
+        rescanNeeded = false
+        interrupted = false
         publish(.loading)
         let loadResult = Result { try IndexPersistence.load(from: config.file, storage: config.storage) }
         if case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots {
@@ -218,17 +227,20 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         lastEventID = startEventID
         pendingEventID = startEventID
         savedExcluded = config.excluded
+        pending.removeAll()
         rescanNeeded = false
+        interrupted = false
         onStore?(fresh)
         save()
-        // Replays whatever changed during the scan.
-        startWatching(config)
+        // Replays whatever changed during the scan; a drop in this short window refreshes folders rather than starting a second scan.
+        startWatching(config, canRebuildOnDrop: false)
     }
 
-    private func startWatching(_ config: IndexConfig) {
+    private func startWatching(_ config: IndexConfig, canRebuildOnDrop: Bool = true) {
         eventGeneration = UUID()
         let generation = eventGeneration
-        incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded, waitingForHistory: watchesChanges)
+        incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded,
+                       waitingForHistory: watchesChanges, canRebuildOnDrop: canRebuildOnDrop)
         awaitingHistory = watchesChanges
         watchingFailed = false
         guard watchesChanges else { publish(.ready); return }
@@ -318,7 +330,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 if self.pending[path] != nil { self.pending[path]?.merge(refresh) }
                 else { self.pending[path] = refresh }
             }
-            if self.rescanNeeded || !self.pending.isEmpty {
+            if self.pending.count > IndexEventInbox.defaultFolderLimit {
+                var collapsed: Set<String> = []
+                IndexEventInbox.collapse(&self.pending, collapsed: &collapsed, roots: self.config?.roots ?? [],
+                                         limit: IndexEventInbox.defaultFolderLimit)
+            }
+            if self.rescanNeeded {
+                self.publish(.updating)
+                self.flush()
+            } else if !self.pending.isEmpty {
                 self.publish(.updating)
                 self.scheduleFlush()
             } else {
@@ -373,7 +393,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             }
             guard let (id, target) = resolved else { continue }
             if pass.covers(target) { continue }
-            if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
+            if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }
         }
         if !interrupted {
             lastEventID = max(lastEventID, targetEventID)
@@ -490,7 +510,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         guard !interrupted else { return nil }
         if listing == nil {
             var items: [ScannedItem] = [], names: [UInt8] = []
-            let error = readDirectory(path, &items, &names, readBuffer) { self.pastQuitDeadline }
+            let error = readDirectory(path, &items, &names, readBuffer) { self.shouldStopRefresh }
             if error == ECANCELED {
                 interrupted = true
                 return nil

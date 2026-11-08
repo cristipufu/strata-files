@@ -25,6 +25,20 @@ struct IndexEventInboxTests {
         inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true)
         #expect(inbox.append([.init(path: "/fixture", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged), id: 0)], generation: generation))
         #expect(try #require(inbox.take()).invalidation?.invalidatesIndex == true)
+
+        inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true, canRebuildOnDrop: true)
+        let dropFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped)
+        #expect(inbox.append([.init(path: "/fixture", flags: dropFlags, id: 10)], generation: generation))
+        #expect(try #require(inbox.take()).invalidation?.droppedEvents == true)
+
+        inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true, canRebuildOnDrop: false)
+        #expect(!inbox.append([.init(path: "/fixture", flags: dropFlags, id: 11)], generation: generation))
+        #expect(inbox.take() == nil)
+        #expect(inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 12)], generation: generation))
+        let postRebuild = try #require(inbox.take())
+        #expect(postRebuild.invalidation == nil && postRebuild.folders["/fixture"]?.isDeep == true)
+        #expect(inbox.append([.init(path: "/fixture", flags: dropFlags, id: 13)], generation: generation))
+        #expect(try #require(inbox.take()).invalidation?.droppedEvents == true)
     }
 
     @Test func aWideFolderBurstNeedsOnlyOneShallowListing() throws {
@@ -74,15 +88,30 @@ struct IndexEventInboxTests {
     @Test func anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion() throws {
         let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
         inbox.reset(generation: generation, roots: ["/fixture", "/other"])
+        _ = inbox.append([.init(path: "/fixture/deep/chain/notes/note.txt",
+                                flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile), id: 1)],
+                         generation: generation)
         for index in 0..<1000 {
-            _ = inbox.append([.init(path: "/fixture/file-\(index)", flags: 0, id: UInt64(index))], generation: generation)
+            _ = inbox.append([.init(path: "/fixture/work/run-\(index)/leaf", flags: 0, id: UInt64(index + 2))],
+                             generation: generation)
         }
-        _ = inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 1000)], generation: generation)
+        _ = inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 1002)],
+                         generation: generation)
         let delivery = try #require(inbox.take())
         #expect(delivery.folders.count == 2)
-        #expect(Set(delivery.folders.filter { $0.value.isDeep }.keys) == ["/fixture", "/other"])
+        #expect(delivery.folders["/fixture/work"]?.isDeep == true)
+        #expect(delivery.folders["/fixture/deep/chain/notes"]?.names == ["note.txt"])
+        #expect(delivery.folders["/fixture"] == nil && delivery.folders["/other"] == nil)
         #expect(delivery.historyDone)
-        #expect(delivery.lastID == 1000)
+        #expect(delivery.lastID == 1002)
+
+        for index in 0..<10 {
+            _ = inbox.append([.init(path: "/fixture/top-\(index)", flags: 0, id: UInt64(index + 2000))],
+                             generation: generation)
+        }
+        let rootDelivery = try #require(inbox.take())
+        #expect(rootDelivery.folders.count == 1)
+        #expect(rootDelivery.folders["/fixture"]?.isDeep == true && rootDelivery.folders["/other"] == nil)
     }
 
     @Test func replacingAStreamRejectsOldCallbacksAndAnOverflowNeverLosesInvalidation() throws {

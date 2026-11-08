@@ -25,6 +25,11 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagEventIdsWrapped) != 0
         }
 
+        /// Events were dropped by the kernel or `fseventsd`: a full scan is faster than waiting out a broken replay.
+        package var droppedEvents: Bool {
+            flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagUserDropped) != 0
+        }
+
         package var isHistoryDone: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone) != 0
         }

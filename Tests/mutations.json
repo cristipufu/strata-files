@@ -9558,5 +9558,40 @@
     "replace": "    private func canPreview(_ entry: FileEntry) -> Bool {\n        !entry.isSymlink && !services.copies.isPlaceholder(entry.url)\n    }",
     "rule": "Inspector shows folder icons instead of starting a live Quick Look folder watcher",
     "tests": "QuickLookLifecycleTests/closingTheInspectorBeforeItsDeferredPreviewDoesNotReviveQuickLook"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "        for depth in stride(from: maxDepth, through: 0, by: -1) {",
+    "replace": "        for depth in 0...maxDepth {",
+    "rule": "File event inbox overflow collapses deepest shared parents before wider ancestors",
+    "tests": "IndexEventInboxTests/anOverflowKeepsBoundedRootRecoveryAndHistoryCompletion|IndexWorkerTests/overflowingTheEventInboxRefreshesOnlyTheSharedSubtreeAndPreservesOtherChanges"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        pastQuitDeadline || rebuildRequested.withLock { $0 }",
+    "replace": "        pastQuitDeadline",
+    "rule": "A requested index rebuild preempts an in-progress folder refresh",
+    "tests": "IndexWorkerTests/rebuildNowPreemptsAnInProgressFlushInsteadOfWaitingForRemainingFolders"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "if refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }",
+    "replace": "if refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, pass: &pass) { changed = true }",
+    "rule": "Resolving a new or deleted folder to an indexed ancestor lists that ancestor shallowly",
+    "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "                if state.canRebuildOnDrop, event.droppedEvents {",
+    "replace": "                if false, event.droppedEvents {",
+    "rule": "Dropped FSEvents during replay escalate immediately to a full rebuild",
+    "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish|IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        startWatching(config, canRebuildOnDrop: false)",
+    "replace": "        startWatching(config, canRebuildOnDrop: true)",
+    "rule": "A dropped event during post-rebuild catch-up does not start a second full rebuild",
+    "tests": "IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
   }
 ]

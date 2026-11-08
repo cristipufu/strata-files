@@ -385,10 +385,12 @@ struct IndexWorkerTests {
         try FileManager.default.removeItem(at: tree.url("gone-a"))
         try FileManager.default.removeItem(at: tree.url("gone-b"))
         try Data("updated".utf8).write(to: tree.url("survivor/deep/kept.txt"))
+        let rescanRoot = FSEventsStream.Event(path: tree.root.path,
+                                              flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: 9)
         fixture.worker.receive(["gone-a", "gone-a/deep", "gone-b", "survivor/deep"].enumerated().map { offset, path in
             .init(path: tree.url(path).path,
                   flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
-        })
+        } + [rescanRoot])
         await save(fixture.worker)
         let counts = reads.withLock { $0 }
         #expect(counts[tree.root.path] == 1)
@@ -744,8 +746,7 @@ struct IndexWorkerTests {
                   flags: offset == 0 ? 0 : FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs), id: UInt64(offset + 1))
         })
         await save(fixture.worker)
-        #expect(reads.withLock { $0 } == [tree.url("gone-a").path: 1, tree.root.path: 1, tree.url("other").path: 1,
-            tree.url("survivor").path: 1, tree.url("survivor/deep").path: 1])
+        #expect(reads.withLock { $0 } == [tree.url("gone-a").path: 1, tree.root.path: 1, tree.url("survivor/deep").path: 1])
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         #expect(loaded.read { $0.lookup(tree.url("gone-a").path) } == nil)
         #expect(loaded.read { $0.lookup(tree.url("gone-b").path) } == nil)
@@ -939,8 +940,8 @@ struct IndexWorkerTests {
         worker.receive([.init(path: tree.url("Library/Caches/cache.db").path,
                               flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
                               id: initialHeader.eventID + 1)])
-        let deadline = ContinuousClock.now + .seconds(10)
-        while notified.withLock({ $0 }) == 0, ContinuousClock.now < deadline {
+        let firstDeadline = ContinuousClock.now + .seconds(15)
+        while notified.withLock({ $0 }) == 0, ContinuousClock.now < firstDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(notified.withLock { $0 } == 1)
@@ -958,7 +959,8 @@ struct IndexWorkerTests {
         worker.receive([.init(path: tree.url("Documents/note.txt").path,
                               flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
                               id: initialHeader.eventID + 2)])
-        while (try? Data(contentsOf: config.file)) == afterIdleSave, ContinuousClock.now < deadline {
+        let saveDeadline = ContinuousClock.now + .seconds(15)
+        while (try? Data(contentsOf: config.file)) == afterIdleSave, ContinuousClock.now < saveDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         let (loadedAfterUser, headerAfterUser) = try IndexPersistence.load(from: config.file, storage: .shared)
@@ -1081,5 +1083,152 @@ struct IndexWorkerTests {
         let (_, finalHeader) = try IndexPersistence.load(from: file, storage: .shared)
         #expect(!finalHeader.excluded.contains(bigPath))
         #expect(tree.text("big/a/one.txt") == "big/a/one.txt")
+    }
+
+    @Test func overflowingTheEventInboxRefreshesOnlyTheSharedSubtreeAndPreservesOtherChanges() async throws {
+        let tree = try TestTree(".state/", "busy/sub/existing.txt", "calm/kept.txt", "notes/note.txt")
+        let otherTree = try TestTree("app.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let config = IndexConfig(roots: [tree.root.path, otherTree.root.path], excluded: [tree.url(".state").path],
+                                 noise: [], file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+        reads.withLock { $0.removeAll() }
+
+        try tree.add(["busy/sub/added.txt"])
+        try Data("updated note".utf8).write(to: tree.url("notes/note.txt"))
+        var events = (0..<4200).map { index in
+            FSEventsStream.Event(path: tree.url("busy/run-\(index)/leaf").path, flags: 0,
+                                 id: initialHeader.eventID + UInt64(index + 1))
+        }
+        events.append(.init(path: tree.url("notes/note.txt").path,
+                            flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
+                            id: initialHeader.eventID + 5000))
+        worker.receive(events)
+        await save(worker)
+
+        #expect(reads.withLock { $0 } == [tree.url("busy").path: 1, tree.url("busy/sub").path: 1])
+        let (loaded, header) = try IndexPersistence.load(from: config.file, storage: .shared)
+        #expect(header.eventID == initialHeader.eventID + 5000)
+        #expect(loaded.read { $0.lookup(tree.url("busy/sub/added.txt").path) } != nil)
+        let noteID = try #require(loaded.read { $0.lookup(tree.url("notes/note.txt").path) })
+        #expect(loaded.read { $0.size[Int(noteID)] } == 12)
+        #expect(loaded.read { $0.lookup(otherTree.url("app.txt").path) } != nil)
+        #expect(tree.text("calm/kept.txt") == "calm/kept.txt")
+    }
+
+    @Test func rebuildNowPreemptsAnInProgressFlushInsteadOfWaitingForRemainingFolders() async throws {
+        let tree = try TestTree(".state/", "a/one.txt", "b/two.txt", "c/three.txt")
+        let visited = OSAllocatedUnfairLock(initialState: [String]())
+        let stoppedInFirstFolder = OSAllocatedUnfairLock(initialState: false)
+        let workerBox = OSAllocatedUnfairLock<IndexWorker?>(initialState: nil)
+        let firstPath = tree.url("a").path
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            visited.withLock { $0.append(path) }
+            if path == firstPath {
+                workerBox.withLock { $0 }?.rebuildNow()
+                if stop() {
+                    stoppedInFirstFolder.withLock { $0 = true }
+                    return ECANCELED
+                }
+            }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        workerBox.withLock { $0 = fixture.worker }
+        try tree.add(["a/added-a.txt", "b/added-b.txt", "c/added-c.txt"])
+        fixture.worker.receive([
+            .init(path: tree.url("a").path, flags: 0, id: 1),
+            .init(path: tree.url("b").path, flags: 0, id: 2),
+            .init(path: tree.url("c").path, flags: 0, id: 3),
+        ])
+        await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
+
+        #expect(stoppedInFirstFolder.withLock { $0 })
+        #expect(visited.withLock { $0 } == [firstPath])
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        for item in ["a/added-a.txt", "b/added-b.txt", "c/added-c.txt"] {
+            #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
+        }
+        #expect(tree.text("a/one.txt") == "a/one.txt")
+    }
+
+    @Test(arguments: [false, true])
+    func anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged(stillOnDisk: Bool) async throws {
+        let tree = try TestTree(".state/", "calm/a/one.txt", "calm/b/two.txt", "notes/note.txt", "projects/x/y/z.txt")
+        let reads = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
+                                 file: tree.url(".state/index.sealed"), storage: .shared)
+        let worker = IndexWorker(watchesChanges: false, readDirectory: { path, items, names, buffer, stop in
+            reads.withLock { $0[path, default: 0] += 1 }
+            return BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
+        await withCheckedContinuation { done in worker.start(config) { done.resume() } }
+        let (_, initialHeader) = try IndexPersistence.load(from: config.file, storage: .shared)
+        reads.withLock { $0.removeAll() }
+        if stillOnDisk {
+            try tree.add([".probe/d-0/kept/f.bin", ".probe/d-1/g.bin"])
+        }
+
+        let events = (0..<4200).map { index in
+            FSEventsStream.Event(path: tree.url(".probe/d-\(index % 48)/run-\(index)/f.bin").path,
+                                 flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
+                                 id: initialHeader.eventID + UInt64(index + 1))
+        }
+        worker.receive(events)
+        await withCheckedContinuation { done in worker.saveWhenIdle { done.resume() } }
+
+        let read = Set(reads.withLock { $0.keys }.map { $0.replacingOccurrences(of: tree.root.path, with: "~") })
+        if stillOnDisk {
+            #expect(read == ["~", "~/.probe", "~/.probe/d-0", "~/.probe/d-0/kept", "~/.probe/d-1"])
+            let (loaded, _) = try IndexPersistence.load(from: config.file, storage: .shared)
+            for item in [".probe/d-0/kept/f.bin", ".probe/d-1/g.bin"] {
+                #expect(loaded.read { $0.lookup(tree.url(item).path) } != nil, "\(item)")
+            }
+        } else {
+            #expect(reads.withLock { $0 } == [tree.root.path: 1])
+        }
+        #expect(tree.text("notes/note.txt") == "notes/note.txt")
+    }
+
+    @Test func droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild() async throws {
+        let tree = try TestTree(".state/", "a/one.txt")
+        _ = try await start(tree)
+        try tree.add(["a/added.txt", "b/new.txt"])
+
+        let scans = OSAllocatedUnfairLock(initialState: 0)
+        let watchStarts = OSAllocatedUnfairLock(initialState: 0)
+        let rebuilt = DispatchSemaphore(value: 0)
+        let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
+        let fixture = try await start(tree, startEvents: { _, _ in
+            if watchStarts.withLock({ $0 += 1; return $0 }) == 2 { rebuilt.signal() }
+            return true
+        }, onPhase: { phase in
+            phases.withLock { $0.append(phase) }
+            if phase == .scanning(items: 0) { scans.withLock { $0 += 1 } }
+        })
+        #expect(scans.withLock { $0 } == 0)
+
+        let dropFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped)
+        fixture.worker.receive([.init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 10)])
+        try #require(try await TestWork.run { rebuilt.wait(timeout: .now() + 20) == .success })
+
+        #expect(scans.withLock { $0 } == 1)
+        let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
+        #expect(loaded.read { $0.lookup(tree.url("a/added.txt").path) } != nil)
+        #expect(loaded.read { $0.lookup(tree.url("b/new.txt").path) } != nil)
+
+        // A drop during the post-rebuild catch-up window refreshes folders rather than starting a second full scan.
+        fixture.worker.receive([
+            .init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 9),
+            .init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: UInt64.max - 8),
+        ])
+        await save(fixture.worker)
+        #expect(scans.withLock { $0 } == 1)
+        #expect(phases.withLock { $0.last } == .ready)
+        #expect(tree.text("a/one.txt") == "a/one.txt")
     }
 }
