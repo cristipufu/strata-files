@@ -182,12 +182,24 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
         return cancelled
     }
 
+    private static let batchLimit = 32
+
+    private struct ScannedFolder {
+        let id: Int32
+        let error: Int32
+        let items: [ScannedItem]
+        let names: [UInt8]
+        let ownNoise: [Bool]
+        let folders: [(offset: Int, path: String, noise: Bool)]
+    }
+
     /// Scans each folder's subtree (the folder itself must already be in the store). Blocks until done.
     package func scan(_ folders: [(id: Int32, path: String)], threads: Int = IndexScanner.performanceCores) {
+        let workerCount = max(1, threads)
         condition.lock()
         jobs.append(contentsOf: folders.map { Job(id: $0.id, path: $0.path) })
         condition.unlock()
-        DispatchQueue.concurrentPerform(iterations: max(1, threads)) { _ in work() }
+        DispatchQueue.concurrentPerform(iterations: workerCount) { _ in work(threads: workerCount) }
     }
 
     /// How many threads should read `path`'s volume. Measured on a 10+4-core Mac: a writable volume peaked at one
@@ -207,55 +219,78 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
         return ProcessInfo.processInfo.activeProcessorCount
     }()
 
-    private func work() {
+    private func work(threads: Int) {
         let buffer = UnsafeMutableRawBufferPointer.allocate(byteCount: 256 * 1024, alignment: 16)
         defer { buffer.deallocate() }
-        var items: [ScannedItem] = []
-        var names: [UInt8] = []
-        items.reserveCapacity(512)
-        names.reserveCapacity(16 * 1024)
+        var batchResults: [ScannedFolder] = []
+        batchResults.reserveCapacity(Self.batchLimit)
 
-        while let job = nextJob() {
-            items.removeAll(keepingCapacity: true)
-            names.removeAll(keepingCapacity: true)
-            let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
-            // Work out child folder paths before taking the lock; only id assignment happens inside it.
-            let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
-            var folders: [(offset: Int, path: String, noise: Bool)] = []
-            for (offset, item) in items.enumerated() where item.isDirectory && !item.isMountPoint {
-                let path = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
-                if !excluded.contains(path) { folders.append((offset, path, noiseFolders.contains(path))) }
-            }
-            let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
-            let ids = store.write { store in
-                if error == 0 { _ = store.finishedAllocationRead(of: job.id) }
-                let ids = names.withUnsafeBytes { store.appendChildren(items, nameBuffer: $0, of: job.id, ownNoise: ownNoise) }
-                for folder in folders where folder.noise && folder.offset < ids.count {
-                    store.flags[Int(ids.lowerBound) + folder.offset] |= IndexStore.Flag.noise
+        while true {
+            let batch = nextJobs(threads: threads)
+            guard !batch.isEmpty else { break }
+            batchResults.removeAll(keepingCapacity: true)
+            var batchScanned = 0
+            for job in batch {
+                if isCancelled { break }
+                var items: [ScannedItem] = []
+                var names: [UInt8] = []
+                let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer) { self.isCancelled }
+                // Work out child folder paths and noise classification before taking the store lock.
+                let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
+                var folders: [(offset: Int, path: String, noise: Bool)] = []
+                for (offset, item) in items.enumerated() where item.isDirectory && !item.isMountPoint {
+                    let path = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
+                    if !excluded.contains(path) { folders.append((offset, path, noiseFolders.contains(path))) }
                 }
-                return ids
+                let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
+                batchScanned += items.count
+                batchResults.append(ScannedFolder(id: job.id, error: error, items: items, names: names,
+                                                  ownNoise: ownNoise, folders: folders))
             }
-            if ids.count != items.count { cancel() }
-            let childJobs = folders.filter { $0.offset < ids.count }.map { Job(id: ids.lowerBound + Int32($0.offset), path: $0.path) }
-            finish(job, adding: childJobs, scanned: items.count)
+            var childJobs: [Job] = []
+            var overflowed = false
+            store.write { store in
+                for folder in batchResults {
+                    if folder.error == 0 {
+                        store.flags[Int(folder.id)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+                    }
+                    let ids = folder.names.withUnsafeBytes {
+                        store.appendChildren(folder.items, nameBuffer: $0, of: folder.id, ownNoise: folder.ownNoise)
+                    }
+                    if ids.count != folder.items.count { overflowed = true }
+                    for child in folder.folders where child.offset < ids.count {
+                        let childID = ids.lowerBound + Int32(child.offset)
+                        if child.noise { store.flags[Int(childID)] |= IndexStore.Flag.noise }
+                        childJobs.append(Job(id: childID, path: child.path))
+                    }
+                }
+            }
+            if overflowed { cancel() }
+            finish(adding: childJobs, scanned: batchScanned)
         }
     }
 
-    private func nextJob() -> Job? {
+    private func nextJobs(threads: Int) -> [Job] {
         condition.lock()
         defer { condition.unlock() }
         while jobs.isEmpty && active > 0 && !cancelled { condition.wait() }
-        guard !cancelled, let job = jobs.popLast() else { return nil }
+        guard !cancelled, !jobs.isEmpty else { return [] }
+        let take = min(Self.batchLimit, max(1, (jobs.count + threads - 1) / max(1, threads)))
+        let start = jobs.count - take
+        let batch = Array(jobs[start...])
+        jobs.removeLast(take)
         active += 1
-        return job
+        return batch
     }
 
-    private func finish(_ job: Job, adding children: [Job], scanned: Int) {
+    private func finish(adding children: [Job], scanned: Int) {
         condition.lock()
         jobs.append(contentsOf: children)
         active -= 1
         self.scanned += scanned
-        condition.broadcast()
+        if !children.isEmpty || active == 0 {
+            condition.broadcast()
+        }
         condition.unlock()
     }
 }

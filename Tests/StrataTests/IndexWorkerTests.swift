@@ -314,6 +314,9 @@ struct IndexWorkerTests {
         fixture.worker.rebuildNow()
         await withCheckedContinuation { done in fixture.worker.start(fixture.config) { done.resume() } }
         #expect(scans.withLock { $0 } == 2, "A new request after completion must still rebuild")
+        fixture.worker.rebuildNow()
+        await withCheckedContinuation { done in fixture.worker.start(fixture.config) { done.resume() } }
+        #expect(scans.withLock { $0 } == 3, "A request after a completed requested rebuild must still rebuild")
         #expect(tree.text("files/kept.txt") == "files/kept.txt")
     }
 

@@ -395,6 +395,7 @@ nonisolated package final class IndexEventInbox: Sendable {
                         continue
                     }
                 }
+                if state.waitingForHistory, state.invalidation != nil { continue }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
                 if IndexRefresh.isExcluded(path, in: state.excluded) { continue }

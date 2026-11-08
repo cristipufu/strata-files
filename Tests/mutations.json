@@ -9288,10 +9288,18 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            guard !requested else { return false }",
-    "replace": "            // Queue another full scan.",
     "rule": "Index rebuild coalescing: pending requests share one scan",
-    "tests": "IndexWorkerTests/repeatedRebuildRequestsShareOnePendingOrRunningScan"
+    "tests": "IndexWorkerTests/repeatedRebuildRequestsShareOnePendingOrRunningScan",
+    "edits": [
+      {
+        "find": "            guard !requested else { return false }",
+        "replace": "            // Queue another full scan."
+      },
+      {
+        "find": "            guard self.rebuildRequested.withLock({ $0 }) else { return }\n",
+        "replace": ""
+      }
+    ]
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
