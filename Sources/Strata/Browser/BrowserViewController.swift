@@ -67,6 +67,8 @@ final class BrowserViewController: NSViewController {
     var isLoaded: Bool { loading.isLoaded }
     /// Tab in any view; the window switches panes in dual-pane mode (true) or lets focus move on (false).
     var onTab: (() -> Bool)?
+    /// ⌫ with the Windows keyboard: the window goes back in this pane's history (false when it can't).
+    var onBack: (() -> Bool)?
     /// A different folder is being read; the rows still showing belong to the previous one, so file commands wait.
     var isLoadingFolder: Bool { loading.isLoadingFolder }
     override func viewDidLayout() {
@@ -297,7 +299,7 @@ final class BrowserViewController: NSViewController {
         return columnsMenu
     }
 
-    /// Typing, Backspace, Escape, Return, Space, a click on a name, the context menu and drags' end.
+    /// Typing, Backspace, Escape, Return, Space, F2, ⌦, a click on a name, the context menu and drags' end.
     private func wireOutlineKeys() {
         let ov = outlineView
         ov.onType = { [weak self] text in _ = self?.handle(.type(text)) }
@@ -309,6 +311,7 @@ final class BrowserViewController: NSViewController {
             renameClicked(node.url)
         }
         ov.onSpace = { [weak self] in _ = self?.handle(.space) }
+        ov.onCommandKey = { [weak self] key in self?.handle(key) ?? false }
         ov.contextMenu = { [weak self] in self?.makeContextMenu() }
         ov.onDragEnd = { [weak self] in self?.springLoader.cancel() }
     }

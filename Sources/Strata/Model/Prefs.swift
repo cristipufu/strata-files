@@ -13,6 +13,7 @@ extension Notification.Name {
     package static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
+    package static let windowsKeyboardChanged = Notification.Name("StrataWindowsKeyboardChanged")
 }
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
@@ -67,6 +68,7 @@ package final class Prefs: PreviewTextSettings {
         static let foldersFirst = "foldersFirst"
         static let lastLocation = "lastLocation"
         static let returnOpens = "returnOpens"
+        static let windowsKeyboard = "windowsKeyboard"
         static let terminal = "terminalApp"
         static let newWindowsAtHome = "newWindowsAtHome"
         static let newWindowLocation = "newWindowLocation"
@@ -152,6 +154,13 @@ package final class Prefs: PreviewTextSettings {
     package var returnOpens: Bool {
         get { defaults.bool(forKey: Key.returnOpens) }
         set { defaults.set(newValue, forKey: Key.returnOpens) }
+    }
+
+    /// Coming from Windows: Return opens, F2 renames, ⌦ moves to the Trash and ⌫ goes back, as in File Explorer.
+    /// Return's own setting is kept, and applies again once this is off.
+    package var windowsKeyboard: Bool {
+        get { defaults.bool(forKey: Key.windowsKeyboard) }
+        set { defaults.set(newValue, forKey: Key.windowsKeyboard); notifications.post(name: .windowsKeyboardChanged, object: self) }
     }
 
     /// Bundle id of the terminal for "Open in Terminal"; nil picks the first installed of Ghostty, iTerm, Warp, Terminal.

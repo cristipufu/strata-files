@@ -7,6 +7,8 @@ final class FileOutlineView: NSOutlineView {
     var onEscape: (() -> Bool)?
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    /// F2 and ⌦; false lets the list handle them as usual.
+    var onCommandKey: ((FileViewKey) -> Bool)?
     var contextMenu: (() -> NSMenu?)?
     /// Tab with no modifiers (switches panes in dual-pane mode); nil keeps the default key-view loop.
     /// Tab; return false to let it move focus to the next control as usual.
@@ -87,6 +89,10 @@ final class FileOutlineView: NSOutlineView {
             if onEscape?() == true { return }
         case .backspace:
             if onBackspace?() == true { return }
+        case .f2:
+            if onCommandKey?(.f2) == true { return }
+        case .forwardDelete:
+            if onCommandKey?(.forwardDelete) == true { return }
         case .type(let chars):
             onType?(chars)
             return

@@ -199,6 +199,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         pane.browser.onTab = tab
         pane.browser.outlineView.onTab = tab
+        pane.browser.onBack = { [weak self, weak pane] in
+            guard let self, let pane else { return false }
+            return navigateHistory(.back, in: pane)
+        }
     }
 
     // MARK: - Panes

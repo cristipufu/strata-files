@@ -2,19 +2,31 @@ import AppKit
 
 /// ⌘/ and the sidebar's footer button: every shortcut, grouped and searchable.
 final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate {
-    static let shared = ShortcutsWindowController()
-
-    private struct Shortcut {
+    struct Shortcut {
         let keys: [String]
         let action: String.LocalizationValue
+        /// Shown only while Coming from Windows ▸ Windows keyboard is off (.mac) or on (.windows).
+        var keyboard: Keyboard?
+        /// The row's tooltip, kept out of the caption so it fits in every language.
+        var note: String.LocalizationValue?
     }
 
-    private static let sections: [(title: String, items: [Shortcut])] = [
+    enum Keyboard { case mac, windows }
+
+    static func sections(windowsKeyboard: Bool) -> [(title: String, items: [Shortcut])] {
+        let current: Keyboard = windowsKeyboard ? .windows : .mac
+        return allSections.map { section in
+            (section.title, section.items.filter { $0.keyboard == nil || $0.keyboard == current })
+        }
+    }
+
+    private static let allSections: [(title: String, items: [Shortcut])] = [
         (String(localized: "Go", comment: "Keyboard shortcuts section: getting around"), [
             Shortcut(keys: ["⌘", "K"], action: "Command palette: jump anywhere, run any command"),
             Shortcut(keys: ["⌘", "L"], action: "Type a path (Tab completes)"),
             Shortcut(keys: ["⇧", "⌘", "G"], action: "Go to folder"),
             Shortcut(keys: ["⌘", "["], action: "Back"),
+            Shortcut(keys: ["⌫"], action: "Back (Windows keyboard)", keyboard: .windows),
             Shortcut(keys: ["⌘", "]"], action: "Forward"),
             Shortcut(keys: ["⌘", "↑"], action: "Enclosing folder"),
             Shortcut(keys: ["⌘", "↓"], action: "Open selection"),
@@ -45,7 +57,11 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             Shortcut(keys: ["author:ana"], action: "Document author; artist: for music (via Spotlight)"),
         ]),
         (String(localized: "Files", comment: "Keyboard shortcuts section: working with files"), [
-            Shortcut(keys: ["↩"], action: "Rename (or open — see Settings)"),
+            Shortcut(keys: ["↩"], action: "Rename (or open — see Settings)", keyboard: .mac),
+            Shortcut(keys: ["↩"], action: "Open (Windows keyboard)", keyboard: .windows),
+            Shortcut(keys: ["F2"], action: "Rename (Windows keyboard)", keyboard: .windows),
+            Shortcut(keys: ["⌦"], action: "Move to Trash (Windows keyboard)", keyboard: .windows,
+                     note: "On a Mac keyboard, press fn-⌫."),
             Shortcut(keys: ["space"], action: "Quick Look (also ⌘Y)"),
             Shortcut(keys: ["⌘", "O"], action: "Open"),
             Shortcut(keys: ["⇧", "⌘", "N"], action: "New folder"),
@@ -97,10 +113,12 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         ]),
     ]
 
+    private let preferences: Prefs
     private let search = NSSearchField()
     private let content = NSStackView()
 
-    init(restoresFrame: Bool = true) {
+    init(preferences: Prefs, restoresFrame: Bool = true) {
+        self.preferences = preferences
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
                             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                             backing: .buffered, defer: true)
@@ -152,6 +170,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
         if restoresFrame { panel.setFrameAutosaveName("StrataShortcuts") }
         rebuild(filter: "")
         NotificationCenter.default.addObserver(self, selector: #selector(shortcutsChanged), name: .shortcutsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(shortcutsChanged), name: .windowsKeyboardChanged, object: preferences)
     }
 
     @available(*, unavailable)
@@ -185,11 +204,13 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
     private func rebuild(filter: String) {
         content.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        for section in Self.sections {
-            let all = section.items.map { (keys: $0.keys, action: String(localized: $0.action)) }
+        for section in Self.sections(windowsKeyboard: preferences.windowsKeyboard) {
+            let all = section.items.map {
+                (keys: $0.keys, action: String(localized: $0.action), note: $0.note.map { String(localized: $0) })
+            }
             let items = query.isEmpty ? all : all.filter {
                 $0.action.lowercased().contains(query) || $0.keys.joined(separator: " ").lowercased().contains(query)
-                    || section.title.lowercased().contains(query)
+                    || $0.note?.lowercased().contains(query) == true || section.title.lowercased().contains(query)
             }
             guard !items.isEmpty else { continue }
             let title = NSTextField(labelWithString: section.title)
@@ -201,6 +222,7 @@ final class ShortcutsWindowController: NSWindowController, NSSearchFieldDelegate
             }
             for item in items {
                 let row = ShortcutRow(keys: Self.liveKeys(item.keys), action: item.action)
+                row.toolTip = item.note
                 content.addArrangedSubview(row)
                 row.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -44).isActive = true
             }

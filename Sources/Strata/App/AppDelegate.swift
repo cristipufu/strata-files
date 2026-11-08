@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     let undoManager = UndoManager()
+    private lazy var shortcutsWindow = ShortcutsWindowController(preferences: browserServices.preferences)
     private lazy var historyWindow = HistoryWindowController(history: browserServices.transfers.history,
                                                             undoManager: undoManager, frameAutosaveName: "StrataHistory")
     private var windowControllers: [BrowserWindowController] = []
@@ -399,7 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showShortcuts(_ sender: Any?) {
-        ShortcutsWindowController.shared.show()
+        shortcutsWindow.show()
     }
 
     @objc func showSettings(_ sender: Any?) {

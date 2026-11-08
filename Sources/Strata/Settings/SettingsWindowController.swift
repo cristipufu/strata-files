@@ -124,6 +124,7 @@ private struct PrefToggle: View {
 
 private struct GeneralSettings: View {
     @State private var returnOpens = Prefs.shared.returnOpens
+    @State private var windowsKeyboard = Prefs.shared.windowsKeyboard
     @State private var isFileViewer = FileViewer.isStrata
 
     var body: some View {
@@ -142,12 +143,18 @@ private struct GeneralSettings: View {
                 PrefToggle(title: "Open archives like folders",
                            caption: "Opening a zip (or tar, 7z, rar…) shows what's inside; copy things out from there. Extract unpacks it.",
                            get: { Prefs.shared.openArchivesAsFolders }, set: { Prefs.shared.openArchivesAsFolders = $0 }).settingAnchor(.archives)
-                Picker("Return key", selection: Binding(get: { returnOpens }, set: { returnOpens = $0; Prefs.shared.returnOpens = $0 })) {
+                Picker(selection: Binding(get: { returnOpens || windowsKeyboard }, set: { returnOpens = $0; Prefs.shared.returnOpens = $0 })) {
                     Text("Renames the selection (like Finder)").tag(false)
                     Text("Opens the selection").tag(true)
-                }.settingAnchor(.returnKey)
+                } label: {
+                    Text("Return key")
+                    if windowsKeyboard { Text("Opens the selection while “Windows keyboard” is on (Coming from Windows, below).") }
+                }
+                .disabled(windowsKeyboard)
+                .settingAnchor(.returnKey)
                 NewWindowFolderSettings(preferences: .shared).settingAnchor(.newWindowFolder)
             }
+            ComingFromWindowsSettings(windowsKeyboard: $windowsKeyboard)
             Section("New Files") {
                 NewFileExtensionField().settingAnchor(.newFileExtension)
             }
@@ -184,6 +191,20 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .modifier(ThemedFormBackground())
+    }
+}
+
+/// Opt-in File Explorer habits for people coming from Windows; each one is a setting of its own.
+private struct ComingFromWindowsSettings: View {
+    @Binding var windowsKeyboard: Bool
+
+    var body: some View {
+        Section("Coming from Windows") {
+            Toggle(isOn: Binding(get: { windowsKeyboard }, set: { windowsKeyboard = $0; Prefs.shared.windowsKeyboard = $0 })) {
+                Text("Windows keyboard")
+                Text("Return opens, F2 renames, ⌦ (fn-⌫) moves to the Trash and ⌫ goes back, as in File Explorer. While you type a filter, ⌫ still edits it; ⌘⌫ still moves to the Trash.")
+            }.settingAnchor(.windowsKeyboard)
+        }
     }
 }
 

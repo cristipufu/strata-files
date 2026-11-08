@@ -4948,9 +4948,9 @@
     "tests": "BrowserListingTests/aBigFolderIsFilteredAsTypedAwayFromTheMainThread"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Modes.swift",
-    "find": "        case .escape:\n            guard !typed.isEmpty else { return false }\n",
-    "replace": "        case .escape:\n",
+    "file": "Strata/Browser/PaneKeyAction.swift",
+    "find": "return typed.isEmpty ? .none : .filter(\"\")",
+    "replace": "return .filter(\"\")",
     "rule": "Type-to-filter: Esc with nothing typed is taken from the window",
     "tests": "BrowserListingTests/everyViewTypesDeletesAndClearsTheFilterAlike"
   },
@@ -9729,5 +9729,19 @@
     "replace": "        if isActivelyUpdating, isWithinIndexedScope(path) {\n            return .pending\n        }",
     "rule": "Unindexed paths under already-read parents return unindexed during background updates",
     "tests": "FolderSizerCancellationTests/unindexedPathsUnderAlreadyReadParentsReturnUnindexedDuringUpdating"
+  },
+  {
+    "file": "Strata/Browser/PaneKeyAction.swift",
+    "find": "return context.windowsKeyboard ? .command(StrataCommand.moveToTrash.action) : .none",
+    "replace": "return .command(StrataCommand.moveToTrash.action)",
+    "rule": "Windows keyboard: Forward Delete trashes with the setting off",
+    "tests": "WindowsKeyboardTests/offTheKeys|WindowsKeyboardTests/forwardDeleteTrashesOnlyTheFocusedPanesSelection"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "guard validateMenuItem(item) else { return false }",
+    "replace": "guard true else { return false }",
+    "rule": "Windows keyboard: Forward Delete trashes when File ▸ Move to Trash is off",
+    "tests": "WindowsKeyboardTests/forwardDeleteTrashesNothingWhileAnotherFolderLoads"
   }
 ]

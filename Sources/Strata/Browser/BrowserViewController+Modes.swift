@@ -189,28 +189,36 @@ extension BrowserViewController: FileCollectionViewDelegate {
         handle(key)
     }
 
-    /// The same keys in every view: typing filters, Return renames (or opens), Space previews, Esc clears the filter.
-    /// False when the key isn't the pane's to handle.
-    func handle(_ key: FileViewKey) -> Bool {
-        let typed = filtering.typed
-        switch key {
-        case .type(let text):
-            setFilter(typed + text)
-        case .backspace:
-            guard !typed.isEmpty else { return false }
-            setFilter(String(typed.dropLast()))
-        case .escape:
-            guard !typed.isEmpty else { return false }
-            setFilter("")
-        case .returnKey:
-            // Disk Usage can't rename in place, so Return opens there.
-            filtering.finish()
-            if filter.isEmpty && !preferences.returnOpens && effectiveMode != .treemap { renameSelection(nil) } else { openSelection(nil) }
-        case .space:
-            if typed.isEmpty { toggleQuickLook(nil) } else { setFilter(typed + " ") }
-        case .tab:
-            return onTab?() ?? false
+    func fileView(_ view: NSViewController, handleOutsideFilter key: FileViewKey) -> Bool {
+        handle(key, typesIntoFilter: false)
+    }
+
+    /// The same keys in every view (see `PaneKeyAction`): typing filters, Return renames (or opens), Space previews,
+    /// Esc clears the filter, and the Windows keyboard's F2, ⌦ and ⌫. False when the key isn't the pane's to handle.
+    func handle(_ key: FileViewKey, typesIntoFilter: Bool = true) -> Bool {
+        // Return acts on the rows for what was typed: a match still being worked out is made now.
+        if key == .returnKey { filtering.finish() }
+        let context = PaneKeyAction.Context(typed: filtering.typed, filtered: !filter.isEmpty, typesIntoFilter: typesIntoFilter,
+                                            returnOpens: preferences.returnOpens, windowsKeyboard: preferences.windowsKeyboard,
+                                            renamesInPlace: effectiveMode != .treemap)
+        switch PaneKeyAction.decide(key, context) {
+        case .filter(let text): setFilter(text)
+        case .open: openSelection(nil)
+        case .rename: renameSelection(nil)
+        case .quickLook: toggleQuickLook(nil)
+        case .command(let action): return sendMenuCommand(action)
+        case .back: return onBack?() ?? false
+        case .tab: return onTab?() ?? false
+        case .none: return false
         }
+        return true
+    }
+
+    /// On and off exactly when its menu item is, and sent with one, as the menu's shortcut sends it.
+    private func sendMenuCommand(_ action: Selector) -> Bool {
+        let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+        guard validateMenuItem(item) else { return false }
+        _ = perform(action, with: item)
         return true
     }
 

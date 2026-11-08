@@ -15,7 +15,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let shortcuts = ShortcutsWindowController(restoresFrame: false)
+        let shortcuts = ShortcutsWindowController(preferences: try Prefs.isolated(), restoresFrame: false)
         let settings = SettingsWindowController()
         let shortcutsWindow = try #require(shortcuts.window)
         let settingsWindow = try #require(settings.window)
