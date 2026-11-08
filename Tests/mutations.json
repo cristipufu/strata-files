@@ -9393,7 +9393,7 @@
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "if state.excluded.contains(where: { path == $0 || path.hasPrefix($0 + \"/\") }) { continue }",
+    "find": "if IndexRefresh.isExcluded(path, in: state.excluded) { continue }",
     "replace": "if state.excluded.contains(path) { continue }",
     "rule": "File event inbox admits changes inside excluded state folders",
     "tests": "IndexEventInboxTests/excludedItemEventsNeverRefreshTheirParentOrHideLookalikes"
@@ -9414,7 +9414,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "            for removed in removals {\n                changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed),\n                               noise: store.isNoise(removed))\n            }",
+    "find": "            for removed in removals {\n                if !changes.needsPath, changes.changed, changes.nonNoiseChanged { break }\n                let removedPath = changes.needsPath ? listing.prefix + store.name(removed) : \"\"\n                changes.record(removedPath, hiddenOrNoise: store.isHiddenOrNoise(removed),\n                               noise: store.isNoise(removed))\n            }",
     "replace": "            for _ in removals {}",
     "rule": "Scoped index updates lose removed paths",
     "tests": "IndexWorkerTests/changeNotificationsNameChangedItems"

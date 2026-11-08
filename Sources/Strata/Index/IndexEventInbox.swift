@@ -43,8 +43,8 @@ nonisolated package struct IndexRefreshTree: Sendable {
 
     /// Inserts or merges `refresh` at `path`, ignoring descendants of subtrees already collapsed on overflow.
     package mutating func insert(_ path: String, _ refresh: IndexRefresh, eventID: UInt64 = 0) {
-        let segments = Self.segments(of: path)
-        Self.insert(segments[...], refresh: refresh, eventID: eventID, into: &root, count: &count)
+        let utf8 = path.utf8
+        Self.insert(utf8: utf8, from: utf8.startIndex, refresh: refresh, eventID: eventID, into: &root, count: &count)
     }
 
     package var folders: [String: IndexRefresh] {
@@ -89,8 +89,7 @@ nonisolated package struct IndexRefreshTree: Sendable {
         let limit = max(1, limit)
         guard count > limit else { return }
         let rootSet = Set(roots)
-        Self.pruneUnderDeep(node: &root, path: "", underRoot: rootSet.contains("/"), rootSet: rootSet,
-                            hasDeepAncestor: false, count: &count)
+        Self.pruneUnderDeep(node: &root, path: "", underRoot: rootSet.contains("/"), rootSet: rootSet, count: &count)
         guard count > limit else { return }
 
         var activeCount: [String: Int] = [:]
@@ -136,11 +135,16 @@ nonisolated package struct IndexRefreshTree: Sendable {
         Self.applyCollapse(to: &root, path: "", newlyCollapsed: newlyCollapsed, count: &count)
     }
 
-    private static func insert(_ segments: ArraySlice<String>, refresh: IndexRefresh, eventID: UInt64,
+    private static func insert(utf8: String.UTF8View, from start: String.UTF8View.Index,
+                               refresh: IndexRefresh, eventID: UInt64,
                                into node: inout Node, count: inout Int) {
         if node.isCollapsed { node.firstEventID = minPositive(node.firstEventID, eventID) }
         if node.isCollapsed { return }
-        guard let head = segments.first else {
+        var index = start
+        while index < utf8.endIndex, utf8[index] == UInt8(ascii: "/") {
+            index = utf8.index(after: index)
+        }
+        guard index < utf8.endIndex else {
             if node.refresh != nil {
                 node.refresh?.merge(refresh)
                 node.firstEventID = minPositive(node.firstEventID, eventID)
@@ -151,44 +155,38 @@ nonisolated package struct IndexRefreshTree: Sendable {
             }
             return
         }
-        insert(segments.dropFirst(), refresh: refresh, eventID: eventID,
+        let segmentStart = index
+        while index < utf8.endIndex, utf8[index] != UInt8(ascii: "/") {
+            index = utf8.index(after: index)
+        }
+        let head = String(Substring(utf8[segmentStart..<index]))
+        insert(utf8: utf8, from: index, refresh: refresh, eventID: eventID,
                into: &node.children[head, default: Node()], count: &count)
     }
 
-    @discardableResult
     private static func pruneUnderDeep(node: inout Node, path: String, underRoot: Bool, rootSet: Set<String>,
-                                       hasDeepAncestor: Bool, count: inout Int) -> UInt64 {
+                                       count: inout Int) {
         let currentPath = path.isEmpty ? "/" : path
         let currentUnderRoot = underRoot || (!path.isEmpty && rootSet.contains(currentPath))
-        var absorbedEventID: UInt64 = 0
-        if hasDeepAncestor {
-            if node.refresh != nil {
-                absorbedEventID = node.firstEventID
-                node.refresh = nil
-                node.firstEventID = 0
-                count -= 1
+        if currentUnderRoot, node.refresh?.isDeep == true {
+            if !node.children.isEmpty {
+                count -= subtreeActiveCount(of: node) - 1
+                node.firstEventID = subtreeMinEventID(of: node)
+                node.children.removeAll()
             }
-            node.isCollapsed = false
+            node.isCollapsed = true
+            return
         }
-        let becomesDeepAncestor = !hasDeepAncestor && currentUnderRoot && node.refresh?.isDeep == true
-        let nextDeep = hasDeepAncestor || becomesDeepAncestor
         for key in Array(node.children.keys) {
             let childPath = path.isEmpty ? "/" + key : path + "/" + key
             if var child = node.children.removeValue(forKey: key) {
-                let childAbsorbed = pruneUnderDeep(node: &child, path: childPath, underRoot: currentUnderRoot,
-                                                   rootSet: rootSet, hasDeepAncestor: nextDeep, count: &count)
-                absorbedEventID = minPositive(absorbedEventID, childAbsorbed)
+                pruneUnderDeep(node: &child, path: childPath, underRoot: currentUnderRoot,
+                               rootSet: rootSet, count: &count)
                 if child.refresh != nil || !child.children.isEmpty || child.isCollapsed {
                     node.children[key] = child
                 }
             }
         }
-        if becomesDeepAncestor {
-            node.firstEventID = minPositive(node.firstEventID, absorbedEventID)
-            node.isCollapsed = true
-            return 0
-        }
-        return absorbedEventID
     }
 
     private static func gatherCounts(from node: Node, path: String, depth: Int, underRoot: Bool, rootSet: Set<String>,
@@ -306,24 +304,6 @@ nonisolated package struct IndexRefreshTree: Sendable {
         }
     }
 
-    private static func segments(of path: String) -> [String] {
-        var result: [String] = []
-        let utf8 = path.utf8
-        var index = utf8.startIndex
-        while index < utf8.endIndex {
-            while index < utf8.endIndex, utf8[index] == UInt8(ascii: "/") {
-                index = utf8.index(after: index)
-            }
-            guard index < utf8.endIndex else { break }
-            let start = index
-            while index < utf8.endIndex, utf8[index] != UInt8(ascii: "/") {
-                index = utf8.index(after: index)
-            }
-            result.append(String(Substring(utf8[start..<index])))
-        }
-        return result
-    }
-
     private static func parent(of path: String, roots: Set<String>) -> String? {
         guard !path.isEmpty, path != "/", !roots.contains(path) else { return nil }
         let parent = IndexRefresh.splitPath(path).parent
@@ -417,7 +397,7 @@ nonisolated package final class IndexEventInbox: Sendable {
                 }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
-                if state.excluded.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { continue }
+                if IndexRefresh.isExcluded(path, in: state.excluded) { continue }
                 let request = IndexRefresh.request(for: event, path: path, roots: state.roots)
                 state.tree.insert(request.path, request.refresh, eventID: event.id)
                 if state.tree.count >= collapseThreshold {

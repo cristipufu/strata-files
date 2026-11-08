@@ -66,4 +66,17 @@ nonisolated package enum IndexRefresh: Sendable {
         if directory, !roots.contains(path) { return (splitPath(path).parent, .directory(deep: false)) }
         return (path, .directory(deep: false))
     }
+
+    package static func isExcluded(_ path: String, in excluded: Set<String>) -> Bool {
+        guard !excluded.isEmpty else { return false }
+        if excluded.contains(path) { return true }
+        let p = path.utf8
+        return excluded.contains { root in
+            if root == "/" { return p.count > 1 && p.first == UInt8(ascii: "/") }
+            let r = root.utf8
+            return p.count > r.count
+                && p[p.index(p.startIndex, offsetBy: r.count)] == UInt8(ascii: "/")
+                && p.starts(with: r)
+        }
+    }
 }

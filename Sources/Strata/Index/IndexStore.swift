@@ -594,7 +594,7 @@ nonisolated package final class IndexStore: @unchecked Sendable {
 
         /// The live entry at an absolute path, walking down from the root that contains it.
         package func lookup(_ path: String) -> Int32? {
-            guard let root = roots.first(where: { path == $0.path || path.hasPrefix($0.path == "/" ? "/" : $0.path + "/") }) else { return nil }
+            guard let root = roots.first(where: { Self.isInside(path, root: $0.path) }) else { return nil }
             var current = root.id
             guard isLive(current) else { return nil }
             for component in path.dropFirst(root.path.count).split(separator: "/") {
@@ -602,6 +602,16 @@ nonisolated package final class IndexStore: @unchecked Sendable {
                 current = child
             }
             return current
+        }
+
+        private static func isInside(_ path: String, root: String) -> Bool {
+            if path == root { return true }
+            let p = path.utf8
+            if root == "/" { return p.count > 1 && p.first == UInt8(ascii: "/") }
+            let r = root.utf8
+            return p.count > r.count
+                && p[p.index(p.startIndex, offsetBy: r.count)] == UInt8(ascii: "/")
+                && p.starts(with: r)
         }
 
         private func child(of id: Int32, named component: Substring) -> Int32? {

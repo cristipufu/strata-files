@@ -312,6 +312,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 store.removeChildren(store.children(of: id), of: id)
             }
         }
+        if interrupted, rebuildRequested.withLock({ $0 }) {
+            defer { rebuildRequested.withLock { $0 = false } }
+            rebuild()
+            return
+        }
         if !interrupted { savedExcluded = config.excluded }
         markChanged(scheduleSave: !interrupted)
     }
@@ -547,7 +552,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
-        config.excluded.contains { path == $0 || path.hasPrefix($0 + "/") }
+        IndexRefresh.isExcluded(path, in: config.excluded)
     }
 
     /// Deleted entries are only flagged; when they pile up (caches, build folders and node_modules churn), memory,
@@ -900,7 +905,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             let expectedNoise = item.isDirectory
                 && (inherited.noise || listing.ownNoise[index] || config.noise.contains(listing.prefix + name))
             if needsAddingAgain(old, as: item, expectedNoise: expectedNoise, inheritedHidden: inherited.hidden, in: store) {
-                changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old),
+                changes.record(changes.needsPath ? listing.prefix + name : "", hiddenOrNoise: store.isHiddenOrNoise(old),
                                noise: store.isNoise(old) && ( !item.isDirectory || expectedNoise ))
                 removals.append(old)
                 changes.add(item, noise: listing.ownNoise[index])
@@ -910,7 +915,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             } else {
                 let sizeChanged = store.size[Int(old)] != item.size || store.allocatedSize(old) != item.allocatedSize
                 if sizeChanged || store.mtime[Int(old)] != item.mtime {
-                    changes.record(listing.prefix + name, hiddenOrNoise: store.isHiddenOrNoise(old),
+                    changes.record(changes.needsPath ? listing.prefix + name : "", hiddenOrNoise: store.isHiddenOrNoise(old),
                                    noise: store.isNoise(old), affectsCapacity: sizeChanged)
                     store.updateFile(old, size: item.size, allocatedSize: item.allocatedSize, mtime: item.mtime,
                                      bytesDelta: &bytesDelta, allocatedDelta: &allocatedDelta, unknownChanged: &unknownChanged)
@@ -922,7 +927,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         removals.append(contentsOf: existing.values)
         if !removals.isEmpty {
             for removed in removals {
-                changes.record(listing.prefix + store.name(removed), hiddenOrNoise: store.isHiddenOrNoise(removed),
+                if !changes.needsPath, changes.changed, changes.nonNoiseChanged { break }
+                let removedPath = changes.needsPath ? listing.prefix + store.name(removed) : ""
+                changes.record(removedPath, hiddenOrNoise: store.isHiddenOrNoise(removed),
                                noise: store.isNoise(removed))
             }
             store.removeChildren(removals, of: id)
