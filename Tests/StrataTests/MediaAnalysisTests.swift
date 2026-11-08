@@ -117,6 +117,7 @@ import os
         window.contentView = view
         await view.loadingTask?.value
         let native = try #require(view.contentView.subviews.compactMap { $0 as? AVPlayerView }.first)
+        #expect(native.controlsStyle == .minimal && view.fittingSize.width < 240)
         #expect(native.player != nil && native.player?.rate == 0)
         window.close()
         #expect(native.player == nil && view.loadingTask == nil)

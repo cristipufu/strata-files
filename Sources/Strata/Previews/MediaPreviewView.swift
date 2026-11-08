@@ -30,9 +30,14 @@ package final class MediaPreviewView: PreviewView {
         frameSession = MediaFrameSession(reader: reader)
         waveformSession = AudioWaveformSession(reader: reader)
         super.init(frame: .zero)
-        playerView.controlsStyle = .floating
+        playerView.controlsStyle = .minimal
         playerView.showsFullScreenToggleButton = false
         playerView.allowsPictureInPicturePlayback = false
+        for axis in [NSLayoutConstraint.Orientation.horizontal, .vertical] {
+            playerView.setContentCompressionResistancePriority(.defaultLow, for: axis)
+            playerView.setContentHuggingPriority(.defaultLow, for: axis)
+        }
+        chapters.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hoverImage.imageScaling = .scaleProportionallyDown
         hoverImage.isHidden = true
         chapters.isHidden = true; storyboardView.isHidden = true
@@ -114,7 +119,7 @@ package final class MediaPreviewView: PreviewView {
     }
 
     private func configureAudio() {
-        playerView.controlsStyle = .inline
+        playerView.controlsStyle = .minimal
         analyzeButton.bezelStyle = .rounded
         analyzeButton.target = self; analyzeButton.action = #selector(analyzeWaveform)
         waveformProgress.style = .spinning; waveformProgress.controlSize = .small
