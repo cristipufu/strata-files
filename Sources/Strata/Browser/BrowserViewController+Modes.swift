@@ -44,8 +44,9 @@ extension BrowserViewController {
         else {
             setStoredMode(newMode)
             if remember {
-                if directory != nil { rememberFolderPresentation() }
+                if hasCustomFolderPresentation { rememberFolderPresentation() }
                 else { preferences.viewMode = newMode.rawValue }
+                folderOptions?.refresh()
             }
         }
         installActiveView()

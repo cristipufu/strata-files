@@ -152,8 +152,9 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         if !remember, directory == nil, !isShowingResults { initialSort = .init(key: key, ascending: direction) }
         syncSortDescriptor()
         if remember, !isShowingResults {
-            if directory != nil { rememberFolderPresentation() }
+            if hasCustomFolderPresentation { rememberFolderPresentation() }
             else { preferences.sortColumn = key.rawValue; preferences.sortAscending = direction }
+            folderOptions?.refresh()
         }
         let selection = selectedURLs
         listing.sort(using: sort)

@@ -100,9 +100,8 @@ struct BrowserPreferencesTests {
         #expect(firstReads.hiddenChoices.last == true && secondReads.hiddenChoices == [false])
         a.setMode(.columns)
         a.applySort(.size, ascending: false)
-        #expect(first.services.folderViews.presentation(for: tree.root).mode == .columns)
-        #expect(first.services.folderViews.presentation(for: tree.root).sort == .init(key: .size, ascending: false))
-        #expect(first.preferences.viewMode == BrowserViewMode.list.rawValue && first.preferences.sortColumn == "name")
+        #expect(first.services.folderViews.stored(for: tree.root) == nil)
+        #expect(first.preferences.viewMode == BrowserViewMode.columns.rawValue && first.preferences.sortColumn == "size")
         #expect(second.preferences.viewMode == BrowserViewMode.grid.rawValue && second.preferences.sortColumn == "name")
         #expect(tree.snapshot() == [".hidden", "a.txt", "middle/", "z.txt"])
     }

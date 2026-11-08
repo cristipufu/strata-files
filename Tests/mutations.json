@@ -9694,5 +9694,12 @@
     "replace": "        queue.asyncAfter(deadline: .now() + hotFolders.fastInterval)",
     "rule": "Deep folder refreshes reconcile at default QoS instead of utility",
     "tests": "IndexWorkerTests/deepRefreshReadsSiblingSubtreesInParallelAndIntegratesLargeNewSubtrees"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "                if hasCustomFolderPresentation { rememberFolderPresentation() }\n                else { preferences.viewMode = newMode.rawValue }",
+    "replace": "                rememberFolderPresentation()",
+    "rule": "Toolbar view mode changes in an uncustomized folder update the default view mode so navigation keeps the chosen mode",
+    "tests": "FolderViewSettingsTests/allViewModesStayConsistentAcrossUncustomizedFolderNavigation"
   }
 ]

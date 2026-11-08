@@ -1,8 +1,10 @@
 # Folder view settings
 
-Strata remembers the view mode, sort column and direction, and icon size when you customize a local folder. Returning
-to it or opening it in a new window restores those choices. An uncustomized folder uses the defaults. Settings live
-in Strata’s preferences; Strata does not create `.DS_Store` files in the folders you browse.
+Strata remembers the view mode, sort column and direction, and icon size when you customize a local folder in View
+Options. Returning to it or opening it in a new window restores those choices. An uncustomized folder uses the defaults,
+and changing the view mode in the toolbar or View menu updates the default view mode so all view modes stay consistent
+across uncustomized folders. Settings live in Strata’s preferences; Strata does not create `.DS_Store` files in the
+folders you browse.
 
 Command-J opens View Options for the originating pane. Its Folder section chooses the view and order; Icon size
 belongs to that folder too. **Use as Defaults** makes its current choices the defaults for folders without a saved

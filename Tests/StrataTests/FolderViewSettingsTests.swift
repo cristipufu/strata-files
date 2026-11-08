@@ -6,17 +6,18 @@ import Testing
 @MainActor struct FolderViewSettingsTests {
     @Test func folderChoicesSurviveNavigationAndReopeningWithoutChangingDefaults() async throws {
         let tree = try TestTree("first/a.txt", "first/z.txt", "second/b.txt"), environment = try IndependentEnvironment()
-        let browser = makeBrowser(environment)
+        let browser = makeBrowser(environment), options = FolderViewOptions(settings: environment.services.folderViews)
         defer { browser.stopBackgroundWork() }
+        options.bind(browser)
         let defaults = environment.services.folderViews.defaults
         browser.load(tree.url("first")); await browser.directoryReads.task?.value
-        browser.setMode(.grid); browser.applySort(.name, ascending: false); browser.setIconSize(128)
+        options.chooseMode(.grid); options.chooseSort(.name); options.chooseAscending(false); options.chooseIconSize(128)
         let chosen = browser.folderPresentation
         #expect(chosen.mode == .grid && !chosen.sort.ascending && chosen.iconSize == 128)
         #expect(environment.services.folderViews.defaults == defaults)
         browser.load(tree.url("second")); await browser.directoryReads.task?.value
         #expect(browser.folderPresentation == defaults)
-        browser.setMode(.gallery); browser.setIconSize(96)
+        options.chooseMode(.gallery); options.chooseIconSize(96)
         browser.load(tree.url("first")); await browser.directoryReads.task?.value
         #expect(browser.folderPresentation == chosen && browser.grid.iconSize == 128)
         #expect(browser.topLevelEntries.map(\.name) == ["z.txt", "a.txt"])
@@ -35,12 +36,12 @@ import Testing
         defer { [a, peer, b].forEach { $0.stopBackgroundWork() } }
         for browser in [a, peer, b] { browser.load(tree.url("first")); await browser.directoryReads.task?.value }
         let unrelated = b.folderPresentation
-        a.setMode(.grid); a.setIconSize(140); a.applySort(.size, ascending: false)
-        #expect(peer.folderPresentation == a.folderPresentation)
-        #expect(b.folderPresentation == unrelated)
         let model = FolderViewOptions(settings: first.services.folderViews)
         model.bind(a)
         #expect(model.canEditFolder && model.folderName == "first")
+        model.chooseMode(.grid); model.chooseIconSize(140); model.chooseSort(.size); model.chooseAscending(false)
+        #expect(peer.folderPresentation == a.folderPresentation)
+        #expect(b.folderPresentation == unrelated)
         model.useAsDefaults()
         let chosen = a.folderPresentation
         #expect(first.services.folderViews.defaults == chosen && other.services.folderViews.defaults == unrelated)
@@ -56,7 +57,9 @@ import Testing
         model.chooseMode(.gallery); model.chooseIconSize(192); model.reset(); model.useAsDefaults()
         #expect(first.services.folderViews.defaults == chosen)
         peer.load(tree.url("second")); await peer.directoryReads.task?.value
-        peer.setMode(.gallery); peer.setIconSize(160)
+        let peerModel = FolderViewOptions(settings: first.services.folderViews)
+        peerModel.bind(peer)
+        peerModel.chooseMode(.gallery); peerModel.chooseIconSize(160)
         a.load(tree.url("second")); await a.directoryReads.task?.value
         #expect(a.folderPresentation == peer.folderPresentation && a.mode == .gallery && a.iconSize == 160)
         a.stopBackgroundWork()
@@ -155,11 +158,13 @@ import Testing
             return Listing(folder: folder, entries: entries)
         })
         let environment = try IndependentEnvironment(directories: reader), browser = makeBrowser(environment)
+        let options = FolderViewOptions(settings: environment.services.folderViews)
         defer { browser.stopBackgroundWork() }
+        options.bind(browser)
         browser.load(asked)
         let read = try #require(browser.directoryReads.task)
         await gate.waitUntilStarted()
-        browser.setMode(.grid); browser.setIconSize(128)
+        options.chooseMode(.grid); options.chooseIconSize(128)
         #expect(environment.services.folderViews.stored(for: asked) == nil)
         gate.finish(.success(Listing(folder: actual, entries: entries)))
         await read.value
@@ -173,9 +178,11 @@ import Testing
             return Listing(folder: folder, entries: [])
         })
         let nextEnvironment = try IndependentEnvironment(directories: nextReader), next = makeBrowser(nextEnvironment)
+        let nextOptions = FolderViewOptions(settings: nextEnvironment.services.folderViews)
         defer { next.stopBackgroundWork() }
+        nextOptions.bind(next)
         next.load(asked); let old = try #require(next.directoryReads.task)
-        await held.waitUntilStarted(); next.setMode(.gallery)
+        await held.waitUntilStarted(); nextOptions.chooseMode(.gallery)
         next.load(tree.url("elsewhere")); await next.directoryReads.task?.value
         held.finish(.success(Listing(folder: actual, entries: entries))); await old.value
         #expect(next.directory == tree.url("elsewhere"))
@@ -183,6 +190,45 @@ import Testing
         #expect(nextEnvironment.services.folderViews.stored(for: asked) == nil)
         #expect(nextEnvironment.services.folderViews.stored(for: tree.url("elsewhere")) == nil)
         #expect(next.folderPresentation == nextEnvironment.services.folderViews.defaults)
+    }
+
+    @Test func allViewModesStayConsistentAcrossUncustomizedFolderNavigation() async throws {
+        let tree = try TestTree("parent/child/grandchild/file.txt", "custom/file.txt"), environment = try IndependentEnvironment()
+        let browser = makeBrowser(environment), options = FolderViewOptions(settings: environment.services.folderViews)
+        defer { browser.stopBackgroundWork() }
+        options.bind(browser)
+        browser.load(tree.url("custom")); await browser.directoryReads.task?.value
+        options.chooseMode(.grid); options.chooseIconSize(112)
+        let customSaved = browser.folderPresentation
+        #expect(customSaved.mode == .grid && environment.services.folderViews.stored(for: tree.url("custom")) == customSaved)
+
+        for mode in BrowserViewMode.allCases {
+            browser.load(tree.url("parent")); await browser.directoryReads.task?.value
+            browser.setMode(mode)
+            #expect(browser.mode == mode)
+            #expect(environment.services.folderViews.stored(for: tree.url("parent")) == nil)
+
+            browser.load(tree.url("parent/child")); await browser.directoryReads.task?.value
+            #expect(browser.mode == mode)
+            #expect(environment.services.folderViews.stored(for: tree.url("parent/child")) == nil)
+
+            browser.load(tree.url("parent/child/grandchild")); await browser.directoryReads.task?.value
+            #expect(browser.mode == mode)
+            #expect(environment.services.folderViews.stored(for: tree.url("parent/child/grandchild")) == nil)
+
+            browser.load(tree.url("custom")); await browser.directoryReads.task?.value
+            #expect(browser.mode == .grid && browser.folderPresentation == customSaved)
+
+            browser.load(tree.url("parent/child")); await browser.directoryReads.task?.value
+            #expect(browser.mode == mode)
+        }
+        browser.load(tree.url("custom")); await browser.directoryReads.task?.value
+        browser.setMode(.gallery)
+        #expect(environment.services.folderViews.stored(for: tree.url("custom"))?.mode == .gallery)
+        browser.load(tree.url("parent")); await browser.directoryReads.task?.value
+        #expect(browser.mode == BrowserViewMode.allCases.last)
+        browser.load(tree.url("custom")); await browser.directoryReads.task?.value
+        #expect(browser.mode == .gallery)
     }
 
     private func makeBrowser(_ environment: IndependentEnvironment) -> BrowserViewController {

@@ -29,7 +29,7 @@ final class FolderViewOptions: NSObject, ObservableObject {
     func unbind() { browser?.folderOptions = nil; browser = nil; refresh() }
 
     @objc func refresh() {
-        let editable = browser?.canRememberFolderPresentation == true
+        let editable = browser?.canCustomizeFolderPresentation == true
         let snapshot = editable ? browser?.folderPresentation ?? settings.defaults : settings.defaults
         let name = editable ? browser?.directory?.lastPathComponent ?? "" : ""
         if canEditFolder != editable { canEditFolder = editable }
@@ -55,9 +55,7 @@ final class FolderViewOptions: NSObject, ObservableObject {
     }
 
     private func change(_ update: (inout FolderPresentation) -> Void) {
-        guard let browser, browser.canRememberFolderPresentation, let folder = browser.directory else { return }
-        var value = browser.folderPresentation
-        update(&value)
-        settings.save(value, for: folder)
+        guard let browser, browser.canCustomizeFolderPresentation else { return }
+        browser.customizeFolderPresentation(update)
     }
 }

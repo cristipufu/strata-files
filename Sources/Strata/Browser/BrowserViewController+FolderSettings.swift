@@ -1,8 +1,16 @@
 import AppKit
 
 extension BrowserViewController {
+    var canCustomizeFolderPresentation: Bool {
+        !isShowingResults && loadError == nil && directory.map(canSaveFolderView(at:)) == true
+    }
+
     var canRememberFolderPresentation: Bool {
-        isLoaded && !isShowingResults && loadError == nil && directory.map(canSaveFolderView(at:)) == true
+        isLoaded && canCustomizeFolderPresentation
+    }
+
+    var hasCustomFolderPresentation: Bool {
+        pendingFolderPresentation != nil || directory.flatMap(services.folderViews.stored(for:)) != nil
     }
 
     private func canSaveFolderView(at folder: URL) -> Bool {
@@ -21,9 +29,20 @@ extension BrowserViewController {
     }
 
     func rememberFolderPresentation() {
-        guard !isShowingResults, loadError == nil, let directory else { return }
+        guard canCustomizeFolderPresentation, let directory else { return }
         if !isLoaded { pendingFolderPresentation = folderPresentation }
         else if canRememberFolderPresentation { services.folderViews.save(folderPresentation, for: directory) }
+    }
+
+    func customizeFolderPresentation(_ update: (inout FolderPresentation) -> Void) {
+        guard canCustomizeFolderPresentation else { return }
+        var value = folderPresentation
+        update(&value)
+        if value.iconSize != iconSize { setIconSize(value.iconSize, remember: false) }
+        if value.mode != mode { setMode(value.mode, remember: false) }
+        if ordering.choice != value.sort { applySort(value.sort.key, ascending: value.sort.ascending, remember: false) }
+        rememberFolderPresentation()
+        folderOptions?.refresh()
     }
 
     func restoreFolderPresentation(at folder: URL, showing: Bool) {
@@ -58,9 +77,10 @@ extension BrowserViewController {
         let size = size.isFinite ? min(max(size, range.lowerBound), range.upperBound) : services.folderViews.defaults.iconSize
         setStoredIconSize(size)
         gridController?.setIconSize(CGFloat(size), animated: false)
-        if remember {
-            if directory != nil { rememberFolderPresentation() }
-            else if !isShowingResults { preferences.gridIconSize = size }
+        if remember, !isShowingResults {
+            if hasCustomFolderPresentation { rememberFolderPresentation() }
+            else { preferences.gridIconSize = size }
+            folderOptions?.refresh()
         }
     }
 }
