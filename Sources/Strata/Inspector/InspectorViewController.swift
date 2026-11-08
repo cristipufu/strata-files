@@ -249,7 +249,7 @@ final class InspectorViewController: NSViewController {
     }
 
     private func canPreview(_ entry: FileEntry) -> Bool {
-        !entry.isSymlink && !services.copies.isPlaceholder(entry.url)
+        !entry.isFolder && !entry.isSymlink && !services.copies.isPlaceholder(entry.url)
     }
 
     private func updateSummary(for items: [FileEntry]) {

@@ -9544,5 +9544,12 @@
     "replace": "",
     "rule": "Dataless folders are skipped without materializing or dropping their indexed documents",
     "tests": "SemanticProgressTests/datalessCloudFilesAreSkippedWithoutStampingAndIndexedOnceDownloadedWithUnchangedMetadata"
+  },
+  {
+    "file": "Strata/Inspector/InspectorViewController.swift",
+    "find": "    private func canPreview(_ entry: FileEntry) -> Bool {\n        !entry.isFolder && !entry.isSymlink && !services.copies.isPlaceholder(entry.url)\n    }",
+    "replace": "    private func canPreview(_ entry: FileEntry) -> Bool {\n        !entry.isSymlink && !services.copies.isPlaceholder(entry.url)\n    }",
+    "rule": "Inspector shows folder icons instead of starting a live Quick Look folder watcher",
+    "tests": "QuickLookLifecycleTests/closingTheInspectorBeforeItsDeferredPreviewDoesNotReviveQuickLook"
   }
 ]

@@ -22,7 +22,7 @@ struct QuickLookLifecycleTests {
 
     @Test func closingTheInspectorBeforeItsDeferredPreviewDoesNotReviveQuickLook() throws {
         let _ = NSApplication.shared
-        let tree = try TestTree("folder/")
+        let tree = try TestTree("folder/", "note.rtfd/TXT.rtf", "item.bin")
         var pending: DispatchWorkItem?
         let inspector = InspectorViewController(services: testEnvironment.services, previewScheduler: { pending = $0 })
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 700),
@@ -31,7 +31,18 @@ struct QuickLookLifecycleTests {
         window.contentViewController = inspector
         defer { window.contentViewController = nil }
         let preview = try #require(previewHost(in: inspector.view))
+        // Folders show their icon without starting a live Quick Look folder watcher, while document packages still preview.
         inspector.show(entries: [try #require(FileEntry(url: tree.url("folder")))], folder: nil,
+                       folderSize: { _ in nil }, canMeasure: { _ in false })
+        #expect(pending == nil && !inspector.iconView.isHidden && preview.isHidden && preview.previewItem == nil)
+
+        let packageEntry = try #require(FileEntry(url: tree.url("note.rtfd")))
+        #expect(packageEntry.isDirectory && packageEntry.isPackage && !packageEntry.isFolder)
+        inspector.show(entries: [packageEntry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
+        #expect(pending != nil)
+        pending = nil
+
+        inspector.show(entries: [try #require(FileEntry(url: tree.url("item.bin")))], folder: nil,
                        folderSize: { _ in nil }, canMeasure: { _ in false })
         let work = try #require(pending)
         window.close()
@@ -39,7 +50,7 @@ struct QuickLookLifecycleTests {
         work.perform()
         #expect(preview.previewItem == nil)
         #expect(!window.isVisible)
-        #expect(tree.snapshot() == ["folder/"])
+        #expect(tree.snapshot() == ["folder/", "item.bin", "note.rtfd/", "note.rtfd/TXT.rtf"])
     }
     @Test func aClosedNativePreviewRejectsNewItemsAndRefreshes() throws {
         let _ = NSApplication.shared
