@@ -59,13 +59,17 @@ package enum Places {
 
     /// Adds folders to the favorites (at `index` in the sidebar's list, else at the end); ones already there move
     /// instead. Which of `urls` are folders is read away from the main thread. The rest of your list is kept as it's
-    /// saved, with any favorite `checks` last found missing (a disk that may be back).
-    package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs, checks: PlaceChecks) async {
-        let folders = await folders(among: urls.map(\.lexicallyStandardized))
+    /// saved, with any favorite `checks` last found missing (a disk that may be back). With `keepingFavorites`, ones
+    /// already there stay where they are: adding a folder from another section never moves it.
+    package static func addFavorites(_ urls: [URL], at index: Int? = nil, preferences: Prefs, checks: PlaceChecks,
+                                     keepingFavorites: Bool = false) async {
+        let found = await folders(among: urls.map(\.lexicallyStandardized))
+        let shown = favorites(preferences: preferences, checks: checks).map(\.url.lexicallyStandardized)
+        let current = savedFavorites(preferences: preferences, shown: shown)
+        let folders = keepingFavorites ? found.filter { folder in !current.contains { $0.path == folder.path } } : found
         guard !folders.isEmpty else { return }
         let paths = Set(folders.map(\.path))
-        let shown = favorites(preferences: preferences, checks: checks).map(\.url.lexicallyStandardized)
-        var saved = savedFavorites(preferences: preferences, shown: shown).filter { !paths.contains($0.path) }
+        var saved = current.filter { !paths.contains($0.path) }
         // Before the first favorite shown at `index` or after it that stays where it is.
         let anchor = index.flatMap { index in shown.dropFirst(max(0, index)).first { !paths.contains($0.path) } }
         // By path: a default place and the same folder saved by you can differ in a trailing slash.
@@ -92,6 +96,26 @@ package enum Places {
                 return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
             }
         }
+    }
+
+    /// This Mac, like File Explorer's This PC: the folders macOS makes in your home, then the disks.
+    package static let thisMacFolders: [(path: String, symbol: String)] = [
+        ("Desktop", "menubar.dock.rectangle"), ("Documents", "doc"), ("Downloads", "arrow.down.circle"),
+        ("Pictures", "photo"), ("Music", "music.note"), ("Movies", "film"),
+    ]
+
+    package static var thisMacCandidates: [URL] { thisMacFolders.map { home.appending(path: $0.path) } }
+
+    package static func thisMac(checks: PlaceChecks) -> [Place] {
+        thisMac(isFolder: { checks.isFolder($0) }, name: checks.name, volumes: checks.snapshot.volumes)
+    }
+
+    /// A folder found missing is left out; one not read yet shows, as a favorite does.
+    package static func thisMac(isFolder: (String) -> Bool?, name: (URL) -> String, volumes: [Place]) -> [Place] {
+        thisMacFolders.compactMap { folder in
+            let url = home.appending(path: folder.path)
+            return isFolder(url.path) == false ? nil : Place(title: name(url), url: url, symbol: folder.symbol)
+        } + volumes
     }
 
     private static let standardPlaces: [(path: String, symbol: String)] = [

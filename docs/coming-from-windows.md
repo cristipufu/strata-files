@@ -9,6 +9,7 @@ words such as "explorer", "windows" and "pc".
 |---|---|
 | Windows keyboard | The keys work as in File Explorer (below). |
 | Explorer layout | A button, Use Explorer Layout, that sets up the List view as in File Explorer's Details view (below). |
+| This Mac in the sidebar | A This Mac section in the sidebar, like This PC: your standard folders and your disks (below). |
 
 ## Windows keyboard
 
@@ -53,3 +54,23 @@ pressed in, at once, without a restart:
 Search results, Recents and Duplicates keep their own view. `ExplorerLayout.plan` decides the defaults and the
 hidden columns; `ExplorerLayoutTests` covers it, open windows and both panes of a Dual Pane window following at once,
 the folders open now reset and others kept, another environment's windows left alone, and pressing twice.
+
+## This Mac in the sidebar
+
+With This Mac in the sidebar on, the Places sidebar gets a This Mac section, like This PC in File Explorer. It comes
+right after Favorites and Frequent; the other sections keep their order below it. Open windows follow at once.
+
+- It lists Desktop, Documents, Downloads, Pictures, Music and Movies from your home folder, by the names macOS gives
+  them (Finder's names in your language), then your disks. Home itself stays in Favorites.
+- A folder that isn't there is left out. Whether each one is there, and its name, comes from the same background read
+  as the favorites (`PlaceChecks`), so the sidebar never waits on a disk.
+- The disks move from Locations to This Mac, so each disk shows once. Locations keeps cloud folders, Containers and
+  the Trash. Frequent leaves out folders This Mac already shows.
+- Add to Favorites looks at the folder, not the row: a This Mac row offers it only when its folder isn't a favorite,
+  and adding never moves a favorite you already have. Remove from Sidebar stays on the Favorites rows.
+- Hiding the section is remembered like any other section's, also when you turn the option off and on.
+- The Folders sidebar (the tree) doesn't change. Turning the option off gives back the sidebar you had.
+
+`Places.thisMac` decides the rows and `SidebarLayout.sectionIDs` the order; `ThisMacSidebarTests` covers both, missing
+folders and localized names, the disks leaving Locations and coming back, Add to Favorites, hiding the section, the
+Folders tree, turning the option off and on twice, open sidebars following, and another environment left alone.

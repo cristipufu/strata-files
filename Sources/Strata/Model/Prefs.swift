@@ -14,6 +14,8 @@ extension Notification.Name {
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
     package static let windowsKeyboardChanged = Notification.Name("StrataWindowsKeyboardChanged")
+    /// What the sidebar's sections hold changed (This Mac on or off); the object is the `Prefs`.
+    package static let sidebarContentsChanged = Notification.Name("StrataSidebarContentsChanged")
 }
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
@@ -92,6 +94,7 @@ package final class Prefs: PreviewTextSettings {
         static let showListNameExtensions = "showListNameExtensions"
         static let showIconPreviews = "showIconPreviews"
         static let sidebarShowsTree = "sidebarShowsTree"
+        static let sidebarThisMac = "sidebarThisMac"
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
@@ -122,6 +125,13 @@ package final class Prefs: PreviewTextSettings {
     package var sidebarShowsTree: Bool {
         get { defaults.bool(forKey: Key.sidebarShowsTree) }
         set { defaults.set(newValue, forKey: Key.sidebarShowsTree); notifications.post(name: .prefsChanged, object: nil) }
+    }
+
+    /// Coming from Windows: a This Mac section in the sidebar, like File Explorer's This PC, which takes the disks from
+    /// Locations. Only in Places; the folder tree stays as it is.
+    package var sidebarThisMac: Bool {
+        get { defaults.bool(forKey: Key.sidebarThisMac) }
+        set { defaults.set(newValue, forKey: Key.sidebarThisMac); notifications.post(name: .sidebarContentsChanged, object: self) }
     }
 
     /// In Dual Pane, each pane shows its own path bar instead of just the folder name.

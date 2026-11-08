@@ -17,6 +17,8 @@ extension NSPasteboard.PasteboardType {
     /// A favorite being reordered, or a folder being added to Favorites, inside the sidebar (never a file URL: dropping it
     /// elsewhere mustn't move the folder).
     static let sidebarFavorite = NSPasteboard.PasteboardType("dev.strata.sidebar-favorite")
+    /// With `sidebarFavorite`: the row came from another section, so a folder that's a favorite already keeps its place.
+    static let sidebarFavoriteAddition = NSPasteboard.PasteboardType("dev.strata.sidebar-favorite-addition")
 }
 
 /// Where a sidebar row takes you.

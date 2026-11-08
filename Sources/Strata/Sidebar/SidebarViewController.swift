@@ -123,6 +123,7 @@ final class SidebarViewController: NSViewController {
     /// What changes the sidebar's sections: settings, disks, servers, tags, places, containers and the Trash.
     private func observeChanges() {
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
+        preferences.notifications.addObserver(self, selector: #selector(contentsChanged), name: .sidebarContentsChanged, object: preferences)
         let center = NSWorkspace.shared.notificationCenter
         NotificationCenter.default.addObserver(self, selector: #selector(refreshCloudFolders), name: NSApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
@@ -149,11 +150,14 @@ final class SidebarViewController: NSViewController {
         let favorites = [SidebarItem(title: String(localized: "Recents", comment: "Sidebar item: recently used files"), target: .recents, symbol: "clock")]
             + Places.favorites(preferences: preferences, checks: services.places).map(SidebarItem.init)
         let pinned = Set(favorites.compactMap(\.url?.path))
-        sections = [
+        let showsThisMac = preferences.sidebarThisMac
+        let thisMac = showsThisMac ? Places.thisMac(checks: services.places).map(SidebarItem.init) : []
+        sections = SidebarLayout.ordered([
             SidebarSection(id: "favorites", title: String(localized: "Favorites", comment: "Sidebar section title"), items: favorites),
-            workspacesSection(), searchesSection(), frequentSection(besides: pinned), insightsSection(),
-            locationsSection(besides: pinned), serversSection(), tagsSection(),
-        ].compactMap { $0 }
+            workspacesSection(), searchesSection(), frequentSection(besides: pinned.union(thisMac.compactMap(\.url?.path))),
+            thisMacSection(thisMac), insightsSection(),
+            locationsSection(besides: pinned, disks: !showsThisMac), serversSection(), tagsSection(),
+        ].compactMap { $0 }, thisMac: showsThisMac)
         applyingCollapsed = true
         outline.reloadData()
         applyingCollapsed = false
@@ -191,6 +195,14 @@ final class SidebarViewController: NSViewController {
                               items: Array(frequent))
     }
 
+    /// Like File Explorer's This PC: the standard folders, then the disks.
+    private func thisMacSection(_ items: [SidebarItem]) -> SidebarSection? {
+        guard !items.isEmpty else { return nil }
+        return SidebarSection(id: SidebarLayout.thisMac,
+                              title: String(localized: "This Mac", comment: "Sidebar section title: your folders and disks, like Windows’ This PC"),
+                              items: items)
+    }
+
     private func insightsSection() -> SidebarSection {
         SidebarSection(id: "insights", title: String(localized: "Insights", comment: "Sidebar section title: Large Files and Duplicates"), items: [
             SidebarItem(title: String(localized: "Large Files", comment: "Sidebar item"), target: .largeFiles, symbol: "externaldrive.badge.exclamationmark"),
@@ -198,9 +210,9 @@ final class SidebarViewController: NSViewController {
         ])
     }
 
-    /// Disks, cloud folders that aren't favorites (`pinned`), Containers while an engine (Docker Desktop, OrbStack…)
-    /// runs, like a disk, and the Trash.
-    private func locationsSection(besides pinned: Set<String>) -> SidebarSection {
+    /// Disks (unless This Mac has them), cloud folders that aren't favorites (`pinned`), Containers while an engine
+    /// (Docker Desktop, OrbStack…) runs, like a disk, and the Trash.
+    private func locationsSection(besides pinned: Set<String>, disks: Bool) -> SidebarSection {
         let containers = services.containerStore.engine.map { engine -> SidebarItem in
             let item = SidebarItem(title: String(localized: "Containers", comment: "Sidebar section title: Docker containers"), target: .containers,
                                    symbol: "shippingbox")
@@ -211,7 +223,7 @@ final class SidebarViewController: NSViewController {
             SidebarItem(Place(title: $0.title, url: $0.url, symbol: "icloud"))
         }
         return SidebarSection(id: "locations", title: String(localized: "Locations", comment: "Sidebar section title: disks and the Trash"),
-                              items: services.places.snapshot.volumes.map(SidebarItem.init) + cloud + [containers].compactMap { $0 }
+                              items: (disks ? services.places.snapshot.volumes.map(SidebarItem.init) : []) + cloud + [containers].compactMap { $0 }
             + [SidebarItem(title: String(localized: "Trash", comment: "Sidebar item: the Trash"), target: .folder(Trash.home), symbol: trashSymbol)])
     }
 
@@ -273,6 +285,8 @@ final class SidebarViewController: NSViewController {
     }
 
     @objc private func prefsChanged() { showMode() }
+
+    @objc private func contentsChanged() { reload() }
 
     /// Selects the row for `target` (or nothing) without navigating.
     func highlight(_ target: SidebarTarget?) {
@@ -441,12 +455,15 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         onSelect?(item.target)
     }
 
-    // Favorites can be dragged to reorder them, and the folders you could add to Favorites (Frequent, Locations) can be
-    // dragged in among them. A private type, so dropping one anywhere else never moves the folder on disk.
+    // Favorites can be dragged to reorder them, and the folders you could add to Favorites (Frequent, This Mac,
+    // Locations) can be dragged in among them. A private type, so dropping one anywhere else never moves the folder on disk.
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        guard let item = item as? SidebarItem, let url = item.url, isFavorite(item) || canAddToFavorites(item) else { return nil }
+        guard let item = item as? SidebarItem, let url = item.url else { return nil }
+        let reorder = isFavorite(item)
+        guard reorder || canAddToFavorites(item) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setString(url.path, forType: .sidebarFavorite)
+        if !reorder { pasteboardItem.setString("", forType: .sidebarFavoriteAddition) }
         return pasteboardItem
     }
 
@@ -460,10 +477,11 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         sections.first { $0.id == "frequent" }?.items.contains { $0 === item } == true
     }
 
-    /// A folder row that isn't a favorite yet: not the Trash, a tag or a disk you can eject.
+    /// A folder row whose folder isn't a favorite yet, in whichever section: not the Trash, a tag or a disk you can eject.
     func canAddToFavorites(_ item: SidebarItem) -> Bool {
         guard let url = item.url, item.tint == nil, !item.isEjectable, !Trash.isTrash(url) else { return false }
-        return !isFavorite(item)
+        let path = url.lexicallyStandardized.path
+        return favoritesSection?.items.contains { $0.url?.lexicallyStandardized.path == path } != true
     }
 
     /// Where between the favorites a drop lands (Recents stays first), or nil when it isn't between them.
@@ -518,7 +536,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         let copies = services.copies
         if let at = favoriteIndex(item, index) {
             if let path = info.draggingPasteboard.string(forType: .sidebarFavorite), !path.isEmpty {
-                addFavorites([URL(filePath: path, directoryHint: .isDirectory)], at: at)
+                addFavorites([URL(filePath: path, directoryHint: .isDirectory)], at: at,
+                             keepingFavorites: info.draggingPasteboard.string(forType: .sidebarFavoriteAddition) != nil)
             } else {
                 addFavorites(FileDrop.urls(info, copies: copies).filter { !ReadOnlyCopies.contains($0, copies: copies) }, at: at)
             }
@@ -674,9 +693,9 @@ extension SidebarViewController {
         }
     }
 
-    func addFavorites(_ urls: [URL], at index: Int?) {
+    func addFavorites(_ urls: [URL], at index: Int?, keepingFavorites: Bool = false) {
         let preferences = preferences, places = services.places
-        Task { await Places.addFavorites(urls, at: index, preferences: preferences, checks: places) }
+        Task { await Places.addFavorites(urls, at: index, preferences: preferences, checks: places, keepingFavorites: keepingFavorites) }
     }
 }
 

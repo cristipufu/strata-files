@@ -19,7 +19,8 @@ import Testing
         let queries: [(String, SettingID)] = [("zebra", .alternatingRows), ("settings zebra", .alternatingRows),
             ("verify copies", .verifyCopies), ("filename extensions", .nameExtensions), ("font size", .textSize),
             ("full disk access", .fullDiskAccess), ("settings terminal", .terminalApp), ("icon size", .iconSize),
-            ("explorer layout", .explorerLayout), ("windows columns", .explorerLayout)]
+            ("explorer layout", .explorerLayout), ("windows columns", .explorerLayout),
+            ("this mac", .sidebarThisMac), ("this pc", .sidebarThisMac), ("windows drives", .sidebarThisMac)]
         for (query, expected) in queries {
             ranker.rank(query)
             #expect(ranker.results.contains { $0.item.settingID == expected }, "\(query)")
