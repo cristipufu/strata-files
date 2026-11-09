@@ -112,15 +112,78 @@ import os
         })
         let view = MediaPreviewView(url: tree.url("video.mov"), type: .quickTimeMovie, reader: reader)
         #expect(view.loadingTask == nil)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 230, height: 340), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        await view.loadingTask?.value
+        view.layoutSubtreeIfNeeded()
+        let native = try #require(view.contentView.subviews.compactMap { $0 as? AVPlayerView }.first)
+        #expect(native.controlsStyle == .none && !native.isHidden && view.fittingSize.width < 240)
+        #expect(native.player != nil && native.player?.rate == 0)
+        #expect(view.scrubber.isEnabled && view.scrubber.maxValue == view.duration && view.duration > 0)
+        #expect(view.scrubber.frame.width > 120 && view.scrubber.frame.height == 24)
+        for timeline in [view.scrubber, view.storyboardView, view.waveformView] as [MediaTimelineView] {
+            #expect(timeline.acceptsFirstMouse(for: nil) && !timeline.mouseDownCanMoveWindow)
+        }
+        view.seek(view.duration / 2)
+        view.layoutSubtreeIfNeeded()
+        #expect(view.scrubber.frame.width > 120)
+        #expect(abs(view.playhead - view.duration / 2) < 0.01)
+        #expect(abs(view.scrubber.doubleValue - view.duration / 2) < 0.01)
+        #expect(abs(view.storyboardView.playhead - view.duration / 2) < 0.01)
+        view.toggleMute()
+        #expect(native.player?.isMuted == true)
+        view.toggleMute()
+        #expect(native.player?.isMuted == false)
+        let center = native.convert(NSPoint(x: native.bounds.midX, y: native.bounds.midY), to: view.contentView)
+        #expect(native.hitTest(center) === native && native.acceptsFirstMouse(for: nil) && !native.mouseDownCanMoveWindow)
+        let click = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: native.convert(NSPoint(x: native.bounds.midX, y: native.bounds.midY), to: nil),
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        native.mouseDown(with: click)
+        #expect(view.playButton.image?.accessibilityDescription == "Pause")
+        native.mouseDown(with: click)
+        #expect(view.playButton.image?.accessibilityDescription == "Play")
+        window.close()
+        #expect(native.player == nil && view.loadingTask == nil && view.playhead == 0 && view.storyboardView.playhead == 0)
+    }
+
+    @Test func audioPreviewHidesVideoSurfaceAndAllowsFullDurationScrubbingWithoutWaveform() async throws {
+        let tree = try TestTree("sound.wav")
+        try MediaFixtures.wave().write(to: tree.url("sound.wav"))
+        let reader = MediaAnalysisReader(waveformRead: { _, _ in throw MediaAnalysisFailure.unsupported })
+        let view = MediaPreviewView(url: tree.url("sound.wav"), type: .wav, reader: reader)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 280), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = view
         await view.loadingTask?.value
         let native = try #require(view.contentView.subviews.compactMap { $0 as? AVPlayerView }.first)
-        #expect(native.controlsStyle == .minimal && view.fittingSize.width < 240)
-        #expect(native.player != nil && native.player?.rate == 0)
+        #expect(native.isHidden && view.fittingSize.width < 240)
+        #expect(view.scrubber.isEnabled && abs(view.duration - 1) < 0.05)
+        view.layoutSubtreeIfNeeded()
+        let midpoint = view.scrubber.convert(NSPoint(x: view.scrubber.bounds.midX, y: view.scrubber.bounds.maxY - 2), to: nil)
+        let quarter = view.scrubber.convert(NSPoint(x: view.scrubber.trackRect.minX + view.scrubber.trackRect.width * 0.25, y: 2), to: nil)
+        let clickDown = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: midpoint, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let dragEvent = try #require(NSEvent.mouseEvent(with: .leftMouseDragged, location: quarter, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let clickUp = try #require(NSEvent.mouseEvent(with: .leftMouseUp, location: quarter, modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
+        view.scrubber.mouseDown(with: clickDown)
+        #expect(view.scrubber.isTracking && !view.scrubber.isDragging && abs(view.playhead - view.duration * 0.5) < 0.05)
+        view.scrubber.mouseDragged(with: dragEvent)
+        #expect(view.scrubber.isTracking && view.scrubber.isDragging && abs(view.playhead - view.duration * 0.25) < 0.05)
+        view.scrubber.mouseUp(with: clickUp)
+        #expect(!view.scrubber.isTracking && !view.scrubber.isDragging && abs(view.playhead - view.duration * 0.25) < 0.05)
+        view.scrubber.mouseDown(with: clickDown)
+        #expect(view.scrubber.isTracking)
+        view.scrubber.isHidden = true
+        #expect(!view.scrubber.isTracking && !view.scrubber.isDragging)
+        view.scrubber.isHidden = false
+        view.seek(0.75)
+        #expect(abs(view.playhead - 0.75) < 0.01 && abs(view.scrubber.doubleValue - 0.75) < 0.01)
+        #expect(abs(view.waveformView.playhead - 0.75) < 0.01)
         window.close()
-        #expect(native.player == nil && view.loadingTask == nil)
+        #expect(native.player == nil && view.playhead == 0 && view.waveformView.playhead == 0)
     }
 
     @Test func replacingAndClosingASelectionRejectsLateFrames() async throws {
