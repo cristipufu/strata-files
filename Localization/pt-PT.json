@@ -145,6 +145,10 @@
       "one": "%lld pasta precisa de Acesso total ao disco para ser medida",
       "other": "%lld pastas precisam de Acesso total ao disco para serem medidas"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld pasta não foi adicionada: a lista está cheia. Remova primeiro uma pasta.",
+      "other": "%lld pastas não foram adicionadas: a lista está cheia. Remova primeiro uma pasta."
+    },
     "%lld glyphs": {
       "one": "%lld glifo",
       "other": "%lld glifos"
@@ -409,6 +413,7 @@
     "Access Key ID": "ID da chave de acesso",
     "Actions": "Ações",
     "Add Comments": "Adicionar comentários",
+    "Add Folder…": "Adicionar pasta…",
     "Add Tags": "Adicionar etiquetas",
     "Add Text": "Adicionar texto",
     "Add the date after each name": "Adicionar a data depois de cada nome",
@@ -896,6 +901,7 @@
     "Folders": "Pastas",
     "folders": "pastas",
     "Folders in %@": "Pastas em %@",
+    "Folders not indexed": "Pastas não indexadas",
     "fonts": "tipos de letra",
     "For this file. Change All… sets it for every document like it.": "Para este ficheiro. Alterar tudo… aplica esta escolha a todos os documentos deste tipo.",
     "For this file. Change All… sets it for every “%@”.": "Para este ficheiro. Alterar tudo… aplica esta escolha a todos os documentos do tipo “%@”.",
@@ -1517,6 +1523,7 @@
     "Search: %@": "Pesquisa: %@",
     "searched directly, indexed folders from the index": "pesquisado diretamente, pastas indexadas a partir do índice",
     "Searches": "Pesquisas",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "As pesquisas ignoram estas pastas e tudo o que contêm, e o índice liberta a memória que ocupavam. Ao remover uma pasta, esta volta a ser indexada.",
     "Searching “%@” directly… %lld items": {
       "one": "A pesquisar diretamente em “%@”… %lld elemento",
       "other": "A pesquisar diretamente em “%@”… %lld elementos"
@@ -2041,11 +2048,13 @@
     "“%@” holds %@.": "“%@” contém %@.",
     "“%@” holds at least %@.": "“%@” contém pelo menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contém apenas uma ligação, por isso não foi extraído.",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” contém a pasta pessoal ou Aplicações, por isso não pode ser deixada de fora.",
     "“%@” in %@": "“%@” em %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Não foi possível verificar “%@” no arquivo, por isso nada foi extraído.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Não foi possível escrever “%@” do arquivo (%@), por isso nada foi extraído.",
     "“%@” is a file, not a folder": "“%@” é um ficheiro, não uma pasta",
     "“%@” is already in the Trash.": "“%@” já está no Lixo.",
+    "“%@” is already left out, or is inside a folder that is.": "“%@” já está fora do índice ou está dentro de uma pasta que está.",
     "“%@” is already on “%@”": "“%@” já está em “%@”",
     "“%@” is already there.": "“%@” já existe.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” é ao mesmo tempo um ficheiro e uma pasta no arquivo, por isso nada foi extraído.",
@@ -2053,15 +2062,18 @@
     "“%@” is empty.": "“%@” está vazio.",
     "“%@” is new": "“%@” é novo",
     "“%@” is on a read-only disk.": "«%@» está num disco só de leitura.",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” é uma das pastas abrangidas pelo índice. Deixe antes de fora pastas dentro dela.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” está protegido por palavra-passe. Abra-o com o Utilitário de Arquivo para introduzir a palavra-passe.",
     "“%@” is protected by macOS.": "«%@» está protegido pelo macOS.",
     "“%@” isn’t a valid name": "“%@” não é um nome válido",
     "“%@” isn’t an archive Strata can open.": "“%@” não é um arquivo que o Strata possa abrir.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "“%@” não está no índice, por isso o Strata está a lê-lo diretamente.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@” não está na pasta pessoal nem em Aplicações, por isso já não é indexada.",
     "“%@” links outside “%@”": "“%@” aponta para fora de “%@”",
     "“%@” no longer exists, or this folder is gone from it.": "“%@” já não existe, ou esta pasta já não está nele.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "“%@” no servidor não é uma pasta, por isso “%@” não pode ser colocado dentro dele.",
     "“%@” was modified": "“%@” foi modificado",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” não foi adicionada: a lista está cheia. Remova primeiro uma pasta.",
     "“%@” will be deleted immediately.": "“%@” será apagado imediatamente.",
     "“%@” → %@": "“%@” → %@",
     "“%@” → “%@”": "“%@” → “%@”",

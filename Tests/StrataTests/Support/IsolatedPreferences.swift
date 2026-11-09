@@ -13,9 +13,9 @@ import Testing
 extension Prefs {
     /// Preferences in a suite of their own, with their own notification center. The suite is removed when the last
     /// object using it is released, or when the test process exits, so it can't disappear while a test still reads it.
-    static func isolated() throws -> Prefs {
+    static func isolated(notifications: NotificationCenter = NotificationCenter()) throws -> Prefs {
         let defaults = try #require(ThrowawayDefaults.make())
-        return Prefs(defaults: defaults, domainName: defaults.domain)
+        return Prefs(defaults: defaults, domainName: defaults.domain, notifications: notifications)
     }
 }
 

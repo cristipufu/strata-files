@@ -4068,8 +4068,8 @@
     "tests": "FileCommandOwnershipTests/anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage",
     "edits": [
       {
-        "find": "FileIndex(storage: transfers.history.storage, copies: transfers.copies)",
-        "replace": "FileIndex(storage: .shared, copies: transfers.copies)"
+        "find": "FileIndex(storage: transfers.history.storage, copies: transfers.copies,",
+        "replace": "FileIndex(storage: .shared, copies: transfers.copies,"
       },
       {
         "find": "SemanticIndex(configuration: .init(roots: [], storage: transfers.history.storage))",
@@ -10058,5 +10058,75 @@
     "replace": "        return [\"index.sealed\"]",
     "rule": "The saved index: each later format change retires one more numbered file by itself",
     "tests": "IndexPersistenceSafetyTests/eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne"
+  },
+  {
+    "file": "Strata/Index/IndexRefresh.swift",
+    "find": "return equalIgnoringCase(p[..<end], r)",
+    "replace": "return p[..<end].elementsEqual(r)",
+    "rule": "Index exclusions match a folder only in its saved letter case",
+    "tests": "IndexExclusionsTests/theIndexsOwnExclusionCheckMatchesWholeComponentsInAnyLetterCase|IndexExclusionWorkerTests/eventsSpelledInAnotherCaseStayLeftOutAndLookalikesStayIndexed"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "if emptied { scheduleCompaction() }",
+    "replace": "",
+    "rule": "Leaving a folder out of the index keeps its memory until the periodic save",
+    "tests": "IndexExclusionWorkerTests/leavingAFolderOutRemovesOnlyItsEntriesAndCompactsSoonWithoutASave"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "store.flags[Int(id)] |= IndexStore.Flag.unreadDirectory",
+    "replace": "",
+    "rule": "A folder left out of the index leaves its ancestors' allocated size claiming to be complete",
+    "tests": "IndexExclusionWorkerTests/aLeftOutFolderLeavesItsAncestorsAllocatedSizeIncompleteAsAScanDoes"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "for path in old.subtracting(config.excluded).sorted() where !isExcluded(path, config) {",
+    "replace": "for path in old.subtracting(config.excluded).sorted() {",
+    "rule": "A parent left out in place of its child reads the child again",
+    "tests": "IndexExclusionWorkerTests/aParentReplacingItsChildInTheListReadsNothingInsideIt"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "excluded.formUnion(IndexExclusions.leftOut(chosen.map(RealPath.of), roots: roots))",
+    "replace": "excluded.formUnion(IndexExclusions.leftOut(chosen, roots: roots))",
+    "rule": "The index leaves out a chosen folder by its spelling rather than its real path",
+    "tests": "IndexExclusionsTests/chosenFoldersAreStoredAndConfiguredByTheirRealPaths"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "find": "guard !services.index.excludes(node.url) else { return \"—\" }",
+    "replace": "",
+    "rule": "The List size column walks a folder left out of the index",
+    "tests": "IndexExclusionsTests/theListShowsNoSizeForALeftOutFolderAndStartsNoWalk"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "return IndexExclusions.isCovered(path, byKeysOf: leftOutKeys) || IndexExclusions.isCovered(path, byKeysOf: resolvedLeftOutKeys)",
+    "replace": "return IndexExclusions.isCovered(path, byKeysOf: leftOutKeys)",
+    "rule": "The List size column walks a folder listed through a link to it",
+    "tests": "IndexExclusionsTests/aFolderListedThroughALinkShowsNoSizeAndStartsNoWalk"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "return IndexExclusions.isCovered(path, byKeysOf: leftOutKeys) || IndexExclusions.isCovered(path, byKeysOf: resolvedLeftOutKeys)",
+    "replace": "return IndexExclusions.isListed(path, inKeysOf: leftOutKeys) || IndexExclusions.isListed(path, inKeysOf: resolvedLeftOutKeys)",
+    "rule": "The List size column walks the folders inside a left-out folder",
+    "tests": "IndexExclusionsTests/foldersInsideALeftOutFolderShowNoSizeAndStartNoWalk"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "if roots.contains(where: { contains(candidate, $0) }) { return .holdsIndexRoot }",
+    "replace": "",
+    "rule": "A folder holding the home folder or Applications can be left out of the index",
+    "tests": "IndexExclusionsTests/theIndexRootsWhatHoldsThemAndFoldersOutsideAreRefused|IndexExclusionsTests/addingRefusesRootsWhatHoldsThemFoldersOutsideAndDuplicates"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "guard folders != indexExcludedFolders else { return }",
+    "replace": "",
+    "rule": "Setting the folders not indexed to the same list notifies the index again",
+    "tests": "IndexExclusionsTests/theListStartsEmptyPersistsAndNotifiesOnlyItsOwnPreferences"
   }
 ]

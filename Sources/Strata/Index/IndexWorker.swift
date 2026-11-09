@@ -49,6 +49,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var pending = IndexRefreshTree()
     private var rescanNeeded = false
     private var saveScheduled = false
+    /// Folders left out since the last compaction: one compaction follows a run of quick edits.
+    private var compactionScheduled = false
     private var hotFolders: IndexHotFolders
     private var waitingTrees = IndexWaitingTrees()
     private var treesTimer: (id: UUID, deadline: UInt64)?
@@ -60,6 +62,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private let schedule: Schedule?
     package static let defaultSaveInterval: TimeInterval = 1800
     package static let defaultFastFlushInterval: TimeInterval = 0.25
+    package static let compactionDelay: TimeInterval = 1
     package static let defaultDeferredFlushInterval: TimeInterval = 2.0
     private let saveInterval: TimeInterval
     /// A full scan holds `queue` for its whole run; read from other threads, so `saveNow` never waits on it.
@@ -306,6 +309,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         lossRecovery.reset()
         recoveryTimer = nil
         recoveryPoints.restart(at: startEventID)
+        compactionScheduled = false
         onStore?(fresh)
         save()
         if watchesChanges, !watchingFailed { publish(.updating) }
@@ -362,19 +366,31 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         defer { finishUpdates() }
         var pass = IndexRefreshPass()
         let reconciler = self.reconciler
-        for path in old.subtracting(config.excluded).sorted() {
+        // A folder no longer excluded but inside one that now is (its parent took its place) stays unread.
+        for path in old.subtracting(config.excluded).sorted() where !isExcluded(path, config) {
             if pass.interrupted || stopForQuit(&pass) { break }
             if let id = store.read({ store in store.lookup(path) }) {
                 _ = reconciler.refreshFolder(id, path, deep: true, in: store, config: config, pass: &pass)
             }
         }
+        var emptied = false
         for path in config.excluded.subtracting(old).sorted() {
             if pass.interrupted || stopForQuit(&pass) { break }
-            store.write { store in
-                guard let id = store.lookup(path) else { return }
-                store.removeChildren(store.children(of: id), of: id)
+            let removed = store.write { store in
+                guard let id = store.lookup(path), store.isDirectory(id) else { return false }
+                let children = store.children(of: id)
+                // Left as a scan leaves a folder it doesn't read: unread, so neither its allocated size nor any
+                // ancestor's claims a complete total that silently leaves it out.
+                store.flags[Int(id)] |= IndexStore.Flag.unreadDirectory
+                store.removeChildren(children, of: id)
+                store.refreshAllocationKnown(from: id)
+                return !children.isEmpty
             }
+            emptied = emptied || removed
         }
+        // Leaving a folder out is how you make the index smaller: its entries leave memory soon, not once deletions
+        // pile up or at the next periodic save.
+        if emptied { scheduleCompaction() }
         let interrupted = pass.interrupted
         self.interrupted = interrupted
         if interrupted, rebuildRequested.withLock({ $0 }) {
@@ -397,6 +413,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         // a batch, `lastEventID` stays at the previous completed batch while keeping the folder updates already made,
         // so the next launch replays the interrupted batch without redoing the rest.
         if !pending.isEmpty, !interrupted { flush(includeDeferred: includeDeferred) }
+        if compactionScheduled {
+            compactionScheduled = false
+            compact()
+        }
         guard !rescanNeeded, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         do {
             try IndexPersistence.save(store, eventID: lastEventID, journal: followedJournal ?? [],
@@ -762,6 +782,24 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         guard let store else { return }
         let (total, deleted) = store.read { store in (store.count, store.deletedCount()) }
         guard deleted >= 50_000, deleted * 4 >= total else { return }
+        compact()
+    }
+
+    /// Compacting copies the whole index, so edits that reach the worker close together share one.
+    private func scheduleCompaction() {
+        guard !compactionScheduled else { return }
+        compactionScheduled = true
+        queue.asyncAfter(deadline: .now() + Self.compactionDelay) { [weak self] in
+            guard let self, compactionScheduled else { return }
+            compactionScheduled = false
+            compact()
+        }
+    }
+
+    private func compact() {
+        guard let store else { return }
+        let (total, deleted) = store.read { store in (store.count, store.deletedCount()) }
+        guard deleted > 0 else { return }
         let fresh = store.read { store in store.compacted() }
         self.store = fresh
         dirty = true

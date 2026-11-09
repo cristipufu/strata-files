@@ -67,6 +67,8 @@ nonisolated package enum IndexRefresh: Sendable {
         return (path, .directory(deep: false))
     }
 
+    /// Whether `path` is an excluded folder or inside one, by whole components and ignoring letter case as
+    /// `IndexStore.lookup` does (the usual disk ignores it): "…/ir/new.txt" is inside "…/IR", "…/IR2" is not.
     package static func isExcluded(_ path: String, in excluded: Set<String>) -> Bool {
         guard !excluded.isEmpty else { return false }
         if excluded.contains(path) { return true }
@@ -74,9 +76,19 @@ nonisolated package enum IndexRefresh: Sendable {
         return excluded.contains { root in
             if root == "/" { return p.count > 1 && p.first == UInt8(ascii: "/") }
             let r = root.utf8
-            return p.count > r.count
-                && p[p.index(p.startIndex, offsetBy: r.count)] == UInt8(ascii: "/")
-                && p.starts(with: r)
+            guard p.count >= r.count else { return false }
+            let end = p.index(p.startIndex, offsetBy: r.count)
+            guard end == p.endIndex || p[end] == UInt8(ascii: "/") else { return false }
+            return equalIgnoringCase(p[..<end], r)
         }
+    }
+
+    private static func equalIgnoringCase(_ a: Substring.UTF8View, _ b: String.UTF8View) -> Bool {
+        for (x, y) in zip(a, b) where x != y {
+            if x >= 0x80 || y >= 0x80 { return String(decoding: a, as: UTF8.self).lowercased() == String(b).lowercased() }
+            let folded = x | 0x20
+            guard folded == y | 0x20, folded >= UInt8(ascii: "a"), folded <= UInt8(ascii: "z") else { return false }
+        }
+        return true
     }
 }

@@ -113,11 +113,11 @@ extension BrowserViewController {
             ordered: { [weak self] a, b in
                 self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)
             },
-            canMeasure: { [weak self] entry in self?.canMeasure(entry) ?? false },
+            canMeasure: { [weak self] entry in self?.showsSize(entry) ?? false },
             size: { [weak self] entry in
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }
-                return canMeasure(entry) ? folderSize(entry.url, request: true)?.bytes : 0
+                return showsSize(entry) ? folderSize(entry.url, request: true)?.bytes : 0
             },
             sortedBy: ordering.snapshot,
             diskSize: diskSizeReader)
@@ -128,7 +128,7 @@ extension BrowserViewController {
         if !entry.isDirectory || entry.isSymlink {
             return entry.allocatedSize.map(DiskSizeMeasurement.measured) ?? .unavailable
         }
-        guard canMeasure(entry) else { return .unavailable }
+        guard showsSize(entry) else { return .unavailable }
         guard let size = folderSize(entry.url, request: true) else { return .measuring }
         guard let bytes = size.allocatedBytes else { return .unavailable }
         return size.allocationComplete ? .measured(bytes) : .partial(bytes)
@@ -144,7 +144,7 @@ extension BrowserViewController {
     /// Reuses the list's measurements and privacy checks; links and disks are never walked for icon info.
     func iconFolderSizeText(_ entry: FileEntry) -> String? {
         guard entry.isFolder else { return nil }
-        guard canMeasure(entry) else { return "—" }
+        guard showsSize(entry) else { return "—" }
         return folderSize(entry.url, request: true).map { Format.bytes($0.bytes) } ?? "…"
     }
 }

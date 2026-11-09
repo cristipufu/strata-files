@@ -145,6 +145,10 @@
       "one": "%lld mappe kræver fuld diskadgang for at blive målt",
       "other": "%lld mapper kræver fuld diskadgang for at blive målt"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld mappe blev ikke tilføjet: listen er fuld. Fjern først en mappe.",
+      "other": "%lld mapper blev ikke tilføjet: listen er fuld. Fjern først en mappe."
+    },
     "%lld glyphs": {
       "one": "%lld glyf",
       "other": "%lld glyffer"
@@ -409,6 +413,7 @@
     "Access Key ID": "Adgangsnøgle-id",
     "Actions": "Handlinger",
     "Add Comments": "Tilføj kommentarer",
+    "Add Folder…": "Tilføj mappe…",
     "Add Tags": "Tilføj mærker",
     "Add Text": "Tilføj tekst",
     "Add the date after each name": "Tilføj datoen efter hvert navn",
@@ -896,6 +901,7 @@
     "Folders": "Mapper",
     "folders": "mapper",
     "Folders in %@": "Mapper i %@",
+    "Folders not indexed": "Mapper, der ikke indekseres",
     "fonts": "skrifter",
     "For this file. Change All… sets it for every document like it.": "For denne fil. »Skift alle…« anvender valget på alle dokumenter som dette.",
     "For this file. Change All… sets it for every “%@”.": "For denne fil. »Skift alle…« anvender valget på alle dokumenter af typen »%@«.",
@@ -1517,6 +1523,7 @@
     "Search: %@": "Søg: %@",
     "searched directly, indexed folders from the index": "søgt direkte, indekserede mapper fra indekset",
     "Searches": "Søgninger",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Søgninger springer disse mapper og alt i dem over, og indekset frigør den hukommelse, de brugte. Fjerner du en mappe, indekseres den igen.",
     "Searching “%@” directly… %lld items": {
       "one": "Søger direkte i »%@«… %lld emne",
       "other": "Søger direkte i »%@«… %lld emner"
@@ -2041,11 +2048,13 @@
     "“%@” holds %@.": "»%@« indeholder %@.",
     "“%@” holds at least %@.": "»%@« indeholder mindst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "»%@« indeholder kun et link, så det blev ikke udpakket.",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” indeholder din hjemmemappe eller Programmer, så den kan ikke udelades.",
     "“%@” in %@": "»%@« i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "»%@« i arkivet kunne ikke kontrolleres, så intet blev udpakket.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "»%@« i arkivet kunne ikke skrives (%@), så intet blev udpakket.",
     "“%@” is a file, not a folder": "»%@« er en fil, ikke en mappe",
     "“%@” is already in the Trash.": "»%@« er allerede i papirkurven.",
+    "“%@” is already left out, or is inside a folder that is.": "“%@” er allerede udeladt eller ligger i en mappe, der er.",
     "“%@” is already on “%@”": "»%@« findes allerede på »%@«",
     "“%@” is already there.": "»%@« findes allerede.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "»%@« er både en fil og en mappe i arkivet, så intet blev udpakket.",
@@ -2053,15 +2062,18 @@
     "“%@” is empty.": "»%@« er tom.",
     "“%@” is new": "»%@« er ny",
     "“%@” is on a read-only disk.": "“%@” er på en skrivebeskyttet disk.",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” er en af de mapper, indekset dækker. Udelad mapper inde i den i stedet.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "»%@« er beskyttet med en adgangskode. Åbn det med Arkivværktøj for at indtaste adgangskoden.",
     "“%@” is protected by macOS.": "“%@” er beskyttet af macOS.",
     "“%@” isn’t a valid name": "»%@« er ikke et gyldigt navn",
     "“%@” isn’t an archive Strata can open.": "»%@« er ikke et arkiv, som Strata kan åbne.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "»%@« er ikke i indekset, så Strata læser den direkte.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@” ligger ikke i din hjemmemappe eller Programmer, så den indekseres alligevel ikke.",
     "“%@” links outside “%@”": "»%@« peger uden for »%@«",
     "“%@” no longer exists, or this folder is gone from it.": "»%@« findes ikke længere, eller denne mappe er væk fra den.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "»%@« på serveren er ikke en mappe, så »%@« kan ikke lægges i den.",
     "“%@” was modified": "»%@« blev ændret",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” blev ikke tilføjet: listen er fuld. Fjern først en mappe.",
     "“%@” will be deleted immediately.": "»%@« slettes med det samme.",
     "“%@” → %@": "»%@« → %@",
     "“%@” → “%@”": "»%@« → »%@«",

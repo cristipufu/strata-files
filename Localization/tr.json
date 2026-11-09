@@ -145,6 +145,10 @@
       "one": "%lld klasörün ölçülmesi için Tam Disk Erişimi gerekiyor",
       "other": "%lld klasörün ölçülmesi için Tam Disk Erişimi gerekiyor"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld klasör eklenmedi: liste dolu. Önce bir klasörü kaldırın.",
+      "other": "%lld klasör eklenmedi: liste dolu. Önce bir klasörü kaldırın."
+    },
     "%lld glyphs": {
       "one": "%lld glif",
       "other": "%lld glif"
@@ -409,6 +413,7 @@
     "Access Key ID": "Erişim Anahtarı Kimliği",
     "Actions": "Eylemler",
     "Add Comments": "Açıklama Ekle",
+    "Add Folder…": "Klasör Ekle…",
     "Add Tags": "Etiket Ekle",
     "Add Text": "Metin Ekle",
     "Add the date after each name": "Her adın sonuna tarihi ekle",
@@ -896,6 +901,7 @@
     "Folders": "Klasörler",
     "folders": "klasörler",
     "Folders in %@": "%@ içindeki klasörler",
+    "Folders not indexed": "Dizine eklenmeyen klasörler",
     "fonts": "fontlar",
     "For this file. Change All… sets it for every document like it.": "Yalnızca bu dosya için. Tümünü Değiştir… düğmesi bunu bu türdeki tüm belgeler için ayarlar.",
     "For this file. Change All… sets it for every “%@”.": "Yalnızca bu dosya için. Tümünü Değiştir… düğmesi bunu tüm “%@” belgeleri için ayarlar.",
@@ -1517,6 +1523,7 @@
     "Search: %@": "Ara: %@",
     "searched directly, indexed folders from the index": "doğrudan arandı, dizinlenmiş klasörler dizinden",
     "Searches": "Aramalar",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Aramalar bu klasörleri ve içlerindeki her şeyi atlar; dizin de kapladıkları belleği boşaltır. Bir klasörü listeden kaldırmak onu yeniden dizine ekler.",
     "Searching “%@” directly… %lld items": {
       "one": "“%@” doğrudan aranıyor… %lld öğe",
       "other": "“%@” doğrudan aranıyor… %lld öğe"
@@ -2041,11 +2048,13 @@
     "“%@” holds %@.": "“%@” içinde %@ veri var.",
     "“%@” holds at least %@.": "“%@” içinde en az %@ veri var.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” yalnızca bir bağlantı içerdiği için ayıklanmadı.",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” ana klasörünüzü veya Uygulamalar’ı içerdiği için dışarıda bırakılamaz.",
     "“%@” in %@": "%2$@ içinde “%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Arşivdeki “%@” denetlenemediği için hiçbir şey ayıklanmadı.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Arşivdeki “%@” yazılamadığı için (%@) hiçbir şey ayıklanmadı.",
     "“%@” is a file, not a folder": "“%@” bir dosya, klasör değil",
     "“%@” is already in the Trash.": "“%@” zaten Çöp Sepeti’nde.",
+    "“%@” is already left out, or is inside a folder that is.": "“%@” zaten dışarıda bırakılmış ya da dışarıda bırakılan bir klasörün içinde.",
     "“%@” is already on “%@”": "“%@” zaten “%@” üzerinde var",
     "“%@” is already there.": "“%@” zaten var.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Arşivde “%@” hem dosya hem klasör olduğu için hiçbir şey ayıklanmadı.",
@@ -2053,15 +2062,18 @@
     "“%@” is empty.": "“%@” boş.",
     "“%@” is new": "“%@” yeni",
     "“%@” is on a read-only disk.": "“%@” salt okunur bir diskte.",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” dizinin kapsadığı klasörlerden biri. Bunun yerine içindeki klasörleri dışarıda bırakın.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” parola korumalı. Parolayı girmek için onu Arşiv İzlencesi ile açın.",
     "“%@” is protected by macOS.": "“%@”, macOS tarafından korunuyor.",
     "“%@” isn’t a valid name": "“%@” geçerli bir ad değil",
     "“%@” isn’t an archive Strata can open.": "“%@”, Strata’nın açabileceği bir arşiv değil.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "“%@” dizinde olmadığı için Strata onu doğrudan okuyor.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@” ana klasörünüzde veya Uygulamalar’da değil, bu yüzden zaten dizine eklenmiyor.",
     "“%@” links outside “%@”": "“%@”, “%@” dışını gösteriyor",
     "“%@” no longer exists, or this folder is gone from it.": "“%@” artık yok ya da bu klasör artık içinde değil.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "Sunucudaki “%@” bir klasör değil; bu yüzden “%@” onun içine konamaz.",
     "“%@” was modified": "“%@” değiştirildi",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” eklenmedi: liste dolu. Önce bir klasörü kaldırın.",
     "“%@” will be deleted immediately.": "“%@” hemen silinecek.",
     "“%@” → %@": "“%@” → %@",
     "“%@” → “%@”": "“%@” → “%@”",

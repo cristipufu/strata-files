@@ -145,6 +145,10 @@
       "one": "%lld mapp behöver fullständig skivåtkomst för att kunna mätas",
       "other": "%lld mappar behöver fullständig skivåtkomst för att kunna mätas"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld mapp lades inte till: listan är full. Ta bort en mapp först.",
+      "other": "%lld mappar lades inte till: listan är full. Ta bort en mapp först."
+    },
     "%lld glyphs": {
       "one": "%lld glyf",
       "other": "%lld glyfer"
@@ -409,6 +413,7 @@
     "Access Key ID": "Åtkomstnyckel-ID",
     "Actions": "Åtgärder",
     "Add Comments": "Lägg till kommentarer",
+    "Add Folder…": "Lägg till mapp…",
     "Add Tags": "Lägg till taggar",
     "Add Text": "Lägg till text",
     "Add the date after each name": "Lägg till datumet efter varje namn",
@@ -896,6 +901,7 @@
     "Folders": "Mappar",
     "folders": "mappar",
     "Folders in %@": "Mappar i %@",
+    "Folders not indexed": "Mappar som inte indexeras",
     "fonts": "typsnitt",
     "For this file. Change All… sets it for every document like it.": "Gäller den här filen. Ändra alla… gör samma val för alla dokument av samma typ.",
     "For this file. Change All… sets it for every “%@”.": "Gäller den här filen. Ändra alla… gör samma val för alla dokument av typen ”%@”.",
@@ -1517,6 +1523,7 @@
     "Search: %@": "Sök: %@",
     "searched directly, indexed folders from the index": "söktes direkt, indexerade mappar från indexet",
     "Searches": "Sökningar",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Sökningar hoppar över de här mapparna och allt i dem, och indexet frigör minnet de tog upp. Tar du bort en mapp indexeras den igen.",
     "Searching “%@” directly… %lld items": {
       "one": "Söker i ”%@” direkt… %lld objekt",
       "other": "Söker i ”%@” direkt… %lld objekt"
@@ -2041,11 +2048,13 @@
     "“%@” holds %@.": "”%@” innehåller %@.",
     "“%@” holds at least %@.": "”%@” innehåller minst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "”%@” innehåller bara en länk, så det packades inte upp.",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "”%@” innehåller din hemmapp eller Program, så den kan inte utelämnas.",
     "“%@” in %@": "”%@” i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "”%@” i arkivet kunde inte kontrolleras, så inget packades upp.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "”%@” i arkivet kunde inte skrivas (%@), så inget packades upp.",
     "“%@” is a file, not a folder": "”%@” är en fil, inte en mapp",
     "“%@” is already in the Trash.": "”%@” ligger redan i papperskorgen.",
+    "“%@” is already left out, or is inside a folder that is.": "”%@” är redan utelämnad eller ligger i en mapp som är det.",
     "“%@” is already on “%@”": "”%@” finns redan på ”%@”",
     "“%@” is already there.": "”%@” finns redan.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "”%@” är både en fil och en mapp i arkivet, så inget packades upp.",
@@ -2053,15 +2062,18 @@
     "“%@” is empty.": "”%@” är tomt.",
     "“%@” is new": "”%@” är ny",
     "“%@” is on a read-only disk.": "”%@” finns på en skrivskyddad skiva.",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "”%@” är en av mapparna som indexet omfattar. Utelämna i stället mappar inuti den.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "”%@” är lösenordsskyddat. Öppna det med Arkivverktyg för att ange lösenordet.",
     "“%@” is protected by macOS.": "”%@” skyddas av macOS.",
     "“%@” isn’t a valid name": "”%@” är inte ett giltigt namn",
     "“%@” isn’t an archive Strata can open.": "”%@” är inte ett arkiv som Strata kan öppna.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "”%@” finns inte i indexet, så Strata läser det direkt.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "”%@” ligger inte i din hemmapp eller i Program, så den indexeras ändå inte.",
     "“%@” links outside “%@”": "”%@” länkar utanför ”%@”",
     "“%@” no longer exists, or this folder is gone from it.": "”%@” finns inte längre, eller så finns den här mappen inte kvar i den.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "”%@” på servern är inte en mapp, så ”%@” kan inte läggas i den.",
     "“%@” was modified": "”%@” ändrades",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "”%@” lades inte till: listan är full. Ta bort en mapp först.",
     "“%@” will be deleted immediately.": "”%@” raderas direkt.",
     "“%@” → %@": "”%@” → %@",
     "“%@” → “%@”": "”%@” → ”%@”",

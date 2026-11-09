@@ -120,6 +120,9 @@
     "%lld folders need Full Disk Access to be measured": {
       "other": "%lld個のフォルダの計測にはフルディスクアクセスが必要です"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "other": "%lld個のフォルダは追加されませんでした: リストがいっぱいです。先にフォルダを削除してください。"
+    },
     "%lld glyphs": {
       "other": "%lld 個のグリフ"
     },
@@ -324,6 +327,7 @@
     "Access Key ID": "アクセスキーID",
     "Actions": "操作",
     "Add Comments": "コメントを追加",
+    "Add Folder…": "フォルダを追加…",
     "Add Tags": "タグを追加",
     "Add Text": "テキストを追加",
     "Add the date after each name": "各名前の後ろに日付を追加",
@@ -791,6 +795,7 @@
     "Folders": "フォルダ",
     "folders": "フォルダ",
     "Folders in %@": "%@内のフォルダ",
+    "Folders not indexed": "インデックスしないフォルダ",
     "fonts": "フォント",
     "For this file. Change All… sets it for every document like it.": "このファイルのみに適用されます。「すべてを変更…」を使うと、この種類のすべての書類に設定されます。",
     "For this file. Change All… sets it for every “%@”.": "このファイルのみに適用されます。「すべてを変更…」を使うと、すべての「%@」に設定されます。",
@@ -1393,6 +1398,7 @@
     "Search: %@": "検索: %@",
     "searched directly, indexed folders from the index": "直接検索、インデックス済みのフォルダはインデックスから",
     "Searches": "保存した検索",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "検索ではこれらのフォルダとその中身をすべてスキップし、インデックスはそれらが使っていたメモリを解放します。フォルダをリストから削除すると、再びインデックスされます。",
     "Searching “%@” directly… %lld items": {
       "other": "「%@」を直接検索中… %lld項目"
     },
@@ -1898,11 +1904,13 @@
     "“%@” holds %@.": "「%@」の展開後のサイズは%@です。",
     "“%@” holds at least %@.": "「%@」の展開後のサイズは%@以上です。",
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」にはリンクしか含まれていないため、展開されませんでした。",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "「%@」にはホームフォルダまたはアプリケーションが含まれるため、除外できません。",
     "“%@” in %@": "%2$@内の「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "アーカイブ内の「%@」を確認できなかったため、何も展開されませんでした。",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "アーカイブ内の「%@」を書き込めなかったため（%@）、何も展開されませんでした。",
     "“%@” is a file, not a folder": "「%@」はフォルダではなくファイルです",
     "“%@” is already in the Trash.": "「%@」はすでにゴミ箱にあります。",
+    "“%@” is already left out, or is inside a folder that is.": "「%@」はすでに除外されているか、除外されたフォルダの中にあります。",
     "“%@” is already on “%@”": "「%@」はすでに「%@」にあります",
     "“%@” is already there.": "「%@」はすでにあります。",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "アーカイブ内の「%@」がファイルとフォルダの両方であるため、何も展開されませんでした。",
@@ -1910,15 +1918,18 @@
     "“%@” is empty.": "「%@」は空です。",
     "“%@” is new": "「%@」は新規",
     "“%@” is on a read-only disk.": "「%@」は読み出し専用ディスク上にあります。",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "「%@」はインデックスの対象フォルダそのものです。代わりにその中のフォルダを除外してください。",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "「%@」はパスワードで保護されています。パスワードを入力するには、「アーカイブユーティリティ」で開いてください。",
     "“%@” is protected by macOS.": "「%@」はmacOSによって保護されています。",
     "“%@” isn’t a valid name": "「%@」は有効な名前ではありません",
     "“%@” isn’t an archive Strata can open.": "「%@」はStrataで開けるアーカイブではありません。",
     "“%@” isn’t in the index, so Strata is reading it directly.": "「%@」はインデックスにないため、Strataが直接読み込んでいます。",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "「%@」はホームフォルダにもアプリケーションにもないため、もともとインデックスされません。",
     "“%@” links outside “%@”": "「%@」は「%@」の外にリンクしています",
     "“%@” no longer exists, or this folder is gone from it.": "「%@」はもう存在しないか、このフォルダがなくなっています。",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "サーバ上の「%@」はフォルダではないため、「%@」をその中に入れることはできません。",
     "“%@” was modified": "「%@」が変更されました",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "「%@」は追加されませんでした: リストがいっぱいです。先にフォルダを削除してください。",
     "“%@” will be deleted immediately.": "「%@」はすぐに削除されます。",
     "“%@” → %@": "「%@」 → %@",
     "“%@” → “%@”": "「%@」 → 「%@」",

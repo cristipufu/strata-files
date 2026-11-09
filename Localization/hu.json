@@ -145,6 +145,10 @@
       "one": "%lld mappa méréséhez teljes lemezhozzáférés szükséges",
       "other": "%lld mappa méréséhez teljes lemezhozzáférés szükséges"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld mappa nem került be: a lista megtelt. Előbb távolítson el egy mappát.",
+      "other": "%lld mappa nem került be: a lista megtelt. Előbb távolítson el egy mappát."
+    },
     "%lld glyphs": {
       "one": "%lld glifa",
       "other": "%lld glifa"
@@ -409,6 +413,7 @@
     "Access Key ID": "Hozzáférési kulcs azonosítója",
     "Actions": "Műveletek",
     "Add Comments": "Megjegyzések hozzáadása",
+    "Add Folder…": "Mappa hozzáadása…",
     "Add Tags": "Címkék hozzáadása",
     "Add Text": "Szöveg hozzáadása",
     "Add the date after each name": "Dátum hozzáadása minden név után",
@@ -896,6 +901,7 @@
     "Folders": "Mappák",
     "folders": "mappák",
     "Folders in %@": "Mappák itt: %@",
+    "Folders not indexed": "Nem indexelt mappák",
     "fonts": "betűtípusok",
     "For this file. Change All… sets it for every document like it.": "Csak erre a fájlra vonatkozik. Az összes módosítása… minden hasonló dokumentumra alkalmazza.",
     "For this file. Change All… sets it for every “%@”.": "Csak erre a fájlra vonatkozik. Az összes módosítása… minden „%@” típusú dokumentumra alkalmazza.",
@@ -1517,6 +1523,7 @@
     "Search: %@": "Keresés: %@",
     "searched directly, indexed folders from the index": "közvetlen keresés, az indexelt mappák az indexből",
     "Searches": "Keresések",
+    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "A keresések kihagyják ezeket a mappákat és mindent bennük, az index pedig felszabadítja az általuk foglalt memóriát. Ha eltávolít egy mappát, újra indexelődik.",
     "Searching “%@” directly… %lld items": {
       "one": "Közvetlen keresés itt: „%@”… %lld elem",
       "other": "Közvetlen keresés itt: „%@”… %lld elem"
@@ -2041,11 +2048,13 @@
     "“%@” holds %@.": "„%@” tartalma %@.",
     "“%@” holds at least %@.": "„%@” tartalma legalább %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” csak egy hivatkozást tartalmaz, ezért nem lett kibontva.",
+    "“%@” holds your home folder or Applications, so it can’t be left out.": "„%@” tartalmazza a kezdőmappáját vagy az Alkalmazásokat, ezért nem hagyható ki.",
     "“%@” in %@": "„%@” itt: %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Az archívumban lévő „%@” nem ellenőrizhető, ezért semmi sem lett kibontva.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Az archívumban lévő „%@” nem írható (%@), ezért semmi sem lett kibontva.",
     "“%@” is a file, not a folder": "„%@” fájl, nem mappa",
     "“%@” is already in the Trash.": "„%@” már a Kukában van.",
+    "“%@” is already left out, or is inside a folder that is.": "„%@” már ki van hagyva, vagy egy kihagyott mappában van.",
     "“%@” is already on “%@”": "„%@” már megtalálható itt: „%@”",
     "“%@” is already there.": "„%@” már ott van.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Az archívumban „%@” egyszerre fájl és mappa, ezért semmi sem lett kibontva.",
@@ -2053,15 +2062,18 @@
     "“%@” is empty.": "„%@” üres.",
     "“%@” is new": "„%@” új",
     "“%@” is on a read-only disk.": "A(z) „%@” írásvédett lemezen található.",
+    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "„%@” az index által lefedett mappák egyike. Inkább a benne lévő mappákat hagyja ki.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@” jelszóval védett. A jelszó megadásához nyissa meg az Archiváló segédprogrammal.",
     "“%@” is protected by macOS.": "A macOS védi a következőt: „%@”.",
     "“%@” isn’t a valid name": "„%@” nem érvényes név",
     "“%@” isn’t an archive Strata can open.": "„%@” nem olyan archívum, amelyet a Strata meg tud nyitni.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "„%@” nincs az indexben, ezért a Strata közvetlenül olvassa.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "„%@” nincs a kezdőmappájában vagy az Alkalmazásokban, így amúgy sem indexelődik.",
     "“%@” links outside “%@”": "„%@” kívülre mutat ebből: „%@”",
     "“%@” no longer exists, or this folder is gone from it.": "„%@” már nem létezik, vagy ez a mappa már nincs benne.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "„%@” a szerveren nem mappa, ezért „%@” nem kerülhet bele.",
     "“%@” was modified": "„%@” módosult",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "„%@” nem került be: a lista megtelt. Előbb távolítson el egy mappát.",
     "“%@” will be deleted immediately.": "„%@” azonnal törlődik.",
     "“%@” → %@": "„%@” → %@",
     "“%@” → “%@”": "„%@” → „%@”",
