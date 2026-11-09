@@ -47,10 +47,11 @@ package final class FileIndex {
     private var pendingConfigCount = 0
     private var configuredRoots: [String] = []
     private var storeRoots: [String] = []
-    private var hadPendingLookup = false
+    private var pendingLookupPaths: Set<String> = []
+    private var lockRetryScheduled = false
     private var changePosted = false
     private var pendingChanges = IndexChanges()
-    package static let changesKey = "changes"
+    package nonisolated static let changesKey = "changes"
 
     package var isReady: Bool { store != nil }
 
@@ -153,8 +154,8 @@ package final class FileIndex {
     }
 
     private func resolvePendingLookupsIfIdle() {
-        guard !isActivelyUpdating, hadPendingLookup else { return }
-        publishChangesNow(.all)
+        guard !isActivelyUpdating, !pendingLookupPaths.isEmpty else { return }
+        postPendingChanges()
     }
 
     package func changed(_ changes: IndexChanges = .all) {
@@ -163,20 +164,69 @@ package final class FileIndex {
         changePosted = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.changePosted = false
-            let changes = self.pendingChanges
-            guard changes.hasChanges else { return }
-            self.pendingChanges = IndexChanges()
-            self.hadPendingLookup = false
-            NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: changes])
+            self.postPendingChanges()
         }
     }
 
     private func publishChangesNow(_ changes: IndexChanges = .all) {
         pendingChanges.formUnion(changes)
-        let published = pendingChanges
+        postPendingChanges()
+    }
+
+    private func postPendingChanges() {
+        let resolved = takeResolvedPendingLookupChanges()
+        if resolved.retryNeeded { scheduleLockRetry() }
+        pendingChanges.formUnion(resolved.changes)
+        let changes = pendingChanges
+        guard changes.hasChanges else { return }
         pendingChanges = IndexChanges()
-        hadPendingLookup = false
-        NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: published])
+        NotificationCenter.default.post(name: .indexDidChange, object: self, userInfo: [Self.changesKey: changes])
+    }
+
+    private func recordPendingLookup(_ path: String, retryLock: Bool = false) {
+        pendingLookupPaths.insert(path)
+        if retryLock { scheduleLockRetry() }
+    }
+
+    private func scheduleLockRetry() {
+        guard !lockRetryScheduled, !pendingLookupPaths.isEmpty else { return }
+        lockRetryScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.lockRetryScheduled = false
+            guard !self.pendingLookupPaths.isEmpty else { return }
+            self.postPendingChanges()
+        }
+    }
+
+    private func takeResolvedPendingLookupChanges() -> (changes: IndexChanges, retryNeeded: Bool) {
+        guard !pendingLookupPaths.isEmpty else { return (IndexChanges(), false) }
+        guard let store else {
+            guard !isActivelyUpdating else { return (IndexChanges(), false) }
+            var changes = IndexChanges()
+            for path in pendingLookupPaths {
+                changes.insert(path, descendants: true, affectsCapacity: false)
+            }
+            pendingLookupPaths.removeAll()
+            return (changes, false)
+        }
+        var readRoots: [String]?
+        let resolvedPaths = store.tryRead { store -> [String] in
+            if storeRoots.isEmpty, !store.roots.isEmpty {
+                readRoots = Self.shortPaths(store.roots.map(\.path))
+            }
+            return pendingLookupPaths.filter { lookupStatus(for: $0, in: store) != .pending }
+        }
+        if let readRoots { storeRoots = readRoots }
+        guard let resolvedPaths else {
+            return (IndexChanges(), true)
+        }
+        var changes = IndexChanges()
+        for path in resolvedPaths {
+            pendingLookupPaths.remove(path)
+            changes.insert(path, descendants: true, affectsCapacity: false)
+        }
+        return (changes, false)
     }
 
     // MARK: - Queries
@@ -186,7 +236,7 @@ package final class FileIndex {
         let path = url.lexicallyStandardized.path
         guard let store else {
             if isActivelyUpdating, isWithinConfiguredScope(path) {
-                hadPendingLookup = true
+                recordPendingLookup(path)
                 return .pending
             }
             return .unindexed
@@ -196,7 +246,33 @@ package final class FileIndex {
             if storeRoots.isEmpty, !store.roots.isEmpty {
                 readRoots = Self.shortPaths(store.roots.map(\.path))
             }
-            guard let id = self.lookup(path, in: store), store.isDirectory(id), !isExcludedLocked(store, id) else {
+            return lookupStatus(for: path, in: store)
+        }
+        if let readRoots { storeRoots = readRoots }
+        if let lookup {
+            switch lookup {
+            case .indexed(let size):
+                pendingLookupPaths.remove(path)
+                return .indexed(size)
+            case .pending:
+                recordPendingLookup(path)
+                return .pending
+            case .unindexed:
+                pendingLookupPaths.remove(path)
+                return .unindexed
+            }
+        }
+        if isWithinIndexedScope(path) {
+            recordPendingLookup(path, retryLock: true)
+            return .pending
+        }
+        return .unindexed
+    }
+
+    private func lookupStatus(for path: String, in store: borrowing IndexStore.Storage) -> FolderSizeLookup {
+        guard !IndexRefresh.isExcluded(path, in: excludedPaths) else { return .unindexed }
+        if let id = lookup(path, in: store) {
+            guard store.isDirectory(id), store.flags[Int(id)] & IndexStore.Flag.symlink == 0, !isExcludedLocked(store, id) else {
                 return .unindexed
             }
             if isActivelyUpdating, isUnreadLocked(store, id) {
@@ -206,27 +282,29 @@ package final class FileIndex {
                                        allocatedBytes: store.allocated[Int(id)],
                                        allocationComplete: store.allocatedSize(id) != nil))
         }
-        if let readRoots { storeRoots = readRoots }
-        if let lookup {
-            switch lookup {
-            case .indexed(let size):
-                return .indexed(size)
-            case .pending:
-                hadPendingLookup = true
-                return .pending
-            case .unindexed:
-                if isActivelyUpdating, isWithinConfiguredScope(path) {
-                    hadPendingLookup = true
-                    return .pending
-                }
-                return .unindexed
-            }
+        if pendingConfigCount > 0, isWithinConfiguredScope(path) {
+            return .pending
         }
-        if isWithinIndexedScope(path) {
-            hadPendingLookup = true
+        if isActivelyUpdating,
+           let ancestor = nearestAncestor(of: path, in: store),
+           store.isDirectory(ancestor),
+           store.flags[Int(ancestor)] & IndexStore.Flag.symlink == 0,
+           !isExcludedLocked(store, ancestor),
+           isUnreadLocked(store, ancestor) {
             return .pending
         }
         return .unindexed
+    }
+
+    private func nearestAncestor(of path: String, in store: borrowing IndexStore.Storage) -> Int32? {
+        guard isWithinIndexedScope(path) else { return nil }
+        var current = IndexRefresh.splitPath(path).parent
+        while !current.isEmpty {
+            if let id = lookup(current, in: store) { return id }
+            if current == "/" { break }
+            current = IndexRefresh.splitPath(current).parent
+        }
+        return nil
     }
 
     /// Total size and file count of a folder, if it's currently readable from the index.

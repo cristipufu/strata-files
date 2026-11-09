@@ -166,6 +166,7 @@ import Testing
         let indexedFolder = tree.url("indexed")
         let excludedFolder = tree.url("excluded")
         defer {
+            FolderSizer.invalidate(tree.root)
             FolderSizer.invalidate(indexedFolder)
             FolderSizer.invalidate(excludedFolder)
         }
@@ -198,8 +199,8 @@ import Testing
         #expect(browser.folderSize(indexedNode.url, request: true) == nil)
         #expect(!browser.sizer.isPending(indexedNode.url))
 
-        browser.sizer.request(indexedNode.url)
-        #expect(browser.sizer.isPending(indexedNode.url))
+        browser.sizer.request(tree.root)
+        #expect(browser.sizer.isPending(tree.root))
 
         let store = IndexStore()
         store.write { s in
@@ -225,9 +226,123 @@ import Testing
         index.receiveStore(store)
         index.setPhase(.ready)
 
-        #expect(!browser.sizer.isPending(indexedNode.url))
+        #expect(!browser.sizer.isPending(tree.root))
         #expect(browser.folderSize(indexedNode.url, request: true)?.bytes == 512)
         #expect(!browser.sizer.isPending(indexedNode.url))
+    }
+
+    @Test func pendingLookupsSurviveUnrelatedChangesAndPublishWhenResolved() async throws {
+        let environment = try IndependentEnvironment()
+        defer { withExtendedLifetime(environment) {} }
+        let store = IndexStore()
+        var unreadID: Int32 = -1
+        store.write { s in
+            let root = s.addRoot(path: "/synthetic", mtime: 0)
+            s.flags[Int(root)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+            let names = Array("targetotherunread".utf8)
+            let items = [
+                ScannedItem(nameOffset: 0, nameLength: 6, isDirectory: true, isPackage: false, isSymlink: false,
+                            isHidden: false, isMountPoint: false, size: 0, mtime: 1),
+                ScannedItem(nameOffset: 6, nameLength: 5, isDirectory: true, isPackage: false, isSymlink: false,
+                            isHidden: false, isMountPoint: false, size: 0, mtime: 1),
+                ScannedItem(nameOffset: 11, nameLength: 6, isDirectory: true, isPackage: false, isSymlink: false,
+                            isHidden: false, isMountPoint: false, size: 0, mtime: 1),
+            ]
+            let ids = names.withUnsafeBytes { s.appendChildren(items, nameBuffer: $0, of: root) }
+            s.flags[Int(ids.lowerBound)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+            s.flags[Int(ids.lowerBound + 1)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+            unreadID = ids.lowerBound + 2
+            let childName = Array("a".utf8)
+            let file = ScannedItem(nameOffset: 0, nameLength: 1, isDirectory: false, isPackage: false,
+                                   isSymlink: false, isHidden: false, isMountPoint: false, size: 64, mtime: 1,
+                                   allocatedSize: 4096)
+            _ = childName.withUnsafeBytes { s.appendChildren([file], nameBuffer: $0, of: ids.lowerBound) }
+            s.aggregate()
+        }
+
+        let index = FileIndex(
+            storage: environment.storage,
+            copies: environment.services.copies,
+            store: store,
+            configuredRoots: ["/synthetic"],
+            started: true
+        )
+        index.setPhase(.updating)
+
+        var posted: [IndexChanges] = []
+        let token = NotificationCenter.default.addObserver(forName: .indexDidChange, object: index, queue: nil) { note in
+            if let changes = note.userInfo?[FileIndex.changesKey] as? IndexChanges {
+                MainActor.assumeIsolated { posted.append(changes) }
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let targetURL = URL(fileURLWithPath: "/synthetic/target")
+        let unreadURL = URL(fileURLWithPath: "/synthetic/unread")
+
+        let holding = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            store.write { _ in
+                holding.signal()
+                release.wait()
+            }
+            finished.signal()
+        }
+        await withCheckedContinuation { ready in DispatchQueue.global().async { holding.wait(); ready.resume() } }
+        #expect(index.folderSizeLookup(targetURL) == .pending)
+        release.signal()
+        await withCheckedContinuation { done in DispatchQueue.global().async { finished.wait(); done.resume() } }
+
+        #expect(index.folderSizeLookup(unreadURL) == .pending)
+
+        var unrelated = IndexChanges()
+        unrelated.insert("/synthetic/other", descendants: true, affectsCapacity: false)
+        index.changed(unrelated)
+        try await Task.sleep(for: .milliseconds(360))
+
+        #expect(posted.contains { $0.affects("/synthetic/target") })
+        #expect(!posted.contains { $0.affects("/synthetic/unread") })
+
+        posted.removeAll()
+        store.write { s in
+            s.flags[Int(unreadID)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+        }
+        index.setPhase(.ready)
+
+        #expect(posted.contains { $0.affects("/synthetic/unread") })
+        #expect(index.folderSizeLookup(unreadURL) == .indexed(FolderSize(bytes: 0, files: 0, allocatedBytes: 0, allocationComplete: true)))
+    }
+
+    @Test func unindexedPathsUnderAlreadyReadParentsReturnUnindexedDuringUpdating() throws {
+        let environment = try IndependentEnvironment()
+        defer { withExtendedLifetime(environment) {} }
+        let store = IndexStore()
+        store.write { s in
+            let root = s.addRoot(path: "/synthetic", mtime: 0)
+            s.flags[Int(root)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+            let names = Array("readunread".utf8)
+            let items = [
+                ScannedItem(nameOffset: 0, nameLength: 4, isDirectory: true, isPackage: false, isSymlink: false,
+                            isHidden: false, isMountPoint: false, size: 0, mtime: 1),
+                ScannedItem(nameOffset: 4, nameLength: 6, isDirectory: true, isPackage: false, isSymlink: false,
+                            isHidden: false, isMountPoint: false, size: 0, mtime: 1),
+            ]
+            let ids = names.withUnsafeBytes { s.appendChildren(items, nameBuffer: $0, of: root) }
+            s.flags[Int(ids.lowerBound)] &= ~(IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation)
+        }
+        let index = FileIndex(
+            storage: environment.storage,
+            copies: environment.services.copies,
+            store: store,
+            configuredRoots: ["/synthetic"],
+            started: true
+        )
+        index.setPhase(.updating)
+
+        #expect(index.folderSizeLookup(URL(fileURLWithPath: "/synthetic/unread/child")) == .pending)
+        #expect(index.folderSizeLookup(URL(fileURLWithPath: "/synthetic/read/mounted/child")) == .unindexed)
     }
 
 }

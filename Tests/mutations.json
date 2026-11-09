@@ -9701,5 +9701,33 @@
     "replace": "                rememberFolderPresentation()",
     "rule": "Toolbar view mode changes in an uncustomized folder update the default view mode so navigation keeps the chosen mode",
     "tests": "FolderViewSettingsTests/allViewModesStayConsistentAcrossUncustomizedFolderNavigation"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        case .pending:\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "replace": "        case .pending:\n            if request { sizer.request(url) }\n            return nil",
+    "rule": "Pending index folder size lookups wait for the index instead of starting a competing FolderSizer walk",
+    "tests": "FolderSizerCancellationTests/browserWaitsForLoadingIndexAndCancelsPendingSizerWalksWhenIndexTakesOver"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Actions.swift",
+    "find": "        if sizer.hasPending {\n            sizer.cancel { [index = services.index] url in index.folderSizeLookup(url) != .unindexed }\n        }",
+    "replace": "",
+    "rule": "Superseded FolderSizer walks are cancelled when the index takes over a folder",
+    "tests": "FolderSizerCancellationTests/browserWaitsForLoadingIndexAndCancelsPendingSizerWalksWhenIndexTakesOver"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "            return pendingLookupPaths.filter { lookupStatus(for: $0, in: store) != .pending }",
+    "replace": "            return []",
+    "rule": "Pending index folder size lookups survive unrelated changes and publish their path once resolved",
+    "tests": "FolderSizerCancellationTests/pendingLookupsSurviveUnrelatedChangesAndPublishWhenResolved"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if isActivelyUpdating,\n           let ancestor = nearestAncestor(of: path, in: store),\n           store.isDirectory(ancestor),\n           store.flags[Int(ancestor)] & IndexStore.Flag.symlink == 0,\n           !isExcludedLocked(store, ancestor),\n           isUnreadLocked(store, ancestor) {\n            return .pending\n        }",
+    "replace": "        if isActivelyUpdating, isWithinIndexedScope(path) {\n            return .pending\n        }",
+    "rule": "Unindexed paths under already-read parents return unindexed during background updates",
+    "tests": "FolderSizerCancellationTests/unindexedPathsUnderAlreadyReadParentsReturnUnindexedDuringUpdating"
   }
 ]
