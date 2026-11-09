@@ -17,7 +17,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, readonly) NSInteger width;
 @property(nonatomic, readonly) NSInteger height;
 @property(nonatomic, readonly) NSInteger orientation;
+@property(nonatomic, readonly) NSInteger frameCount;
 @property(nonatomic, readonly, copy) NSString *typeIdentifier;
+@property(nonatomic, readonly, nullable, copy) NSString *profileName;
+@property(nonatomic, readonly, nullable, copy) NSString *caption;
+@property(nonatomic, readonly, nullable, copy) NSArray<NSString *> *keywords;
 @property(nonatomic, readonly, nullable, copy) NSString *captureDate;
 @property(nonatomic, readonly, nullable, copy) NSString *captureOffset;
 @property(nonatomic, readonly, nullable, copy) NSString *cameraModel;

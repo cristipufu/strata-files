@@ -679,7 +679,8 @@ final class InspectorViewController: NSViewController {
 
     private func mediaDetailsArrived() {
         guard let url = mediaDetails.url, shownURLs == [url] else { return }
-        if let text = mediaDetails.value?.basic.dimensions, let index = dimensionsRowIndex,
+        if let text = mediaDetails.value?.basic.dimensions,
+           let index = dimensionsRowIndex,
            !infoRows.shown.contains(where: { $0.title == Self.dimensionsTitle }), index <= infoRows.shown.count {
             var rows = infoRows.shown.map { ($0.title, $0.value) }
             rows.insert((Self.dimensionsTitle, InspectorRows.text(text)), at: index)
@@ -690,7 +691,7 @@ final class InspectorViewController: NSViewController {
 
     private func showMediaRows() {
         var rows: [(String, NSView)] = (mediaDetails.value.map(MediaDetailRows.rows) ?? []).map { ($0, InspectorRows.text($1)) }
-        if let location = mediaDetails.value?.photo?.location {
+        if let location = mediaDetails.value?.coordinates {
             if coordinatesView?.location != location {
                 coordinatesView = InspectorCoordinatesView(location: location, clipboard: services.clipboard) { NSWorkspace.shared.open($0) }
             }

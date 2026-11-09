@@ -170,7 +170,7 @@ package final class PreviewFooter: NSView {
     private let trailing = NSTextField(labelWithString: "")
     private let separator = NSBox()
     private var height: NSLayoutConstraint!
-    private lazy var leadingWidth = slack(for: leading, priority: .defaultHigh + 1)
+    private lazy var leadingWidth = slack(for: leading, priority: .defaultLow + 4)
     private lazy var trailingWidth = slack(for: trailing, priority: .defaultLow + 2)
 
     package override init(frame: NSRect) {
@@ -186,9 +186,9 @@ package final class PreviewFooter: NSView {
         leading.textColor = .secondaryLabelColor
         trailing.textColor = .tertiaryLabelColor
         trailing.alignment = .right
-        // The summary keeps its size; the note truncates first when space runs out.
-        leading.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        leading.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        // The summary keeps its size; the note truncates first when space runs out, and both yield to split-view resizing.
+        leading.setContentHuggingPriority(.defaultLow + 3, for: .horizontal)
+        leading.setContentCompressionResistancePriority(.defaultLow + 3, for: .horizontal)
         trailing.setContentHuggingPriority(.defaultLow, for: .horizontal)
         trailing.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
         separator.translatesAutoresizingMaskIntoConstraints = false

@@ -3633,8 +3633,8 @@
   },
   {
     "file": "Strata/Inspector/InspectorMediaDetails.swift",
-    "find": "guard let entry, entry.isRegular, !entry.isSymlink, !copies.isPlaceholder(entry.url),",
-    "replace": "guard let entry, entry.isRegular,",
+    "find": "guard let entry, Self.canInspect(entry), !entry.isSymlink, !copies.isPlaceholder(entry.url) else {",
+    "replace": "guard let entry, Self.canInspect(entry) else {",
     "rule": "Inspector provider ownership image dimensions read a placeholder or symlink",
     "tests": "InspectorProviderTests"
   },

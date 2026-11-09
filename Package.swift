@@ -75,6 +75,7 @@ let modelSources = [
     "FileReadSource.swift",
     "FileInfoEditing.swift",
     "FolderNames.swift",
+    "FormatMetadata.swift",
     "GridValue.swift",
     "FolderSizer.swift",
     "LandedFiles.swift",
@@ -171,7 +172,7 @@ let package = Package(
         ),
         .target(
             name: "StrataArchives",
-            dependencies: ["StrataSupport", "StrataModel", "StrataArchiveClient"],
+            dependencies: ["StrataSupport", "StrataModel", "StrataArchiveClient", "CNativeReaders"],
             path: "Sources/Strata/Archives",
             swiftSettings: strataSwiftSettings
         ),

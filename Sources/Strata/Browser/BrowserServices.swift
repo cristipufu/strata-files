@@ -1,4 +1,5 @@
 import Foundation
+import StrataArchives
 
 /// Services shared by a window and its panes. Production windows share one set; headless windows can own independent
 /// preferences, transfers and visit history without changing AppKit's responder chain or presentation controllers.
@@ -19,7 +20,7 @@ final class BrowserServices {
                          containers: ContainerFiles? = nil, containerStore: ContainerStore = ContainerStore(),
                          windows: BrowserWindows = .headless, directories: DirectoryReader? = nil,
                          mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-                         mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
+                         mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                          mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
@@ -41,7 +42,7 @@ final class BrowserServices {
                            volumeSpace: @escaping @Sendable (URL) async -> VolumeSpace? = BrowserLoading.readVolumeSpace,
                            remoteBrowsing: RemoteBrowsing? = nil,
                            mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-                           mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
+                           mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                            mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
@@ -101,7 +102,7 @@ final class BrowserServices {
                  remote: RemoteServices, remoteBrowsing: RemoteBrowsing? = nil,
                  containers: ContainerFiles, containerStore: ContainerStore, clipboard: Clipboard,
                  mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
-                 mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
+                 mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                  mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },

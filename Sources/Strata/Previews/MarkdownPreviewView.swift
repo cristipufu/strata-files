@@ -19,11 +19,20 @@ import StrataSupport
         self.init(url: url, mathTimeLimit: MathRenderer.usualTimeLimit)
     }
 
-    init(url: URL, mathTimeLimit: @escaping OfflineImageRenderer.TimeLimit) {
+    package convenience init(notebook url: URL) {
+        self.init(loadDocument: { try await NotebookLoader.load(url) }, mathTimeLimit: MathRenderer.usualTimeLimit)
+    }
+
+    convenience init(url: URL, mathTimeLimit: @escaping OfflineImageRenderer.TimeLimit) {
+        self.init(loadDocument: { try await MarkdownLoader.load(url) }, mathTimeLimit: mathTimeLimit)
+    }
+
+    init(loadDocument: @escaping @concurrent @Sendable () async throws -> MarkdownDocument,
+         mathTimeLimit: @escaping OfflineImageRenderer.TimeLimit) {
         self.mathTimeLimit = mathTimeLimit
         super.init(frame: .zero)
         configure()
-        load({ try await MarkdownLoader.load(url) }) { [weak self] document in
+        load(loadDocument) { [weak self] document in
             self?.show(document)
         }
     }
@@ -73,8 +82,13 @@ import StrataSupport
         search.find(query)
         guard textView.renderingError == nil else { return }
         renderAssets()
-        let words = String(localized: "\(document.wordCount) words", comment: "plural")
-        let summary = document.isSource ? ["Markdown", String(localized: "Source"), words] : ["Markdown", words]
+        let summary: [String]
+        if let custom = document.customSummary {
+            summary = custom
+        } else {
+            let words = String(localized: "\(document.wordCount) words", comment: "plural")
+            summary = document.isSource ? ["Markdown", String(localized: "Source"), words] : ["Markdown", words]
+        }
         footer.show(summary, note: document.isTruncated
             ? String(localized: "Showing first \(TextFile.limitDescription)", comment: "Preview footer note: only the first part is shown (a count or a size)") : nil)
     }
@@ -248,6 +262,7 @@ nonisolated package struct MarkdownDocument: Sendable {
     package let wordCount: Int
     package let isTruncated: Bool
     package let isSource: Bool
+    package var customSummary: [String]? = nil
 }
 
 nonisolated package enum MarkdownLoader {

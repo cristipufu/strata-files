@@ -26,9 +26,25 @@ import UniformTypeIdentifiers
 
     isolated deinit { task?.cancel() }
 
+    private static let supportedExtensions: Set<String> = [
+        "xlsx", "ods", "epub", "cbz", "sqlite", "sqlite3", "db", "parquet",
+        "ttf", "otf", "ttc", "woff", "sketch", "procreate", "kra", "ora",
+        "gpx", "kml", "geojson", "cer", "crt", "der", "pem",
+        "mobileprovision", "provisionprofile", "safetensors", "gguf", "npy",
+    ]
+
+    static func canInspect(_ entry: FileEntry) -> Bool {
+        let ext = entry.url.pathExtension.lowercased()
+        if ext == "app", entry.isDirectory { return true }
+        guard entry.isRegular else { return false }
+        if supportedExtensions.contains(ext) { return true }
+        return entry.contentType.map {
+            $0.conforms(to: .image) || $0.conforms(to: .audiovisualContent) || $0.conforms(to: .font)
+        } == true
+    }
+
     func show(_ entry: FileEntry?) {
-        guard let entry, entry.isRegular, !entry.isSymlink, !copies.isPlaceholder(entry.url),
-              entry.contentType.map({ $0.conforms(to: .image) || $0.conforms(to: .audiovisualContent) }) == true else {
+        guard let entry, Self.canInspect(entry), !entry.isSymlink, !copies.isPlaceholder(entry.url) else {
             cancel()
             return
         }

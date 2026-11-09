@@ -34,10 +34,14 @@ nonisolated package final class MarkdownRenderer {
         equations = 0
         tables.removeAll()
         let output = NSMutableAttributedString()
+        try append(blocks, into: output)
+        return output
+    }
+
+    package func append(_ blocks: [MarkdownBlock], into output: NSMutableAttributedString) throws {
         try render(blocks, into: output, context: Context())
         guard output.length <= MarkdownLimits.renderedUnits else { throw MarkdownLimitExceeded() }
         if output.string.hasSuffix("\n") { output.deleteCharacters(in: NSRange(location: output.length - 1, length: 1)) }
-        return output
     }
 
     private struct Context {

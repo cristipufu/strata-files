@@ -79,7 +79,11 @@ package actor SemanticIndex {
     }
 
     /// The content index over ~/Documents, ~/Desktop and ~/Downloads, in the app's saved state.
-    package static let shared = SemanticIndex(configuration: Configuration(roots: standardRoots, storage: .shared))
+    package static let shared = SemanticIndex(configuration: {
+        var config = Configuration(roots: standardRoots, storage: .shared)
+        config.extraction.metadata = true
+        return config
+    }())
 
     package nonisolated static var standardRoots: [URL] {
         let home = FileManager.default.homeDirectoryForCurrentUser

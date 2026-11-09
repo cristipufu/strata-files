@@ -39,9 +39,18 @@ package nonisolated enum TextExtractor {
         /// Recognise text in images and in PDF pages without a text layer. Slow; off by default.
         package var ocr = false
         package var maxOCRPages = 3
+        /// Extract bounded human-centric header metadata from media, archives, fonts, certificates and models.
+        package var metadata = false
         /// Files bigger than this are skipped (PDFs and rich text are parsed whole).
         package var maxFileBytes: Int64 = 80 * 1024 * 1024
     }
+
+    package static let metadataExtensions: Set<String> = [
+        "xlsx", "ods", "epub", "cbz", "ipynb", "sqlite", "sqlite3", "db",
+        "ttf", "otf", "ttc", "woff", "sketch", "gpx", "kml", "geojson",
+        "cer", "crt", "der", "pem", "mobileprovision", "provisionprofile",
+        "safetensors", "gguf",
+    ]
 
     package static let plainTextExtensions: Set<String> = [
         "txt", "text", "md", "markdown", "mdown", "mkd", "log", "csv", "tsv", "json", "yaml", "yml", "toml", "ini", "cfg", "conf",
@@ -59,10 +68,13 @@ package nonisolated enum TextExtractor {
     /// Whether `extract` can read this kind of file (cheap: looks at the extension and type only).
     package static func canExtract(_ url: URL, contentType: UTType? = nil, options: Options = Options()) -> Bool {
         let ext = url.pathExtension.lowercased()
+        if options.metadata, metadataExtensions.contains(ext) { return true }
         if ext == "pdf" || plainTextExtensions.contains(ext) || richTextTypes[ext] != nil || htmlExtensions.contains(ext) { return true }
         if options.ocr, imageExtensions.contains(ext) { return true }
         guard let type = contentType ?? UTType(filenameExtension: ext) else { return false }
+        if options.metadata, type.conforms(to: .font) { return true }
         if type.conforms(to: .pdf) || type.conforms(to: .html) || type.conforms(to: .rtf) { return true }
+        if metadataExtensions.contains(ext) { return false }
         if type.conforms(to: .plainText) || type.conforms(to: .sourceCode) { return true }
         return options.ocr && type.conforms(to: .image)
     }
@@ -84,13 +96,16 @@ package nonisolated enum TextExtractor {
         let maxCharacters = max(0, options.maxCharacters)
         let plainLimit = min(maxCharacters, Int.max / 2) * 2
         var result: ExtractedText?
-        if ext == "pdf" || type?.conforms(to: .pdf) == true {
+        if options.metadata, metadataExtensions.contains(ext) || type?.conforms(to: .font) == true {
+            result = await extractMetadata(url, contentType: type)
+        } else if ext == "pdf" || type?.conforms(to: .pdf) == true {
             result = await pdf(url, options: options)
         } else if let docType = richTextTypes[ext] ?? (type?.conforms(to: .rtf) == true ? .rtf : nil) {
             result = rich(url, type: docType, maxBytes: Int(clamping: options.maxFileBytes), maxCharacters: maxCharacters)
         } else if htmlExtensions.contains(ext) || type?.conforms(to: .html) == true {
             result = readPlain(url, limit: plainLimit).map { html($0) }
-        } else if plainTextExtensions.contains(ext) || type?.conforms(to: .plainText) == true || type?.conforms(to: .sourceCode) == true {
+        } else if !metadataExtensions.contains(ext),
+                  plainTextExtensions.contains(ext) || type?.conforms(to: .plainText) == true || type?.conforms(to: .sourceCode) == true {
             if let text = readPlain(url, limit: plainLimit) {
                 if markdownExtensions.contains(ext) {
                     result = ExtractedText(text: text, title: markdownTitle(text), source: .markdown)
@@ -99,8 +114,19 @@ package nonisolated enum TextExtractor {
                     result = ExtractedText(text: text, title: nil, source: isCode ? .code : .plain)
                 }
             }
-        } else if options.ocr, imageExtensions.contains(ext) || type?.conforms(to: .image) == true {
-            result = await ocrImage(url, maxBytes: options.maxFileBytes).map { ExtractedText(text: $0, title: nil, source: .ocr) }
+        } else if imageExtensions.contains(ext) || type?.conforms(to: .image) == true {
+            var parts: [String] = []
+            var title: String?
+            if options.metadata, let meta = await extractMetadata(url, contentType: type) {
+                parts.append(meta.text)
+                title = meta.title
+            }
+            if options.ocr, let ocrText = await ocrImage(url, maxBytes: options.maxFileBytes) {
+                parts.append(ocrText)
+            }
+            if !parts.isEmpty {
+                result = ExtractedText(text: parts.joined(separator: "\n"), title: title, source: options.ocr ? .ocr : .plain)
+            }
         }
 
         guard !Task.isCancelled, var result else { return nil }
@@ -180,6 +206,109 @@ package nonisolated enum TextExtractor {
             }
         }
         return Task.isCancelled ? nil : result
+    }
+
+    // MARK: - Human-Centric Search Metadata
+
+    @concurrent package static func extractMetadata(_ url: URL, contentType: UTType? = nil) async -> ExtractedText? {
+        guard !Task.isCancelled, !DatalessFile.isDataless(url.path) else { return nil }
+        let ext = url.pathExtension.lowercased()
+        if ext == "ipynb" {
+            return extractNotebookHeadings(url)
+        }
+        let details = await ArchiveMetadata.readDetails(url, contentType: contentType ?? UTType(filenameExtension: ext))
+        guard !Task.isCancelled else { return nil }
+
+        var title: String?
+        var terms: [String] = []
+        func add(_ value: String?) {
+            guard let value else { return }
+            let clean = DisplayText.oneLine(String(value.unicodeScalars.prefix(160)))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty, !terms.contains(clean) else { return }
+            terms.append(clean)
+        }
+
+        if let photo = details.photo {
+            add(photo.caption)
+            for kw in photo.keywords.prefix(12) { add(kw) }
+        }
+        if let audio = details.audio {
+            if title == nil { title = audio.title }
+            add(audio.title)
+            add(audio.artist)
+            add(audio.album)
+        }
+        if let chapters = details.navigation.chapters {
+            for ch in chapters.prefix(8) { add(ch.title) }
+        }
+        if let book = details.book {
+            if title == nil { title = book.title }
+            add(book.title)
+            add(book.author)
+            add(book.series)
+        }
+        if let spreadsheet = details.spreadsheet {
+            for sheet in spreadsheet.sheets.prefix(16) { add(sheet) }
+        }
+        if let database = details.database {
+            for table in database.tables.prefix(16) { add(table) }
+        }
+        if let font = details.font {
+            if title == nil { title = font.fullName ?? font.family }
+            add(font.family)
+            add(font.fullName)
+        }
+        if let design = details.design {
+            for name in design.artboards.prefix(16) { add(name) }
+        }
+        if let track = details.track {
+            if title == nil { title = track.name }
+            add(track.name)
+        }
+        if let cert = details.certificate {
+            if title == nil { title = cert.subject }
+            add(cert.subject)
+            add(cert.organization)
+            add(cert.team)
+            for domain in cert.domains.prefix(8) { add(domain) }
+        }
+        if let model = details.model {
+            if title == nil { title = model.modelName }
+            add(model.modelName)
+            add(model.architecture)
+        }
+
+        guard !terms.isEmpty else { return nil }
+        let joined = String(terms.joined(separator: " · ").prefix(256))
+        return ExtractedText(text: joined, title: title, source: .plain)
+    }
+
+    private static func extractNotebookHeadings(_ url: URL) -> ExtractedText? {
+        guard let (data, truncated) = try? TextFile.readPrefix(url, limit: 4 << 20), !truncated,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cells = root["cells"] as? [[String: Any]] else { return nil }
+        var headings: [String] = []
+        for cell in cells.prefix(100) where (cell["cell_type"] as? String) == "markdown" {
+            let source: String = if let s = cell["source"] as? String { s }
+            else if let arr = cell["source"] as? [String] { arr.joined() }
+            else { "" }
+            for lineSub in source.split(whereSeparator: \.isNewline) {
+                let trimmed = lineSub.trimmingCharacters(in: .whitespaces)
+                guard trimmed.hasPrefix("#") else { continue }
+                let text = trimmed.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+                let clean = DisplayText.oneLine(String(text.unicodeScalars.prefix(120)))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !clean.isEmpty, !headings.contains(clean) {
+                    headings.append(clean)
+                    if headings.count >= 12 { break }
+                }
+            }
+            if headings.count >= 12 { break }
+        }
+        guard !headings.isEmpty else { return nil }
+        let joined = String(headings.joined(separator: " · ").prefix(256))
+        return ExtractedText(text: joined, title: headings.first, source: .markdown)
     }
 
     private static func boundedData(_ url: URL, limit: Int64) -> Data? {

@@ -80,6 +80,24 @@ nonisolated package struct TextFile: Sendable {
         }
     }
 
+    /// Up to `limit` bytes from the end of `url`, and the file's total size.
+    package static func readSuffix(_ url: URL, limit: Int) throws -> (Data, Int64) {
+        guard limit >= 0, limit < Int.max, !DatalessFile.isDataless(url.path) else { throw NotText() }
+        return try DatalessFile.withoutMaterializing {
+            let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+            guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? handle.close() }
+            var status = stat()
+            guard fstat(descriptor, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
+                  !DatalessFile.isDataless(status), status.st_size >= 0 else { throw NotText() }
+            let start = max(0, status.st_size - Int64(limit))
+            try handle.seek(toOffset: UInt64(start))
+            let data = try handle.read(upToCount: limit) ?? Data()
+            return (data, status.st_size)
+        }
+    }
+
     /// Decodes UTF-8 (with or without BOM), UTF-16 with a BOM, or falls back to Windows Latin 1. Nil for binary data.
     package static func decode(_ data: Data) -> String? {
         if data.starts(with: [0xFF, 0xFE]) { return String(data: data.dropFirst(2), encoding: .utf16LittleEndian) }

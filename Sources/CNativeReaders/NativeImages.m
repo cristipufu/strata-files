@@ -5,8 +5,10 @@
 #import <ImageIO/ImageIO.h>
 
 @interface STImageMetadata ()
-@property(nonatomic) NSInteger width, height, orientation;
+@property(nonatomic) NSInteger width, height, orientation, frameCount;
 @property(nonatomic, copy) NSString *typeIdentifier;
+@property(nonatomic, nullable, copy) NSString *profileName, *caption;
+@property(nonatomic, nullable, copy) NSArray<NSString *> *keywords;
 @property(nonatomic, nullable, copy) NSString *captureDate, *captureOffset, *cameraModel, *cameraMake, *lensModel;
 @property(nonatomic, nullable, copy) NSNumber *exposureTime, *aperture, *iso, *focalLength, *focalLength35mm, *latitude, *longitude;
 @end
@@ -21,6 +23,21 @@ static NSInteger STImageDimension(id value) {
 
 static NSString *STMetadataString(id value) {
     return [value isKindOfClass:NSString.class] && [value length] <= 1024 ? value : nil;
+}
+
+static NSArray<NSString *> *STMetadataKeywords(id value) {
+    if ([value isKindOfClass:NSString.class]) {
+        NSString *item = STMetadataString(value);
+        return item.length ? @[item] : nil;
+    }
+    if (![value isKindOfClass:NSArray.class]) return nil;
+    NSMutableArray<NSString *> *items = [NSMutableArray new];
+    for (id element in (NSArray *)value) {
+        if (items.count >= 32) break;
+        NSString *item = STMetadataString(element);
+        if (item.length) [items addObject:item];
+    }
+    return items.count ? items : nil;
 }
 
 static NSNumber *STPositiveMetadataNumber(id value) {
@@ -45,11 +62,14 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
     NSDictionary *properties = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL));
     STImageMetadata *result = [STImageMetadata new];
     result.typeIdentifier = (__bridge NSString *)type;
+    result.frameCount = 0;
     result.width = STImageDimension(properties[(__bridge NSString *)kCGImagePropertyPixelWidth]);
     result.height = STImageDimension(properties[(__bridge NSString *)kCGImagePropertyPixelHeight]);
     result.orientation = STImageDimension(properties[(__bridge NSString *)kCGImagePropertyOrientation]);
+    result.profileName = STMetadataString(properties[(__bridge NSString *)kCGImagePropertyProfileName]);
     id exif = properties[(__bridge NSString *)kCGImagePropertyExifDictionary];
     id tiff = properties[(__bridge NSString *)kCGImagePropertyTIFFDictionary];
+    id iptc = properties[(__bridge NSString *)kCGImagePropertyIPTCDictionary];
     if ([exif isKindOfClass:NSDictionary.class]) {
         result.captureDate = STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifDateTimeOriginal])
             ?: STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifDateTimeDigitized]);
@@ -62,10 +82,18 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
         result.iso = STPositiveMetadataNumber(rating);
         result.focalLength = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifFocalLength]);
         result.focalLength35mm = STPositiveMetadataNumber(exif[(__bridge NSString *)kCGImagePropertyExifFocalLenIn35mmFilm]);
+        result.caption = STMetadataString(exif[(__bridge NSString *)kCGImagePropertyExifUserComment]);
     }
     if ([tiff isKindOfClass:NSDictionary.class]) {
         result.cameraModel = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFModel]);
         result.cameraMake = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFMake]);
+        if (!result.caption) result.caption = STMetadataString(tiff[(__bridge NSString *)kCGImagePropertyTIFFImageDescription]);
+    }
+    if ([iptc isKindOfClass:NSDictionary.class]) {
+        NSString *iptcCaption = STMetadataString(iptc[(__bridge NSString *)kCGImagePropertyIPTCCaptionAbstract])
+            ?: STMetadataString(iptc[(__bridge NSString *)kCGImagePropertyIPTCObjectName]);
+        if (iptcCaption) result.caption = iptcCaption;
+        result.keywords = STMetadataKeywords(iptc[(__bridge NSString *)kCGImagePropertyIPTCKeywords]);
     }
     id gps = properties[(__bridge NSString *)kCGImagePropertyGPSDictionary];
     if ([gps isKindOfClass:NSDictionary.class]) {
@@ -104,6 +132,7 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
             if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil];
             return nil;
         }
+        metadata.frameCount = count <= (size_t)NSIntegerMax ? (NSInteger)count : 0;
         STImageReader *reader = [self new];
         reader->_metadata = metadata; reader->_source = source; source = NULL;
         return reader;
@@ -118,6 +147,10 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
     @try {
         source = CGImageSourceCreateWithData((__bridge CFDataRef)data, (__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache: @NO});
         STImageMetadata *metadata = source ? STReadImageMetadata(source) : nil;
+        if (metadata && data.length <= (2u << 20)) {
+            size_t count = CGImageSourceGetCount(source);
+            metadata.frameCount = count <= (size_t)NSIntegerMax ? (NSInteger)count : 0;
+        }
         if (!metadata && error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil];
         return metadata;
     } @catch (NSException *exception) {
@@ -134,6 +167,10 @@ static STImageMetadata *STReadImageMetadata(CGImageSourceRef source) {
         source = STCreateFileImageSource(url, &file, &provider, error);
         if (!source) return nil;
         STImageMetadata *metadata = STReadImageMetadata(source);
+        if (metadata && file->size <= (1 << 20)) {
+            size_t count = CGImageSourceGetCount(source);
+            metadata.frameCount = count <= (size_t)NSIntegerMax ? (NSInteger)count : 0;
+        }
         if (atomic_load(&file->error)) { if (error) *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:atomic_load(&file->error) userInfo:nil]; return nil; }
         if (!metadata && error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil];
         return metadata;

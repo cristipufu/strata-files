@@ -21,16 +21,21 @@ package enum RichPreview {
         case .json: CodePreviewView(url: url, mode: .json, preferences: preferences)
         case .pdf: PDFPreviewView(url: url)
         case .markdown: MarkdownPreviewView(url: url)
+        case .notebook: MarkdownPreviewView(notebook: url)
         case .html: HTMLPreviewView(url: url, preferences: preferences)
         case .epub: EPUBPreviewView(url: url)
         case .onenote: OneNotePreviewView(url: url)
         case .onenoteContents: OneNoteContentsView(url: url)
         case .delimited(let separator): DelimitedPreviewView(url: url, separator: separator, clipboard: clipboard)
+        case .table(let kind): TablePreviewView(url: url, kind: kind, clipboard: clipboard)
         case .sqlite: SQLitePreviewView(url: url, clipboard: clipboard)
         case .stl: ModelPreviewView(url: url)
         case .threeMF: ModelPreviewView(url: url, format: .threeMF)
         case .xlsx: WorkbookPreviewView(url: url, format: .xlsx, clipboard: clipboard)
         case .ods: WorkbookPreviewView(url: url, format: .ods, clipboard: clipboard)
+        case .font: FontPreviewView(url: url)
+        case .design: DesignPreviewView(url: url)
+        case .geoTrack: GeoTrackPreviewView(url: url)
         case .archive(let kind): ArchivePreviewView(url: url, kind: kind)
         case .video: MediaPreviewView(url: url, type: contentType ?? .movie, reader: media)
         case .audio: MediaPreviewView(url: url, type: contentType ?? .audio, reader: media)
@@ -46,17 +51,22 @@ nonisolated package enum PreviewFormat: Sendable {
     case json
     case pdf
     case markdown
+    case notebook
     case html
     case epub
     case onenote
     case onenoteContents
     /// CSV/TSV; a nil separator is detected from the content.
     case delimited(separator: UInt8?)
+    case table(TablePreviewKind)
     case sqlite
     case stl
     case threeMF
     case xlsx
     case ods
+    case font
+    case design
+    case geoTrack
     case archive(ArchiveKind)
     case video
     case audio
@@ -78,6 +88,28 @@ nonisolated package enum PreviewFormat: Sendable {
             self = .pdf
         } else if Self.markdownExtensions.contains(ext) {
             self = .markdown
+        } else if ext == "ipynb" {
+            self = .notebook
+        } else if ["srt", "vtt"].contains(ext) {
+            self = .table(.subtitles)
+        } else if ["jsonl", "ndjson"].contains(ext) {
+            self = .table(.jsonLines)
+        } else if ext == "xcstrings" {
+            self = .table(.xcstrings)
+        } else if ext == "har" {
+            self = .table(.har)
+        } else if ext == "parquet" {
+            self = .table(.parquet)
+        } else if Self.certificateExtensions.contains(ext) {
+            self = .table(.certificate)
+        } else if Self.mlExtensions.contains(ext) {
+            self = .table(.mlHeader)
+        } else if Self.fontExtensions.contains(ext) {
+            self = .font
+        } else if Self.designExtensions.contains(ext) {
+            self = .design
+        } else if Self.geoTrackExtensions.contains(ext) {
+            self = .geoTrack
         } else if Self.jsonExtensions.contains(ext) || name == "package.resolved" || name == ".babelrc" {
             self = .json
         } else if ext == "csv" {
@@ -118,8 +150,13 @@ nonisolated package enum PreviewFormat: Sendable {
 
     private static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"]
     private static let jsonExtensions: Set<String> = [
-        "json", "jsonc", "json5", "geojson", "topojson", "webmanifest", "har", "jsonld", "avsc", "ipynb", "xcstrings",
+        "json", "jsonc", "json5", "topojson", "webmanifest", "jsonld", "avsc",
         "code-workspace", "gltf",
     ]
     private static let sqliteExtensions: Set<String> = ["sqlite", "sqlite3", "db", "db3", "sqlitedb", "gpkg", "mbtiles"]
+    private static let certificateExtensions: Set<String> = ["cer", "crt", "der", "pem", "mobileprovision", "provisionprofile"]
+    private static let mlExtensions: Set<String> = ["safetensors", "gguf", "npy"]
+    private static let fontExtensions: Set<String> = ["ttf", "otf", "ttc", "woff"]
+    private static let designExtensions: Set<String> = ["sketch", "procreate", "kra", "ora"]
+    private static let geoTrackExtensions: Set<String> = ["gpx", "kml", "geojson"]
 }

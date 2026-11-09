@@ -13,11 +13,13 @@ package final class CodePreviewView: PreviewView {
 
     private let scrollView = NSScrollView()
     private let preferences: any PreviewTextSettings
+    private let filePicker = NSPopUpButton(frame: .zero, pullsDown: false)
     private let wrapButton = NSButton(checkboxWithTitle: String(localized: "Wrap Lines", comment: "Text preview option: wrap long lines to the available width"), target: nil, action: nil)
     private var wrapsLines: Bool?
     private var unwrappedWidth: CGFloat = 0
     private var pendingScrollLine: Int?
     private var lineStarts: [Int] = []
+    private var diffFiles: [(name: String, line: Int)] = []
     /// The ruler inset the text was last moved clear of.
     private var rulerInset: CGFloat = 0
     // TextKit 1 keeps line-fragment layout lazy while the gutter maps fragments to original lines.
@@ -46,11 +48,17 @@ package final class CodePreviewView: PreviewView {
     package required init?(coder: NSCoder) { fatalError() }
 
     private func configure() {
+        filePicker.controlSize = .small
+        filePicker.isBordered = false
+        filePicker.font = .systemFont(ofSize: 12)
+        filePicker.isHidden = true
+        filePicker.target = self
+        filePicker.action = #selector(choseDiffFile(_:))
         wrapButton.controlSize = .small
         wrapButton.identifier = NSUserInterfaceItemIdentifier("preview.wrapLines")
         wrapButton.target = self
         wrapButton.action = #selector(toggleWrapping(_:))
-        let bar = NSStackView(views: [NSView(), wrapButton])
+        let bar = NSStackView(views: [filePicker, NSView(), wrapButton])
         bar.orientation = .horizontal
         bar.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -146,11 +154,19 @@ package final class CodePreviewView: PreviewView {
         scrollView.tile()
         keepTextClearOfRuler()
         lineStarts = document.lineStarts
+        diffFiles = document.diffFiles
+        filePicker.removeAllItems()
+        for entry in diffFiles { filePicker.addItem(withTitle: entry.name) }
+        filePicker.isHidden = diffFiles.isEmpty
         applyWrapping()
         guard textView.renderingError == nil else { return }
 
         let lines = document.lineStarts.count
-        let summary = [document.languageName, String(localized: "\(lines) lines", comment: "plural")] + [document.note].compactMap { $0 }
+        var summary = [document.languageName, String(localized: "\(lines) lines", comment: "plural")]
+        if !diffFiles.isEmpty {
+            summary.append(String(localized: "\(diffFiles.count) files", comment: "plural"))
+        }
+        if let note = document.note { summary.append(note) }
         if let line = document.errorLine {
             footer.show(summary, warning: String(localized: "Invalid JSON at line \(line.formatted())"))
             pendingScrollLine = line - 1
@@ -205,6 +221,12 @@ package final class CodePreviewView: PreviewView {
         guard lineStarts.indices.contains(index) else { return }
         textView.centerCharacter(at: UInt(lineStarts[index]))
     }
+
+    @objc private func choseDiffFile(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        guard diffFiles.indices.contains(index) else { return }
+        center(line: diffFiles[index].line)
+    }
 }
 
 typealias LineNumberRuler = STPreviewLineNumberRuler
@@ -221,6 +243,7 @@ nonisolated package struct CodeDocument: Sendable {
     package let isTruncated: Bool
     package let note: String?
     package let errorLine: Int?
+    package let diffFiles: [(name: String, line: Int)]
 }
 
 nonisolated package enum CodeLoader {
@@ -286,9 +309,36 @@ nonisolated package enum CodeLoader {
         }
         rendered.endEditing()
         guard let storage = STCreatePreviewTextStorage(rendered) else { throw PreviewError.unsupported }
+        let diffFiles: [(name: String, line: Int)] = if case .diff = language.lexer { parseDiffFiles(text) } else { [] }
         return CodeDocument(storage: Handoff(value: storage), lineStarts: lineStarts,
                             rulerLineStarts: Handoff(value: lineStarts.map(NSNumber.init(value:))), maxColumns: maxColumns,
-                            languageName: language.name, isTruncated: truncated, note: note, errorLine: errorLine)
+                            languageName: language.name, isTruncated: truncated, note: note, errorLine: errorLine,
+                            diffFiles: diffFiles)
+    }
+
+    private static func parseDiffFiles(_ text: String) -> [(name: String, line: Int)] {
+        var result: [(name: String, line: Int)] = []
+        var seen: Set<String> = []
+        for (lineIndex, lineSub) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            guard result.count < 200 else { break }
+            if lineSub.hasPrefix("diff --git ") {
+                let rest = lineSub.dropFirst("diff --git ".count)
+                let parts = rest.split(separator: " ")
+                if let last = parts.last {
+                    let path = last.hasPrefix("b/") ? String(last.dropFirst(2)) : String(last)
+                    if !path.isEmpty, seen.insert(path).inserted {
+                        result.append((path, lineIndex))
+                    }
+                }
+            } else if lineSub.hasPrefix("+++ "), lineSub != "+++ /dev/null" {
+                let raw = lineSub.dropFirst(4).split(separator: "\t").first.map(String.init) ?? ""
+                let path = raw.hasPrefix("b/") ? String(raw.dropFirst(2)) : raw
+                if !path.isEmpty, seen.insert(path).inserted {
+                    result.append((path, lineIndex))
+                }
+            }
+        }
+        return result
     }
 
     /// Lines longer than this are cut: one enormous line (minified code) would take TextKit seconds to lay out.

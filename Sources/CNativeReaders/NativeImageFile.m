@@ -30,7 +30,7 @@ CGImageSourceRef STCreateFileImageSource(NSURL *url, STImageFile **file, CGDataP
     int fd = open(url.fileSystemRepresentation, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) { if (error) *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:errno userInfo:nil]; return NULL; }
     struct stat info;
-    if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size <= 0) {
+    if (fstat(fd, &info) || !S_ISREG(info.st_mode) || (info.st_flags & SF_DATALESS) != 0 || info.st_size <= 0) {
         close(fd);
         if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil];
         return NULL;
