@@ -16,7 +16,7 @@ nonisolated enum SettingsPage: String, CaseIterable, Sendable {
 }
 
 nonisolated enum SettingID: String, CaseIterable, Sendable {
-    case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder, windowsKeyboard
+    case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder, windowsKeyboard, explorerLayout
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case rebuildIndex, fullDiskAccess, searchSyntax, terminalApp
     case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, shortcuts
@@ -43,6 +43,7 @@ enum SettingsCatalog {
         entry(.returnKey, .general, "Return key", "return enter rename open keyboard"),
         entry(.newWindowFolder, .general, "New windows open", "new windows folder home startup"),
         entry(.windowsKeyboard, .general, "Windows keyboard", "coming from windows explorer pc keyboard f2 rename delete trash backspace back return enter open"),
+        entry(.explorerLayout, .general, "Explorer layout", "coming from windows explorer pc layout list view columns date modified kind type size inspector preview pane details"),
         entry(.newFileExtension, .general, "Extension", "new file default extension txt markdown"),
         entry(.updates, .general, "Updates", "automatic updates download release"),
         entry(.verifyCopies, .general, "Verify copies", "verify copies checksum integrity copying"),

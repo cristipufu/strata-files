@@ -8,6 +8,7 @@ words such as "explorer", "windows" and "pc".
 | Row | What it does |
 |---|---|
 | Windows keyboard | The keys work as in File Explorer (below). |
+| Explorer layout | A button, Use Explorer Layout, that sets up the List view as in File Explorer's Details view (below). |
 
 ## Windows keyboard
 
@@ -34,3 +35,21 @@ and its deeper columns, Gallery, Disk Usage) and in both panes:
 
 `PaneKeyAction.decide` makes the decision for each key; `WindowsKeyboardTests` covers it, the keys in every view
 and both panes, and the Shortcuts window with the option on and off.
+
+## Explorer layout
+
+Use Explorer Layout is a button, not a setting that stays on: it changes ordinary settings once, and you can change
+each of them again afterwards. Pressing it twice gives the same result. It applies to the windows of the Strata it's
+pressed in, at once, without a restart:
+
+- List becomes the default view. The default sort and icon size stay as they are.
+- The list shows Name, Date Modified, Size and Kind, and hides every other column. The columns keep Strata's order,
+  so Size comes before Kind.
+- The folders open in a pane now lose the view you set up for them in View Options, so they show the new List at
+  once. Folders you never set up already follow the defaults and get no saved view. Other folders you set up
+  yourself keep their view; Strata doesn't go through every remembered folder.
+- Every open window opens its Inspector, with the preview of the selection.
+
+Search results, Recents and Duplicates keep their own view. `ExplorerLayout.plan` decides the defaults and the
+hidden columns; `ExplorerLayoutTests` covers it, open windows and both panes of a Dual Pane window following at once,
+the folders open now reset and others kept, another environment's windows left alone, and pressing twice.

@@ -121,6 +121,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(folderNamesRead), name: .folderNamesRead,
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
+        services.preferences.notifications.addObserver(self, selector: #selector(explorerLayoutApplied), name: .explorerLayoutApplied,
+                                                       object: services.preferences)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
@@ -761,6 +763,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func cloudStatusChanged() {
         guard split.splitViewItems.last?.isCollapsed == false else { return }
+        refreshPanels()
+    }
+
+    /// Only the folders on show lose their saved view: resetting every remembered folder would mean scanning them all.
+    @objc private func explorerLayoutApplied() {
+        guard !isClosed else { return }
+        panes.forEach { $0.browser.resetFolderPresentation() }
+        split.inspectorItem.isCollapsed = false
         refreshPanels()
     }
 

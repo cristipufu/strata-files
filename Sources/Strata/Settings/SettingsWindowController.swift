@@ -204,6 +204,7 @@ private struct ComingFromWindowsSettings: View {
                 Text("Windows keyboard")
                 Text("Return opens, F2 renames, ⌦ (fn-⌫) moves to the Trash and ⌫ goes back, as in File Explorer. While you type a filter, ⌫ still edits it; ⌘⌫ still moves to the Trash.")
             }.settingAnchor(.windowsKeyboard)
+            ExplorerLayoutSettings(preferences: .shared).settingAnchor(.explorerLayout)
         }
     }
 }
