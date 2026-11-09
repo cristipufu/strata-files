@@ -61,7 +61,7 @@ for (const locale of locales) {
       expect(await page.locator('h1, h2, h3').evaluateAll(elements => elements.filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.textContent))).toEqual([]);
       await expect(page.locator('.privacy-policy-link')).toHaveAttribute('href', route(locale, 'privacy/'));
     }
-    for (const suffix of ['privacy/', '404.html']) {
+    for (const suffix of ['privacy/', 'releases/', '404.html']) {
       await page.setViewportSize({ width: 320, height: 900 });
       await page.goto(route(locale, suffix));
       await expect(page.locator('html')).toHaveAttribute('lang', locale.code);

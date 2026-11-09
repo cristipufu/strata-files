@@ -8,6 +8,7 @@ on:
     paths:
       - "site/**"
       - "docs/screenshots/**"
+      - "docs/release-notes/**"
       - "scripts/site.sh"
       - "scripts/site-assets.py"
       - "scripts/site-localize.py"
@@ -20,6 +21,7 @@ on:
     paths:
       - "site/**"
       - "docs/screenshots/**"
+      - "docs/release-notes/**"
       - "scripts/site.sh"
       - "scripts/site-assets.py"
       - "scripts/site-localize.py"
@@ -28,6 +30,8 @@ on:
       - "Tests/site/**"
       - "Tests/test_site.py"
       - ".github/workflows/pages.yml"
+  release:
+    types: [published, edited]
   workflow_dispatch:
 
 permissions:
@@ -60,6 +64,15 @@ jobs:
 
       - name: Check asset packaging
         run: python3 -m unittest discover -s Tests -p 'test_site*.py'
+
+      - name: Fetch GitHub release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if gh api "repos/$REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/github-releases.json" 2>/dev/null; then
+            echo "SITE_GITHUB_RELEASES=$RUNNER_TEMP/github-releases.json" >> "$GITHUB_ENV"
+          fi
 
       - name: Assemble the site
         env:

@@ -43,7 +43,7 @@ for (const colorScheme of ['light', 'dark']) {
   test(`system ${colorScheme} applies to home, privacy and 404 and tracks live changes`, async ({ page }) => {
     await prepare(page);
     await page.emulateMedia({ colorScheme });
-    for (const route of ['/', '/fr/privacy/', '/ro/404.html']) {
+    for (const route of ['/', '/fr/privacy/', '/de/releases/', '/ro/404.html']) {
       await page.goto(route);
       await expect(page.locator('body')).toHaveCSS('background-color', background[colorScheme]);
       await expect(page.locator('html')).toHaveAttribute('data-appearance', 'system');

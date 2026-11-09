@@ -4,7 +4,7 @@
   if (!locale) return;
   const key = 'strata-website-language';
   const route = (language) => {
-    const page = /\/privacy\/$/.test(location.pathname) ? 'privacy/' : /404\.html$/.test(location.pathname) ? '404.html' : '';
+    const page = /\/privacy\/$/.test(location.pathname) ? 'privacy/' : /\/releases\/$/.test(location.pathname) ? 'releases/' : /404\.html$/.test(location.pathname) ? '404.html' : '';
     return `/${language.slug ? `${language.slug}/` : ''}${page}${location.hash}`;
   };
   const remember = (code) => {

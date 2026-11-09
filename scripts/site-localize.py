@@ -6,16 +6,18 @@ from dataclasses import dataclass, field
 import html
 from html.parser import HTMLParser
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 ORIGIN = 'https://stratafiles.app'
-PAGES = {'home': 'index.html', 'privacy': 'privacy/index.html', '404': '404.html'}
+PAGES = {'home': 'index.html', 'privacy': 'privacy/index.html', 'releases': 'releases/index.html', '404': '404.html'}
 UI = ['Language', 'Languages', 'This website is also available in {language}.',
       'Continue in {language}', 'Dismiss', 'Version {version} · {size} · Free', 'Star · {count}',
-      'Appearance', 'System', 'Light', 'Dark']
+      'Appearance', 'System', 'Light', 'Dark', 'Latest']
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
 INLINE = {'a', 'b', 'br', 'code', 'em', 'kbd', 'small', 'span', 'strong', 'time'}
 BLOCK = {'title', 'p', 'h1', 'h2', 'h3', 'h4', 'li', 'summary', 'button', 'figcaption', 'dt', 'dd', 'a', 'span', 'strong', 'small', 'label'}
@@ -225,7 +227,164 @@ def catalogs(directory, keys, app_directory=None):
 
 def route(locale, page):
     prefix = '/' + locale['slug'] + '/' if locale['slug'] else '/'
-    return prefix + {'home': '', 'privacy': 'privacy/', '404': '404.html'}[page]
+    return prefix + {'home': '', 'privacy': 'privacy/', 'releases': 'releases/', '404': '404.html'}[page]
+
+
+def render_inline_code_and_text(text):
+    parts = re.split(r'(`[^`]+`)', text)
+    return ''.join(
+        '<code>' + html.escape(part[1:-1]) + '</code>' if part.startswith('`') and part.endswith('`') and len(part) >= 2
+        else html.escape(part)
+        for part in parts
+    )
+
+
+def render_inline_markdown(text):
+    token_re = re.compile(r'(`[^`]+`)|\*\*(.+?)\*\*|\[([^\]]+)\]\((https://[^\s)]+)\)')
+    out = []
+    pos = 0
+    for match in token_re.finditer(text):
+        out.append(html.escape(text[pos:match.start()]))
+        if match.group(1) is not None:
+            out.append('<code>' + html.escape(match.group(1)[1:-1]) + '</code>')
+        elif match.group(2) is not None:
+            out.append('<strong>' + render_inline_code_and_text(match.group(2)) + '</strong>')
+        else:
+            label = render_inline_code_and_text(match.group(3))
+            url = html.escape(match.group(4), quote=True)
+            out.append(f'<a href="{url}">{label}</a>')
+        pos = match.end()
+    out.append(html.escape(text[pos:]))
+    return ''.join(out)
+
+
+def render_markdown(source):
+    blocks = []
+    paragraph = []
+    quote = []
+    items = []
+    seen_heading = False
+
+    def flush():
+        nonlocal paragraph, quote, items
+        if paragraph:
+            cls = '' if seen_heading else ' class="release-card__summary"'
+            blocks.append(f'<p{cls}>' + render_inline_markdown(' '.join(paragraph)) + '</p>')
+            paragraph = []
+        if quote:
+            blocks.append('<blockquote class="release-card__note"><p>' + render_inline_markdown(' '.join(quote)) + '</p></blockquote>')
+            quote = []
+        if items:
+            lis = ''.join('<li>' + render_inline_markdown(' '.join(item)) + '</li>' for item in items)
+            blocks.append('<ul>' + lis + '</ul>')
+            items = []
+
+    for raw in source.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            flush()
+        elif stripped.startswith('## '):
+            flush()
+            seen_heading = True
+            blocks.append('<h3 class="release-card__section">' + render_inline_markdown(stripped[3:].strip()) + '</h3>')
+        elif stripped.startswith('### '):
+            flush()
+            seen_heading = True
+            blocks.append('<h4 class="release-card__subsection">' + render_inline_markdown(stripped[4:].strip()) + '</h4>')
+        elif stripped.startswith('>'):
+            if paragraph or items:
+                flush()
+            quote.append(stripped[1:].strip())
+        elif stripped.startswith('- '):
+            if paragraph or quote:
+                flush()
+            items.append([stripped[2:].strip()])
+        elif items and (raw.startswith('  ') or raw.startswith('\t')):
+            items[-1].append(stripped)
+        else:
+            if quote or items:
+                flush()
+            paragraph.append(stripped)
+    flush()
+    return '\n        '.join(blocks)
+
+
+def load_releases(notes_dir=ROOT / 'docs/release-notes', github_releases=None):
+    tag_dates = {}
+    try:
+        proc = subprocess.run(['git', 'for-each-ref', '--format=%(refname:short) %(creatordate:short)', 'refs/tags/v*'],
+                              cwd=ROOT, capture_output=True, text=True, check=False)
+        for line in proc.stdout.splitlines():
+            parts = line.strip().split()
+            if len(parts) == 2 and parts[0].startswith('v') and re.match(r'^\d{4}-\d{2}-\d{2}$', parts[1]):
+                tag_dates[parts[0][1:]] = parts[1]
+    except OSError:
+        pass
+    entries = {}
+    if notes_dir and notes_dir.is_dir():
+        for path in notes_dir.glob('*.md'):
+            if re.fullmatch(r'\d+(?:\.\d+)+', path.stem):
+                entries[path.stem] = {
+                    'version': path.stem,
+                    'body': path.read_text(),
+                    'date': tag_dates.get(path.stem),
+                    'url': f'https://github.com/cristipufu/strata-files/releases/tag/v{path.stem}',
+                }
+    gh_path = Path(github_releases) if github_releases else (Path(os.environ['SITE_GITHUB_RELEASES']) if os.environ.get('SITE_GITHUB_RELEASES') else None)
+    if gh_path and gh_path.is_file():
+        payload = json.loads(gh_path.read_text())
+        if isinstance(payload, list):
+            for release in payload:
+                if not isinstance(release, dict) or release.get('draft') or release.get('prerelease'):
+                    continue
+                tag = str(release.get('tag_name', '')).strip()
+                version = tag[1:] if tag.startswith('v') else tag
+                if not re.fullmatch(r'\d+(?:\.\d+)+', version):
+                    continue
+                entry = entries.setdefault(version, {
+                    'version': version,
+                    'body': '',
+                    'date': None,
+                    'url': f'https://github.com/cristipufu/strata-files/releases/tag/v{version}',
+                })
+                body = str(release.get('body') or '').strip()
+                if body:
+                    entry['body'] = body
+                published = str(release.get('published_at') or '')
+                if re.match(r'^\d{4}-\d{2}-\d{2}', published):
+                    entry['date'] = published[:10]
+                html_url = str(release.get('html_url') or '')
+                if html_url.startswith('https://github.com/'):
+                    entry['url'] = html_url
+    return sorted(entries.values(), key=lambda item: tuple(int(part) for part in item['version'].split('.')), reverse=True)
+
+
+def render_releases_html(releases, locale):
+    cards = []
+    latest_label = html.escape(locale['strings']['Latest'])
+    github_label = html.escape(locale['strings']['GitHub'])
+    for index, item in enumerate(releases):
+        version = item['version']
+        tag = 'v' + html.escape(version, quote=True)
+        badge = f'\n          <span class="pill__badge" lang="{locale["code"]}">{latest_label}</span>' if index == 0 else ''
+        date = item.get('date')
+        date_html = f'\n          <time class="release-card__date" datetime="{html.escape(date, quote=True)}">{html.escape(date)}</time>' if date else ''
+        url = html.escape(item['url'], quote=True)
+        body_html = render_markdown(item['body'])
+        cards.append(
+            f'      <article class="release-card" id="{tag}">\n'
+            f'        <header class="release-card__head">\n'
+            f'          <div class="release-card__meta">\n'
+            f'            <h2 class="release-card__title"><a href="#{tag}">Strata {html.escape(version)}</a></h2>{badge}{date_html}\n'
+            f'          </div>\n'
+            f'          <a class="btn btn--ghost btn--sm release-card__link" href="{url}" lang="{locale["code"]}">{github_label} <span aria-hidden="true">↗</span></a>\n'
+            f'        </header>\n'
+            f'        <div class="release-card__body">\n'
+            f'        {body_html}\n'
+            f'        </div>\n'
+            f'      </article>'
+        )
+    return '\n'.join(cards)
 
 
 def appearance_picker(locale):
@@ -246,7 +405,7 @@ def language_picker(locale, locales, page):
     return '<details class="language-picker"><summary aria-label="' + html.escape(t['Language'], quote=True) + '"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/></svg><span>' + html.escape(locale['language']) + '</span></summary><nav class="language-picker__options" aria-label="' + html.escape(t['Languages'], quote=True) + '">' + links + '</nav></details>'
 
 
-def render(source, locale, locales, page):
+def render(source, locale, locales, page, releases=None):
     t = locale['strings']
     structured_keys = schema_keys(source)
     replacements = [(start, end, html.escape(t[key], quote=True) if attribute else t[key]) for start, end, key, attribute in Document(source).messages()]
@@ -276,10 +435,17 @@ def render(source, locale, locales, page):
     source = re.sub(r'\b(href|src)="(?![a-z]+:|/|#)([^"]+)"', lambda m: m[1] + '="/' + m[2] + '"', source)
     source = re.sub(r'\b(srcset|imagesrcset)="([^"]+)"', lambda m: m[1] + '="' + ', '.join('/' + item.strip().lstrip('/') for item in m[2].split(',')) + '"', source)
     source = source.replace('href="/#', 'href="' + route(locale, 'home') + '#')
-    source = source.replace('href="/privacy/"', 'href="' + route(locale, 'privacy') + '"').replace('href="/"', 'href="' + route(locale, 'home') + '"')
+    source = (source.replace('href="/privacy/"', 'href="' + route(locale, 'privacy') + '"')
+              .replace('href="/releases/"', 'href="' + route(locale, 'releases') + '"')
+              .replace('href="/"', 'href="' + route(locale, 'home') + '"'))
+    if page == 'releases' and releases is not None:
+        marker = '<div class="releases__list" data-releases translate="no" lang="en" dir="ltr"></div>'
+        if marker not in source:
+            raise ValueError('Missing releases container in releases page')
+        source = source.replace(marker, '<div class="releases__list" data-releases translate="no" lang="en" dir="ltr">\n' + render_releases_html(releases, locale) + '\n    </div>', 1)
     if page != '404':
         alternate = '\n'.join('  <link rel="alternate" hreflang="' + other['code'] + '" href="' + ORIGIN + route(other, page) + '">' for other in locales)
-        alternate += '\n  <link rel="alternate" hreflang="x-default" href="' + ORIGIN + ('/privacy/' if page == 'privacy' else '/') + '">'
+        alternate += '\n  <link rel="alternate" hreflang="x-default" href="' + ORIGIN + route({'slug': ''}, page) + '">'
         source = source.replace('</head>', alternate + '\n</head>')
     manifest_url = ('/' + locale['slug'] if locale['slug'] else '') + '/site.webmanifest'
     source = source.replace('rel="manifest" href="/site.webmanifest"', 'rel="manifest" href="' + manifest_url + '"')
@@ -301,19 +467,20 @@ def render(source, locale, locales, page):
     return source
 
 
-def build(output, source_dir=ROOT / 'site', app_directory=ROOT / 'Localization'):
+def build(output, source_dir=ROOT / 'site', app_directory=ROOT / 'Localization', notes_dir=ROOT / 'docs/release-notes', github_releases=None):
     source_path, output_path = source_dir.resolve(), output.resolve()
     if source_path == output_path or source_path in output_path.parents or output_path in source_path.parents:
         raise ValueError('Build output must be separate from website sources')
     pages, keys = sources(source_dir)
     locales = catalogs(source_dir / 'localization', keys, app_directory)
+    releases = load_releases(notes_dir, github_releases)
     for locale in locales:
         for page, source in pages.items():
             path = output / route(locale, page).lstrip('/')
             if page != '404':
                 path /= 'index.html'
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(render(source, locale, locales, page))
+            path.write_text(render(source, locale, locales, page, releases=releases))
         manifest = json.loads((source_dir / 'site.webmanifest').read_text())
         manifest.update(lang=locale['code'], dir=locale.get('direction', 'ltr'), start_url=route(locale, 'home'),
                         description=locale['strings']['Strata Files is a fast, private file manager and Finder alternative for macOS, free and open source.'])
@@ -334,7 +501,7 @@ def build(output, source_dir=ROOT / 'site', app_directory=ROOT / 'Localization')
     original = ET.fromstring((source_dir / 'sitemap.xml').read_text())
     sitemap = ET.Element('{' + ns + '}urlset')
     for locale in locales:
-        for page in ['home', 'privacy']:
+        for page in ['home', 'privacy', 'releases']:
             node = ET.SubElement(sitemap, '{' + ns + '}url')
             ET.SubElement(node, '{' + ns + '}loc').text = ORIGIN + route(locale, page)
             if page == 'home':

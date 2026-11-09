@@ -545,6 +545,43 @@ h1, h2, h3 { overflow-wrap: anywhere; hyphens: auto; }
 
 .nav + .policy { margin-top: 64px; }
 
+/* Release notes */
+.releases { max-width: calc(860px + 2 * var(--gutter)); }
+.releases__list { margin-top: 40px; display: grid; gap: 28px; }
+.release-card {
+  padding: 32px;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--card-top, rgba(255, 255, 255, 0.05)), var(--card-bottom, rgba(255, 255, 255, 0.015)));
+  border: 1px solid var(--border);
+  scroll-margin-top: 88px;
+}
+.release-card:first-child {
+  border-color: var(--border-strong);
+  box-shadow: 0 24px 60px -32px rgba(155, 107, 255, 0.28);
+}
+.release-card__head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 12px 16px; padding-bottom: 18px; border-bottom: 1px solid var(--border);
+}
+.release-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; min-width: 0; }
+.release-card__title { font-size: clamp(24px, 3vw, 30px); letter-spacing: -0.025em; }
+.release-card__title a:hover { color: var(--violet-2); }
+.release-card__date { font-size: 14px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.release-card__body { margin-top: 20px; color: var(--text-2); font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+.release-card__body p + p, .release-card__body ul + p { margin-top: 16px; }
+.release-card__summary { font-size: clamp(16.5px, 1.5vw, 18px); color: var(--text); }
+.release-card__section { margin: 26px 0 12px; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--violet-2); }
+.release-card__subsection { margin: 20px 0 10px; font-size: 17px; font-weight: 650; color: var(--text); }
+.release-card__note { margin: 16px 0; padding: 14px 18px; border-radius: var(--radius-sm); background: var(--surface-2); border-inline-start: 3px solid var(--violet); color: var(--text-2); font-size: 15px; }
+.release-card__body ul { margin: 12px 0; padding-inline-start: 22px; }
+.release-card__body li + li { margin-top: 10px; }
+.release-card__body strong { color: var(--text); }
+.release-card__body a { color: var(--violet-2); text-decoration: underline; text-underline-offset: 4px; }
+.release-card__body code { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .release-card { padding: 22px 18px; }
+}
+
 /* The portrait settings capture stays at its native size beside the appearance copy. */
 .themes__text { max-width: 480px; }
 .themes__shot { width: 100%; max-width: 632px; justify-self: center; }

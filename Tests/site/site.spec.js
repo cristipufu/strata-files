@@ -68,11 +68,14 @@ for (const width of [320, 390, 768, 1440]) {
   });
 }
 
-for (const path of ['/privacy/', '/404.html']) {
+for (const path of ['/privacy/', '/releases/', '/404.html']) {
   test(`${path} keeps its styles and links under CSP`, async ({ page }) => {
     const errors = await prepare(page);
     await page.goto(path);
     await expect(page.locator('h1')).toBeVisible();
+    if (path === '/releases/') {
+      await expect(page.locator('#v0\\.8\\.5')).toBeVisible();
+    }
     expect(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(7, 6, 13)');
     expect(await page.evaluate(() => window.policyViolations)).toEqual([]);
     expect(errors).toEqual([]);

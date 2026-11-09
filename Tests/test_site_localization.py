@@ -33,7 +33,7 @@ class SiteLocalizationTests(unittest.TestCase):
             self.assertEqual(manifest['lang'], locale['code'])
             self.assertEqual(manifest['start_url'], localize.route(locale, 'home'))
             self.assertEqual(manifest['description'], locale['strings']['Strata Files is a fast, private file manager and Finder alternative for macOS, free and open source.'])
-            for page in ['home', 'privacy']:
+            for page in ['home', 'privacy', 'releases']:
                 url = localize.route(locale, page)
                 source = (self.root / url.lstrip('/') / 'index.html').read_text()
                 self.assertIn(f'<html lang="{locale["code"]}"', source)
@@ -41,9 +41,18 @@ class SiteLocalizationTests(unittest.TestCase):
                 for other in locales:
                     self.assertIn(f'hreflang="{other["code"]}" href="{localize.ORIGIN}{localize.route(other, page)}"', source)
                 self.assertIn('hreflang="x-default"', source)
-                heading = 'The file manager <br><span class="gradient-text">your Mac deserves.</span>' if page == 'home' else 'Privacy Policy'
+                heading = {
+                    'home': 'The file manager <br><span class="gradient-text">your Mac deserves.</span>',
+                    'privacy': 'Privacy Policy',
+                    'releases': 'Releases',
+                }[page]
                 self.assertIn(locale['strings'][heading], source)
                 self.assertIn(f'href="{localize.route(locale, "privacy")}"', source)
+                self.assertIn(f'href="{localize.route(locale, "releases")}"', source)
+                if page == 'releases':
+                    self.assertIn('id="v0.8.5"', source)
+                    self.assertIn('Strata 0.8.5', source)
+                    self.assertIn(locale['strings']['Latest'], source)
                 if page == 'home':
                     data = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', source, re.S)[1])
                     faq = next(item for item in data['@graph'] if item['@type'] == 'FAQPage')['mainEntity']
@@ -53,8 +62,8 @@ class SiteLocalizationTests(unittest.TestCase):
                     self.assertLess(source.index('locale-data.js'), source.index('src="/main.js"'))
         sitemap = ET.parse(self.root / 'sitemap.xml')
         urls = [node.text for node in sitemap.findall('./{*}url/{*}loc')]
-        self.assertEqual(set(urls), {localize.ORIGIN + localize.route(l, page) for l in locales for page in ['home', 'privacy']})
-        self.assertEqual(len(urls), len(locales) * 2)
+        self.assertEqual(set(urls), {localize.ORIGIN + localize.route(l, page) for l in locales for page in ['home', 'privacy', 'releases']})
+        self.assertEqual(len(urls), len(locales) * 3)
         self.assertFalse((self.root / 'localization').exists())
         self.assertIn('https://stratafiles.app/pt-pt/', (self.root / 'llms.txt').read_text())
 
@@ -124,3 +133,16 @@ class SiteLocalizationTests(unittest.TestCase):
     def test_technical_examples_and_decorative_demo_data_are_preserved(self):
         source = '<p translate="no">ext:swift</p><div aria-hidden="true">Invoice.pdf</div><a class="brand">Strata <em>Files</em></a><p>Search</p>'
         self.assertEqual([u[2] for u in localize.Document(source).messages()], ['Search'])
+
+    def test_github_releases_json_merges_dates_and_skips_drafts_and_prereleases(self):
+        gh_json = self.root / 'releases.json'
+        gh_json.write_text(json.dumps([
+            {'tag_name': 'v0.9.0-beta.1', 'prerelease': True, 'body': 'Beta'},
+            {'tag_name': 'v0.8.5', 'published_at': '2026-11-09T12:00:00Z', 'body': 'Strata 0.8.5 from GitHub.\n\n## New\n\n- **Live item.** Details.'},
+        ]))
+        releases = localize.load_releases(ROOT / 'docs/release-notes', gh_json)
+        self.assertEqual(releases[0]['version'], '0.8.5')
+        self.assertEqual(releases[0]['date'], '2026-11-09')
+        self.assertIn('Strata 0.8.5 from GitHub.', releases[0]['body'])
+        self.assertFalse(any(r['version'].startswith('0.9.0') for r in releases))
+

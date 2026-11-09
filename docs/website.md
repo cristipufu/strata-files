@@ -73,10 +73,10 @@ through HTTP headers. Do not claim those protections are active until live respo
 
 ## Website localization
 
-The English templates in `site/index.html`, `site/privacy/index.html` and `site/404.html` are shared by every
+The English templates in `site/index.html`, `site/privacy/index.html`, `site/releases/index.html` and `site/404.html` are shared by every
 language. `scripts/site-localize.py` builds complete HTML pages before asset packaging. English stays at `/`;
 other languages use their lower-case language code, for example `/fr/`, `/pt-br/` and `/zh-hant/`. Each has its own
-privacy page and a translated `404.html`. GitHub Pages uses the root English `404.html` for unknown URLs; its
+privacy page, release notes page (`/releases/`, populated from `docs/release-notes/*.md` and live GitHub release metadata in CI) and a translated `404.html`. GitHub Pages uses the root English `404.html` for unknown URLs; its
 language links let readers switch explicitly.
 
 A page has its own canonical URL, translated title, description, social metadata and structured data, plus reciprocal
