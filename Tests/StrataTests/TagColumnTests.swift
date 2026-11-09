@@ -125,16 +125,17 @@ struct TagColumnTests {
         #expect(tree.snapshot().isEmpty)
     }
 
-    /// A row's read under way when its folder is invalidated is read again once it's in: it may be from before.
+    /// A row's read under way when its folder is invalidated or loaded again is read again once it's in: it may be from before.
     @Test func aRowInvalidatedWhileBeingReadIsReadAgain() async throws {
         let tree = try TestTree("folder/a.txt")
         let item = tree.url("folder/a.txt")
+        let entry = try #require(FileEntry(url: item))
         let started = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
         let reads = OSAllocatedUnfairLock(initialState: 0)
         let store = TagStore(preferences: try Prefs.isolated(), copies: .live) { paths, _ in
             let count = reads.withLock { reads in reads += 1; return reads }
-            let name = count == 1 ? "Before" : "After"
-            if count == 1 { started.signal(); release.wait() }
+            let name = count == 1 ? "Before" : count == 2 ? "After" : count == 3 ? "BeforeLoad" : "AfterLoad"
+            if count == 1 || count == 3 { started.signal(); release.wait() }
             return Dictionary(uniqueKeysWithValues: paths.map { ($0, [FinderTag(name: name, color: 0)]) })
         }
         #expect(store.tags(for: item).isEmpty)
@@ -146,6 +147,16 @@ struct TagColumnTests {
         await store.settled()
         #expect(store.cachedTags(for: item).map(\.name) == ["After"])
         #expect(reads.withLock { $0 } == 2)
+        store.invalidate(tree.url("folder"))
+        _ = store.tags(for: item)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { started.wait(); continuation.resume() }
+        }
+        let reloaded = store.load([entry])
+        release.signal()
+        await reloaded.value
+        #expect(store.cachedTags(for: item).map(\.name) == ["AfterLoad"])
+        #expect(reads.withLock { $0 } == 4)
         #expect(tree.snapshot() == ["folder/", "folder/a.txt"])
     }
 
