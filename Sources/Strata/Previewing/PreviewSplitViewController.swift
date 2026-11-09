@@ -37,6 +37,8 @@ final class PreviewSplitViewController: NSViewController, NSSplitViewDelegate {
         applying = true
         browserView.isHidden = !visible
         fitPanes()
+        splitView.needsLayout = true
+        splitView.needsDisplay = true
         applying = false
     }
 
@@ -65,6 +67,13 @@ final class PreviewSplitViewController: NSViewController, NSSplitViewDelegate {
     func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) { fitPanes() }
 
     func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool { false }
+
+    func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool { !browserVisible }
+
+    func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
+                   forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+        browserVisible ? proposedEffectiveRect : .zero
+    }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,
                    ofSubviewAt dividerIndex: Int) -> CGFloat { PreviewLayout.browserMinimum }

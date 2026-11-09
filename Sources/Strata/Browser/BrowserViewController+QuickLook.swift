@@ -66,11 +66,17 @@ extension BrowserViewController: QLPreviewPanelDataSource, QLPreviewPanelDelegat
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
+        handlePreviewNavigationKey(event, in: panel)
+    }
+
+    func handlePreviewNavigationKey(_ event: NSEvent?, in previewWindow: NSWindow?) -> Bool {
         guard let event, event.type == .keyDown, let key = event.specialKey,
               [.leftArrow, .rightArrow, .downArrow, .upArrow].contains(key),
               event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-              !inlineRename.isEditing, view.window?.attachedSheet == nil, !(panel?.firstResponder is NSText),
-              !(view.window?.firstResponder is NSText) else { return false }
+              !inlineRename.isEditing, viewIfLoaded?.window?.attachedSheet == nil,
+              previewWindow?.attachedSheet == nil,
+              (previewWindow?.firstResponder as? NSText)?.isEditable != true,
+              !(viewIfLoaded?.window?.firstResponder is NSText) else { return false }
         focusView.keyDown(with: event)
         return true
     }

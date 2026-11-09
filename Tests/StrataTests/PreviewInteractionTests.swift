@@ -109,4 +109,72 @@ struct PreviewInteractionTests {
         #expect(tree.snapshot() == before)
         withExtendedLifetime(environment) {}
     }
+
+    @Test func arrowKeysInQuickLookNavigateTheBrowserPastFoldersUnlessTheContainerTreeIsFocused() async throws {
+        let tree = try TestTree("root/a.txt", "root/middle/first.txt", "root/middle/second.txt", "root/z.txt")
+        let environment = try PreviewEnvironment(tree)
+        environment.preferences.foldersFirst = false
+        let before = tree.snapshot()
+        let controller = BrowserWindowController(location: tree.url("root"), services: environment.services)
+        controller.split.splitView.autosaveName = nil
+        let window = try #require(controller.window)
+        window.setFrameAutosaveName("")
+        defer { controller.panes.forEach { $0.stopBackgroundWork() }; window.contentViewController = nil }
+        let browser = controller.panes[0].browser
+        await browser.directoryReads.task?.value
+
+        browser.select([tree.url("root/a.txt")])
+        window.makeFirstResponder(browser.focusView)
+        browser.toggleQuickLook(nil)
+
+        let coordinator = environment.services.previews
+        let panel = try #require(coordinator.panel)
+        let content = try #require(coordinator.content)
+        #expect(content.session.root?.url.fileViewKey == tree.url("root/a.txt").fileViewKey)
+
+        let down = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                 windowNumber: panel.windowNumber, context: nil,
+                                                 characters: String(UnicodeScalar(NSDownArrowFunctionKey)!),
+                                                 charactersIgnoringModifiers: String(UnicodeScalar(NSDownArrowFunctionKey)!),
+                                                 isARepeat: false, keyCode: 125))
+        let tab = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                windowNumber: panel.windowNumber, context: nil,
+                                                characters: "\t", charactersIgnoringModifiers: "\t",
+                                                isARepeat: false, keyCode: 48))
+
+        // 1. Down arrow moves from a.txt to middle/ folder in the browser
+        panel.sendEvent(down)
+        await content.session.task?.value
+        #expect(browser.selectedURLs.map(\.fileViewKey) == [tree.url("root/middle").fileViewKey])
+        #expect(content.session.root?.url.fileViewKey == tree.url("root/middle").fileViewKey)
+        #expect(content.session.isContainer && content.session.selected == nil)
+
+        // 2. Down arrow again continues past middle/ to z.txt without getting trapped inside middle/
+        panel.sendEvent(down)
+        #expect(browser.selectedURLs.map(\.fileViewKey) == [tree.url("root/z.txt").fileViewKey])
+        #expect(content.session.root?.url.fileViewKey == tree.url("root/z.txt").fileViewKey)
+
+        // 3. Up arrow returns to middle/, and Tab steps into the folder's internal outline
+        let up = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                               windowNumber: panel.windowNumber, context: nil,
+                                               characters: String(UnicodeScalar(NSUpArrowFunctionKey)!),
+                                               charactersIgnoringModifiers: String(UnicodeScalar(NSUpArrowFunctionKey)!),
+                                               isARepeat: false, keyCode: 126))
+        panel.sendEvent(up)
+        await content.session.task?.value
+        #expect(content.session.root?.url.fileViewKey == tree.url("root/middle").fileViewKey)
+
+        panel.sendEvent(tab)
+        #expect(panel.firstResponder === content.focusView)
+        #expect(content.session.selected?.name == "first.txt")
+
+        // Now Down arrow navigates inside the container's outline instead of the outer browser
+        panel.sendEvent(down)
+        #expect(browser.selectedURLs.map(\.fileViewKey) == [tree.url("root/middle").fileViewKey])
+        #expect(content.session.selected?.name == "second.txt")
+
+        coordinator.close()
+        #expect(tree.snapshot() == before)
+        withExtendedLifetime(environment) {}
+    }
 }

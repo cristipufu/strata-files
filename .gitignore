@@ -7,3 +7,4 @@ __pycache__/
 Tests/site/node_modules/
 Tests/site/test-results/
 Tests/site/playwright-report/
+/demo-folder/

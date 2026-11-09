@@ -60,6 +60,8 @@ import Quartz
             }
             panel.delegate = self
             panel.onClose = { [weak self] in self?.close() }
+            panel.onNavigate = { [weak self] event in self?.handleNavigationKey(event) ?? false }
+            panel.onTab = { [weak self] in self?.focusContainerBrowser() ?? false }
             content.outline.onClose = { [weak self] in self?.close() }
             content.onAction = { [weak self] action, target in self?.perform(action, target: target) }
             ThemeStyle.bind(panel)
@@ -71,12 +73,43 @@ import Quartz
         ownerRevision = browser.navigationRevision
         rootKey = BrowserListing.key(entry.url)
         content?.session.show(entry, showHidden: preferences.showHidden, applications: browser.applicationFolders)
+        panel?.makeFirstResponder(nil)
         if present {
             if let panel {
                 guard presentPanel(panel, browser.focusView) else { return close() }
             }
-            if panel?.isVisible == true, content?.session.isContainer == true { panel?.makeFirstResponder(content?.focusView) }
         }
+    }
+
+    func handleNavigationKey(_ event: NSEvent) -> Bool {
+        guard isOpen, let browser = owner, browser.navigationRevision == ownerRevision,
+              let panel, let content, panel.attachedSheet == nil,
+              (panel.firstResponder as? NSText)?.isEditable != true,
+              ((panel.firstResponder as? NSTextView)?.selectedRange().length ?? 0) == 0 else { return false }
+        if content.session.isContainer {
+            if panel.firstResponder === content.focusView || content.session.selected != nil {
+                return false
+            }
+        }
+        if let table = panel.firstResponder as? NSTableView, !table.selectedRowIndexes.isEmpty {
+            return false
+        }
+        return browser.handlePreviewNavigationKey(event, in: panel)
+    }
+
+    func focusContainerBrowser() -> Bool {
+        guard isOpen, let panel, let content, content.session.isContainer,
+              (panel.firstResponder as? NSText)?.isEditable != true,
+              panel.firstResponder !== content.focusView else { return false }
+        panel.makeFirstResponder(content.focusView)
+        if content.session.selected == nil {
+            if content.mode == .list, content.outline.numberOfRows > 0 {
+                content.outline.selectRowIndexes([0], byExtendingSelection: false)
+            } else if let first = content.listing.roots.first {
+                content.session.select(first)
+            }
+        }
+        return true
     }
 
     func selectionChanged(in browser: BrowserViewController) {
@@ -183,15 +216,27 @@ import Quartz
 
 @MainActor private final class PreviewPanel: NSPanel {
     var onClose: (() -> Void)?
+    var onNavigate: ((NSEvent) -> Bool)?
+    var onTab: (() -> Bool)?
 
     override func cancelOperation(_ sender: Any?) { onClose?() }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .keyDown, event.charactersIgnoringModifiers == " ",
-           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-           (firstResponder as? NSTextView)?.isEditable != true {
-            onClose?()
-            return
+        if event.type == .keyDown,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
+            if event.charactersIgnoringModifiers == " ",
+               (firstResponder as? NSTextView)?.isEditable != true {
+                onClose?()
+                return
+            }
+            if event.keyCode == 48, onTab?() == true {
+                return
+            }
+            if let key = event.specialKey,
+               [.leftArrow, .rightArrow, .downArrow, .upArrow].contains(key),
+               onNavigate?(event) == true {
+                return
+            }
         }
         super.sendEvent(event)
     }
