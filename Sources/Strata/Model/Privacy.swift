@@ -4,14 +4,29 @@ import AppKit
 package enum Privacy {
     private static var cachedAccess: Bool?
 
-    /// Reading the TCC database fails silently (no prompt) without Full Disk Access, which makes it a safe probe.
     package static var hasFullDiskAccess: Bool {
         if let cachedAccess { return cachedAccess }
-        let probe = Places.home.appending(path: "Library/Application Support/com.apple.TCC/TCC.db").path
-        let fd = open(probe, O_RDONLY)
-        if fd >= 0 { close(fd) }
-        cachedAccess = fd >= 0
-        return fd >= 0
+        let access = opensAny(fullDiskAccessProbes(home: Places.home))
+        cachedAccess = access
+        return access
+    }
+
+    /// Places that open only with Full Disk Access and fail silently (no prompt) without it, which makes them safe
+    /// probes. macOS 27 keeps the user's TCC database outside the home folder, where no app can read it, so the
+    /// system's database and the Trash stand in there.
+    package static func fullDiskAccessProbes(home: URL) -> [String] {
+        [home.appending(path: "Library/Application Support/com.apple.TCC/TCC.db").path,
+         "/Library/Application Support/com.apple.TCC/TCC.db",
+         home.appending(path: ".Trash").path]
+    }
+
+    /// One place that opens shows the grant. A place that isn't there says nothing about it: macOS moves them.
+    package static func opensAny(_ paths: [String]) -> Bool {
+        paths.contains { path in
+            let fd = open(path, O_RDONLY | O_CLOEXEC)
+            if fd >= 0 { close(fd) }
+            return fd >= 0
+        }
     }
 
     package static func refresh() {
