@@ -16,6 +16,7 @@ package nonisolated struct Workspace: Codable, Equatable, Sendable {
     package var navigation: [[SavedNavigation]]? = nil
     package var activePanes: [Int]? = nil
     package var selectedTab: Int? = nil
+    package var frame: SavedWindowFrame? = nil
 
     package init(name: String, tabs: [[String]], modes: [[Int]]? = nil, saved: Date? = nil, shares: [String: String]? = nil,
                  navigation: [[SavedNavigation]]? = nil, activePanes: [Int]? = nil, selectedTab: Int? = nil) {
@@ -29,7 +30,7 @@ package nonisolated struct Workspace: Codable, Equatable, Sendable {
         self.selectedTab = selectedTab
     }
 
-    private enum CodingKeys: String, CodingKey { case name, tabs, modes, saved, shares, navigation, activePanes, selectedTab }
+    private enum CodingKeys: String, CodingKey { case name, tabs, modes, saved, shares, navigation, activePanes, selectedTab, frame }
 
     package func history(tab: Int, pane: Int) -> SavedNavigation? {
         guard let navigation, navigation.indices.contains(tab), navigation[tab].indices.contains(pane) else { return nil }
@@ -96,6 +97,7 @@ extension Workspace {
         navigation = try? values.decode([[SavedNavigation]].self, forKey: .navigation)
         activePanes = try? values.decode([Int].self, forKey: .activePanes)
         selectedTab = try? values.decode(Int.self, forKey: .selectedTab)
+        frame = try? values.decode(SavedWindowFrame.self, forKey: .frame)
     }
 }
 
@@ -133,6 +135,7 @@ package nonisolated struct WorkspacePlan: Equatable, Sendable {
 
     package var tabs: [[Pane]] = []
     package var selectedTab: Int? = nil
+    package var frame: SavedWindowFrame? = nil
     /// Folders known to be gone, in the order they were saved.
     package var missing: [String] = []
     /// Folders on disks that aren't connected (not gone: they're kept).
@@ -177,6 +180,7 @@ package nonisolated struct WorkspacePlan: Equatable, Sendable {
 
     /// `answer` says whether a path is there, nil when that isn't known (its disk didn't answer in time).
     package init(_ workspace: Workspace, answer: (String) -> Bool?, server: (String) -> String? = { _ in nil }) {
+        frame = workspace.frame
         for (t, tab) in workspace.tabs.enumerated() {
             var panes: [Pane] = []
             for (p, path) in tab.enumerated().prefix(2) where !path.isEmpty {

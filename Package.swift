@@ -87,6 +87,7 @@ let modelSources = [
     "PreviewLayout.swift",
     "RemovalVolume.swift",
     "SavedNavigation.swift",
+    "SavedWindowFrame.swift",
     "SecureStorage.swift",
     "ServerConnection.swift",
     "ServerMountSession.swift",

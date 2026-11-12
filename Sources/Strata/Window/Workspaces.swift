@@ -44,7 +44,7 @@ final class Workspaces {
     /// Only this environment’s live tabs contribute to a saved workspace.
     func ownedControllers(of window: NSWindow) -> [BrowserWindowController] {
         guard let services else { return [] }
-        return Self.controllers(of: window).filter { $0.services === services && !$0.isClosed }
+        return windows.tabs(window).filter { $0.services === services && !$0.isClosed }
     }
 
     /// Sorted by name.
@@ -68,11 +68,6 @@ final class Workspaces {
 
     // MARK: - Saving
 
-    /// `window`'s tabs (in tab order), each with its panes' folders and views.
-    static func controllers(of window: NSWindow) -> [BrowserWindowController] {
-        (window.tabbedWindows ?? [window]).compactMap { $0.windowController as? BrowserWindowController }
-    }
-
     /// A workspace named `name` of `controllers`' tabs and panes, as they are now.
     /// Panes waiting for a share keep its address, so the folder still opens next time; so do folders on a share the
     /// disks haven't been read for yet, by the address saved with the workspace before.
@@ -90,8 +85,10 @@ final class Workspaces {
         if includingNavigation {
             workspace.navigation = controllers.map(\.snapshotNavigation)
             workspace.activePanes = controllers.map { owner in owner.panes.firstIndex { $0 === owner.pane } ?? 0 }
-            let selected = controllers.first?.window?.tabGroup?.selectedWindow
+            let shown = controllers.first?.window.map { services?.windows.selectedTab($0) ?? $0 }
+            let selected = controllers.first(where: { $0.window === shown })?.window ?? controllers.first?.window
             workspace.selectedTab = controllers.firstIndex { $0.window === selected } ?? 0
+            workspace.frame = (selected ?? controllers.first?.window).flatMap { SavedWindowFrame($0.frame) }
             for (t, owner) in controllers.enumerated() {
                 for (p, pane) in owner.panes.enumerated() where pane.waiting == nil {
                     if SavedDestination.capture(.folder(pane.location), services: owner.services) == nil {
@@ -363,7 +360,8 @@ final class Workspaces {
             let location = tab[0].waiting == nil && !tab[0].path.isEmpty ? URL(filePath: tab[0].path, directoryHint: .isDirectory) : Places.home
             let second = tab.count > 1 ? (tab[1].waiting == nil && !tab[1].path.isEmpty ? URL(filePath: tab[1].path, directoryHint: .isDirectory) : Places.home) : nil
             // Each tab goes after the one before, so they keep their order.
-            guard let controller = services.windows.open(location, second, controllers.last?.window, services) else {
+            guard let controller = services.windows.open(location, second, controllers.last?.window, services, plan.frame),
+                  controller.services === services, !controller.isClosed, controller.window != nil else {
                 controllers.forEach { $0.window?.close() }
                 return []
             }
@@ -377,7 +375,7 @@ final class Workspaces {
         }
         let selected = plan.selectedTab.flatMap { controllers.indices.contains($0) ? controllers[$0].window : nil }
             ?? controllers.first?.window
-        if let selected { selected.tabGroup?.selectedWindow = selected }
+        if let selected { windows.selectTab(selected) }
         return controllers
     }
 

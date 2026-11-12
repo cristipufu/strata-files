@@ -20,10 +20,10 @@ struct WorkspaceOwnershipTests {
         var shown: [NSWindow] = []
 
         var boundary: BrowserWindows {
-            BrowserWindows(controllers: { [weak self] in self?.visible ?? [] }, open: { [weak self] location, second, parent, services in
+            BrowserWindows(controllers: { [weak self] in self?.visible ?? [] }, open: { [weak self] location, second, parent, services, frame in
                 guard let self, failAt != opened.count else { return nil }
                 _ = NSApplication.shared
-                let controller = BrowserWindowController(location: location, secondPane: second, services: services)
+                let controller = BrowserWindowController(location: location, secondPane: second, services: services, frame: frame)
                 controller.split.splitView.autosaveName = nil
                 controller.window?.setFrameAutosaveName("")
                 opened.append(controller)

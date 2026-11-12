@@ -2069,8 +2069,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "services.windows.open(location, nil, window, services)?.workspaceName = name",
-    "replace": "services.windows.open(location, nil, window, BrowserServices.shared)?.workspaceName = name",
+    "find": "services.windows.open(location, nil, window, services, nil)?.workspaceName = name",
+    "replace": "services.windows.open(location, nil, window, BrowserServices.shared, nil)?.workspaceName = name",
     "rule": "Workspace ownership keeps new tabs with their originating services",
     "tests": "WorkspaceOwnershipTests/newTabsKeepTheirWindowServicesAndWorkspace"
   },
@@ -8627,8 +8627,8 @@
         "replace": "        ThemeStyle.apply(to: window)"
       },
       {
-        "find": "        window.setContentSize(NSSize(width: 1240, height: 780))",
-        "replace": "        window.setContentSize(NSSize(width: 1240, height: 780))\n        setUpToolbar(in: window)"
+        "find": "        services.windowSession.place(window, frame: frame)",
+        "replace": "        services.windowSession.place(window, frame: frame)\n        setUpToolbar(in: window)"
       }
     ],
     "rule": "Toolbar startup measures the location item before applying dual-pane address bars",

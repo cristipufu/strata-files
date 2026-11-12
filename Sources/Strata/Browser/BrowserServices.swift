@@ -61,6 +61,7 @@ final class BrowserServices {
     let preferences: Prefs
     let showSetting: @MainActor (SettingID) -> Void
     lazy var workspaces = Workspaces(services: self)
+    lazy var windowSession = WindowSession(services: self)
     lazy var connectionSettings = ServerConnectionSettings(preferences: preferences)
     lazy var savedSearches = SavedSearches(preferences: preferences)
     lazy var folderViews = FolderViewSettings(preferences: preferences)

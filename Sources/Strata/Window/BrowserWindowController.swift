@@ -13,6 +13,7 @@ extension NSToolbarItem.Identifier {
 /// path bar, search field and inspector, which follow whichever pane has focus.
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     static let largeFilesQuery = "kind:file size:>500mb"
+    private static let defaultContentSize = NSSize(width: 1240, height: 780)
 
     let services: BrowserServices
     private(set) lazy var navigationGestures = BrowserNavigation(owner: self)
@@ -46,7 +47,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var location: URL { pane.location }
 
-    init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices) {
+    init(location: URL, select: URL? = nil, secondPane: URL? = nil, services: BrowserServices, frame: SavedWindowFrame? = nil) {
         self.services = services
         pathBar = PathBar(preferences: services.preferences, places: services.places, index: services.index, copies: services.copies,
                           names: services.folderNames, clipboard: services.clipboard)
@@ -56,12 +57,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         split = MainSplitViewController(firstPane: first.host)
         let window = Self.makeWindow()
         super.init(window: window)
+        services.windowSession.cancelRestoration()
 
         window.navigation = navigationGestures
         window.delegate = self
         window.contentViewController = split
-        window.setContentSize(NSSize(width: 1240, height: 780))
-        if !window.setFrameAutosaveName("StrataBrowserWindow") { window.center() }
+        window.setContentSize(Self.defaultContentSize)
+        services.windowSession.place(window, frame: frame)
 
         configure(first)
         wireBars()
@@ -72,11 +74,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // AppKit's first measurement must see the restored frame and the final pane arrangement.
         setUpToolbar(in: window)
         ThemeStyle.apply(to: window)
+        remembersWindowFrame = true
     }
 
     private static func makeWindow() -> BrowserWindow {
         let window = BrowserWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
+            contentRect: NSRect(origin: .zero, size: defaultContentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.titleVisibility = .hidden
@@ -611,7 +614,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard !isClosed, let window else { return }
         // A new tab joins the window's workspace and services: updating it saves this tab too.
         let name = groupWorkspaceName
-        services.windows.open(location, nil, window, services)?.workspaceName = name
+        services.windows.open(location, nil, window, services, nil)?.workspaceName = name
     }
 
     @objc func sidebarModeChanged(_ sender: NSToolbarItemGroup) {
@@ -655,7 +658,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Window
 
+    private var remembersWindowFrame = false
+
+    func windowDidMove(_ notification: Notification) { rememberWindowFrame() }
+
+    func windowDidResize(_ notification: Notification) { rememberWindowFrame() }
+
+    private func rememberWindowFrame() {
+        guard remembersWindowFrame, !isClosed, let window else { return }
+        services.windowSession.rememberFrame(of: window)
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        services.windowSession.windowWillClose(self)
+        return true
+    }
+
     func windowWillClose(_ notification: Notification) {
+        guard !isClosed else { return }
+        services.windowSession.windowWillClose(self)
         navigationGestures.cancel()
         isClosed = true
         split.inspector.stopPreviewing()
@@ -669,6 +690,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        services.windowSession.windowBecameKey(self)
         if !isClosed, clipboardMonitoring == nil { clipboardMonitoring = services.clipboard.monitor() }
         services.clipboard.refresh()
         // What's there may have changed while we were away: it's read again in the background, and the sidebar follows.

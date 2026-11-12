@@ -103,12 +103,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launching = false
             return presentWelcome()
         }
-        // Each read has a deadline (`Workspaces.plan`): a disk that doesn't answer doesn't hold up the first window.
-        let plans = await sessionPlans()
+        await browserServices.windowSession.reopen(at: startLocation)?.value
         launching = false
-        // Opened meanwhile (a file, a folder, a workspace): that's what's shown.
-        guard !openedAtLaunch, windowControllers.isEmpty else { return presentWelcome() }
-        if !openSession(plans) { openWindow(at: startLocation) }
         presentWelcome()
     }
 
@@ -251,6 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if launching { openedAtLaunch = true }
             // Nothing to wait for when it's already being opened: that opening ends launch.
             guard let opening = browserServices.workspaces.open(workspace) else { return }
+            browserServices.windowSession.cancelRestoration()
             let atLaunch = launching
             Task { [weak self] in
                 await opening.value
@@ -312,6 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
         if launching { openedAtLaunch = true }
+        browserServices.windowSession.cancelRestoration()
         Task {
             for (url, opening) in zip(files, await Self.openings(of: files, within: .seconds(2))) {
                 if opening == .folder {
@@ -326,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Strata's own windows, not the search box in the Dock (which is always showing).
-        if !windowControllers.contains(where: { $0.window?.isVisible == true }) { openWindow(at: startLocation) }
+        if !launching { browserServices.windowSession.reopen(at: startLocation) }
         return true
     }
 
@@ -346,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        saveSession()
+        browserServices.windowSession.save()
         browserServices.index.saveNow()
         OperationLog.waitForWrites()
         // Containers' and servers' files don't outlive Strata: removed now, as far as two seconds allow (the rest at
@@ -362,59 +360,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = removed.wait(timeout: .now() + 2)
     }
 
-    // MARK: - Reopening windows
-
-    private static let sessionKey = "lastSession"
-
-    /// Every window's tabs (and each tab's panes), frontmost first, to reopen at the next launch.
-    private func saveSession() {
-        var seen = Set<ObjectIdentifier>()
-        var windows: [Workspace] = []
-        for window in NSApp.orderedWindows where window.windowController is BrowserWindowController {
-            let tabs = window.tabbedWindows ?? [window]
-            guard let first = tabs.first, seen.insert(ObjectIdentifier(first)).inserted else { continue }
-            let controllers = tabs.compactMap { $0.windowController as? BrowserWindowController }
-            guard !controllers.isEmpty else { continue }
-            // The window remembers the workspace it came from, so Update and bringing it forward still work, and panes
-            // waiting for a share keep its address.
-            windows.append(Workspaces.workspace(named: controllers[0].groupWorkspaceName ?? "", of: controllers, includingNavigation: true))
-        }
-        if let data = SessionStorage.encode(windows) {
-            browserServices.preferences.defaults.set(data, forKey: Self.sessionKey)
-        }
-    }
-
-    /// The last session's windows to reopen (Settings ▸ General ▸ Reopen windows), their folders looked at; none when
-    /// it's off or there's no session.
-    private func sessionPlans() async -> [(plan: WorkspacePlan, name: String)] {
-        guard browserServices.preferences.reopenWindows, let data = browserServices.preferences.defaults.data(forKey: Self.sessionKey),
-              let windows = SessionStorage.decode(data) else { return [] }
-        let workspaces = browserServices.workspaces
-        // All at once, so their reads' deadlines don't add up; shares aren't connected at launch (no login windows
-        // out of nowhere): their panes wait, and opening the workspace connects them.
-        let planned = await withTaskGroup(of: (Int, WorkspacePlan).self) { group in
-            for (index, window) in windows.enumerated() { group.addTask { (index, await workspaces.plan(window)) } }
-            var plans: [Int: WorkspacePlan] = [:]
-            for await (index, plan) in group { plans[index] = plan }
-            return plans
-        }
-        // Back to front, so the frontmost window ends up in front again. Folders that are gone are skipped.
-        return windows.indices.reversed().compactMap { index in
-            guard let plan = planned[index], !plan.tabs.isEmpty else { return nil }
-            let name = windows[index].name
-            return (plan, name.isEmpty ? "" : workspaces.named(name)?.name ?? "")
-        }
-    }
-
-    /// Opens them; false when none opened.
-    private func openSession(_ plans: [(plan: WorkspacePlan, name: String)]) -> Bool {
-        var opened = false
-        for (plan, name) in plans {
-            opened = !browserServices.workspaces.openWindows(plan, name: name).isEmpty || opened
-        }
-        return opened
-    }
-
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     @objc func toggleShelf(_ sender: Any?) {
@@ -428,8 +373,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func openWindow(at url: URL, select: URL? = nil, secondPane: URL? = nil, tabbedWith parent: NSWindow? = nil, services: BrowserServices? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: services ?? browserServices)
+    func openWindow(at url: URL, select: URL? = nil, secondPane: URL? = nil, tabbedWith parent: NSWindow? = nil, services: BrowserServices? = nil, frame: SavedWindowFrame? = nil) -> BrowserWindowController {
+        let controller = BrowserWindowController(location: url, select: select, secondPane: secondPane, services: services ?? browserServices, frame: frame)
         windowControllers.append(controller)
         controller.onClose = { [weak self, weak controller] in
             guard let self else { return }
@@ -446,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             parent.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)
         } else {
-            if let key = NSApp.keyWindow, let window = controller.window {
+            if frame == nil, let key = NSApp.keyWindow, let window = controller.window {
                 window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: key.frame.minX, y: key.frame.maxY)))
             }
             controller.showWindow(nil)
@@ -468,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newWindow(_ sender: Any?) {
         let current = (NSApp.keyWindow?.windowController as? BrowserWindowController)?.location
-        openWindow(at: newWindowLocation(current: current))
+        browserServices.windowSession.openNewWindow(at: newWindowLocation(current: current))
     }
 
     private lazy var dockMenu = DockMenu(favorites: {

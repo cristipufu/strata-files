@@ -14,9 +14,9 @@ struct SessionNavigationTests {
     private final class Windows {
         var opened: [BrowserWindowController] = []
         var boundary: BrowserWindows {
-            BrowserWindows(controllers: { [] }, open: { [weak self] folder, second, _, services in
+            BrowserWindows(controllers: { [weak self] in self?.opened ?? [] }, open: { [weak self] folder, second, _, services, frame in
                 guard let self else { return nil }
-                let owner = BrowserWindowController(location: folder, secondPane: second, services: services)
+                let owner = BrowserWindowController(location: folder, secondPane: second, services: services, frame: frame)
                 owner.window?.setFrameAutosaveName("")
                 owner.split.splitView.autosaveName = nil
                 opened.append(owner)
@@ -37,7 +37,7 @@ struct SessionNavigationTests {
         let state = try TestTree(), windows = Windows()
         let environment = try PreviewEnvironment(state, windows: windows.boundary)
         defer { windows.close() }
-        let owner = try #require(environment.services.windows.open(tree.url("left"), tree.url("right"), nil, environment.services))
+        let owner = try #require(environment.services.windows.open(tree.url("left"), tree.url("right"), nil, environment.services, nil))
         for pane in owner.panes { await pane.browser.directoryReads.task?.value }
         for (index, side) in ["left", "right"].enumerated() {
             owner.panes[index].history.back = [.recents, .folder(tree.url(side + "/previous"))]
@@ -50,9 +50,12 @@ struct SessionNavigationTests {
         let data = try #require(SessionStorage.encode([saved]))
         environment.defaults.set(data, forKey: "lastSession")
         windows.close()
+        environment.services.windowSession.finishClosing()
+        if let saving = environment.services.windowSession.saving { await saving.value }
         let stored = try #require(environment.defaults.data(forKey: "lastSession"))
         let read = try #require(SessionStorage.decode(stored))
         try #require(read.count == 1)
+        #expect(read[0].tabs == saved.tabs && read[0].navigation == saved.navigation)
         let restored = try #require(environment.services.workspaces.openWindows(await environment.services.workspaces.plan(read[0]), name: "").first)
         for pane in restored.panes { await pane.browser.directoryReads.task?.value }
         #expect(restored.pane === restored.panes[1])
@@ -66,7 +69,7 @@ struct SessionNavigationTests {
             await pane.browser.directoryReads.task?.value
             #expect(pane.location.standardizedFileURL.fileViewKey == tree.url(side).standardizedFileURL.fileViewKey)
         }
-        #expect(environment.defaults.data(forKey: "lastSession") == data)
+        #expect(environment.defaults.data(forKey: "lastSession") == stored)
         #expect(tree.snapshot() == ["left/", "left/next/", "left/previous/", "right/", "right/next/", "right/previous/"])
         withExtendedLifetime((environment, state)) {}
     }
@@ -164,7 +167,7 @@ struct SessionNavigationTests {
         let tree = try TestTree("local/"), state = try TestTree(), windows = Windows()
         let environment = try PreviewEnvironment(state, reader: DirectoryReader { _, _, _ in [] }, windows: windows.boundary)
         defer { windows.close() }
-        let owner = try #require(environment.services.windows.open(tree.url("local"), nil, nil, environment.services))
+        let owner = try #require(environment.services.windows.open(tree.url("local"), nil, nil, environment.services, nil))
         for url in [environment.services.copies.clipboardRoot.appending(path: "staged"),
                     environment.services.copies.containerCopies.root.appending(path: "container/folder"),
                     environment.services.remote.copies.root.appending(path: UUID().uuidString + "/unknown")] {

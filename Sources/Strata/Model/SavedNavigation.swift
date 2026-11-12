@@ -89,7 +89,7 @@ package nonisolated enum SessionStorage {
         return layout
     }
 
-    private static func bounded(_ windows: [Workspace]) -> [Workspace] {
+    package static func bounded(_ windows: [Workspace]) -> [Workspace] {
         var remaining = 80
         var metadataBytes = byteLimit / 2
         func place(_ value: SavedDestination?) -> SavedDestination? {
