@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ inputs.release_tag || github.ref_name }}
 
 # Builds Strata.app on a Mac, signs it with the Developer ID certificate, notarizes and staples it, and wraps it in a
 # signed, notarized disk image.
@@ -7,7 +8,7 @@ name: Release
 #       Publishes a GitHub Release with Strata.dmg, Strata.zip and SHA256SUMS.txt. The website's Download button
 #       always points at the latest one. A tag with a suffix (v0.2.0-beta.1) is published as a pre-release.
 #   Actions tab -> Release -> Run workflow
-#       Builds the same files as a workflow artifact, without a release.
+#       Builds the same files as a workflow artifact. Supply release_tag to retry publishing an existing tag.
 #
 # Secrets (Settings -> Secrets and variables -> Actions):
 #   MACOS_CERT_P12        base64 of the "Developer ID Application" certificate and its private key, exported as .p12
@@ -18,13 +19,17 @@ name: Release
 #   MACOS_TEAM_ID         the Apple Developer team ID
 #   SPARKLE_ED_PRIVATE_KEY  the EdDSA key that signs updates (scripts: Sparkle's generate_keys -x); its public half
 #                           is SUPublicEDKey in Resources/Info.plist. Without it a tag builds no appcast.xml.
-# Without them a manual run still builds (ad-hoc signed, for testing only) and a tag fails: Gatekeeper refuses an
-# unsigned app on any other Mac, so it must never become a release.
+# Without them an artifact-only run builds ad-hoc signed, for testing only. Publishing requires the signing secrets:
+# Gatekeeper refuses an unsigned app on any other Mac.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: Existing tag to publish (leave empty for an artifact only)
+        type: string
+        default: ""
       retention_days:
         description: Days to keep the artifact
         type: string
@@ -35,10 +40,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
   cancel-in-progress: false
 
 env:
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
   # macOS 26 SDK with Swift 6.2+ (the summaries use the 26.4 SDK's token counting).
   XCODE_VERSION: "26.6"
   # Secrets can't be read in an `if:`, so their presence is evaluated once here and tested as a string.
@@ -54,6 +60,8 @@ jobs:
     # Normal, optimized and sanitizer suites all finish before signing and notarization begin.
     timeout-minutes: 180
     outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       artifact: ${{ steps.version.outputs.artifact }}
@@ -62,9 +70,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
 
       - name: Refuse to release an unsigned build
-        if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING != 'true'
+        if: env.RELEASE_TAG != '' && env.HAS_APPLE_SIGNING != 'true'
         run: |
           echo "::error::The signing secrets are not set (see the top of release.yml). A release has to be signed and notarized."
           exit 1
@@ -75,7 +84,7 @@ jobs:
           sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
           swift --version
 
-      # Tags run this themselves: publishing cannot bypass the checks on main or a pull request.
+      # Every publication repeats these checks before it can use signing credentials.
       - name: Require complete and current translations before signing
         run: |
           set -euo pipefail
@@ -111,24 +120,24 @@ jobs:
         id: version
         env:
           # Passed as env, never interpolated into the script, so a tag name can't reach the shell as code.
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          if [ "$REF_TYPE" = tag ]; then
-            VERSION="${REF_NAME#v}"
+          if [ -n "$RELEASE_TAG" ]; then
+            VERSION="${RELEASE_TAG#v}"
           else
-            VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+            VERSION="$(python3 -c 'import plistlib; from pathlib import Path; print(plistlib.loads(Path("Resources/Info.plist").read_bytes())["CFBundleShortVersionString"])')"
           fi
           [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}(-[0-9A-Za-z.]+)?$ ]] || {
             echo "::error::'$VERSION' is not a version like 1.2.3 or 1.2.3-beta.1"; exit 1; }
           # Info.plist takes the numeric part; the suffix only marks a pre-release.
           if [[ "$VERSION" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
-          if [ "$REF_TYPE" = tag ]; then ARTIFACT="Strata-$VERSION"; else ARTIFACT="Strata-$VERSION-build$RUN_NUMBER"; fi
+          if [ -n "$RELEASE_TAG" ]; then ARTIFACT="Strata-$VERSION"; else ARTIFACT="Strata-$VERSION-build$RUN_NUMBER"; fi
           echo "STRATA_VERSION=${VERSION%%-*}" >> "$GITHUB_ENV"
           echo "STRATA_BUILD_NUMBER=$RUN_NUMBER" >> "$GITHUB_ENV"
           {
+            echo "tag=$RELEASE_TAG"
+            echo "source_sha=$(git rev-parse HEAD)"
             echo "version=$VERSION"
             echo "prerelease=$PRERELEASE"
             echo "artifact=$ARTIFACT"
@@ -239,7 +248,7 @@ jobs:
 
       # The update window shows these notes: HTML from GitHub's Markdown renderer, which also sanitizes it.
       - name: Render the release notes for the update window
-        if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING == 'true'
+        if: env.RELEASE_TAG != '' && env.HAS_APPLE_SIGNING == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -253,11 +262,11 @@ jobs:
           fi
 
       - name: Sign the update and write the appcast
-        if: github.ref_type == 'tag' && env.HAS_APPLE_SIGNING == 'true'
+        if: env.RELEASE_TAG != '' && env.HAS_APPLE_SIGNING == 'true'
         env:
           UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ env.RELEASE_TAG }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -310,7 +319,7 @@ jobs:
         with:
           name: ${{ steps.version.outputs.artifact }}
           path: dist/
-          retention-days: ${{ github.ref_type == 'tag' && 7 || inputs.retention_days }}
+          retention-days: ${{ env.RELEASE_TAG != '' && 7 || inputs.retention_days }}
           if-no-files-found: error
           # A disk image and a zip are already compressed.
           compression-level: 0
@@ -321,7 +330,7 @@ jobs:
 
   release:
     needs: build
-    if: github.ref_type == 'tag'
+    if: needs.build.outputs.tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -331,6 +340,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ needs.build.outputs.source_sha }}
           sparse-checkout: docs/release-notes
 
       - name: Download the build
@@ -342,7 +352,7 @@ jobs:
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
