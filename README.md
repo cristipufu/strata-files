@@ -75,26 +75,36 @@ your folders as a map, then use **Large Files** and **Duplicates** in the sideba
 ## Look inside. Stay where you are.
 
 Press **Space** to preview a file or look inside a folder or archive. Browse the list or thumbnails, preview files
-alongside, and filter, sort, open or copy just what you need without leaving your current folder.
+alongside, and filter, sort, open or copy just what you need without leaving your current folder. Use the arrow keys
+to step between files while Quick Look stays open.
 
 <p align="center"><img src="docs/screenshots/quicklook.webp" alt="Quick Look above the main browser, listing folder contents and previewing a Markdown file" width="820"></p>
 
 | Format | What you can do |
 |---|---|
 | **Markdown** | Read rendered text, tables and code blocks, with Mermaid diagrams and LaTeX equations right in the document. |
+| **Jupyter notebooks (`.ipynb`)** | Read Markdown, code cells and saved outputs together. |
 | **Code and configuration** | Syntax highlighting, line numbers, Find and word wrap for Swift, Python, JavaScript, TypeScript, Rust, Go, C/C++, shell scripts, YAML, TOML, XML, Dockerfiles and more. |
 | **JSON** | Read formatted JSON, JSONC and JSON5 without opening an editor. |
+| **JSON Lines, HAR and Xcode catalogs** | Search rows in `.jsonl`, `.ndjson`, `.har` and `.xcstrings` files. |
+| **Subtitles (`.srt`, `.vtt`)** | Read cues and timestamps in a searchable table. |
 | **HTML** | Switch between the rendered page and its source. |
 | **CSV, TSV and PSV** | Page through data, sort columns, find values and copy individual cells or rectangles. |
 | **SQLite** | Choose a table or view, page through its rows, sort, find and copy cells. |
 | **Excel and OpenDocument (`.xlsx`, `.ods`)** | Switch worksheets and explore their saved values with the same table controls. |
+| **Parquet** | Inspect the file schema, column types and row count. |
+| **NumPy and AI models** | Inspect array shapes and tensor details in NumPy (`.npy`), SafeTensors and GGUF files. |
+| **Fonts (`.ttf`, `.otf`, `.ttc`, `.woff`)** | Choose a font face, adjust the sample size and inspect glyphs without installing the font. |
+| **Design files** | View the saved artwork in Krita (`.kra`), OpenRaster (`.ora`), Sketch and Procreate files. |
+| **Routes (`.gpx`, `.kml`, `.geojson`)** | Explore routes on a map with distance and elevation details. |
+| **Certificates and provisioning profiles** | Inspect identity, validity and signing details in `.cer`, `.crt`, `.der`, `.pem`, `.mobileprovision` and `.provisionprofile` files. |
 | **STL and 3MF models** | Rotate and zoom 3D models, with triangle counts and dimensions. |
 | **EPUB and comics** | Read book chapters and browse comic pages in EPUB, CBZ, CBR, CB7 and CBT files. |
 | **OneNote** | Navigate notebook contents and read section pages (`.one`, `.onetoc2`), or browse packaged notebooks (`.onepkg`). |
 | **Archives and packages** | Browse ZIP, 7z, RAR, TAR, ISO and CAB, plus packages such as JAR, APK, IPA and WHL. Preview or copy individual files inside. |
 
-PDFs, photos, audio, video and other formats supported by your Mac open through macOS Quick Look. File previews
-are also available in the inspector.
+PDFs support text selection and copying. Photos, audio and video have native previews, with video storyboards and
+audio waveforms. Other formats use macOS Quick Look. File previews are also available in the inspector.
 
 ## Five views. Two panes.
 

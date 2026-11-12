@@ -58,25 +58,34 @@ Finder 本来够用，直到你需要寻找文件、查明磁盘被什么占满�
 
 ## 查看内容，不必离开。
 
-按下**空格键**即可预览文件，或查看文件夹和归档中的内容。浏览列表或缩略图，在旁边预览文件，无需离开当前文件夹即可筛选、排序、打开或复制所需内容。
+按下**空格键**即可预览文件，或查看文件夹和归档中的内容。浏览列表或缩略图，在旁边预览文件，无需离开当前文件夹即可筛选、排序、打开或复制所需内容。 保持快速查看打开，使用方向键在文件之间切换。
 
 <p align="center"><img src="../screenshots/quicklook.webp" alt="主窗口上方的快速查看，显示文件夹内容并预览 Markdown 文件" width="820"></p>
 
 | 格式 | 可用功能 |
 |---|---|
 | **Markdown** | 直接在文档中阅读排版后的文字、表格、代码块、Mermaid 图表和 LaTeX 公式。 |
+| **Jupyter 笔记本 (`.ipynb`)** | 在同一视图中阅读 Markdown、代码单元格和已保存的输出。 |
 | **代码与配置** | 为 Swift、Python、JavaScript、TypeScript、Rust、Go、C/C++、Shell 脚本、YAML、TOML、XML、Dockerfile 等提供语法高亮、行号、查找和自动换行。 |
 | **JSON** | 无需打开编辑器即可阅读格式化的 JSON、JSONC 和 JSON5。 |
+| **JSON Lines、HAR 和 Xcode 目录** | 在 `.jsonl`、`.ndjson`、`.har` 和 `.xcstrings` 文件中搜索行。 |
+| **字幕 (`.srt`, `.vtt`)** | 在可搜索的表格中查看字幕和时间戳。 |
 | **HTML** | 在渲染后的页面和源代码之间切换。 |
 | **CSV、TSV 和 PSV** | 逐页浏览数据，对列排序，查找值，并复制单个单元格或矩形区域。 |
 | **SQLite** | 选择表或视图，逐页浏览数据行，排序、查找并复制单元格。 |
 | **Excel 和 OpenDocument (`.xlsx`, `.ods`)** | 切换工作表，使用相同的表格操作查看已保存的值。 |
+| **Parquet** | 查看文件架构、列类型和行数。 |
+| **NumPy 和 AI 模型** | 查看 NumPy (`.npy`)、SafeTensors 和 GGUF 文件中的数组形状与张量详情。 |
+| **字体 (`.ttf`, `.otf`, `.ttc`, `.woff`)** | 无需安装字体，即可选择字样、调整示例大小并查看字形。 |
+| **设计文件** | 查看 Krita (`.kra`)、OpenRaster (`.ora`)、Sketch 和 Procreate 文件中保存的作品。 |
+| **路线 (`.gpx`, `.kml`, `.geojson`)** | 在地图上浏览路线，并查看距离和海拔详情。 |
+| **证书和描述文件** | 查看 `.cer`、`.crt`、`.der`、`.pem`、`.mobileprovision` 和 `.provisionprofile` 文件中的身份、有效期和签名详情。 |
 | **STL 和 3MF 模型** | 旋转和缩放 3D 模型，查看三角形数量与尺寸。 |
 | **EPUB 与漫画** | 阅读 EPUB、CBZ、CBR、CB7 和 CBT 文件中的图书章节与漫画页面。 |
 | **OneNote** | 浏览笔记本目录，阅读分区页面（`.one`、`.onetoc2`），或查看打包的笔记本（`.onepkg`）。 |
 | **归档与软件包** | 浏览 ZIP、7z、RAR、TAR、ISO 和 CAB，以及 JAR、APK、IPA、WHL 等软件包。预览或复制其中的单个文件。 |
 
-PDF、照片、音频、视频及 Mac 支持的其他格式通过 macOS 快速查看打开。也可以在检查器中预览文件。
+PDF 支持选择和复制文本。照片、音频和视频提供原生预览，包括视频故事板和音频波形。其他格式使用 macOS 快速查看。检查器中也能预览文件。
 
 ## 五种视图。两个窗格。
 

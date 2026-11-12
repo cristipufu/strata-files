@@ -135,14 +135,19 @@ class SiteLocalizationTests(unittest.TestCase):
         self.assertEqual([u[2] for u in localize.Document(source).messages()], ['Search'])
 
     def test_github_releases_json_merges_dates_and_skips_drafts_and_prereleases(self):
+        notes = self.root / 'notes'
+        notes.mkdir()
+        (notes / '0.8.5.md').write_text('Strata 0.8.5 from the repository.')
+        (notes / '0.8.4.md').write_text('Strata 0.8.4 from the repository.')
         gh_json = self.root / 'releases.json'
         gh_json.write_text(json.dumps([
             {'tag_name': 'v0.9.0-beta.1', 'prerelease': True, 'body': 'Beta'},
+            {'tag_name': 'v0.9.1', 'draft': True, 'body': 'Draft'},
             {'tag_name': 'v0.8.5', 'published_at': '2026-11-09T12:00:00Z', 'body': 'Strata 0.8.5 from GitHub.\n\n## New\n\n- **Live item.** Details.'},
         ]))
-        releases = localize.load_releases(ROOT / 'docs/release-notes', gh_json)
-        self.assertEqual(releases[0]['version'], '0.8.5')
+        releases = localize.load_releases(notes, gh_json)
+        self.assertEqual([release['version'] for release in releases], ['0.8.5', '0.8.4'])
         self.assertEqual(releases[0]['date'], '2026-11-09')
         self.assertIn('Strata 0.8.5 from GitHub.', releases[0]['body'])
-        self.assertFalse(any(r['version'].startswith('0.9.0') for r in releases))
+        self.assertEqual(releases[1]['body'], 'Strata 0.8.4 from the repository.')
 
