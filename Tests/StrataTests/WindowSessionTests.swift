@@ -212,10 +212,15 @@ import Testing
         #expect(!peer.isClosed && peer.services === b.services)
     }
 
-    @Test func quitSessionRestoresEachWindowsOwnFrameBeforeOpening() async throws {
-        let tree = try TestTree("first/", "second/"), windows = Windows()
+    @Test(arguments: [false, true]) func quitSessionRestoresEachWindowsOwnFrameBeforeOpening(_ previouslyClosed: Bool) async throws {
+        let tree = try TestTree("old/", "first/", "second/"), windows = Windows()
         let environment = try PreviewEnvironment(tree, reader: DirectoryReader { _, _, _ in [] }, windows: windows.boundary)
         defer { withExtendedLifetime(tree) { windows.detach() } }
+        if previouslyClosed {
+            let old = try windows.open(tree.url("old"), services: environment.services)
+            old.window?.close()
+            environment.services.windowSession.finishClosing()
+        }
         let first = try windows.open(tree.url("first"), services: environment.services)
         let second = try windows.open(tree.url("second"), services: environment.services)
         first.window?.setFrame(frame(), display: false)
@@ -229,6 +234,48 @@ import Testing
         #expect(windows.opened.map { panePaths(of: $0) }
                 == [[tree.url("second").lexicallyStandardized.path], [tree.url("first").lexicallyStandardized.path]])
         #expect(windows.opened.map { $0.window?.frame } == [frame(80), frame()])
+    }
+
+    @Test(arguments: [false, true]) func choosingAWorkspaceCancelsAutomaticRestorationBeforeItsFoldersAnswer(_ automaticFinishesFirst: Bool) async throws {
+        let tree = try TestTree("automatic/", "chosen/"), windows = Windows(), held = HeldPlan()
+        let environment = try PreviewEnvironment(tree, reader: DirectoryReader { _, _, _ in [] }, windows: windows.boundary)
+        defer { withExtendedLifetime(tree) { windows.detach() } }
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let (asked, ask) = AsyncStream<Void>.makeStream()
+        let workspaces = Workspaces(services: environment.services, patience: .seconds(120)) { _ in
+            ask.yield()
+            release.wait()
+            return true
+        }
+        environment.services.workspaces = workspaces
+        let session = WindowSession(services: environment.services, plan: held.read)
+        environment.services.windowSession = session
+        let automatic = Workspace(name: "", tabs: [[tree.url("automatic").path]])
+        let chosen = Workspace(name: "Chosen", tabs: [[tree.url("chosen").path]])
+        environment.defaults.set(try encodedSession(automatic), forKey: "lastSession")
+        let before = tree.snapshot()
+        let restoring = try #require(session.reopen(at: tree.root))
+        await held.started()
+        let opening = try #require(workspaces.open(chosen))
+        #expect(restoring.isCancelled)
+        for await _ in asked { break }
+        if automaticFinishesFirst {
+            held.finish(automatic)
+            await restoring.value
+            #expect(windows.opened.isEmpty)
+            release.signal()
+            await opening.value
+        } else {
+            release.signal()
+            await opening.value
+            held.finish(automatic)
+            await restoring.value
+        }
+        #expect(windows.opened.count == 1)
+        #expect(windows.opened.first?.workspaceName == chosen.name)
+        #expect(panePaths(of: windows.opened.first) == [tree.url("chosen").lexicallyStandardized.path])
+        #expect(tree.snapshot() == before)
     }
 
     @Test func aLateRestorationCannotReopenAfterANewerWindowOpenedAndClosed() async throws {

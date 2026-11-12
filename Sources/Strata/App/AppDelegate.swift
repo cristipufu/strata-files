@@ -247,7 +247,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if launching { openedAtLaunch = true }
             // Nothing to wait for when it's already being opened: that opening ends launch.
             guard let opening = browserServices.workspaces.open(workspace) else { return }
-            browserServices.windowSession.cancelRestoration()
             let atLaunch = launching
             Task { [weak self] in
                 await opening.value

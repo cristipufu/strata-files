@@ -12,7 +12,7 @@ import AppKit
     private var reopening: Task<Void, Never>?
     private var closing: (members: Set<ObjectIdentifier>, workspace: Workspace)?
     private var closeWork: Task<Void, Never>?
-    private var lastClosed: [Workspace]?
+    private var rememberedSession: [Workspace]?
     private var saveRevision = UUID()
     private(set) var saving: Task<Void, Never>?
     private weak var lastActive: BrowserWindowController?
@@ -100,7 +100,7 @@ import AppKit
         self.closing = nil
         guard controllers.isEmpty else { return }
         let saved = [closing.workspace]
-        lastClosed = saved
+        rememberedSession = saved
         scheduleSave(saved)
     }
 
@@ -112,7 +112,7 @@ import AppKit
         let open = controllers
         if let first = open.first?.window { rememberFrame(of: first) }
         guard !open.isEmpty else {
-            if let lastClosed { store(SessionStorage.encode(lastClosed)) }
+            if let rememberedSession { store(SessionStorage.encode(rememberedSession)) }
             return
         }
         var seen = Set<ObjectIdentifier>()
@@ -122,6 +122,7 @@ import AppKit
             guard let first = group.first, seen.insert(ObjectIdentifier(first)).inserted else { return nil }
             return snapshot(group)
         }
+        rememberedSession = saved
         store(SessionStorage.encode(saved))
     }
 
@@ -173,7 +174,7 @@ import AppKit
 
     private func restore(at fallback: URL) -> Task<Void, Never>? {
         if let reopening { return reopening }
-        let remembered = lastClosed
+        let remembered = rememberedSession
         let data = preferences.defaults.data(forKey: Self.sessionKey)
         guard preferences.reopenWindows, remembered != nil || data != nil else {
             openFallback(at: fallback)

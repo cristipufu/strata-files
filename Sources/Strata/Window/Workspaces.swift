@@ -246,6 +246,7 @@ final class Workspaces {
     /// nothing you could see.
     @discardableResult
     func open(_ workspace: Workspace, from current: NSWindow? = nil) -> Task<Void, Never>? {
+        services?.windowSession.cancelRestoration()
         var replacing: NSWindow?
         if !workspace.name.isEmpty, let open = openControllers(named: workspace.name).first(where: { !$0.isClosed }),
            let window = open.window {
