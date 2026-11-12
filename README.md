@@ -139,8 +139,9 @@ controls and familiar behavior stay intact.
 Find them in **Settings ▸ Appearance ▸ Color theme**. Turn **Window tint** off to keep native backgrounds while
 using the palette for selections and accents. You can also adjust row density and the size of file names.
 
-Want to contribute a palette? Add a JSON theme file and its translated name, then rebuild; no Swift changes are
-needed. The [theme guide](docs/themes.md) explains the format and the light/dark and accessibility checks.
+Want your own palette? Put a JSON theme file in `~/Library/Application Support/Strata/Themes/` and relaunch
+Strata. To contribute it, add the file and its translated name, then rebuild; no Swift changes are needed. The
+[theme guide](docs/themes.md) explains the format and the light/dark and accessibility checks.
 
 ## Made for developers
 
