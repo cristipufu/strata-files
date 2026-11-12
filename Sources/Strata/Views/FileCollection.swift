@@ -13,6 +13,7 @@ enum KeyCode {
     static let delete: UInt16 = 51
     static let escape: UInt16 = 53
     static let numpadEnter: UInt16 = 76
+    static let f2: UInt16 = 120
     static let home: UInt16 = 115
     static let forwardDelete: UInt16 = 117
     static let end: UInt16 = 119
@@ -32,6 +33,9 @@ enum FileViewKey: Equatable {
     case space
     /// Plain Tab: switches panes in dual-pane mode; otherwise the usual move to the next control.
     case tab
+    /// F2 and ⌦ (fn-⌫) with no modifier other than fn: Rename and Move to Trash with the Windows keyboard.
+    case f2
+    case forwardDelete
 
     static func from(_ event: NSEvent) -> FileViewKey? {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -47,6 +51,10 @@ enum FileViewKey: Equatable {
             return .escape
         case KeyCode.delete where mods.isDisjoint(with: [.command, .control, .option]):
             return .backspace
+        case KeyCode.f2 where mods.isDisjoint(with: [.command, .control, .option, .shift]):
+            return .f2
+        case KeyCode.forwardDelete where mods.isDisjoint(with: [.command, .control, .option, .shift]):
+            return .forwardDelete
         default:
             break
         }
@@ -67,6 +75,8 @@ protocol FileCollectionViewDelegate: AnyObject {
     func fileView(_ view: NSViewController, drop urls: [URL], onto folder: URL?, info: NSDraggingInfo) -> Bool
     /// Return true when handled; unhandled keys fall through to the view's default behaviour.
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool
+    /// A key from a view whose typing doesn't filter the browser's folder (a deeper column).
+    func fileView(_ view: NSViewController, handleOutsideFilter key: FileViewKey) -> Bool
     /// Inline rename finished with a new, non-empty name that differs from the old one.
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String)
     /// A second, slower click on the name of the only selected item (see `ClickToRename`): rename it if it may be.
@@ -79,6 +89,7 @@ protocol FileCollectionViewDelegate: AnyObject {
 
 extension FileCollectionViewDelegate {
     func fileView(_ view: NSViewController, handle key: FileViewKey) -> Bool { false }
+    func fileView(_ view: NSViewController, handleOutsideFilter key: FileViewKey) -> Bool { false }
     func fileView(_ view: NSViewController, rename entry: FileEntry, to name: String) {}
     func fileView(_ view: NSViewController, renameClicked url: URL) {}
     func fileView(_ view: NSViewController, springLoad folder: URL, drag: Int) {}

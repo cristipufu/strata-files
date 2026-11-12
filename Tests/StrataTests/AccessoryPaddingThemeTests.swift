@@ -21,10 +21,11 @@ extension ColorThemeTests {
         window.toolbar = NSToolbar(identifier: "AccessoryPaddingThemeTest")
         window.contentViewController = split
         defer { window.contentViewController = nil }
+        split.addressRow.isHidden = false
         split.scopeBar.isHidden = false
         split.noticeBar.isHidden = false
         let sidebarFooter = try #require(split.splitViewItems[0].bottomAlignedAccessoryViewControllers.first)
-        let accessories = [split.status, split.scopeBar, split.noticeBar, sidebarFooter]
+        let accessories = [split.status, split.addressRow, split.scopeBar, split.noticeBar, sidebarFooter]
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: name)
             for size in [NSSize(width: 1240, height: 780), NSSize(width: 900, height: 600)] {

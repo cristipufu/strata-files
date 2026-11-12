@@ -22,6 +22,7 @@ final class BrowserServices {
                          mediaReader: @escaping MediaInfoLoader.Reader = MediaInfoLoader.read,
                          mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                          mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
+                         placeReads: @escaping ([String]) async -> PlaceChecks.Snapshot = PlaceChecks.read,
                          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
@@ -31,7 +32,8 @@ final class BrowserServices {
         let transfers = TransferQueue(preferences: preferences, history: history, copies: copies)
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
-                          directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis, showSetting: showSetting)
+                          directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis,
+                          placeReads: placeReads, showSetting: showSetting)
     }
 
     /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History
@@ -49,13 +51,14 @@ final class BrowserServices {
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
                            tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil,
                            index: FileIndex? = nil, contentIndex: SemanticIndex? = nil,
+                           placeReads: @escaping ([String]) async -> PlaceChecks.Snapshot = PlaceChecks.read,
                            showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
                         mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
-                        index: index, contentIndex: contentIndex, showSetting: showSetting)
+                        index: index, contentIndex: contentIndex, placeReads: placeReads, showSetting: showSetting)
     }
 
     let preferences: Prefs
@@ -109,13 +112,15 @@ final class BrowserServices {
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
                  tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil,
-                 contentIndex: SemanticIndex? = nil, showSetting: @escaping @MainActor (SettingID) -> Void) {
+                 contentIndex: SemanticIndex? = nil,
+                 placeReads: @escaping ([String]) async -> PlaceChecks.Snapshot = PlaceChecks.read,
+                 showSetting: @escaping @MainActor (SettingID) -> Void) {
         self.preferences = transfers.preferences
         self.showSetting = showSetting
         self.transfers = transfers
         self.files = FileCommands(transfers: transfers)
         self.visits = visits
-        self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: PlaceChecks.read)
+        self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: placeReads)
         self.folderNames = FolderNames(read: FolderNames.read)
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing

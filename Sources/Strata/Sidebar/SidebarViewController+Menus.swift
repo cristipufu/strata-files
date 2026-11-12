@@ -4,8 +4,12 @@ import AppKit
 /// be removed.
 extension SidebarViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        menuNeedsUpdate(menu, for: outline.item(atRow: outline.clickedRow) as? SidebarItem)
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu, for clicked: SidebarItem?) {
         menu.removeAllItems()
-        guard let item = outline.item(atRow: outline.clickedRow) as? SidebarItem else { return }
+        guard let item = clicked else { return }
         if case .containers = item.target { return }
         if case .workspace(let name) = item.target {
             addWorkspaceItems(name, to: menu)
@@ -36,27 +40,27 @@ extension SidebarViewController: NSMenuDelegate {
         }
         guard let url = item.url else { return }
         if Trash.isTrash(url) {
-            add("Open in New Tab", #selector(openInNewTab(_:)), url)
+            add("Open in New Tab", #selector(openInNewTab(_:)), url, to: menu)
             menu.addItem(.separator())
             let empty = NSMenuItem(title: String(localized: "Empty Trash…"), action: #selector(AppDelegate.emptyTrash(_:)), keyEquivalent: "")
             menu.addItem(empty)
             return
         }
         let favorite = isFavorite(item)
-        add("Open in New Tab", #selector(openInNewTab(_:)), url)
-        add("Copy Path", #selector(copyItemPath(_:)), url)
+        add("Open in New Tab", #selector(openInNewTab(_:)), url, to: menu)
+        add("Copy Path", #selector(copyItemPath(_:)), url, to: menu)
         menu.addItem(.separator())
         if favorite {
-            add("Remove from Sidebar", #selector(removeFavorite(_:)), url)
+            add("Remove from Sidebar", #selector(removeFavorite(_:)), url, to: menu)
         } else if canAddToFavorites(item) {
-            add("Add to Favorites", #selector(addFavorite(_:)), url)
+            add("Add to Favorites", #selector(addFavorite(_:)), url, to: menu)
         }
         if isFrequent(item) {
-            add("Remove from Frequent", #selector(removeFrequent(_:)), url)
+            add("Remove from Frequent", #selector(removeFrequent(_:)), url, to: menu)
         }
         if item.isEjectable {
             menu.addItem(.separator())
-            add("Eject “\(item.title)”", #selector(ejectItem(_:)), url)
+            add("Eject “\(item.title)”", #selector(ejectItem(_:)), url, to: menu)
         }
     }
 
@@ -150,11 +154,11 @@ extension SidebarViewController: NSMenuDelegate {
         services.workspaces.confirmDelete(name, in: view.window)
     }
 
-    private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL) {
+    private func add(_ title: String.LocalizationValue, _ action: Selector, _ url: URL, to menu: NSMenu) {
         let entry = NSMenuItem(title: String(localized: title), action: action, keyEquivalent: "")
         entry.target = self
         entry.representedObject = url
-        outline.menu?.addItem(entry)
+        menu.addItem(entry)
     }
 
     @objc private func forgetTag(_ sender: NSMenuItem) {
@@ -178,9 +182,10 @@ extension SidebarViewController: NSMenuDelegate {
         Places.removeFavorite(url, preferences: preferences, checks: services.places)
     }
 
-    @objc private func addFavorite(_ sender: NSMenuItem) {
+    /// From any section's row: a folder that's a favorite already stays where it is.
+    @objc func addFavorite(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        addFavorites([url], at: nil)
+        addFavorites([url], at: nil, keepingFavorites: true)
     }
 
     @objc func removeFrequent(_ sender: NSMenuItem) {

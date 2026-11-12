@@ -20,7 +20,7 @@ package final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     private let queue: TransferQueue
     private let controller: TransfersViewController
     private let popover = NSPopover()
-    private var shownIcon: TransferRing.Key?
+    package private(set) var indicator: TransferIndicator?
 
     package init(itemIdentifier: NSToolbarItem.Identifier = .transfers, queue: TransferQueue) {
         self.queue = queue
@@ -45,23 +45,14 @@ package final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
     }
 
     private func refresh() {
-        let key = TransferRing.Key(progress: queue.overallProgress, hasFailures: queue.hasFailures)
-        if key != shownIcon {
-            shownIcon = key
-            image = TransferRing.image(key)
+        let shown = TransferIndicator(queue)
+        if shown.ring != indicator?.ring { image = TransferRing.image(shown.ring) }
+        toolTip = shown.toolTip
+        if isHidden != shown.isHidden {
+            isHidden = shown.isHidden
+            if shown.isHidden, popover.isShown { popover.close() }
         }
-        let active = queue.jobs.filter { $0.state.isActive }
-        if let job = active.first {
-            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)"
-                : String(localized: "\(active.count) jobs in progress", comment: "plural")
-        } else {
-            toolTip = queue.hasFailures ? String(localized: "Transfers — some items failed") : Self.localizedLabel
-        }
-        let empty = queue.jobs.isEmpty
-        if isHidden != empty {
-            isHidden = empty
-            if empty, popover.isShown { popover.close() }
-        }
+        indicator = shown
     }
 
     @objc private func togglePopover(_ sender: Any?) {
@@ -78,6 +69,25 @@ package final class TransfersToolbarItem: NSToolbarItem, NSPopoverDelegate {
         guard !popover.isShown, !isHidden else { return }
         controller.reload()
         popover.show(relativeTo: self)
+    }
+}
+
+/// What a Transfers control shows for its queue: the ring, its tooltip, and nothing at all while the list is empty.
+package struct TransferIndicator: Equatable {
+    package let ring: TransferRing.Key
+    package let toolTip: String
+    package let isHidden: Bool
+
+    package init(_ queue: TransferQueue) {
+        ring = TransferRing.Key(progress: queue.overallProgress, hasFailures: queue.hasFailures)
+        let active = queue.jobs.filter { $0.state.isActive }
+        if let job = active.first {
+            toolTip = active.count == 1 ? "\(job.title)\n\(job.statusText)"
+                : String(localized: "\(active.count) jobs in progress", comment: "plural")
+        } else {
+            toolTip = queue.hasFailures ? String(localized: "Transfers — some items failed") : TransfersToolbarItem.localizedLabel
+        }
+        isHidden = queue.jobs.isEmpty
     }
 }
 

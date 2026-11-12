@@ -26,6 +26,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     let pathBar: PathBar
     let toolbarItems = WindowToolbarItems()
     private var toolbarCustomization: BrowserToolbar?
+    /// The layout last put in place, and whether the toolbar was shown before the address row hid it.
+    var appliedChrome: WindowChromeLayout?
+    var toolbarVisibleBeforeRow = true
+    /// Stands in for the path bar in its toolbar item while the address row holds it: AppKit can't lay out a toolbar
+    /// item whose view was taken away.
+    let pathBarStandIn = NSView()
     private var responderObservation: NSKeyValueObservation?
     private var inspectorObservation: NSKeyValueObservation?
     /// Searches and Recents follow the index as it changes, at most every couple of seconds: something in your home
@@ -74,6 +80,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         // AppKit's first measurement must see the restored frame and the final pane arrangement.
         setUpToolbar(in: window)
         ThemeStyle.apply(to: window)
+        connectAddressRow()
+        applyChromeLayout()
         remembersWindowFrame = true
     }
 
@@ -121,6 +129,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(folderNamesRead), name: .folderNamesRead,
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
+        services.preferences.notifications.addObserver(self, selector: #selector(explorerLayoutApplied), name: .explorerLayoutApplied,
+                                                       object: services.preferences)
+        services.preferences.notifications.addObserver(self, selector: #selector(windowLayoutChanged), name: .windowLayoutChanged,
+                                                       object: services.preferences)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
@@ -199,6 +211,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         pane.browser.onTab = tab
         pane.browser.outlineView.onTab = tab
+        pane.browser.onBack = { [weak self, weak pane] in
+            guard let self, let pane else { return false }
+            return navigateHistory(.back, in: pane)
+        }
     }
 
     // MARK: - Panes
@@ -310,6 +326,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         toolbarItems.pathBar?.isHidden = dualAddressBars
         for p in panes { syncPathBar(p.host.pathBar, for: p) }
         showHeaderTitles()
+        applyChromeLayout()
     }
 
     private func showHeaderTitles() {
@@ -504,6 +521,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         showPendingOpening()
         syncViewModeItem()
         window?.toolbar?.validateVisibleItems()
+        validateAddressRow()
         updateHeaders()
     }
 
@@ -519,9 +537,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window?.makeFirstResponder(browser.focusView)
     }
 
+    /// The toolbar's field and the address row's show the same search.
     private func setSearchField(_ text: String) {
-        guard let field = toolbarItems.search?.searchField, field.stringValue != text else { return }
-        field.stringValue = text
+        for field in [toolbarItems.search?.searchField, split.addressRow.search].compactMap({ $0 }) where field.stringValue != text {
+            field.stringValue = text
+        }
     }
 
     private func childToSelect(in destination: Destination, from origin: Destination) -> URL? {
@@ -570,14 +590,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func goTrash(_ sender: Any?) { navigate(to: Trash.home) }
     func showDuplicates() { go(.duplicates) }
     @objc func goToFolder(_ sender: Any?) {
-        if isDualPane && services.preferences.dualPaneAddressBars {
-            pane.host.pathBar.beginEditing()
-        } else {
+        switch chromeLayout.locationEditor {
+        case .pane: pane.host.pathBar.beginEditing()
+        case .row: pathBar.beginEditing()
+        case .toolbar:
             revealToolbarItem(.pathBar)
             pathBar.beginEditing()
         }
     }
     @objc func focusSearch(_ sender: Any?) {
+        // The hidden toolbar stays hidden: the address row has its own field.
+        if chromeLayout.addressRowVisible {
+            if case .search(let text, _) = destination { setSearchField(text) }
+            window?.makeFirstResponder(split.addressRow.search)
+            return
+        }
         revealToolbarItem(.search)
         if case .search(let text, _) = destination { setSearchField(text) }
         toolbarItems.search?.beginSearchInteraction()
@@ -700,6 +727,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         for p in panes { services.git.invalidate(containing: p.location) }
         panes.forEach { $0.browser.rereadTags() }
         panes.forEach { $0.browser.refreshVolumeSpaceIfVisible() }
+        // A tab dragged out, or the other tabs closed: a single tab keeps its tab bar in this layout.
+        if let appliedChrome { applyTabBar(appliedChrome) }
+    }
+
+    func windowDidUpdate(_ notification: Notification) {
+        validateAddressRow()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -760,6 +793,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         refreshPanels()
     }
 
+    /// Only the folders on show lose their saved view: resetting every remembered folder would mean scanning them all.
+    @objc private func explorerLayoutApplied() {
+        guard !isClosed else { return }
+        panes.forEach { $0.browser.resetFolderPresentation() }
+        split.inspectorItem.isCollapsed = false
+        refreshPanels()
+    }
+
     func refreshPanels() {
         guard !isClosed else { return }
         syncViewModeItem()
@@ -801,6 +842,7 @@ extension BrowserWindowController: NSMenuItemValidation {
         case #selector(syncViewMode(_:)):
             item.state = item.tag == browser.effectiveMode.rawValue ? .on : .off
             return BrowserViewMode(rawValue: item.tag).map(browser.supportsMode) ?? false
+        case #selector(customizeToolbar(_:)): return !chromeLayout.addressRowVisible
         case #selector(goBack(_:)): return pane.history.canGo(.back)
         case #selector(goForward(_:)): return pane.history.canGo(.forward)
         case #selector(toggleDualPane(_:)):

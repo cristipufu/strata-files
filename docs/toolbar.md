@@ -17,6 +17,13 @@ retain the queue's History and providers. Removed items and customization-palett
 Palette previews never replace the live controls. Keyboard Search and Go to Folder restore their controls when
 needed, so removing a button cannot disable its keyboard command.
 
+With Settings ▸ General ▸ Coming from Windows ▸ Tabs above the address bar on, the toolbar is hidden, not removed:
+its items and saved layout stay as they are, and an address row above the files takes over Back, Forward, Up, the
+window's path bar, search and Transfers (see docs/coming-from-windows.md). The path bar's toolbar item keeps a
+stand-in view meanwhile, since AppKit can't lay out an item whose view was taken away. Customize Toolbar is off in
+this layout, and ⌘L and ⌘F use the row instead of revealing the toolbar. Turning the option off puts the path bar
+back in its item and shows the toolbar again if it was shown.
+
 Headless tests cover persistence, isolation, native item insert/remove notifications, palette previews, editor and
 results gating, teardown, and Trash/History Undo across every view and both panes. The native customization sheet's
 appearance still needs a visual check in a shown window; unshown tests verify control identity and command behavior.

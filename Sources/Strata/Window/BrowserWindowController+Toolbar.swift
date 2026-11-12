@@ -66,7 +66,8 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.label = String(localized: "Location", comment: "Toolbar item: the path bar")
         item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: item.label)
         if flag {
-            item.view = pathBar
+            // While the address row holds the path bar, the toolbar item waits without it.
+            item.view = appliedChrome?.addressRowVisible == true ? pathBarStandIn : pathBar
             item.isHidden = isDualPane && services.preferences.dualPaneAddressBars
             toolbarItems.adopt(item)
         }

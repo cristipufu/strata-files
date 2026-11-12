@@ -45,6 +45,19 @@ extension BrowserViewController {
         folderOptions?.refresh()
     }
 
+    /// Forgets the current folder's saved view without creating one where there is none. A folder still being read
+    /// takes the current defaults or reset view now: the change notification restores only folders already shown,
+    /// and the read landing restores nothing.
+    func resetFolderPresentation() {
+        guard canCustomizeFolderPresentation, let directory else { return }
+        if hasCustomFolderPresentation {
+            pendingFolderPresentation = nil
+            services.folderViews.reset(directory)
+        }
+        if !isLoaded { restoreFolderPresentation(at: directory, showing: false) }
+        folderOptions?.refresh()
+    }
+
     func restoreFolderPresentation(at folder: URL, showing: Bool) {
         let canRemember = canSaveFolderView(at: folder)
         var saved = canRemember ? services.folderViews.presentation(for: folder) : services.folderViews.defaults

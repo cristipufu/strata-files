@@ -11,6 +11,11 @@ belongs to that folder too. **Use as Defaults** makes its current choices the de
 choice. **Reset** removes only that folder’s saved choice and restores the current defaults. Other options, including
 column visibility, alternating rows, item information and icon previews, remain shared appearance settings.
 
+Settings ▸ General ▸ Coming from Windows ▸ **Use Explorer Layout** is Use as Defaults with List as the view, plus the
+Name, Date Modified, Size and Kind columns. It resets the saved choice of the customized folders shown in open panes
+only, so other customized folders keep theirs; it never creates a saved choice for an uncustomized folder (see
+`docs/coming-from-windows.md`).
+
 Other panes using the same preferences update when their folder’s choice changes. Independent environments keep
 their own settings. Search, Recents and Duplicates retain their own presentation and cannot overwrite folder choices;
 the Folder controls are disabled there. Provider copies and archive cache folders are temporary, so their paths do

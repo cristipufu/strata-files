@@ -1,0 +1,103 @@
+# Coming from Windows
+
+Settings ▸ General ▸ Coming from Windows collects opt-in File Explorer habits for people who come to Strata from
+Windows. Each row is a setting of its own, off by default, so Strata behaves as before until you turn one on. The
+rows are independent: turning on one never turns on another. Settings search finds each row by its name and by
+words such as "explorer", "windows" and "pc".
+
+| Row | What it does |
+|---|---|
+| Windows keyboard | The keys work as in File Explorer (below). |
+| Explorer layout | A button, Use Explorer Layout, that sets up the List view as in File Explorer's Details view (below). |
+| This Mac in the sidebar | A This Mac section in the sidebar, like This PC: your standard folders and your disks (below). |
+| Tabs above the address bar | The tabs at the top of the window and an address bar under them, instead of the toolbar (below). |
+
+## Windows keyboard
+
+With Windows keyboard on, these keys act on the selection of the focused pane, in every view (List, Icons, Columns
+and its deeper columns, Gallery, Disk Usage) and in both panes:
+
+| Key | Action |
+|---|---|
+| Return (↩) | Opens the selection. |
+| F2 | Renames the selection, through File ▸ Rename. Disk Usage can't rename in place, so F2 does nothing there. |
+| Forward Delete (⌦, fn-⌫ on a Mac keyboard) | Moves the selection to the Trash, through File ▸ Move to Trash: the same checks, History and Undo. |
+| Backspace (⌫) | Goes back in the focused pane's history. |
+
+- While you type a filter, ⌫ still edits the filter. It goes back only once the filter is empty. In a deeper
+  column, ⌫ leaves a filter in the first column as it is.
+- ⌘⌫ still moves the selection to the Trash, and ⌘[ still goes back.
+- F2 and ⌦ act only without ⌘, ⌥, ⌃ or ⇧. Keys typed into text (a name being edited, the path bar, search, a
+  sheet) go to that text.
+- The Return key picker above shows "Opens the selection" and is off while Windows keyboard is on. Its own choice
+  comes back when you turn Windows keyboard off.
+- The Keyboard Shortcuts window (⌘/) lists the four keys while the option is on, and the usual Return row
+  ("Rename (or open — see Settings)") while it is off. An open Shortcuts window follows the setting at once. The ⌦
+  row's tooltip says to press fn-⌫ on a Mac keyboard, so its caption fits in every language.
+
+`PaneKeyAction.decide` makes the decision for each key; `WindowsKeyboardTests` covers it, the keys in every view
+and both panes, and the Shortcuts window with the option on and off.
+
+## Explorer layout
+
+Use Explorer Layout is a button, not a setting that stays on: it changes ordinary settings once, and you can change
+each of them again afterwards. Pressing it twice gives the same result. It applies to the windows of the Strata it's
+pressed in, at once, without a restart:
+
+- List becomes the default view. The default sort and icon size stay as they are.
+- The list shows Name, Date Modified, Size and Kind, and hides every other column. The columns keep Strata's order,
+  so Size comes before Kind.
+- The folders open in a pane now lose the view you set up for them in View Options, so they show the new List at
+  once. Folders you never set up already follow the defaults and get no saved view. Other folders you set up
+  yourself keep their view; Strata doesn't go through every remembered folder.
+- Every open window opens its Inspector, with the preview of the selection.
+
+Search results, Recents and Duplicates keep their own view. `ExplorerLayout.plan` decides the defaults and the
+hidden columns; `ExplorerLayoutTests` covers it, open windows and both panes of a Dual Pane window following at once,
+the folders open now reset and others kept, another environment's windows left alone, and pressing twice.
+
+## This Mac in the sidebar
+
+With This Mac in the sidebar on, the Places sidebar gets a This Mac section, like This PC in File Explorer. It comes
+right after Favorites and Frequent; the other sections keep their order below it. Open windows follow at once.
+
+- It lists Desktop, Documents, Downloads, Pictures, Music and Movies from your home folder, by the names macOS gives
+  them (Finder's names in your language), then your disks. Home itself stays in Favorites.
+- A folder that isn't there is left out. Whether each one is there, and its name, comes from the same background read
+  as the favorites (`PlaceChecks`), so the sidebar never waits on a disk.
+- The disks move from Locations to This Mac, so each disk shows once. Locations keeps cloud folders, Containers and
+  the Trash. Frequent leaves out folders This Mac already shows.
+- Add to Favorites looks at the folder, not the row: a This Mac row offers it only when its folder isn't a favorite,
+  and adding never moves a favorite you already have. Remove from Sidebar stays on the Favorites rows.
+- Hiding the section is remembered like any other section's, also when you turn the option off and on.
+- The Folders sidebar (the tree) doesn't change. Turning the option off gives back the sidebar you had.
+
+`Places.thisMac` decides the rows and `SidebarLayout.sectionIDs` the order; `ThisMacSidebarTests` covers both, missing
+folders and localized names, the disks leaving Locations and coming back, Add to Favorites, hiding the section, the
+Folders tree, turning the option off and on twice, open sidebars following, and another environment left alone.
+
+## Tabs above the address bar
+
+With Tabs above the address bar on, a window looks like File Explorer: the tabs sit at the top, and an address bar
+under them holds Back, Forward, Up, the path, a search field and Transfers. Open windows follow at once.
+
+- The toolbar is hidden, not removed. Its commands stay in the menus and keep their shortcuts.
+- The tab bar shows even with one tab. Strata shows it only when the window doesn't already, and hides it again when
+  you turn the option off only if Strata showed it and the window still has one tab.
+- The address bar's buttons run the same commands as the menu items Go ▸ Back, Forward and Enclosing Folder, and are
+  dimmed exactly when those are. Its path is the window's own path bar, moved, not a copy.
+- ⌘L and ⌘⇧G edit the path in the address bar, and ⌘F goes to its search field; the toolbar stays hidden. Search
+  works as from the toolbar, and clearing the field goes back to the folder.
+- Transfers shows and follows the transfer queue as the toolbar button does.
+- View ▸ Customize Toolbar is off while the toolbar is hidden.
+- In Dual Pane with Address bar in each pane on, each pane keeps its own path bar: the address bar shows no path,
+  and ⌘L edits the focused pane's. With that setting off, the address bar shows the window's path as in one pane.
+- New tabs (⌘T) and the windows a Workspace opens start in this layout.
+- Full screen keeps the tab bar and the address bar: the toolbar is hidden, so nothing hides with the menu bar.
+- Turning the option off gives back the toolbar as you had set it up, its items and whether it was shown.
+
+`WindowChromeLayout.decide` decides what the window shows, `WindowChromeLayout.tabBarStep` when to show or hide the
+tab bar and `fullScreenOptions` what full screen hides; `ExplorerTabsTests` covers all three, open windows following,
+the buttons against their menu commands, ⌘L and ⌘F, Transfers, Customize Toolbar, Dual Pane with and without its
+address bars, new tabs and restored Workspaces, full screen, turning the option off twice, and another environment
+left alone.

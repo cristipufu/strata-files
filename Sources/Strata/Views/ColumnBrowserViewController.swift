@@ -401,7 +401,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     func handleKey(_ key: FileViewKey, in pane: ColumnPane) -> Bool {
         // Filtering applies to the browser's folder only; deeper columns use type-select.
         if case .type = key, !pane.isRoot { return false }
-        if key == .backspace, !pane.isRoot { return false }
+        if key == .backspace, !pane.isRoot { return fileDelegate?.fileView(self, handleOutsideFilter: key) == true }
         if fileDelegate?.fileView(self, handle: key) == true { return true }
         if key == .returnKey {
             open(from: pane)

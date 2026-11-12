@@ -110,7 +110,7 @@ extension BrowserWindowController {
     }
 
     @objc func customizeToolbar(_ sender: Any?) {
-        guard !isClosed, window?.attachedSheet == nil else { return }
+        guard !isClosed, window?.attachedSheet == nil, !chromeLayout.addressRowVisible else { return }
         window?.toolbar?.runCustomizationPalette(sender)
     }
 

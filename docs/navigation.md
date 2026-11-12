@@ -16,3 +16,19 @@ Headless tests send private synthetic mouse events directly to unshown browser w
 queue. They exercise both panes in all five views and control swipe completions to cover stale and cancelled work,
 right-to-left layout and teardown. Hardware gesture feel and native animation still need a manual check on a
 trackpad or Magic Mouse; these tests do not simulate physical touches.
+
+# The sidebar's sections
+
+In Places, the sidebar shows Favorites, Workspaces, Searches, Frequent, Insights, Locations, Servers and Tags, in that
+order; a section with nothing in it is left out. With Settings ▸ General ▸ Coming from Windows ▸ This Mac in the
+sidebar on, a This Mac section (your Desktop, Documents, Downloads, Pictures, Music and Movies folders, then the disks)
+comes right after Favorites and Frequent, and the disks leave Locations (see docs/coming-from-windows.md).
+`SidebarLayout.sectionIDs` gives the order. The Folders sidebar shows its tree either way.
+
+# The address row
+
+With Settings ▸ General ▸ Coming from Windows ▸ Tabs above the address bar on, the window shows its tab bar at the top,
+even with one tab, and an address row at the top of the file area: Back, Forward, Up, the path, search and
+Transfers. The buttons send the same commands as Go ▸ Back, Forward and Enclosing Folder and are dimmed when those
+are. ⌘L and ⌘⇧G edit the row's path, unless Dual Pane shows each pane's own path bar (Address bar in each pane), where
+they edit the focused pane's. New tabs, Workspaces and full screen keep the layout. `WindowChromeLayout` decides it.

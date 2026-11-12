@@ -33,6 +33,11 @@ final class ControlledDirectoryReads {
 
     private(set) var requests: [Request] = []
     private var stopped = false
+    private let started: AsyncStream<Void>
+    private let signal: AsyncStream<Void>.Continuation
+
+    init() { (started, signal) = AsyncStream.makeStream() }
+
     var reader: DirectoryReader {
         DirectoryReader { folder, hidden, applications in
             try await self.read(folder, hidden, applications)
@@ -42,7 +47,19 @@ final class ControlledDirectoryReads {
     private func read(_ folder: URL, _ hidden: Bool, _ applications: ApplicationsFolders) async throws -> [FileEntry] {
         if stopped { throw CancellationError() }
         // Deliberately ignore cancellation, like synchronous filesystem I/O that is already in flight.
-        return try await withCheckedThrowingContinuation { requests.append(Request(folder, hidden, applications, $0)) }
+        return try await withCheckedThrowingContinuation {
+            requests.append(Request(folder, hidden, applications, $0))
+            signal.yield()
+        }
+    }
+
+    /// Waits for a read without a deadline, which a loaded machine can exceed: the test's time limit guards a hang.
+    func requested(_ index: Int) async throws -> Request {
+        if requests.count <= index {
+            for await _ in started where requests.count > index { break }
+        }
+        try #require(requests.count > index, "Cancelled before the controlled reader was called.")
+        return requests[index]
     }
 
     func request(_ index: Int) async throws -> Request {

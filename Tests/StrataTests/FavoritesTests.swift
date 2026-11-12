@@ -90,7 +90,7 @@ import Testing
         #expect(sidebar.isFrequent(often) == (sourceSection == "frequent"))
 
         let writer = try #require(sidebar.outlineView(outline, pasteboardWriterForItem: often) as? NSPasteboardItem)
-        #expect(writer.types == [.sidebarFavorite])
+        #expect(Set(writer.types) == [.sidebarFavorite, .sidebarFavoriteAddition])
         let drag = FileDrag([], offering: .move)
         drag.draggingPasteboard.clearContents()
         #expect(drag.draggingPasteboard.writeObjects([writer]))

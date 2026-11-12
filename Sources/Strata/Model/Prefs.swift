@@ -13,6 +13,11 @@ extension Notification.Name {
     package static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
+    package static let windowsKeyboardChanged = Notification.Name("StrataWindowsKeyboardChanged")
+    /// What the sidebar's sections hold changed (This Mac on or off); the object is the `Prefs`.
+    package static let sidebarContentsChanged = Notification.Name("StrataSidebarContentsChanged")
+    /// What a window shows around its files changed (Tabs above the address bar); the object is the `Prefs`.
+    package static let windowLayoutChanged = Notification.Name("StrataWindowLayoutChanged")
 }
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
@@ -67,6 +72,7 @@ package final class Prefs: PreviewTextSettings {
         static let foldersFirst = "foldersFirst"
         static let lastLocation = "lastLocation"
         static let returnOpens = "returnOpens"
+        static let windowsKeyboard = "windowsKeyboard"
         static let terminal = "terminalApp"
         static let newWindowsAtHome = "newWindowsAtHome"
         static let newWindowLocation = "newWindowLocation"
@@ -90,6 +96,9 @@ package final class Prefs: PreviewTextSettings {
         static let showListNameExtensions = "showListNameExtensions"
         static let showIconPreviews = "showIconPreviews"
         static let sidebarShowsTree = "sidebarShowsTree"
+        static let sidebarThisMac = "sidebarThisMac"
+        static let explorerTabs = "explorerTabs"
+        static let tabBarShownByLayout = "tabBarShownByLayout"
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
         static let hiddenListColumns = "hiddenListColumns"
@@ -122,6 +131,25 @@ package final class Prefs: PreviewTextSettings {
         set { defaults.set(newValue, forKey: Key.sidebarShowsTree); notifications.post(name: .prefsChanged, object: nil) }
     }
 
+    /// Coming from Windows: a This Mac section in the sidebar, like File Explorer's This PC, which takes the disks from
+    /// Locations. Only in Places; the folder tree stays as it is.
+    package var sidebarThisMac: Bool {
+        get { defaults.bool(forKey: Key.sidebarThisMac) }
+        set { defaults.set(newValue, forKey: Key.sidebarThisMac); notifications.post(name: .sidebarContentsChanged, object: self) }
+    }
+
+    /// Coming from Windows: the tab bar at the top of the window with an address row under it, and no toolbar.
+    package var explorerTabs: Bool {
+        get { defaults.bool(forKey: Key.explorerTabs) }
+        set { defaults.set(newValue, forKey: Key.explorerTabs); notifications.post(name: .windowLayoutChanged, object: self) }
+    }
+
+    /// Tabs above the address bar showed the tab bar of a single tab, so turning it off hides that tab bar again.
+    package var tabBarShownByLayout: Bool {
+        get { defaults.bool(forKey: Key.tabBarShownByLayout) }
+        set { defaults.set(newValue, forKey: Key.tabBarShownByLayout) }
+    }
+
     /// In Dual Pane, each pane shows its own path bar instead of just the folder name.
     package var dualPaneAddressBars: Bool {
         get { defaults.bool(forKey: Key.dualPaneAddressBars) }
@@ -152,6 +180,13 @@ package final class Prefs: PreviewTextSettings {
     package var returnOpens: Bool {
         get { defaults.bool(forKey: Key.returnOpens) }
         set { defaults.set(newValue, forKey: Key.returnOpens) }
+    }
+
+    /// Coming from Windows: Return opens, F2 renames, ⌦ moves to the Trash and ⌫ goes back, as in File Explorer.
+    /// Return's own setting is kept, and applies again once this is off.
+    package var windowsKeyboard: Bool {
+        get { defaults.bool(forKey: Key.windowsKeyboard) }
+        set { defaults.set(newValue, forKey: Key.windowsKeyboard); notifications.post(name: .windowsKeyboardChanged, object: self) }
     }
 
     /// Bundle id of the terminal for "Open in Terminal"; nil picks the first installed of Ghostty, iTerm, Warp, Terminal.

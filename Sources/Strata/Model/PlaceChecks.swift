@@ -66,7 +66,7 @@ extension Notification.Name {
             readAgain = true
             return
         }
-        let paths = (preferences.favoritePaths ?? []) + Places.defaultCandidates.map(\.path)
+        let paths = (preferences.favoritePaths ?? []) + Places.defaultCandidates.map(\.path) + Places.thisMacCandidates.map(\.path)
             + visits.ranked().prefix(400).map(\.path)
         let read = read
         task = Task { [weak self] in
