@@ -52,7 +52,7 @@ jobs:
   build:
     runs-on: macos-26
     # Normal, optimized and sanitizer suites all finish before signing and notarization begin.
-    timeout-minutes: 120
+    timeout-minutes: 180
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
