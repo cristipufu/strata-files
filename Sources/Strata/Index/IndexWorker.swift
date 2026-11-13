@@ -26,6 +26,7 @@ nonisolated package struct IndexConfig: Sendable {
 nonisolated package final class IndexWorker: @unchecked Sendable {
     package typealias DirectoryRead = @Sendable (String, inout [ScannedItem], inout [UInt8], UnsafeMutableRawBufferPointer, () -> Bool) -> Int32
     package typealias ItemRead = @Sendable (String, inout [ScannedItem], inout [UInt8]) -> Int32
+    package typealias Schedule = @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void
 
     private let log = Logger(subsystem: "dev.strata.app", category: "index")
     package enum Phase: Sendable, Equatable {
@@ -48,6 +49,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var rescanNeeded = false
     private var saveScheduled = false
     private var hotFolders: IndexHotFolders
+    private var waitingTrees = IndexWaitingTrees()
+    private var treesTimer: (id: UUID, deadline: UInt64)?
+    private var lossRecovery = IndexLossRecovery()
+    private var recoveryTimer: (id: UUID, deadline: UInt64)?
+    private let schedule: Schedule?
     package static let defaultSaveInterval: TimeInterval = 1800
     package static let defaultFastFlushInterval: TimeInterval = 0.25
     package static let defaultDeferredFlushInterval: TimeInterval = 2.0
@@ -92,7 +98,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                  now: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
                  readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
-                 startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil) {
+                 startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
+                 schedule: Schedule? = nil) {
         self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
@@ -101,6 +108,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         self.readDirectory = readDirectory
         self.readItem = readItem
         self.startEvents = startEvents
+        self.schedule = schedule
     }
 
     deinit {
@@ -152,10 +160,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     /// Writes any pending changes without a quit deadline (used before sleep).
-    package func saveWhenIdle(completion: @escaping @Sendable () -> Void = {}) {
+    package func saveWhenIdle(includeDeferred: Bool = true, completion: @escaping @Sendable () -> Void = {}) {
         queue.async {
             self.compactIfNeeded()
-            self.save()
+            self.save(includeDeferred: includeDeferred)
             completion()
         }
     }
@@ -188,10 +196,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func boot(_ config: IndexConfig) {
         self.config = config
-        pending.removeAll()
-        hotFolders.removeAll()
-        rescanNeeded = false
-        interrupted = false
+        discardQueuedWork()
         publish(.loading)
         let loadResult = Result { try IndexPersistence.load(from: config.file, storage: config.storage) }
         if case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots {
@@ -228,12 +233,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let startEventID = FSEventsStream.currentEventID
         lastEventID = startEventID
         pendingEventID = startEventID
-        pending.removeAll()
-        hotFolders.removeAll()
-        rescanNeeded = false
-        interrupted = false
+        discardQueuedWork()
         // Start listening from `startEventID` before scanning so changes during the scan buffer in `incoming`
-        // instead of replaying from disk afterwards; a drop in this window refreshes folders rather than starting a second scan.
+        // instead of replaying from disk afterwards; a loss in this window is reported and waits like any later one.
         startWatching(config, canRebuildOnDrop: false)
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
@@ -268,6 +270,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         dirty = true
         lastEventID = startEventID
         savedExcluded = config.excluded
+        // A finished scan answers a loss that was waiting; one that quitting cut short leaves it waiting.
+        lossRecovery.reset()
+        recoveryTimer = nil
         onStore?(fresh)
         save()
         if watchesChanges, !watchingFailed { publish(.updating) }
@@ -291,8 +296,16 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
+    private func discardQueuedWork() {
+        pending.removeAll()
+        hotFolders.removeAll()
+        waitingTrees.removeAll()
+        rescanNeeded = false
+        interrupted = false
+    }
+
     private func finishUpdates() {
-        guard pending.isEmpty, !rescanNeeded, !interrupted else { return }
+        guard pending.isEmpty, !rescanNeeded, !interrupted, !lossRecovery.isWaiting else { return }
         if watchingFailed { publish(.unavailable); return }
         guard !awaitingHistory else { return }
         publish(.ready)
@@ -303,6 +316,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let rootsChanged = self.config.map { $0.roots != config.roots } ?? true
         self.config = config
         incoming.exclude(config.excluded)
+        waitingTrees.exclude(config.excluded)
         guard let store else { return }
         if rootsChanged {
             log.info("Roots changed, full scan")
@@ -341,8 +355,11 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func save(includeDeferred: Bool = true) {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
-        // at the next launch and rebuilds then.
-        guard !rescanNeeded else { return }
+        // at the next launch and rebuilds then. One that lost events is the same until it has recovered.
+        guard !rescanNeeded, !lossRecovery.isWaiting else { return }
+        // Trees still waiting for quiet stay waiting: the checkpoint is held behind them, so the next launch replays
+        // their changes, and quit's deadline goes to the folders people look at.
+        releaseDueTrees()
         // Apply events already received first, as far as quit's deadline allows. If catching up stops partway through
         // a batch, `lastEventID` stays at the previous completed batch while keeping the folder updates already made,
         // so the next launch replays the interrupted batch without redoing the rest.
@@ -365,54 +382,96 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func receive(_ batch: [FSEventsStream.Event], generation: UUID?) {
         guard incoming.append(batch, generation: generation) else { return }
-        queue.async {
-            guard let delivery = self.incoming.take(), delivery.generation == self.eventGeneration else { return }
-            self.pendingEventID = max(self.pendingEventID, delivery.lastID)
-            if delivery.historyDone { self.awaitingHistory = false }
-            if let event = delivery.invalidation {
-                if event.invalidatesIndex {
-                    self.log.info("Event invalidates index: \(event.path) flags \(event.flags)")
-                } else if event.droppedEvents {
-                    self.log.info("Dropped events during replay (\(event.path) flags \(event.flags)); rebuilding index")
-                } else {
-                    self.log.info("Replay exceeded event limit at \(event.id); rebuilding index")
-                }
-                self.rescanNeeded = true
-            }
-            if self.rescanNeeded {
-                self.publish(.updating)
-                self.flush(includeDeferred: true)
-                return
-            }
-            let nowNs = self.now()
-            self.hotFolders.prune(now: nowNs)
-            var insertedFolder = false
-            var hasFastFolder = false
-            for (path, refresh) in delivery.folders {
-                if let config = self.config, self.isExcluded(path, config) { continue }
-                self.pending.insert(path, refresh, eventID: delivery.folderEventIDs[path] ?? delivery.lastID)
-                insertedFolder = true
-                if !self.isHot(path: path, now: nowNs) {
-                    hasFastFolder = true
-                }
-            }
-            if insertedFolder, !self.pastQuitDeadline {
-                self.interrupted = false
-            }
-            if self.pending.count > IndexEventInbox.defaultFolderLimit {
-                self.pending.collapse(roots: self.config?.roots ?? [], limit: IndexEventInbox.defaultFolderLimit)
-            }
-            if !self.pending.isEmpty {
-                self.publish(.updating)
-                if hasFastFolder {
-                    self.scheduleFlush()
-                } else {
-                    self.scheduleDeferredFlush()
-                }
+        queue.async { self.receivePendingEvents() }
+    }
+
+    private func receivePendingEvents() {
+        guard let delivery = incoming.take(), delivery.generation == eventGeneration else { return }
+        pendingEventID = max(pendingEventID, delivery.lastID)
+        if delivery.historyDone { awaitingHistory = false }
+        if let event = delivery.invalidation {
+            if event.invalidatesIndex {
+                log.info("Event invalidates index: \(event.path) flags \(event.flags)")
+            } else if event.droppedEvents {
+                log.info("Filesystem events dropped (\(event.path) flags \(event.flags)); rebuilding index")
             } else {
-                if !self.interrupted { self.lastEventID = max(self.lastEventID, self.pendingEventID) }
-                self.finishUpdates()
+                log.info("Replay exceeded event limit at \(event.id); rebuilding index")
             }
+            rescanNeeded = true
+        }
+        if rescanNeeded {
+            publish(.updating)
+            flush(includeDeferred: true)
+            return
+        }
+        if delivery.lostEvents { waitToRecoverLostEvents() }
+        queueRefreshes(delivery)
+    }
+
+    private func waitToRecoverLostEvents() {
+        if !lossRecovery.isWaiting {
+            log.info("Filesystem events were lost; recovering once the reports stop")
+            // The rebuild that is coming reads every tree, so the ones waiting for quiet need no read of their own.
+            waitingTrees.removeAll()
+        }
+        lossRecovery.reported(now: now())
+        publish(.updating)
+        scheduleRecovery()
+    }
+
+    private func scheduleRecovery() {
+        let tick = now()
+        guard !pastQuitDeadline, let interval = lossRecovery.delayNanoseconds(now: tick),
+              let id = Self.armed(&recoveryTimer, interval: interval, tick: tick) else { return }
+        after(interval) { [weak self] in self?.recoverLostEvents(id: id) }
+    }
+
+    private func recoverLostEvents(id: UUID) {
+        guard recoveryTimer?.id == id else { return }
+        recoveryTimer = nil
+        guard lossRecovery.delayNanoseconds(now: now()) == 0 else { scheduleRecovery(); return }
+        rescanNeeded = true
+        flush(includeDeferred: true)
+    }
+
+    private func queueRefreshes(_ delivery: IndexEventInbox.Delivery) {
+        let nowNs = now()
+        hotFolders.prune(now: nowNs)
+        var queued = false
+        var hasFastFolder = false
+        let trees = waitingTreeRoots(for: delivery.folders.keys)
+        for (path, refresh) in delivery.folders {
+            if let config, isExcluded(path, config) { continue }
+            let eventID = delivery.folderEventIDs[path] ?? delivery.lastID
+            if let root = trees[path] {
+                guard !lossRecovery.isWaiting else { continue }
+                waitingTrees.insert(.init(path: path, refresh: refresh, firstEventID: eventID), root: root, now: nowNs)
+                queued = true
+                continue
+            }
+            pending.insert(path, refresh, eventID: eventID)
+            queued = true
+            if !isHot(path: path, now: nowNs) {
+                hasFastFolder = true
+            }
+        }
+        if queued, !pastQuitDeadline {
+            interrupted = false
+        }
+        if pending.count > IndexEventInbox.defaultFolderLimit {
+            pending.collapse(roots: config?.roots ?? [], limit: IndexEventInbox.defaultFolderLimit)
+        }
+        scheduleWaitingTrees()
+        if !pending.isEmpty {
+            publish(.updating)
+            if hasFastFolder {
+                scheduleFlush()
+            } else {
+                scheduleDeferredFlush()
+            }
+        } else {
+            if !interrupted { advanceCheckpoint(to: pendingEventID) }
+            finishUpdates()
         }
     }
 
@@ -441,7 +500,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func flush(includeDeferred: Bool = false) {
-        defer { finishUpdates() }
+        defer {
+            scheduleWaitingTrees()
+            finishUpdates()
+        }
         if rescanNeeded {
             pending.removeAll()
             // Quitting: no full scan now (the next launch replays the invalidating event and rescans).
@@ -456,10 +518,12 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let nowNs = now()
         hotFolders.prune(now: nowNs)
         let entries = pending.sortedEntries()
-        var targetEventID = pendingEventID
+        let targetEventID = pendingEventID
         pending.removeAll()
         var pass = IndexRefreshPass()
         let reconciler = self.reconciler
+        let wholesale = store.read { storage in Set(config.noise.compactMap { storage.lookup($0) }) }
+        var setAside: [IndexRefreshTree.Entry] = []
         var deferredDeep: Set<String> = []
         var changed = false
         for (index, entry) in entries.enumerated() {
@@ -477,30 +541,31 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                 continue
             }
             // The folder may be new: refresh the nearest ancestor we already know about.
-            let resolved: (id: Int32, path: String)? = store.read { store in
-                var target = path
-                var id = store.lookup(target)
-                while id == nil, target.count > 1 {
-                    target = IndexRefresh.splitPath(target).parent
-                    id = store.lookup(target)
-                }
-                guard let id, store.isDirectory(id) else { return nil }
-                return (id, target)
+            let resolved: (id: Int32, path: String, inWaitingTree: Bool)? = store.read { storage in
+                guard let nearest = storage.nearestFolder(to: path) else { return nil }
+                return (nearest.id, nearest.path, storage.waitingTree(holding: nearest.id, wholesale: wholesale) != nil)
             }
-            guard let (id, target) = resolved else { continue }
+            guard let (id, target, inWaitingTree) = resolved else { continue }
             if pass.covers(target) { continue }
             if !includeDeferred, target != path, !pass.hasListedFull(id), isHot(path: target, now: nowNs) || Self.isCovered(target, by: deferredDeep) {
                 pending.insert(path, refresh, eventID: entry.firstEventID)
                 if refresh.isDeep { deferredDeep.insert(path) }
                 continue
             }
-            if reconciler.refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, in: store, config: config, pass: &pass) { changed = true }
+            let metBefore = pass.setAside.count
+            // A tree released for reading is read whole; any other deep read leaves the trees below it waiting.
+            if reconciler.refreshFolder(id, target, deep: refresh.isDeep && target == path,
+                                        names: target == path ? refresh.names : nil, settingTreesAside: !inWaitingTree,
+                                        in: store, config: config, pass: &pass) { changed = true }
+            setAside += pass.setAside[metBefore...].map {
+                .init(path: $0, refresh: .directory(deep: true), firstEventID: entry.firstEventID)
+            }
             if pass.interrupted {
                 restoreUnfinished(entries[index...])
                 break
             }
             if !pass.hasFailed(target) {
-                hotFolders.markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: nowNs)
+                hotFolders.markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: now())
             }
         }
         let interrupted = pass.interrupted
@@ -510,11 +575,16 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             rebuild()
             return
         }
-        if let minDeferredID = pending.minEventID {
-            targetEventID = min(targetEventID, minDeferredID > 0 ? minDeferredID - 1 : 0)
+        // A tree a deep read left waiting waits like any other, unless this pass went on to read it whole or a
+        // rebuild is coming that will.
+        if !lossRecovery.isWaiting {
+            let tick = now()
+            for entry in setAside where !pass.covers(entry.path) {
+                waitingTrees.insert(entry, root: entry.path, now: tick)
+            }
         }
         if !interrupted {
-            lastEventID = max(lastEventID, targetEventID)
+            advanceCheckpoint(to: targetEventID)
         }
         if !interrupted, !pending.isEmpty {
             scheduleDeferredFlush()
@@ -527,6 +597,81 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         for entry in remaining {
             pending.insert(entry.path, entry.refresh, eventID: entry.firstEventID)
         }
+    }
+
+    /// The tree each path waits in, for the paths that lie in one.
+    private func waitingTreeRoots(for paths: some Collection<String>) -> [String: String] {
+        guard let store, !paths.isEmpty else { return [:] }
+        let configured = config?.noise ?? []
+        return store.read { storage in
+            let wholesale = Set(configured.compactMap { storage.lookup($0) })
+            var roots: [String: String] = [:]
+            // A burst touches many folders under few parents, and everything below a folder inside a tree is in it.
+            var insideTree: [String: String] = [:]
+            for path in paths {
+                let parent = IndexRefresh.splitPath(path).parent
+                if let root = insideTree[parent] {
+                    roots[path] = root
+                    continue
+                }
+                guard let nearest = storage.nearestFolder(to: path),
+                      let tree = storage.waitingTree(holding: nearest.id, wholesale: wholesale) else { continue }
+                let root = storage.path(of: tree)
+                roots[path] = root
+                if root != path { insideTree[parent] = root }
+            }
+            return roots
+        }
+    }
+
+    private func advanceCheckpoint(to eventID: UInt64) {
+        let firstPending = [pending.minEventID, waitingTrees.minEventID].compactMap { $0 }.min()
+        let completed = firstPending.map { min(eventID, $0 - 1) } ?? eventID
+        lastEventID = max(lastEventID, completed)
+    }
+
+    /// Trees whose wait is over join the pending queue, which then holds the checkpoint behind them.
+    private func releaseDueTrees() {
+        let due = waitingTrees.takeDue(now: now())
+        guard !due.isEmpty else { return }
+        for entry in due {
+            pending.insert(entry.path, entry.refresh, eventID: entry.firstEventID)
+        }
+        publish(.updating)
+    }
+
+    private func scheduleWaitingTrees() {
+        let tick = now()
+        guard !pastQuitDeadline, let interval = waitingTrees.delayNanoseconds(now: tick),
+              let id = Self.armed(&treesTimer, interval: interval, tick: tick) else { return }
+        after(interval) { [weak self] in self?.readDueTrees(id: id) }
+    }
+
+    /// Arms `timer` to fire `interval` after `tick` unless it already fires by then; the new timer's identity if so.
+    private static func armed(_ timer: inout (id: UUID, deadline: UInt64)?, interval: UInt64, tick: UInt64) -> UUID? {
+        let (due, overflow) = tick.addingReportingOverflow(interval)
+        let deadline = overflow ? UInt64.max : due
+        if let timer, timer.deadline <= deadline { return nil }
+        let id = UUID()
+        timer = (id, deadline)
+        return id
+    }
+
+    /// Timers run at the queue's own priority, like the rest of the index's background work.
+    private func after(_ interval: UInt64, _ work: @escaping @Sendable () -> Void) {
+        let delay = Double(interval) / 1_000_000_000
+        if let schedule {
+            schedule(delay) { [weak self] in self?.queue.async(execute: work) }
+        } else {
+            queue.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+    }
+
+    private func readDueTrees(id: UUID) {
+        guard treesTimer?.id == id else { return }
+        treesTimer = nil
+        releaseDueTrees()
+        flush()
     }
 
     private func isHot(path: String, now: UInt64) -> Bool { hotFolders.isHot(path: path, now: now) }

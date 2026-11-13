@@ -8,6 +8,9 @@ import StrataModel
 nonisolated package struct IndexRefreshPass {
     package typealias Folder = (id: Int32, path: String)
 
+    /// The trees that wait for quiet which deep reads in this pass left to their own wait, in the order met.
+    package var setAside: [String] = []
+
     package var changes = IndexChanges()
     package var nonNoiseChanged = false
     package var interrupted = false
@@ -101,7 +104,9 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
     private static let prefetchBatchLimit = 256
 
     package func refreshFolder(_ id: Int32, _ path: String, deep: Bool, names: Set<String>? = nil,
+                               settingTreesAside: Bool = false,
                                in store: IndexStore, config: IndexConfig, pass: inout IndexRefreshPass) -> Bool {
+        var readAroundATree = false
         var work: [(folder: Folder, deep: Bool)] = [((id, path), deep)]
         var prefetched: [Int32: PrefetchedFolder] = [:]
         var workerBuffers: [BulkDirectoryReader.ReadBuffer] = []
@@ -164,7 +169,12 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
                     pass.failed(folder)
                 }
             }
-            if next.deep { work.append(contentsOf: pass.descend(folder.id).map { ($0, true) }) }
+            if next.deep {
+                let children = pass.descend(folder.id)
+                let toRead = settingTreesAside ? settingAsideTrees(among: children, store: store, config: config, pass: &pass) : children
+                if toRead.count != children.count { readAroundATree = true }
+                work.append(contentsOf: toRead.map { ($0, true) })
+            }
             if !prefetched.isEmpty, inFlightFolders.isEmpty, !work.isEmpty, !pass.interrupted, !shouldStopRefresh() {
                 startBackgroundPrefetch(from: work, rootID: id, rootNames: names, pass: pass, prefetched: prefetched,
                                         buffers: &backgroundBuffers, group: inFlightGroup,
@@ -173,8 +183,22 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
                                         inFlightCancelled: &inFlightCancelled)
             }
         }
-        if deep, !pass.interrupted { pass.finishedDeepRead(path) }
+        if deep, !pass.interrupted, !readAroundATree { pass.finishedDeepRead(path) }
         return changed
+    }
+
+    /// A deep read leaves the trees that wait for quiet to their own wait. They were read before, so their totals
+    /// stay as they were; a folder this pass found has none yet and is never among `folders`.
+    private func settingAsideTrees(among folders: [Folder], store: IndexStore, config: IndexConfig,
+                                   pass: inout IndexRefreshPass) -> [Folder] {
+        guard !folders.isEmpty else { return folders }
+        let waiting = store.read { storage in
+            let wholesale = Set(config.noise.compactMap { storage.lookup($0) })
+            return Set(folders.filter { storage.waitsAsTree($0.id, wholesale: wholesale) }.map(\.id))
+        }
+        guard !waiting.isEmpty else { return folders }
+        pass.setAside += folders.filter { waiting.contains($0.id) }.map(\.path)
+        return folders.filter { !waiting.contains($0.id) }
     }
 
     private func startBackgroundPrefetch(from work: [(folder: Folder, deep: Bool)],

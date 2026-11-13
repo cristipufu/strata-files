@@ -943,8 +943,9 @@ struct IndexWorkerTests {
         worker.receive([.init(path: tree.url("Library/Caches/cache.db").path,
                               flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
                               id: initialHeader.eventID + 1)])
-        let firstDeadline = ContinuousClock.now + .seconds(15)
-        while notified.withLock({ $0 }) == 0, ContinuousClock.now < firstDeadline {
+        // Match Dispatch timers: system sleep must not consume the polling deadline.
+        let firstDeadline = SuspendingClock.now + .seconds(15)
+        while notified.withLock({ $0 }) == 0, SuspendingClock.now < firstDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(notified.withLock { $0 } == 1)
@@ -962,8 +963,8 @@ struct IndexWorkerTests {
         worker.receive([.init(path: tree.url("Documents/note.txt").path,
                               flags: FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile),
                               id: initialHeader.eventID + 2)])
-        let saveDeadline = ContinuousClock.now + .seconds(15)
-        while (try? Data(contentsOf: config.file)) == afterIdleSave, ContinuousClock.now < saveDeadline {
+        let saveDeadline = SuspendingClock.now + .seconds(15)
+        while (try? Data(contentsOf: config.file)) == afterIdleSave, SuspendingClock.now < saveDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         let (loadedAfterUser, headerAfterUser) = try IndexPersistence.load(from: config.file, storage: .shared)
@@ -1226,35 +1227,28 @@ struct IndexWorkerTests {
         _ = try await start(tree)
         try tree.add(["a/added.txt", "b/new.txt"])
 
-        let scans = OSAllocatedUnfairLock(initialState: 0)
-        let phases = OSAllocatedUnfairLock(initialState: [IndexWorker.Phase]())
-        let fixture = try await start(tree, startEvents: { _, _ in true }, onPhase: { phase in
-            phases.withLock { history in
-                let wasScanning: Bool
-                if case .scanning = history.last { wasScanning = true } else { wasScanning = false }
-                if case .scanning = phase, !wasScanning { scans.withLock { $0 += 1 } }
-                history.append(phase)
-            }
-        })
-        #expect(scans.withLock { $0 } == 0)
+        let phases = IndexPhaseLog()
+        let fixture = try await start(tree, startEvents: { _, _ in true }, onPhase: phases.record)
+        #expect(phases.scans == 0)
 
         let dropFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped)
         fixture.worker.receive([.init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 10)])
         await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
 
-        #expect(scans.withLock { $0 } == 1)
+        #expect(phases.scans == 1)
         let (loaded, _) = try IndexPersistence.load(from: fixture.config.file, storage: .shared)
         #expect(loaded.read { $0.lookup(tree.url("a/added.txt").path) } != nil)
         #expect(loaded.read { $0.lookup(tree.url("b/new.txt").path) } != nil)
 
-        // A drop during the post-rebuild catch-up window refreshes folders rather than starting a second full scan.
+        // A loss during the catch-up after that rebuild waits for the reports to stop: no second scan at once, and
+        // the index is not called current meanwhile.
         fixture.worker.receive([
             .init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 9),
             .init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: UInt64.max - 8),
         ])
         await save(fixture.worker)
-        #expect(scans.withLock { $0 } == 1)
-        #expect(phases.withLock { $0.last } == .ready)
+        #expect(phases.scans == 1)
+        #expect(phases.last == .updating)
         #expect(tree.text("a/one.txt") == "a/one.txt")
     }
 

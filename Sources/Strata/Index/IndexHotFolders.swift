@@ -16,12 +16,7 @@ nonisolated package struct IndexHotFolders: Sendable {
         let deferred = deferredInterval.isFinite ? max(0, deferredInterval) : 0
         self.fastInterval = fast
         self.deferredInterval = deferred
-        if deferred > fast, deferred > 0 {
-            let scaled = deferred * 1_000_000_000
-            windowNanoseconds = scaled < Double(UInt64.max) ? UInt64(scaled) : UInt64.max
-        } else {
-            windowNanoseconds = 0
-        }
+        windowNanoseconds = deferred > fast ? IndexQuietWait.nanoseconds(deferred) : 0
     }
 
     package mutating func removeAll() {
