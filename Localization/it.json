@@ -249,6 +249,10 @@
       "one": "%lld modificato",
       "other": "%lld modificati"
     },
+    "%lld more folders weren’t added.": {
+      "one": "%lld altra cartella non è stata aggiunta.",
+      "other": "Altre %lld cartelle non sono state aggiunte."
+    },
     "%lld moves": {
       "one": "%lld spostamento",
       "other": "%lld spostamenti"
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "esattamente %lld px di altezza",
     "exactly %lld px wide": "esattamente %lld px di larghezza",
+    "Excluded folders": "Cartelle escluse",
     "Existing": "Esistente",
     "Expanded": "Espanso",
     "Expires": "Scade il",
@@ -901,7 +906,6 @@
     "Folders": "Cartelle",
     "folders": "cartelle",
     "Folders in %@": "Cartelle in %@",
-    "Folders not indexed": "Cartelle non indicizzate",
     "fonts": "font",
     "For this file. Change All… sets it for every document like it.": "Per questo file. “Modifica tutto…” applica la scelta a tutti i documenti di questo tipo.",
     "For this file. Change All… sets it for every “%@”.": "Per questo file. “Modifica tutto…” applica la scelta a tutti i documenti di tipo “%@”.",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Ricerca: %@",
     "searched directly, indexed folders from the index": "cercato direttamente, cartelle indicizzate dall’indice",
     "Searches": "Ricerche",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Le ricerche saltano queste cartelle e tutto ciò che contengono, e l’indice libera la memoria che occupavano. Rimuovendo una cartella, viene indicizzata di nuovo.",
     "Searching “%@” directly… %lld items": {
       "one": "Ricerca diretta in “%@”… %lld elemento",
       "other": "Ricerca diretta in “%@”… %lld elementi"
@@ -1753,6 +1756,7 @@
       "one": "Le cartelle coincidono (%lld elemento confrontato)",
       "other": "Le cartelle coincidono (%lld elementi confrontati)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "L’indice salta queste cartelle e tutto ciò che contengono: le ricerche per nome e le dimensioni delle cartelle non le includono, e la loro memoria viene liberata. Rimuovendo una cartella, viene indicizzata di nuovo.",
     "The item couldn’t be found": "Impossibile trovare l’elemento",
     "The items have moved or been changed since.": "Nel frattempo gli elementi sono stati spostati o modificati.",
     "The name has invisible characters": "Il nome contiene caratteri invisibili",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "“%@” contiene %@.",
     "“%@” holds at least %@.": "“%@” contiene almeno %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contiene solo un link, quindi non è stato estratto.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” contiene la tua cartella Inizio o Applicazioni, quindi non può essere esclusa.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "“%@” contiene la tua cartella Inizio o Applicazioni, quindi non può essere esclusa.",
     "“%@” in %@": "“%@” in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Impossibile verificare “%@” nell’archivio, quindi non è stato estratto nulla.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Impossibile scrivere “%@” dell’archivio (%@), quindi non è stato estratto nulla.",
     "“%@” is a file, not a folder": "“%@” è un file, non una cartella",
+    "“%@” is already excluded, or is inside a folder that is.": "“%@” è già esclusa, o si trova in una cartella esclusa.",
     "“%@” is already in the Trash.": "“%@” è già nel Cestino.",
-    "“%@” is already left out, or is inside a folder that is.": "“%@” è già esclusa, o si trova in una cartella esclusa.",
     "“%@” is already on “%@”": "“%@” è già su “%@”",
     "“%@” is already there.": "“%@” esiste già.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” è sia un file sia una cartella nell’archivio, quindi non è stato estratto nulla.",
@@ -2062,7 +2066,7 @@
     "“%@” is empty.": "“%@” è vuoto.",
     "“%@” is new": "“%@” è nuovo",
     "“%@” is on a read-only disk.": "“%@” si trova su un disco di sola lettura.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” è una delle cartelle coperte dall’indice. Escludi invece le cartelle al suo interno.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "“%@” è una delle cartelle coperte dall’indice. Escludi invece le cartelle al suo interno.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” è protetto da password. Aprilo con Utility Compressione per inserire la password.",
     "“%@” is protected by macOS.": "“%@” è protetto da macOS.",
     "“%@” isn’t a valid name": "“%@” non è un nome valido",

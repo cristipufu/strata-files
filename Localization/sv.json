@@ -249,6 +249,10 @@
       "one": "%lld ändrad",
       "other": "%lld ändrade"
     },
+    "%lld more folders weren’t added.": {
+      "one": "Ytterligare %lld mapp lades inte till.",
+      "other": "Ytterligare %lld mappar lades inte till."
+    },
     "%lld moves": {
       "one": "%lld flytt",
       "other": "%lld flyttar"
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "exakt %lld px hög",
     "exactly %lld px wide": "exakt %lld px bred",
+    "Excluded folders": "Utelämnade mappar",
     "Existing": "Befintlig",
     "Expanded": "Utfälld",
     "Expires": "Utgår",
@@ -901,7 +906,6 @@
     "Folders": "Mappar",
     "folders": "mappar",
     "Folders in %@": "Mappar i %@",
-    "Folders not indexed": "Mappar som inte indexeras",
     "fonts": "typsnitt",
     "For this file. Change All… sets it for every document like it.": "Gäller den här filen. Ändra alla… gör samma val för alla dokument av samma typ.",
     "For this file. Change All… sets it for every “%@”.": "Gäller den här filen. Ändra alla… gör samma val för alla dokument av typen ”%@”.",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Sök: %@",
     "searched directly, indexed folders from the index": "söktes direkt, indexerade mappar från indexet",
     "Searches": "Sökningar",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Sökningar hoppar över de här mapparna och allt i dem, och indexet frigör minnet de tog upp. Tar du bort en mapp indexeras den igen.",
     "Searching “%@” directly… %lld items": {
       "one": "Söker i ”%@” direkt… %lld objekt",
       "other": "Söker i ”%@” direkt… %lld objekt"
@@ -1753,6 +1756,7 @@
       "one": "Mapparna matchar (%lld objekt jämfört)",
       "other": "Mapparna matchar (%lld objekt jämförda)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indexet hoppar över de här mapparna och allt i dem: sökningar på namn och mappstorlekar utelämnar dem, och deras minne frigörs. Tar du bort en mapp indexeras den igen.",
     "The item couldn’t be found": "Objektet kunde inte hittas",
     "The items have moved or been changed since.": "Objekten har flyttats eller ändrats sedan dess.",
     "The name has invisible characters": "Namnet har osynliga tecken",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "”%@” innehåller %@.",
     "“%@” holds at least %@.": "”%@” innehåller minst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "”%@” innehåller bara en länk, så det packades inte upp.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "”%@” innehåller din hemmapp eller Program, så den kan inte utelämnas.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "”%@” innehåller din hemmapp eller Program, så den kan inte utelämnas.",
     "“%@” in %@": "”%@” i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "”%@” i arkivet kunde inte kontrolleras, så inget packades upp.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "”%@” i arkivet kunde inte skrivas (%@), så inget packades upp.",
     "“%@” is a file, not a folder": "”%@” är en fil, inte en mapp",
+    "“%@” is already excluded, or is inside a folder that is.": "”%@” är redan utelämnad eller ligger i en mapp som är det.",
     "“%@” is already in the Trash.": "”%@” ligger redan i papperskorgen.",
-    "“%@” is already left out, or is inside a folder that is.": "”%@” är redan utelämnad eller ligger i en mapp som är det.",
     "“%@” is already on “%@”": "”%@” finns redan på ”%@”",
     "“%@” is already there.": "”%@” finns redan.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "”%@” är både en fil och en mapp i arkivet, så inget packades upp.",
@@ -2062,7 +2066,7 @@
     "“%@” is empty.": "”%@” är tomt.",
     "“%@” is new": "”%@” är ny",
     "“%@” is on a read-only disk.": "”%@” finns på en skrivskyddad skiva.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "”%@” är en av mapparna som indexet omfattar. Utelämna i stället mappar inuti den.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "”%@” är en av mapparna som indexet omfattar. Utelämna i stället mappar inuti den.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "”%@” är lösenordsskyddat. Öppna det med Arkivverktyg för att ange lösenordet.",
     "“%@” is protected by macOS.": "”%@” skyddas av macOS.",
     "“%@” isn’t a valid name": "”%@” är inte ett giltigt namn",

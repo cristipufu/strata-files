@@ -92,10 +92,6 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
         return true
     }
 
-    private func isExcluded(_ path: String, _ config: IndexConfig) -> Bool {
-        IndexRefresh.isExcluded(path, in: config.excluded)
-    }
-
     private struct PrefetchedFolder: Sendable {
         let error: Int32
         let listing: FolderListing?
@@ -513,7 +509,7 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
     private func update(folder old: Int32, at path: String, to item: ScannedItem, in store: inout IndexStore.Storage,
                         config: IndexConfig, changes: inout FolderChanges) {
         // Excluded folders are placeholders; their activity must not dirty a coalesced parent refresh.
-        let excluded = isExcluded(path, config)
+        let excluded = config.leavesOut(path)
         if !excluded, store.mtime[Int(old)] != item.mtime {
             changes.record(path, descendants: false, hiddenOrNoise: store.isHiddenOrNoise(old),
                            noise: store.isNoise(old), affectsCapacity: false)
@@ -545,7 +541,7 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
             if item.isDirectory && !item.isMountPoint {
                 let childPath = listing.prefix + listing.name(of: item)
                 if config.noise.contains(childPath) { store.flags[Int(childID)] |= IndexStore.Flag.noise }
-                if !isExcluded(childPath, config) { changes.newFolders.append((childID, childPath)) }
+                if !config.leavesOut(childPath) { changes.newFolders.append((childID, childPath)) }
                 changes.record(childPath, hiddenOrNoise: store.isHiddenOrNoise(childID),
                                noise: store.isNoise(childID))
             } else if changes.needsPath {

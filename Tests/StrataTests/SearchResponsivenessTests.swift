@@ -78,7 +78,8 @@ import Testing
     @Test func settingsAndFolderMetadataNeverWaitForAnIndexWriter() async throws {
         let environment = try IndependentEnvironment()
         let store = await Self.store(count: 3)
-        let index = FileIndex(storage: environment.storage, copies: environment.services.copies, store: store)
+        let index = FileIndex(storage: environment.storage, copies: environment.services.copies,
+                              preferences: environment.preferences, store: store)
         #expect(index.itemCount == 4)
         #expect(index.folderSize(URL(fileURLWithPath: "/synthetic"))?.files == 3)
         let release = DispatchSemaphore(value: 0)

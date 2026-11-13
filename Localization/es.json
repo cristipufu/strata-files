@@ -146,8 +146,8 @@
       "other": "%lld carpetas necesitan Acceso total al disco para poder medirse"
     },
     "%lld folders weren’t added: the list is full. Remove a folder first.": {
-      "one": "%lld carpeta no se añadió: la lista está llena. Quita antes una carpeta.",
-      "other": "%lld carpetas no se añadieron: la lista está llena. Quita antes una carpeta."
+      "one": "%lld carpeta no se añadió: la lista está llena. Elimina antes una carpeta de la lista.",
+      "other": "%lld carpetas no se añadieron: la lista está llena. Elimina antes una carpeta de la lista."
     },
     "%lld glyphs": {
       "one": "%lld glifo",
@@ -248,6 +248,10 @@
     "%lld modified": {
       "one": "%lld modificado",
       "other": "%lld modificados"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "No se añadió %lld carpeta más.",
+      "other": "No se añadieron %lld carpetas más."
     },
     "%lld moves": {
       "one": "%lld traslado",
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "exactamente %lld px de alto",
     "exactly %lld px wide": "exactamente %lld px de ancho",
+    "Excluded folders": "Carpetas excluidas",
     "Existing": "Existente",
     "Expanded": "Expandido",
     "Expires": "Caduca",
@@ -901,7 +906,6 @@
     "Folders": "Carpetas",
     "folders": "carpetas",
     "Folders in %@": "Carpetas en %@",
-    "Folders not indexed": "Carpetas no indexadas",
     "fonts": "tipos de letra",
     "For this file. Change All… sets it for every document like it.": "Para este archivo. «Cambiar todo…» aplica la elección a todos los documentos de este tipo.",
     "For this file. Change All… sets it for every “%@”.": "Para este archivo. «Cambiar todo…» aplica la elección a todos los documentos de tipo «%@».",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Búsqueda: %@",
     "searched directly, indexed folders from the index": "búsqueda directa; carpetas indexadas, desde el índice",
     "Searches": "Búsquedas",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Las búsquedas omiten estas carpetas y todo su contenido, y el índice libera la memoria que ocupaban. Al quitar una carpeta, se vuelve a indexar.",
     "Searching “%@” directly… %lld items": {
       "one": "Buscando directamente en «%@»… %lld ítem",
       "other": "Buscando directamente en «%@»… %lld ítems"
@@ -1753,6 +1756,7 @@
       "one": "Las carpetas coinciden (%lld ítem comparado)",
       "other": "Las carpetas coinciden (%lld ítems comparados)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "El índice omite estas carpetas y todo su contenido: las búsquedas por nombre y los tamaños de carpeta no las incluyen, y se libera su memoria. Al eliminar una carpeta de la lista, se vuelve a indexar.",
     "The item couldn’t be found": "No se ha encontrado el ítem",
     "The items have moved or been changed since.": "Desde entonces, los ítems se han movido o modificado.",
     "The name has invisible characters": "El nombre tiene caracteres invisibles",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "«%@» contiene %@.",
     "“%@” holds at least %@.": "«%@» contiene al menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» solo contiene un enlace, así que no se ha extraído.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” contiene tu carpeta de inicio o Aplicaciones, así que no se puede excluir.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "«%@» contiene tu carpeta de inicio o Aplicaciones, así que no se puede excluir.",
     "“%@” in %@": "«%@» en %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "No se ha podido comprobar «%@» del archivo comprimido, así que no se ha extraído nada.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "No se ha podido escribir «%@» del archivo comprimido (%@), así que no se ha extraído nada.",
     "“%@” is a file, not a folder": "«%@» es un archivo, no una carpeta",
+    "“%@” is already excluded, or is inside a folder that is.": "«%@» ya está excluida o está dentro de una carpeta excluida.",
     "“%@” is already in the Trash.": "«%@» ya está en la Papelera.",
-    "“%@” is already left out, or is inside a folder that is.": "“%@” ya está excluida o está dentro de una carpeta excluida.",
     "“%@” is already on “%@”": "«%@» ya está en «%@»",
     "“%@” is already there.": "«%@» ya existe.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "«%@» es a la vez un archivo y una carpeta en el archivo comprimido, así que no se ha extraído nada.",
@@ -2062,18 +2066,18 @@
     "“%@” is empty.": "«%@» está vacío.",
     "“%@” is new": "«%@» es nuevo",
     "“%@” is on a read-only disk.": "«%@» está en un disco de solo lectura.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” es una de las carpetas que cubre el índice. Excluye en su lugar carpetas que estén dentro.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "«%@» es una de las carpetas que cubre el índice. Excluye en su lugar carpetas que estén dentro.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "«%@» está protegido con contraseña. Ábrelo con Utilidad de Archivo para introducir la contraseña.",
     "“%@” is protected by macOS.": "macOS protege «%@».",
     "“%@” isn’t a valid name": "«%@» no es un nombre válido",
     "“%@” isn’t an archive Strata can open.": "«%@» no es un archivo comprimido que Strata pueda abrir.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "«%@» no está en el índice, así que Strata lo está leyendo directamente.",
-    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@” no está en tu carpeta de inicio ni en Aplicaciones, así que de todos modos no se indexa.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "«%@» no está en tu carpeta de inicio ni en Aplicaciones, así que de todos modos no se indexa.",
     "“%@” links outside “%@”": "«%@» apunta fuera de «%@»",
     "“%@” no longer exists, or this folder is gone from it.": "«%@» ya no existe o esta carpeta ya no está en él.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "«%@» en el servidor no es una carpeta, así que «%@» no puede ir dentro.",
     "“%@” was modified": "«%@» se ha modificado",
-    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” no se añadió: la lista está llena. Quita antes una carpeta.",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "«%@» no se añadió: la lista está llena. Elimina antes una carpeta de la lista.",
     "“%@” will be deleted immediately.": "«%@» se eliminará inmediatamente.",
     "“%@” → %@": "«%@» → %@",
     "“%@” → “%@”": "«%@» → «%@»",

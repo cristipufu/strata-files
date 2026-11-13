@@ -249,6 +249,10 @@
       "one": "%lld módosítva",
       "other": "%lld módosítva"
     },
+    "%lld more folders weren’t added.": {
+      "one": "További %lld mappa nem került be.",
+      "other": "További %lld mappa nem került be."
+    },
     "%lld moves": {
       "one": "%lld áthelyezés",
       "other": "%lld áthelyezés"
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "pontosan %lld px magas",
     "exactly %lld px wide": "pontosan %lld px széles",
+    "Excluded folders": "Kihagyott mappák",
     "Existing": "Meglévő",
     "Expanded": "Kibontva",
     "Expires": "Lejárat",
@@ -901,7 +906,6 @@
     "Folders": "Mappák",
     "folders": "mappák",
     "Folders in %@": "Mappák itt: %@",
-    "Folders not indexed": "Nem indexelt mappák",
     "fonts": "betűtípusok",
     "For this file. Change All… sets it for every document like it.": "Csak erre a fájlra vonatkozik. Az összes módosítása… minden hasonló dokumentumra alkalmazza.",
     "For this file. Change All… sets it for every “%@”.": "Csak erre a fájlra vonatkozik. Az összes módosítása… minden „%@” típusú dokumentumra alkalmazza.",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Keresés: %@",
     "searched directly, indexed folders from the index": "közvetlen keresés, az indexelt mappák az indexből",
     "Searches": "Keresések",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "A keresések kihagyják ezeket a mappákat és mindent bennük, az index pedig felszabadítja az általuk foglalt memóriát. Ha eltávolít egy mappát, újra indexelődik.",
     "Searching “%@” directly… %lld items": {
       "one": "Közvetlen keresés itt: „%@”… %lld elem",
       "other": "Közvetlen keresés itt: „%@”… %lld elem"
@@ -1753,6 +1756,7 @@
       "one": "A mappák egyeznek (%lld elem összehasonlítva)",
       "other": "A mappák egyeznek (%lld elem összehasonlítva)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Az index kihagyja ezeket a mappákat és mindent bennük: a név szerinti keresések és a mappaméretek nem tartalmazzák őket, a memóriájuk pedig felszabadul. Ha eltávolít egy mappát, újra indexelődik.",
     "The item couldn’t be found": "Az elem nem található",
     "The items have moved or been changed since.": "Az elemeket azóta áthelyezték vagy módosították.",
     "The name has invisible characters": "A név láthatatlan karaktereket tartalmaz",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "„%@” tartalma %@.",
     "“%@” holds at least %@.": "„%@” tartalma legalább %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” csak egy hivatkozást tartalmaz, ezért nem lett kibontva.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "„%@” tartalmazza a kezdőmappáját vagy az Alkalmazásokat, ezért nem hagyható ki.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "„%@” tartalmazza a kezdőmappáját vagy az Alkalmazásokat, ezért nem hagyható ki.",
     "“%@” in %@": "„%@” itt: %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Az archívumban lévő „%@” nem ellenőrizhető, ezért semmi sem lett kibontva.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Az archívumban lévő „%@” nem írható (%@), ezért semmi sem lett kibontva.",
     "“%@” is a file, not a folder": "„%@” fájl, nem mappa",
+    "“%@” is already excluded, or is inside a folder that is.": "„%@” már ki van hagyva, vagy egy kihagyott mappában van.",
     "“%@” is already in the Trash.": "„%@” már a Kukában van.",
-    "“%@” is already left out, or is inside a folder that is.": "„%@” már ki van hagyva, vagy egy kihagyott mappában van.",
     "“%@” is already on “%@”": "„%@” már megtalálható itt: „%@”",
     "“%@” is already there.": "„%@” már ott van.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Az archívumban „%@” egyszerre fájl és mappa, ezért semmi sem lett kibontva.",
@@ -2062,7 +2066,7 @@
     "“%@” is empty.": "„%@” üres.",
     "“%@” is new": "„%@” új",
     "“%@” is on a read-only disk.": "A(z) „%@” írásvédett lemezen található.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "„%@” az index által lefedett mappák egyike. Inkább a benne lévő mappákat hagyja ki.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "„%@” az index által lefedett mappák egyike. Inkább a benne lévő mappákat hagyja ki.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@” jelszóval védett. A jelszó megadásához nyissa meg az Archiváló segédprogrammal.",
     "“%@” is protected by macOS.": "A macOS védi a következőt: „%@”.",
     "“%@” isn’t a valid name": "„%@” nem érvényes név",

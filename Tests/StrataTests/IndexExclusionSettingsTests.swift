@@ -11,20 +11,11 @@ import Testing
     private static let homeSnapshot = ["Apps/", "Caches/", "home/", "home/code/", "home/code/IR/", "home/code/IR/a.txt",
                                        "home/code/IR2/", "home/code/IR2/b.txt", "home/docs/", "state/"]
 
-    private func index(_ tree: TestTree, _ prefs: Prefs) -> FileIndex {
-        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
-        let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
-                                   containerCopies: ContainerCopyStore(root: tree.url("Containers")),
-                                   clipboardRoot: tree.url("Clipboard"))
-        return FileIndex(storage: storage, copies: copies, preferences: prefs,
-                         folders: (home: tree.url("home"), applications: tree.url("Apps")))
-    }
-
     @Test func theListAddsRemovesOnlyThatFolderAndFollowsOutsideChanges() async throws {
         let tree = try TestTree(Self.homeTree)
         let shared = Prefs.shared.indexExcludedFolders
         let prefs = try Prefs.isolated()
-        let list = IndexExclusionList(index: index(tree, prefs))
+        let list = IndexExclusionList(index: FileIndex.over(tree, following: prefs))
         #expect(list.folders == [] && list.refused == [])
         let ir = tree.url("home/code/IR").path, ir2 = tree.url("home/code/IR2").path, docs = tree.url("home/docs").path
         await list.add([tree.url("home/code/IR"), tree.url("home/code/IR2")]).value
@@ -43,11 +34,11 @@ import Testing
     @Test func refusalsShowInlineNamingTheFolderAndChangeNothing() async throws {
         let tree = try TestTree(Self.homeTree)
         let prefs = try Prefs.isolated()
-        let list = IndexExclusionList(index: index(tree, prefs))
+        let list = IndexExclusionList(index: FileIndex.over(tree, following: prefs))
         await list.add([tree.url("home/code/IR")]).value
         await list.add([tree.url("home"), tree.root, tree.url("home/code/IR/a.txt"), URL(filePath: "/System")]).value
         #expect(prefs.indexExcludedFolders == [tree.url("home/code/IR").path])
-        #expect(list.refused.map(\.reason) == [.indexRoot, .holdsIndexRoot, .alreadyLeftOut, .outsideIndex])
+        #expect(list.refused.map(\.reason) == [.indexRoot, .holdsIndexRoot, .alreadyExcluded, .outsideIndex])
         for refused in list.refused {
             #expect(IndexExclusionList.message(for: refused).contains("“\(refused.path)”"), "\(refused.reason)")
         }
@@ -61,8 +52,8 @@ import Testing
         #expect(tree.snapshot() == Self.homeSnapshot)
     }
 
-    @Test func settingsSearchFindsTheFoldersNotIndexed() async throws {
-        #expect(SettingsCatalog.entries.first { $0.id == .foldersNotIndexed }?.page == .search)
+    @Test func settingsSearchFindsTheExcludedFolders() async throws {
+        #expect(SettingsCatalog.entries.first { $0.id == .excludedFolders }?.page == .search)
         let tree = try TestTree("folder/file.txt")
         let environment = try IndependentEnvironment()
         let controller = BrowserWindowController(location: tree.url("folder"), secondPane: tree.url("folder"),
@@ -72,15 +63,15 @@ import Testing
         await controller.browser.directoryReads.task?.value
         let ranker = PaletteRanker()
         ranker.source = controller.settingItems()
-        for query in ["exclude folders", "folders not indexed", "leave out"] {
+        for query in ["exclude folders", "excluded folders", "not indexed", "leave out"] {
             ranker.rank(query)
-            #expect(ranker.results.contains { $0.item.settingID == .foldersNotIndexed }, "\(query)")
+            #expect(ranker.results.contains { $0.item.settingID == .excludedFolders }, "\(query)")
         }
         #expect(tree.snapshot() == ["folder/", "folder/file.txt"])
     }
 
     @Test func everyRefusalHasItsOwnMessage() {
-        let reasons: [IndexExclusions.Refusal] = [.indexRoot, .holdsIndexRoot, .outsideIndex, .alreadyLeftOut, .full]
+        let reasons: [IndexExclusions.Refusal] = [.indexRoot, .holdsIndexRoot, .outsideIndex, .alreadyExcluded, .full]
         let messages = reasons.map { IndexExclusionList.message(for: .init(path: "/Users/me/IR", reason: $0)) }
         #expect(Set(messages).count == reasons.count)
         #expect(messages.allSatisfy { $0.contains("“/Users/me/IR”") })
@@ -91,13 +82,14 @@ import Testing
         let prefs = try Prefs.isolated()
         let filler = (0..<(IndexExclusions.limit - 1)).map { tree.url("home/docs/f\($0)").path }
         prefs.indexExcludedFolders = filler
-        let list = IndexExclusionList(index: index(tree, prefs))
+        let list = IndexExclusionList(index: FileIndex.over(tree, following: prefs))
         await list.add([tree.url("home"), tree.url("home/code/IR"), tree.url("home/code/IR2"), tree.url("home/x"),
                         tree.url("home/y")]).value
         #expect(prefs.indexExcludedFolders == (filler + [tree.url("home/code/IR").path]).sorted())
         #expect(list.refused.map(\.reason) == [.indexRoot, .full, .full, .full])
+        let root = try #require(list.refused.first)
         #expect(IndexExclusionList.messages(for: list.refused) == [
-            IndexExclusionList.message(for: list.refused[0]),
+            IndexExclusionList.message(for: root),
             "3 folders weren’t added: the list is full. Remove a folder first.",
         ])
         #expect(tree.snapshot() == (Self.homeSnapshot + ["home/x/", "home/y/"]).sorted())
@@ -116,10 +108,22 @@ import Testing
         #expect(IndexExclusionList.messages(for: []) == [])
     }
 
+    @Test func refusalsPastTheFirstFewAreCountedNotNamed() {
+        let named = IndexExclusionList.namedRefusals
+        let outside = (0..<(named + 3)).map { IndexExclusions.Refused(path: "/System/f\($0)", reason: .outsideIndex) }
+        let full = (0..<2).map { IndexExclusions.Refused(path: "/Users/me/f\($0)", reason: .full) }
+        #expect(IndexExclusionList.messages(for: outside) == outside.prefix(named).map(IndexExclusionList.message(for:))
+                + ["3 more folders weren’t added."])
+        // Exactly as many as are named leave nothing to count, and the full list keeps its own line last.
+        #expect(IndexExclusionList.messages(for: Array(outside.prefix(named))).count == named)
+        #expect(IndexExclusionList.messages(for: outside + full) == outside.prefix(named).map(IndexExclusionList.message(for:))
+                + ["3 more folders weren’t added.", "2 folders weren’t added: the list is full. Remove a folder first."])
+    }
+
     @Test func theHostedViewGrowsARowPerFolderAndFollowsTheList() async throws {
         let tree = try TestTree(Self.homeTree)
         let prefs = try Prefs.isolated()
-        let host = NSHostingView(rootView: Form { IndexExclusionSettings(index: index(tree, prefs)) }.formStyle(.grouped))
+        let host = NSHostingView(rootView: Form { IndexExclusionSettings(index: FileIndex.over(tree, following: prefs)) }.formStyle(.grouped))
         host.frame = NSRect(x: 0, y: 0, width: 520, height: 400)
         func height() async -> CGFloat {
             await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
@@ -133,6 +137,7 @@ import Testing
                 let value = await height()
                 if condition(value) { return value }
                 try #require(ContinuousClock.now < deadline, "The hosted list never changed height.")
+                try await Task.sleep(for: .milliseconds(10))
             }
         }
         let empty = await height()

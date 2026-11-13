@@ -13,7 +13,7 @@ extension Notification.Name {
     package static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
-    /// The folders the file index leaves out changed (Settings ▸ Search & Index); posted by the preferences that changed.
+    /// The folders excluded from the file index changed (Settings ▸ Search & Index); posted by the preferences that changed.
     package static let indexExclusionsChanged = Notification.Name("StrataIndexExclusionsChanged")
 }
 
@@ -137,20 +137,19 @@ package final class Prefs: PreviewTextSettings {
         set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
     }
 
-    /// Folders the file index leaves out, with everything in them: real paths, none inside another, at most
-    /// `IndexExclusions.limit` (the saved index records them all in its header).
+    /// The folders you excluded from the file index (Settings ▸ Search & Index), by their real paths: at most
+    /// `IndexExclusions.limit`, of which the saved value's first that many entries are read.
     package var indexExcludedFolders: [String] {
-        get { Self.bounded(defaults.stringArray(forKey: Key.indexExcludedFolders) ?? []) }
+        get {
+            let saved = defaults.array(forKey: Key.indexExcludedFolders) ?? []
+            return IndexExclusions.listed(saved.prefix(IndexExclusions.limit).compactMap { $0 as? String })
+        }
         set {
-            let folders = Self.bounded(newValue)
+            let folders = IndexExclusions.listed(newValue)
             guard folders != indexExcludedFolders else { return }
             defaults.set(folders, forKey: Key.indexExcludedFolders)
             notifications.post(name: .indexExclusionsChanged, object: self)
         }
-    }
-
-    private static func bounded(_ folders: [String]) -> [String] {
-        Array(IndexExclusions.normalized(folders).prefix(IndexExclusions.limit))
     }
 
     /// The extension File ▸ New File gives the file ("txt" until you change it; empty for none).

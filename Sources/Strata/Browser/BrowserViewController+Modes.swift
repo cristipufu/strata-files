@@ -113,7 +113,7 @@ extension BrowserViewController {
             ordered: { [weak self] a, b in
                 self?.ordered(a, b) ?? (a.displayName.localizedStandardCompare(b.displayName) == .orderedAscending)
             },
-            canMeasure: { [weak self] entry in self?.showsSize(entry) ?? false },
+            canMeasure: { [weak self] entry in self?.canMeasure(entry) ?? false },
             size: { [weak self] entry in
                 guard let self else { return nil }
                 guard entry.isDirectory else { return entry.size }

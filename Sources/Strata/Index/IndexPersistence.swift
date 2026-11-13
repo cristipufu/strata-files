@@ -106,9 +106,9 @@ nonisolated package enum IndexPersistence {
             }
         }
 
-        func string() throws -> String {
+        func string(atMost limit: Int = 1 << 20) throws -> String {
             let length = Int(try value(UInt32.self))
-            guard length <= 1 << 20 else { throw Corrupt() }
+            guard length <= limit else { throw Corrupt() }
             var bytes = [UInt8](repeating: 0, count: length)
             try bytes.withUnsafeMutableBytes { try reader.read(into: $0) }
             return String(decoding: bytes, as: UTF8.self)
@@ -149,9 +149,11 @@ nonisolated package enum IndexPersistence {
                 let id = try value(Int32.self)
                 header.roots.append((id, try string()))
             }
+            // The index walks up from each excluded folder when it starts, so these are held to what Strata writes:
+            // no more than a configuration can name several times over, and none longer than a path can be.
             let excludedCount = Int(try value(UInt32.self))
-            guard excludedCount <= 100_000 else { throw Corrupt() }
-            for _ in 0..<excludedCount { header.excluded.append(try string()) }
+            guard excludedCount <= 1_024 else { throw Corrupt() }
+            for _ in 0..<excludedCount { header.excluded.append(try string(atMost: Int(PATH_MAX))) }
             return header
         }
 

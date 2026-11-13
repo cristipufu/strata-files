@@ -146,8 +146,8 @@
       "other": "%lld klasörün ölçülmesi için Tam Disk Erişimi gerekiyor"
     },
     "%lld folders weren’t added: the list is full. Remove a folder first.": {
-      "one": "%lld klasör eklenmedi: liste dolu. Önce bir klasörü kaldırın.",
-      "other": "%lld klasör eklenmedi: liste dolu. Önce bir klasörü kaldırın."
+      "one": "%lld klasör eklenmedi: liste dolu. Önce listeden bir klasörü silin.",
+      "other": "%lld klasör eklenmedi: liste dolu. Önce listeden bir klasörü silin."
     },
     "%lld glyphs": {
       "one": "%lld glif",
@@ -248,6 +248,10 @@
     "%lld modified": {
       "one": "%lld değiştirildi",
       "other": "%lld değiştirildi"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "%lld klasör daha eklenmedi.",
+      "other": "%lld klasör daha eklenmedi."
     },
     "%lld moves": {
       "one": "%lld taşıma",
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "yükseklik tam olarak %lld piksel",
     "exactly %lld px wide": "genişlik tam olarak %lld piksel",
+    "Excluded folders": "Dışarıda bırakılan klasörler",
     "Existing": "Mevcut",
     "Expanded": "Genişletilmiş",
     "Expires": "Bitiş tarihi",
@@ -901,7 +906,6 @@
     "Folders": "Klasörler",
     "folders": "klasörler",
     "Folders in %@": "%@ içindeki klasörler",
-    "Folders not indexed": "Dizine eklenmeyen klasörler",
     "fonts": "fontlar",
     "For this file. Change All… sets it for every document like it.": "Yalnızca bu dosya için. Tümünü Değiştir… düğmesi bunu bu türdeki tüm belgeler için ayarlar.",
     "For this file. Change All… sets it for every “%@”.": "Yalnızca bu dosya için. Tümünü Değiştir… düğmesi bunu tüm “%@” belgeleri için ayarlar.",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Ara: %@",
     "searched directly, indexed folders from the index": "doğrudan arandı, dizinlenmiş klasörler dizinden",
     "Searches": "Aramalar",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "Aramalar bu klasörleri ve içlerindeki her şeyi atlar; dizin de kapladıkları belleği boşaltır. Bir klasörü listeden kaldırmak onu yeniden dizine ekler.",
     "Searching “%@” directly… %lld items": {
       "one": "“%@” doğrudan aranıyor… %lld öğe",
       "other": "“%@” doğrudan aranıyor… %lld öğe"
@@ -1753,6 +1756,7 @@
       "one": "Klasörler eşleşiyor (%lld öğe karşılaştırıldı)",
       "other": "Klasörler eşleşiyor (%lld öğe karşılaştırıldı)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Dizin bu klasörleri ve içlerindeki her şeyi atlar: ada göre aramalar ve klasör boyutları bunları içermez, kapladıkları bellek de boşaltılır. Bir klasörü listeden silmek onu yeniden dizine ekler.",
     "The item couldn’t be found": "Öğe bulunamadı",
     "The items have moved or been changed since.": "Öğeler o zamandan beri taşınmış veya değiştirilmiş.",
     "The name has invisible characters": "Adda görünmez karakterler var",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "“%@” içinde %@ veri var.",
     "“%@” holds at least %@.": "“%@” içinde en az %@ veri var.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” yalnızca bir bağlantı içerdiği için ayıklanmadı.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” ana klasörünüzü veya Uygulamalar’ı içerdiği için dışarıda bırakılamaz.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "“%@” ana klasörünüzü veya Uygulamalar’ı içerdiği için dışarıda bırakılamaz.",
     "“%@” in %@": "%2$@ içinde “%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Arşivdeki “%@” denetlenemediği için hiçbir şey ayıklanmadı.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Arşivdeki “%@” yazılamadığı için (%@) hiçbir şey ayıklanmadı.",
     "“%@” is a file, not a folder": "“%@” bir dosya, klasör değil",
+    "“%@” is already excluded, or is inside a folder that is.": "“%@” zaten dışarıda bırakılmış ya da dışarıda bırakılan bir klasörün içinde.",
     "“%@” is already in the Trash.": "“%@” zaten Çöp Sepeti’nde.",
-    "“%@” is already left out, or is inside a folder that is.": "“%@” zaten dışarıda bırakılmış ya da dışarıda bırakılan bir klasörün içinde.",
     "“%@” is already on “%@”": "“%@” zaten “%@” üzerinde var",
     "“%@” is already there.": "“%@” zaten var.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "Arşivde “%@” hem dosya hem klasör olduğu için hiçbir şey ayıklanmadı.",
@@ -2062,7 +2066,7 @@
     "“%@” is empty.": "“%@” boş.",
     "“%@” is new": "“%@” yeni",
     "“%@” is on a read-only disk.": "“%@” salt okunur bir diskte.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” dizinin kapsadığı klasörlerden biri. Bunun yerine içindeki klasörleri dışarıda bırakın.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "“%@” dizinin kapsadığı klasörlerden biri. Bunun yerine içindeki klasörleri dışarıda bırakın.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” parola korumalı. Parolayı girmek için onu Arşiv İzlencesi ile açın.",
     "“%@” is protected by macOS.": "“%@”, macOS tarafından korunuyor.",
     "“%@” isn’t a valid name": "“%@” geçerli bir ad değil",
@@ -2073,7 +2077,7 @@
     "“%@” no longer exists, or this folder is gone from it.": "“%@” artık yok ya da bu klasör artık içinde değil.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "Sunucudaki “%@” bir klasör değil; bu yüzden “%@” onun içine konamaz.",
     "“%@” was modified": "“%@” değiştirildi",
-    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” eklenmedi: liste dolu. Önce bir klasörü kaldırın.",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” eklenmedi: liste dolu. Önce listeden bir klasörü silin.",
     "“%@” will be deleted immediately.": "“%@” hemen silinecek.",
     "“%@” → %@": "“%@” → %@",
     "“%@” → “%@”": "“%@” → “%@”",

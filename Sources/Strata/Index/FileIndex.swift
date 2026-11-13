@@ -26,33 +26,34 @@ extension Notification.Name {
     /// Where it's saved, which it leaves out like its environment's server and container copies and clipboard staging.
     private let storage: SecureStorage.Context
     private let copies: CopyProviders
-    /// Whose list of folders not to index it follows (Settings ▸ Search & Index); without one it leaves none out.
-    package let preferences: Prefs?
+    /// Whose list of excluded folders it follows (Settings ▸ Search & Index).
+    package let preferences: Prefs
     /// The folders it indexes when not the home folder and Applications (independent indexes in tests).
     private let folders: (home: URL, applications: URL)?
     private var exclusionsObserver: NSObjectProtocol?
-    /// The folders you chose to leave out, as last read, in the keys `IndexExclusions` compares.
-    private var leftOutKeys: Set<String> = []
-    /// The same folders where they really are: a list written outside Settings can name one through a link, which
-    /// the worker follows (`currentConfig`). Worked out away from the main thread after each change to the list.
-    private var resolvedLeftOutKeys: Set<String> = []
-    private var resolvingLeftOut: Task<Void, Never>?
+    /// The folders you excluded: as saved and as views spell them, and where they really are once that is known. A
+    /// list written outside Settings can name one through a link, which the worker follows (`currentConfig`).
+    private var chosen = IndexExcludedFolders()
+    private var resolvingChosen: Task<Void, Never>?
+    /// Where chosen folders really are: asked of their disks, with a deadline.
+    private let realPaths: @Sendable ([URL]) async -> [String]
 
-    package init(storage: SecureStorage.Context, copies: CopyProviders, store: IndexStore? = nil,
+    package init(storage: SecureStorage.Context, copies: CopyProviders, preferences: Prefs, store: IndexStore? = nil,
                  configuredRoots: [String] = [], excludedPaths: Set<String> = [], started: Bool = false,
-                 preferences: Prefs? = nil, folders: (home: URL, applications: URL)? = nil) {
+                 folders: (home: URL, applications: URL)? = nil,
+                 realPaths: @escaping @Sendable ([URL]) async -> [String] = { await IndexExclusions.realPaths($0) }) {
         self.storage = storage
         self.copies = copies
         self.store = store
         self.configuredRoots = Self.shortPaths(configuredRoots)
         self.storeRoots = Self.shortPaths(store?.tryRead { $0.roots.map(\.path) } ?? [])
-        self.excludedPaths = Self.shortPaths(excludedPaths)
+        self.excluded = IndexExcludedFolders(Self.shortPaths(excludedPaths))
         self.started = started
         self.preferences = preferences
         self.folders = folders
-        guard let preferences else { return }
-        leftOutKeys = IndexExclusions.keys(chosenFolders())
-        resolveLeftOut()
+        self.realPaths = realPaths
+        chosen = IndexExcludedFolders(spelledChoices())
+        resolveChosen()
         // Preferences post on the main actor; answering at once keeps sizes in step with the list.
         exclusionsObserver = preferences.notifications.addObserver(forName: .indexExclusionsChanged, object: preferences,
                                                                    queue: nil) { [weak self] _ in
@@ -61,8 +62,8 @@ extension Notification.Name {
     }
 
     isolated deinit {
-        resolvingLeftOut?.cancel()
-        if let exclusionsObserver { preferences?.notifications.removeObserver(exclusionsObserver) }
+        resolvingChosen?.cancel()
+        if let exclusionsObserver { preferences.notifications.removeObserver(exclusionsObserver) }
     }
 
     package private(set) var phase: IndexWorker.Phase = .loading
@@ -104,16 +105,21 @@ extension Notification.Name {
         configuring = Task { [weak self] in
             guard let self else { return }
             let config = await currentConfig()
-            configuredRoots = Self.shortPaths(config.roots)
-            excludedPaths = Self.shortPaths(config.excluded)
+            adopt(config)
             worker.start(config) { [weak self] in
                 DispatchQueue.main.async { self?.finishConfigUpdate() }
             }
         }
     }
 
-    /// Re-evaluates what may be indexed (after Full Disk Access changes, a protected folder was opened or the folders not
-    /// to index changed). Each takes its turn after the start and earlier ones and reads the settings when its turn
+    /// What the worker is about to index, in the spellings views use.
+    private func adopt(_ config: IndexConfig) {
+        configuredRoots = Self.shortPaths(config.roots)
+        excluded = IndexExcludedFolders(Self.shortPaths(config.excluded))
+    }
+
+    /// Re-evaluates what may be indexed (after Full Disk Access changes, a protected folder was opened or the excluded
+    /// folders changed). Each takes its turn after the start and earlier ones and reads the settings when its turn
     /// comes, so the worker gets them in order and the last one leaves the latest settings.
     package func refreshConfig() {
         guard started else { return }
@@ -124,8 +130,7 @@ extension Notification.Name {
             await previous?.value
             guard let self else { return }
             let config = await currentConfig()
-            configuredRoots = Self.shortPaths(config.roots)
-            excludedPaths = Self.shortPaths(config.excluded)
+            adopt(config)
             worker.update(config) { [weak self] in
                 DispatchQueue.main.async { self?.finishConfigUpdate() }
             }
@@ -382,13 +387,13 @@ extension Notification.Name {
     private func isExcludedLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
         guard store.firstChild[Int(id)] < 0, store.size[Int(id)] == 0 else { return false }
         let path = PathSpelling.short(store.path(of: id))
-        return excludedPaths.contains(path) || IndexExclusions.isListed(path, inKeysOf: leftOutKeys)
+        return excluded.contains(path) || chosen.contains(path)
     }
 
-    /// Whether the index leaves `path` out: its own exclusions, and the folders you chose even before the worker has
-    /// taken them.
+    /// Whether the index leaves `path` out: what the worker excludes, and the folders you excluded even before the
+    /// worker has taken them.
     private func isExcluded(_ path: String) -> Bool {
-        IndexRefresh.isExcluded(path, in: excludedPaths) || IndexExclusions.isCovered(path, byKeysOf: leftOutKeys)
+        excluded.covers(path) || chosen.covers(path)
     }
 
     private func isUnreadLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
@@ -505,25 +510,23 @@ extension Notification.Name {
         return [RealPath.of(folders.home.path), RealPath.of(folders.applications.path)]
     }
 
-    // MARK: - Folders you leave out
+    // MARK: - The folders you exclude
 
-    /// Whether `folder` is one you chose to leave out of the index, or inside one: views show no size for it rather
-    /// than walk what can be millions of items, until you ask (Inspector, Calculate Size). `folderSizeLookup` answers
-    /// `.unindexed` for it, but also for every folder outside the index, which views do measure.
-    package func excludes(_ folder: URL) -> Bool {
-        let path = folder.lexicallyStandardized.path
-        return IndexExclusions.isCovered(path, byKeysOf: leftOutKeys) || IndexExclusions.isCovered(path, byKeysOf: resolvedLeftOutKeys)
+    /// Whether `folder` is one you excluded, or inside one: views show no size for it rather than walk what can be
+    /// millions of items, until you ask (Inspector, Calculate Size). `folderSizeLookup` answers `.unindexed` for it,
+    /// but also for every folder outside the index, which views do measure.
+    package func isExcludedByChoice(_ folder: URL) -> Bool {
+        chosen.covers(folder.lexicallyStandardized.path)
     }
 
-    /// Waits until the folders you chose are known by their real paths too.
-    package func leftOutFoldersResolved() async {
-        await resolvingLeftOut?.value
+    /// Waits until the folders you excluded are known by their real paths too.
+    package func chosenFoldersResolved() async {
+        await resolvingChosen?.value
     }
 
-    /// Adds `chosen` to the folders not indexed, by their real paths; returns those it can't leave out, and why.
-    package func exclude(_ chosen: [URL]) async -> [IndexExclusions.Refused] {
-        guard let preferences else { return [] }
-        let paths = await IndexExclusions.realPaths(chosen)
+    /// Adds `added` to the excluded folders, by their real paths; returns those it can't exclude, and why.
+    package func exclude(_ added: [URL]) async -> [IndexExclusions.Refused] {
+        let paths = await realPaths(added)
         let roots = await Self.roots(of: folders)
         // The list is read after the waits, so a folder removed from it meanwhile stays removed.
         let result = IndexExclusions.adding(paths, to: preferences.indexExcludedFolders, roots: roots)
@@ -531,46 +534,52 @@ extension Notification.Name {
         return result.refused
     }
 
-    /// Takes `folder` off the folders not indexed: the index reads it again.
-    package func indexAgain(_ folder: String) {
-        guard let preferences else { return }
+    /// Takes `folder` off the excluded folders: the index reads it again.
+    package func include(_ folder: String) {
         preferences.indexExcludedFolders = IndexExclusions.removing(folder, from: preferences.indexExcludedFolders)
     }
 
     private func exclusionsChanged() {
-        leftOutKeys = IndexExclusions.keys(chosenFolders())
-        resolveLeftOut()
+        chosen = IndexExcludedFolders(spelledChoices())
+        resolveChosen()
+        // The index first takes the change as pending, then rows are told: a folder taken off the list is then the
+        // index's own to size, and no view walks it beside the index's read.
         refreshConfig()
+        publishChangesNow(.all)
     }
 
-    /// Only the latest list's real paths are kept; until they arrive, its folders are known as they're spelled.
-    private func resolveLeftOut() {
-        resolvingLeftOut?.cancel()
-        resolvingLeftOut = nil
-        resolvedLeftOutKeys = []
-        guard let chosen = preferences?.indexExcludedFolders, !chosen.isEmpty else { return }
-        let folders = folders
-        resolvingLeftOut = Task { [weak self] in
+    /// Only the latest list's real paths are added; until they arrive, its folders are known as they're spelled.
+    private func resolveChosen() {
+        resolvingChosen?.cancel()
+        resolvingChosen = nil
+        let listed = preferences.indexExcludedFolders
+        guard !listed.isEmpty else { return }
+        let folders = folders, realPaths = realPaths
+        resolvingChosen = Task { [weak self] in
             let roots = await Self.roots(of: folders)
-            let real = await IndexExclusions.realPaths(chosen.map { URL(filePath: $0) })
+            let real = await realPaths(listed.map { URL(filePath: $0) })
             guard !Task.isCancelled, let self else { return }
-            resolvedLeftOutKeys = IndexExclusions.keys(Self.spellings(of: real, roots: roots))
-            if !resolvedLeftOutKeys.isSubset(of: leftOutKeys) { publishChangesNow(.all) }
+            let resolved = IndexExcludedFolders(Self.spellings(of: real, roots: roots))
+            guard !resolved.isSubset(of: chosen) else { return }
+            for folder in resolved.paths { chosen.insert(folder) }
+            publishChangesNow(.all)
         }
     }
 
-    /// The folders you chose, as saved (real paths) and as views spell them (without `/private`), never an index root
-    /// or what holds one; read without waiting on a disk, while the worker gets them from `currentConfig`.
-    private func chosenFolders() -> [String] {
-        guard let preferences else { return [] }
-        let roots = folders.map { [$0.home.path, $0.applications.path] } ?? Self.roots(home: Places.home.path)
-        return Self.spellings(of: preferences.indexExcludedFolders, roots: roots)
+    /// The folders you excluded that the index can leave out, as saved (real paths) and as views spell them (without
+    /// `/private`); read without waiting on a disk, while the worker gets them from `currentConfig`.
+    private func spelledChoices() -> [String] {
+        Self.spellings(of: preferences.indexExcludedFolders, roots: spelledRoots)
     }
 
-    private nonisolated static func spellings(of chosen: [String], roots: [String]) -> [String] {
-        let spelled = roots + roots.map(PathSpelling.short)
-        let kept = chosen.filter { folder in !spelled.contains { IndexExclusions.contains(folder, $0) } }
-        return kept + kept.map(PathSpelling.short)
+    /// The folders it indexes as they are spelled, without asking a disk where they really are.
+    private var spelledRoots: [String] {
+        folders.map { [$0.home.path, $0.applications.path] } ?? Self.roots(home: Places.home.path)
+    }
+
+    private nonisolated static func spellings(of listed: [String], roots: [String]) -> [String] {
+        let excluded = IndexExclusions.leftOut(listed, roots: roots + roots.map(PathSpelling.short))
+        return excluded + excluded.map(PathSpelling.short)
     }
 
     package func recentFiles(days: Int = 7, limit: Int = 400) async -> [IndexHit]? {
@@ -621,14 +630,16 @@ extension Notification.Name {
         "Library/Mobile Documents", "Pictures/Photos Library.photoslibrary", ".Trash",
     ]
 
-    private var excludedPaths: Set<String> = []
+    /// What the worker leaves out, in the spellings views use.
+    private var excluded = IndexExcludedFolders()
 
     /// Seeds the indexed roots and exclusions on the main actor before the off-main `RealPath` pass completes,
     /// so opening a window at launch or right after `Privacy.markAccessible` sees the updated scope immediately.
     private func syncPendingScope() {
-        let home = PathSpelling.short(Places.home.path)
+        let roots = Self.shortPaths(spelledRoots)
+        let home = roots[0]
         if configuredRoots.isEmpty {
-            configuredRoots = Self.shortPaths(Self.roots(home: home))
+            configuredRoots = roots
         }
         var excluded: Set<String> = [
             storage.directory.lexicallyStandardized.path,
@@ -643,8 +654,7 @@ extension Notification.Name {
                 if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
             }
         }
-        excluded.formUnion(chosenFolders().map(PathSpelling.short))
-        excludedPaths = excluded
+        self.excluded = IndexExcludedFolders(excluded)
     }
 
     /// What the worker indexes now: the paths are read away from the main thread, which folders you've let Strata
@@ -661,17 +671,17 @@ extension Notification.Name {
                 if !Privacy.isKnownAccessible(path) { guarded.insert(path) }
             }
         }
-        return await Self.config(home: home, roots: roots, excluding: guarded, chosen: preferences?.indexExcludedFolders ?? [],
+        // Real paths: the scanner, file events and the saved index compare those, so a link or a /var spelling would
+        // otherwise bring a folder back. Settings saves them real already, which is what a volume that stopped
+        // answering leaves them as.
+        let listed = await realPaths(preferences.indexExcludedFolders.map { URL(filePath: $0) })
+        return await Self.config(home: home, roots: roots, excluding: guarded.union(IndexExclusions.leftOut(listed, roots: roots)),
                                  storage: storage, copies: copies)
     }
 
-    @concurrent private static func config(home: String, roots: [String], excluding guarded: Set<String>, chosen: [String],
+    @concurrent private static func config(home: String, roots: [String], excluding chosenOrGuarded: Set<String>,
                                            storage: SecureStorage.Context, copies: CopyProviders) async -> IndexConfig {
-        var excluded = guarded
-        // Real paths: the scanner, file events and the saved index compare those, so a link or a /var spelling would
-        // otherwise bring the folder back. Settings refuses the index's own roots and what holds them; a list edited
-        // elsewhere could still hold one.
-        excluded.formUnion(IndexExclusions.leftOut(chosen.map(RealPath.of), roots: roots))
+        var excluded = chosenOrGuarded
         // Saving the index must not index that save and trigger another full rewrite of the index.
         excluded.insert(RealPath.of(storage.directory.path))
         excluded.insert(RealPath.of(storage.caches.path))

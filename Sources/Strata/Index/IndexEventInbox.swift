@@ -1,5 +1,6 @@
 import CoreServices
 import Foundation
+import StrataSupport
 import os
 
 /// A component-keyed path trie of pending folder refreshes. Component keys are `String` values (fitting inline in
@@ -357,7 +358,7 @@ nonisolated package final class IndexEventInbox: Sendable {
     private struct Pending {
         var generation = UUID()
         var roots: [String] = []
-        var excluded: Set<String> = []
+        var excluded = IndexExcludedFolders()
         var tree = IndexRefreshTree()
         var replayedEvents = 0
         var lastID: UInt64 = 0
@@ -400,14 +401,17 @@ nonisolated package final class IndexEventInbox: Sendable {
             $0.clear()
             $0.generation = generation
             $0.roots = roots
-            $0.excluded = excluded
+            $0.excluded = IndexExcludedFolders(excluded)
             $0.waitingForHistory = waitingForHistory
             $0.replay = replay
             $0.canRebuild = true
         }
     }
 
-    package func exclude(_ paths: Set<String>) { pending.withLock { $0.excluded = paths } }
+    package func exclude(_ paths: Set<String>) {
+        let excluded = IndexExcludedFolders(paths)
+        pending.withLock { $0.excluded = excluded }
+    }
 
     /// Only the first callback queues a delivery; later callbacks join it without retaining another batch.
     package func append(_ events: [FSEventsStream.Event], generation: UUID?) -> Bool {
@@ -448,7 +452,7 @@ nonisolated package final class IndexEventInbox: Sendable {
                 }
                 var path = event.path
                 while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
-                if IndexRefresh.isExcluded(path, in: state.excluded) { continue }
+                if state.excluded.covers(path) { continue }
                 let request = IndexRefresh.request(for: event, path: path, roots: state.roots)
                 state.tree.insert(request.path, request.refresh, eventID: event.id)
                 if state.tree.count >= collapseThreshold {

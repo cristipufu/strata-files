@@ -71,6 +71,27 @@ struct IndexPersistenceSafetyTests {
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
     }
 
+    @Test func excludedFoldersAreSavedWithTheIndexAndTooManyOrOverlongOnesAreRejected() throws {
+        let tree = try TestTree("state/", "kept.txt")
+        let url = tree.url("state/index.sealed")
+        func saved(_ excluded: [String]) throws -> [String] {
+            try IndexPersistence.save(fixture(), eventID: 7, excluded: excluded, to: url, storage: .shared)
+            return try IndexPersistence.load(from: url, storage: .shared).1.excluded
+        }
+        let longest = "/" + String(repeating: "a", count: Int(PATH_MAX) - 1)
+        #expect(try saved(["/Users/me/IR", "/Users/me/Büro"]) == ["/Users/me/IR", "/Users/me/Büro"])
+        #expect(try saved([]) == [])
+        #expect(try saved(Array(repeating: longest, count: 1_024)) == Array(repeating: longest, count: 1_024))
+
+        for refused in [Array(repeating: "/a", count: 1_025), [longest + "a"], ["/a", longest + "a", "/b"]] {
+            try IndexPersistence.save(fixture(), eventID: 7, excluded: refused, to: url, storage: .shared)
+            let before = try Data(contentsOf: url)
+            #expect(throws: (any Error).self) { try IndexPersistence.load(from: url, storage: .shared) }
+            #expect(try Data(contentsOf: url) == before)
+        }
+        #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
+    }
+
     @Test func eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne() {
         #expect(IndexPersistence.supersededCacheNames(forVersion: 8) == ["index.sealed"])
         #expect(IndexPersistence.supersededCacheNames(forVersion: 9) == ["index.sealed", "index-v7.sealed"])

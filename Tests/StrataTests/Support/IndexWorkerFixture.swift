@@ -13,19 +13,22 @@ nonisolated struct IndexWorkerFixture {
     typealias Timer = (delay: TimeInterval, action: @Sendable () -> Void)
 
     let worker: IndexWorker
+    /// What the worker started with. `exclude` gives it another: see `latestConfig`.
     let config: IndexConfig
+    private let configs: OSAllocatedUnfairLock<IndexConfig>
     /// The store built at the start. A rebuild replaces it: see `currentStore`.
     let store: IndexStore
     let eventID: UInt64
     let clock: OSAllocatedUnfairLock<UInt64>
     let timers: OSAllocatedUnfairLock<[Timer]>
-    private let stores: OSAllocatedUnfairLock<IndexStore?>
+    /// Every store the worker published, the one it started with first.
+    private let stores: OSAllocatedUnfairLock<[IndexStore]>
 
     /// `storage`: an earlier fixture's, to launch again over the index it saved.
     @MainActor static func start(_ tree: TestTree, storage: SecureStorage.Context? = nil,
                                  clock: OSAllocatedUnfairLock<UInt64> = .init(initialState: 1_000_000_000),
                                  fastFlushInterval: TimeInterval = 3600, deferredInterval: TimeInterval = 2,
-                                 noise: Set<String> = [],
+                                 noise: Set<String> = [], excluding excluded: [String] = [],
                                  replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
                                  read: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
                                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
@@ -33,7 +36,7 @@ nonisolated struct IndexWorkerFixture {
                                  capturingTimers: Bool = false) async throws -> IndexWorkerFixture {
         let storage = storage ?? SecureStorage.Context(directory: tree.url(".state"), caches: tree.url(".state/cache"),
                                                        key: SymmetricKey(size: .bits256))
-        let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: noise,
+        let config = IndexConfig(roots: [tree.root.path], excluded: Set([tree.url(".state").path] + excluded), noise: noise,
                                  file: tree.url(".state/index.sealed"), storage: storage)
         let timers = OSAllocatedUnfairLock(initialState: [Timer]())
         let capture: IndexWorker.Schedule = { delay, action in timers.withLock { $0.append((delay, action)) } }
@@ -42,15 +45,29 @@ nonisolated struct IndexWorkerFixture {
                                  replayEventLimit: replayEventLimit,
                                  now: { clock.withLock { $0 } }, readDirectory: read, startEvents: startEvents,
                                  journal: journal, schedule: capturingTimers ? capture : nil)
-        let stores = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
-        worker.onStore = { value in stores.withLock { $0 = value } }
+        let stores = OSAllocatedUnfairLock(initialState: [IndexStore]())
+        worker.onStore = { value in stores.withLock { $0.append(value) } }
         await withCheckedContinuation { done in worker.start(config) { done.resume() } }
         let (_, header) = try IndexPersistence.load(from: config.file, storage: storage)
-        return IndexWorkerFixture(worker: worker, config: config, store: try #require(stores.withLock { $0 }),
+        return IndexWorkerFixture(worker: worker, config: config, configs: .init(initialState: config),
+                                  store: try #require(stores.withLock { $0.first }),
                                   eventID: header.eventID, clock: clock, timers: timers, stores: stores)
     }
 
-    var currentStore: IndexStore { stores.withLock { $0 } ?? store }
+    var currentStore: IndexStore { stores.withLock { $0.last } ?? store }
+    var storeCount: Int { stores.withLock { $0.count } }
+
+    var latestConfig: IndexConfig { configs.withLock { $0 } }
+
+    /// Has the worker take the same configuration with `excluded` as the folders left out, beside its own state.
+    func exclude(_ excluded: [String]) async {
+        let state = config.file.deletingLastPathComponent().path
+        let config = configs.withLock { config in
+            config.excluded = Set([state] + excluded)
+            return config
+        }
+        await withCheckedContinuation { done in worker.update(config) { done.resume() } }
+    }
 
     /// How far the saved index says it is complete.
     var savedEventID: UInt64 {
@@ -63,7 +80,9 @@ nonisolated struct IndexWorkerFixture {
         await withCheckedContinuation { done in worker.saveWhenIdle(includeDeferred: force) { done.resume() } }
     }
 
+    /// Returns once the worker has dealt with everything received so far, without a save.
     func synchronize() async {
+        let config = latestConfig
         await withCheckedContinuation { done in worker.update(config) { done.resume() } }
     }
 

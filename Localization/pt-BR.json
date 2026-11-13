@@ -249,6 +249,10 @@
       "one": "%lld modificado",
       "other": "%lld modificados"
     },
+    "%lld more folders weren’t added.": {
+      "one": "Mais %lld pasta não foi adicionada.",
+      "other": "Mais %lld pastas não foram adicionadas."
+    },
     "%lld moves": {
       "one": "%lld movimentação",
       "other": "%lld movimentações"
@@ -841,6 +845,7 @@
     },
     "exactly %lld px high": "exatamente %lld px de altura",
     "exactly %lld px wide": "exatamente %lld px de largura",
+    "Excluded folders": "Pastas excluídas",
     "Existing": "Existente",
     "Expanded": "Expandido",
     "Expires": "Expira em",
@@ -901,7 +906,6 @@
     "Folders": "Pastas",
     "folders": "pastas",
     "Folders in %@": "Pastas em %@",
-    "Folders not indexed": "Pastas não indexadas",
     "fonts": "fontes",
     "For this file. Change All… sets it for every document like it.": "Para este arquivo. Alterar Tudo… aplica essa escolha a todos os documentos desse tipo.",
     "For this file. Change All… sets it for every “%@”.": "Para este arquivo. Alterar Tudo… aplica essa escolha a todos os documentos do tipo “%@”.",
@@ -1523,7 +1527,6 @@
     "Search: %@": "Busca: %@",
     "searched directly, indexed folders from the index": "buscado diretamente, pastas indexadas a partir do índice",
     "Searches": "Buscas",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "As buscas ignoram estas pastas e tudo dentro delas, e o índice libera a memória que ocupavam. Ao remover uma pasta, ela volta a ser indexada.",
     "Searching “%@” directly… %lld items": {
       "one": "Buscando diretamente em “%@”… %lld item",
       "other": "Buscando diretamente em “%@”… %lld itens"
@@ -1753,6 +1756,7 @@
       "one": "As pastas são iguais (%lld item comparado)",
       "other": "As pastas são iguais (%lld itens comparados)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "O índice ignora estas pastas e tudo dentro delas: as buscas por nome e os tamanhos de pasta não as incluem, e a memória delas é liberada. Ao remover uma pasta, ela volta a ser indexada.",
     "The item couldn’t be found": "Não foi possível encontrar o item",
     "The items have moved or been changed since.": "Desde então, os itens foram movidos ou alterados.",
     "The name has invisible characters": "O nome tem caracteres invisíveis",
@@ -2048,13 +2052,13 @@
     "“%@” holds %@.": "“%@” contém %@.",
     "“%@” holds at least %@.": "“%@” contém pelo menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contém apenas um link, por isso não foi extraído.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "“%@” contém sua pasta de início ou Aplicativos, então não pode ser deixada de fora.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "“%@” contém sua pasta de início ou Aplicativos, então não pode ser excluída.",
     "“%@” in %@": "“%@” em %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Não foi possível verificar “%@” no arquivo comprimido, por isso nada foi extraído.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Não foi possível gravar “%@” do arquivo comprimido (%@), por isso nada foi extraído.",
     "“%@” is a file, not a folder": "“%@” é um arquivo, não uma pasta",
+    "“%@” is already excluded, or is inside a folder that is.": "“%@” já está excluída ou está dentro de uma pasta excluída.",
     "“%@” is already in the Trash.": "“%@” já está na Lixeira.",
-    "“%@” is already left out, or is inside a folder that is.": "“%@” já está fora do índice ou está dentro de uma pasta que está.",
     "“%@” is already on “%@”": "“%@” já está em “%@”",
     "“%@” is already there.": "“%@” já existe.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "“%@” é ao mesmo tempo um arquivo e uma pasta no arquivo comprimido, por isso nada foi extraído.",
@@ -2062,7 +2066,7 @@
     "“%@” is empty.": "“%@” está vazio.",
     "“%@” is new": "“%@” é novo",
     "“%@” is on a read-only disk.": "“%@” está em um disco somente leitura.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "“%@” é uma das pastas que o índice abrange. Deixe de fora pastas dentro dela.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "“%@” é uma das pastas que o índice abrange. Exclua pastas dentro dela.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” está protegido por senha. Abra-o com o Utilitário de Arquivo para digitar a senha.",
     "“%@” is protected by macOS.": "“%@” é protegido pelo macOS.",
     "“%@” isn’t a valid name": "“%@” não é um nome válido",

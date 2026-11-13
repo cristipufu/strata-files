@@ -1,4 +1,29 @@
+import Foundation
+@testable import Strata
+@testable import StrataFiles
 @testable import StrataIndex
+@testable import StrataModel
+@testable import StrataSearch
+
+extension FileIndex {
+    /// An index over `tree`'s own `home` and `Apps` folders, kept in its `state` folder and following `preferences`:
+    /// what lies in that home folder can be excluded, as in your own.
+    @MainActor static func over(_ tree: TestTree, following preferences: Prefs,
+                                realPaths: @escaping @Sendable ([URL]) async -> [String] = realPathsHoweverLongTheyTake) -> FileIndex {
+        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
+        let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
+                                   containerCopies: ContainerCopyStore(root: tree.url("Containers")),
+                                   clipboardRoot: tree.url("Clipboard"))
+        return FileIndex(storage: storage, copies: copies, preferences: preferences,
+                         folders: (home: tree.url("home"), applications: tree.url("Apps")), realPaths: realPaths)
+    }
+
+    /// Where folders really are, waited for: a test's own disk answers, and none should fail because a busy machine
+    /// was slow to.
+    nonisolated static let realPathsHoweverLongTheyTake: @Sendable ([URL]) async -> [String] = {
+        await IndexExclusions.realPaths($0, within: .seconds(3600))
+    }
+}
 
 extension IndexStore.Storage {
     nonisolated mutating func setTestAllocation(_ bytes: Int64?, of id: Int32) {

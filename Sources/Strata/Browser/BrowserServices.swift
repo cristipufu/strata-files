@@ -23,6 +23,7 @@ final class BrowserServices {
                          mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                          mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                          folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
+                         makeIndex: (@MainActor (CopyProviders) -> FileIndex)? = nil,
                          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
@@ -30,10 +31,12 @@ final class BrowserServices {
         let copies = CopyProviders(servers: remote.files, containers: containers)
         let history = OperationLog(storage: storage, copies: copies)
         let transfers = TransferQueue(preferences: preferences, history: history, copies: copies)
+        // An index of the caller's own making, over the copies these services use.
+        let index = makeIndex?(copies)
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
                           directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis,
-                          folderSizes: folderSizes, showSetting: showSetting)
+                          folderSizes: folderSizes, index: index, showSetting: showSetting)
     }
 
     /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History

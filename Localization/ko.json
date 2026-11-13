@@ -198,6 +198,9 @@
     "%lld modified": {
       "other": "%lld개 수정됨"
     },
+    "%lld more folders weren’t added.": {
+      "other": "폴더 %lld개를 더 추가하지 않았습니다."
+    },
     "%lld moves": {
       "other": "%lld개 이동"
     },
@@ -738,6 +741,7 @@
     },
     "exactly %lld px high": "높이 정확히 %lldpx",
     "exactly %lld px wide": "너비 정확히 %lldpx",
+    "Excluded folders": "제외된 폴더",
     "Existing": "기존 항목",
     "Expanded": "펼쳐짐",
     "Expires": "만료일",
@@ -795,7 +799,6 @@
     "Folders": "폴더",
     "folders": "폴더",
     "Folders in %@": "%@의 폴더",
-    "Folders not indexed": "인덱스하지 않는 폴더",
     "fonts": "서체",
     "For this file. Change All… sets it for every document like it.": "이 파일에만 적용됩니다. ‘모두 변경…’을 클릭하면 이와 같은 모든 문서에 설정됩니다.",
     "For this file. Change All… sets it for every “%@”.": "이 파일에만 적용됩니다. ‘모두 변경…’을 클릭하면 모든 ‘%@’에 설정됩니다.",
@@ -1398,7 +1401,6 @@
     "Search: %@": "검색: %@",
     "searched directly, indexed folders from the index": "직접 검색함, 인덱스된 폴더는 인덱스에서 검색함",
     "Searches": "저장된 검색",
-    "Searches skip these folders and everything in them, and the index frees the memory they took. Removing a folder indexes it again.": "검색은 이 폴더와 그 안의 모든 항목을 건너뛰며, 인덱스는 이 폴더들이 차지하던 메모리를 해제합니다. 폴더를 제거하면 다시 인덱스됩니다.",
     "Searching “%@” directly… %lld items": {
       "other": "‘%@’을(를) 직접 검색하는 중… %lld개 항목"
     },
@@ -1618,6 +1620,7 @@
     "The folders match (%lld items compared)": {
       "other": "폴더가 일치함(%lld개 항목 비교함)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "인덱스는 이 폴더와 그 안의 모든 항목을 건너뜁니다. 이름으로 검색하거나 폴더 크기를 계산할 때 포함되지 않으며, 차지하던 메모리는 해제됩니다. 폴더를 제거하면 다시 인덱스됩니다.",
     "The item couldn’t be found": "항목을 찾을 수 없음",
     "The items have moved or been changed since.": "그 이후로 항목이 이동되었거나 변경되었습니다.",
     "The name has invisible characters": "이름에 보이지 않는 문자가 있음",
@@ -1904,13 +1907,13 @@
     "“%@” holds %@.": "‘%@’의 압축 해제 크기는 %@입니다.",
     "“%@” holds at least %@.": "‘%@’의 압축 해제 크기는 %@ 이상입니다.",
     "“%@” holds only a link, so it wasn’t extracted.": "‘%@’에 링크만 있어 압축 해제하지 않았습니다.",
-    "“%@” holds your home folder or Applications, so it can’t be left out.": "‘%@’에는 홈 폴더 또는 응용 프로그램이 들어 있어 제외할 수 없습니다.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "‘%@’에는 홈 폴더 또는 응용 프로그램이 들어 있어 제외할 수 없습니다.",
     "“%@” in %@": "%2$@의 ‘%1$@’",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "아카이브의 ‘%@’을(를) 확인할 수 없어 아무것도 압축 해제하지 않았습니다.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "아카이브의 ‘%@’을(를) 쓸 수 없어(%@) 아무것도 압축 해제하지 않았습니다.",
     "“%@” is a file, not a folder": "‘%@’은(는) 폴더가 아닌 파일임",
+    "“%@” is already excluded, or is inside a folder that is.": "‘%@’은(는) 이미 제외되었거나 제외된 폴더 안에 있습니다.",
     "“%@” is already in the Trash.": "‘%@’은(는) 이미 휴지통에 있습니다.",
-    "“%@” is already left out, or is inside a folder that is.": "‘%@’은(는) 이미 제외되었거나 제외된 폴더 안에 있습니다.",
     "“%@” is already on “%@”": "‘%@’이(가) 이미 ‘%@’에 있음",
     "“%@” is already there.": "‘%@’이(가) 이미 있습니다.",
     "“%@” is both a file and a folder in the archive, so nothing was extracted.": "아카이브에서 ‘%@’이(가) 파일이면서 폴더이기도 하여 아무것도 압축 해제하지 않았습니다.",
@@ -1918,7 +1921,7 @@
     "“%@” is empty.": "‘%@’은(는) 비어 있습니다.",
     "“%@” is new": "‘%@’은(는) 새 항목임",
     "“%@” is on a read-only disk.": "“%@”은(는) 읽기 전용 디스크에 있습니다.",
-    "“%@” is one of the folders the index covers. Leave out folders inside it instead.": "‘%@’은(는) 인덱스가 다루는 폴더입니다. 대신 그 안의 폴더를 제외하십시오.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "‘%@’은(는) 인덱스가 다루는 폴더입니다. 대신 그 안의 폴더를 제외하십시오.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "‘%@’은(는) 암호로 보호되어 있습니다. 암호를 입력하려면 아카이브 유틸리티로 여십시오.",
     "“%@” is protected by macOS.": "“%@”은(는) macOS에서 보호합니다.",
     "“%@” isn’t a valid name": "‘%@’은(는) 유효한 이름이 아님",
