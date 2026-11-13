@@ -4,6 +4,26 @@ import Testing
 @testable import StrataIndex
 
 struct IndexEventInboxTests {
+    @Test func aLossOutsideTheLaunchReplayIsReportedForALaterRecoveryNotRescanned() throws {
+        let inbox = IndexEventInbox(), generation = UUID()
+        let lost = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped)
+        let historyDone = FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone)
+        inbox.reset(generation: generation, roots: ["/home", "/Applications"])
+        #expect(inbox.append([.init(path: "/home", flags: lost, id: 10), .init(path: "/home/docs", flags: 0, id: 11)],
+                             generation: generation))
+        let live = try #require(inbox.take())
+        #expect(live.lostEvents && live.invalidation == nil && Set(live.folders.keys) == ["/home/docs"])
+        #expect(inbox.append([.init(path: "/home/docs", flags: 0, id: 12)], generation: generation))
+        #expect(try #require(inbox.take()).lostEvents == false)
+
+        inbox.reset(generation: generation, roots: ["/home", "/Applications"], waitingForHistory: true, canRebuildOnDrop: false)
+        #expect(!inbox.append([.init(path: "/home", flags: lost, id: 20)], generation: generation))
+        #expect(inbox.append([.init(path: "", flags: historyDone, id: 21)], generation: generation))
+        let afterRebuild = try #require(inbox.take())
+        #expect(afterRebuild.lostEvents && afterRebuild.historyDone)
+        #expect(afterRebuild.invalidation == nil && afterRebuild.folders.isEmpty)
+    }
+
     @Test func replayStaysBoundedUntilHistoryEndsAndLiveChangesThenFlowNormally() throws {
         let inbox = IndexEventInbox(folderLimit: 2), generation = UUID()
         inbox.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true)
@@ -36,9 +56,10 @@ struct IndexEventInboxTests {
         #expect(inbox.take() == nil)
         #expect(inbox.append([.init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: 12)], generation: generation))
         let postRebuild = try #require(inbox.take())
-        #expect(postRebuild.invalidation == nil && postRebuild.folders["/fixture"]?.isDeep == true)
+        #expect(postRebuild.invalidation == nil && postRebuild.lostEvents && postRebuild.folders.isEmpty)
         #expect(inbox.append([.init(path: "/fixture", flags: dropFlags, id: 13)], generation: generation))
-        #expect(try #require(inbox.take()).invalidation?.droppedEvents == true)
+        let live = try #require(inbox.take())
+        #expect(live.invalidation == nil && live.lostEvents)
 
         let budgeted = IndexEventInbox(replayEventLimit: 3)
         budgeted.reset(generation: generation, roots: ["/fixture"], waitingForHistory: true, canRebuildOnDrop: true)

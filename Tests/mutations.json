@@ -9138,7 +9138,7 @@
     "find": "                    work.append(contentsOf: changes.newFolders.map { ($0, true) })\n",
     "replace": "",
     "rule": "Index live updates: new folders are scanned in the same read pass",
-    "tests": "IndexWorkerTests/newSubtreesAndOverlappingEventsShareOneReadPass"
+    "tests": "IndexWorkerTests/newSubtreesAndOverlappingEventsShareOneReadPass|IndexBusyTreesTests/aNewlyFoundDependencyFolderIsReadWithThePassThatFoundItSoItsParentsTotalIsWhole"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
@@ -9508,8 +9508,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        if !interrupted {\n            lastEventID = max(lastEventID, targetEventID)\n        }",
-    "replace": "        lastEventID = max(lastEventID, targetEventID)",
+    "find": "        if !interrupted {\n            advanceCheckpoint(to: targetEventID)\n        }",
+    "replace": "        advanceCheckpoint(to: targetEventID)",
     "rule": "Quitting partway through a deep index refresh does not advance the saved event ID past unfinished branches",
     "tests": "IndexWorkerTests/quittingPartwayThroughADeepRefreshKeepsCompletedBranchesAndCatchesUpOnNextLaunch"
   },
@@ -9571,15 +9571,15 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "if reconciler.refreshFolder(id, target, deep: refresh.isDeep && target == path, names: target == path ? refresh.names : nil, in: store, config: config, pass: &pass) { changed = true }",
-    "replace": "if reconciler.refreshFolder(id, target, deep: refresh.isDeep, names: target == path ? refresh.names : nil, in: store, config: config, pass: &pass) { changed = true }",
+    "find": "            if reconciler.refreshFolder(id, target, deep: refresh.isDeep && target == path,",
+    "replace": "            if reconciler.refreshFolder(id, target, deep: refresh.isDeep,",
     "rule": "Resolving a new or deleted folder to an indexed ancestor lists that ancestor shallowly",
     "tests": "IndexWorkerTests/anOverflowInAFolderNewSinceTheSaveReadsOnlyWhatChanged"
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "                if state.canRebuildOnDrop, event.droppedEvents {",
-    "replace": "                if false, event.droppedEvents {",
+    "find": "                    if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {\n                        state.canRebuildOnDrop = false\n                        state.invalidation = event",
+    "replace": "                    if false {\n                        state.canRebuildOnDrop = false\n                        state.invalidation = event",
     "rule": "Dropped FSEvents during replay escalate immediately to a full rebuild",
     "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish|IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
   },
@@ -9592,8 +9592,8 @@
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {",
-    "replace": "                if false {",
+    "find": "                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {\n                    state.replayedEvents += 1",
+    "replace": "                if false {\n                    state.replayedEvents += 1",
     "rule": "Replay event budget escalates huge historical replays to an immediate rebuild",
     "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish"
   },
@@ -9641,8 +9641,8 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        if let minDeferredID = pending.minEventID {",
-    "replace": "        if let minDeferredID: UInt64 = nil {",
+    "find": "        let firstPending = [pending.minEventID, waitingTrees.minEventID].compactMap { $0 }.min()",
+    "replace": "        let firstPending: UInt64? = nil",
     "rule": "A fast-tier flush holds back the saved event ID behind deferred folders",
     "tests": "IndexWorkerTests/hotFoldersCoalesceOnTheDeferredTierWhileInteractiveFoldersFlushImmediatelyAndHoldBackTheSavedCheckpoint"
   },
@@ -9729,5 +9729,124 @@
     "replace": "        if isActivelyUpdating, isWithinIndexedScope(path) {\n            return .pending\n        }",
     "rule": "Unindexed paths under already-read parents return unindexed during background updates",
     "tests": "FolderSizerCancellationTests/unindexedPathsUnderAlreadyReadParentsReturnUnindexedDuringUpdating"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "hotFolders.markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: now())",
+    "replace": "hotFolders.markHot(path: path, target: target, deep: refresh.isDeep && target == path, now: nowNs)",
+    "rule": "Busy indexing: long reads start their cooldown when they finish",
+    "tests": "IndexBusyTreesTests/aLongRefreshGetsItsCooldownAfterItFinishes"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            if let root = trees[path] {",
+    "replace": "            if let root = Optional<String>.none {",
+    "rule": "Busy indexing: dependency changes wait for quiet while source changes save",
+    "tests": "IndexBusyTreesTests/dependencyChangesWaitForQuietWhileSourceChangesSaveWithoutSkippingTheirCheckpoint"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard treesTimer?.id == id else { return }",
+    "replace": "        // Ignore the ownership of this timer.",
+    "rule": "Busy indexing: an obsolete timer cannot flush its replacement request",
+    "tests": "IndexBusyTreesTests/urgentSizeWorkReplacesItsTimerAndTheObsoleteTimerCannotClearItsSuccessor"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "        if !inherited { return !wholesale.contains(id) }",
+    "replace": "        if !inherited { return true }",
+    "rule": "Busy indexing: documents inside Library are read at once while its caches wait",
+    "tests": "IndexBusyTreesTests/documentsInsideLibraryAreReadAtOnceWhileItsCachesWait"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard pending.isEmpty, !rescanNeeded, !interrupted, !lossRecovery.isWaiting else { return }",
+    "replace": "        guard pending.isEmpty, waitingTrees.isEmpty, !rescanNeeded, !interrupted, !lossRecovery.isWaiting else { return }",
+    "rule": "Busy indexing: waiting dependency work does not keep the index updating",
+    "tests": "IndexBusyTreesTests/sourceChangesFinishUpdatingWhileDependencyWorkWaits"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "                        state.lostEvents = true",
+    "replace": "                        state.invalidation = event",
+    "rule": "Lost events: a loss reported while watching live waits instead of rebuilding at once",
+    "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce|IndexEventInboxTests/aLossOutsideTheLaunchReplayIsReportedForALaterRecoveryNotRescanned"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard lossRecovery.delayNanoseconds(now: now()) == 0 else { scheduleRecovery(); return }",
+    "replace": "        // Recover whenever a timer fires.",
+    "rule": "Lost events: recovery starts only once the reports have stopped for the quiet interval",
+    "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
+  },
+  {
+    "file": "Strata/Index/IndexQuietWait.swift",
+    "find": "        return min(quiet - min(quiet, quietAge), maximum - min(maximum, totalAge))",
+    "replace": "        return quiet - min(quiet, quietAge)",
+    "rule": "Lost events and busy indexing: a wait that never goes quiet ends at its maximum",
+    "tests": "IndexLossRecoveryTests/reportsThatNeverStopForceOneRecoveryAfterTenMinutes|IndexLossRecoveryTests/recoveryWaitsForTheReportsToStopAndIsForcedWhenTheyNeverDo|IndexWaitingTreesTests/burstsWaitForQuietButContinuousChangesHaveAMaximumDelay"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        lossRecovery.reset()",
+    "replace": "        // Keep waiting to recover after a rebuild.",
+    "rule": "Lost events: a rebuild ends the wait, so one loss is recovered once",
+    "tests": "IndexLossRecoveryTests/aRebuildForAnotherReasonEndsTheWaitSoItsTimerScansNothing|IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard !rescanNeeded, !lossRecovery.isWaiting else { return }",
+    "replace": "        guard !rescanNeeded else { return }",
+    "rule": "Lost events: an index that lost events is not saved as current until it has recovered",
+    "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce|IndexLossRecoveryTests/quittingWhileWaitingScansNothingAndSavesNothingAsCurrent"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "        let inherited = above >= 0 && (isNoise(above) || isOpaquePackage(above))",
+    "replace": "        let inherited = above >= 0 && isNoise(above)",
+    "rule": "Busy indexing: the insides of a package are read at once, not kept waiting as a cache",
+    "tests": "IndexBusyTreesTests/aPackageAndTheTrashAreReadAtOnceWhileADependencyTreeWaits"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "        guard name != \".Trash\" else { return false }",
+    "replace": "        // The Trash waits like a cache.",
+    "rule": "Busy indexing: the Trash is read at once, not kept waiting as a cache",
+    "tests": "IndexBusyTreesTests/aPackageAndTheTrashAreReadAtOnceWhileADependencyTreeWaits"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        releaseDueTrees()\n        flush()",
+    "replace": "        releaseDueTrees()\n        flush(includeDeferred: true)",
+    "rule": "Busy indexing: releasing a waiting tree leaves a folder in its cooldown alone",
+    "tests": "IndexBusyTreesTests/releasingADependencyTreeLeavesAFolderInItsCooldownAlone"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            for entry in setAside where !pass.covers(entry.path) {",
+    "replace": "            for entry in setAside {",
+    "rule": "Busy indexing: a tree read whole in the same pass as its parent is not queued again",
+    "tests": "IndexBusyTreesTests/aTreeReadWholeInTheSamePassAsItsParentIsNotQueuedAgain"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        let due = waitingTrees.takeDue(now: now())",
+    "replace": "        let due = waitingTrees.takeDue(now: .max)",
+    "rule": "Busy indexing: a tree still waiting is left to the next launch at quit, not read in the quit deadline",
+    "tests": "IndexBusyTreesTests/quittingLeavesATreeThatIsStillWaitingToTheNextLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                guard !lossRecovery.isWaiting else { continue }",
+    "replace": "                // Keep queueing trees while a rebuild is pending.",
+    "rule": "Lost events: changes in a waiting tree are not queued while a rebuild is pending",
+    "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            waitingTrees.removeAll()",
+    "replace": "            // Keep the trees that were already waiting.",
+    "rule": "Lost events: trees already waiting are not read while a rebuild is pending",
+    "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
   }
 ]

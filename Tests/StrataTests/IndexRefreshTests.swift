@@ -1,6 +1,7 @@
 import CoreServices
 import Foundation
 import Testing
+import os
 @testable import Strata
 @testable import StrataIndex
 
@@ -22,7 +23,9 @@ struct IndexRefreshTests {
         let root = tree.root.path
         let file = root + "/changed.txt", arrived = DispatchSemaphore(value: 0)
         let stream = FSEventsStream()
+        let received = OSAllocatedUnfairLock(initialState: [FSEventsStream.Event]())
         stream.handler = { events in
+            received.withLock { $0.append(contentsOf: events) }
             if events.contains(where: { $0.path == file && $0.flags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile) != 0 }) {
                 arrived.signal()
             }
@@ -30,7 +33,9 @@ struct IndexRefreshTests {
         defer { stream.stop() }
         try #require(stream.start(paths: [root], since: FSEventsStream.currentEventID, latency: 0.01))
         try tree.add(["changed.txt"])
-        #expect(try await TestWork.run { arrived.wait(timeout: .now() + 10) == .success })
+        let observed = try await TestWork.run { arrived.wait(timeout: .now() + 10) == .success }
+        let diagnostics = received.withLock { $0.map { "\($0.path) flags=\($0.flags)" } }
+        #expect(observed, "Native events: \(diagnostics)")
         #expect(tree.snapshot() == ["changed.txt", "keep.txt"])
     }
 
