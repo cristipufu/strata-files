@@ -21,22 +21,27 @@ nonisolated struct IndexWorkerFixture {
     let timers: OSAllocatedUnfairLock<[Timer]>
     private let stores: OSAllocatedUnfairLock<IndexStore?>
 
-    @MainActor static func start(_ tree: TestTree, clock: OSAllocatedUnfairLock<UInt64> = .init(initialState: 1_000_000_000),
+    /// `storage`: an earlier fixture's, to launch again over the index it saved.
+    @MainActor static func start(_ tree: TestTree, storage: SecureStorage.Context? = nil,
+                                 clock: OSAllocatedUnfairLock<UInt64> = .init(initialState: 1_000_000_000),
                                  fastFlushInterval: TimeInterval = 3600, deferredInterval: TimeInterval = 2,
                                  noise: Set<String> = [],
+                                 replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
                                  read: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
                                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
+                                 journal: @escaping @Sendable ([String]) -> [String]? = { _ in ["journal"] },
                                  capturingTimers: Bool = false) async throws -> IndexWorkerFixture {
-        let storage = SecureStorage.Context(directory: tree.url(".state"), caches: tree.url(".state/cache"),
-                                            key: SymmetricKey(size: .bits256))
+        let storage = storage ?? SecureStorage.Context(directory: tree.url(".state"), caches: tree.url(".state/cache"),
+                                                       key: SymmetricKey(size: .bits256))
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: noise,
                                  file: tree.url(".state/index.sealed"), storage: storage)
         let timers = OSAllocatedUnfairLock(initialState: [Timer]())
         let capture: IndexWorker.Schedule = { delay, action in timers.withLock { $0.append((delay, action)) } }
         let worker = IndexWorker(watchesChanges: startEvents != nil, saveInterval: .infinity,
                                  fastFlushInterval: fastFlushInterval, deferredFlushInterval: deferredInterval,
+                                 replayEventLimit: replayEventLimit,
                                  now: { clock.withLock { $0 } }, readDirectory: read, startEvents: startEvents,
-                                 schedule: capturingTimers ? capture : nil)
+                                 journal: journal, schedule: capturingTimers ? capture : nil)
         let stores = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         worker.onStore = { value in stores.withLock { $0 = value } }
         await withCheckedContinuation { done in worker.start(config) { done.resume() } }
@@ -46,6 +51,11 @@ nonisolated struct IndexWorkerFixture {
     }
 
     var currentStore: IndexStore { stores.withLock { $0 } ?? store }
+
+    /// How far the saved index says it is complete.
+    var savedEventID: UInt64 {
+        get throws { try IndexPersistence.load(from: config.file, storage: config.storage).1.eventID }
+    }
     var delays: [TimeInterval] { timers.withLock { $0.map(\.delay) } }
 
     /// Returns once the worker has dealt with everything received so far, saving what it may.
@@ -61,6 +71,13 @@ nonisolated struct IndexWorkerFixture {
         let action = try #require(timers.withLock { $0.indices.contains(timer) ? $0[timer].action : nil })
         action()
         await checkpoint()
+    }
+
+    /// Fires a timer and waits for its work without the save `fire` ends with, to see what that work saved itself.
+    func fireWithoutSaving(_ timer: Int) async throws {
+        let action = try #require(timers.withLock { $0.indices.contains(timer) ? $0[timer].action : nil })
+        action()
+        await synchronize()
     }
 
     /// Waits for what the worker does on its own timer. Bounded, because a broken rule can keep it from happening.
@@ -93,9 +110,10 @@ nonisolated final class IndexPhaseLog: Sendable {
 extension FSEventsStream.Event {
     nonisolated static func change(_ path: String, id: UInt64) -> Self { .init(path: path, flags: 0, id: id) }
 
-    nonisolated static func lostEvents(under path: String, id: UInt64) -> Self {
-        .init(path: path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs
-                                                         | kFSEventStreamEventFlagUserDropped), id: id)
+    /// `byKernel`: lost before the system recorded them, so its journal lacks them too.
+    nonisolated static func lostEvents(under path: String, id: UInt64, byKernel: Bool = false) -> Self {
+        let dropped = byKernel ? kFSEventStreamEventFlagKernelDropped : kFSEventStreamEventFlagUserDropped
+        return .init(path: path, flags: FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | dropped), id: id)
     }
 
     nonisolated static func historyDone(id: UInt64) -> Self {

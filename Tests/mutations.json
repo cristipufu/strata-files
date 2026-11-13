@@ -9578,22 +9578,22 @@
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "                    if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {\n                        state.canRebuildOnDrop = false\n                        state.invalidation = event",
-    "replace": "                    if false {\n                        state.canRebuildOnDrop = false\n                        state.invalidation = event",
+    "find": "                    if state.waitingForHistory, !state.historyDone, state.canRebuild, state.replay == .launch {",
+    "replace": "                    if false {",
     "rule": "Dropped FSEvents during replay escalate immediately to a full rebuild",
     "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish|IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        startWatching(config, canRebuildOnDrop: false)",
-    "replace": "        startWatching(config, canRebuildOnDrop: true)",
+    "find": "        startWatching(config, replay: .scan)",
+    "replace": "        startWatching(config, replay: .launch)",
     "rule": "A dropped event during post-rebuild catch-up does not start a second full rebuild",
     "tests": "IndexWorkerTests/droppedEventsDuringReplayRebuildImmediatelyWithoutLoopingIntoASecondRebuild"
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {\n                    state.replayedEvents += 1",
-    "replace": "                if false {\n                    state.replayedEvents += 1",
+    "find": "                if state.waitingForHistory, !state.historyDone, state.canRebuild, state.replay != .scan {",
+    "replace": "                if false {",
     "rule": "Replay event budget escalates huge historical replays to an immediate rebuild",
     "tests": "IndexEventInboxTests/anInvalidatedRootDoesNotWaitForAReplayThatMayNeverFinish"
   },
@@ -9767,7 +9767,7 @@
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "                        state.lostEvents = true",
+    "find": "                        state.loss = loss",
     "replace": "                        state.invalidation = event",
     "rule": "Lost events: a loss reported while watching live waits instead of rebuilding at once",
     "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce|IndexEventInboxTests/aLossOutsideTheLaunchReplayIsReportedForALaterRecoveryNotRescanned"
@@ -9797,7 +9797,7 @@
     "file": "Strata/Index/IndexWorker.swift",
     "find": "        guard !rescanNeeded, !lossRecovery.isWaiting else { return }",
     "replace": "        guard !rescanNeeded else { return }",
-    "rule": "Lost events: an index that lost events is not saved as current until it has recovered",
+    "rule": "Lost events: an index that lost events is not saved as current until its recovery begins",
     "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce|IndexLossRecoveryTests/quittingWhileWaitingScansNothingAndSavesNothingAsCurrent"
   },
   {
@@ -9838,15 +9838,225 @@
   {
     "file": "Strata/Index/IndexWorker.swift",
     "find": "                guard !lossRecovery.isWaiting else { continue }",
-    "replace": "                // Keep queueing trees while a rebuild is pending.",
-    "rule": "Lost events: changes in a waiting tree are not queued while a rebuild is pending",
+    "replace": "                // Keep queueing trees while a recovery is pending.",
+    "rule": "Lost events: changes in a waiting tree are not queued while a recovery is pending",
     "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
     "find": "            waitingTrees.removeAll()",
     "replace": "            // Keep the trees that were already waiting.",
-    "rule": "Lost events: trees already waiting are not read while a rebuild is pending",
+    "rule": "Lost events: trees already waiting are not read while a recovery is pending",
     "tests": "IndexLossRecoveryTests/lostEventsWaitForTheReportsToStopThenRecoverOnce"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        let journalIsFollowed = watchesChanges && (config.map { isKeptNow(followedJournal, $0) } ?? false)",
+    "replace": "        let journalIsFollowed = false",
+    "rule": "Lost events: a loss is recovered by replaying the journal, not by rebuilding the index",
+    "tests": "IndexLossRecoveryTests/lostEventsAreReplayedFromTheJournalSinceAMinuteBeforeTheLossWithoutARebuild"
+  },
+  {
+    "file": "Strata/Index/IndexRecoveryPoints.swift",
+    "find": "        points.last { point in point.reached.map { $0.saturatingAdd(margin) <= report } ?? true }?.eventID",
+    "replace": "        points.last?.eventID",
+    "rule": "Lost events: the replay restarts from a point reached a minute before the loss was reported, not the latest",
+    "tests": "IndexRecoveryPointsTests/aReplayRestartsFromThePointReachedAMinuteBeforeTheReport|IndexLossRecoveryTests/lostEventsAreReplayedFromTheJournalSinceAMinuteBeforeTheLossWithoutARebuild"
+  },
+  {
+    "file": "Strata/Index/IndexLossRecovery.swift",
+    "find": "        firstArrival = min(firstArrival ?? loss.arrived, loss.arrived)",
+    "replace": "        firstArrival = now",
+    "rule": "Lost events: the replay's restart point is judged by when the first report arrived, not when it was dealt with",
+    "tests": "IndexLossRecoveryTests/aLossIsReplayedFromBeforeItArrivedOnceAndRebuiltWhenTheJournalCannotBeTrusted"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        lastEventID = eventID\n        pendingEventID = eventID\n        recoveryPoints.returned(to: eventID)",
+    "replace": "        recoveryPoints.returned(to: eventID)",
+    "rule": "Lost events: during a replay the index is saved as complete only as far as the replay started",
+    "tests": "IndexLossRecoveryTests/lostEventsAreReplayedFromTheJournalSinceAMinuteBeforeTheLossWithoutARebuild"
+  },
+  {
+    "file": "Strata/Index/IndexLossRecovery.swift",
+    "find": "        guard journalIsFollowed, !replaying, !journalIsIncomplete, let firstArrival,",
+    "replace": "        guard journalIsFollowed, !journalIsIncomplete, let firstArrival,",
+    "rule": "Lost events: a replay that loses events as well is rebuilt, not replayed again",
+    "tests": "IndexLossRecoveryTests/aLossDuringTheReplayIsRebuiltOnceItsReportsStop|IndexLossRecoveryTests/aLossIsReplayedFromBeforeItArrivedOnceAndRebuiltWhenTheJournalCannotBeTrusted"
+  },
+  {
+    "file": "Strata/Index/IndexEventInbox.swift",
+    "find": "                        if event.droppedByKernel { loss.journalIsIncomplete = true }",
+    "replace": "                        // The journal holds what the kernel dropped.",
+    "rule": "Lost events: a loss the kernel dropped before it was recorded is rebuilt, since the journal lacks it",
+    "tests": "IndexLossRecoveryTests/aLossTheJournalNeverHeldIsRebuilt|IndexEventInboxTests/aLossSaysWhenItsFirstReportArrivedAndWhetherTheJournalHoldsTheEvents"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        startWatching(config, replay: .afterLoss)",
+    "replace": "        startWatching(config, replay: .scan)",
+    "rule": "Lost events: a replay of more events than the launch replay's limit is rebuilt",
+    "tests": "IndexLossRecoveryTests/aReplayOfMoreEventsThanItsLimitIsRebuilt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        } else if delivery.historyDone {\n            lossRecovery.finishedReplay()",
+    "replace": "        } else if false {\n            lossRecovery.finishedReplay()",
+    "rule": "Lost events: after a replay that arrived whole, a later loss is replayed as well",
+    "tests": "IndexLossRecoveryTests/lostEventsAreReplayedFromTheJournalSinceAMinuteBeforeTheLossWithoutARebuild"
+  },
+  {
+    "file": "Strata/Index/IndexRecoveryPoints.swift",
+    "find": "        points.removeAll { $0.eventID > eventID }",
+    "replace": "        points.removeAll { $0.eventID < eventID }",
+    "rule": "Lost events: a replay forgets the points past where it restarts until the index gets there again",
+    "tests": "IndexRecoveryPointsTests/returningToAPointForgetsTheLaterOnesUntilTheIndexGetsThereAgain"
+  },
+  {
+    "file": "Strata/Index/IndexRecoveryPoints.swift",
+    "find": "        let settled = points.lastIndex { point in point.reached.map { $0.saturatingAdd(retention) <= now } ?? true }",
+    "replace": "        let settled = points.lastIndex { point in point.reached.map { $0.saturatingAdd(margin) <= now } ?? true }",
+    "rule": "Lost events: a report recovered up to twenty minutes late still finds the point before it",
+    "tests": "IndexRecoveryPointsTests/aReportRecoveredTwentyMinutesLateStillFindsThePointBeforeItAndAnOlderOneFindsNone"
+  },
+  {
+    "file": "Strata/Index/IndexRecoveryPoints.swift",
+    "find": "    package static let retention: TimeInterval = margin + 2 * IndexLossRecovery.maximumDelay",
+    "replace": "    package static let retention: TimeInterval = margin + IndexLossRecovery.maximumDelay",
+    "rule": "Lost events: a recovery forced after ten minutes of reports still finds its point when the first was dealt with late",
+    "tests": "IndexLossRecoveryTests/aRecoveryForcedAfterReportsThatNeverStopStillReplaysWhenTheFirstWasDealtWithLate|IndexRecoveryPointsTests/aReportRecoveredTwentyMinutesLateStillFindsThePointBeforeItAndAnOlderOneFindsNone"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard let current = self.journal(config.roots) else { return false }",
+    "replace": "        guard let current = self.journal(config.roots) else { return journal == nil }",
+    "rule": "Lost events: a loss on a volume the system keeps no journal for is rebuilt, not replayed",
+    "tests": "IndexLossRecoveryTests/aLossOnAVolumeTheSystemKeepsNoJournalForIsRebuilt"
+  },
+  {
+    "file": "Strata/Index/IndexLossRecovery.swift",
+    "find": "        guard journalIsFollowed, !replaying, !journalIsIncomplete, let firstArrival,",
+    "replace": "        guard !replaying, !journalIsIncomplete, let firstArrival,",
+    "rule": "Lost events: a journal that is no longer the one the index follows is never replayed",
+    "tests": "IndexLossRecoveryTests/aLossOnAVolumeTheSystemKeepsNoJournalForIsRebuilt|IndexLossRecoveryTests/aLossIsReplayedFromBeforeItArrivedOnceAndRebuiltWhenTheJournalCannotBeTrusted"
+  },
+  {
+    "file": "Strata/Index/FSEventsStream.swift",
+    "find": "                  let name = CFUUIDCreateString(nil, uuid) else { return nil }",
+    "replace": "                  let name = CFUUIDCreateString(nil, uuid) else { continue }",
+    "rule": "Lost events: a folder on a volume without a journal has no history to replay",
+    "tests": "IndexJournalTests/foldersOfAnOrdinaryDiskShareItsJournalAndOneWithoutAJournalOrAMissingFolderHasNone"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        dirty = true\n        save()\n    }",
+    "replace": "        save()\n    }",
+    "rule": "Lost events: the saved index stops claiming more than the replay's start even when nothing else changed",
+    "tests": "IndexLossRecoveryTests/aReplayIsSavedAtOnceAndOnlyAsFarAsItStartsEvenWhenNothingElseChanged"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        dirty = true\n        save()\n    }",
+    "replace": "        dirty = true\n    }",
+    "rule": "Lost events: the index is saved when its replay starts, not at the next save",
+    "tests": "IndexLossRecoveryTests/aReplayIsSavedAtOnceAndOnlyAsFarAsItStartsEvenWhenNothingElseChanged"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        receivePendingEvents()\n        guard lossRecovery.delayNanoseconds(now: now()) == 0 else { scheduleRecovery(); return }",
+    "replace": "        guard lossRecovery.delayNanoseconds(now: now()) == 0 else { scheduleRecovery(); return }",
+    "rule": "Lost events: a report that arrived while the index was busy is dealt with before recovery is decided",
+    "tests": "IndexLossRecoveryTests/aReportThatArrivedWhileTheIndexWasBusyIsDealtWithBeforeRecoveryIsDecided"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            // Nothing will be replayed.\n            rebuildInstead()",
+    "replace": "            // Nothing will be replayed.",
+    "rule": "Lost events: a replay whose event stream cannot be started is rebuilt",
+    "tests": "IndexLossRecoveryTests/aReplayWhoseEventStreamCannotBeStartedIsRebuilt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        pendingEventID = eventID\n        recoveryPoints.returned(to: eventID)",
+    "replace": "        recoveryPoints.returned(to: eventID)",
+    "rule": "Lost events: work still queued when a replay starts does not lift the saved index past the replay's start",
+    "tests": "IndexLossRecoveryTests/workStillQueuedWhenAReplayStartsDoesNotLiftTheSavedIndexPastWhereTheReplayStarts"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        recoveryPoints.returned(to: eventID)\n        lossRecovery.startedReplay()",
+    "replace": "        lossRecovery.startedReplay()",
+    "rule": "Lost events: a second loss soon after a replay restarts no later than the work that replay left waiting",
+    "tests": "IndexLossRecoveryTests/aSecondLossSoonAfterAReplayRestartsNoLaterThanTheWorkThatReplayLeftWaiting"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        return current == journal",
+    "replace": "        return true",
+    "rule": "Lost events: a loss after the journal was replaced is rebuilt, since the new journal holds nothing from before it",
+    "tests": "IndexLossRecoveryTests/aLossAfterTheJournalWasReplacedIsRebuilt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        return current == journal",
+    "replace": "        return true",
+    "rule": "The index at launch: a journal that replaced the saved one is not asked for what came before it",
+    "tests": "IndexJournalTests/aLaunchReplaysOnlyFromTheJournalItsIndexWasSavedWithAndScansOtherwise"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard !watchesChanges || isKeptNow(header.journal, config) else {",
+    "replace": "        guard true else {",
+    "rule": "The index at launch: what changed while it was not running is asked only of the journal it was saved with",
+    "tests": "IndexJournalTests/aLaunchReplaysOnlyFromTheJournalItsIndexWasSavedWithAndScansOtherwise"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        followedJournal = scannedJournal",
+    "replace": "        // The scan's journal is not kept.",
+    "rule": "The index at launch: a scan saves the journal it began under, so the next launch replays",
+    "tests": "IndexJournalTests/anIndexKeepsTheJournalItFollowsThroughAScanAndThroughLaterSaves"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            followedJournal = header.journal",
+    "replace": "            // The loaded journal is not kept.",
+    "rule": "The index at launch: an index that was loaded keeps its journal through later saves",
+    "tests": "IndexJournalTests/anIndexKeepsTheJournalItFollowsThroughAScanAndThroughLaterSaves"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "            guard journalCount <= 10_000 else { throw Corrupt() }",
+    "replace": "            // Any number of journals is read.",
+    "rule": "The saved index: a header naming more journals than its limit is rejected",
+    "tests": "IndexPersistenceSafetyTests/theJournalAnIndexFollowedIsSavedWithItAndTooManyAreRejected"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        for name in IndexPersistence.supersededCacheNames { SecureStorage.removeSuperseded(storage.url(name)) }",
+    "replace": "        // The files of earlier formats stay.",
+    "rule": "The saved index: the files of formats no copy still reads are removed",
+    "tests": "IndexWorkerTests/anIndexRemovesTheFilesOfFormatsNoCopyStillReadsAndNothingElse|IndexWorkerTests/removingAnEarlierFormatsFileNeverRemovesWhatALinkInItsPlacePointsTo"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "        let end = version > firstNumberedVersion ? version - 1 : firstNumberedVersion",
+    "replace": "        let end = max(version, firstNumberedVersion)",
+    "rule": "The saved index: a format change retires the files from before the previous format, and keeps that one for an older copy still in use",
+    "tests": "IndexWorkerTests/anIndexRemovesTheFilesOfFormatsNoCopyStillReadsAndNothingElse|IndexPersistenceSafetyTests/eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne"
+  },
+  {
+    "file": "Strata/Model/SecureStorage.swift",
+    "find": "        removeLegacy(url)\n        sweepStaleTemporaries(of: url)",
+    "replace": "        removeLegacy(url)",
+    "rule": "The saved index: the temporary files an earlier format's saves left behind go with it",
+    "tests": "IndexWorkerTests/anIndexRemovesTheFilesOfFormatsNoCopyStillReadsAndNothingElse"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "        return [\"index.sealed\"] + (firstNumberedVersion..<end).map(fileName(forVersion:))",
+    "replace": "        return [\"index.sealed\"]",
+    "rule": "The saved index: each later format change retires one more numbered file by itself",
+    "tests": "IndexPersistenceSafetyTests/eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne"
   }
 ]

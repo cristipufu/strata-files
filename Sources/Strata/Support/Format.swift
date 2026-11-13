@@ -12,6 +12,13 @@ nonisolated package extension Int64 {
     }
 }
 
+nonisolated package extension UInt64 {
+    func saturatingAdd(_ other: UInt64) -> UInt64 {
+        let (sum, overflow) = addingReportingOverflow(other)
+        return overflow ? .max : sum
+    }
+}
+
 nonisolated package extension Sequence where Element == Int64 {
     /// The total, stopping at Int64.max rather than overflowing (sizes reported by another machine can be absurd).
     var saturatingSum: Int64 {

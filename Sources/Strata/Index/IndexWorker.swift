@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 import os
 #if canImport(StrataModel)
 import StrataModel
@@ -53,6 +54,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private var treesTimer: (id: UUID, deadline: UInt64)?
     private var lossRecovery = IndexLossRecovery()
     private var recoveryTimer: (id: UUID, deadline: UInt64)?
+    private var recoveryPoints = IndexRecoveryPoints()
+    /// The journal the event IDs here belong to: nil when the volume of a watched folder has none.
+    private var followedJournal: [String]?
     private let schedule: Schedule?
     package static let defaultSaveInterval: TimeInterval = 1800
     package static let defaultFastFlushInterval: TimeInterval = 0.25
@@ -72,6 +76,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private let readDirectory: DirectoryRead
     private let readItem: ItemRead
     private let startEvents: (@Sendable ([String], UInt64) -> Bool)?
+    private let journal: @Sendable ([String]) -> [String]?
     private let now: @Sendable () -> UInt64
     private var awaitingHistory = false
     private var watchingFailed = false
@@ -99,8 +104,9 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                  readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
+                 journal: @escaping @Sendable ([String]) -> [String]? = FSEventsStream.journal(for:),
                  schedule: Schedule? = nil) {
-        self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit)
+        self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit, now: now)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
         self.hotFolders = IndexHotFolders(fastInterval: fastFlushInterval, deferredInterval: deferredFlushInterval)
@@ -108,6 +114,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         self.readDirectory = readDirectory
         self.readItem = readItem
         self.startEvents = startEvents
+        self.journal = journal
         self.schedule = schedule
     }
 
@@ -198,23 +205,46 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         self.config = config
         discardQueuedWork()
         publish(.loading)
-        let loadResult = Result { try IndexPersistence.load(from: config.file, storage: config.storage) }
-        if case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots {
+        if let (loaded, header) = savedIndex(config) {
             log.info("Loaded \(loaded.read { $0.count }) entries, replaying events since \(header.eventID)")
             store = loaded
             onStore?(loaded)
             lastEventID = header.eventID
             pendingEventID = header.eventID
+            followedJournal = header.journal
             savedExcluded = Set(header.excluded)
+            recoveryPoints.restart(at: header.eventID)
             // Catch up on everything that changed since the save, then keep listening.
             startWatching(config)
             if savedExcluded != config.excluded {
                 reconfigure(config, previous: savedExcluded)
             }
         } else {
-            log.info("Full scan: \(String(describing: loadResult.map { $0.1.roots.map(\.path) }))")
             rebuild()
         }
+    }
+
+    /// The saved index, when it is one to go on from. One that is not is let go here, before everything is read
+    /// again, so the two are never held together.
+    private func savedIndex(_ config: IndexConfig) -> (IndexStore, IndexPersistence.Header)? {
+        let loadResult = Result { try IndexPersistence.load(from: config.file, storage: config.storage) }
+        guard case .success(let (loaded, header)) = loadResult, header.roots.map(\.path) == config.roots else {
+            log.info("Full scan: \(String(describing: loadResult.map { $0.1.roots.map(\.path) }))")
+            return nil
+        }
+        // A worker that watches nothing asks no journal for anything.
+        guard !watchesChanges || isKeptNow(header.journal, config) else {
+            log.info("The saved index followed another journal than the one kept now")
+            return nil
+        }
+        return (loaded, header)
+    }
+
+    /// Whether `journal` is the one kept now for every watched folder. What changed since a position can only be
+    /// asked of the journal that recorded it.
+    private func isKeptNow(_ journal: [String]?, _ config: IndexConfig) -> Bool {
+        guard let current = self.journal(config.roots) else { return false }
+        return current == journal
     }
 
     private func rebuild() {
@@ -231,12 +261,13 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let previousRescanNeeded = rescanNeeded
         events.stop()
         let startEventID = FSEventsStream.currentEventID
+        let scannedJournal = journal(config.roots)
         lastEventID = startEventID
         pendingEventID = startEventID
         discardQueuedWork()
         // Start listening from `startEventID` before scanning so changes during the scan buffer in `incoming`
         // instead of replaying from disk afterwards; a loss in this window is reported and waits like any later one.
-        startWatching(config, canRebuildOnDrop: false)
+        startWatching(config, replay: .scan)
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
         let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise) { [weak self] in
@@ -269,21 +300,23 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         store = fresh
         dirty = true
         lastEventID = startEventID
+        followedJournal = scannedJournal
         savedExcluded = config.excluded
         // A finished scan answers a loss that was waiting; one that quitting cut short leaves it waiting.
         lossRecovery.reset()
         recoveryTimer = nil
+        recoveryPoints.restart(at: startEventID)
         onStore?(fresh)
         save()
         if watchesChanges, !watchingFailed { publish(.updating) }
         finishUpdates()
     }
 
-    private func startWatching(_ config: IndexConfig, canRebuildOnDrop: Bool = true) {
+    private func startWatching(_ config: IndexConfig, replay: IndexEventInbox.Replay = .launch) {
         eventGeneration = UUID()
         let generation = eventGeneration
         incoming.reset(generation: generation, roots: config.roots, excluded: config.excluded,
-                       waitingForHistory: watchesChanges, canRebuildOnDrop: canRebuildOnDrop)
+                       waitingForHistory: watchesChanges, replay: replay)
         awaitingHistory = watchesChanges
         watchingFailed = false
         guard watchesChanges else { publish(.ready); return }
@@ -355,7 +388,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     private func save(includeDeferred: Bool = true) {
         // An invalidated index must not be saved as current: the older file on disk replays the invalidating event
-        // at the next launch and rebuilds then. One that lost events is the same until it has recovered.
+        // at the next launch and rebuilds then. One that lost events is the same until its recovery begins.
         guard !rescanNeeded, !lossRecovery.isWaiting else { return }
         // Trees still waiting for quiet stay waiting: the checkpoint is held behind them, so the next launch replays
         // their changes, and quit's deadline goes to the folders people look at.
@@ -366,8 +399,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         if !pending.isEmpty, !interrupted { flush(includeDeferred: includeDeferred) }
         guard !rescanNeeded, let config, let store, dirty || !FileManager.default.fileExists(atPath: config.file.path) else { return }
         do {
-            try IndexPersistence.save(store, eventID: lastEventID, excluded: Array(savedExcluded), to: config.file,
-                                      storage: config.storage)
+            try IndexPersistence.save(store, eventID: lastEventID, journal: followedJournal ?? [],
+                                      excluded: Array(savedExcluded), to: config.file, storage: config.storage)
             dirty = false
         } catch {
             log.error("Could not save index: \(error.localizedDescription)")
@@ -404,17 +437,22 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             flush(includeDeferred: true)
             return
         }
-        if delivery.lostEvents { waitToRecoverLostEvents() }
+        if let loss = delivery.loss {
+            waitToRecoverLostEvents(loss)
+        } else if delivery.historyDone {
+            lossRecovery.finishedReplay()
+        }
         queueRefreshes(delivery)
     }
 
-    private func waitToRecoverLostEvents() {
+    private func waitToRecoverLostEvents(_ loss: IndexEventInbox.Loss) {
         if !lossRecovery.isWaiting {
             log.info("Filesystem events were lost; recovering once the reports stop")
-            // The rebuild that is coming reads every tree, so the ones waiting for quiet need no read of their own.
+            // The recovery that is coming replays or reads what changed in every tree, so the ones waiting for quiet
+            // need no read of their own.
             waitingTrees.removeAll()
         }
-        lossRecovery.reported(now: now())
+        lossRecovery.reported(loss, now: now())
         publish(.updating)
         scheduleRecovery()
     }
@@ -429,9 +467,44 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private func recoverLostEvents(id: UUID) {
         guard recoveryTimer?.id == id else { return }
         recoveryTimer = nil
+        // Asked before the last reports are heard, so nothing slow stands between hearing them and replacing the stream.
+        let journalIsFollowed = watchesChanges && (config.map { isKeptNow(followedJournal, $0) } ?? false)
+        // What arrived while the index was busy is dealt with first. A later report starts the wait again, and one
+        // the journal cannot answer must be heard before the stream it came from is replaced.
+        receivePendingEvents()
         guard lossRecovery.delayNanoseconds(now: now()) == 0 else { scheduleRecovery(); return }
+        guard !rescanNeeded, let config, case .replay(let eventID) = lossRecovery.recovery(
+            from: recoveryPoints, journalIsFollowed: journalIsFollowed) else {
+            rebuildInstead()
+            return
+        }
+        replayJournal(from: eventID, config)
+    }
+
+    /// Reads everything again, when what was lost cannot be replayed.
+    private func rebuildInstead() {
         rescanNeeded = true
         flush(includeDeferred: true)
+    }
+
+    /// Starts the event stream over from before the loss. What was applied since is replayed with what was lost,
+    /// and reading a folder again is harmless. The index is complete only as far as the replay starts until the
+    /// replay has been applied, so the checkpoint goes back there and the index is saved that way at once.
+    private func replayJournal(from eventID: UInt64, _ config: IndexConfig) {
+        log.info("Recovering lost events from the journal since \(eventID)")
+        lastEventID = eventID
+        pendingEventID = eventID
+        recoveryPoints.returned(to: eventID)
+        lossRecovery.startedReplay()
+        startWatching(config, replay: .afterLoss)
+        guard !watchingFailed else {
+            // Nothing will be replayed.
+            rebuildInstead()
+            return
+        }
+        // The saved index may claim more than this, so it is written again now even when nothing else changed.
+        dirty = true
+        save()
     }
 
     private func queueRefreshes(_ delivery: IndexEventInbox.Delivery) {
@@ -576,7 +649,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             return
         }
         // A tree a deep read left waiting waits like any other, unless this pass went on to read it whole or a
-        // rebuild is coming that will.
+        // recovery is coming: a replay delivers the event behind this read again, and a rebuild reads everything.
         if !lossRecovery.isWaiting {
             let tick = now()
             for entry in setAside where !pass.covers(entry.path) {
@@ -628,6 +701,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         let firstPending = [pending.minEventID, waitingTrees.minEventID].compactMap { $0 }.min()
         let completed = firstPending.map { min(eventID, $0 - 1) } ?? eventID
         lastEventID = max(lastEventID, completed)
+        recoveryPoints.reached(lastEventID, now: now())
     }
 
     /// Trees whose wait is over join the pending queue, which then holds the checkpoint behind them.
@@ -649,8 +723,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     /// Arms `timer` to fire `interval` after `tick` unless it already fires by then; the new timer's identity if so.
     private static func armed(_ timer: inout (id: UUID, deadline: UInt64)?, interval: UInt64, tick: UInt64) -> UUID? {
-        let (due, overflow) = tick.addingReportingOverflow(interval)
-        let deadline = overflow ? UInt64.max : due
+        let deadline = tick.saturatingAdd(interval)
         if let timer, timer.deadline <= deadline { return nil }
         let id = UUID()
         timer = (id, deadline)

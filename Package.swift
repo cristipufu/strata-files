@@ -104,6 +104,7 @@ let indexSources = [
     "IndexLossRecovery.swift",
     "IndexPersistence.swift",
     "IndexQuietWait.swift",
+    "IndexRecoveryPoints.swift",
     "IndexReconciler.swift",
     "IndexRefresh.swift",
     "IndexScanner.swift",

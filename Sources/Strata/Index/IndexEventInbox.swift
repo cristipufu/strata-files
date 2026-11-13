@@ -321,6 +321,29 @@ nonisolated package final class IndexEventInbox: Sendable {
     package static let defaultFolderLimit = 4096
     package static let defaultReplayEventLimit = 250_000
 
+    /// macOS reported that events were lost: what was delivered is not everything that changed.
+    package struct Loss: Sendable, Equatable {
+        /// When the first report arrived, which is later than the loss itself.
+        package var arrived: UInt64
+        /// The system lost the events before recording them, so its journal lacks them as well.
+        package var journalIsIncomplete: Bool
+
+        package init(arrived: UInt64, journalIsIncomplete: Bool = false) {
+            self.arrived = arrived
+            self.journalIsIncomplete = journalIsIncomplete
+        }
+    }
+
+    /// How far a replay of the journal is trusted.
+    package enum Replay: Sendable {
+        /// At launch: a loss, or more events than the limit, rebuilds at once.
+        case launch
+        /// Around a scan, which reads everything anyway: a loss is only reported and nothing is counted.
+        case scan
+        /// After lost events: another loss is only reported, and more events than the limit rebuilds.
+        case afterLoss
+    }
+
     package struct Delivery: Sendable {
         package let generation: UUID
         package let folders: [String: IndexRefresh]
@@ -328,8 +351,7 @@ nonisolated package final class IndexEventInbox: Sendable {
         package let lastID: UInt64
         package let historyDone: Bool
         package let invalidation: FSEventsStream.Event?
-        /// macOS reported that events were lost: what was delivered is not everything that changed.
-        package let lostEvents: Bool
+        package let loss: Loss?
     }
 
     private struct Pending {
@@ -341,10 +363,12 @@ nonisolated package final class IndexEventInbox: Sendable {
         var lastID: UInt64 = 0
         var historyDone = false
         var invalidation: FSEventsStream.Event?
-        var lostEvents = false
+        var loss: Loss?
         var scheduled = false
         var waitingForHistory = false
-        var canRebuildOnDrop = true
+        var replay = Replay.launch
+        /// A replay that could not be trusted asks for one rebuild, not one per event that follows.
+        var canRebuild = true
 
         mutating func clear() {
             tree.removeAll(keepingCapacity: true)
@@ -352,7 +376,7 @@ nonisolated package final class IndexEventInbox: Sendable {
             lastID = 0
             historyDone = false
             invalidation = nil
-            lostEvents = false
+            loss = nil
             scheduled = false
         }
     }
@@ -360,22 +384,26 @@ nonisolated package final class IndexEventInbox: Sendable {
     private let pending = OSAllocatedUnfairLock(initialState: Pending())
     private let folderLimit: Int
     private let replayEventLimit: Int
+    private let now: @Sendable () -> UInt64
 
     package init(folderLimit: Int = IndexEventInbox.defaultFolderLimit,
-                 replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit) {
+                 replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
+                 now: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }) {
         self.folderLimit = max(1, folderLimit)
         self.replayEventLimit = max(1, replayEventLimit)
+        self.now = now
     }
 
     package func reset(generation: UUID, roots: [String], excluded: Set<String> = [], waitingForHistory: Bool = false,
-                       canRebuildOnDrop: Bool = true) {
+                       replay: Replay = .launch) {
         pending.withLock {
             $0.clear()
             $0.generation = generation
             $0.roots = roots
             $0.excluded = excluded
             $0.waitingForHistory = waitingForHistory
-            $0.canRebuildOnDrop = canRebuildOnDrop
+            $0.replay = replay
+            $0.canRebuild = true
         }
     }
 
@@ -397,20 +425,22 @@ nonisolated package final class IndexEventInbox: Sendable {
                 if state.waitingForHistory, state.invalidation != nil { continue }
                 if event.droppedEvents {
                     // A launch replay that lost events is rebuilt at once: a scan beats waiting out a broken replay.
-                    // Any later loss is only reported, and the worker recovers once the reports stop.
-                    if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {
-                        state.canRebuildOnDrop = false
+                    // Any other loss is only reported, and the worker recovers once the reports stop.
+                    if state.waitingForHistory, !state.historyDone, state.canRebuild, state.replay == .launch {
+                        state.canRebuild = false
                         state.invalidation = event
                         state.tree.removeAll(keepingCapacity: true)
                     } else {
-                        state.lostEvents = true
+                        var loss = state.loss ?? Loss(arrived: now())
+                        if event.droppedByKernel { loss.journalIsIncomplete = true }
+                        state.loss = loss
                     }
                     continue
                 }
-                if state.waitingForHistory, !state.historyDone, state.canRebuildOnDrop {
+                if state.waitingForHistory, !state.historyDone, state.canRebuild, state.replay != .scan {
                     state.replayedEvents += 1
                     if state.replayedEvents > replayEventLimit {
-                        state.canRebuildOnDrop = false
+                        state.canRebuild = false
                         state.invalidation = event
                         state.tree.removeAll(keepingCapacity: true)
                         continue
@@ -439,12 +469,12 @@ nonisolated package final class IndexEventInbox: Sendable {
 
     package func take() -> Delivery? {
         let taken: (generation: UUID, tree: IndexRefreshTree, lastID: UInt64, historyDone: Bool,
-                    invalidation: FSEventsStream.Event?, lostEvents: Bool)? = pending.withLock { state in
+                    invalidation: FSEventsStream.Event?, loss: Loss?)? = pending.withLock { state in
             guard state.scheduled else { return nil }
             if state.historyDone { state.waitingForHistory = false }
             var tree = IndexRefreshTree()
             swap(&tree, &state.tree)
-            let result = (state.generation, tree, state.lastID, state.historyDone, state.invalidation, state.lostEvents)
+            let result = (state.generation, tree, state.lastID, state.historyDone, state.invalidation, state.loss)
             state.clear()
             return result
         }
@@ -452,6 +482,6 @@ nonisolated package final class IndexEventInbox: Sendable {
         let (folders, folderEventIDs) = taken.tree.collectDelivery()
         return Delivery(generation: taken.generation, folders: folders, folderEventIDs: folderEventIDs,
                         lastID: taken.lastID, historyDone: taken.historyDone, invalidation: taken.invalidation,
-                        lostEvents: taken.lostEvents)
+                        loss: taken.loss)
     }
 }

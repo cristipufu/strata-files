@@ -8,19 +8,34 @@ import StrataModel
 nonisolated package enum IndexPersistence {
     private static let magic: UInt32 = 0x5354_5258 // "STRX"
     // 5: only app-like packages' contents are noise, plus build output beside its project file; 6: file IDs (a full
-    // rescan picks that up); 7: allocated sizes kept separately from logical file lengths.
-    private static let version: UInt32 = 7
-    package static let cacheName = "index-v\(version).sealed"
+    // rescan picks that up); 7: allocated sizes kept separately from logical file lengths; 8: the journal its event
+    // ID belongs to.
+    package static let version: UInt32 = 8
+    package static let cacheName = fileName(forVersion: version)
+    package static let supersededCacheNames = supersededCacheNames(forVersion: version)
+    /// Formats up to 6 were all saved as `index.sealed`, and each one since under its own number.
+    private static let firstNumberedVersion: UInt32 = 7
+
+    private static func fileName(forVersion version: UInt32) -> String { "index-v\(version).sealed" }
+
+    /// The files no copy of Strata still in use reads once the format is `version`. The file of the format before
+    /// it stays, so an older copy running beside the new one keeps its index; everything older goes.
+    package static func supersededCacheNames(forVersion version: UInt32) -> [String] {
+        let end = version > firstNumberedVersion ? version - 1 : firstNumberedVersion
+        return ["index.sealed"] + (firstNumberedVersion..<end).map(fileName(forVersion:))
+    }
 
     package struct Header {
         package var eventID: UInt64
+        /// The journal `eventID` belongs to, one per root: empty when a root's volume had none.
+        package var journal: [String]
         package var roots: [(id: Int32, path: String)]
         package var excluded: [String]
     }
 
     /// Streams the columns, encrypted, straight to disk (no in-memory copy of the whole file), then swaps the file in
     /// atomically.
-    package static func save(_ store: IndexStore, eventID: UInt64, excluded: [String], to url: URL,
+    package static func save(_ store: IndexStore, eventID: UInt64, journal: [String] = [], excluded: [String], to url: URL,
                              storage: SecureStorage.Context) throws {
         let writer = try SecureStorage.Writer(url: url, storage: storage)
         func put(_ bytes: UnsafeRawBufferPointer) { writer.write(bytes) }
@@ -39,6 +54,8 @@ nonisolated package enum IndexPersistence {
             put(magic)
             put(version)
             put(eventID)
+            put(UInt32(journal.count))
+            journal.forEach(putString)
             put(UInt32(store.roots.count))
             for root in store.roots {
                 put(root.id)
@@ -118,10 +135,14 @@ nonisolated package enum IndexPersistence {
             return column
         }
 
-        /// The format's magic and version, then where the index's events had got to, its roots and excluded folders.
+        /// The format's magic and version, then where the index's events had got to and in which journal, its roots
+        /// and excluded folders.
         func header() throws -> Header {
             guard try value(UInt32.self) == magic, try value(UInt32.self) == version else { throw Corrupt() }
-            var header = Header(eventID: try value(UInt64.self), roots: [], excluded: [])
+            var header = Header(eventID: try value(UInt64.self), journal: [], roots: [], excluded: [])
+            let journalCount = Int(try value(UInt32.self))
+            guard journalCount <= 10_000 else { throw Corrupt() }
+            for _ in 0..<journalCount { header.journal.append(try string()) }
             let rootCount = Int(try value(UInt32.self))
             guard rootCount <= 10_000 else { throw Corrupt() }
             for _ in 0..<rootCount {

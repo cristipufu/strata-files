@@ -572,7 +572,8 @@ struct IndexWorkerTests {
                        onPhase: @escaping @Sendable (IndexWorker.Phase) -> Void = { _ in }) async throws -> Fixture {
         let config = IndexConfig(roots: [tree.root.path], excluded: [tree.url(".state").path], noise: [],
                                  file: tree.url(".state/index.sealed"), storage: .shared)
-        let worker = IndexWorker(watchesChanges: startEvents != nil, readDirectory: readDirectory, readItem: readItem, startEvents: startEvents)
+        let worker = IndexWorker(watchesChanges: startEvents != nil, readDirectory: readDirectory, readItem: readItem,
+                                 startEvents: startEvents, journal: { _ in ["journal"] })
         let store = OSAllocatedUnfairLock<IndexStore?>(initialState: nil)
         let changes = OSAllocatedUnfairLock(initialState: 0)
         let started = OSAllocatedUnfairLock(initialState: false)
@@ -621,17 +622,51 @@ struct IndexWorkerTests {
 
     @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() async throws {
         let tree = try TestTree("state/", "Caches/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
-        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
-        let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
-                                   containerCopies: ContainerCopyStore(root: tree.url("Containers")),
-                                   clipboardRoot: tree.url("Clipboard"))
-        let config = await FileIndex(storage: storage, copies: copies).currentConfig()
+        let (config, storage) = await configuration(over: tree)
         for name in ["state", "Caches", "Servers", "Containers", "Clipboard"] {
             #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }
         #expect(!config.excluded.contains(tree.url("elsewhere").path))
         #expect(config.file == storage.url(IndexPersistence.cacheName) && config.storage === storage)
         #expect(tree.snapshot() == ["Caches/", "Clipboard/", "Containers/", "Servers/", "elsewhere/", "state/"])
+    }
+
+    @Test func anIndexRemovesTheFilesOfFormatsNoCopyStillReadsAndNothingElse() async throws {
+        let current = "state/" + IndexPersistence.cacheName
+        let previous = "state/index-v\(IndexPersistence.version - 1).sealed"
+        let retired = IndexPersistence.supersededCacheNames.map { "state/" + $0 }
+        let stale = "state/index.sealed.11111111-1111-1111-1111-111111111111.tmp"
+        let recent = "state/index.sealed.22222222-2222-2222-2222-222222222222.tmp"
+        // Beside the retired files and their temporaries: the previous format's file, which an older copy may still
+        // use, a temporary file written minutes ago, which may be a save still going on, names that only look
+        // alike, and the same name in another folder.
+        let kept = [current, previous, recent, "state/index.sealed.kept", "state/index.sealed2", "state/semantic/index.sealed"]
+        let folders = ["Caches/", "Clipboard/", "Containers/", "Servers/", "state/", "state/semantic/"]
+        let tree = try TestTree("Caches/", "Servers/", "Containers/", "Clipboard/", "state/")
+        try tree.add(retired + ["state/index.sealed.tmp", stale] + kept)
+        let longAgo = Date().addingTimeInterval(-3600)
+        try FileManager.default.setAttributes([.modificationDate: longAgo], ofItemAtPath: tree.url(stale).path)
+        try #require(retired.contains("state/index.sealed") && !retired.contains(previous) && !retired.contains(current))
+        _ = await configuration(over: tree)
+        #expect(tree.snapshot() == (folders + kept).sorted())
+    }
+
+    @Test func removingAnEarlierFormatsFileNeverRemovesWhatALinkInItsPlacePointsTo() async throws {
+        let tree = try TestTree("state/kept.sealed", "state/index.sealed -> state/kept.sealed",
+                                "Caches/", "Servers/", "Containers/", "Clipboard/")
+        _ = await configuration(over: tree)
+        #expect(tree.snapshot() == ["Caches/", "Clipboard/", "Containers/", "Servers/", "state/", "state/kept.sealed"])
+        #expect(tree.text("state/kept.sealed") == "state/kept.sealed")
+    }
+
+    /// What an index over `tree`'s own state, caches and copies would index. Working it out is also when the files
+    /// of earlier formats go.
+    private func configuration(over tree: TestTree) async -> (IndexConfig, SecureStorage.Context) {
+        let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
+        let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
+                                   containerCopies: ContainerCopyStore(root: tree.url("Containers")),
+                                   clipboardRoot: tree.url("Clipboard"))
+        return (await FileIndex(storage: storage, copies: copies).currentConfig(), storage)
     }
 
     @Test func stateFolderEventsDoNotNotifyOrRewriteTheIndex() async throws {
@@ -1246,7 +1281,8 @@ struct IndexWorkerTests {
             .init(path: tree.root.path, flags: dropFlags, id: UInt64.max - 9),
             .init(path: "", flags: FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone), id: UInt64.max - 8),
         ])
-        await save(fixture.worker)
+        // Not a save at quit, which scans nothing whatever was decided.
+        await withCheckedContinuation { done in fixture.worker.saveWhenIdle { done.resume() } }
         #expect(phases.scans == 1)
         #expect(phases.last == .updating)
         #expect(tree.text("a/one.txt") == "a/one.txt")

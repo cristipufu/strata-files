@@ -25,9 +25,14 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagEventIdsWrapped) != 0
         }
 
-        /// Events were dropped by the kernel or `fseventsd`: a full scan is faster than waiting out a broken replay.
+        /// Events were dropped by the kernel or `fseventsd`: what was delivered is not everything that changed.
         package var droppedEvents: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagUserDropped) != 0
+        }
+
+        /// The kernel dropped the events before `fseventsd` saw them, so they are in no journal either.
+        package var droppedByKernel: Bool {
+            flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped) != 0
         }
 
         package var isHistoryDone: Bool {
@@ -113,4 +118,20 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
     }
 
     package static var currentEventID: FSEventStreamEventId { FSEventsGetCurrentEventId() }
+
+    /// Which journal the system keeps for the volume each of `paths` is on, or nil when one of them has none or
+    /// cannot be read.
+    /// Events since an earlier point can only come from the journal that recorded that point. A volume without one
+    /// answers with nothing, and a journal that replaced another (after an unclean shutdown, a restore or an erased
+    /// disk) holds nothing from before it. Either way the stream still says its history is complete.
+    package static func journal(for paths: [String]) -> [String]? {
+        var journals: [String] = []
+        for path in paths {
+            var info = stat()
+            guard stat(path, &info) == 0, let uuid = FSEventsCopyUUIDForDevice(info.st_dev),
+                  let name = CFUUIDCreateString(nil, uuid) else { return nil }
+            journals.append(name as String)
+        }
+        return journals
+    }
 }
