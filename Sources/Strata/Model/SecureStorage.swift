@@ -119,11 +119,17 @@ nonisolated package enum SecureStorage {
         }
     }
 
-    /// Deletes a store left over from before encryption (and its stray temporary file).
+    /// Deletes a store Strata no longer reads (and its stray `.tmp` file).
     package static func removeLegacy(_ url: URL) {
         for path in [url.path, url.path + ".tmp"] where FileManager.default.fileExists(atPath: path) {
             unlink(path)
         }
+    }
+
+    /// Deletes a store no copy of Strata still in use reads, with the temporary files its saves left behind.
+    package static func removeSuperseded(_ url: URL) {
+        removeLegacy(url)
+        sweepStaleTemporaries(of: url)
     }
 
     // MARK: Key

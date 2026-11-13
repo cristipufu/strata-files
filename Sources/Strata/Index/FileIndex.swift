@@ -563,8 +563,9 @@ package final class FileIndex {
         // Servers' copies neither: their files are another machine's, and gone when Strata quits.
         excluded.insert(RealPath.of(copies.remoteCopies.root.path))
         excluded.insert(RealPath.of(copies.clipboardRoot.path))
-        // The encrypted index replaces the plain index.bin of earlier builds.
+        // The encrypted index replaces the plain index.bin of earlier builds, and its formats one another.
         SecureStorage.removeLegacy(storage.url("index.bin"))
+        for name in IndexPersistence.supersededCacheNames { SecureStorage.removeSuperseded(storage.url(name)) }
         return IndexConfig(roots: roots(home: home), excluded: excluded, noise: [home + "/Library"],
                            file: storage.url(IndexPersistence.cacheName), storage: storage)
     }

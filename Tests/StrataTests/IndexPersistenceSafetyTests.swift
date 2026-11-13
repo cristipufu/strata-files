@@ -52,6 +52,37 @@ struct IndexPersistenceSafetyTests {
         #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
     }
 
+    @Test func theJournalAnIndexFollowedIsSavedWithItAndTooManyAreRejected() throws {
+        let tree = try TestTree("state/", "kept.txt")
+        let url = tree.url("state/index.sealed")
+        func saved(_ journal: [String]) throws -> [String] {
+            try IndexPersistence.save(fixture(), eventID: 7, journal: journal, excluded: [], to: url, storage: .shared)
+            return try IndexPersistence.load(from: url, storage: .shared).1.journal
+        }
+        #expect(try saved(["A", "B"]) == ["A", "B"])
+        #expect(try saved([]) == [])
+        #expect(try saved(Array(repeating: "A", count: 10_000)).count == 10_000)
+
+        try IndexPersistence.save(fixture(), eventID: 7, journal: Array(repeating: "A", count: 10_001), excluded: [],
+                                  to: url, storage: .shared)
+        let before = try Data(contentsOf: url)
+        #expect(throws: (any Error).self) { try IndexPersistence.load(from: url, storage: .shared) }
+        #expect(try Data(contentsOf: url) == before)
+        #expect(tree.snapshot() == ["kept.txt", "state/", "state/index.sealed"])
+    }
+
+    @Test func eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne() {
+        #expect(IndexPersistence.supersededCacheNames(forVersion: 8) == ["index.sealed"])
+        #expect(IndexPersistence.supersededCacheNames(forVersion: 9) == ["index.sealed", "index-v7.sealed"])
+        #expect(IndexPersistence.supersededCacheNames(forVersion: 11)
+            == ["index.sealed", "index-v7.sealed", "index-v8.sealed", "index-v9.sealed"])
+        // Formats up to 7 had nothing numbered before them.
+        #expect(IndexPersistence.supersededCacheNames(forVersion: 7) == ["index.sealed"])
+        #expect(IndexPersistence.supersededCacheNames(forVersion: 0) == ["index.sealed"])
+        #expect(IndexPersistence.supersededCacheNames == IndexPersistence.supersededCacheNames(forVersion: IndexPersistence.version))
+        #expect(IndexPersistence.cacheName == "index-v\(IndexPersistence.version).sealed")
+    }
+
     @Test func unlinkedDeletedEntriesStillLoad() throws {
         let tree = try TestTree("state/")
         let store = fixture()

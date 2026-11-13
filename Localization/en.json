@@ -2585,7 +2585,7 @@
     "Empty Trash…": "BrowserContextMenu.swift:103, FolderTreeController.swift:643, SidebarViewController+Menus.swift:41",
     "Enclosing folder": "ShortcutsWindowController.swift:19",
     "Enclosing Folder": "StrataCommand.swift:115",
-    "Encrypts Strata's search index and history": "Keychain item description, shown in Keychain Access · SecureStorage.swift:154",
+    "Encrypts Strata's search index and history": "Keychain item description, shown in Keychain Access · SecureStorage.swift:160",
     "End": "TablePreviewView.swift:122",
     "Endpoint": "Field: the S3 service's host name · ConnectToServerController.swift:154",
     "Engine": "Inspector row: Docker Desktop, OrbStack, Colima… · ContainerInspector.swift:149, ContainerInspector.swift:170, ContainerInspector.swift:217",

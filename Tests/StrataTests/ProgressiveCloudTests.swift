@@ -15,11 +15,11 @@ import Synchronization
             let second = try #require(store.append(paths: [a, b].map(\.path), in: folder))
             #expect(await started.next() == [b].map(\.path))
             if firstFinishesFirst {
-                await gate.finish(0, statuses: [a.path: .downloaded]); await first.value
+                try await gate.finish(0, statuses: [a.path: .downloaded]); await first.value
             }
-            await gate.finish(1, statuses: [b.path: .cloudOnly]); await second.value
+            try await gate.finish(1, statuses: [b.path: .cloudOnly]); await second.value
             if !firstFinishesFirst {
-                await gate.finish(0, statuses: [a.path: .downloaded]); await first.value
+                try await gate.finish(0, statuses: [a.path: .downloaded]); await first.value
             }
             #expect(store.status(for: a) == .downloaded && store.status(for: b) == .cloudOnly)
             #expect(store.append(paths: [a, b].map(\.path), in: folder) == nil)
@@ -36,8 +36,8 @@ import Synchronization
             #expect(await started.next() == [a].map(\.path))
             let current = try #require(store.load(paths: [b].map(\.path), in: folder))
             #expect(await started.next() == [b].map(\.path))
-            await gate.finish(1, statuses: [b.path: .downloaded]); await current.value
-            await gate.finish(0, statuses: oldIsNotCloud ? nil : [a.path: .cloudOnly]); await old.value
+            try await gate.finish(1, statuses: [b.path: .downloaded]); await current.value
+            try await gate.finish(0, statuses: oldIsNotCloud ? nil : [a.path: .cloudOnly]); await old.value
             #expect(store.status(for: a) == nil && store.status(for: b) == .downloaded)
         }
     }
@@ -55,7 +55,7 @@ import Synchronization
         weak var released = store
         store = nil
         #expect(released == nil && first.isCancelled && second.isCancelled && waiting.isCancelled)
-        await gate.finish(0, statuses: [:]); await gate.finish(1, statuses: [:])
+        try await gate.finish(0, statuses: [:]); try await gate.finish(1, statuses: [:])
         await first.value; await second.value; await waiting.value
         #expect(await gate.count == 2)
     }
@@ -66,7 +66,7 @@ import Synchronization
         let store = CloudStore(reader: { urls, _ in await gate.read(urls) })
         let initial = try #require(store.load(paths: [a].map(\.path), in: folder))
         #expect(await started.next() == [a].map(\.path))
-        await gate.finish(0, statuses: [a.path: .downloaded]); await initial.value
+        try await gate.finish(0, statuses: [a.path: .downloaded]); await initial.value
         let cancelled = try #require(store.load(paths: [a].map(\.path), in: folder))
         cancelled.cancel(); await cancelled.value
         let (changes, signal) = AsyncStream<Void>.makeStream()
@@ -77,7 +77,7 @@ import Synchronization
         defer { NotificationCenter.default.removeObserver(observer); signal.finish() }
         store.refresh([folder])
         #expect(await started.next() == [a].map(\.path))
-        await gate.finish(1, statuses: [a.path: .cloudOnly])
+        try await gate.finish(1, statuses: [a.path: .cloudOnly])
         _ = await changed.next()
         #expect(store.status(for: a) == .cloudOnly)
         #expect(await gate.count == 2)
@@ -90,10 +90,10 @@ import Synchronization
         let store = CloudStore(reader: { urls, _ in await gate.read(urls) })
         let initial = try #require(store.load(paths: [a, b].map(\.path), in: folder))
         #expect(await started.next() == [a, b].map(\.path))
-        await gate.finish(0, statuses: [a.path: .downloaded, b.path: .cloudOnly]); await initial.value
+        try await gate.finish(0, statuses: [a.path: .downloaded, b.path: .cloudOnly]); await initial.value
         let next = try #require(store.load(paths: [a].map(\.path), in: folder))
         #expect(await started.next() == [a].map(\.path))
-        await gate.finish(1, statuses: [:]); await next.value
+        try await gate.finish(1, statuses: [:]); await next.value
         #expect(store.status(for: a) == nil && store.status(for: b) == nil)
     }
 
@@ -103,7 +103,7 @@ import Synchronization
         let store = CloudStore(reader: { paths, _ in await gate.read(paths) })
         let initial = try #require(store.load(paths: [a.path], in: folder))
         #expect(await started.next() == [a.path])
-        await gate.finish(0, statuses: [a.path: .downloaded]); await initial.value
+        try await gate.finish(0, statuses: [a.path: .downloaded]); await initial.value
         let notifications = Mutex(0)
         let observer = NotificationCenter.default.addObserver(forName: .cloudStatusChanged, object: store, queue: nil) { _ in
             notifications.withLock { $0 += 1 }
@@ -111,7 +111,7 @@ import Synchronization
         defer { NotificationCenter.default.removeObserver(observer) }
         let next = try #require(store.load(paths: [a.path], in: folder))
         #expect(await started.next() == [a.path])
-        await gate.finish(1, statuses: nil); await next.value
+        try await gate.finish(1, statuses: nil); await next.value
         #expect(store.status(for: a) == nil && notifications.withLock { $0 } == 1)
     }
 }
@@ -128,7 +128,9 @@ private actor HeldCloudReads {
             reads.append((paths, continuation)); signal.yield(paths)
         }
     }
-    func finish(_ index: Int, statuses: [String: CloudStatus]?) {
-        reads[index].continuation.resume(returning: statuses.map { (reads[index].paths, $0) })
+    /// Throws when that read never started, as when a time limit ended the wait for it.
+    func finish(_ index: Int, statuses: [String: CloudStatus]?) throws {
+        let read = try #require(reads.indices.contains(index) ? reads[index] : nil, "Read \(index) never started.")
+        read.continuation.resume(returning: statuses.map { (read.paths, $0) })
     }
 }
