@@ -7,7 +7,7 @@ nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable,
     private let definition: ThemeDefinition?
 
     package static let system = ColorTheme()
-    package static let allCases: [ColorTheme] = [.system] + ThemeCatalog.bundled
+    package static let allCases: [ColorTheme] = [.system] + ThemeCatalog.bundled + ThemeCatalog.user
 
     // Existing call sites keep their typed names; contributed themes need no Swift declaration.
     package static let graphite = ColorTheme(rawValue: "graphite") ?? .system

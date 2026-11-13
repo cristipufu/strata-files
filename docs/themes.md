@@ -3,7 +3,8 @@
 Themes live in `Sources/Strata/App/Themes/`, one JSON file per palette. The app discovers them automatically and
 shows their previews in Settings ▸ Appearance. No Swift cases, settings rows or build-file lists need editing.
 These are bundled contributions: adding a file and rebuilding makes it available. Strata does not run theme code.
-The catalog accepts up to 128 themes, each at most 16 KiB.
+The catalog accepts up to 128 themes, each at most 16 KiB. To use a palette without rebuilding, see
+[Your own themes](#your-own-themes).
 
 Copy an existing file, such as `sage.json`, and change its ID, English name, translator note and colors:
 
@@ -71,3 +72,16 @@ The tests discover all bundled files too. Invalid schema, duplicate identities/n
 fail CI. All themes run through the native UI tests, including selection and inspector text contrast of at least
 4.5:1, native accessibility fallback, both panes and the different file views. Check the actual app in light and dark
 appearance as well: headless rendering cannot verify the live full-screen compositor.
+
+## Your own themes
+
+To use a palette without rebuilding Strata, save its file as `<id>.json` in
+`~/Library/Application Support/Strata/Themes/` and relaunch. It appears in Settings ▸ Appearance after the bundled
+themes. A terminal or editor scheme can be carried over with a `light` and a `dark` object as in
+[Published color schemes](#published-color-schemes): its background becomes `content`, its selection `selection`, and
+one of its colors the `accent`.
+
+These files follow the same format and checks as bundled ones. A theme only colors surfaces, the selection and the
+accent; text, dimmed hidden files, tags and file-type colors keep Strata's own colors. Strata checks each file at
+launch and skips one that is invalid, repeats a bundled theme's ID or name, or repeats another user theme's order. It
+logs the reason in Console, under Strata. Your theme's name isn't translated.

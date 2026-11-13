@@ -43,7 +43,7 @@ struct ThemeCatalogTests {
     @Test func bundledThemesAreValidAndEveryFileIsAvailableInSettings() throws {
         let themes = try ThemeCatalog.loadBundled()
         #expect(!themes.isEmpty)
-        #expect(ColorTheme.allCases == [.system] + themes)
+        #expect(ColorTheme.allCases == [.system] + themes + ThemeCatalog.user)
         for theme in themes {
             #expect(ColorTheme(rawValue: theme.rawValue) == theme)
             #expect(!theme.title.isEmpty)
@@ -217,5 +217,33 @@ struct ThemeCatalogTests {
                           try file(id: "other", name: "Other")] {
             #expect(throws: (any Error).self) { try ThemeCatalog.load([first, duplicate]) }
         }
+    }
+
+    @Test func userThemesLoadAfterTheBundledOnesAndAMistakeSkipsOnlyItsOwnFile() throws {
+        let bundled = try ThemeCatalog.loadBundled()
+        let taken = try #require(bundled.first)
+        let files: [(name: String, data: Data)] = [
+            try file(id: "dusk", name: "Dusk", order: 150),
+            try file(changing: ["tintStrength": 2]),                        // invalid
+            try file(id: taken.rawValue, name: "Mine", order: 151),         // a bundled ID
+            try file(id: "copy", name: taken.title, order: 152),            // a bundled name
+            try file(id: "again", name: "Again", order: 150),               // another user theme's order
+            try file(id: "meadow", name: "Meadow", order: 10),
+            ("other.json", try file(id: "night", name: "Night", order: 153).data),  // filename isn't the ID
+        ]
+        let themes = ThemeCatalog.loadUser(files, besides: bundled)
+        #expect(themes.map(\.rawValue) == ["meadow", "dusk"])
+        #expect(ThemeCatalog.loadUser([], besides: bundled).isEmpty)
+    }
+
+    @Test func aMissingUserFolderMeansNoUserThemes() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        #expect(ThemeCatalog.loadUser(from: folder, besides: []).isEmpty)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = try file()
+        try input.data.write(to: folder.appending(path: input.name))
+        try Data("not a theme".utf8).write(to: folder.appending(path: "notes.txt"))
+        #expect(ThemeCatalog.loadUser(from: folder, besides: []).map(\.rawValue) == ["meadow"])
     }
 }

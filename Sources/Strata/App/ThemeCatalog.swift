@@ -163,6 +163,51 @@ nonisolated package enum ThemeCatalog {
         return try load(files.map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
     }
 
+    /// Themes people add without rebuilding Strata: `<id>.json` files in the bundled format, read once at launch.
+    package static var userFolder: URL {
+        URL.applicationSupportDirectory.appending(path: "Strata/Themes", directoryHint: .isDirectory)
+    }
+
+    /// The user's themes, listed after the bundled ones.
+    package static let user: [ColorTheme] = loadUser(from: userFolder, besides: bundled)
+
+    /// Reads the folder's JSON files; a missing or unreadable folder means no user themes.
+    package static func loadUser(from folder: URL, besides taken: [ColorTheme]) -> [ColorTheme] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        let files = urls.filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return loadUser(files.compactMap { url in
+            guard let data = try? Data(contentsOf: url) else {
+                NSLog("Strata skipped the theme %@: the file can't be read", url.lastPathComponent)
+                return nil
+            }
+            return (url.lastPathComponent, data)
+        }, besides: taken)
+    }
+
+    /// Checks every file with the bundled rules, one at a time: a file that's invalid, or repeats an ID or name already
+    /// taken or another user theme's order, is logged and skipped, so one mistake never hides the other themes.
+    package static func loadUser(_ files: [(name: String, data: Data)], besides taken: [ColorTheme]) -> [ColorTheme] {
+        var accepted: [(name: String, data: Data)] = []
+        var themes: [ColorTheme] = []
+        for file in files {
+            do {
+                guard accepted.count < 128 else { throw Invalid("More than 128 user themes") }
+                let loaded = try load(accepted + [file])
+                guard let theme = loaded.first(where: { $0.rawValue + ".json" == file.name }),
+                      !taken.contains(where: { $0.rawValue == theme.rawValue || $0.title == theme.title }) else {
+                    throw Invalid("A bundled theme already uses this ID or name")
+                }
+                accepted.append(file)
+                themes = loaded
+            } catch {
+                NSLog("Strata skipped the theme %@: %@", file.name, String(describing: error))
+            }
+        }
+        return themes
+    }
+
     /// This same loader validates new files in tests, without changing the application's catalog or preferences.
     package static func load(_ files: [(name: String, data: Data)]) throws -> [ColorTheme] {
         guard files.count <= 128 else { throw Invalid("Too many theme files") }
