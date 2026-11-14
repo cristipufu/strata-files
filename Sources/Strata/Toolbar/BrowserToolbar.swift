@@ -8,7 +8,7 @@ final class BrowserToolbar {
     ]
     static let commands: [StrataCommand] = [
         .newFolder, .newFile, .moveToTrash, .copyToOtherPane, .moveToOtherPane, .compareWithOtherPane, .connectToServer,
-        .openInTerminal, .toggleQuickLook, .reloadFolder, .showCommandPalette,
+        .openInTerminal, .toggleQuickLook, .reloadFolder, .toggleHiddenFiles, .showCommandPalette,
     ]
     static func identifier(_ command: StrataCommand) -> NSToolbarItem.Identifier { .init("command." + command.id) }
     /// The label under a toolbar icon; the customization palette and the tooltip keep the full menu title.
