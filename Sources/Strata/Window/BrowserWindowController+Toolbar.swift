@@ -26,7 +26,10 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     }
 
     func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
-        if let command = BrowserToolbar.command(item.itemIdentifier) { return toolbarCommandAvailable(command) }
+        if let command = BrowserToolbar.command(item.itemIdentifier) {
+            if command.id == StrataCommand.toggleHiddenFiles.id { showHiddenFilesState(in: item) }
+            return toolbarCommandAvailable(command)
+        }
         switch item.itemIdentifier {
         case .back: return validateMenuItem(StrataCommand.goBack.menuItem())
         case .forward: return validateMenuItem(StrataCommand.goForward.menuItem())
@@ -43,7 +46,19 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
         item.image = command.image
         item.target = self
         item.action = #selector(performToolbarCommand(_:))
+        if command.id == StrataCommand.toggleHiddenFiles.id { showHiddenFilesState(in: item) }
         return item
+    }
+
+    /// Hidden Files says what a click does, like its menu and palette titles, and its eye shows whether they're shown.
+    /// Validation keeps it current when ⇧⌘. or another window changes the setting.
+    private func showHiddenFilesState(in item: NSToolbarItem) {
+        let showing = services.preferences.showHidden
+        let title = showing ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
+        guard item.label != title else { return }
+        item.label = title
+        item.toolTip = title
+        item.image = NSImage(systemSymbolName: showing ? "eye" : "eye.slash", accessibilityDescription: title)
     }
 
     private func makeNavigationItem(_ id: NSToolbarItem.Identifier) -> NSToolbarItem {
