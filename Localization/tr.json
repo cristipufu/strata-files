@@ -991,6 +991,7 @@
     "in memory": "bellekte",
     "Incoming": "Gelen",
     "Index": "Dizin",
+    "Index files": "Dosyaları Dizine Ekle",
     "Index updates unavailable": "Dizin güncellemeleri kullanılamıyor",
     "Indexing %lld items…": {
       "one": "%lld öğe dizinleniyor…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Yeni Sekmede Aç",
     "Open in Terminal": "Terminal’de Aç",
     "Open in Terminal uses": "Terminal’de Aç şunu kullanır:",
+    "Open Index Settings…": "Dizin Ayarlarını Aç…",
     "Open Privacy Settings": "Gizlilik Ayarlarını Aç",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Gizlilik Ayarlarını açın, yukarıdaki simgeyi listeye sürükleyin (veya + düğmesini tıklayın) ve Strata’yı açın.",
     "Open Privacy Settings…": "Gizlilik Ayarlarını Aç…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Betikler ve çevrimiçi içerik engellendi.",
     "Search": "Ara",
     "Search & Index": "Arama ve Dizin",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Mac’inizin tamamında arama, Son Kullanılanlar ve Yinelenenler için dizin gerekir. Bir klasörde aramak için klasörü açın ve orada arayın: Strata klasörü doğrudan okur.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Mac’inizin tamamında arama, Son Kullanılanlar, Yinelenenler ve anında klasör boyutları dizini kullanır. Kapatıldığında dizin durur, belleğini boşaltır ve diskten silinir: klasör boyutları siz istediğinizde ölçülür ve arama, bulunduğunuz klasörü okur.",
     "Search box in the Dock": "Dock’ta arama alanı",
     "Search by extension (also *.pdf)": "Uzantıya göre ara (*.pdf de)",
     "Search commands or shortcuts": "Komutlarda veya kestirmelerde ara",
@@ -1756,6 +1760,7 @@
       "one": "Klasörler eşleşiyor (%lld öğe karşılaştırıldı)",
       "other": "Klasörler eşleşiyor (%lld öğe karşılaştırıldı)"
     },
+    "The index is turned off": "Dizin kapalı",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Dizin bu klasörleri ve içlerindeki her şeyi atlar: ada göre aramalar ve klasör boyutları bunları içermez, kapladıkları bellek de boşaltılır. Bir klasörü listeden silmek onu yeniden dizine ekler.",
     "The item couldn’t be found": "Öğe bulunamadı",
     "The items have moved or been changed since.": "Öğeler o zamandan beri taşınmış veya değiştirilmiş.",

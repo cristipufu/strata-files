@@ -11,7 +11,8 @@ extension BrowserWindowController {
         go(.search(query, scope: scope))
     }
 
-    /// The toolbar field searches the whole index; typing in the list still filters the current folder.
+    /// The toolbar field searches the whole index, or with the index turned off the folder shown, which is read;
+    /// typing in the list still filters the current folder.
     private func searchTextChanged(_ text: String) {
         let query = text.trimmingCharacters(in: .whitespaces)
         if query.isEmpty {
@@ -19,7 +20,8 @@ extension BrowserWindowController {
             return
         }
         // Spotlight answers tag searches, so they don't wait for the first index.
-        guard services.index.isReady || SpotlightQuery.parse(query) != nil else {
+        let answeredBySpotlight = SpotlightQuery.parse(query) != nil
+        guard services.index.isReady || !services.index.isOn || answeredBySpotlight else {
             // The index is still being built for the first time: filter this folder meanwhile.
             browser.setFilter(query)
             return
@@ -32,7 +34,8 @@ extension BrowserWindowController {
             updateHeaders()
             pane.search.run()
         } else {
-            go(.search(query, scope: nil))
+            let everywhere = services.index.isOn || answeredBySpotlight
+            go(.search(query, scope: everywhere ? nil : location))
         }
     }
 
@@ -89,6 +92,10 @@ extension BrowserWindowController {
 
     @objc func indexPhaseChanged() {
         refreshStatus()
+    }
+
+    @objc func indexSwitched() {
+        panes.forEach { $0.search.indexSwitched() }
     }
 }
 

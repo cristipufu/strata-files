@@ -100,6 +100,8 @@ let indexSources = [
     "FSEventsStream.swift",
     "IndexChanges.swift",
     "IndexEventInbox.swift",
+    "IndexFolderReads.swift",
+    "IndexMountedVolumes.swift",
     "IndexHotFolders.swift",
     "IndexLossRecovery.swift",
     "IndexPersistence.swift",

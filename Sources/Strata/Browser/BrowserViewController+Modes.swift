@@ -37,6 +37,8 @@ extension BrowserViewController {
     func setMode(_ newMode: BrowserViewMode, remember: Bool = true) {
         if !remember, directory == nil, !isShowingResults { initialMode = newMode }
         guard supportsMode(newMode), newMode != effectiveMode else { return }
+        // Disk Usage asked for the sizes it showed, and shows them no more.
+        if effectiveMode == .treemap { sizer.keepOnly([], askedBy: .diskUsage) }
         let revision = navigationRevision
         columnController?.cancelPendingRename()
         let selection = selectedURLs
@@ -128,8 +130,9 @@ extension BrowserViewController {
         if !entry.isDirectory || entry.isSymlink {
             return entry.allocatedSize.map(DiskSizeMeasurement.measured) ?? .unavailable
         }
-        guard showsSize(entry) else { return .unavailable }
-        guard let size = folderSize(entry.url, request: true) else { return .measuring }
+        // Disk Usage is asking: with the index off it measures. A folder you excluded stays out of it.
+        guard canMeasure(entry), !services.index.isExcludedByChoice(entry.url) else { return .unavailable }
+        guard let size = folderSize(entry.url, request: true, askedBy: .diskUsage) else { return .measuring }
         guard let bytes = size.allocatedBytes else { return .unavailable }
         return size.allocationComplete ? .measured(bytes) : .partial(bytes)
     }

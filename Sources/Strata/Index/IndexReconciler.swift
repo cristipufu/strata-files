@@ -71,18 +71,12 @@ nonisolated package struct IndexRefreshPass {
 nonisolated package struct IndexReconciler: @unchecked Sendable {
     package typealias Folder = IndexRefreshPass.Folder
 
-    private let readBuffer: BulkDirectoryReader.ReadBuffer
-    private let readDirectory: IndexWorker.DirectoryRead
-    private let readItem: IndexWorker.ItemRead
+    /// Every folder and item is read through this, so one that stops answering holds nothing up.
+    private let reads: IndexFolderReads
     private let shouldStopRefresh: @Sendable () -> Bool
 
-    package init(readBuffer: BulkDirectoryReader.ReadBuffer,
-                 readDirectory: @escaping IndexWorker.DirectoryRead,
-                 readItem: @escaping IndexWorker.ItemRead,
-                 shouldStopRefresh: @escaping @Sendable () -> Bool) {
-        self.readBuffer = readBuffer
-        self.readDirectory = readDirectory
-        self.readItem = readItem
+    package init(reads: IndexFolderReads, shouldStopRefresh: @escaping @Sendable () -> Bool) {
+        self.reads = reads
         self.shouldStopRefresh = shouldStopRefresh
     }
 
@@ -105,8 +99,6 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
         var readAroundATree = false
         var work: [(folder: Folder, deep: Bool)] = [((id, path), deep)]
         var prefetched: [Int32: PrefetchedFolder] = [:]
-        var workerBuffers: [BulkDirectoryReader.ReadBuffer] = []
-        var backgroundBuffers: [BulkDirectoryReader.ReadBuffer] = []
         let inFlightGroup = DispatchGroup()
         var inFlightFolders: [Folder] = []
         var inFlightResults: OSAllocatedUnfairLock<[PrefetchedFolder?]>?
@@ -129,8 +121,6 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
         }
         defer {
             inFlightGroup.wait()
-            BulkDirectoryReader.ReadBuffer.deallocateAll(&workerBuffers)
-            BulkDirectoryReader.ReadBuffer.deallocateAll(&backgroundBuffers)
         }
         var changed = false
         while var next = work.popLast() {
@@ -147,7 +137,7 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
             if pass.interrupted || stopForQuit(&pass) { break }
             if prefetched.isEmpty, !work.isEmpty {
                 prefetchFolders(current: &next, remaining: &work, rootID: id, rootNames: names, pass: pass,
-                                buffers: &workerBuffers, into: &prefetched)
+                                into: &prefetched)
             }
             let folder = next.folder
             let selectedNames = folder.id == id ? names : nil
@@ -173,7 +163,7 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
             }
             if !prefetched.isEmpty, inFlightFolders.isEmpty, !work.isEmpty, !pass.interrupted, !shouldStopRefresh() {
                 startBackgroundPrefetch(from: work, rootID: id, rootNames: names, pass: pass, prefetched: prefetched,
-                                        buffers: &backgroundBuffers, group: inFlightGroup,
+                                        group: inFlightGroup,
                                         inFlightFolders: &inFlightFolders,
                                         inFlightResults: &inFlightResults,
                                         inFlightCancelled: &inFlightCancelled)
@@ -200,7 +190,6 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
     private func startBackgroundPrefetch(from work: [(folder: Folder, deep: Bool)],
                                          rootID: Int32, rootNames: Set<String>?, pass: IndexRefreshPass,
                                          prefetched: [Int32: PrefetchedFolder],
-                                         buffers backgroundBuffers: inout [BulkDirectoryReader.ReadBuffer],
                                          group: DispatchGroup,
                                          inFlightFolders: inout [Folder],
                                          inFlightResults: inout OSAllocatedUnfairLock<[PrefetchedFolder?]>?,
@@ -209,21 +198,18 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
                                                      pass: pass, excluding: prefetched)
         let workers = min(foldersToRead.count, max(1, IndexScanner.performanceCores))
         guard foldersToRead.count >= 4, workers >= 2 else { return }
-        BulkDirectoryReader.ReadBuffer.ensure(&backgroundBuffers, count: workers)
-        let buffers = backgroundBuffers
         let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
         let batchCancelled = OSAllocatedUnfairLock(initialState: false)
         inFlightFolders = foldersToRead
         inFlightResults = results
         inFlightCancelled = batchCancelled
-        readPrefetchBatch(foldersToRead, workers: workers, buffers: buffers, group: group,
+        readPrefetchBatch(foldersToRead, workers: workers, group: group,
                           results: results, batchCancelled: batchCancelled)
     }
 
     private func prefetchFolders(current: inout (folder: Folder, deep: Bool),
                                  remaining: inout [(folder: Folder, deep: Bool)],
                                  rootID: Int32, rootNames: Set<String>?, pass: IndexRefreshPass,
-                                 buffers workerBuffers: inout [BulkDirectoryReader.ReadBuffer],
                                  into prefetched: inout [Int32: PrefetchedFolder]) {
         let takeCount = min(Self.prefetchBatchLimit - 1, remaining.count)
         let startIndex = remaining.count - takeCount
@@ -233,12 +219,9 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
         let foldersToRead = selectPrefetchCandidates(from: window, rootID: rootID, rootNames: rootNames, pass: pass)
         let workers = min(foldersToRead.count, max(1, IndexScanner.performanceCores))
         guard foldersToRead.count >= 2, workers >= 2 else { return }
-        BulkDirectoryReader.ReadBuffer.ensure(&workerBuffers, count: workers)
-        let buffers = workerBuffers
-
         let results = OSAllocatedUnfairLock(initialState: [PrefetchedFolder?](repeating: nil, count: foldersToRead.count))
         let batchCancelled = OSAllocatedUnfairLock(initialState: false)
-        readPrefetchBatch(foldersToRead, workers: workers, buffers: buffers,
+        readPrefetchBatch(foldersToRead, workers: workers,
                           results: results, batchCancelled: batchCancelled)
 
         let fetched = results.withLock { $0 }
@@ -288,13 +271,14 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
     }
 
     private func readPrefetchBatch(_ foldersToRead: [Folder], workers: Int,
-                                   buffers: [BulkDirectoryReader.ReadBuffer],
                                    group: DispatchGroup? = nil,
                                    results: OSAllocatedUnfairLock<[PrefetchedFolder?]>,
                                    batchCancelled: OSAllocatedUnfairLock<Bool>) {
         BulkDirectoryReader.readBatch(
-            foldersToRead, workers: workers, buffers: buffers, group: group,
-            path: { $0.path }, read: readDirectory,
+            foldersToRead, workers: workers, group: group,
+            path: { $0.path }, read: { [reads] path, items, names, shouldStop in
+                reads.read(path, items: &items, names: &names, shouldStop: shouldStop)
+            },
             shouldStop: shouldStopRefresh,
             results: results, cancelled: batchCancelled
         ) { folder, error, items, names in
@@ -307,12 +291,15 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
                             prefetched: PrefetchedFolder? = nil, allPathsChanged: Bool = false,
                             in store: IndexStore, config: IndexConfig,
                             pass: inout IndexRefreshPass) -> FolderChanges? {
-        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }
+        // A folder never read is read whole at its first change, whatever the change names: everything else in it is
+        // as new to the index. Its named items are read by themselves only if it still cannot be listed.
+        let neverRead = selectedNames != nil && store.read { $0.flags[Int(id)] & IndexStore.Flag.unreadDirectory != 0 }
+        var listing = neverRead ? nil : selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }
         if listing == nil { listing = prefetched?.listing }
         guard !pass.interrupted else { return nil }
         if listing == nil {
             var items: [ScannedItem] = [], names: [UInt8] = []
-            let error = prefetched?.error ?? readDirectory(path, &items, &names, readBuffer.raw, shouldStopRefresh)
+            let error = prefetched?.error ?? reads.read(path, items: &items, names: &names, shouldStop: shouldStopRefresh)
             if error == ECANCELED {
                 pass.interrupted = true
                 return nil
@@ -329,10 +316,14 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
                 }
                 return changes
             }
-            guard error == 0 else { return nil }
-            listing = FolderListing(items: items, names: names, path: path)
+            if error != 0, neverRead, let selectedNames {
+                listing = readSelected(selectedNames, in: path, id: id, store: store, pass: &pass)
+            } else {
+                guard error == 0 else { return nil }
+                listing = FolderListing(items: items, names: names, path: path)
+            }
         }
-        guard let listing else { return nil }
+        guard !pass.interrupted, let listing else { return nil }
         var overflowed = false
         let folderChanges = store.write { store in
             guard store.isLive(id), store.isDirectory(id) else { return FolderChanges() }
@@ -361,7 +352,7 @@ nonisolated package struct IndexReconciler: @unchecked Sendable {
         let prefix = path.hasSuffix("/") ? path : path + "/"
         for name in requested.sorted() {
             if stopForQuit(&pass) { return nil }
-            let error = readItem(prefix + name, &items, &names)
+            let error = reads.readItem(prefix + name, items: &items, names: &names, shouldStop: shouldStopRefresh)
             if error == ECANCELED { pass.interrupted = true; return nil }
             guard error == 0 || error == ENOENT else { return nil }
         }

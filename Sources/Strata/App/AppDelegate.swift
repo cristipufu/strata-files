@@ -46,6 +46,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                           object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { index.saveWhenIdle() }
         }
+        // Content matches follow the index's: with the index turned off nothing shows them, so they aren't gathered.
+        NotificationCenter.default.addObserver(forName: .indexDidSwitch, object: index, queue: nil) { _ in
+            MainActor.assumeIsolated {
+                if index.isOn { StrataAI.startIndexing() } else { StrataAI.stopIndexing() }
+            }
+        }
         NSApp.mainMenu = MainMenu.build()
         // Your own shortcuts (Settings ▸ Shortcuts) over the built-in ones.
         if let menu = NSApp.mainMenu { ShortcutStore.shared.install(menu) }
@@ -82,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browserServices.index.start()
         ContainerStore.shared.start()
         ProjectEditors.warm()
-        StrataAI.startIndexing()
+        if browserServices.index.isOn { StrataAI.startIndexing() }
         // Loads history now, so a plain copy left by an earlier build is removed right away.
         _ = OperationLog.shared
         // Archives opened as folders and not looked at for a day; containers' and servers' files left by a crash.

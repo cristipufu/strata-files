@@ -884,6 +884,7 @@
     "in memory": "内存中",
     "Incoming": "传入项目",
     "Index": "索引",
+    "Index files": "索引文件",
     "Index updates unavailable": "索引更新不可用",
     "Indexing %lld items…": {
       "other": "正在索引%lld个项目…"
@@ -1158,6 +1159,7 @@
     "Open in New Tab": "在新标签页中打开",
     "Open in Terminal": "在终端中打开",
     "Open in Terminal uses": "“在终端中打开”使用",
+    "Open Index Settings…": "打开索引设置…",
     "Open Privacy Settings": "打开隐私设置",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "打开隐私设置，将上方的图标拖到列表中（或点按+），然后打开Strata。",
     "Open Privacy Settings…": "打开隐私设置…",
@@ -1389,6 +1391,8 @@
     "Scripts and online content are blocked.": "脚本和在线内容已被阻止。",
     "Search": "搜索",
     "Search & Index": "搜索与索引",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "搜索整台Mac、最近使用和重复项目都需要索引。若要搜索某个文件夹，请打开它并在其中搜索：Strata会直接读取它。",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "搜索整台Mac、最近使用、重复项目和即时文件夹大小都使用索引。关闭后，索引会停止、释放内存并从磁盘中删除：文件夹大小会在你要求时测量，搜索则读取你所在的文件夹。",
     "Search box in the Dock": "程序坞中的搜索栏",
     "Search by extension (also *.pdf)": "按扩展名搜索（也可用*.pdf）",
     "Search commands or shortcuts": "搜索命令或快捷键",
@@ -1620,6 +1624,7 @@
     "The folders match (%lld items compared)": {
       "other": "文件夹一致（已比较%lld个项目）"
     },
+    "The index is turned off": "索引已关闭",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "索引会跳过这些文件夹及其中的所有内容：按名称搜索和文件夹大小都不包含它们，它们占用的内存也会释放。移除某个文件夹后，它会重新被编入索引。",
     "The item couldn’t be found": "找不到该项目",
     "The items have moved or been changed since.": "这些项目此后已被移动或更改。",

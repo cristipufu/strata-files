@@ -991,6 +991,7 @@
     "in memory": "en mémoire",
     "Incoming": "Entrant",
     "Index": "Index",
+    "Index files": "Indexer les fichiers",
     "Index updates unavailable": "Mises à jour de l’index indisponibles",
     "Indexing %lld items…": {
       "one": "Indexation de %lld élément…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Ouvrir dans un nouvel onglet",
     "Open in Terminal": "Ouvrir dans Terminal",
     "Open in Terminal uses": "Ouvrir dans Terminal utilise",
+    "Open Index Settings…": "Ouvrir les réglages de l’index…",
     "Open Privacy Settings": "Ouvrir les réglages de confidentialité",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Ouvrez les réglages de confidentialité, faites glisser l’icône ci-dessus dans la liste (ou cliquez sur +), puis activez Strata.",
     "Open Privacy Settings…": "Ouvrir les réglages de confidentialité…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Les scripts et le contenu en ligne sont bloqués.",
     "Search": "Rechercher",
     "Search & Index": "Recherche et index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "La recherche sur tout le Mac, Récents et Doublons en ont besoin. Pour chercher dans un dossier, ouvrez-le et lancez-y la recherche : Strata le lit directement.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "La recherche sur tout le Mac, Récents, Doublons et les tailles de dossier instantanées utilisent l’index. Désactivé, il s’arrête, libère sa mémoire et est supprimé du disque : les tailles de dossier sont mesurées à la demande, et la recherche lit le dossier où vous vous trouvez.",
     "Search box in the Dock": "Champ de recherche dans le Dock",
     "Search by extension (also *.pdf)": "Rechercher par extension (aussi *.pdf)",
     "Search commands or shortcuts": "Rechercher des commandes ou des raccourcis",
@@ -1756,6 +1760,7 @@
       "one": "Les dossiers correspondent (%lld élément comparé)",
       "other": "Les dossiers correspondent (%lld éléments comparés)"
     },
+    "The index is turned off": "L’index est désactivé",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "L’index ignore ces dossiers et tout leur contenu : les recherches par nom et les tailles de dossier ne les comptent pas, et leur mémoire est libérée. Supprimer un dossier de la liste le fait indexer à nouveau.",
     "The item couldn’t be found": "L’élément est introuvable",
     "The items have moved or been changed since.": "Les éléments ont été déplacés ou modifiés depuis.",

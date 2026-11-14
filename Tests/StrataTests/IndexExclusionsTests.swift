@@ -393,6 +393,56 @@ struct IndexExclusionsTests {
         #expect(tree.snapshot() == ["Apps/", "home/", "home/IR/", "home/IR/a.txt", "home/IR2/", "home/IR2/c.txt"])
     }
 
+    @MainActor @Test func withTheIndexOffFoldersItWouldCoverShowNoSizeAndStartNoWalkUntilAsked() async throws {
+        let tree = try TestTree("Apps/", "home/IR/a.txt", "home/IR2/c.txt", "elsewhere/x/y.txt")
+        let walks = HeldWalks()
+        defer { walks.release() }
+        let environment = try indexing(tree, holding: walks)
+        environment.preferences.indexesFiles = false
+        let browser = try await listView(of: tree.url("home"), in: environment)
+        for name in ["IR", "IR2"] {
+            let folder = try sizeCell(name, in: browser)
+            #expect(folder.text == "—" && browser.iconFolderSizeText(folder.row.entry) == "—", "\(name)")
+            #expect(browser.canMeasure(folder.row.entry) && !browser.showsSize(folder.row.entry), "\(name)")
+            #expect(!browser.sizer.isPending(folder.row.url), "\(name)")
+        }
+        // Asking is still answered, by a walk: the Inspector and Calculate Size ask this way.
+        let asked = try #require(browser.allRows.first { $0.url.lastPathComponent == "IR" })
+        #expect(browser.folderSize(asked.url, request: true) == nil && browser.sizer.isPending(asked.url))
+
+        // A folder the index never covered is sized as before, with a walk of its own.
+        let outside = try await listView(of: tree.url("elsewhere"), in: environment)
+        let other = try sizeCell("x", in: outside)
+        #expect(other.text == "…" && outside.showsSize(other.row.entry) && outside.sizer.isPending(other.row.url))
+
+        // Turned on again, the rows are the index's to size.
+        environment.preferences.indexesFiles = true
+        #expect(browser.showsSize(asked.entry))
+        #expect(tree.snapshot() == ["Apps/", "elsewhere/", "elsewhere/x/", "elsewhere/x/y.txt", "home/", "home/IR/",
+                                    "home/IR/a.txt", "home/IR2/", "home/IR2/c.txt"])
+    }
+
+    @MainActor @Test func withTheIndexOffDiskUsageMeasuresWhatItShowsExceptExcludedFolders() async throws {
+        let tree = try TestTree("Apps/", "home/IR/a.txt", "home/IR2/c.txt")
+        let walks = HeldWalks()
+        defer { walks.release() }
+        let environment = try indexing(tree, holding: walks)
+        environment.preferences.indexExcludedFolders = [tree.url("home/IR").path]
+        environment.preferences.indexesFiles = false
+        let browser = try await listView(of: tree.url("home"), in: environment)
+        browser.setMode(.treemap, remember: false)
+        let map = try #require(browser.treemapController)
+        #expect(map.unmeasured == 0)
+        // Opening Disk Usage is asking: its folders are walked, where the list would wait to be asked.
+        let measured = try #require(browser.allRows.first { $0.url.lastPathComponent == "IR2" })
+        let excluded = try #require(browser.allRows.first { $0.url.lastPathComponent == "IR" })
+        #expect(!browser.showsSize(measured.entry) && browser.sizer.isPending(measured.url))
+        // As something you asked for: such a walk fetches what it needs, and the index does not stop it.
+        #expect(browser.sizer.isAskedFor(measured.url))
+        #expect(!browser.sizer.isPending(excluded.url))
+        #expect(tree.snapshot() == ["Apps/", "home/", "home/IR/", "home/IR/a.txt", "home/IR2/", "home/IR2/c.txt"])
+    }
+
     @MainActor @Test func aFolderListedThroughALinkShowsNoSizeAndStartsNoWalk() async throws {
         let tree = try TestTree("Apps/", "home/IR/a.txt", "home/IR2/c.txt", "home/link -> home/IR")
         let walks = HeldWalks()

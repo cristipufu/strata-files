@@ -991,6 +991,7 @@
     "in memory": "i minnet",
     "Incoming": "Inkommande",
     "Index": "Index",
+    "Index files": "Indexera filer",
     "Index updates unavailable": "Indexuppdateringar är inte tillgängliga",
     "Indexing %lld items…": {
       "one": "Indexerar %lld objekt…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Öppna i ny flik",
     "Open in Terminal": "Öppna i Terminal",
     "Open in Terminal uses": "Öppna i Terminal använder",
+    "Open Index Settings…": "Öppna indexinställningar…",
     "Open Privacy Settings": "Öppna integritetsinställningar",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Öppna integritetsinställningarna, dra symbolen ovan till listan (eller klicka på +) och aktivera Strata.",
     "Open Privacy Settings…": "Öppna integritetsinställningar…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Skript och onlineinnehåll är blockerade.",
     "Search": "Sök",
     "Search & Index": "Sökning och index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Sökning på hela din Mac, Senaste och Dubbletter behöver det. Vill du söka i en mapp öppnar du den och söker där: Strata läser den direkt.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Sökning på hela din Mac, Senaste, Dubbletter och omedelbara mappstorlekar använder indexet. När det är avstängt stannar det, frigör sitt minne och raderas från disken: mappstorlekar mäts när du ber om det, och sökning läser mappen du är i.",
     "Search box in the Dock": "Sökfält i Dock",
     "Search by extension (also *.pdf)": "Sök efter filnamnstillägg (även *.pdf)",
     "Search commands or shortcuts": "Sök efter kommandon eller kortkommandon",
@@ -1756,6 +1760,7 @@
       "one": "Mapparna matchar (%lld objekt jämfört)",
       "other": "Mapparna matchar (%lld objekt jämförda)"
     },
+    "The index is turned off": "Indexet är avstängt",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indexet hoppar över de här mapparna och allt i dem: sökningar på namn och mappstorlekar utelämnar dem, och deras minne frigörs. Tar du bort en mapp indexeras den igen.",
     "The item couldn’t be found": "Objektet kunde inte hittas",
     "The items have moved or been changed since.": "Objekten har flyttats eller ändrats sedan dess.",

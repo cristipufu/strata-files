@@ -335,8 +335,8 @@ struct DirectoryReadSessionTests {
             defer { controller.window?.contentViewController = nil }
             let first = controller.browser, second = try #require(controller.otherBrowser)
             let firstLoad = try #require(first.directoryReads.task), secondLoad = try #require(second.directoryReads.task)
-            try await reads.request(0).finish(.success([old]))
-            try await reads.request(1).finish(.success([other]))
+            try await reads.request(for: tree.url("left")).finish(.success([old]))
+            try await reads.request(for: tree.url("right")).finish(.success([other]))
             await firstLoad.value
             await secondLoad.value
             first.setMode(mode, remember: false)
@@ -369,8 +369,8 @@ struct DirectoryReadSessionTests {
         defer { controller.window?.contentViewController = nil }
         let first = controller.browser, second = try #require(controller.otherBrowser)
         let firstLoad = try #require(first.directoryReads.task), secondLoad = try #require(second.directoryReads.task)
-        try await reads.request(0).finish(.success([a]))
-        try await reads.request(1).finish(.success([b]))
+        try await reads.request(for: tree.url("left")).finish(.success([a]))
+        try await reads.request(for: tree.url("right")).finish(.success([b]))
         await firstLoad.value
         await secondLoad.value
         let stale = controller.selectionAfterOperation()

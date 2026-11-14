@@ -1098,6 +1098,7 @@
     "in memory": "v paměti",
     "Incoming": "Příchozí",
     "Index": "Index",
+    "Index files": "Indexovat soubory",
     "Index updates unavailable": "Aktualizace indexu nejsou dostupné",
     "Indexing %lld items…": {
       "one": "Indexování %lld položky…",
@@ -1388,6 +1389,7 @@
     "Open in New Tab": "Otevřít na novém panelu",
     "Open in Terminal": "Otevřít v Terminálu",
     "Open in Terminal uses": "Příkaz Otevřít v Terminálu používá",
+    "Open Index Settings…": "Otevřít nastavení indexu…",
     "Open Privacy Settings": "Otevřít nastavení soukromí",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Otevřete nastavení soukromí, přetáhněte ikonu výše do seznamu (nebo klikněte na +) a zapněte Strata.",
     "Open Privacy Settings…": "Otevřít nastavení soukromí…",
@@ -1641,6 +1643,8 @@
     "Scripts and online content are blocked.": "Skripty a online obsah jsou blokovány.",
     "Search": "Hledat",
     "Search & Index": "Hledání a index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Potřebují ho hledání v celém Macu, Poslední položky a Duplikáty. Chcete-li prohledat složku, otevřete ji a hledejte v ní: Strata ji přečte přímo.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Index využívají hledání v celém Macu, Poslední položky, Duplikáty a okamžité velikosti složek. Po vypnutí se zastaví, uvolní paměť a smaže se z disku: velikosti složek se změří, až o ně požádáte, a hledání čte složku, ve které právě jste.",
     "Search box in the Dock": "Vyhledávací pole v Docku",
     "Search by extension (also *.pdf)": "Hledat podle přípony (také *.pdf)",
     "Search commands or shortcuts": "Hledat příkazy nebo zkratky",
@@ -1892,6 +1896,7 @@
       "few": "Složky se shodují (porovnány %lld položky)",
       "other": "Složky se shodují (porovnáno %lld položek)"
     },
+    "The index is turned off": "Index je vypnutý",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Index tyto složky i vše v nich přeskakuje: hledání podle názvu i velikosti složek je vynechávají a paměť, kterou zabíraly, se uvolní. Odstraněním složky ze seznamu se znovu zaindexuje.",
     "The item couldn’t be found": "Položku nelze najít",
     "The items have moved or been changed since.": "Položky byly mezitím přesunuty nebo změněny.",

@@ -30,6 +30,11 @@ nonisolated package enum IndexRefresh: Sendable {
         return nil
     }
 
+    /// Whether `path` lies inside `folder`, by whole path components.
+    package static func lies(_ path: String, in folder: String) -> Bool {
+        path != folder && path.hasPrefix(folder == "/" ? "/" : folder + "/")
+    }
+
     package static func splitPath(_ path: String) -> (parent: String, name: String) {
         let utf8 = path.utf8
         var end = utf8.endIndex

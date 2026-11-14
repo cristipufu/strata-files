@@ -46,8 +46,10 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private let queue = DispatchQueue(label: "dev.strata.index", qos: .utility)
-    private let readBuffer = BulkDirectoryReader.ReadBuffer()
-    private var config: IndexConfig?
+    private var config: IndexConfig? {
+        // A root that does not answer is waited for: an index without it would replace one that has it.
+        didSet { reads.alwaysWait(for: config?.roots ?? []) }
+    }
     private var store: IndexStore?
     private var lastEventID: UInt64 = 0
     private var pendingEventID: UInt64 = 0
@@ -83,10 +85,15 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     private let events = FSEventsStream()
     private let incoming: IndexEventInbox
     private let watchesChanges: Bool
-    private let readDirectory: DirectoryRead
-    private let readItem: ItemRead
+    /// Every folder the index reads is read through this, so one that stops answering holds nothing up.
+    private let reads: IndexFolderReads
     private let startEvents: (@Sendable ([String], UInt64) -> Bool)?
     private let journal: @Sendable ([String]) -> [String]?
+    private let mountedVolumes: IndexMountedVolumes.Reader
+    /// The configuration as it was given, and the volumes last found mounted inside its roots, which only the
+    /// worker looks up. `config`, the one followed, leaves those out as well.
+    private var given: IndexConfig?
+    private var mounted: Set<String> = []
     private let now: @Sendable () -> UInt64
     private var awaitingHistory = false
     private var watchingFailed = false
@@ -104,6 +111,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     package var onPhase: (@Sendable (Phase) -> Void)?
     /// Called after changes were applied (sizes or entries).
     package var onChange: (@Sendable (IndexChanges) -> Void)?
+    /// Called with the volumes mounted inside the roots when one is mounted or gone: the index leaves those out.
+    package var onMountedVolumes: (@Sendable (Set<String>) -> Void)?
 
     /// Recorded batches can be applied without a live stream changing their order in headless tests.
     package init(watchesChanges: Bool = true, saveInterval: TimeInterval = IndexWorker.defaultSaveInterval,
@@ -111,25 +120,26 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
                  deferredFlushInterval: TimeInterval = IndexWorker.defaultDeferredFlushInterval,
                  replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
                  now: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+                 readClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
                  readDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  readItem: @escaping ItemRead = BulkDirectoryReader.readItem,
+                 readScannedDirectory: @escaping DirectoryRead = BulkDirectoryReader.read,
                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
                  journal: @escaping @Sendable ([String]) -> [String]? = FSEventsStream.journal(for:),
+                 mountedVolumes: @escaping IndexMountedVolumes.Reader = IndexMountedVolumes.inside,
                  schedule: Schedule? = nil) {
         self.incoming = IndexEventInbox(replayEventLimit: replayEventLimit, now: now)
         self.watchesChanges = watchesChanges
         self.saveInterval = saveInterval
         self.hotFolders = IndexHotFolders(fastInterval: fastFlushInterval, deferredInterval: deferredFlushInterval)
         self.now = now
-        self.readDirectory = readDirectory
-        self.readItem = readItem
+        // Its patience runs by a clock of its own: the index's stands for hours in which nothing is read.
+        reads = IndexFolderReads(readFolder: readDirectory, readScannedFolder: readScannedDirectory, readItem: readItem,
+                                 now: readClock)
         self.startEvents = startEvents
         self.journal = journal
+        self.mountedVolumes = mountedVolumes
         self.schedule = schedule
-    }
-
-    deinit {
-        readBuffer.deallocate()
     }
 
     package func start(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
@@ -141,7 +151,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
 
     package func update(_ config: IndexConfig, completion: @escaping @Sendable () -> Void = {}) {
         queue.async(qos: .default, flags: .enforceQoS) {
-            self.reconfigure(config)
+            self.lookUpMountedVolumes(for: config)
+            self.reconfigure(self.leavingOutMountedVolumes(config))
             completion()
         }
     }
@@ -185,6 +196,26 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         }
     }
 
+    /// Ends this worker for good, as turning the index off does. Work under way stops as it does at quit; then the
+    /// event stream ends, the index and everything waiting on it are let go, and last the saved index at `file` is
+    /// removed, so no save of this worker's brings it back. A retired worker is not started again: the next index has
+    /// its own.
+    package func retire(removing file: URL, completion: @escaping @Sendable () -> Void = {}) {
+        quitDeadline.withLock { $0 = 0 }
+        queue.async {
+            self.events.stop()
+            self.eventGeneration = UUID()
+            self.discardQueuedWork()
+            self.treesTimer = nil
+            self.recoveryTimer = nil
+            self.compactionScheduled = false
+            self.store = nil
+            self.config = nil
+            IndexPersistence.remove(file)
+            completion()
+        }
+    }
+
     /// Whether quit's deadline has passed or a full rebuild has been requested (any thread).
     private var shouldStopRefresh: Bool {
         pastQuitDeadline || rebuildRequested.withLock { $0 }
@@ -204,14 +235,41 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private var reconciler: IndexReconciler {
-        IndexReconciler(readBuffer: readBuffer, readDirectory: readDirectory, readItem: readItem) { [weak self] in
+        IndexReconciler(reads: reads) { [weak self] in
             self?.shouldStopRefresh == true
         }
     }
 
     // MARK: - Lifecycle (on `queue`)
 
-    private func boot(_ config: IndexConfig) {
+    /// Looks up the volumes mounted inside the roots of `given`, the configuration from now on, and says which they
+    /// are when that changed.
+    private func lookUpMountedVolumes(for given: IndexConfig) {
+        self.given = given
+        let volumes = mountedVolumes(given.roots)
+        guard volumes != mounted else { return }
+        mounted = volumes
+        onMountedVolumes?(volumes)
+    }
+
+    /// The configuration to follow for `given`: the volumes last found mounted are left out as well.
+    private func leavingOutMountedVolumes(_ given: IndexConfig) -> IndexConfig {
+        var config = given
+        config.excluded.formUnion(mounted)
+        return config
+    }
+
+    /// Looks at which volumes are mounted inside the roots before anything that changed is read. One mounted since
+    /// is left out at once, so nothing on it is read; the folder of one that is gone is read again.
+    private func noticeMountedVolumes() {
+        guard let given, mountedVolumes(given.roots) != mounted else { return }
+        lookUpMountedVolumes(for: given)
+        reconfigure(leavingOutMountedVolumes(given))
+    }
+
+    private func boot(_ given: IndexConfig) {
+        lookUpMountedVolumes(for: given)
+        let config = leavingOutMountedVolumes(given)
         self.config = config
         discardQueuedWork()
         publish(.loading)
@@ -279,7 +337,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
         startWatching(config, replay: .scan)
         let fresh = IndexStore()
         fresh.write { $0.reserve(entries: IndexStore.estimatedEntries(under: config.roots)) }
-        let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise) { [weak self] in
+        let scanner = IndexScanner(store: fresh, excluded: config.excluded, noiseFolders: config.noise, reads: reads) { [weak self] in
             self?.pastQuitDeadline == true
         }
         let roots = fresh.write { fresh in config.roots.map { (fresh.addRoot(path: $0, mtime: 0), $0) }.filter { $0.0 >= 0 } }
@@ -538,6 +596,7 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
     }
 
     private func queueRefreshes(_ delivery: IndexEventInbox.Delivery) {
+        noticeMountedVolumes()
         let nowNs = now()
         hotFolders.prune(now: nowNs)
         var queued = false
@@ -617,6 +676,8 @@ nonisolated package final class IndexWorker: @unchecked Sendable {
             rebuild()
             return
         }
+        // What was queued before a volume was mounted is not read on it either.
+        noticeMountedVolumes()
         guard let config, let store, !pending.isEmpty else { return }
         let nowNs = now()
         hotFolders.prune(now: nowNs)

@@ -1207,6 +1207,7 @@
     "in memory": "в памяти",
     "Incoming": "Входящий",
     "Index": "Индекс",
+    "Index files": "Индексировать файлы",
     "Index updates unavailable": "Обновления индекса недоступны",
     "Indexing %lld items…": {
       "one": "Индексация %lld объекта…",
@@ -1505,6 +1506,7 @@
     "Open in New Tab": "Открыть в новой вкладке",
     "Open in Terminal": "Открыть в Терминале",
     "Open in Terminal uses": "«Открыть в Терминале» использует",
+    "Open Index Settings…": "Открыть настройки индекса…",
     "Open Privacy Settings": "Открыть настройки конфиденциальности",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Откройте настройки конфиденциальности, перетащите значок выше в список (или нажмите +) и включите Strata.",
     "Open Privacy Settings…": "Открыть настройки конфиденциальности…",
@@ -1769,6 +1771,8 @@
     "Scripts and online content are blocked.": "Скрипты и содержимое из интернета заблокированы.",
     "Search": "Поиск",
     "Search & Index": "Поиск и индекс",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Он нужен для поиска по всему Mac, Недавних и Дубликатов. Чтобы искать в папке, откройте ее и ищите там: Strata прочитает ее напрямую.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Поиск по всему Mac, Недавние, Дубликаты и мгновенные размеры папок используют индекс. Когда он выключен, индекс останавливается, освобождает память и удаляется с диска: размеры папок измеряются по запросу, а поиск читает папку, в которой вы находитесь.",
     "Search box in the Dock": "Поле поиска в Dock",
     "Search by extension (also *.pdf)": "Искать по расширению (также *.pdf)",
     "Search commands or shortcuts": "Искать команды или сочетания",
@@ -2030,6 +2034,7 @@
       "many": "Папки совпадают (сравнено %lld объектов)",
       "other": "Папки совпадают (сравнено %lld объекта)"
     },
+    "The index is turned off": "Индекс выключен",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Индекс пропускает эти папки и всё их содержимое: поиск по имени и размеры папок их не учитывают, а занятая ими память освобождается. Если удалить папку из списка, она снова попадёт в индекс.",
     "The item couldn’t be found": "Не удается найти объект",
     "The items have moved or been changed since.": "С тех пор объекты были перемещены или изменены.",
