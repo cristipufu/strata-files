@@ -12,7 +12,7 @@ struct DuplicateFinderTests {
         let base = environment.services
         return BrowserServices.configured(transfers: base.transfers, visits: base.visits, windows: .headless,
             remote: base.remote, containers: base.containers, containerStore: base.containerStore, clipboard: base.clipboard,
-            index: FileIndex(storage: environment.storage, copies: base.copies, store: store))
+            index: FileIndex(storage: environment.storage, copies: base.copies, preferences: environment.preferences, store: store))
     }
 
     @Test func candidatesExcludeUniqueSizesHiddenNoiseLinksAndDeletedFiles() {

@@ -974,7 +974,7 @@
   },
   {
     "file": "Strata/Index/IndexWorker.swift",
-    "find": "        guard old != config.excluded else { return }\n",
+    "find": "        guard emptied || !allowed.isEmpty || old != config.excluded else { return }\n",
     "replace": "",
     "rule": "Index performance: unchanged settings never rewrite the index",
     "tests": "IndexWorkerTests/unchangedConfigurationDoesNotRewriteTheIndex"
@@ -3486,7 +3486,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "guard canMeasure(node.entry) else { return \"—\" }",
+    "find": "guard showsSize(node.entry) else { return \"—\" }",
     "replace": "guard true else { return \"—\" }",
     "rule": "Provider thumbnail and info ownership List Size column shows ellipsis for a provider folder",
     "tests": "ProviderThumbnailInfoTests/providerFoldersAreNotMeasuredForListIconsOrDiskUsage"
@@ -4068,8 +4068,8 @@
     "tests": "FileCommandOwnershipTests/anEnvironmentsIndexesAreItsOwnAndSaveIntoItsStorage",
     "edits": [
       {
-        "find": "FileIndex(storage: transfers.history.storage, copies: transfers.copies)",
-        "replace": "FileIndex(storage: .shared, copies: transfers.copies)"
+        "find": "FileIndex(storage: transfers.history.storage, copies: transfers.copies,",
+        "replace": "FileIndex(storage: .shared, copies: transfers.copies,"
       },
       {
         "find": "SemanticIndex(configuration: .init(roots: [], storage: transfers.history.storage))",
@@ -9389,7 +9389,7 @@
   },
   {
     "file": "Strata/Index/IndexEventInbox.swift",
-    "find": "if IndexRefresh.isExcluded(path, in: state.excluded) { continue }",
+    "find": "if state.excluded.covers(path) { continue }",
     "replace": "if state.excluded.contains(path) { continue }",
     "rule": "File event inbox admits changes inside excluded state folders",
     "tests": "IndexEventInboxTests/excludedItemEventsNeverRefreshTheirParentOrHideLookalikes"
@@ -10058,5 +10058,264 @@
     "replace": "        return [\"index.sealed\"]",
     "rule": "The saved index: each later format change retires one more numbered file by itself",
     "tests": "IndexPersistenceSafetyTests/eachFormatChangeRetiresTheFilesFromBeforeThePreviousFormatAndKeepsThatOne"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "            if byte == Self.slash, length > 0, isFolder(path, upTo: length) { return true }",
+    "replace": "            if length > 0, isFolder(path, upTo: length) { return true }",
+    "rule": "Excluded folders: a folder covers whole path components, never a name that only begins like it",
+    "tests": "IndexExcludedFoldersTests/aFolderCoversItselfAndWhatIsInsideItByWholeComponentsInAnyLetterCase|IndexExcludedFoldersTests/theAnswerIsThePlainRulesForEveryListAndPathTried"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "        return folded.contains(String(decoding: path.utf8.prefix(length), as: UTF8.self).lowercased())",
+    "replace": "        return folded.contains(String(decoding: path.utf8.prefix(length), as: UTF8.self))",
+    "rule": "Excluded folders: a path in another letter case is still inside its excluded folder",
+    "tests": "IndexExcludedFoldersTests/aFolderCoversItselfAndWhatIsInsideItByWholeComponentsInAnyLetterCase|IndexExclusionWorkerTests/eventsSpelledInAnotherCaseStayExcludedAndLookalikesStayIndexed"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "            if byte >= 0x80 { return coversFolded(Self.folded(path)) }",
+    "replace": "            if byte >= 0x80 { return false }",
+    "rule": "Excluded folders: a name outside ASCII is matched like any other",
+    "tests": "IndexExcludedFoldersTests/lettersWhoseCasesDifferInLengthOrInHowTheyAreComposedStillMatch|IndexExcludedFoldersTests/aFolderCoversItselfAndWhatIsInsideItByWholeComponentsInAnyLetterCase"
+  },
+  {
+    "file": "Strata/Index/IndexScanner.swift",
+    "find": "if !excluded.covers(path) { folders.append(",
+    "replace": "if !excluded.paths.contains(path) { folders.append(",
+    "rule": "Excluded folders: a scan leaves a folder out in any letter case, as file events do",
+    "tests": "IndexExclusionWorkerTests/aScanLeavesOutAFolderExcludedInAnotherLetterCase"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        if emptied { scheduleCompaction() }",
+    "replace": "",
+    "rule": "Excluded folders: excluding a folder frees its memory soon, not at the next periodic save",
+    "tests": "IndexExclusionWorkerTests/excludingAFolderRemovesOnlyItsEntriesAndCompactsSoonWithoutASave"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                store.flags[Int(id)] |= IndexStore.Flag.unreadDirectory",
+    "replace": "",
+    "rule": "Excluded folders: an excluded folder leaves its ancestors' allocated size incomplete, as a scan does",
+    "tests": "IndexExclusionWorkerTests/anExcludedFolderLeavesItsAncestorsAllocatedSizeIncompleteAsAScanDoes"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        for path in config.excluded.sorted() {",
+    "replace": "        for path in config.excluded.subtracting(savedExcluded).sorted() {",
+    "rule": "Excluded folders: a folder excluded again after its read was cut short is emptied, not left half read",
+    "tests": "IndexExclusionWorkerTests/aFolderLeftHalfReadWhenItWasExcludedAgainIsEmptiedAtLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "        return (holder.id, path(of: holder.id), false)",
+    "replace": "        return nil",
+    "rule": "Excluded folders: a folder made again unseen while it was excluded is indexed once it is allowed",
+    "tests": "IndexExclusionWorkerTests/anExcludedFolderRemovedAndMadeAgainUnseenIsIndexedOnceItIsAllowed"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        let listed = await realPaths(preferences.indexExcludedFolders.map { URL(filePath: $0) })",
+    "replace": "        let listed = preferences.indexExcludedFolders",
+    "rule": "Excluded folders: the index leaves a chosen folder out by its real path, however it was spelled",
+    "tests": "IndexExclusionsTests/chosenFoldersAreStoredAndConfiguredByTheirRealPaths"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        chosen.covers(folder.lexicallyStandardized.path)",
+    "replace": "        chosen.contains(folder.lexicallyStandardized.path)",
+    "rule": "Excluded folders: views walk no folder inside an excluded one",
+    "tests": "IndexExclusionsTests/foldersInsideAnExcludedFolderShowNoSizeAndStartNoWalk"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "            for folder in resolved.paths { chosen.insert(folder) }",
+    "replace": "",
+    "rule": "Excluded folders: views walk no folder that was listed through a link to it",
+    "tests": "IndexExclusionsTests/aFolderListedThroughALinkShowsNoSizeAndStartsNoWalk"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        refreshConfig()\n        publishChangesNow(.all)",
+    "replace": "        refreshConfig()",
+    "rule": "Excluded folders: a change to the list reaches views at once, before the worker has taken it",
+    "tests": "IndexExclusionsTests/aChangeToTheListTellsViewsAtOnce"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "find": "        canMeasure(entry) && !services.index.isExcludedByChoice(entry.url)",
+    "replace": "        canMeasure(entry)",
+    "rule": "Excluded folders: the size column and icons walk no excluded folder until asked",
+    "tests": "IndexExclusionsTests/theListShowsNoSizeForAnExcludedFolderAndStartsNoWalk"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "            canMeasure: { [weak self] entry in self?.canMeasure(entry) ?? false },",
+    "replace": "            canMeasure: { [weak self] entry in self?.showsSize(entry) ?? false },",
+    "rule": "Excluded folders: Disk Usage never says an excluded folder needs Full Disk Access",
+    "tests": "IndexExclusionsTests/diskUsageCountsAnExcludedFolderAsUnavailableNotAsNeedingAccess"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "        if indexed.paths.contains(where: inside.covers) { return .holdsIndexRoot }",
+    "replace": "",
+    "rule": "Excluded folders: a folder that holds the home folder or Applications is refused for that, not as lying outside the index",
+    "tests": "IndexExclusionsTests/theIndexRootsWhatHoldsThemAndFoldersOutsideAreRefused|IndexExclusionsTests/addingRefusesRootsWhatHoldsThemFoldersOutsideAndDuplicates"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "        for folder in cleaned(listed) where indexed.covers(folder) && !indexed.contains(folder) && !excluded.covers(folder) {",
+    "replace": "        for folder in cleaned(listed) where !indexed.contains(folder) && !excluded.covers(folder) {",
+    "rule": "Excluded folders: a listed folder the index cannot leave out never stands in for the folders inside it",
+    "tests": "IndexExclusionsTests/aListedFolderTheIndexCannotLeaveOutNeverStandsInForTheFoldersInsideIt|IndexExclusionsTests/listsWrittenElsewhereNeverLeaveOutARootOrWhatHoldsOne"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "            guard remaining.count < limit else {",
+    "replace": "            guard remaining.count < Int.max else {",
+    "rule": "Excluded folders: the list never grows past its limit",
+    "tests": "IndexExclusionsTests/theListHoldsAtMostItsLimitOfFolders"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "        cleaned(saved.prefix(limit))",
+    "replace": "        cleaned(saved)",
+    "rule": "Excluded folders: a list written by Settings or by hand is bounded before it is saved",
+    "tests": "IndexExclusionsTests/aSavedListDamagedOutsideSettingsIsReadWithinItsLimits"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "        entry.utf8.first == UInt8(ascii: \"/\") && entry.utf8.count <= longestPath",
+    "replace": "        entry.utf8.first == UInt8(ascii: \"/\")",
+    "rule": "Excluded folders: an entry longer than a path can be names no folder",
+    "tests": "IndexExclusionsTests/aSavedListDamagedOutsideSettingsIsReadWithinItsLimits"
+  },
+  {
+    "file": "Strata/Support/IndexExclusions.swift",
+    "find": "        return await OwnThread.run(within: deadline, otherwise: spelled) { spelled.map(resolve) }",
+    "replace": "        return await OwnThread.run { spelled.map(resolve) }",
+    "rule": "Excluded folders: a volume that stopped answering never holds the list up, or the index with it",
+    "tests": "IndexExclusionsTests/foldersOnAVolumeThatStoppedAnsweringAreTakenAsTheyAreSpelled"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "            guard folders != indexExcludedFolders else { return }",
+    "replace": "",
+    "rule": "Excluded folders: saving the same list again tells no one",
+    "tests": "IndexExclusionsTests/theListStartsEmptyPersistsAndNotifiesOnceForAChange"
+  },
+  {
+    "file": "Strata/Settings/IndexExclusionSettings.swift",
+    "find": "        var messages = others.prefix(namedRefusals).map(message(for:))",
+    "replace": "        var messages = others.map(message(for:))",
+    "rule": "Excluded folders: refusals past the first few are counted, not each named",
+    "tests": "IndexExclusionSettingsTests/refusalsPastTheFirstFewAreCountedNotNamed"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "            if utf8[index] == Self.slash {",
+    "replace": "            if utf8[index] == Self.slash, utf8.index(after: index) == utf8.endIndex || utf8[utf8.index(after: index)] < 0x80 {",
+    "rule": "Excluded folders: a folder ends at its slash even where a combining mark begins the next name",
+    "tests": "IndexExcludedFoldersTests/aFolderEndsAtASlashEvenWhereAMarkJoinsTheNextName"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "                if slashes > deepest { return false }",
+    "replace": "                if slashes >= deepest { return false }",
+    "rule": "Excluded folders: a path is compared down to the deepest folder, itself included",
+    "tests": "IndexExcludedFoldersTests/aPathIsComparedNoDeeperThanTheDeepestFolder"
+  },
+  {
+    "file": "Strata/Support/IndexExcludedFolders.swift",
+    "find": "        path.lowercased().precomposedStringWithCanonicalMapping",
+    "replace": "        path.lowercased()",
+    "rule": "Excluded folders: a name spelled another way but equal to a plain one is that folder",
+    "tests": "IndexExcludedFoldersTests/aNameEqualToAPlainOneInAnotherSpellingIsThatFolder"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "            if flags[Int(id)] & IndexStore.Flag.unreadDirectory == 0 { return (id, path(of: id), true) }",
+    "replace": "            if isDirectory(id) { return (id, path(of: id), true) }",
+    "rule": "Excluded folders: allowing again where another volume is mounted reads nothing of that volume",
+    "tests": "IndexExclusionWorkerTests/allowingAgainWhereAVolumeIsMountedReadsNothingOfThatVolume"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "              flags[Int(holder.id)] & IndexStore.Flag.unreadDirectory == 0 else { return nil }",
+    "replace": "              true else { return nil }",
+    "rule": "Excluded folders: allowing again a folder below one the index never read starts no read there",
+    "tests": "IndexExclusionWorkerTests/allowingAgainAFolderOnAVolumeMountedThereReadsNothingOfThatVolume"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "            if flags[Int(id)] & IndexStore.Flag.unreadDirectory == 0 { return (id, path(of: id), true) }\n",
+    "replace": "",
+    "rule": "Excluded folders: a folder whose read was cut short after it was allowed is read through at the next launch",
+    "tests": "IndexExclusionWorkerTests/aFolderWhoseReadWasCutShortAfterItWasAllowedIsReadThroughAtTheNextLaunch"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        refreshConfig()\n        publishChangesNow(.all)",
+    "replace": "        publishChangesNow(.all)\n        refreshConfig()",
+    "rule": "Excluded folders: a folder taken off the list is the index's to size by the time views are told, so none walks it",
+    "tests": "IndexExclusionsTests/aFolderTakenOffTheListIsTheIndexsToSizeByTheTimeViewsAreTold"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "            let real = await realPaths(listed.map { URL(filePath: $0) })\n            guard !Task.isCancelled, let self else { return }",
+    "replace": "            let real = await realPaths(listed.map { URL(filePath: $0) })\n            guard let self else { return }",
+    "rule": "Excluded folders: a replaced list's real paths never arrive after a later list's",
+    "tests": "IndexExclusionsTests/aReplacedListsRealPathsNeverArriveAfterALaterLists"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "            return holder >= 0 ? (holder, path(of: holder), false) : nil",
+    "replace": "            return holder >= 0 && flags[Int(holder)] & IndexStore.Flag.unreadDirectory == 0 ? (holder, path(of: holder), false) : nil",
+    "rule": "Excluded folders: a folder the index holds is read again through its parent, even one whose own read once failed part-way",
+    "tests": "IndexExclusionWorkerTests/aFolderAllowedAgainIsReadEvenWhereTheReadOfItsParentOnceFailedPartWay"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "            guard excludedCount <= 1_024 else { throw Corrupt() }",
+    "replace": "            guard excludedCount <= 1_025 else { throw Corrupt() }",
+    "rule": "The saved index: a header naming more excluded folders than a configuration can hold is rejected",
+    "tests": "IndexPersistenceSafetyTests/excludedFoldersAreSavedWithTheIndexAndTooManyOrOverlongOnesAreRejected"
+  },
+  {
+    "file": "Strata/Index/IndexPersistence.swift",
+    "find": "header.excluded.append(try string(atMost: Int(PATH_MAX)))",
+    "replace": "header.excluded.append(try string())",
+    "rule": "The saved index: a header naming an excluded folder longer than a path can be is rejected",
+    "tests": "IndexPersistenceSafetyTests/excludedFoldersAreSavedWithTheIndexAndTooManyOrOverlongOnesAreRejected"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "            return holder >= 0 ? (holder, path(of: holder), false) : nil",
+    "replace": "            return holder >= 0 ? (holder, IndexRefresh.splitPath(folder).parent, false) : nil",
+    "rule": "Excluded folders: a folder allowed again is read at the path the index holds for it, however the list spelled it",
+    "tests": "IndexExclusionWorkerTests/aFolderAllowedAgainIsReadAtThePathTheIndexHoldsHoweverTheListSpelledIt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        let allowed = old.filter { !config.leavesOut($0) }.sorted()",
+    "replace": "        let allowed = old.subtracting(config.excluded).sorted()",
+    "rule": "Excluded folders: a folder still excluded under another spelling is not read for",
+    "tests": "IndexExclusionWorkerTests/aFolderStillExcludedUnderAnotherSpellingIsNotReadFor"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "            if flags[Int(id)] & IndexStore.Flag.unreadDirectory == 0 { return (id, path(of: id), true) }",
+    "replace": "            if flags[Int(id)] & IndexStore.Flag.unreadDirectory == 0 { return (id, folder, true) }",
+    "rule": "Excluded folders: a folder read in part is read through at the path the index holds for it, however the list spelled it",
+    "tests": "IndexExclusionWorkerTests/aFolderReadInPartIsReadThroughAtThePathTheIndexHoldsHoweverTheListSpelledIt"
+  },
+  {
+    "file": "Strata/Index/IndexWaitingTrees.swift",
+    "find": "        return (holder.id, path(of: holder.id), false)",
+    "replace": "        return (holder.id, holder.path, false)",
+    "rule": "Excluded folders: a folder made again unseen is found at the path the index holds for what holds it",
+    "tests": "IndexExclusionWorkerTests/aFolderMadeAgainUnseenIsFoundAtThePathTheIndexHoldsForWhatHoldsIt"
   }
 ]

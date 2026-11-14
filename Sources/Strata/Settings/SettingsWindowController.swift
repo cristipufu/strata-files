@@ -228,6 +228,7 @@ private struct IndexSettings: View {
             } header: {
                 Text("Index", comment: "Settings ▸ Search & Index: section about the file index")
             }
+            IndexExclusionSettings(index: .shared)
             Section {
                 LabeledContent("Full Disk Access") {
                     if hasAccess {

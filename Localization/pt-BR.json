@@ -145,6 +145,10 @@
       "one": "%lld pasta precisa de Acesso Total ao Disco para ser medida",
       "other": "%lld pastas precisam de Acesso Total ao Disco para serem medidas"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld pasta não foi adicionada: a lista está cheia. Remova uma pasta primeiro.",
+      "other": "%lld pastas não foram adicionadas: a lista está cheia. Remova uma pasta primeiro."
+    },
     "%lld glyphs": {
       "one": "%lld glifo",
       "other": "%lld glifos"
@@ -244,6 +248,10 @@
     "%lld modified": {
       "one": "%lld modificado",
       "other": "%lld modificados"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "Mais %lld pasta não foi adicionada.",
+      "other": "Mais %lld pastas não foram adicionadas."
     },
     "%lld moves": {
       "one": "%lld movimentação",
@@ -409,6 +417,7 @@
     "Access Key ID": "ID da Chave de Acesso",
     "Actions": "Ações",
     "Add Comments": "Adicionar comentários",
+    "Add Folder…": "Adicionar Pasta…",
     "Add Tags": "Adicionar etiquetas",
     "Add Text": "Adicionar Texto",
     "Add the date after each name": "Adicionar a data após cada nome",
@@ -836,6 +845,7 @@
     },
     "exactly %lld px high": "exatamente %lld px de altura",
     "exactly %lld px wide": "exatamente %lld px de largura",
+    "Excluded folders": "Pastas excluídas",
     "Existing": "Existente",
     "Expanded": "Expandido",
     "Expires": "Expira em",
@@ -1746,6 +1756,7 @@
       "one": "As pastas são iguais (%lld item comparado)",
       "other": "As pastas são iguais (%lld itens comparados)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "O índice ignora estas pastas e tudo dentro delas: as buscas por nome e os tamanhos de pasta não as incluem, e a memória delas é liberada. Ao remover uma pasta, ela volta a ser indexada.",
     "The item couldn’t be found": "Não foi possível encontrar o item",
     "The items have moved or been changed since.": "Desde então, os itens foram movidos ou alterados.",
     "The name has invisible characters": "O nome tem caracteres invisíveis",
@@ -2041,10 +2052,12 @@
     "“%@” holds %@.": "“%@” contém %@.",
     "“%@” holds at least %@.": "“%@” contém pelo menos %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@” contém apenas um link, por isso não foi extraído.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "“%@” contém sua pasta de início ou Aplicativos, então não pode ser excluída.",
     "“%@” in %@": "“%@” em %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Não foi possível verificar “%@” no arquivo comprimido, por isso nada foi extraído.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Não foi possível gravar “%@” do arquivo comprimido (%@), por isso nada foi extraído.",
     "“%@” is a file, not a folder": "“%@” é um arquivo, não uma pasta",
+    "“%@” is already excluded, or is inside a folder that is.": "“%@” já está excluída ou está dentro de uma pasta excluída.",
     "“%@” is already in the Trash.": "“%@” já está na Lixeira.",
     "“%@” is already on “%@”": "“%@” já está em “%@”",
     "“%@” is already there.": "“%@” já existe.",
@@ -2053,15 +2066,18 @@
     "“%@” is empty.": "“%@” está vazio.",
     "“%@” is new": "“%@” é novo",
     "“%@” is on a read-only disk.": "“%@” está em um disco somente leitura.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "“%@” é uma das pastas que o índice abrange. Exclua pastas dentro dela.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@” está protegido por senha. Abra-o com o Utilitário de Arquivo para digitar a senha.",
     "“%@” is protected by macOS.": "“%@” é protegido pelo macOS.",
     "“%@” isn’t a valid name": "“%@” não é um nome válido",
     "“%@” isn’t an archive Strata can open.": "“%@” não é um arquivo comprimido que o Strata possa abrir.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "“%@” não está no índice, por isso o Strata o está lendo diretamente.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@” não está na sua pasta de início nem em Aplicativos, então já não é indexada.",
     "“%@” links outside “%@”": "“%@” aponta para fora de “%@”",
     "“%@” no longer exists, or this folder is gone from it.": "“%@” não existe mais, ou esta pasta não está mais nele.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "“%@” no servidor não é uma pasta, então “%@” não pode ser colocado dentro dela.",
     "“%@” was modified": "“%@” foi modificado",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "“%@” não foi adicionada: a lista está cheia. Remova uma pasta primeiro.",
     "“%@” will be deleted immediately.": "“%@” será apagado imediatamente.",
     "“%@” → %@": "“%@” → %@",
     "“%@” → “%@”": "“%@” → “%@”",

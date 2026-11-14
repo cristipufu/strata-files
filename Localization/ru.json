@@ -197,6 +197,12 @@
       "many": "Чтобы измерить %lld папок, нужен полный доступ к диску",
       "other": "Чтобы измерить %lld папки, нужен полный доступ к диску"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld папка не добавлена: список заполнен. Сначала удалите папку из списка.",
+      "few": "%lld папки не добавлены: список заполнен. Сначала удалите папку из списка.",
+      "many": "%lld папок не добавлено: список заполнен. Сначала удалите папку из списка.",
+      "other": "%lld папки не добавлено: список заполнен. Сначала удалите папку из списка."
+    },
     "%lld glyphs": {
       "one": "%lld глиф",
       "few": "%lld глифы",
@@ -346,6 +352,12 @@
       "few": "%lld изменено",
       "many": "%lld изменено",
       "other": "%lld изменено"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "Ещё %lld папка не добавлена.",
+      "few": "Ещё %lld папки не добавлены.",
+      "many": "Ещё %lld папок не добавлено.",
+      "other": "Ещё %lld папки не добавлено."
     },
     "%lld moves": {
       "one": "%lld перемещение",
@@ -581,6 +593,7 @@
     "Access Key ID": "Идентификатор ключа доступа",
     "Actions": "Действия",
     "Add Comments": "Добавить комментарии",
+    "Add Folder…": "Добавить папку…",
     "Add Tags": "Добавить теги",
     "Add Text": "Добавить текст",
     "Add the date after each name": "Добавить дату после каждого имени",
@@ -1042,6 +1055,7 @@
     },
     "exactly %lld px high": "высота ровно %lld пикс.",
     "exactly %lld px wide": "ширина ровно %lld пикс.",
+    "Excluded folders": "Исключённые папки",
     "Existing": "Существующий",
     "Expanded": "Развернуто",
     "Expires": "Истекает",
@@ -2016,6 +2030,7 @@
       "many": "Папки совпадают (сравнено %lld объектов)",
       "other": "Папки совпадают (сравнено %lld объекта)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Индекс пропускает эти папки и всё их содержимое: поиск по имени и размеры папок их не учитывают, а занятая ими память освобождается. Если удалить папку из списка, она снова попадёт в индекс.",
     "The item couldn’t be found": "Не удается найти объект",
     "The items have moved or been changed since.": "С тех пор объекты были перемещены или изменены.",
     "The name has invisible characters": "Имя содержит невидимые символы",
@@ -2329,10 +2344,12 @@
     "“%@” holds %@.": "«%@» содержит %@.",
     "“%@” holds at least %@.": "«%@» содержит не менее %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» содержит только ссылку, поэтому он не распакован.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "«%@» содержит домашнюю папку или Программы, поэтому её нельзя исключить.",
     "“%@” in %@": "«%@» в %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Не удалось проверить «%@» в архиве, поэтому ничего не распаковано.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Не удалось записать «%@» из архива (%@), поэтому ничего не распаковано.",
     "“%@” is a file, not a folder": "«%@» — это файл, а не папка",
+    "“%@” is already excluded, or is inside a folder that is.": "«%@» уже исключена или лежит внутри исключённой папки.",
     "“%@” is already in the Trash.": "«%@» уже в Корзине.",
     "“%@” is already on “%@”": "«%@» уже есть на «%@»",
     "“%@” is already there.": "«%@» уже там.",
@@ -2341,15 +2358,18 @@
     "“%@” is empty.": "«%@» пуст.",
     "“%@” is new": "добавлен «%@»",
     "“%@” is on a read-only disk.": "«%@» находится на диске только для чтения.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "«%@» — одна из папок, которые охватывает индекс. Исключите вместо неё папки внутри неё.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "«%@» защищен паролем. Откройте его в Утилите архивирования, чтобы ввести пароль.",
     "“%@” is protected by macOS.": "«%@» защищён системой macOS.",
     "“%@” isn’t a valid name": "«%@» — недопустимое имя",
     "“%@” isn’t an archive Strata can open.": "«%@» не является архивом, который Strata может открыть.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "«%@» нет в индексе, поэтому Strata читает ее напрямую.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "«%@» не находится в домашней папке или в Программах, поэтому и так не индексируется.",
     "“%@” links outside “%@”": "«%@» указывает за пределы «%@»",
     "“%@” no longer exists, or this folder is gone from it.": "«%@» больше не существует, или в нем больше нет этой папки.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "«%@» на сервере не является папкой, поэтому в нее нельзя поместить «%@».",
     "“%@” was modified": "«%@» изменен",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "«%@» не добавлена: список заполнен. Сначала удалите папку из списка.",
     "“%@” will be deleted immediately.": "«%@» будет удален сразу.",
     "“%@” → %@": "«%@» → %@",
     "“%@” → “%@”": "«%@» → «%@»",

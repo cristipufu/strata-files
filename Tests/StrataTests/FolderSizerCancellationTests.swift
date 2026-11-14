@@ -10,30 +10,11 @@ import Testing
 @testable import StrataSupport
 
 @MainActor struct FolderSizerCancellationTests {
-    private final class Delivery {
-        var actions: [@MainActor @Sendable () -> Void] = []
-        private var waiting: CheckedContinuation<Void, Never>?
-        var callback: FolderSizer.Delivery {
-            { [self] action in Task { @MainActor in
-                actions.append(action)
-                waiting?.resume(); waiting = nil
-            } }
-        }
-        func waitForAction() async {
-            if !actions.isEmpty { return }
-            await withCheckedContinuation { waiting = $0 }
-        }
-        func take() async -> @MainActor @Sendable () -> Void {
-            await waitForAction()
-            return actions.removeFirst()
-        }
-    }
-
     @Test func aCompletedReadDeliveredAfterCancellationCannotReplaceItsSuccessor() async throws {
         let tree = try TestTree("folder/file")
         let folder = tree.url("folder")
         defer { FolderSizer.invalidate(folder) }
-        let delivery = Delivery(), reads = Mutex(0)
+        let delivery = FolderSizeDelivery(), reads = Mutex(0)
         let sizer = FolderSizer(reader: { _, _ in
             let value = reads.withLock { $0 += 1; return $0 }
             return FolderSize(bytes: Int64(value), files: value)
@@ -60,7 +41,7 @@ import Testing
         defer { FolderSizer.invalidate(folder) }
         for release in [false, true] {
             FolderSizer.invalidate(folder)
-            let delivery = Delivery()
+            let delivery = FolderSizeDelivery()
             var sizer: FolderSizer? = FolderSizer(reader: { _, _ in FolderSize(bytes: 10, files: 1) }, deliver: delivery.callback)
             var callbacks = 0
             sizer?.onUpdate = { _ in callbacks += 1 }
@@ -115,7 +96,7 @@ import Testing
         let folder = tree.url("folder")
         let alias = URL(filePath: PathSpelling.short(folder), directoryHint: .notDirectory)
         defer { FolderSizer.invalidate(folder) }
-        let delivery = Delivery()
+        let delivery = FolderSizeDelivery()
         let sizer = FolderSizer(reader: { _, _ in FolderSize(bytes: 25, files: 1) }, deliver: delivery.callback)
         sizer.request(folder)
         let action = await delivery.take()
@@ -135,7 +116,7 @@ import Testing
             FolderSizer.invalidate(first)
             FolderSizer.invalidate(second)
         }
-        let delivery = Delivery()
+        let delivery = FolderSizeDelivery()
         let cancelledFirst = Mutex(false)
         let sizer = FolderSizer(reader: { path, isCancelled in
             if path == first.path {
@@ -176,6 +157,7 @@ import Testing
         let index = FileIndex(
             storage: environment.storage,
             copies: owner.copies,
+            preferences: environment.preferences,
             configuredRoots: [tree.root.path],
             excludedPaths: [excludedFolder.path],
             started: true
@@ -263,6 +245,7 @@ import Testing
         let index = FileIndex(
             storage: environment.storage,
             copies: environment.services.copies,
+            preferences: environment.preferences,
             store: store,
             configuredRoots: ["/synthetic"],
             started: true
@@ -335,6 +318,7 @@ import Testing
         let index = FileIndex(
             storage: environment.storage,
             copies: environment.services.copies,
+            preferences: environment.preferences,
             store: store,
             configuredRoots: ["/synthetic"],
             started: true

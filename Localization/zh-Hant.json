@@ -120,6 +120,9 @@
     "%lld folders need Full Disk Access to be measured": {
       "other": "%lld個檔案夾需要「完全取用磁碟」權限才能計算大小"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "other": "未加入 %lld 個檔案夾：列表已滿。請先移除一個檔案夾。"
+    },
     "%lld glyphs": {
       "other": "%lld 個字形"
     },
@@ -194,6 +197,9 @@
     },
     "%lld modified": {
       "other": "已修改%lld個"
+    },
+    "%lld more folders weren’t added.": {
+      "other": "另有 %lld 個檔案夾未加入。"
     },
     "%lld moves": {
       "other": "%lld項搬移"
@@ -324,6 +330,7 @@
     "Access Key ID": "存取金鑰ID",
     "Actions": "操作",
     "Add Comments": "加入註解",
+    "Add Folder…": "加入檔案夾…",
     "Add Tags": "加入標籤",
     "Add Text": "加入文字",
     "Add the date after each name": "在每個名稱後加入日期",
@@ -734,6 +741,7 @@
     },
     "exactly %lld px high": "高度正好%lld像素",
     "exactly %lld px wide": "寬度正好%lld像素",
+    "Excluded folders": "排除的檔案夾",
     "Existing": "現有項目",
     "Expanded": "已展開",
     "Expires": "到期日",
@@ -1612,6 +1620,7 @@
     "The folders match (%lld items compared)": {
       "other": "檔案夾一致（已比較%lld個項目）"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "索引會略過這些檔案夾及其中的所有內容：依名稱搜尋和檔案夾大小都不包含它們，它們佔用的記憶體也會釋放。移除檔案夾後，它會重新編入索引。",
     "The item couldn’t be found": "找不到該項目",
     "The items have moved or been changed since.": "這些項目此後已被搬移或更改。",
     "The name has invisible characters": "名稱包含不可見的字元",
@@ -1898,10 +1907,12 @@
     "“%@” holds %@.": "「%@」解壓縮後為%@。",
     "“%@” holds at least %@.": "「%@」解壓縮後至少為%@。",
     "“%@” holds only a link, so it wasn’t extracted.": "「%@」僅包含一個連結，因此未解壓縮。",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "「%@」包含你的個人專屬檔案夾或應用程式，因此無法排除。",
     "“%@” in %@": "%2$@中的「%1$@」",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "無法檢查封存檔中的「%@」，因此未解壓縮任何內容。",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "無法寫入封存檔中的「%@」（%@），因此未解壓縮任何內容。",
     "“%@” is a file, not a folder": "「%@」是檔案，不是檔案夾",
+    "“%@” is already excluded, or is inside a folder that is.": "「%@」已被排除，或位於已排除的檔案夾中。",
     "“%@” is already in the Trash.": "「%@」已在垃圾桶中。",
     "“%@” is already on “%@”": "「%@」已在「%@」上",
     "“%@” is already there.": "「%@」已存在。",
@@ -1910,15 +1921,18 @@
     "“%@” is empty.": "「%@」是空的。",
     "“%@” is new": "「%@」是新項目",
     "“%@” is on a read-only disk.": "「%@」位於唯讀磁碟上。",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "「%@」是索引涵蓋的檔案夾之一。請改為排除其中的檔案夾。",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "「%@」受密碼保護。請使用「封存工具程式」打開以輸入密碼。",
     "“%@” is protected by macOS.": "「%@」受到 macOS 保護。",
     "“%@” isn’t a valid name": "「%@」不是有效的名稱",
     "“%@” isn’t an archive Strata can open.": "「%@」不是Strata可以打開的封存檔。",
     "“%@” isn’t in the index, so Strata is reading it directly.": "「%@」不在索引中，因此Strata正在直接讀取它。",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "「%@」不在你的個人專屬檔案夾或應用程式中，本來就不會編入索引。",
     "“%@” links outside “%@”": "「%@」連結到「%@」之外",
     "“%@” no longer exists, or this folder is gone from it.": "「%@」已不存在，或此檔案夾已不在其中。",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "伺服器上的「%@」不是檔案夾，因此無法將「%@」放入其中。",
     "“%@” was modified": "「%@」已被修改",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "未加入「%@」：列表已滿。請先移除一個檔案夾。",
     "“%@” will be deleted immediately.": "將立即刪除「%@」。",
     "“%@” → %@": "「%@」 → %@",
     "“%@” → “%@”": "「%@」 → 「%@」",

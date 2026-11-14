@@ -105,7 +105,7 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     private func sizeText(_ node: FileNode) -> String {
         guard node.entry.isDirectory else { return Format.bytes(node.entry.size ?? 0) }
-        guard canMeasure(node.entry) else { return "—" }
+        guard showsSize(node.entry) else { return "—" }
         if let size = folderSize(node.url, request: true) {
             return Format.bytes(size.bytes)
         }
@@ -117,6 +117,12 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
         if !Privacy.measuringWouldPrompt(entry.url, browsing: directory) { return true }
         return services.index.folderSizeLookup(entry.url) != .unindexed || FolderSizer.cached(entry.url) != nil
+    }
+
+    /// Whether views show a size for `entry` without being asked: a folder you excluded from the index shows none and
+    /// isn't walked, since it can hold millions of items, until you ask (Inspector, Calculate Size).
+    func showsSize(_ entry: FileEntry) -> Bool {
+        canMeasure(entry) && !services.index.isExcludedByChoice(entry.url)
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {

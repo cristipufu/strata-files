@@ -145,6 +145,10 @@
       "one": "%lld dossier nécessite l’accès complet au disque pour être mesuré",
       "other": "%lld dossiers nécessitent l’accès complet au disque pour être mesurés"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld dossier n’a pas été ajouté : la liste est pleine. Supprimez d’abord un dossier de la liste.",
+      "other": "%lld dossiers n’ont pas été ajoutés : la liste est pleine. Supprimez d’abord un dossier de la liste."
+    },
     "%lld glyphs": {
       "one": "%lld glyphe",
       "other": "%lld glyphes"
@@ -244,6 +248,10 @@
     "%lld modified": {
       "one": "%lld modifié",
       "other": "%lld modifiés"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "%lld autre dossier n’a pas été ajouté.",
+      "other": "%lld autres dossiers n’ont pas été ajoutés."
     },
     "%lld moves": {
       "one": "%lld déplacement",
@@ -409,6 +417,7 @@
     "Access Key ID": "ID de clé d’accès",
     "Actions": "Actions",
     "Add Comments": "Ajouter des commentaires",
+    "Add Folder…": "Ajouter un dossier…",
     "Add Tags": "Ajouter des tags",
     "Add Text": "Ajouter du texte",
     "Add the date after each name": "Ajouter la date après chaque nom",
@@ -836,6 +845,7 @@
     },
     "exactly %lld px high": "exactement %lld px de haut",
     "exactly %lld px wide": "exactement %lld px de large",
+    "Excluded folders": "Dossiers exclus",
     "Existing": "Existant",
     "Expanded": "Développé",
     "Expires": "Expire le",
@@ -1746,6 +1756,7 @@
       "one": "Les dossiers correspondent (%lld élément comparé)",
       "other": "Les dossiers correspondent (%lld éléments comparés)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "L’index ignore ces dossiers et tout leur contenu : les recherches par nom et les tailles de dossier ne les comptent pas, et leur mémoire est libérée. Supprimer un dossier de la liste le fait indexer à nouveau.",
     "The item couldn’t be found": "L’élément est introuvable",
     "The items have moved or been changed since.": "Les éléments ont été déplacés ou modifiés depuis.",
     "The name has invisible characters": "Le nom contient des caractères invisibles",
@@ -2041,10 +2052,12 @@
     "“%@” holds %@.": "« %@ » contient %@.",
     "“%@” holds at least %@.": "« %@ » contient au moins %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "« %@ » ne contient qu’un lien ; il n’a donc pas été extrait.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "« %@ » contient votre dossier de départ ou Applications ; il ne peut donc pas être exclu.",
     "“%@” in %@": "« %@ » dans %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "« %@ » dans l’archive n’a pas pu être vérifié ; rien n’a donc été extrait.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "« %@ » dans l’archive n’a pas pu être écrit (%@) ; rien n’a donc été extrait.",
     "“%@” is a file, not a folder": "« %@ » est un fichier, pas un dossier",
+    "“%@” is already excluded, or is inside a folder that is.": "« %@ » est déjà exclu, ou se trouve dans un dossier exclu.",
     "“%@” is already in the Trash.": "« %@ » est déjà dans la corbeille.",
     "“%@” is already on “%@”": "« %@ » se trouve déjà sur « %@ »",
     "“%@” is already there.": "« %@ » existe déjà.",
@@ -2053,15 +2066,18 @@
     "“%@” is empty.": "« %@ » est vide.",
     "“%@” is new": "« %@ » est nouveau",
     "“%@” is on a read-only disk.": "« %@ » se trouve sur un disque en lecture seule.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "« %@ » est l’un des dossiers couverts par l’index. Excluez plutôt des dossiers qu’il contient.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "« %@ » est protégé par un mot de passe. Ouvrez-le avec Utilitaire d’archive pour saisir le mot de passe.",
     "“%@” is protected by macOS.": "« %@ » est protégé par macOS.",
     "“%@” isn’t a valid name": "« %@ » n’est pas un nom valide",
     "“%@” isn’t an archive Strata can open.": "« %@ » n’est pas une archive que Strata peut ouvrir.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "« %@ » n’est pas dans l’index ; Strata le lit donc directement.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "« %@ » n’est ni dans votre dossier de départ ni dans Applications ; il n’est donc pas indexé de toute façon.",
     "“%@” links outside “%@”": "« %@ » pointe en dehors de « %@ »",
     "“%@” no longer exists, or this folder is gone from it.": "« %@ » n’existe plus, ou ce dossier n’y est plus.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "« %@ » sur le serveur n’est pas un dossier ; « %@ » ne peut donc pas y être placé.",
     "“%@” was modified": "« %@ » a été modifié",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "« %@ » n’a pas été ajouté : la liste est pleine. Supprimez d’abord un dossier de la liste.",
     "“%@” will be deleted immediately.": "« %@ » sera supprimé immédiatement.",
     "“%@” → %@": "« %@ » → %@",
     "“%@” → “%@”": "« %@ » → « %@ »",

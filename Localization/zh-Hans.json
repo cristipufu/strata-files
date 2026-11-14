@@ -120,6 +120,9 @@
     "%lld folders need Full Disk Access to be measured": {
       "other": "%lld个文件夹需要完全磁盘访问权限才能计算大小"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "other": "未添加 %lld 个文件夹：列表已满。请先移除一个文件夹。"
+    },
     "%lld glyphs": {
       "other": "%lld 个字形"
     },
@@ -194,6 +197,9 @@
     },
     "%lld modified": {
       "other": "已修改%lld个"
+    },
+    "%lld more folders weren’t added.": {
+      "other": "另有 %lld 个文件夹未添加。"
     },
     "%lld moves": {
       "other": "%lld项移动"
@@ -324,6 +330,7 @@
     "Access Key ID": "访问密钥ID",
     "Actions": "操作",
     "Add Comments": "添加注释",
+    "Add Folder…": "添加文件夹…",
     "Add Tags": "添加标签",
     "Add Text": "添加文本",
     "Add the date after each name": "在每个名称后添加日期",
@@ -734,6 +741,7 @@
     },
     "exactly %lld px high": "高度正好%lld像素",
     "exactly %lld px wide": "宽度正好%lld像素",
+    "Excluded folders": "排除的文件夹",
     "Existing": "现有项目",
     "Expanded": "已展开",
     "Expires": "过期时间",
@@ -1612,6 +1620,7 @@
     "The folders match (%lld items compared)": {
       "other": "文件夹一致（已比较%lld个项目）"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "索引会跳过这些文件夹及其中的所有内容：按名称搜索和文件夹大小都不包含它们，它们占用的内存也会释放。移除某个文件夹后，它会重新被编入索引。",
     "The item couldn’t be found": "找不到该项目",
     "The items have moved or been changed since.": "这些项目此后已被移动或更改。",
     "The name has invisible characters": "名称包含不可见字符",
@@ -1898,10 +1907,12 @@
     "“%@” holds %@.": "“%@”解压缩后为%@。",
     "“%@” holds at least %@.": "“%@”解压缩后至少为%@。",
     "“%@” holds only a link, so it wasn’t extracted.": "“%@”仅包含一个链接，因此未解压缩。",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "“%@”包含你的个人文件夹或应用程序，因此不能排除。",
     "“%@” in %@": "%2$@中的“%1$@”",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "无法检查归档中的“%@”，因此未解压缩任何内容。",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "无法写入归档中的“%@”（%@），因此未解压缩任何内容。",
     "“%@” is a file, not a folder": "“%@”是文件，不是文件夹",
+    "“%@” is already excluded, or is inside a folder that is.": "“%@”已被排除，或位于已排除的文件夹中。",
     "“%@” is already in the Trash.": "“%@”已在废纸篓中。",
     "“%@” is already on “%@”": "“%@”已在“%@”上",
     "“%@” is already there.": "“%@”已存在。",
@@ -1910,15 +1921,18 @@
     "“%@” is empty.": "“%@”是空的。",
     "“%@” is new": "“%@”是新项目",
     "“%@” is on a read-only disk.": "“%@”位于只读磁盘上。",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "“%@”是索引覆盖的文件夹之一。请改为排除其中的文件夹。",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "“%@”受密码保护。请使用“归档实用工具”打开以输入密码。",
     "“%@” is protected by macOS.": "“%@”受 macOS 保护。",
     "“%@” isn’t a valid name": "“%@”不是有效的名称",
     "“%@” isn’t an archive Strata can open.": "“%@”不是Strata可以打开的归档。",
     "“%@” isn’t in the index, so Strata is reading it directly.": "“%@”不在索引中，因此Strata正在直接读取它。",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "“%@”不在你的个人文件夹或应用程序中，本来就不会被编入索引。",
     "“%@” links outside “%@”": "“%@”链接到“%@”之外",
     "“%@” no longer exists, or this folder is gone from it.": "“%@”已不存在，或此文件夹已不在其中。",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "服务器上的“%@”不是文件夹，因此无法将“%@”放入其中。",
     "“%@” was modified": "“%@”已被修改",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "未添加“%@”：列表已满。请先移除一个文件夹。",
     "“%@” will be deleted immediately.": "将立即删除“%@”。",
     "“%@” → %@": "“%@” → %@",
     "“%@” → “%@”": "“%@” → “%@”",

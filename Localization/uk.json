@@ -195,6 +195,12 @@
       "many": "Щоб виміряти %lld папок, потрібен повний доступ до диска",
       "other": "Щоб виміряти %lld папки, потрібен повний доступ до диска"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld папку не додано: список заповнено. Спершу вилучіть папку.",
+      "few": "%lld папки не додано: список заповнено. Спершу вилучіть папку.",
+      "many": "%lld папок не додано: список заповнено. Спершу вилучіть папку.",
+      "other": "%lld папки не додано: список заповнено. Спершу вилучіть папку."
+    },
     "%lld glyphs": {
       "one": "%lld гліф",
       "few": "%lld гліфи",
@@ -344,6 +350,12 @@
       "few": "%lld змінені",
       "many": "%lld змінених",
       "other": "%lld зміненого"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "Ще %lld папку не додано.",
+      "few": "Ще %lld папки не додано.",
+      "many": "Ще %lld папок не додано.",
+      "other": "Ще %lld папки не додано."
     },
     "%lld moves": {
       "one": "%lld переміщення",
@@ -579,6 +591,7 @@
     "Access Key ID": "Ідентифікатор ключа доступу",
     "Actions": "Дії",
     "Add Comments": "Додати коментарі",
+    "Add Folder…": "Додати папку…",
     "Add Tags": "Додати теги",
     "Add Text": "Додати текст",
     "Add the date after each name": "Додати дату після кожної назви",
@@ -1040,6 +1053,7 @@
     },
     "exactly %lld px high": "висота рівно %lld пікс.",
     "exactly %lld px wide": "ширина рівно %lld пікс.",
+    "Excluded folders": "Виключені папки",
     "Existing": "Наявний",
     "Expanded": "Розгорнуто",
     "Expires": "Дійсний до",
@@ -2014,6 +2028,7 @@
       "many": "Папки збігаються (порівняно %lld елементів)",
       "other": "Папки збігаються (порівняно %lld елемента)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Індекс пропускає ці папки й усе, що в них: пошук за назвою та розміри папок їх не враховують, а памʼять, яку вони займали, звільняється. Якщо вилучити папку зі списку, її знову буде проіндексовано.",
     "The item couldn’t be found": "Не вдається знайти елемент",
     "The items have moved or been changed since.": "Відтоді елементи було переміщено або змінено.",
     "The name has invisible characters": "Назва містить невидимі символи",
@@ -2327,10 +2342,12 @@
     "“%@” holds %@.": "«%@» містить %@.",
     "“%@” holds at least %@.": "«%@» містить щонайменше %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» містить лише посилання, тому його не розпаковано.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "«%@» містить домашню папку або Програми, тому її не можна виключити.",
     "“%@” in %@": "«%@» у %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "Не вдалося перевірити «%@» в архіві, тому нічого не розпаковано.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "Не вдалося записати «%@» з архіву (%@), тому нічого не розпаковано.",
     "“%@” is a file, not a folder": "«%@» — це файл, а не папка",
+    "“%@” is already excluded, or is inside a folder that is.": "«%@» уже виключено, або вона лежить у виключеній папці.",
     "“%@” is already in the Trash.": "«%@» уже у Смітнику.",
     "“%@” is already on “%@”": "«%@» уже є на «%@»",
     "“%@” is already there.": "«%@» уже там є.",
@@ -2339,15 +2356,18 @@
     "“%@” is empty.": "«%@» порожній.",
     "“%@” is new": "додано «%@»",
     "“%@” is on a read-only disk.": "«%@» розташовано на диску лише для читання.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "«%@» — одна з папок, які охоплює індекс. Натомість виключіть папки всередині неї.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "«%@» захищено паролем. Відкрийте його в Архіваторі, щоб ввести пароль.",
     "“%@” is protected by macOS.": "«%@» захищено системою macOS.",
     "“%@” isn’t a valid name": "«%@» — неприпустима назва",
     "“%@” isn’t an archive Strata can open.": "«%@» не є архівом, який Strata може відкрити.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "«%@» немає в індексі, тому Strata читає її напряму.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "«%@» не лежить у домашній папці чи в Програмах, тож і так не індексується.",
     "“%@” links outside “%@”": "«%@» вказує за межі «%@»",
     "“%@” no longer exists, or this folder is gone from it.": "«%@» більше не існує, або цієї папки в ньому вже немає.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "«%@» на сервері не є папкою, тому туди не можна помістити «%@».",
     "“%@” was modified": "«%@» змінено",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "«%@» не додано: список заповнено. Спершу вилучіть папку.",
     "“%@” will be deleted immediately.": "Елемент «%@» буде видалено негайно.",
     "“%@” → %@": "«%@» → %@",
     "“%@” → “%@”": "«%@» → «%@»",

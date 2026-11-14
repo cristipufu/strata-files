@@ -145,6 +145,10 @@
       "one": "%lld Ordner benötigt Festplattenvollzugriff, um gemessen zu werden",
       "other": "%lld Ordner benötigen Festplattenvollzugriff, um gemessen zu werden"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld Ordner wurde nicht hinzugefügt: Die Liste ist voll. Entferne zuerst einen Ordner.",
+      "other": "%lld Ordner wurden nicht hinzugefügt: Die Liste ist voll. Entferne zuerst einen Ordner."
+    },
     "%lld glyphs": {
       "one": "%lld Glyphe",
       "other": "%lld Glyphen"
@@ -244,6 +248,10 @@
     "%lld modified": {
       "one": "%lld geändert",
       "other": "%lld geändert"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "%lld weiterer Ordner wurde nicht hinzugefügt.",
+      "other": "%lld weitere Ordner wurden nicht hinzugefügt."
     },
     "%lld moves": {
       "one": "%lld Verschiebung",
@@ -409,6 +417,7 @@
     "Access Key ID": "Zugriffsschlüssel-ID",
     "Actions": "Aktionen",
     "Add Comments": "Kommentare hinzufügen",
+    "Add Folder…": "Ordner hinzufügen…",
     "Add Tags": "Tags hinzufügen",
     "Add Text": "Text hinzufügen",
     "Add the date after each name": "Datum hinter jedem Namen hinzufügen",
@@ -836,6 +845,7 @@
     },
     "exactly %lld px high": "genau %lld px hoch",
     "exactly %lld px wide": "genau %lld px breit",
+    "Excluded folders": "Ausgeschlossene Ordner",
     "Existing": "Vorhanden",
     "Expanded": "Ausgeklappt",
     "Expires": "Läuft ab",
@@ -1746,6 +1756,7 @@
       "one": "Die Ordner stimmen überein (%lld Objekt verglichen)",
       "other": "Die Ordner stimmen überein (%lld Objekte verglichen)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Der Index überspringt diese Ordner samt Inhalt: Suchen nach Namen und Ordnergrößen lassen sie aus, und ihr Speicher wird freigegeben. Entfernst du einen Ordner, wird er wieder indexiert.",
     "The item couldn’t be found": "Das Objekt wurde nicht gefunden",
     "The items have moved or been changed since.": "Die Objekte wurden seitdem bewegt oder geändert.",
     "The name has invisible characters": "Der Name enthält unsichtbare Zeichen",
@@ -2041,10 +2052,12 @@
     "“%@” holds %@.": "„%@“ enthält %@.",
     "“%@” holds at least %@.": "„%@“ enthält mindestens %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@“ enthält nur einen Link und wurde daher nicht entpackt.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "„%@“ enthält deinen Benutzerordner oder Programme und kann daher nicht ausgeschlossen werden.",
     "“%@” in %@": "„%@“ in %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@“ im Archiv konnte nicht geprüft werden, daher wurde nichts entpackt.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "„%@“ im Archiv konnte nicht geschrieben werden (%@), daher wurde nichts entpackt.",
     "“%@” is a file, not a folder": "„%@“ ist eine Datei, kein Ordner",
+    "“%@” is already excluded, or is inside a folder that is.": "„%@“ ist bereits ausgeschlossen oder liegt in einem ausgeschlossenen Ordner.",
     "“%@” is already in the Trash.": "„%@“ ist bereits im Papierkorb.",
     "“%@” is already on “%@”": "„%@“ befindet sich bereits auf „%@“",
     "“%@” is already there.": "„%@“ ist bereits vorhanden.",
@@ -2053,15 +2066,18 @@
     "“%@” is empty.": "„%@“ ist leer.",
     "“%@” is new": "„%@“ ist neu",
     "“%@” is on a read-only disk.": "„%@“ befindet sich auf einem schreibgeschützten Laufwerk.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "„%@“ ist einer der Ordner, die der Index abdeckt. Schließe stattdessen Ordner darin aus.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@“ ist passwortgeschützt. Öffne es mit dem Archivierungsprogramm, um das Passwort einzugeben.",
     "“%@” is protected by macOS.": "„%@“ ist durch macOS geschützt.",
     "“%@” isn’t a valid name": "„%@“ ist kein gültiger Name",
     "“%@” isn’t an archive Strata can open.": "„%@“ ist kein Archiv, das Strata öffnen kann.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "„%@“ ist nicht im Index, daher liest Strata es direkt.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "„%@“ liegt nicht in deinem Benutzerordner oder in Programme und wird ohnehin nicht indexiert.",
     "“%@” links outside “%@”": "„%@“ verweist nach außerhalb von „%@“",
     "“%@” no longer exists, or this folder is gone from it.": "„%@“ gibt es nicht mehr, oder dieser Ordner fehlt darin.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "„%@“ auf dem Server ist kein Ordner, daher kann „%@“ nicht darin abgelegt werden.",
     "“%@” was modified": "„%@“ wurde geändert",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "„%@“ wurde nicht hinzugefügt: Die Liste ist voll. Entferne zuerst einen Ordner.",
     "“%@” will be deleted immediately.": "„%@“ wird sofort gelöscht.",
     "“%@” → %@": "„%@“ → %@",
     "“%@” → “%@”": "„%@“ → „%@“",

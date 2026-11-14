@@ -599,7 +599,7 @@ struct IndexWorkerTests {
     }
 
     @Test func appConfigurationExcludesItsOwnPrivateState() async throws {
-        let config = await FileIndex(storage: .shared, copies: .live).currentConfig()
+        let config = await FileIndex(storage: .shared, copies: .live, preferences: try Prefs.isolated()).currentConfig()
         let resolved = try #require(realpath(SecureStorage.Context.shared.directory.path, nil))
         defer { free(resolved) }
         let directory = String(cString: resolved)
@@ -609,7 +609,7 @@ struct IndexWorkerTests {
 
     @Test func foldersOverlapTheIndexByTheirRealPathsAndAnUnstartedIndexCoversNone() async throws {
         let tree = try TestTree("plain/", "home -> " + FileManager.default.homeDirectoryForCurrentUser.path)
-        let index = FileIndex(storage: .shared, copies: .live)
+        let index = FileIndex(storage: .shared, copies: .live, preferences: try Prefs.isolated())
         for folder in [FileManager.default.homeDirectoryForCurrentUser, URL(fileURLWithPath: "/Applications"),
                        URL(fileURLWithPath: "/"), tree.url("home")] {
             #expect(await index.overlapsIndexedFolders(folder), "\(folder.path)")
@@ -622,7 +622,7 @@ struct IndexWorkerTests {
 
     @Test func anIndexLeavesOutItsOwnEnvironmentsStateAndCopies() async throws {
         let tree = try TestTree("state/", "Caches/", "Servers/", "Containers/", "Clipboard/", "elsewhere/")
-        let (config, storage) = await configuration(over: tree)
+        let (config, storage) = try await configuration(over: tree)
         for name in ["state", "Caches", "Servers", "Containers", "Clipboard"] {
             #expect(config.excluded.contains(tree.url(name).path), "\(name)")
         }
@@ -647,26 +647,26 @@ struct IndexWorkerTests {
         let longAgo = Date().addingTimeInterval(-3600)
         try FileManager.default.setAttributes([.modificationDate: longAgo], ofItemAtPath: tree.url(stale).path)
         try #require(retired.contains("state/index.sealed") && !retired.contains(previous) && !retired.contains(current))
-        _ = await configuration(over: tree)
+        _ = try await configuration(over: tree)
         #expect(tree.snapshot() == (folders + kept).sorted())
     }
 
     @Test func removingAnEarlierFormatsFileNeverRemovesWhatALinkInItsPlacePointsTo() async throws {
         let tree = try TestTree("state/kept.sealed", "state/index.sealed -> state/kept.sealed",
                                 "Caches/", "Servers/", "Containers/", "Clipboard/")
-        _ = await configuration(over: tree)
+        _ = try await configuration(over: tree)
         #expect(tree.snapshot() == ["Caches/", "Clipboard/", "Containers/", "Servers/", "state/", "state/kept.sealed"])
         #expect(tree.text("state/kept.sealed") == "state/kept.sealed")
     }
 
     /// What an index over `tree`'s own state, caches and copies would index. Working it out is also when the files
     /// of earlier formats go.
-    private func configuration(over tree: TestTree) async -> (IndexConfig, SecureStorage.Context) {
+    private func configuration(over tree: TestTree) async throws -> (IndexConfig, SecureStorage.Context) {
         let storage = SecureStorage.Context(directory: tree.url("state"), caches: tree.url("Caches"), key: nil)
         let copies = CopyProviders([], remoteCopies: RemoteCopyStore(root: tree.url("Servers"), server: { _ in nil }),
                                    containerCopies: ContainerCopyStore(root: tree.url("Containers")),
                                    clipboardRoot: tree.url("Clipboard"))
-        return (await FileIndex(storage: storage, copies: copies).currentConfig(), storage)
+        return (await FileIndex(storage: storage, copies: copies, preferences: try Prefs.isolated()).currentConfig(), storage)
     }
 
     @Test func stateFolderEventsDoNotNotifyOrRewriteTheIndex() async throws {

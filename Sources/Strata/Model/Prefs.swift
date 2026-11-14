@@ -13,6 +13,8 @@ extension Notification.Name {
     package static let previewOptionsChanged = Notification.Name("StrataPreviewOptionsChanged")
     /// A sidebar section was hidden or shown: every window's sidebar follows.
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
+    /// The folders excluded from the file index changed (Settings ▸ Search & Index); posted by the preferences that changed.
+    package static let indexExclusionsChanged = Notification.Name("StrataIndexExclusionsChanged")
 }
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
@@ -100,6 +102,7 @@ package final class Prefs: PreviewTextSettings {
         static let collapsedSidebarSections = "collapsedSidebarSections"
         static let newFileExtension = "newFileExtension"
         static let dualPaneAddressBars = "dualPaneAddressBars"
+        static let indexExcludedFolders = "indexExcludedFolders"
     }
 
     /// An explicit app-language override. An empty value lets macOS choose the language on the next launch.
@@ -132,6 +135,21 @@ package final class Prefs: PreviewTextSettings {
     package var collapsedSidebarSections: Set<String> {
         get { Set(defaults.stringArray(forKey: Key.collapsedSidebarSections) ?? []) }
         set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
+    }
+
+    /// The folders you excluded from the file index (Settings ▸ Search & Index), by their real paths: at most
+    /// `IndexExclusions.limit`, of which the saved value's first that many entries are read.
+    package var indexExcludedFolders: [String] {
+        get {
+            let saved = defaults.array(forKey: Key.indexExcludedFolders) ?? []
+            return IndexExclusions.listed(saved.prefix(IndexExclusions.limit).compactMap { $0 as? String })
+        }
+        set {
+            let folders = IndexExclusions.listed(newValue)
+            guard folders != indexExcludedFolders else { return }
+            defaults.set(folders, forKey: Key.indexExcludedFolders)
+            notifications.post(name: .indexExclusionsChanged, object: self)
+        }
     }
 
     /// The extension File ▸ New File gives the file ("txt" until you change it; empty for none).

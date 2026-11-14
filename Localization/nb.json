@@ -145,6 +145,10 @@
       "one": "%lld mappe trenger full disktilgang for å kunne måles",
       "other": "%lld mapper trenger full disktilgang for å kunne måles"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld mappe ble ikke lagt til: listen er full. Fjern en mappe først.",
+      "other": "%lld mapper ble ikke lagt til: listen er full. Fjern en mappe først."
+    },
     "%lld glyphs": {
       "one": "%lld glyf",
       "other": "%lld glyfer"
@@ -244,6 +248,10 @@
     "%lld modified": {
       "one": "%lld endret",
       "other": "%lld endret"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "%lld mappe til ble ikke lagt til.",
+      "other": "%lld mapper til ble ikke lagt til."
     },
     "%lld moves": {
       "one": "%lld flytting",
@@ -409,6 +417,7 @@
     "Access Key ID": "Tilgangsnøkkel-ID",
     "Actions": "Handlinger",
     "Add Comments": "Legg til kommentarer",
+    "Add Folder…": "Legg til mappe…",
     "Add Tags": "Legg til merker",
     "Add Text": "Legg til tekst",
     "Add the date after each name": "Legg til datoen etter hvert navn",
@@ -836,6 +845,7 @@
     },
     "exactly %lld px high": "nøyaktig %lld px høy",
     "exactly %lld px wide": "nøyaktig %lld px bred",
+    "Excluded folders": "Utelatte mapper",
     "Existing": "Eksisterende",
     "Expanded": "Utvidet",
     "Expires": "Utløper",
@@ -1746,6 +1756,7 @@
       "one": "Mappene samsvarer (%lld objekt sammenlignet)",
       "other": "Mappene samsvarer (%lld objekter sammenlignet)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indeksen hopper over disse mappene og alt i dem: søk etter navn og mappestørrelser utelater dem, og minnet deres frigjøres. Fjerner du en mappe, indekseres den igjen.",
     "The item couldn’t be found": "Objektet ble ikke funnet",
     "The items have moved or been changed since.": "Objektene har blitt flyttet eller endret siden.",
     "The name has invisible characters": "Navnet har usynlige tegn",
@@ -2041,10 +2052,12 @@
     "“%@” holds %@.": "«%@» inneholder %@.",
     "“%@” holds at least %@.": "«%@» inneholder minst %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "«%@» inneholder bare en lenke, så det ble ikke pakket ut.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "«%@» inneholder hjemmemappen din eller Programmer, så den kan ikke utelates.",
     "“%@” in %@": "«%@» i %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "«%@» i arkivet kunne ikke kontrolleres, så ingenting ble pakket ut.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "«%@» i arkivet kunne ikke skrives (%@), så ingenting ble pakket ut.",
     "“%@” is a file, not a folder": "«%@» er en fil, ikke en mappe",
+    "“%@” is already excluded, or is inside a folder that is.": "«%@» er allerede utelatt, eller ligger i en mappe som er det.",
     "“%@” is already in the Trash.": "«%@» ligger allerede i papirkurven.",
     "“%@” is already on “%@”": "«%@» finnes allerede på «%@»",
     "“%@” is already there.": "«%@» finnes allerede.",
@@ -2053,15 +2066,18 @@
     "“%@” is empty.": "«%@» er tomt.",
     "“%@” is new": "«%@» er ny",
     "“%@” is on a read-only disk.": "«%@» ligger på en skrivebeskyttet disk.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "«%@» er en av mappene indeksen dekker. Utelat heller mapper inne i den.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "«%@» er passordbeskyttet. Åpne det med Arkivverktøy for å skrive inn passordet.",
     "“%@” is protected by macOS.": "«%@» er beskyttet av macOS.",
     "“%@” isn’t a valid name": "«%@» er ikke et gyldig navn",
     "“%@” isn’t an archive Strata can open.": "«%@» er ikke et arkiv Strata kan åpne.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "«%@» er ikke i indeksen, så Strata leser den direkte.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "«%@» ligger ikke i hjemmemappen din eller Programmer, så den indekseres uansett ikke.",
     "“%@” links outside “%@”": "«%@» lenker utenfor «%@»",
     "“%@” no longer exists, or this folder is gone from it.": "«%@» finnes ikke lenger, eller denne mappen er borte fra den.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "«%@» på tjeneren er ikke en mappe, så «%@» kan ikke legges i den.",
     "“%@” was modified": "«%@» ble endret",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "«%@» ble ikke lagt til: listen er full. Fjern en mappe først.",
     "“%@” will be deleted immediately.": "«%@» slettes umiddelbart.",
     "“%@” → %@": "«%@» → %@",
     "“%@” → “%@”": "«%@» → «%@»",

@@ -170,6 +170,11 @@
       "few": "Ke změření %lld složek je potřeba plný přístup k disku",
       "other": "Ke změření %lld složek je potřeba plný přístup k disku"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld složka nebyla přidána: seznam je plný. Nejprve nějakou složku ze seznamu odstraňte.",
+      "few": "%lld složky nebyly přidány: seznam je plný. Nejprve nějakou složku ze seznamu odstraňte.",
+      "other": "%lld složek nebylo přidáno: seznam je plný. Nejprve nějakou složku ze seznamu odstraňte."
+    },
     "%lld glyphs": {
       "one": "%lld glyf",
       "few": "%lld glyfy",
@@ -294,6 +299,11 @@
       "one": "%lld změněný",
       "few": "%lld změněné",
       "other": "%lld změněných"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "%lld další složka nebyla přidána.",
+      "few": "%lld další složky nebyly přidány.",
+      "other": "%lld dalších složek nebylo přidáno."
     },
     "%lld moves": {
       "one": "%lld přesun",
@@ -494,6 +504,7 @@
     "Access Key ID": "ID přístupového klíče",
     "Actions": "Akce",
     "Add Comments": "Přidat poznámky",
+    "Add Folder…": "Přidat složku…",
     "Add Tags": "Přidat značky",
     "Add Text": "Přidat text",
     "Add the date after each name": "Přidat datum za každý název",
@@ -938,6 +949,7 @@
     },
     "exactly %lld px high": "výška přesně %lld px",
     "exactly %lld px wide": "šířka přesně %lld px",
+    "Excluded folders": "Vynechané složky",
     "Existing": "Stávající",
     "Expanded": "Rozbaleno",
     "Expires": "Vyprší",
@@ -1880,6 +1892,7 @@
       "few": "Složky se shodují (porovnány %lld položky)",
       "other": "Složky se shodují (porovnáno %lld položek)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Index tyto složky i vše v nich přeskakuje: hledání podle názvu i velikosti složek je vynechávají a paměť, kterou zabíraly, se uvolní. Odstraněním složky ze seznamu se znovu zaindexuje.",
     "The item couldn’t be found": "Položku nelze najít",
     "The items have moved or been changed since.": "Položky byly mezitím přesunuty nebo změněny.",
     "The name has invisible characters": "Název obsahuje neviditelné znaky",
@@ -2184,10 +2197,12 @@
     "“%@” holds %@.": "„%@“ obsahuje %@.",
     "“%@” holds at least %@.": "„%@“ obsahuje nejméně %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@“ obsahuje jen odkaz, proto nebyl rozbalen.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "„%@“ obsahuje vaši domovskou složku nebo Aplikace, takže ji nelze vynechat.",
     "“%@” in %@": "„%@“ v %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@“ v archivu se nepodařilo ověřit, proto nebylo nic rozbaleno.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "„%@“ v archivu se nepodařilo zapsat (%@), proto nebylo nic rozbaleno.",
     "“%@” is a file, not a folder": "„%@“ je soubor, ne složka",
+    "“%@” is already excluded, or is inside a folder that is.": "„%@“ už je vynechána, nebo je uvnitř vynechané složky.",
     "“%@” is already in the Trash.": "„%@“ už je v koši.",
     "“%@” is already on “%@”": "„%@“ už na „%@“ existuje",
     "“%@” is already there.": "„%@“ tam už existuje.",
@@ -2196,15 +2211,18 @@
     "“%@” is empty.": "„%@“ je prázdný.",
     "“%@” is new": "přibylo „%@“",
     "“%@” is on a read-only disk.": "„%@“ je na disku jen pro čtení.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "„%@“ je jedna ze složek, které index pokrývá. Vynechte raději složky uvnitř ní.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@“ je chráněn heslem. Otevřete jej v Archivační utilitě a zadejte heslo.",
     "“%@” is protected by macOS.": "„%@“ je chráněno systémem macOS.",
     "“%@” isn’t a valid name": "„%@“ není platný název",
     "“%@” isn’t an archive Strata can open.": "„%@“ není archiv, který Strata dokáže otevřít.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "„%@“ není v indexu, takže ji Strata čte přímo.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "„%@“ není ve vaší domovské složce ani v Aplikacích, takže se stejně neindexuje.",
     "“%@” links outside “%@”": "„%@“ odkazuje mimo „%@“",
     "“%@” no longer exists, or this folder is gone from it.": "„%@“ už neexistuje, nebo v něm tato složka už není.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "„%@“ na serveru není složka, takže do něj nelze umístit „%@“.",
     "“%@” was modified": "změnilo se „%@“",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "„%@“ nebyla přidána: seznam je plný. Nejprve nějakou složku ze seznamu odstraňte.",
     "“%@” will be deleted immediately.": "Položka „%@“ bude okamžitě smazána.",
     "“%@” → %@": "„%@“ → %@",
     "“%@” → “%@”": "„%@“ → „%@“",

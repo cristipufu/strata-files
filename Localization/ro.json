@@ -170,6 +170,11 @@
       "few": "%lld dosare necesită acces complet la disc pentru a fi măsurate",
       "other": "%lld de dosare necesită acces complet la disc pentru a fi măsurate"
     },
+    "%lld folders weren’t added: the list is full. Remove a folder first.": {
+      "one": "%lld dosar nu a fost adăugat: lista este plină. Elimină mai întâi un dosar.",
+      "few": "%lld dosare nu au fost adăugate: lista este plină. Elimină mai întâi un dosar.",
+      "other": "%lld de dosare nu au fost adăugate: lista este plină. Elimină mai întâi un dosar."
+    },
     "%lld glyphs": {
       "one": "%lld glifă",
       "few": "%lld glife",
@@ -294,6 +299,11 @@
       "one": "%lld modificat",
       "few": "%lld modificate",
       "other": "%lld modificate"
+    },
+    "%lld more folders weren’t added.": {
+      "one": "Încă %lld dosar nu a fost adăugat.",
+      "few": "Încă %lld dosare nu au fost adăugate.",
+      "other": "Încă %lld de dosare nu au fost adăugate."
     },
     "%lld moves": {
       "one": "%lld mutare",
@@ -494,6 +504,7 @@
     "Access Key ID": "ID cheie de acces",
     "Actions": "Acțiuni",
     "Add Comments": "Adaugă comentarii",
+    "Add Folder…": "Adaugă un dosar…",
     "Add Tags": "Adaugă etichete",
     "Add Text": "Adaugă text",
     "Add the date after each name": "Adaugă data după fiecare nume",
@@ -938,6 +949,7 @@
     },
     "exactly %lld px high": "exact %lld px înălțime",
     "exactly %lld px wide": "exact %lld px lățime",
+    "Excluded folders": "Dosare excluse",
     "Existing": "Existent",
     "Expanded": "Extins",
     "Expires": "Expiră la",
@@ -1880,6 +1892,7 @@
       "few": "Dosarele corespund (%lld articole comparate)",
       "other": "Dosarele corespund (%lld de articole comparate)"
     },
+    "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indexul sare peste aceste dosare și tot ce conțin: căutările după nume și dimensiunile dosarelor nu le includ, iar memoria lor este eliberată. Dacă elimini un dosar, acesta este indexat din nou.",
     "The item couldn’t be found": "Articolul nu a putut fi găsit",
     "The items have moved or been changed since.": "Între timp, articolele au fost mutate sau modificate.",
     "The name has invisible characters": "Numele conține caractere invizibile",
@@ -2184,10 +2197,12 @@
     "“%@” holds %@.": "„%@” conține %@.",
     "“%@” holds at least %@.": "„%@” conține cel puțin %@.",
     "“%@” holds only a link, so it wasn’t extracted.": "„%@” conține doar un link, așa că nu a fost extras.",
+    "“%@” holds your home folder or Applications, so it can’t be excluded.": "„%@” conține dosarul tău personal sau Aplicații, deci nu poate fi exclus.",
     "“%@” in %@": "„%@” în %@",
     "“%@” in the archive couldn’t be checked, so nothing was extracted.": "„%@” din arhivă nu a putut fi verificat, așa că nu s-a extras nimic.",
     "“%@” in the archive couldn’t be written (%@), so nothing was extracted.": "„%@” din arhivă nu a putut fi scris (%@), așa că nu s-a extras nimic.",
     "“%@” is a file, not a folder": "„%@” este un fișier, nu un dosar",
+    "“%@” is already excluded, or is inside a folder that is.": "„%@” este deja exclus sau se află într-un dosar exclus.",
     "“%@” is already in the Trash.": "„%@” este deja în Coș.",
     "“%@” is already on “%@”": "„%@” există deja pe „%@”",
     "“%@” is already there.": "„%@” există deja acolo.",
@@ -2196,15 +2211,18 @@
     "“%@” is empty.": "„%@” este gol.",
     "“%@” is new": "„%@” este nou",
     "“%@” is on a read-only disk.": "„%@” se află pe un disc doar pentru citire.",
+    "“%@” is one of the folders the index covers. Exclude folders inside it instead.": "„%@” este unul dintre dosarele acoperite de index. Exclude în schimb dosare din interiorul lui.",
     "“%@” is password-protected. Open it with Archive Utility to enter the password.": "„%@” este protejat cu parolă. Deschide-l cu Utilitar arhivare pentru a introduce parola.",
     "“%@” is protected by macOS.": "„%@” este protejat de macOS.",
     "“%@” isn’t a valid name": "„%@” nu este un nume valid",
     "“%@” isn’t an archive Strata can open.": "„%@” nu este o arhivă pe care Strata o poate deschide.",
     "“%@” isn’t in the index, so Strata is reading it directly.": "„%@” nu este în index, așa că Strata îl citește direct.",
+    "“%@” isn’t in your home folder or Applications, so it isn’t indexed anyway.": "„%@” nu se află în dosarul tău personal sau în Aplicații, deci oricum nu este indexat.",
     "“%@” links outside “%@”": "„%@” indică în afara „%@”",
     "“%@” no longer exists, or this folder is gone from it.": "„%@” nu mai există sau acest dosar nu mai este în el.",
     "“%@” on the server isn’t a folder, so “%@” can’t go into it.": "„%@” de pe server nu este un dosar, deci „%@” nu poate fi pus în el.",
     "“%@” was modified": "„%@” a fost modificat",
+    "“%@” wasn’t added: the list is full. Remove a folder first.": "„%@” nu a fost adăugat: lista este plină. Elimină mai întâi un dosar.",
     "“%@” will be deleted immediately.": "„%@” va fi șters imediat.",
     "“%@” → %@": "„%@” → %@",
     "“%@” → “%@”": "„%@” → „%@”",

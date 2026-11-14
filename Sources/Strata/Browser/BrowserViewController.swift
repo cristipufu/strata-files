@@ -54,6 +54,7 @@ final class BrowserViewController: NSViewController {
         loading = BrowserLoading(reader: services.directories, capacity: services.volumeSpace)
         mediaInfo = MediaInfoLoader(copies: services.copies, reader: services.mediaReader)
         outlineView = FileOutlineView(copies: services.copies)
+        sizer = FolderSizer(reader: services.folderSizes)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -109,7 +110,7 @@ final class BrowserViewController: NSViewController {
     private let scrollView = NSScrollView()
     let emptyState = EmptyStateView()
     private let filterPill = FilterPill()
-    let sizer = FolderSizer()
+    let sizer: FolderSizer
     let mediaInfo: MediaInfoLoader
 
     let listing = BrowserListing()

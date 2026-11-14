@@ -21,6 +21,8 @@ final class IndependentEnvironment {
 
     init(directories: DirectoryReader? = nil, preferences supplied: Prefs? = nil,
          mediaDetailsReader: @escaping MediaDetails.Reader = MediaDetails.read,
+         folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
+         indexedFolders: (home: URL, applications: URL)? = nil,
          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) throws {
         state = try TestTree()
         let preferences = try supplied ?? Prefs.isolated()
@@ -34,10 +36,19 @@ final class IndependentEnvironment {
             readListing: { _, _ in throw ContainerAPIError.notFound },
             readFile: { _, _, _, _ in throw ContainerAPIError.notFound },
             readTree: { _, _, _, _ in throw ContainerAPIError.notFound })
+        var makeIndex: (@MainActor (CopyProviders) -> FileIndex)?
+        if let indexedFolders {
+            let storage = storage
+            makeIndex = { copies in
+                FileIndex(storage: storage, copies: copies, preferences: preferences, folders: indexedFolders,
+                          realPaths: FileIndex.realPathsHoweverLongTheyTake)
+            }
+        }
         services = BrowserServices.isolated(preferences: preferences, storage: storage, credentials: credentials,
             connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
             clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers,
-            directories: directories, mediaDetailsReader: mediaDetailsReader, showSetting: showSetting)
+            directories: directories, mediaDetailsReader: mediaDetailsReader, folderSizes: folderSizes,
+            makeIndex: makeIndex, showSetting: showSetting)
     }
 
     isolated deinit {

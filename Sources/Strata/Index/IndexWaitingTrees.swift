@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 
 /// Changes inside a dependency, build or cache tree are kept together until the tree is quiet, without postponing
 /// catch-up indefinitely.
@@ -28,7 +29,8 @@ nonisolated package struct IndexWaitingTrees {
 
     package mutating func removeAll() { trees.removeAll() }
     package mutating func exclude(_ paths: Set<String>) {
-        trees = trees.filter { !IndexRefresh.isExcluded($0.key, in: paths) }
+        let excluded = IndexExcludedFolders(paths)
+        trees = trees.filter { !excluded.covers($0.key) }
     }
 
     package mutating func insert(_ entry: IndexRefreshTree.Entry, root: String, now: UInt64) {
@@ -89,6 +91,24 @@ nonisolated extension IndexStore.Storage {
         }
         guard let id, isDirectory(id) else { return nil }
         return (id, target)
+    }
+
+    /// What to read so that `folder`, allowed again, is indexed. A listing reads the folders the index has never read
+    /// and does not read into another volume mounted there, as a scan does not, so a folder is found by listing the
+    /// folder that holds it and allowing one never reads a volume in. Each is read at the path the index holds for
+    /// it: a list can spell a folder in another letter case than its disk does.
+    package func readThatIndexes(_ folder: String) -> (id: Int32, path: String, deep: Bool)? {
+        if let id = lookup(folder), isDirectory(id) {
+            // Begun before and cut short: read through. Never read: for its parent's listing to read.
+            if flags[Int(id)] & IndexStore.Flag.unreadDirectory == 0 { return (id, path(of: id), true) }
+            let holder = parent[Int(id)]
+            return holder >= 0 ? (holder, path(of: holder), false) : nil
+        }
+        // It went and came back unseen while it was excluded: the nearest folder the index knows finds it, unless
+        // the index has never read that one, such as where a volume is mounted.
+        guard let holder = nearestFolder(to: IndexRefresh.splitPath(folder).parent),
+              flags[Int(holder.id)] & IndexStore.Flag.unreadDirectory == 0 else { return nil }
+        return (holder.id, path(of: holder.id), false)
     }
 
     /// The tree that waits for quiet and holds this folder, if any: the outermost folder above it, itself included,

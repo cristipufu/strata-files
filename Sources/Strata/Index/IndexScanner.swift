@@ -1,4 +1,5 @@
 import Foundation
+import StrataSupport
 import os
 import StrataModel
 
@@ -236,7 +237,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     }
 
     private let store: IndexStore
-    private let excluded: Set<String>
+    private let excluded: IndexExcludedFolders
     private let noiseFolders: Set<String>
     private let shouldStop: @Sendable () -> Bool
     private let condition = NSCondition()
@@ -259,7 +260,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>,
                  shouldStop: @escaping @Sendable () -> Bool = { false }) {
         self.store = store
-        self.excluded = excluded
+        self.excluded = IndexExcludedFolders(excluded)
         self.noiseFolders = noiseFolders
         self.shouldStop = shouldStop
     }
@@ -348,7 +349,7 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
                 var folders: [(offset: Int, path: String, noise: Bool)] = []
                 for (offset, item) in items.enumerated() where item.isDirectory && !item.isMountPoint {
                     let path = prefix + String(decoding: names[item.nameOffset..<(item.nameOffset + item.nameLength)], as: UTF8.self)
-                    if !excluded.contains(path) { folders.append((offset, path, noiseFolders.contains(path))) }
+                    if !excluded.covers(path) { folders.append((offset, path, noiseFolders.contains(path))) }
                 }
                 let ownNoise = names.withUnsafeBytes { IndexStore.ownNoise(items, nameBuffer: $0) }
                 batchScanned += items.count
