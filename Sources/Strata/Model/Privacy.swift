@@ -79,6 +79,18 @@ package enum Privacy {
         }
         return false
     }
+
+    /// Whether walking `url` to measure it would reach a guarded folder you haven't opened: `url` holds one, as your
+    /// home folder does. `measuringWouldPrompt` asks about a folder that is guarded itself.
+    package static func walkingWouldReachGuardedFolders(_ url: URL) -> Bool {
+        !hasFullDiskAccess && holdsGuardedFolder(url.lexicallyStandardized.path, among: guardedRoots, isAccessible: isKnownAccessible)
+    }
+
+    /// Whether one of the `guarded` folders that isn't accessible lies inside the folder at `path`.
+    package static func holdsGuardedFolder(_ path: String, among guarded: [String], isAccessible: (String) -> Bool) -> Bool {
+        let inside = path == "/" ? "/" : path + "/"
+        return guarded.contains { $0.hasPrefix(inside) && !isAccessible($0) }
+    }
 }
 
 /// Shown once at first launch without Full Disk Access: one explained request instead of a prompt per folder.

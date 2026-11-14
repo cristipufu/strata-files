@@ -1098,6 +1098,7 @@
     "in memory": "în memorie",
     "Incoming": "De intrare",
     "Index": "Index",
+    "Index files": "Indexează fișierele",
     "Index updates unavailable": "Actualizările indexului nu sunt disponibile",
     "Indexing %lld items…": {
       "one": "Se indexează %lld articol…",
@@ -1388,6 +1389,7 @@
     "Open in New Tab": "Deschide într-o filă nouă",
     "Open in Terminal": "Deschide în Terminal",
     "Open in Terminal uses": "Deschide în Terminal folosește",
+    "Open Index Settings…": "Deschide configurările indexului…",
     "Open Privacy Settings": "Deschide configurările de confidențialitate",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Deschide configurările de confidențialitate, trage pictograma de mai sus în listă (sau fă clic pe +) și activează Strata.",
     "Open Privacy Settings…": "Deschide configurările de confidențialitate…",
@@ -1641,6 +1643,8 @@
     "Scripts and online content are blocked.": "Scripturile și conținutul online sunt blocate.",
     "Search": "Caută",
     "Search & Index": "Căutare și index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Căutarea pe tot Mac-ul, Recente și Dubluri au nevoie de el. Pentru a căuta într-un dosar, deschide-l și caută acolo: Strata îl citește direct.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Căutarea pe tot Mac-ul, Recente, Dubluri și dimensiunile instantanee ale dosarelor folosesc indexul. Dezactivat, indexul se oprește, își eliberează memoria și este șters de pe disc: dimensiunile dosarelor sunt măsurate când le ceri, iar căutarea citește dosarul în care te afli.",
     "Search box in the Dock": "Câmp de căutare în Dock",
     "Search by extension (also *.pdf)": "Caută după extensie (și *.pdf)",
     "Search commands or shortcuts": "Caută comenzi sau scurtături",
@@ -1892,6 +1896,7 @@
       "few": "Dosarele corespund (%lld articole comparate)",
       "other": "Dosarele corespund (%lld de articole comparate)"
     },
+    "The index is turned off": "Indexul este dezactivat",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indexul sare peste aceste dosare și tot ce conțin: căutările după nume și dimensiunile dosarelor nu le includ, iar memoria lor este eliberată. Dacă elimini un dosar, acesta este indexat din nou.",
     "The item couldn’t be found": "Articolul nu a putut fi găsit",
     "The items have moved or been changed since.": "Între timp, articolele au fost mutate sau modificate.",

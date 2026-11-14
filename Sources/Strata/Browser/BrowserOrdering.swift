@@ -42,7 +42,7 @@ final class BrowserOrdering {
     }
 
     struct Metadata {
-        let folderSize: (URL) -> Int64?
+        let folderSize: (FileEntry) -> Int64?
         let childFolderSizes: (URL) -> [String: Int64]
         let media: (FileEntry) -> MediaInfo?
         let requestMedia: (FileEntry) -> Void
@@ -103,7 +103,7 @@ final class BrowserOrdering {
             guard entry.isDirectory else { return entry.size ?? 0 }
             let key = entry.url.lexicallyStandardized.path
             if let cached = pass.sizes[key] { return cached }
-            let bytes = metadata.folderSize(entry.url) ?? -1
+            let bytes = metadata.folderSize(entry) ?? -1
             pass.sizes[key] = bytes
             return bytes
         }
@@ -144,7 +144,7 @@ final class BrowserOrdering {
     /// sources return only cached values, and a later metadata completion applies the updated order.
     func ordered(_ a: FileEntry, _ b: FileEntry) -> Bool {
         Self.order(a, b, choice: choice ?? folderChoice, foldersFirst: foldersFirst(), size: { entry in
-            entry.isDirectory ? metadata.folderSize(entry.url) ?? -1 : entry.size ?? 0
+            entry.isDirectory ? metadata.folderSize(entry) ?? -1 : entry.size ?? 0
         }, tags: tagNames, media: metadata.media)
     }
 

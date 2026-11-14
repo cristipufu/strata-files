@@ -105,8 +105,8 @@ extension BrowserViewController {
         }
     }
 
-    /// Replaces the list with a message while results are being computed.
-    func showMessage(symbol: String, title: String, message: String = "") {
+    /// Replaces the list with a message while results are being computed, or in place of results there can't be.
+    func showMessage(symbol: String, title: String, message: String = "", button: (String, () -> Void)? = nil) {
         noteNavigationContextChanged()
         activeView?.cancelRename()
         enterResults()
@@ -117,7 +117,7 @@ extension BrowserViewController {
         results.tally = .summary("")
         outlineView.reloadData()
         pushContent()
-        emptyState.show(symbol: symbol, title: title, message: message)
+        emptyState.show(symbol: symbol, title: title, message: message, button: button)
         delegate?.browserContentDidChange(self)
     }
 

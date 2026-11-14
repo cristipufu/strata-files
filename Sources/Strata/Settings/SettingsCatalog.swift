@@ -18,7 +18,7 @@ nonisolated enum SettingsPage: String, CaseIterable, Sendable {
 nonisolated enum SettingID: String, CaseIterable, Sendable {
     case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
-    case rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
+    case indexFiles, rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
     case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, shortcuts
     case folderView, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions
 
@@ -48,6 +48,7 @@ enum SettingsCatalog {
         entry(.dockSearch, .general, "Search box in the Dock", "dock search accessibility"),
         entry(.defaultFileBrowser, .general, "Open “Reveal in Finder” in Strata", "default file browser reveal finder"),
         entry(.commandLine, .general, "Command Line", "cli shell command line install strata"),
+        entry(.indexFiles, .search, "Index files", "index off disable turn off stop indexing cpu memory battery"),
         entry(.rebuildIndex, .search, "Rebuild Index", "index rebuild search database"),
         entry(.excludedFolders, .search, "Excluded folders", "exclude folders index skip ignore leave out not indexed memory"),
         entry(.fullDiskAccess, .search, "Full Disk Access", "privacy permissions full disk access search"),

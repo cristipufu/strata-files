@@ -35,7 +35,7 @@ final class InspectorViewController: NSViewController {
     /// A Compose project's services, for a folder `docker compose` runs in.
     let composeView: ComposeInspectorView
     private var composeFolder: URL?
-    private var shownURLs: [URL] = []
+    private(set) var shownURLs: [URL] = []
     /// The items whose icons the icon view shows, to draw again when their own icons arrive.
     private var iconItems: [FileEntry] = []
     private var previewWork: DispatchWorkItem?

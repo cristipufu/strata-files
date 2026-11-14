@@ -117,6 +117,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(indexPhaseChanged), name: .indexPhaseDidChange,
                                                object: services.index)
         NotificationCenter.default.addObserver(self, selector: #selector(indexChanged), name: .indexDidChange, object: services.index)
+        NotificationCenter.default.addObserver(self, selector: #selector(indexSwitched), name: .indexDidSwitch, object: services.index)
         NotificationCenter.default.addObserver(self, selector: #selector(gitStatusChanged), name: .gitStatusDidChange, object: services.git)
         NotificationCenter.default.addObserver(self, selector: #selector(folderNamesRead), name: .folderNamesRead,
                                                object: services.folderNames)
@@ -140,7 +141,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         inspectorObservation = split.inspectorItem.observe(\.isCollapsed) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.split.inspectorItem.isCollapsed { self.split.inspector.stopPreviewing(); return }
+                if self.split.inspectorItem.isCollapsed { self.split.inspector.stopPreviewing() }
+                // Shown, it catches up; hidden, it asks no more about what it showed.
                 self.refreshPanels()
             }
         }
@@ -742,7 +744,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func privacyChanged() {
         panes.forEach { $0.browser.privacyChanged() }
         services.index.refreshConfig()
-        StrataAI.startIndexing()
+        if services.index.isOn { StrataAI.startIndexing() }
     }
 
     /// The workspace this tab was opened from or saved as: Window ▸ Workspaces can update it, and opening it again
@@ -787,10 +789,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         split.inspector.onOpenFolder = { [weak self] folder in self?.openFolder(folder) }
         split.inspector.onOpenContainer = { [weak self] id in self?.openContainer(id) }
         // A hidden Inspector reads nothing about the selection; shown again, it catches up.
-        guard !split.inspectorItem.isCollapsed else { return }
-        split.inspector.show(entries: browser.selectedEntries, folder: folder,
-                             folderSize: { url in browser.folderSize(url, request: true) },
-                             canMeasure: { entry in browser.canMeasure(entry) })
+        let isShowing = !split.inspectorItem.isCollapsed
+        if isShowing {
+            split.inspector.show(entries: browser.selectedEntries, folder: folder,
+                                 folderSize: { url in browser.folderSize(url, request: true, askedBy: .inspector) },
+                                 canMeasure: { entry in browser.canMeasure(entry) })
+        }
+        // What it shows no more, in this pane or the other, it asks nothing about any more.
+        let shown = isShowing ? Set(split.inspector.shownURLs) : []
+        for pane in panes { pane.browser.inspectorShows(pane.browser === browser ? shown : []) }
     }
 }
 

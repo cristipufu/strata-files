@@ -35,6 +35,12 @@ nonisolated package enum IndexPersistence {
 
     /// Streams the columns, encrypted, straight to disk (no in-memory copy of the whole file), then swaps the file in
     /// atomically.
+    /// Removes a saved index with its stale temporaries, as turning the index off does: that file and nothing else
+    /// in its folder. The previous format's stays for a copy of Strata that still reads it.
+    package static func remove(_ file: URL) {
+        SecureStorage.removeSuperseded(file)
+    }
+
     package static func save(_ store: IndexStore, eventID: UInt64, journal: [String] = [], excluded: [String], to url: URL,
                              storage: SecureStorage.Context) throws {
         let writer = try SecureStorage.Writer(url: url, storage: storage)

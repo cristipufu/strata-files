@@ -215,20 +215,27 @@ private struct NewFileExtensionField: View {
 private struct IndexSettings: View {
     @State private var status = ""
     @State private var hasAccess = Privacy.hasFullDiskAccess
+    @State private var indexes = FileIndex.shared.isOn
 
     var body: some View {
         Form {
             Section {
+                Toggle(isOn: Binding(get: { indexes }, set: { FileIndex.shared.turn(on: $0); refresh() })) {
+                    Text("Index files")
+                    Text("Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.")
+                }
+                .settingAnchor(.indexFiles)
                 LabeledContent("Status", value: status)
                 LabeledContent(String(localized: "Covers", comment: "Settings ▸ Search & Index: which folders the index includes"),
                                value: String(localized: "Your home folder and Applications"))
                 LabeledContent("Rebuild") {
                     Button("Rebuild Index") { FileIndex.shared.rebuild() }.settingAnchor(.rebuildIndex)
                 }
+                .disabled(!indexes)
             } header: {
                 Text("Index", comment: "Settings ▸ Search & Index: section about the file index")
             }
-            IndexExclusionSettings(index: .shared)
+            IndexExclusionSettings(index: .shared).disabled(!indexes)
             Section {
                 LabeledContent("Full Disk Access") {
                     if hasAccess {
@@ -279,6 +286,11 @@ private struct IndexSettings: View {
     private func refresh() {
         Privacy.refresh()
         hasAccess = Privacy.hasFullDiskAccess
+        indexes = FileIndex.shared.isOn
+        guard indexes else {
+            status = String(localized: "Off", comment: "Settings ▸ Search & Index: the index is turned off")
+            return
+        }
         switch FileIndex.shared.phase {
         case .loading: status = String(localized: "Loading…")
         case .updating: status = String(localized: "Updating index…")
