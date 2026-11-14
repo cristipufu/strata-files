@@ -143,7 +143,11 @@ struct IndexWorkerTests {
 
     @Test func partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete() async throws {
         let tree = try TestTree(".state/", "files/keep.txt")
-        let fixture = try await start(tree)
+        // The folder cannot be listed: a folder never read is listed first when it changes, and only then by name.
+        let fixture = try await start(tree, readDirectory: { path, items, names, buffer, stop in
+            path.hasSuffix("/files") ? EACCES
+                : BulkDirectoryReader.read(path, items: &items, names: &names, buffer: buffer, shouldStop: stop)
+        })
         let directory = try #require(fixture.store.read { $0.lookup(tree.url("files").path) })
         fixture.store.write { storage in
             storage.flags[Int(directory)] |= IndexStore.Flag.unreadDirectory | IndexStore.Flag.unknownAllocation

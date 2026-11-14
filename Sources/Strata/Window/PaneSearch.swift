@@ -52,6 +52,15 @@ import AppKit
         if task == nil { scheduleRefresh() }
     }
 
+    /// The index was turned on or off: what this pane shows belongs to the other side of the switch. A folder read
+    /// before left out other folders, or took part of its answer from an index that is gone, so it is let go, still
+    /// reading or not; then the search starts over at once.
+    func indexSwitched() {
+        folderScan?.cancel()
+        folderScan = nil
+        run()
+    }
+
     private func cancelRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
@@ -150,8 +159,19 @@ import AppKit
     }
 
     private func showIndexing(_ p: Pane) {
+        guard services.index.isOn else { return showIndexOff(p) }
         p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                               message: String(localized: "Search works as soon as the first index is built."))
+        show(summary: "")
+    }
+
+    /// What needs the index says so while it is turned off, with the way to the switch.
+    private func showIndexOff(_ p: Pane) {
+        let showSetting = services.showSetting
+        p.browser.showMessage(
+            symbol: "magnifyingglass", title: String(localized: "The index is turned off"),
+            message: String(localized: "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly."),
+            button: (String(localized: "Open Index Settings…"), { showSetting(.indexFiles) }))
         show(summary: "")
     }
 
@@ -160,7 +180,8 @@ import AppKit
     private func searchOutsideIndex(_ text: String, in scope: URL, pane p: Pane, generation: Int, target: Destination) async {
         let overlaps = await services.index.overlapsIndexedFolders(scope)
         guard isCurrent(generation, p, target) else { return }
-        if !services.index.isReady, overlaps {
+        // Turned off, there is no first index to wait for: the folder is read.
+        if services.index.isOn, !services.index.isReady, overlaps {
             return showIndexing(p)
         }
         if Privacy.measuringWouldPrompt(scope, browsing: p.location) {
@@ -239,6 +260,7 @@ import AppKit
     private func runRecents(in p: Pane, generation: Int, target: Destination) async {
         let recent = await services.index.recentFiles()
         guard isCurrent(generation, p, target) else { return }
+        guard recent != nil || services.index.isOn else { return showIndexOff(p) }
         let hits = recent ?? []
         let entries = await FileEntry.entries(from: hits)
         guard isCurrent(generation, p, target) else { return }
@@ -315,8 +337,10 @@ import AppKit
         } else {
             let indexed = await services.index.indexedParts(inside: scope)
             guard isCurrent(generation, p, target) else { return }
+            let leftOut = await services.index.foldersLeftOut(below: path)
+            guard isCurrent(generation, p, target) else { return }
             folderScan?.cancel()
-            search = FolderSearch(path: path, indexed: indexed, queue: scans)
+            search = FolderSearch(path: path, indexed: indexed, leavingOut: leftOut, queue: scans)
             folderScan = search
             folderScanScope = scope
             search.start()
@@ -378,6 +402,7 @@ import AppKit
         task?.cancel()
         task = nil
         duplicateSearch?.set()
+        guard services.index.isOn else { return showIndexOff(p) }
         guard services.index.isReady else {
             p.browser.showMessage(symbol: "hourglass", title: String(localized: "Indexing…"),
                                   message: String(localized: "Duplicates appear once the first index is built."))

@@ -991,6 +991,7 @@
     "in memory": "memóriában",
     "Incoming": "Érkező",
     "Index": "Index",
+    "Index files": "Fájlok indexelése",
     "Index updates unavailable": "Az index frissítése nem érhető el",
     "Indexing %lld items…": {
       "one": "%lld elem indexelése…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Megnyitás új lapon",
     "Open in Terminal": "Megnyitás a Terminálban",
     "Open in Terminal uses": "Megnyitás a Terminálban ezzel",
+    "Open Index Settings…": "Indexbeállítások megnyitása…",
     "Open Privacy Settings": "Adatvédelmi beállítások megnyitása",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Nyissa meg az adatvédelmi beállításokat, húzza a fenti ikont a listába (vagy kattintson a + gombra), és kapcsolja be a Stratát.",
     "Open Privacy Settings…": "Adatvédelmi beállítások megnyitása…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "A szkriptek és az online tartalmak le vannak tiltva.",
     "Search": "Keresés",
     "Search & Index": "Keresés és index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "A teljes Macen való kereséshez, a Legutóbbiakhoz és a Duplikátumokhoz szükség van rá. Mappában való kereséshez nyissa meg a mappát, és ott keressen: a Strata közvetlenül olvassa be.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "A teljes Macen való keresés, a Legutóbbiak, a Duplikátumok és az azonnali mappaméretek az indexet használják. Kikapcsolva leáll, felszabadítja a memóriáját, és törlődik a lemezről: a mappaméretek mérése kérésre történik, a keresés pedig azt a mappát olvassa be, amelyben éppen tartózkodik.",
     "Search box in the Dock": "Keresőmező a Dockban",
     "Search by extension (also *.pdf)": "Keresés kiterjesztés szerint (vagy *.pdf)",
     "Search commands or shortcuts": "Parancsok vagy billentyűparancsok keresése",
@@ -1756,6 +1760,7 @@
       "one": "A mappák egyeznek (%lld elem összehasonlítva)",
       "other": "A mappák egyeznek (%lld elem összehasonlítva)"
     },
+    "The index is turned off": "Az index ki van kapcsolva",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Az index kihagyja ezeket a mappákat és mindent bennük: a név szerinti keresések és a mappaméretek nem tartalmazzák őket, a memóriájuk pedig felszabadul. Ha eltávolít egy mappát, újra indexelődik.",
     "The item couldn’t be found": "Az elem nem található",
     "The items have moved or been changed since.": "Az elemeket azóta áthelyezték vagy módosították.",

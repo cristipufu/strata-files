@@ -884,6 +884,7 @@
     "in memory": "メモリ内",
     "Incoming": "コピー/移動元",
     "Index": "インデックス",
+    "Index files": "ファイルをインデックス化",
     "Index updates unavailable": "インデックスの更新を利用できません",
     "Indexing %lld items…": {
       "other": "%lld項目をインデックス作成中…"
@@ -1158,6 +1159,7 @@
     "Open in New Tab": "新規タブで開く",
     "Open in Terminal": "ターミナルで開く",
     "Open in Terminal uses": "「ターミナルで開く」で使用",
+    "Open Index Settings…": "インデックス設定を開く…",
     "Open Privacy Settings": "プライバシー設定を開く",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "プライバシー設定を開き、上のアイコンをリストにドラッグ（または+をクリック）して、Strataをオンにしてください。",
     "Open Privacy Settings…": "プライバシー設定を開く…",
@@ -1389,6 +1391,8 @@
     "Scripts and online content are blocked.": "スクリプトとオンラインコンテンツはブロックされています。",
     "Search": "検索",
     "Search & Index": "検索とインデックス",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Mac全体の検索、最近の項目、重複項目にはインデックスが必要です。フォルダ内を検索するには、そのフォルダを開いて検索してください。Strataがフォルダを直接読み込みます。",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Mac全体の検索、最近の項目、重複項目、フォルダサイズの即時表示はインデックスを使用します。オフにすると、インデックスは停止してメモリを解放し、ディスクから削除されます。フォルダサイズは要求したときに計測され、検索は現在のフォルダを読み込みます。",
     "Search box in the Dock": "Dockの検索フィールド",
     "Search by extension (also *.pdf)": "拡張子で検索（*.pdfも可）",
     "Search commands or shortcuts": "コマンドまたはショートカットを検索",
@@ -1620,6 +1624,7 @@
     "The folders match (%lld items compared)": {
       "other": "フォルダは一致しています（%lld項目を比較）"
     },
+    "The index is turned off": "インデックスはオフです",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "インデックスはこれらのフォルダとその中身をすべてスキップします。名前での検索やフォルダのサイズには含まれず、使っていたメモリは解放されます。フォルダをリストから削除すると、再びインデックスされます。",
     "The item couldn’t be found": "項目が見つかりませんでした",
     "The items have moved or been changed since.": "その後、項目が移動または変更されています。",

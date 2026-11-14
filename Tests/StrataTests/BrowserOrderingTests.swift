@@ -52,7 +52,7 @@ struct BrowserOrderingTests {
         var requests: [URL] = []
         func ordering(_ key: SortKey = .name, ascending: Bool = true) -> BrowserOrdering {
             BrowserOrdering(choice: .init(key: key, ascending: ascending), foldersFirst: { self.foldersFirst },
-                metadata: .init(folderSize: { self.sizeReads.append($0); return self.sizes[$0.standardizedFileURL.path] },
+                metadata: .init(folderSize: { self.sizeReads.append($0.url); return self.sizes[$0.url.standardizedFileURL.path] },
                     childFolderSizes: { self.batchReads.append($0); return self.batches[$0] ?? [:] },
                     media: { self.media[$0.url] }, requestMedia: { self.requests.append($0.url) },
                     tags: { self.tagReads.append($0); return self.tags[$0] ?? [] }))

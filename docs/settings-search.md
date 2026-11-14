@@ -2,8 +2,8 @@
 
 Type a setting name in the existing Command-K palette. Settings rows have a gear and a Settings tag; their subtitle
 names the destination tab or View Options. Examples include `verify copies`, `font size`, `filename extensions`,
-`full disk access`, `exclude folders` for the excluded folders, `settings terminal` and `zebra` for alternating row
-colors.
+`full disk access`, `turn off index` for the index switch, `exclude folders` for the excluded folders,
+`settings terminal` and `zebra` for alternating row colors.
 
 Choosing a Settings row opens the destination, scrolls its control into view and briefly highlights it. It does not
 toggle the value, rebuild the index, install the command-line tool or execute any other control’s action. Normal

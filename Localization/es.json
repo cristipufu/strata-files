@@ -991,6 +991,7 @@
     "in memory": "en memoria",
     "Incoming": "Entrante",
     "Index": "Índice",
+    "Index files": "Indexar archivos",
     "Index updates unavailable": "Actualizaciones del índice no disponibles",
     "Indexing %lld items…": {
       "one": "Indexando %lld ítem…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Abrir en una pestaña nueva",
     "Open in Terminal": "Abrir en Terminal",
     "Open in Terminal uses": "Abrir en Terminal usa",
+    "Open Index Settings…": "Abrir ajustes del índice…",
     "Open Privacy Settings": "Abrir ajustes de privacidad",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Abre los ajustes de privacidad, arrastra el icono de arriba a la lista (o haz clic en +) y activa Strata.",
     "Open Privacy Settings…": "Abrir ajustes de privacidad…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Los scripts y el contenido en línea están bloqueados.",
     "Search": "Buscar",
     "Search & Index": "Búsqueda e índice",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "La búsqueda en todo el Mac, Recientes y Duplicados lo necesitan. Para buscar en una carpeta, ábrela y busca allí: Strata la lee directamente.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "La búsqueda en todo el Mac, Recientes, Duplicados y los tamaños de carpeta instantáneos usan el índice. Si lo desactivas, se detiene, libera su memoria y se elimina del disco: los tamaños de carpeta se calculan cuando los pides y la búsqueda lee la carpeta en la que estás.",
     "Search box in the Dock": "Campo de búsqueda en el Dock",
     "Search by extension (also *.pdf)": "Buscar por extensión (también *.pdf)",
     "Search commands or shortcuts": "Buscar comandos o funciones rápidas",
@@ -1756,6 +1760,7 @@
       "one": "Las carpetas coinciden (%lld ítem comparado)",
       "other": "Las carpetas coinciden (%lld ítems comparados)"
     },
+    "The index is turned off": "El índice está desactivado",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "El índice omite estas carpetas y todo su contenido: las búsquedas por nombre y los tamaños de carpeta no las incluyen, y se libera su memoria. Al eliminar una carpeta de la lista, se vuelve a indexar.",
     "The item couldn’t be found": "No se ha encontrado el ítem",
     "The items have moved or been changed since.": "Desde entonces, los ítems se han movido o modificado.",

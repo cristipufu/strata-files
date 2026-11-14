@@ -131,8 +131,8 @@ final class BrowserViewController: NSViewController {
     private(set) lazy var ordering = BrowserOrdering(
         choice: .init(key: SortKey(rawValue: preferences.sortColumn) ?? .name, ascending: preferences.sortAscending),
         foldersFirst: { [weak self] in self?.preferences.foldersFirst ?? true },
-        metadata: .init(folderSize: { [weak self] in self?.folderSize($0)?.bytes },
-                        childFolderSizes: { [index = services.index] in index.childFolderSizes($0).mapValues(\.bytes) },
+        metadata: .init(folderSize: { [weak self] in self?.shownFolderSize($0) },
+                        childFolderSizes: { [weak self] in self?.childFolderSizes($0) ?? [:] },
                         media: { [weak self] in self?.mediaInfo.cached($0) },
                         requestMedia: { [weak self] in self?.mediaInfo.request($0) },
                         tags: { [tags = services.tags] in tags.cachedTags(for: $0).map(\.name) }))
@@ -150,6 +150,9 @@ final class BrowserViewController: NSViewController {
     })
     let inlineRename = BrowserRenaming()
     private(set) lazy var resorting = BrowserResorting { [weak self] in self?.resortAfterMetadata() }
+    /// The folders whose sizes arrived since the window last heard of any, and the one telling that is under way.
+    private var sizesArrived: Set<String> = []
+    private lazy var tellingOfSizes = LatestUpdate<Void> { [weak self] in self?.tellOfSizesArrived() }
     /// Showing search results or Recents instead of a folder's contents.
     var isShowingResults: Bool { ordering.isShowingResults }
     let results = PaneResults()
@@ -734,7 +737,9 @@ final class BrowserViewController: NSViewController {
     }
 
     private func folderSizeArrived(_ url: URL) {
-        if url == directory { delegate?.browserContentDidChange(self) }
+        readCloudStatesAgain(afterMeasuring: url)
+        sizesArrived.insert(url.fileViewKey)
+        tellingOfSizes.send(())
         guard let node = node(for: url) else { return }
         let row = outlineView.row(forItem: node)
         let column = outlineView.column(withIdentifier: .size)
@@ -742,7 +747,24 @@ final class BrowserViewController: NSViewController {
         if effectiveMode == .treemap { treemapController?.updateFolderSize(folderSize(url), for: url) }
         if effectiveMode == .grid { gridController?.reloadItems([url]) }
         if ordering.choice?.key == .size { scheduleResort() }
-        if row >= 0, outlineView.selectedRowIndexes.contains(row) { delegate?.browserContentDidChange(self) }
+    }
+
+    /// Sizes can arrive by the thousand for one selection, and the Inspector goes over the whole selection each time
+    /// the window hears of one. It hears once of those that arrived in a stretch, and only if it shows one of them:
+    /// the folder shown, in Columns the one of the column you are in, or something selected in whichever view is
+    /// showing. A folder is spelled with or without its closing slash.
+    func tellOfSizesArrived() {
+        let arrived = sizesArrived
+        sizesArrived.removeAll()
+        let shown = [directory, targetDirectory].compactMap { $0 } + selectedURLs
+        if shown.contains(where: { arrived.contains($0.fileViewKey) }) { delegate?.browserContentDidChange(self) }
+    }
+
+    /// A walk you asked for fetched what it measured: what the cloud badges say of that folder, and of what is in
+    /// the folder shown, is no longer so, and is read again as after Download Now.
+    private func readCloudStatesAgain(afterMeasuring url: URL) {
+        if services.cloud.status(for: url)?.isPlaceholder == true { services.cloud.refresh([url.deletingLastPathComponent()]) }
+        if url == directory, FolderSizer.askedSize(url) != nil { services.cloud.refresh([url]) }
     }
 
     private func mediaInfoArrived(_ entry: FileEntry) {
@@ -769,21 +791,50 @@ final class BrowserViewController: NSViewController {
     var topLevelEntries: [FileEntry] { nodes.map(\.entry) }
 
     /// Cached size of a folder; with `request`, starts measuring it when outside the index, unknown and allowed.
-    func folderSize(_ url: URL, request: Bool = false) -> FolderSize? {
+    /// `asker`: who asked for this size (the Inspector, Disk Usage), so the walk fetches what is only in the cloud,
+    /// and is not stopped because the index took the folder over meanwhile.
+    func folderSize(_ url: URL, request: Bool = false, askedBy asker: FolderSizer.Asker? = nil) -> FolderSize? {
         if services.copies.contains(url) { return nil }
         if let entry = node(for: url)?.entry, !entry.isDirectory || entry.isSymlink || entry.isVolume { return nil }
         switch services.index.folderSizeLookup(url) {
-        case .indexed(let size):
+        case .indexed(let total):
+            // What the index has not read of the folder is not in its total. A size you asked for is of everything,
+            // and stands until the index has read it all.
+            if total.allocationComplete { FolderSizer.indexHoldsAll(of: url) }
             if sizer.hasPending { sizer.cancel(url) }
-            return size
+            return FolderSizer.shown(indexed: total, asked: FolderSizer.askedSize(url))
         case .pending:
+            if let whole = FolderSizer.askedSize(url) { return whole }
             if sizer.hasPending { sizer.cancel(url) }
             return nil
         case .unindexed:
-            if let size = FolderSizer.cached(url) { return size }
-            if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url) { sizer.request(url) }
+            if let size = FolderSizer.cached(url, asked: asker != nil) { return size }
+            if request, !Privacy.measuringWouldPrompt(url, browsing: directory ?? url),
+               !Privacy.walkingWouldReachGuardedFolders(url) { sizer.request(url, askedBy: asker) }
             return nil
         }
+    }
+
+    /// The size rows sorted by size are ordered by: the one the row shows, and none where it shows none, as for a
+    /// folder left until asked whose size the Inspector has measured.
+    private func shownFolderSize(_ entry: FileEntry) -> Int64? {
+        showsSize(entry) ? folderSize(entry.url)?.bytes : nil
+    }
+
+    /// The sizes of the folders in `folder` that the index answers for, as `folderSize` gives each: sorting by size
+    /// orders rows by what they show.
+    func childFolderSizes(_ folder: URL) -> [String: Int64] {
+        var sizes = services.index.childFolderSizes(folder)
+        for (path, asked) in FolderSizer.askedSizes(in: folder) {
+            sizes[path] = sizes[path].map { FolderSizer.shown(indexed: $0, asked: asked) }
+        }
+        return sizes.mapValues(\.bytes)
+    }
+
+    /// The Inspector shows `urls` now. A size it asked for before, of something it shows no more, is measured no
+    /// longer unless Disk Usage asks for it too.
+    func inspectorShows(_ urls: Set<URL>) {
+        sizer.keepOnly(urls, askedBy: .inspector)
     }
 
     /// Re-measures folders after Full Disk Access is granted.

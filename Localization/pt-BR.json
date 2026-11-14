@@ -991,6 +991,7 @@
     "in memory": "na memória",
     "Incoming": "Recebido",
     "Index": "Índice",
+    "Index files": "Indexar arquivos",
     "Index updates unavailable": "Atualizações do índice indisponíveis",
     "Indexing %lld items…": {
       "one": "Indexando %lld item…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Abrir em Nova Aba",
     "Open in Terminal": "Abrir no Terminal",
     "Open in Terminal uses": "Abrir no Terminal usa",
+    "Open Index Settings…": "Abrir Ajustes do Índice…",
     "Open Privacy Settings": "Abrir Ajustes de Privacidade",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Abra os Ajustes de Privacidade, arraste o ícone acima para a lista (ou clique em +) e ative o Strata.",
     "Open Privacy Settings…": "Abrir Ajustes de Privacidade…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Scripts e conteúdo online estão bloqueados.",
     "Search": "Buscar",
     "Search & Index": "Busca e Índice",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "A busca em todo o Mac, Recentes e Duplicatas precisam dele. Para buscar em uma pasta, abra-a e busque nela: o Strata a lê diretamente.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "A busca em todo o Mac, Recentes, Duplicatas e os tamanhos instantâneos de pastas usam o índice. Desativado, ele para, libera a memória e é apagado do disco: os tamanhos das pastas são medidos quando você pede, e a busca lê a pasta em que você está.",
     "Search box in the Dock": "Campo de busca no Dock",
     "Search by extension (also *.pdf)": "Buscar por extensão (também *.pdf)",
     "Search commands or shortcuts": "Buscar comandos ou atalhos",
@@ -1756,6 +1760,7 @@
       "one": "As pastas são iguais (%lld item comparado)",
       "other": "As pastas são iguais (%lld itens comparados)"
     },
+    "The index is turned off": "O índice está desativado",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "O índice ignora estas pastas e tudo dentro delas: as buscas por nome e os tamanhos de pasta não as incluem, e a memória delas é liberada. Ao remover uma pasta, ela volta a ser indexada.",
     "The item couldn’t be found": "Não foi possível encontrar o item",
     "The items have moved or been changed since.": "Desde então, os itens foram movidos ou alterados.",

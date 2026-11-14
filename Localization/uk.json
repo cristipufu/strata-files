@@ -1205,6 +1205,7 @@
     "in memory": "у памʼяті",
     "Incoming": "Вхідний",
     "Index": "Індекс",
+    "Index files": "Індексувати файли",
     "Index updates unavailable": "Оновлення індексу недоступні",
     "Indexing %lld items…": {
       "one": "Індексування %lld елемента…",
@@ -1503,6 +1504,7 @@
     "Open in New Tab": "Відкрити в новій вкладці",
     "Open in Terminal": "Відкрити в Терміналі",
     "Open in Terminal uses": "«Відкрити в Терміналі» використовує",
+    "Open Index Settings…": "Відкрити параметри індексу…",
     "Open Privacy Settings": "Відкрити параметри приватності",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Відкрийте параметри приватності, перетягніть іконку вище в список (або клацніть +) і увімкніть Strata.",
     "Open Privacy Settings…": "Відкрити параметри приватності…",
@@ -1767,6 +1769,8 @@
     "Scripts and online content are blocked.": "Скрипти та вміст з інтернету заблоковано.",
     "Search": "Пошук",
     "Search & Index": "Пошук та індекс",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Він потрібен для пошуку по всьому Mac, Недавніх і Дублікатів. Щоб шукати в папці, відкрийте її та шукайте там: Strata прочитає її безпосередньо.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Пошук по всьому Mac, Недавні, Дублікати та миттєві розміри папок використовують індекс. Коли його вимкнено, індекс зупиняється, звільняє памʼять і видаляється з диска: розміри папок вимірюються на запит, а пошук читає папку, у якій ви перебуваєте.",
     "Search box in the Dock": "Поле пошуку в Dock",
     "Search by extension (also *.pdf)": "Шукати за розширенням (також *.pdf)",
     "Search commands or shortcuts": "Шукати команди або скорочення",
@@ -2028,6 +2032,7 @@
       "many": "Папки збігаються (порівняно %lld елементів)",
       "other": "Папки збігаються (порівняно %lld елемента)"
     },
+    "The index is turned off": "Індекс вимкнено",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Індекс пропускає ці папки й усе, що в них: пошук за назвою та розміри папок їх не враховують, а памʼять, яку вони займали, звільняється. Якщо вилучити папку зі списку, її знову буде проіндексовано.",
     "The item couldn’t be found": "Не вдається знайти елемент",
     "The items have moved or been changed since.": "Відтоді елементи було переміщено або змінено.",

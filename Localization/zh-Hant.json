@@ -884,6 +884,7 @@
     "in memory": "記憶體中",
     "Incoming": "傳入項目",
     "Index": "索引",
+    "Index files": "索引檔案",
     "Index updates unavailable": "無法更新索引",
     "Indexing %lld items…": {
       "other": "正在為%lld個項目建立索引⋯"
@@ -1158,6 +1159,7 @@
     "Open in New Tab": "以新標籤頁打開",
     "Open in Terminal": "在終端機中打開",
     "Open in Terminal uses": "「在終端機中打開」使用",
+    "Open Index Settings…": "打開索引設定⋯",
     "Open Privacy Settings": "打開隱私權設定",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "打開隱私權設定，將上方的圖像拖到列表中（或按一下+），然後開啟Strata。",
     "Open Privacy Settings…": "打開隱私權設定⋯",
@@ -1389,6 +1391,8 @@
     "Scripts and online content are blocked.": "指令碼和線上內容已被封鎖。",
     "Search": "搜尋",
     "Search & Index": "搜尋與索引",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "搜尋整台Mac、最近使用和重複項目都需要索引。若要搜尋某個檔案夾，請打開它並在其中搜尋：Strata會直接讀取它。",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "搜尋整台Mac、最近使用、重複項目和即時檔案夾大小都使用索引。關閉後，索引會停止、釋放記憶體並從磁碟中刪除：檔案夾大小會在你要求時測量，搜尋則讀取你所在的檔案夾。",
     "Search box in the Dock": "Dock 中的搜尋欄位",
     "Search by extension (also *.pdf)": "依副檔名搜尋（也可用*.pdf）",
     "Search commands or shortcuts": "搜尋指令或快速鍵",
@@ -1620,6 +1624,7 @@
     "The folders match (%lld items compared)": {
       "other": "檔案夾一致（已比較%lld個項目）"
     },
+    "The index is turned off": "索引已關閉",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "索引會略過這些檔案夾及其中的所有內容：依名稱搜尋和檔案夾大小都不包含它們，它們佔用的記憶體也會釋放。移除檔案夾後，它會重新編入索引。",
     "The item couldn’t be found": "找不到該項目",
     "The items have moved or been changed since.": "這些項目此後已被搬移或更改。",

@@ -39,13 +39,14 @@ package nonisolated final class FolderSearch: @unchecked Sendable {
         folder.resolvingSymlinksInPath().lexicallyStandardized.path
     }
 
-    package init(path: String, indexed: IndexedParts?, queue: DispatchQueue) {
+    /// `leftOut`: folders inside the one searched that are not to be read (`FileIndex.foldersLeftOut`).
+    package init(path: String, indexed: IndexedParts?, leavingOut leftOut: Set<String> = [], queue: DispatchQueue) {
         folder = path
         self.indexed = indexed
         self.queue = queue
-        // Only the index's own folders are skipped (they still show up as entries). Build and cache folders count as
-        // noise, like in the index.
-        scanner = IndexScanner(store: store, excluded: Set(indexed?.roots.map(\.path) ?? []), noiseFolders: [])
+        // The index's own folders are skipped, and those it is told to leave out (they still show up as entries).
+        // Build and cache folders count as noise, like in the index.
+        scanner = IndexScanner(store: store, excluded: leftOut.union(indexed?.roots.map(\.path) ?? []), noiseFolders: [])
     }
 
     /// Items read so far.

@@ -6,6 +6,8 @@ extension Notification.Name {
     /// Entries or sizes changed (posted at most a few times per second).
     package static let indexDidChange = Notification.Name("StrataIndexDidChange")
     package static let indexPhaseDidChange = Notification.Name("StrataIndexPhaseDidChange")
+    /// The index was turned on or off (`FileIndex.isOn`), and has acted on it.
+    package static let indexDidSwitch = Notification.Name("StrataIndexDidSwitch")
 }
 
 /// The app's view of the file index: instant folder sizes and search across the home folder and Applications.
@@ -19,7 +21,8 @@ extension Notification.Name {
         /// a newly allowed or created folder is being scanned, or a writer holds the lock). Callers wait for
         /// `.indexDidChange` rather than starting a competing `FolderSizer` walk.
         case pending
-        /// The folder is outside the index (another disk, `/tmp`, an excluded folder, or an unstarted index).
+        /// The folder is outside the index (another disk, `/tmp`, an excluded folder, or an unstarted index), or in
+        /// it without having been read (one that is only in the cloud, or could not be read): it has no total.
         case unindexed
     }
 
@@ -31,27 +34,43 @@ extension Notification.Name {
     /// The folders it indexes when not the home folder and Applications (independent indexes in tests).
     private let folders: (home: URL, applications: URL)?
     private var exclusionsObserver: NSObjectProtocol?
+    private var switchObserver: NSObjectProtocol?
+    /// Whether the index is turned on (Settings ▸ Search & Index). Off, nothing is indexed, watched or kept.
+    package private(set) var isOn: Bool
+    /// The app asked for the index (`start`): from then on, turning it on starts it.
+    private var wanted = false
+    /// Counts the workers there have been. What an earlier one still reports is never taken for the index now.
+    private var run = 0
+    private let makeWorker: @MainActor () -> IndexWorker
     /// The folders you excluded: as saved and as views spell them, and where they really are once that is known. A
     /// list written outside Settings can name one through a link, which the worker follows (`currentConfig`).
     private var chosen = IndexExcludedFolders()
     private var resolvingChosen: Task<Void, Never>?
     /// Where chosen folders really are: asked of their disks, with a deadline.
     private let realPaths: @Sendable ([URL]) async -> [String]
+    private let mountedVolumes: IndexMountedVolumes.Reader
 
     package init(storage: SecureStorage.Context, copies: CopyProviders, preferences: Prefs, store: IndexStore? = nil,
                  configuredRoots: [String] = [], excludedPaths: Set<String> = [], started: Bool = false,
                  folders: (home: URL, applications: URL)? = nil,
-                 realPaths: @escaping @Sendable ([URL]) async -> [String] = { await IndexExclusions.realPaths($0) }) {
+                 realPaths: @escaping @Sendable ([URL]) async -> [String] = { await IndexExclusions.realPaths($0) },
+                 mountedVolumes: @escaping IndexMountedVolumes.Reader = IndexMountedVolumes.inside,
+                 makeWorker: @escaping @MainActor () -> IndexWorker = { IndexWorker() }) {
         self.storage = storage
         self.copies = copies
         self.store = store
         self.configuredRoots = Self.shortPaths(configuredRoots)
         self.storeRoots = Self.shortPaths(store?.tryRead { $0.roots.map(\.path) } ?? [])
-        self.excluded = IndexExcludedFolders(Self.shortPaths(excludedPaths))
+        // Property observers do not run for what an initializer sets.
+        leftOut = (Self.shortPaths(excludedPaths), [])
+        excluded = IndexExcludedFolders(leftOut.byConfiguration)
         self.started = started
         self.preferences = preferences
         self.folders = folders
         self.realPaths = realPaths
+        self.mountedVolumes = mountedVolumes
+        self.makeWorker = makeWorker
+        isOn = preferences.indexesFiles
         chosen = IndexExcludedFolders(spelledChoices())
         resolveChosen()
         // Preferences post on the main actor; answering at once keeps sizes in step with the list.
@@ -59,16 +78,22 @@ extension Notification.Name {
                                                                    queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.exclusionsChanged() }
         }
+        switchObserver = preferences.notifications.addObserver(forName: .indexSwitched, object: preferences,
+                                                               queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.switched() }
+        }
     }
 
     isolated deinit {
         resolvingChosen?.cancel()
         if let exclusionsObserver { preferences.notifications.removeObserver(exclusionsObserver) }
+        if let switchObserver { preferences.notifications.removeObserver(switchObserver) }
     }
 
     package private(set) var phase: IndexWorker.Phase = .loading
     private var store: IndexStore?
-    private lazy var worker = IndexWorker()
+    /// The worker of the index now: made when first needed, and let go for good when the index is turned off.
+    private var worker: IndexWorker?
     private var started = false
     /// The configuration being worked out away from the main thread, before the worker starts or takes it.
     private var configuring: Task<Void, Never>?
@@ -83,6 +108,20 @@ extension Notification.Name {
 
     package var isReady: Bool { store != nil }
 
+    /// Whether the index is reading everything it covers, or what a changed list has just allowed: a folder it
+    /// holds without having read it is then one it is about to read. While it only applies changes, such a folder is
+    /// one it could not read, or one that is only in the cloud, and stays as it is.
+    private var isReadingWhatItCovers: Bool {
+        guard started else { return false }
+        if pendingConfigCount > 0 { return true }
+        switch phase {
+        case .loading, .scanning:
+            return true
+        case .updating, .ready, .unavailable:
+            return false
+        }
+    }
+
     private var isActivelyUpdating: Bool {
         guard started else { return false }
         if pendingConfigCount > 0 { return true }
@@ -94,28 +133,132 @@ extension Notification.Name {
         }
     }
 
+    /// Starts the index if it is turned on. Turned off, an index saved before is removed, and turning it on later
+    /// starts it.
     package func start() {
+        wanted = true
+        if isOn { begin() } else { removeSavedIndex() }
+    }
+
+    private func begin() {
         guard !started else { return }
         started = true
         syncPendingScope()
         pendingConfigCount += 1
-        worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.receiveStore(store) } }
-        worker.onPhase = { [weak self] phase in DispatchQueue.main.async { self?.setPhase(phase) } }
-        worker.onChange = { [weak self] changes in DispatchQueue.main.async { self?.changed(changes) } }
+        run += 1
+        let run = run, worker = currentWorker
+        worker.onStore = { [weak self] store in DispatchQueue.main.async { self?.take(store, from: run) } }
+        worker.onPhase = { [weak self] phase in DispatchQueue.main.async { self?.take(phase, from: run) } }
+        worker.onChange = { [weak self] changes in DispatchQueue.main.async { self?.take(changes, from: run) } }
+        worker.onMountedVolumes = { [weak self] volumes in DispatchQueue.main.async { self?.take(mounted: volumes, from: run) } }
+        let previous = configuring
         configuring = Task { [weak self] in
-            guard let self else { return }
+            // An index turned off just before is gone, with its saved file, before this one starts.
+            await previous?.value
+            guard let self, self.run == run else { return }
             let config = await currentConfig()
+            guard self.run == run else { return }
             adopt(config)
             worker.start(config) { [weak self] in
-                DispatchQueue.main.async { self?.finishConfigUpdate() }
+                DispatchQueue.main.async { self?.finishConfigUpdate(of: run) }
             }
         }
+    }
+
+    /// Turns the index off. Its worker ends for good and takes the saved index with it; what is held of the index
+    /// here is let go at once, and nothing that worker still reports is taken.
+    private func end() {
+        guard started else { return }
+        started = false
+        run += 1
+        let retiring = worker
+        worker = nil
+        store = nil
+        storeRoots = []
+        lastItemCount = 0
+        pendingConfigCount = 0
+        pendingLookupPaths.removeAll()
+        leftOut.asMountedVolumes = []
+        phase = .loading
+        let storage = storage, previous = configuring
+        configuring = Task {
+            await previous?.value
+            await Self.retire(retiring, removingIndexIn: storage)
+        }
+    }
+
+    /// An index saved by a run in which it was on. What the index would cover is learned too, by where it really is:
+    /// rows there show no size until asked.
+    private func removeSavedIndex() {
+        let storage = storage, previous = configuring
+        configuring = Task { [weak self] in
+            await previous?.value
+            await Self.retire(nil, removingIndexIn: storage)
+            guard let self, !started else { return }
+            let config = await currentConfig()
+            if !started { adopt(config) }
+        }
+    }
+
+    @concurrent nonisolated private static func retire(_ worker: IndexWorker?, removingIndexIn storage: SecureStorage.Context) async {
+        let file = storage.url(IndexPersistence.cacheName)
+        guard let worker else { return IndexPersistence.remove(file) }
+        await withCheckedContinuation { done in worker.retire(removing: file) { done.resume() } }
+    }
+
+    /// Waits until the index has taken what was asked of it so far: started, turned off or on, its settings changed.
+    package func settled() async {
+        await configuring?.value
+    }
+
+    /// Turns the index on or off, as the switch in Settings does. It acts even when the preference already says so,
+    /// as one changed outside Strata does while the index here still runs.
+    package func turn(on: Bool) {
+        preferences.indexesFiles = on
+        if isOn != on { switched() }
+    }
+
+    /// The switch in Settings changed. Views are told at once: with the index off they show no size until asked.
+    /// What follows the index, as searches and the content index do, hears of it last, once the index has acted.
+    private func switched() {
+        let wasOn = isOn
+        isOn = preferences.indexesFiles
+        guard isOn != wasOn else { return }
+        if !isOn { end() } else if wanted { begin() }
+        NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)
+        publishChangesNow(.all)
+        NotificationCenter.default.post(name: .indexDidSwitch, object: self)
+    }
+
+    private var currentWorker: IndexWorker {
+        if let worker { return worker }
+        let made = makeWorker()
+        worker = made
+        return made
+    }
+
+    private func take(_ store: IndexStore, from run: Int) {
+        if run == self.run { receiveStore(store) }
+    }
+
+    private func take(_ phase: IndexWorker.Phase, from run: Int) {
+        if run == self.run { setPhase(phase) }
+    }
+
+    private func take(_ changes: IndexChanges, from run: Int) {
+        if run == self.run { changed(changes) }
+    }
+
+    /// The volumes the worker found mounted inside the folders it covers, and leaves out: views take what is on
+    /// one for another disk's. The change the worker reports next has them ask again.
+    private func take(mounted volumes: Set<String>, from run: Int) {
+        if run == self.run { leftOut.asMountedVolumes = Self.shortPaths(volumes) }
     }
 
     /// What the worker is about to index, in the spellings views use.
     private func adopt(_ config: IndexConfig) {
         configuredRoots = Self.shortPaths(config.roots)
-        excluded = IndexExcludedFolders(Self.shortPaths(config.excluded))
+        leftOut.byConfiguration = Self.shortPaths(config.excluded)
     }
 
     /// Re-evaluates what may be indexed (after Full Disk Access changes, a protected folder was opened or the excluded
@@ -125,14 +268,16 @@ extension Notification.Name {
         guard started else { return }
         syncPendingScope()
         pendingConfigCount += 1
+        let run = run, worker = currentWorker
         let previous = configuring
         configuring = Task { [weak self] in
             await previous?.value
-            guard let self else { return }
+            guard let self, self.run == run else { return }
             let config = await currentConfig()
+            guard self.run == run else { return }
             adopt(config)
             worker.update(config) { [weak self] in
-                DispatchQueue.main.async { self?.finishConfigUpdate() }
+                DispatchQueue.main.async { self?.finishConfigUpdate(of: run) }
             }
         }
     }
@@ -147,21 +292,22 @@ extension Notification.Name {
     /// Takes its turn after the settings changes before it, and those after it wait for it.
     package func rebuild() {
         guard started else { return }
+        let run = run, worker = currentWorker
         let previous = configuring
         configuring = Task { [weak self] in
             await previous?.value
-            self?.worker.rebuildNow()
+            if self?.run == run { worker.rebuildNow() }
         }
     }
 
     package func saveNow() {
         guard started else { return }
-        worker.saveNow()
+        worker?.saveNow()
     }
 
     package func saveWhenIdle() {
         guard started else { return }
-        worker.saveWhenIdle()
+        worker?.saveWhenIdle()
     }
 
     package func receiveStore(_ store: IndexStore) {
@@ -181,7 +327,8 @@ extension Notification.Name {
         resolvePendingLookupsIfIdle()
     }
 
-    private func finishConfigUpdate() {
+    private func finishConfigUpdate(of run: Int) {
+        guard run == self.run else { return }
         pendingConfigCount = max(0, pendingConfigCount - 1)
         resolvePendingLookupsIfIdle()
     }
@@ -308,8 +455,9 @@ extension Notification.Name {
             guard store.isDirectory(id), store.flags[Int(id)] & IndexStore.Flag.symlink == 0, !isExcludedLocked(store, id) else {
                 return .unindexed
             }
-            if isActivelyUpdating, isUnreadLocked(store, id) {
-                return .pending
+            // A folder the index holds without having read it has no total: zero would be a guess.
+            if isUnreadLocked(store, id) {
+                return isReadingWhatItCovers ? .pending : .unindexed
             }
             return .indexed(FolderSize(bytes: store.size[Int(id)], files: Int(store.fileCount[Int(id)]),
                                        allocatedBytes: store.allocated[Int(id)],
@@ -363,13 +511,12 @@ extension Notification.Name {
     package func childFolderSizes(_ folder: URL) -> [String: FolderSize] {
         guard let store else { return [:] }
         let base = folder.lexicallyStandardized.path
-        let updating = isActivelyUpdating
         return store.tryRead { store -> [String: FolderSize] in
             guard let id = self.lookup(base, in: store) else { return [:] }
             var sizes: [String: FolderSize] = [:]
             let prefix = base == "/" ? "/" : base + "/"
             for child in store.children(of: id) where store.isDirectory(child) && !isExcludedLocked(store, child)
-                && (!updating || !isUnreadLocked(store, child)) {
+                && !isUnreadLocked(store, child) {
                 sizes[prefix + store.name(child)] = FolderSize(bytes: store.size[Int(child)], files: Int(store.fileCount[Int(child)]),
                                                               allocatedBytes: store.allocated[Int(child)], allocationComplete: store.allocatedSize(child) != nil)
             }
@@ -399,6 +546,20 @@ extension Notification.Name {
     private func isUnreadLocked(_ store: borrowing IndexStore.Storage, _ id: Int32) -> Bool {
         store.parent[Int(id)] >= 0 && store.firstChild[Int(id)] < 0 && store.size[Int(id)] == 0
             && (store.flags[Int(id)] & IndexStore.Flag.unreadDirectory != 0)
+    }
+
+    /// Whether the index holds the folder at `path` without having read it, and is not about to: one that is only
+    /// in the cloud, which a walk would have its provider fetch, or one that could not be read, which a walk could
+    /// not read either.
+    private func holdsUnread(_ path: String) -> Bool {
+        // What the index leaves out is outside it, and measured as before; what it is about to read waits for it.
+        guard let store, !isReadingWhatItCovers, !isExcluded(path) else { return false }
+        let unread = store.tryRead { store in lookup(path, in: store).map { isUnreadLocked(store, $0) } ?? false }
+        if let unread { return unread }
+        // A writer holds the index: no walk is started on a guess, and the folder is asked about again after it.
+        guard isWithinIndexedScope(path) else { return false }
+        recordPendingLookup(path, retryLock: true)
+        return true
     }
 
     private func isWithinConfiguredScope(_ path: String) -> Bool {
@@ -479,7 +640,7 @@ extension Notification.Name {
     /// wait for it rather than reading your home folder (and the folders macOS guards in it) directly.
     package func overlapsIndexedFolders(_ folder: URL) async -> Bool {
         let path = await Self.resolved(folder)
-        return await Self.roots(of: folders).contains { root in
+        return Self.shortPaths(await Self.roots(of: folders)).contains { root in
             path == root || path.hasPrefix(root + "/") || root.hasPrefix(path == "/" ? "/" : path + "/")
         }
     }
@@ -512,9 +673,34 @@ extension Notification.Name {
 
     // MARK: - The folders you exclude
 
-    /// Whether `folder` is one you excluded, or inside one: views show no size for it rather than walk what can be
-    /// millions of items, until you ask (Inspector, Calculate Size). `folderSizeLookup` answers `.unindexed` for it,
-    /// but also for every folder outside the index, which views do measure.
+    /// Whether views leave `folder`'s size until it is asked for (Inspector, Calculate Size): a folder you excluded,
+    /// one the index holds without having read it, and every folder the index would cover while it is turned off,
+    /// when each size shown would be a walk of its own.
+    /// `folderSizeLookup` answers `.unindexed` for these, but also for folders outside the index, which views measure.
+    package func leavesSizeUntilAsked(_ folder: URL) -> Bool {
+        if isExcludedByChoice(folder) { return true }
+        guard !isOn else { return holdsUnread(folder.lexicallyStandardized.path) }
+        // An index never started has not said what it covers yet: every row asks, so it is worked out once.
+        if configuredRoots.isEmpty { configuredRoots = Self.shortPaths(spelledRoots) }
+        let asked = folder.lexicallyStandardized.path
+        return configuredRoots.contains { Self.isSameOrDescendant(asked, of: $0) }
+    }
+
+    /// What a direct read of a folder leaves out while the index is off: the folders the index would leave out, so a
+    /// search of your home folder opens none that macOS guards and finds what the index would. Nothing while the
+    /// index is on, when only folders outside it are read directly; never the folder read itself or one that holds it.
+    /// `path` is where the read starts (`FolderSearch.path(of:)`), and they are spelled the way it spells what it finds.
+    package func foldersLeftOut(below path: String) async -> Set<String> {
+        guard !isOn else { return [] }
+        let searched = IndexExcludedFolders([path])
+        let config = await currentConfig()
+        // No index is running to have looked: another volume mounted in what it would cover is left out here too.
+        let mounted = await Self.volumes(mountedIn: config.roots, by: mountedVolumes)
+        let notRead = Self.shortPaths(config.excluded.union(mounted))
+        return notRead.filter { searched.covers($0) && !searched.contains($0) }
+    }
+
+    /// Whether `folder` is one you excluded, or inside one.
     package func isExcludedByChoice(_ folder: URL) -> Bool {
         chosen.covers(folder.lexicallyStandardized.path)
     }
@@ -630,8 +816,12 @@ extension Notification.Name {
         "Library/Mobile Documents", "Pictures/Photos Library.photoslibrary", ".Trash",
     ]
 
-    /// What the worker leaves out, in the spellings views use.
+    /// What the worker leaves out, in the spellings views use: the folders its configuration names, and the volumes
+    /// it found mounted inside what it covers.
     private var excluded = IndexExcludedFolders()
+    private var leftOut: (byConfiguration: Set<String>, asMountedVolumes: Set<String>) = ([], []) {
+        didSet { excluded = IndexExcludedFolders(leftOut.byConfiguration.union(leftOut.asMountedVolumes)) }
+    }
 
     /// Seeds the indexed roots and exclusions on the main actor before the off-main `RealPath` pass completes,
     /// so opening a window at launch or right after `Privacy.markAccessible` sees the updated scope immediately.
@@ -641,7 +831,7 @@ extension Notification.Name {
         if configuredRoots.isEmpty {
             configuredRoots = roots
         }
-        var excluded: Set<String> = [
+        var seeded: Set<String> = [
             storage.directory.lexicallyStandardized.path,
             storage.caches.lexicallyStandardized.path,
             copies.containerCopies.root.lexicallyStandardized.path,
@@ -651,10 +841,10 @@ extension Notification.Name {
         if !Privacy.hasFullDiskAccess {
             for relative in Self.guardedRelatives {
                 let path = home + "/" + relative
-                if !Privacy.isKnownAccessible(path) { excluded.insert(path) }
+                if !Privacy.isKnownAccessible(path) { seeded.insert(path) }
             }
         }
-        self.excluded = IndexExcludedFolders(excluded)
+        leftOut.byConfiguration = seeded
     }
 
     /// What the worker indexes now: the paths are read away from the main thread, which folders you've let Strata
@@ -677,6 +867,11 @@ extension Notification.Name {
         let listed = await realPaths(preferences.indexExcludedFolders.map { URL(filePath: $0) })
         return await Self.config(home: home, roots: roots, excluding: guarded.union(IndexExclusions.leftOut(listed, roots: roots)),
                                  storage: storage, copies: copies)
+    }
+
+    @concurrent private static func volumes(mountedIn roots: [String],
+                                            by mountedVolumes: IndexMountedVolumes.Reader) async -> Set<String> {
+        mountedVolumes(roots)
     }
 
     @concurrent private static func config(home: String, roots: [String], excluding chosenOrGuarded: Set<String>,

@@ -8700,8 +8700,8 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "isolated deinit { queue.cancelAllOperations() }",
-    "replace": "isolated deinit {}",
+    "find": "        queue.cancelAllOperations()\n        letGoOfSizes()\n    }",
+    "replace": "        letGoOfSizes()\n    }",
     "rule": "Folder size ownership releasing its owner leaves the active walk uncancelled",
     "tests": "FolderSizerCancellationTests/releasingTheOwnerCancelsItsActiveWalk"
   },
@@ -9326,7 +9326,7 @@
   },
   {
     "file": "Strata/Index/IndexReconciler.swift",
-    "find": "        var listing = selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }",
+    "find": "        var listing = neverRead ? nil : selectedNames.flatMap { readSelected($0, in: path, id: id, store: store, pass: &pass) }",
     "replace": "        var listing: FolderListing? = nil",
     "rule": "Partial file refresh enumerates all siblings",
     "tests": "IndexWorkerTests/fileEventsRefreshOnlyNamedFilesAndKeepUnchangedSiblings"
@@ -9704,8 +9704,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "        case .pending:\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
-    "replace": "        case .pending:\n            if request { sizer.request(url) }\n            return nil",
+    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "replace": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if request { sizer.request(url) }\n            return nil",
     "rule": "Pending index folder size lookups wait for the index instead of starting a competing FolderSizer walk",
     "tests": "FolderSizerCancellationTests/browserWaitsForLoadingIndexAndCancelsPendingSizerWalksWhenIndexTakesOver"
   },
@@ -10145,7 +10145,7 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Outline.swift",
-    "find": "        canMeasure(entry) && !services.index.isExcludedByChoice(entry.url)",
+    "find": "        canMeasure(entry) && !services.index.leavesSizeUntilAsked(entry.url)",
     "replace": "        canMeasure(entry)",
     "rule": "Excluded folders: the size column and icons walk no excluded folder until asked",
     "tests": "IndexExclusionsTests/theListShowsNoSizeForAnExcludedFolderAndStartsNoWalk"
@@ -10317,5 +10317,916 @@
     "replace": "        return (holder.id, holder.path, false)",
     "rule": "Excluded folders: a folder made again unseen is found at the path the index holds for what holds it",
     "tests": "IndexExclusionWorkerTests/aFolderMadeAgainUnseenIsFoundAtThePathTheIndexHoldsForWhatHoldsIt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            IndexPersistence.remove(file)\n",
+    "replace": "",
+    "rule": "The index switch: turning the index off removes its saved file",
+    "tests": "IndexSwitchTests/retiringAWorkerRemovesItsSavedIndexWithItsStaleTemporariesAndNothingBesideThem|IndexSwitchTests/turningTheIndexOffLetsItGoAndRemovesItsSavedFileAndTurningItOnBuildsItAgain"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        quitDeadline.withLock { $0 = 0 }\n        queue.async {\n            self.events.stop()",
+    "replace": "        queue.async {\n            self.events.stop()",
+    "rule": "The index switch: a read under way when the index is turned off goes no further",
+    "tests": "IndexSwitchTests/retiringDoesNotWaitForAReadThatNeverReturnsAndNothingIsReadAfterIt"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            self.store = nil\n            self.config = nil\n",
+    "replace": "",
+    "rule": "The index switch: a worker that has ended holds no index and saves none again",
+    "tests": "IndexSwitchTests/aRetiredWorkerReadsNothingAndSavesNothingWhateverReachesIt"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if run == self.run { receiveStore(store) }",
+    "replace": "        receiveStore(store)",
+    "rule": "The index switch: an index a worker hands over after it was turned off is never taken",
+    "tests": "IndexSwitchTests/aWorkerStillStartingWhenTheIndexIsTurnedOffNeverBringsItsIndexHere"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        worker = nil\n        store = nil\n",
+    "replace": "        worker = nil\n",
+    "rule": "The index switch: the index is let go the moment it is turned off, before its worker has ended",
+    "tests": "IndexSwitchTests/turningTheIndexOffLetsItGoAndRemovesItsSavedFileAndTurningItOnBuildsItAgain"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if isOn { begin() } else { removeSavedIndex() }",
+    "replace": "        if isOn { begin() }",
+    "rule": "The index switch: starting with the index off removes an index saved before",
+    "tests": "IndexSwitchTests/startingWithTheIndexOffRemovesAnIndexSavedBeforeAndMakesNoWorker"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if isOn { begin() } else { removeSavedIndex() }",
+    "replace": "        begin()",
+    "rule": "The index switch: starting with the index off makes no worker",
+    "tests": "IndexSwitchTests/startingWithTheIndexOffRemovesAnIndexSavedBeforeAndMakesNoWorker"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if !isOn { end() } else if wanted { begin() }",
+    "replace": "        if !isOn { end() }",
+    "rule": "The index switch: turning the index on starts it again",
+    "tests": "IndexSwitchTests/turningTheIndexOffLetsItGoAndRemovesItsSavedFileAndTurningItOnBuildsItAgain"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)\n        publishChangesNow(.all)",
+    "replace": "        NotificationCenter.default.post(name: .indexPhaseDidChange, object: self)",
+    "rule": "The index switch: views are told at once when the index is turned off or on",
+    "tests": "IndexSwitchTests/turningTheIndexOffLetsItGoAndRemovesItsSavedFileAndTurningItOnBuildsItAgain"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        return configuredRoots.contains { Self.isSameOrDescendant(asked, of: $0) }",
+    "replace": "        return false",
+    "rule": "The index switch: with the index off, folders it would cover show no size and start no walk until asked",
+    "tests": "IndexExclusionsTests/withTheIndexOffFoldersItWouldCoverShowNoSizeAndStartNoWalkUntilAsked"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        return configuredRoots.contains { Self.isSameOrDescendant(asked, of: $0) }",
+    "replace": "        return true",
+    "rule": "The index switch: with the index off, a folder it never covered is still sized by a walk",
+    "tests": "IndexExclusionsTests/withTheIndexOffFoldersItWouldCoverShowNoSizeAndStartNoWalkUntilAsked"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        guard canMeasure(entry), !services.index.isExcludedByChoice(entry.url) else { return .unavailable }",
+    "replace": "        guard showsSize(entry) else { return .unavailable }",
+    "rule": "The index switch: with the index off, Disk Usage measures what it shows",
+    "tests": "IndexExclusionsTests/withTheIndexOffDiskUsageMeasuresWhatItShowsExceptExcludedFolders"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        guard services.index.isOn else { return showIndexOff(p) }\n        p.browser.showMessage(symbol: \"hourglass\"",
+    "replace": "        p.browser.showMessage(symbol: \"hourglass\"",
+    "rule": "The index switch: with the index off, search across the Mac says it needs the index",
+    "tests": "IndexSwitchTests/withTheIndexOffSearchEverywhereRecentsAndDuplicatesSayHowToTurnItOn"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        guard recent != nil || services.index.isOn else { return showIndexOff(p) }\n",
+    "replace": "",
+    "rule": "The index switch: with the index off, Recents says it needs the index",
+    "tests": "IndexSwitchTests/withTheIndexOffSearchEverywhereRecentsAndDuplicatesSayHowToTurnItOn"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        guard services.index.isOn else { return showIndexOff(p) }\n        guard services.index.isReady else {",
+    "replace": "        guard services.index.isReady else {",
+    "rule": "The index switch: with the index off, Duplicates says it needs the index",
+    "tests": "IndexSwitchTests/withTheIndexOffSearchEverywhereRecentsAndDuplicatesSayHowToTurnItOn"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "{ showSetting(.indexFiles) }))",
+    "replace": "{}))",
+    "rule": "The index switch: the message that the index is off opens its setting",
+    "tests": "IndexSwitchTests/withTheIndexOffSearchEverywhereRecentsAndDuplicatesSayHowToTurnItOn"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        if services.index.isOn, !services.index.isReady, overlaps {",
+    "replace": "        if !services.index.isReady, overlaps {",
+    "rule": "The index switch: with the index off, a folder it would cover is read, not waited for",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        if services.index.isOn, !services.index.isReady, overlaps {",
+    "replace": "        if false {",
+    "rule": "The index switch: turned on and not built yet, the index is waited for where a folder would be read twice",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "search = FolderSearch(path: path, indexed: indexed, leavingOut: leftOut, queue: scans)",
+    "replace": "search = FolderSearch(path: path, indexed: indexed, queue: scans)",
+    "rule": "The index switch: a folder read for a search leaves out what the index would",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        let notRead = Self.shortPaths(config.excluded.union(mounted))",
+    "replace": "        let notRead = config.excluded.union(mounted)",
+    "rule": "The index switch: the folders a search leaves out are spelled as the search reads them",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        return notRead.filter { searched.covers($0) && !searched.contains($0) }",
+    "replace": "        return notRead.filter { searched.covers($0) }",
+    "rule": "The index switch: a search inside a folder left out reads that folder",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController+Search.swift",
+    "find": "            go(.search(query, scope: everywhere ? nil : location))",
+    "replace": "            go(.search(query, scope: nil))",
+    "rule": "The index switch: with the index off, the search field searches the folder shown",
+    "tests": "IndexSwitchTests/withTheIndexOffTheSearchFieldSearchesTheFolderShown"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "            guard newValue != indexesFiles else { return }\n",
+    "replace": "",
+    "rule": "The index switch: setting it to what it is tells no one",
+    "tests": "IndexSwitchTests/theSwitchStartsOnPersistsAndTellsOnceForAChange"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "        get { defaults.object(forKey: Key.indexesFiles) as? Bool ?? true }",
+    "replace": "        get { defaults.object(forKey: Key.indexesFiles) as? Bool ?? false }",
+    "rule": "The index switch: the index is on until you turn it off",
+    "tests": "IndexSwitchTests/theSwitchStartsOnPersistsAndTellsOnceForAChange"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        return notRead.filter { searched.covers($0) && !searched.contains($0) }",
+    "replace": "        return notRead.filter { !searched.contains($0) }",
+    "rule": "The index switch: a search inside a folder that lies in one left out reads that folder",
+    "tests": "IndexSwitchTests/withTheIndexOffAFolderItWouldCoverIsSearchedDirectlyWithoutTheFoldersItLeavesOut"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "            // An index turned off just before is gone, with its saved file, before this one starts.\n            await previous?.value\n",
+    "replace": "",
+    "rule": "The index switch: turned on again, the index starts only once the worker before it has ended",
+    "tests": "IndexSwitchTests/turningTheIndexOnAgainWaitsForTheWorkerBeforeItToEndAndThenScansAfresh"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if run == self.run { setPhase(phase) }",
+    "replace": "        setPhase(phase)",
+    "rule": "The index switch: what a worker reports of itself after the index was turned off is never taken",
+    "tests": "IndexSwitchTests/aWorkerStillStartingWhenTheIndexIsTurnedOffNeverBringsItsIndexHere"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if isOn != on { switched() }\n",
+    "replace": "",
+    "rule": "The index switch: the switch acts even when the preference was changed outside Strata",
+    "tests": "IndexSwitchTests/theSwitchActsEvenWhenThePreferenceWasChangedOutsideStrata"
+  },
+  {
+    "file": "Strata/Model/Privacy.swift",
+    "find": "        return guarded.contains { $0.hasPrefix(inside) && !isAccessible($0) }",
+    "replace": "        return guarded.contains { $0.hasPrefix(path) && !isAccessible($0) }",
+    "rule": "Folder sizes: a walk would reach a guarded folder only through a folder that holds one, not one that begins like it",
+    "tests": "IndexSwitchTests/aWalkWouldReachAGuardedFolderOnlyThroughAFolderThatHoldsOneNotYetOpened"
+  },
+  {
+    "file": "Strata/Model/Privacy.swift",
+    "find": "        return guarded.contains { $0.hasPrefix(inside) && !isAccessible($0) }",
+    "replace": "        return guarded.contains { $0.hasPrefix(inside) }",
+    "rule": "Folder sizes: a guarded folder you have opened no longer keeps the folder that holds it from being measured",
+    "tests": "IndexSwitchTests/aWalkWouldReachAGuardedFolderOnlyThroughAFolderThatHoldsOneNotYetOpened"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        NotificationCenter.default.post(name: .indexDidSwitch, object: self)\n",
+    "replace": "",
+    "rule": "The index switch: what follows the index is told of every change of the switch, however it came about",
+    "tests": "IndexSwitchTests/theSwitchActsEvenWhenThePreferenceWasChangedOutsideStrata"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "            if !started { adopt(config) }\n",
+    "replace": "",
+    "rule": "The index switch: started with the index off, it learns where the folders it would cover really are",
+    "tests": "IndexSwitchTests/startedWithTheIndexOffItLearnsWhereTheFoldersItWouldCoverReallyAre"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        guard isOn != wasOn else { return }\n",
+    "replace": "",
+    "rule": "The index switch: a change of the preference that changes nothing for the index tells no one",
+    "tests": "IndexSwitchTests/theSwitchActsEvenWhenThePreferenceWasChangedOutsideStrata"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        folderScan = nil\n        run()\n",
+    "replace": "        folderScan = nil\n",
+    "rule": "The index switch: when the switch changes, what a pane shows of search, Recents or Duplicates starts over at once",
+    "tests": "IndexSwitchTests/withTheIndexOffSearchEverywhereRecentsAndDuplicatesSayHowToTurnItOn"
+  },
+  {
+    "file": "Strata/Window/PaneSearch.swift",
+    "find": "        folderScan?.cancel()\n        folderScan = nil\n        run()\n",
+    "replace": "        run()\n",
+    "rule": "The index switch: a folder read before the switch changed is not used after it",
+    "tests": "IndexSwitchTests/aFolderReadBeforeTheSwitchIsNotUsedAfterIt"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            guard now >= progressed, now - progressed >= patience,\n",
+    "replace": "            guard false, now >= progressed, now - progressed >= patience,\n",
+    "rule": "Folders that stop answering: a read that gets no further for as long as patience lasts is given up",
+    "tests": "IndexFolderReadsTests/aFolderThatNeverAnswersIsGivenUpAndNotAskedAgainUntilItDoes"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "        guard !waitsStill(path, in: shared) else { return Listing(status: ETIMEDOUT) }\n",
+    "replace": "",
+    "rule": "Folders that stop answering: a folder whose read is still out is not asked again",
+    "tests": "IndexFolderReadsTests/aFolderThatNeverAnswersIsGivenUpAndNotAskedAgainUntilItDoes"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            shared.unanswered.contains { path == $0 || IndexRefresh.lies(path, in: $0) }",
+    "replace": "            shared.unanswered.contains { path == $0 }",
+    "rule": "Folders that stop answering: what lies in a folder whose read is still out is not asked either",
+    "tests": "IndexFolderReadsTests/aFolderThatNeverAnswersIsGivenUpAndNotAskedAgainUntilItDoes"
+  },
+  {
+    "file": "Strata/Index/IndexRefresh.swift",
+    "find": "        path != folder && path.hasPrefix(folder == \"/\" ? \"/\" : folder + \"/\")",
+    "replace": "        path != folder && path.hasPrefix(folder)",
+    "rule": "Folders that stop answering: a folder whose name only begins like one that does not answer is read as ever",
+    "tests": "IndexFolderReadsTests/aFolderThatNeverAnswersIsGivenUpAndNotAskedAgainUntilItDoes"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                if let noted { forget(noted, in: shared) }\n",
+    "replace": "",
+    "rule": "Folders that stop answering: once its read returns, a folder can be asked again",
+    "tests": "IndexFolderReadsTests/aFolderThatNeverAnswersIsGivenUpAndNotAskedAgainUntilItDoes"
+  },
+  {
+    "file": "Strata/Index/IndexMountedVolumes.swift",
+    "find": "            if roots.contains(where: { IndexRefresh.lies(mount, in: $0) }) { inside.insert(mount) }",
+    "replace": "            if roots.contains(where: { mount.hasPrefix($0) }) { inside.insert(mount) }",
+    "rule": "Other volumes: a volume is inside a folder by whole path components, and never the folder itself",
+    "tests": "IndexMountedVolumesTests/theSystemsTableListsAVolumeMountedInsideAFolderAndNeverTheFolderItself"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        lookUpMountedVolumes(for: given)\n        let config = leavingOutMountedVolumes(given)\n        self.config = config",
+    "replace": "        let config = leavingOutMountedVolumes(given)\n        self.config = config",
+    "rule": "Other volumes: a volume mounted when the index starts is left out, by a scan and over a saved index",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedWhenTheIndexStartsIsLeftOutByTheScanAndByWhatChangesOnIt|IndexMountedVolumesTests/aVolumeMountedOrGoneWhileTheIndexWasNotRunningIsLeftOutOrReadAgainAtLaunch"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "            self.lookUpMountedVolumes(for: config)\n",
+    "replace": "",
+    "rule": "Other volumes: a configuration is followed with the volumes mounted when it arrives",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedWhenTheIndexStartsIsLeftOutByTheScanAndByWhatChangesOnIt|IndexMountedVolumesTests/aConfigurationIsFollowedWithTheVolumesMountedWhenItArrives"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "rule": "Other volumes: a volume mounted later is left out before anything that changed on it is read",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedLaterIsLeftOutBeforeAnythingOnItIsReadAndWhatTheIndexHeldOfItsFolderGoes",
+    "edits": [
+      {
+        "find": "        noticeMountedVolumes()\n        let nowNs = now()",
+        "replace": "        let nowNs = now()"
+      },
+      {
+        "find": "        noticeMountedVolumes()\n        guard let config, let store, !pending.isEmpty else { return }",
+        "replace": "        guard let config, let store, !pending.isEmpty else { return }"
+      }
+    ]
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        // What was queued before a volume was mounted is not read on it either.\n        noticeMountedVolumes()\n",
+    "replace": "",
+    "rule": "Other volumes: what waited to be read when a volume was mounted over it is not read on the volume",
+    "tests": "IndexMountedVolumesTests/whatWaitedToBeReadWhenAVolumeWasMountedOverItIsNotReadOnTheVolume"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        noticeMountedVolumes()\n        let nowNs = now()",
+    "replace": "        let nowNs = now()",
+    "rule": "Other volumes: a volume that is gone is noticed when nothing the system tells of is left to read",
+    "tests": "IndexMountedVolumesTests/theFolderOfAVolumeThatIsGoneIsReadAgain"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        lookUpMountedVolumes(for: given)\n        reconfigure(leavingOutMountedVolumes(given))\n",
+    "replace": "        lookUpMountedVolumes(for: given)\n",
+    "rule": "Other volumes: what the index held of a folder a volume is mounted over goes at once, and the folder of one that is gone is read again",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedLaterIsLeftOutBeforeAnythingOnItIsReadAndWhatTheIndexHeldOfItsFolderGoes|IndexMountedVolumesTests/theFolderOfAVolumeThatIsGoneIsReadAgain"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        var config = given\n        config.excluded.formUnion(mounted)",
+    "replace": "        var config = self.config ?? given\n        config.excluded.formUnion(mounted)",
+    "rule": "Other volumes: a volume that is gone is left out no longer, and a folder you excluded yourself still is",
+    "tests": "IndexMountedVolumesTests/theFolderOfAVolumeThatIsGoneIsReadAgain|IndexMountedVolumesTests/aConfigurationIsFollowedWithTheVolumesMountedWhenItArrives"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        onMountedVolumes?(volumes)\n",
+    "replace": "",
+    "rule": "Other volumes: views are told which volumes are mounted when one is mounted or gone",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedLaterIsLeftOutBeforeAnythingOnItIsReadAndWhatTheIndexHeldOfItsFolderGoes|IndexMountedVolumesTests/theFolderOfAVolumeThatIsGoneIsReadAgain"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        guard volumes != mounted else { return }\n",
+    "replace": "",
+    "rule": "Other volumes: nothing is said of mounted volumes while none is mounted or gone",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedWhenTheIndexStartsIsLeftOutByTheScanAndByWhatChangesOnIt|IndexMountedVolumesTests/aConfigurationIsFollowedWithTheVolumesMountedWhenItArrives"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        mounted = volumes\n",
+    "replace": "",
+    "rule": "Other volumes: a volume mounted or gone is told of once",
+    "tests": "IndexMountedVolumesTests/aVolumeMountedLaterIsLeftOutBeforeAnythingOnItIsReadAndWhatTheIndexHeldOfItsFolderGoes|IndexMountedVolumesTests/theFolderOfAVolumeThatIsGoneIsReadAgain"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if run == self.run { leftOut.asMountedVolumes = Self.shortPaths(volumes) }",
+    "replace": "",
+    "rule": "Other volumes: views take what is on a mounted volume for another disk's",
+    "tests": "IndexMountedVolumesTests/viewsTakeAMountedVolumeForAnotherDiskForAsLongAsItIsMounted"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        if run == self.run { leftOut.asMountedVolumes = Self.shortPaths(volumes) }",
+    "replace": "        leftOut.asMountedVolumes = Self.shortPaths(volumes)",
+    "rule": "Other volumes: what a retired worker says of mounted volumes is not taken",
+    "tests": "IndexMountedVolumesTests/viewsTakeAMountedVolumeForAnotherDiskForAsLongAsItIsMounted"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        leftOut.asMountedVolumes = []\n",
+    "replace": "",
+    "rule": "Other volumes: an index turned on again holds nothing an earlier run was told of mounted volumes",
+    "tests": "IndexMountedVolumesTests/viewsTakeAMountedVolumeForAnotherDiskForAsLongAsItIsMounted"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        didSet { excluded = IndexExcludedFolders(leftOut.byConfiguration.union(leftOut.asMountedVolumes)) }",
+    "replace": "        didSet { excluded = IndexExcludedFolders(leftOut.byConfiguration) }",
+    "rule": "Other volumes: what views take for left out is the configuration's folders and the mounted volumes together",
+    "tests": "IndexMountedVolumesTests/viewsTakeAMountedVolumeForAnotherDiskForAsLongAsItIsMounted"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        let notRead = Self.shortPaths(config.excluded.union(mounted))",
+    "replace": "        let notRead = Self.shortPaths(config.excluded)",
+    "rule": "Other volumes: a search of a folder with the index off leaves out a volume mounted in it",
+    "tests": "IndexMountedVolumesTests/aSearchOfAFolderWithTheIndexOffLeavesOutAVolumeMountedInIt"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        let measured = fetches ? measure() : DatalessFile.withoutMaterializing { measure() }",
+    "replace": "        let measured = measure()",
+    "rule": "Folder sizes you ask for: a walk nobody asked for fetches nothing",
+    "tests": "FolderSizerAskedTests/aWalkNobodyAskedForFetchesNothingAndOneYouAskedForFetches"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        let measured = fetches ? measure() : DatalessFile.withoutMaterializing { measure() }",
+    "replace": "        let measured = DatalessFile.withoutMaterializing { measure() }",
+    "rule": "Folder sizes you ask for: a walk you asked for fetches what it needs",
+    "tests": "FolderSizerAskedTests/aWalkNobodyAskedForFetchesNothingAndOneYouAskedForFetches"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "                if entry.pointee.fts_level == FTS_ROOTLEVEL { return nil }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: a walk that may not fetch measures nothing of a folder that is only in the cloud",
+    "tests": "FolderSizerAskedTests/aWalkThatMayNotFetchMeasuresNothingOfAFolderOnlyInTheCloudAndPassesOverOneDeeperIn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        guard !pending.isEmpty, let entry = pending[key], !entry.asked else { return }",
+    "replace": "        guard !pending.isEmpty, let entry = pending[key] else { return }",
+    "rule": "Folder sizes you ask for: the index taking a folder over does not stop a walk you asked for",
+    "tests": "FolderSizerAskedTests/theIndexTakingAFolderOverStopsOnlyAWalkNobodyAskedFor|FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        for (key, entry) in pending where !entry.asked && shouldCancel(entry.url) {",
+    "replace": "        for (key, entry) in pending where shouldCancel(entry.url) {",
+    "rule": "Folder sizes you ask for: a change in the index stops only walks nobody asked for",
+    "tests": "FolderSizerAskedTests/theIndexTakingAFolderOverStopsOnlyAWalkNobodyAskedFor|FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            guard asked, !walking.asked else { return }\n",
+    "replace": "            guard false else { return }\n",
+    "rule": "Folder sizes you ask for: asking takes the place of a walk that may not fetch",
+    "tests": "FolderSizerAskedTests/askingTakesThePlaceOfAWalkThatMayNotFetchAndOnlyAWholeSizeStandsForWhatYouAsk"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        return !asked || known.asked || known.size.allocationComplete ? known.size : nil",
+    "replace": "        return known.size",
+    "rule": "Folder sizes you ask for: a size that passed something over does not stand for one you ask for",
+    "tests": "FolderSizerAskedTests/askingTakesThePlaceOfAWalkThatMayNotFetchAndOnlyAWholeSizeStandsForWhatYouAsk"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            Self.measured[key] = Measured(size: size, asked: asked)",
+    "replace": "            Self.measured[key] = Measured(size: size, asked: false)",
+    "rule": "Folder sizes you ask for: the size a walk you asked for measured is kept as one",
+    "tests": "FolderSizerAskedTests/askingTakesThePlaceOfAWalkThatMayNotFetchAndOnlyAWholeSizeStandsForWhatYouAsk|FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            return FolderSizer.shown(indexed: total, asked: FolderSizer.askedSize(url))",
+    "replace": "            return total",
+    "rule": "Folder sizes you ask for: a size you asked for stands while the index's total leaves part of the folder out",
+    "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        indexed.allocationComplete ? indexed : asked ?? indexed",
+    "replace": "        asked ?? indexed",
+    "rule": "Folder sizes you ask for: once the index has read all of a folder, its total is the one, also where rows are sorted by size",
+    "tests": "FolderSizerAskedTests/theIndexsTotalIsShownOnceItIsOfEverythingAndASizeYouAskedForUntilThen"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        indexed.allocationComplete ? indexed : asked ?? indexed",
+    "replace": "        indexed",
+    "rule": "Folder sizes you ask for: while the index's total leaves part of a folder out, a size you asked for is the one shown",
+    "tests": "FolderSizerAskedTests/theIndexsTotalIsShownOnceItIsOfEverythingAndASizeYouAskedForUntilThen"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "replace": "            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "rule": "Folder sizes you ask for: a size you asked for stands while the index is reading everything",
+    "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "!Privacy.walkingWouldReachGuardedFolders(url) { sizer.request(url, askedBy: asker) }",
+    "replace": "!Privacy.walkingWouldReachGuardedFolders(url) { sizer.request(url) }",
+    "rule": "Folder sizes you ask for: what you ask for is measured by a walk that fetches",
+    "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything|FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "folderSize: { url in browser.folderSize(url, request: true, askedBy: .inspector) },",
+    "replace": "folderSize: { url in browser.folderSize(url, request: true) },",
+    "rule": "Folder sizes you ask for: the Inspector asks for the size of what is selected",
+    "tests": "FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        guard let size = folderSize(entry.url, request: true, askedBy: .diskUsage) else { return .measuring }",
+    "replace": "        guard let size = folderSize(entry.url, request: true) else { return .measuring }",
+    "rule": "Folder sizes you ask for: Disk Usage asks for the sizes it shows",
+    "tests": "IndexExclusionsTests/withTheIndexOffDiskUsageMeasuresWhatItShowsExceptExcludedFolders"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "find": "            && (services.cloud.status(for: entry.url)?.isPlaceholder != true || folderSize(entry.url) != nil)\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: a row shows no size and starts no walk while its cloud badge says only in the cloud",
+    "tests": "FolderSizerAskedTests/aRowShowsNoSizeAndStartsNoWalkWhileItsCloudBadgeSaysOnlyInTheCloud"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Outline.swift",
+    "find": " || folderSize(entry.url) != nil)",
+    "replace": ")",
+    "rule": "Folder sizes you ask for: a size known already is shown, whatever the cloud badge still says",
+    "tests": "FolderSizerAskedTests/aRowShowsNoSizeAndStartsNoWalkWhileItsCloudBadgeSaysOnlyInTheCloud"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        if services.cloud.status(for: url)?.isPlaceholder == true { services.cloud.refresh([url.deletingLastPathComponent()]) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: what a walk you asked for fetched has its cloud badge read again",
+    "tests": "FolderSizerAskedTests/aRowShowsNoSizeAndStartsNoWalkWhileItsCloudBadgeSaysOnlyInTheCloud"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        if url == directory, FolderSizer.askedSize(url) != nil { services.cloud.refresh([url]) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: what a walk you asked for of the folder shown fetched has the badges in it read again",
+    "tests": "FolderSizerAskedTests/whatAWalkOfTheFolderShownFetchedHasTheBadgesInItReadAgain"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        let shown = [directory, targetDirectory].compactMap { $0 } + selectedURLs",
+    "replace": "        let shown = [directory].compactMap { $0 } + selectedURLs",
+    "rule": "Folder sizes you ask for: the Inspector is told of a size for the folder of a deeper column",
+    "tests": "FolderSizerAskedTests/theInspectorIsToldOfASizeForTheFolderOfADeeperColumn"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        tellingOfSizes.send(())\n",
+    "replace": "        tellOfSizesArrived()\n",
+    "rule": "Folder sizes you ask for: the window hears once of the sizes that arrive in a stretch",
+    "tests": "FolderSizerAskedTests/theWindowHearsOnceOfTheSizesThatArriveInAStretch"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            recorded.insert(key)\n",
+    "replace": "            recorded.insert(key)\n            if recorded.count >= kept { letGoOfSizes() }\n",
+    "rule": "Folder sizes you ask for: a sizer lets go of no size as sizes arrive, however many it has measured",
+    "tests": "FolderSizerAskedTests/aSizerKeepsWhatItMeasuredUntilItsBrowserLeavesAndLetsGoOnlyOfItsOwn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        if recorded.count >= kept { letGoOfSizes() }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: a sizer that has measured many sizes lets go of them when its browser leaves",
+    "tests": "FolderSizerAskedTests/aSizerKeepsWhatItMeasuredUntilItsBrowserLeavesAndLetsGoOnlyOfItsOwn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        if recorded.count >= kept { letGoOfSizes() }\n",
+    "replace": "        letGoOfSizes()\n",
+    "rule": "Folder sizes you ask for: a sizer that has measured few sizes keeps them when its browser leaves",
+    "tests": "FolderSizerAskedTests/aSizerKeepsWhatItMeasuredUntilItsBrowserLeavesAndLetsGoOnlyOfItsOwn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        for key in recorded { Self.measured[key] = nil }",
+    "replace": "        Self.measured.removeAll()",
+    "rule": "Folder sizes you ask for: a sizer lets go only of the sizes it measured itself",
+    "tests": "FolderSizerAskedTests/aSizerKeepsWhatItMeasuredUntilItsBrowserLeavesAndLetsGoOnlyOfItsOwn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        queue.cancelAllOperations()\n        letGoOfSizes()\n    }",
+    "replace": "        queue.cancelAllOperations()\n    }",
+    "rule": "Folder sizes you ask for: a sizer that is gone has let go of its sizes",
+    "tests": "FolderSizerAskedTests/aSizerKeepsWhatItMeasuredUntilItsBrowserLeavesAndLetsGoOnlyOfItsOwn"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        if shown.contains(where: { arrived.contains($0.fileViewKey) }) { delegate?.browserContentDidChange(self) }",
+    "replace": "        delegate?.browserContentDidChange(self)",
+    "rule": "Folder sizes you ask for: the window hears only of sizes it shows",
+    "tests": "FolderSizerAskedTests/theWindowHearsOnlyOfSizesItShows"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        sizesArrived.removeAll()\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: the window hears of a size once, not again with those that arrive after",
+    "tests": "FolderSizerAskedTests/theWindowHearsOnlyOfSizesItShows"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "arrived.contains($0.fileViewKey)",
+    "replace": "arrived.contains($0.path(percentEncoded: false))",
+    "rule": "Folder sizes you ask for: a folder whose size arrived is the one shown however it is spelled",
+    "tests": "FolderSizerAskedTests/theWindowHearsOnlyOfSizesItShows"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "            if total.allocationComplete { FolderSizer.indexHoldsAll(of: url) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: what was measured before the index had read all of a folder does not stand in for a later total",
+    "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "                allocationKnown = false\n                fts_set(fts, entry, FTS_SKIP)",
+    "replace": "                fts_set(fts, entry, FTS_SKIP)",
+    "rule": "Folder sizes you ask for: a size that passed over a folder only in the cloud says it is not of everything",
+    "tests": "FolderSizerAskedTests/aWalkThatMayNotFetchMeasuresNothingOfAFolderOnlyInTheCloudAndPassesOverOneDeeperIn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "                allocationKnown = false\n                fts_set(fts, entry, FTS_SKIP)",
+    "replace": "                allocationKnown = false",
+    "rule": "Folder sizes you ask for: a walk that may not fetch does not read a folder that is only in the cloud",
+    "tests": "FolderSizerAskedTests/aWalkThatMayNotFetchMeasuresNothingOfAFolderOnlyInTheCloudAndPassesOverOneDeeperIn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            case FTS_D where fetchesNothing && isOnlyInTheCloud(entry.pointee):",
+    "replace": "            case FTS_D where isOnlyInTheCloud(entry.pointee):",
+    "rule": "Folder sizes you ask for: a walk that fetches reads a folder that is only in the cloud",
+    "tests": "FolderSizerAskedTests/aWalkThatMayNotFetchMeasuresNothingOfAFolderOnlyInTheCloudAndPassesOverOneDeeperIn"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        guard let size else { return }\n",
+    "replace": "        guard let size else { return onUpdate?(url) ?? () }\n",
+    "rule": "Folder sizes you ask for: a walk that measured nothing says nothing to its window",
+    "tests": "FolderSizerAskedTests/aWalkThatMeasuredNothingLeavesNoSizeAndAskingMeasures"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "        if asked || Self.askedSize(url) == nil {",
+    "replace": "        if true {",
+    "rule": "Folder sizes you ask for: what a walk you asked for measured is not replaced by another window's walk that may not fetch",
+    "tests": "FolderSizerAskedTests/whatAWalkYouAskedForMeasuredIsNotReplacedByAnotherWindowsWalkThatMayNotFetch"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        let shown = [directory, targetDirectory].compactMap { $0 } + selectedURLs",
+    "replace": "        let shown = [directory, targetDirectory].compactMap { $0 } + selectedNodes.map(\\.url)",
+    "rule": "Folder sizes you ask for: the Inspector shows a size it asked for when it arrives, in whichever view holds the selection",
+    "tests": "FolderSizerAskedTests/theInspectorShowsASizeItAskedForWhenItArrivesInWhicheverViewHoldsTheSelection"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            guard entry.askers.count == 1 else { continue }\n",
+    "replace": "            guard false else { continue }\n",
+    "rule": "Folder sizes you ask for: a walk asked for stops once nobody wants it any more",
+    "tests": "FolderSizerAskedTests/aWalkAskedForGoesOnOnlyWhileSomeoneStillWantsIt"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            guard entry.askers.count == 1 else { continue }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: a walk asked for goes on while someone else still wants it",
+    "tests": "FolderSizerAskedTests/aWalkAskedForGoesOnOnlyWhileSomeoneStillWantsIt|FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Model/FolderSizer.swift",
+    "find": "            if walking.asked, let asker { pending[key]?.askers.insert(asker) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: whoever asks about a folder already being measured for another is counted among those who want it",
+    "tests": "FolderSizerAskedTests/aWalkAskedForGoesOnOnlyWhileSomeoneStillWantsIt|FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        for pane in panes { pane.browser.inspectorShows(pane.browser === browser ? shown : []) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: the Inspector asks no longer about what it shows no more",
+    "tests": "FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        let shown = isShowing ? Set(split.inspector.shownURLs) : []",
+    "replace": "        let shown = Set(split.inspector.shownURLs)",
+    "rule": "Folder sizes you ask for: the Inspector hidden asks about nothing",
+    "tests": "FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "                if self.split.inspectorItem.isCollapsed { self.split.inspector.stopPreviewing() }\n",
+    "replace": "                if self.split.inspectorItem.isCollapsed { self.split.inspector.stopPreviewing(); return }\n",
+    "rule": "Folder sizes you ask for: the Inspector asks no more from the moment it is hidden",
+    "tests": "FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        if effectiveMode == .treemap { sizer.keepOnly([], askedBy: .diskUsage) }\n",
+    "replace": "",
+    "rule": "Folder sizes you ask for: Disk Usage asks no longer about what it showed once you leave it",
+    "tests": "FolderSizerAskedTests/theInspectorAsksForTheSizeOfWhatItShowsAndNoLongerOfWhatItShowsNoMore"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "childFolderSizes: { [weak self] in self?.childFolderSizes($0) ?? [:] },",
+    "replace": "childFolderSizes: { [index = services.index] in index.childFolderSizes($0).mapValues(\\.bytes) },",
+    "rule": "Folder sizes you ask for: rows sorted by size are ordered by the size they show",
+    "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController.swift",
+    "find": "        showsSize(entry) ? folderSize(entry.url)?.bytes : nil",
+    "replace": "        folderSize(entry.url)?.bytes",
+    "rule": "Folder sizes you ask for: a row that shows no size is sorted as one, though its size is known",
+    "tests": "FolderSizerAskedTests/aRowLeftUntilAskedIsSortedBySizeAsItShowsThoughItsSizeIsKnown"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)\n",
+    "replace": "",
+    "rule": "Folders that are only in the cloud: the threads that read for the index never fetch what is only in the cloud",
+    "tests": "IndexFolderReadsTests/theThreadsThatReadForTheIndexNeverFetchWhatIsOnlyInTheCloud"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "                return isReadingWhatItCovers ? .pending : .unindexed",
+    "replace": "                if isReadingWhatItCovers { return .pending }",
+    "rule": "Folders that are only in the cloud: a folder the index holds without having read it has no total",
+    "tests": "IndexFolderReadsTests/aFolderTheIndexHoldsWithoutHavingReadItShowsNoSizeUntilAsked"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        guard !isOn else { return holdsUnread(folder.lexicallyStandardized.path) }",
+    "replace": "        guard !isOn else { return false }",
+    "rule": "Folders that are only in the cloud: views leave the size of a folder the index has not read until it is asked for",
+    "tests": "IndexFolderReadsTests/aFolderTheIndexHoldsWithoutHavingReadItShowsNoSizeUntilAsked"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        case .loading, .scanning:\n            return true\n        case .updating, .ready, .unavailable:\n            return false",
+    "replace": "        case .loading, .scanning, .updating:\n            return true\n        case .ready, .unavailable:\n            return false",
+    "rule": "Folders that are only in the cloud: a folder not read stays without a size while the index applies changes elsewhere, so a size asked for is not taken back",
+    "tests": "IndexFolderReadsTests/aFolderTheIndexHoldsWithoutHavingReadItShowsNoSizeUntilAsked"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "        guard let store, !isReadingWhatItCovers, !isExcluded(path) else { return false }",
+    "replace": "        guard let store, !isReadingWhatItCovers else { return false }",
+    "rule": "Folders that are only in the cloud: the index's own folders are outside it, and measured as before",
+    "tests": "IndexFolderReadsTests/aFolderTheIndexHoldsWithoutHavingReadItShowsNoSizeUntilAsked"
+  },
+  {
+    "file": "Strata/Index/FileIndex.swift",
+    "find": "                && !isUnreadLocked(store, child) {",
+    "replace": "                && true {",
+    "rule": "Folders that are only in the cloud: a folder not read is given no size among its parent's folders",
+    "tests": "IndexFolderReadsTests/aFolderTheIndexHoldsWithoutHavingReadItShowsNoSizeUntilAsked"
+  },
+  {
+    "file": "Strata/Index/IndexReconciler.swift",
+    "find": "        var listing = neverRead ? nil : selectedNames.flatMap {",
+    "replace": "        var listing = false ? nil : selectedNames.flatMap {",
+    "rule": "Folders that are only in the cloud: a folder never read is read whole at its first change, whatever the change names",
+    "tests": "IndexFolderReadsTests/aFolderThatIsOnlyInTheCloudStaysUnreadAndIsReadOnceItIsOnTheMac"
+  },
+  {
+    "file": "Strata/Index/IndexReconciler.swift",
+    "find": "            if error != 0, neverRead, let selectedNames {",
+    "replace": "            if error != 0, false, let selectedNames {",
+    "rule": "Folders that are only in the cloud: a folder never read that still cannot be listed has the items a change names read by themselves",
+    "tests": "IndexWorkerTests/partialFileReadsDoNotClaimAnUnreadableDirectoryIsComplete"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            listing.status = read(path, &listing.items, &listing.names, buffer.raw) { request.gotFurther(at: now()) }",
+    "replace": "            listing.status = read(path, &listing.items, &listing.names, buffer.raw) { request.shouldStopNow }",
+    "rule": "Folders that stop answering: a read that keeps getting further is waited for, however long it takes",
+    "tests": "IndexFolderReadsTests/aReadThatKeepsGettingFurtherIsWaitedForHoweverLongItTakes"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                    listings.append(listing)\n                    progressed = time\n",
+    "replace": "                    listings.append(listing)\n",
+    "rule": "Folders that stop answering: in a scan's batch, patience starts again with each folder read",
+    "tests": "IndexFolderReadsTests/inAScansBatchPatienceStartsAgainWithEachFolderRead"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                listings.append(Listing(status: stopped ? ECANCELED : ETIMEDOUT))\n                toldToStop = stopped",
+    "replace": "                listings.append(Listing(status: stopped ? ECANCELED : ETIMEDOUT))\n                toldToStop = true",
+    "rule": "Folders that stop answering: a scan's batch is read on past a folder that never answers",
+    "tests": "IndexFolderReadsTests/aScansBatchIsReadPastAFolderThatNeverAnswersAndAsFarAsItIsNotStopped"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                    guard case .waitedFor = standing, !request.shouldStopNow else { break }\n",
+    "replace": "                    guard case .waitedFor = standing else { break }\n",
+    "rule": "Folders that stop answering: told to stop, no further read is started",
+    "tests": "IndexFolderReadsTests/aReadToldToStopIsNotStartedAndOneUnderWayThatCannotStopIsLeftWithNothingHeldAgainstItsFolder|IndexFolderReadsTests/aScansBatchIsReadPastAFolderThatNeverAnswersAndAsFarAsItIsNotStopped"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            if toldToStop == nil, request.shouldStopNow { toldToStop = now }\n",
+    "replace": "",
+    "rule": "Folders that stop answering: a read that cannot stop is left a moment after it is told to",
+    "tests": "IndexFolderReadsTests/aReadToldToStopIsNotStartedAndOneUnderWayThatCannotStopIsLeftWithNothingHeldAgainstItsFolder"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                guard now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
+    "replace": "                guard now >= toldToStop, now - toldToStop >= stopGrace,\n                      let read = request.giveUp(judgedBy: request.lastProgress, noting: { note($0, read: request.kind) })\n                else { continue }",
+    "rule": "Folders that stop answering: nothing is held against the folder of a read left because it was told to stop",
+    "tests": "IndexFolderReadsTests/aReadToldToStopIsNotStartedAndOneUnderWayThatCannotStopIsLeftWithNothingHeldAgainstItsFolder"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                guard now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
+    "replace": "                guard now >= toldToStop, now - toldToStop >= stopGrace,\n                      let read = request.giveUp(judgedBy: request.lastProgress, noting: { note($0, read: request.kind) })\n                else { continue }",
+    "rule": "Folders that stop answering: a rebuild asked for during a slow read still reads that folder",
+    "tests": "IndexFolderReadsTests/aRebuildAskedForDuringASlowReadStillReadsThatFolder"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            guard shared.unanswered.count < mostGivenUp, !shared.awaited.contains(folder) else { return nil }\n",
+    "replace": "            guard !shared.awaited.contains(folder) else { return nil }\n",
+    "rule": "Folders that stop answering: no more reads are given up than the limit, and the next is waited for",
+    "tests": "IndexFolderReadsTests/noMoreReadsAreGivenUpThanTheLimitAndTheNextIsWaitedForUnlessItIsToldToStop"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                guard now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
+    "replace": "                guard now >= toldToStop, now - toldToStop >= stopGrace,\n                      let read = request.giveUp(judgedBy: request.lastProgress, noting: { note($0, read: request.kind) })\n                else { continue }",
+    "rule": "Folders that stop answering: told to stop, a read is left however many folders do not answer",
+    "tests": "IndexFolderReadsTests/noMoreReadsAreGivenUpThanTheLimitAndTheNextIsWaitedForUnlessItIsToldToStop"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            guard shared.unanswered.count < mostGivenUp, !shared.awaited.contains(folder) else { return nil }\n",
+    "replace": "            guard shared.unanswered.count < mostGivenUp else { return nil }\n",
+    "rule": "Folders that stop answering: a folder always waited for is not given up",
+    "tests": "IndexFolderReadsTests/aFolderAlwaysWaitedForIsNotGivenUpHoweverLongItTakes"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "        didSet { reads.alwaysWait(for: config?.roots ?? []) }",
+    "replace": "        didSet {}",
+    "rule": "Folders that stop answering: a root that does not answer is waited for, so no index is made without it",
+    "tests": "IndexFolderReadsTests/aRootThatDoesNotAnswerIsWaitedForSoNoIndexIsMadeWithoutIt"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "        let folder = kind == .item ? IndexRefresh.splitPath(path).parent : path\n",
+    "replace": "        let folder = path\n",
+    "rule": "Folders that stop answering: an item that does not answer says so of the folder it is in",
+    "tests": "IndexFolderReadsTests/anItemThatDoesNotAnswerSaysSoOfTheFolderItIsInAndCanBeToldToStop"
+  },
+  {
+    "file": "Strata/Index/IndexReconciler.swift",
+    "find": "let error = reads.readItem(prefix + name, items: &items, names: &names, shouldStop: shouldStopRefresh)",
+    "replace": "let error = reads.readItem(prefix + name, items: &items, names: &names, shouldStop: { false })",
+    "rule": "Folders that stop answering: turning the index off does not wait for an item that does not answer",
+    "tests": "IndexFolderReadsTests/turningTheIndexOffDoesNotWaitForAnItemThatDoesNotAnswer"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                if request.priority != priority, pthread_set_qos_class_self_np(request.priority, 0) == 0 {",
+    "replace": "                if false {",
+    "rule": "Folders that stop answering: a read runs at the priority of whoever asked for it",
+    "tests": "IndexFolderReadsTests/aReadRunsAtThePriorityOfWhoeverAskedForIt"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                item.nameOffset += base\n",
+    "replace": "",
+    "rule": "Folders that stop answering: what a read finds is added to what was there, each name still found where it starts",
+    "tests": "IndexFolderReadsTests/whatAReadFindsIsHandedOverAsItWasReadAndAddedToWhatWasThere"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "            while shared.idle.count > 1, now >= shared.idle[0].since, now - shared.idle[0].since >= idleLife {",
+    "replace": "            while false {",
+    "rule": "Folders that stop answering: threads kept for reading end once nothing has used them for a while",
+    "tests": "IndexFolderReadsTests/threadsKeptForReadingEndOnceNothingHasUsedThemForAWhile"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "        guard looksAgain else { return }\n",
+    "replace": "        guard looksAgain, false else { return }\n",
+    "rule": "Folders that stop answering: threads kept for reading end by themselves when nothing is read again",
+    "tests": "IndexFolderReadsTests/threadsKeptForReadingEndOnceNothingHasUsedThemForAWhile"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "noiseFolders: config.noise, reads: reads) { [weak self] in",
+    "replace": "noiseFolders: config.noise) { [weak self] in",
+    "rule": "Folders that stop answering: a full scan goes on past a folder that never answers and leaves it unread",
+    "tests": "IndexFolderReadsTests/aFolderGivenUpInAScanIsLeftUnreadInTheIndexItSavesAndReadAtItsNextChange"
+  },
+  {
+    "file": "Strata/Index/IndexWorker.swift",
+    "find": "                                 now: readClock)",
+    "replace": "                                 patience: 1e9, now: readClock)",
+    "rule": "Folders that stop answering: a running index keeps up with other folders past one that never answers",
+    "tests": "IndexFolderReadsTests/aRunningIndexKeepsUpPastAFolderThatNeverAnswersAndTakesUpItsNextChange"
+  },
+  {
+    "file": "Strata/Index/IndexFolderReads.swift",
+    "find": "                guard now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
+    "replace": "                guard false, now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
+    "rule": "Folders that stop answering: turning the index off does not wait for a read that never returns",
+    "tests": "IndexSwitchTests/retiringDoesNotWaitForAReadThatNeverReturnsAndNothingIsReadAfterIt"
   }
 ]
