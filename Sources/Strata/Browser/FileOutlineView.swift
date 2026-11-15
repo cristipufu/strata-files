@@ -45,6 +45,17 @@ final class FileOutlineView: NSOutlineView {
         }
     }
 
+    /// Like Finder, only a file's icon and name pick it up. A drag from anywhere else in a row selects the rows it
+    /// crosses instead of moving the file.
+    override func canDragRows(with rowIndexes: IndexSet, at mouseDownPoint: NSPoint) -> Bool {
+        let nameColumn = outlineTableColumn.map { column(withIdentifier: $0.identifier) } ?? -1
+        let row = row(at: mouseDownPoint)
+        guard row >= 0, column(at: mouseDownPoint) == nameColumn,
+              let cell = view(atColumn: nameColumn, row: row, makeIfNecessary: false) as? NameCellView,
+              cell.isDragHandle(at: cell.convert(mouseDownPoint, from: self)) else { return false }
+        return super.canDragRows(with: rowIndexes, at: mouseDownPoint)
+    }
+
     override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         FileDrop.sourceMask(super.draggingSession(session, sourceOperationMaskFor: context), session, copies: copies)
     }

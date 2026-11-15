@@ -366,8 +366,16 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
         fileDelegate?.fileView(self, open: selected)
     }
 
+    /// The item whose icon or name is at `point`; the rest of a cell is empty space, as for a click.
+    fileprivate func itemIndex(at point: NSPoint) -> Int? {
+        guard let index = layout.index(at: point), entries.indices.contains(index),
+              let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem,
+              item.itemView.covers(item.itemView.convert(point, from: collectionView)) else { return nil }
+        return index
+    }
+
     fileprivate func contextMenu(at point: NSPoint) -> NSMenu? {
-        if let index = layout.index(at: point), entries.indices.contains(index) {
+        if let index = itemIndex(at: point) {
             if !collectionView.selectionIndexPaths.contains(IndexPath(item: index, section: 0)) {
                 collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]
                 lead = index
@@ -390,7 +398,7 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     }
 
     fileprivate func doubleClicked(at point: NSPoint) {
-        guard let index = layout.index(at: point), entries.indices.contains(index) else { return }
+        guard itemIndex(at: point) != nil else { return }
         openSelection()
     }
 

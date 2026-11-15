@@ -121,6 +121,11 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         render()
     }
 
+    /// Whether `point`, in this cell's coordinates, is on the icon or the name: what picks the file up, like Finder.
+    func isDragHandle(at point: NSPoint) -> Bool {
+        icon.frame.union(label.frame).contains(point)
+    }
+
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             gitBadge.backgroundStyle = backgroundStyle

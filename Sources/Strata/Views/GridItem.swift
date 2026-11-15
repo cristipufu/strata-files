@@ -66,11 +66,17 @@ final class GridItemView: NSView, ColorThemeUpdating {
     }
 
     // The collection view selects, rubber-bands and drags from the view hit-testing returns. Subviews (the icon, the
-    // badges) must not take the click. Returning nil makes a click on the icon look like empty space, so only a drag
-    // selects; this view is the hit target and then hands the click to the collection view.
+    // badges) must not take the click, so this view is the hit target and then hands the click to the collection view.
+    // Like Finder, only the icon and the name are the item: the rest of the cell returns nil and is empty space, where
+    // a drag starts a selection rectangle.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden, alphaValue > 0, bounds.contains(convert(point, from: superview)) else { return nil }
+        guard !isHidden, alphaValue > 0, covers(convert(point, from: superview)) else { return nil }
         return self
+    }
+
+    /// Whether `point`, in this view's coordinates, is on the icon or the name rather than the empty rest of the cell.
+    func covers(_ point: NSPoint) -> Bool {
+        iconBoxRect.contains(point) || nameRect.contains(point)
     }
 
     override func mouseDown(with event: NSEvent) {
