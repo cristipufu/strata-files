@@ -991,6 +991,7 @@
     "in memory": "im Arbeitsspeicher",
     "Incoming": "Eingehend",
     "Index": "Index",
+    "Index files": "Dateien indexieren",
     "Index updates unavailable": "Indexaktualisierungen nicht verfügbar",
     "Indexing %lld items…": {
       "one": "%lld Objekt wird indexiert …",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "In neuem Tab öffnen",
     "Open in Terminal": "Im Terminal öffnen",
     "Open in Terminal uses": "„Im Terminal öffnen“ verwendet",
+    "Open Index Settings…": "Indexeinstellungen öffnen …",
     "Open Privacy Settings": "Datenschutzeinstellungen öffnen",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Öffne die Datenschutzeinstellungen, ziehe das Symbol oben in die Liste (oder klicke auf +) und aktiviere Strata.",
     "Open Privacy Settings…": "Datenschutzeinstellungen öffnen …",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Skripte und Online-Inhalte sind blockiert.",
     "Search": "Suchen",
     "Search & Index": "Suche & Index",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Die Suche auf dem ganzen Mac, Zuletzt benutzt und Duplikate brauchen ihn. Um einen Ordner zu durchsuchen, öffne ihn und suche dort: Strata liest ihn direkt.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Die Suche auf dem ganzen Mac, Zuletzt benutzt, Duplikate und sofortige Ordnergrößen nutzen den Index. Ist er ausgeschaltet, stoppt er, gibt seinen Speicher frei und wird von der Festplatte gelöscht: Ordnergrößen werden gemessen, wenn du danach fragst, und die Suche liest den Ordner, in dem du dich befindest.",
     "Search box in the Dock": "Suchfeld im Dock",
     "Search by extension (also *.pdf)": "Nach Suffix suchen (auch *.pdf)",
     "Search commands or shortcuts": "Befehle oder Kurzbefehle suchen",
@@ -1756,6 +1760,7 @@
       "one": "Die Ordner stimmen überein (%lld Objekt verglichen)",
       "other": "Die Ordner stimmen überein (%lld Objekte verglichen)"
     },
+    "The index is turned off": "Der Index ist ausgeschaltet",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Der Index überspringt diese Ordner samt Inhalt: Suchen nach Namen und Ordnergrößen lassen sie aus, und ihr Speicher wird freigegeben. Entfernst du einen Ordner, wird er wieder indexiert.",
     "The item couldn’t be found": "Das Objekt wurde nicht gefunden",
     "The items have moved or been changed since.": "Die Objekte wurden seitdem bewegt oder geändert.",

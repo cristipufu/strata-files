@@ -414,6 +414,26 @@ Searches propagate cancellation into their workers, bound workers and retained c
 retaining all of them. A leading dot includes hidden names, not every cache and build folder; name those folders or
 scope a search into them to include their contents.
 
+The index reads only what is on this Mac's own disk. A volume mounted inside its roots (`IndexMountedVolumes`, the
+system's mount table) is left out like an excluded folder, by the scan and by the file events that arrive from it.
+Only the worker reads that table, before it reads anything, and says which volumes it leaves out; `FileIndex` takes
+its word and reads the table itself only for a search with the index off, when no worker has looked.
+Every folder and item the index reads goes through `IndexFolderReads`, on threads that never fetch what is only in
+the cloud: such a folder fails at once (`EDEADLK`) and stays unread until it is on the Mac. It also gives up on a
+read that gets nowhere, so one folder that stopped answering holds a scan or a refresh for its patience and no
+longer (a root, and any folder past thirty-two that do not answer, is waited for as before), the index's switch
+for half a second and quitting for about one. A folder given up is a folder whose read failed: never treat one (`ETIMEDOUT`) as
+gone or empty. A folder the index holds unread has no total: views show none and start no walk until asked, and a
+folder never read is read whole at its first change. `FolderSizer` keeps the same line: a walk a list starts for
+its rows fetches nothing, and one you asked for (`askedBy:`, the Inspector and Disk Usage) fetches, is never stopped
+by the index, ends when whoever asked shows the folder no more, and stands while the index's total is incomplete
+(`FolderSizer.shown` decides, for a row and for a sort alike). Whether a row's folder is only in the cloud is
+`CloudStore`'s to say, for its size as for its badge: keep no second copy of that. Read no
+folder or item for the index on the worker's own thread or a scanner's; a read left behind keeps its thread, so what
+it captures must stay small and nothing may wait for it. Tests move the reader's own clock (`readClock`), and only
+while the read meant is the only one under way; a test's read that waits gets a thread of its own, never one of
+Dispatch's shared pool, which every suite draws on, and its waits are bounded by turns, not by the clock.
+
 Content search cancels embedding batches when their caller leaves, skips the remaining texts after a native model call
 returns, and checks cancellation before storing passages or publishing matches. Native embedding models are accessed
 only on their embedder's serial queue; snippet scoring uses that queue too. Keep injected calculation tests that hold

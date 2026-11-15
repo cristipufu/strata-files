@@ -1205,6 +1205,7 @@
     "in memory": "w pamięci",
     "Incoming": "Przychodząca",
     "Index": "Indeks",
+    "Index files": "Indeksuj pliki",
     "Index updates unavailable": "Uaktualnienia indeksu są niedostępne",
     "Indexing %lld items…": {
       "one": "Indeksuję %lld rzecz…",
@@ -1503,6 +1504,7 @@
     "Open in New Tab": "Otwórz w nowej karcie",
     "Open in Terminal": "Otwórz w Terminalu",
     "Open in Terminal uses": "Polecenie Otwórz w Terminalu używa",
+    "Open Index Settings…": "Otwórz ustawienia indeksu…",
     "Open Privacy Settings": "Otwórz ustawienia prywatności",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Otwórz ustawienia prywatności, przeciągnij powyższą ikonę na listę (lub kliknij +) i włącz Strata.",
     "Open Privacy Settings…": "Otwórz ustawienia prywatności…",
@@ -1767,6 +1769,8 @@
     "Scripts and online content are blocked.": "Skrypty i treści internetowe są blokowane.",
     "Search": "Szukaj",
     "Search & Index": "Wyszukiwanie i indeks",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Wyszukiwanie na całym Macu, Ostatnie i Duplikaty go potrzebują. Aby przeszukać folder, otwórz go i szukaj w nim: Strata odczyta go bezpośrednio.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Wyszukiwanie na całym Macu, Ostatnie, Duplikaty i natychmiastowe rozmiary folderów korzystają z indeksu. Po wyłączeniu indeks zatrzymuje się, zwalnia pamięć i zostaje usunięty z dysku: rozmiary folderów są mierzone na żądanie, a wyszukiwanie odczytuje folder, w którym jesteś.",
     "Search box in the Dock": "Pole wyszukiwania w Docku",
     "Search by extension (also *.pdf)": "Szukaj wg rozszerzenia (także *.pdf)",
     "Search commands or shortcuts": "Szukaj poleceń lub skrótów",
@@ -2028,6 +2032,7 @@
       "many": "Foldery są zgodne (porównano %lld rzeczy)",
       "other": "Foldery są zgodne (porównano %lld rzeczy)"
     },
+    "The index is turned off": "Indeks jest wyłączony",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indeks pomija te foldery i całą ich zawartość: wyszukiwanie według nazwy i rozmiary folderów ich nie uwzględniają, a zajmowana przez nie pamięć jest zwalniana. Usunięcie folderu z listy sprawia, że jest znowu indeksowany.",
     "The item couldn’t be found": "Nie można odnaleźć rzeczy",
     "The items have moved or been changed since.": "Rzeczy zostały od tego czasu przeniesione lub zmienione.",

@@ -18,6 +18,11 @@ nonisolated package enum DatalessFile {
         return members.contains(where: isDataless)
     }
 
+    /// Whether this thread reads without fetching: inside `withoutMaterializing`, or on a thread kept that way.
+    package static var materializesNothing: Bool {
+        getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD) == IOPOL_MATERIALIZE_DATALESS_FILES_OFF
+    }
+
     /// Runs `body` with thread-scoped VFS materialization disabled so opening or reading a dataless file fails
     /// immediately (`EDEADLK`) instead of blocking on a cloud download.
     package static func withoutMaterializing<T>(_ body: () throws -> T) rethrows -> T {

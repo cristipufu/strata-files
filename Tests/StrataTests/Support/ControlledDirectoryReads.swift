@@ -54,6 +54,20 @@ final class ControlledDirectoryReads {
         return requests[index]
     }
 
+    /// The read of `folder` that waits for its answer. Two panes each start theirs once their own folder is watched,
+    /// so which arrives first is not for a test to count on.
+    func request(for folder: URL) async throws -> Request {
+        let wanted = folder.standardizedFileURL.fileViewKey
+        var turns = 0
+        while true {
+            let waiting = requests.first { $0.continuation != nil && $0.folder.standardizedFileURL.fileViewKey == wanted }
+            if let waiting { return waiting }
+            turns += 1
+            try #require(turns < 2_000, "The controlled reader was not asked for the folder.")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     func stop() {
         stopped = true
         requests.forEach { $0.finish(.failure(CancellationError())) }

@@ -15,6 +15,7 @@ extension Notification.Name {
     package static let sidebarSectionsCollapsed = Notification.Name("StrataSidebarSectionsCollapsed")
     /// The folders excluded from the file index changed (Settings ▸ Search & Index); posted by the preferences that changed.
     package static let indexExclusionsChanged = Notification.Name("StrataIndexExclusionsChanged")
+    package static let indexSwitched = Notification.Name("StrataIndexSwitched")
 }
 
 /// Typed app settings. Production shares one instance; independent environments supply their own defaults and
@@ -103,6 +104,7 @@ package final class Prefs: PreviewTextSettings {
         static let newFileExtension = "newFileExtension"
         static let dualPaneAddressBars = "dualPaneAddressBars"
         static let indexExcludedFolders = "indexExcludedFolders"
+        static let indexesFiles = "indexesFiles"
     }
 
     /// An explicit app-language override. An empty value lets macOS choose the language on the next launch.
@@ -135,6 +137,16 @@ package final class Prefs: PreviewTextSettings {
     package var collapsedSidebarSections: Set<String> {
         get { Set(defaults.stringArray(forKey: Key.collapsedSidebarSections) ?? []) }
         set { defaults.set(newValue.sorted(), forKey: Key.collapsedSidebarSections) }
+    }
+
+    /// Whether Strata keeps its file index (Settings ▸ Search & Index): on until you turn it off.
+    package var indexesFiles: Bool {
+        get { defaults.object(forKey: Key.indexesFiles) as? Bool ?? true }
+        set {
+            guard newValue != indexesFiles else { return }
+            defaults.set(newValue, forKey: Key.indexesFiles)
+            notifications.post(name: .indexSwitched, object: self)
+        }
     }
 
     /// The folders you excluded from the file index (Settings ▸ Search & Index), by their real paths: at most

@@ -884,6 +884,7 @@
     "in memory": "메모리 내",
     "Incoming": "가져오는 항목",
     "Index": "인덱스",
+    "Index files": "파일 인덱싱",
     "Index updates unavailable": "인덱스 업데이트를 사용할 수 없음",
     "Indexing %lld items…": {
       "other": "%lld개 항목 인덱싱 중…"
@@ -1158,6 +1159,7 @@
     "Open in New Tab": "새로운 탭에서 열기",
     "Open in Terminal": "터미널에서 열기",
     "Open in Terminal uses": "‘터미널에서 열기’에 사용할 앱",
+    "Open Index Settings…": "인덱스 설정 열기…",
     "Open Privacy Settings": "개인정보 보호 설정 열기",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "개인정보 보호 설정을 열고 위의 아이콘을 목록으로 드래그(또는 + 클릭)한 다음 Strata를 켜십시오.",
     "Open Privacy Settings…": "개인정보 보호 설정 열기…",
@@ -1389,6 +1391,8 @@
     "Scripts and online content are blocked.": "스크립트와 온라인 콘텐츠가 차단됩니다.",
     "Search": "검색",
     "Search & Index": "검색 및 인덱스",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Mac 전체 검색, 최근 사용, 중복된 항목에는 인덱스가 필요합니다. 폴더를 검색하려면 폴더를 열고 그 안에서 검색하십시오. Strata가 폴더를 직접 읽습니다.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Mac 전체 검색, 최근 사용, 중복된 항목, 즉시 표시되는 폴더 크기는 인덱스를 사용합니다. 끄면 인덱스가 중지되고 메모리를 해제하며 디스크에서 삭제됩니다. 폴더 크기는 요청할 때 측정되고, 검색은 현재 폴더를 읽습니다.",
     "Search box in the Dock": "Dock의 검색 필드",
     "Search by extension (also *.pdf)": "확장자로 검색(*.pdf도 가능)",
     "Search commands or shortcuts": "명령 또는 단축키 검색",
@@ -1620,6 +1624,7 @@
     "The folders match (%lld items compared)": {
       "other": "폴더가 일치함(%lld개 항목 비교함)"
     },
+    "The index is turned off": "인덱스가 꺼져 있습니다",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "인덱스는 이 폴더와 그 안의 모든 항목을 건너뜁니다. 이름으로 검색하거나 폴더 크기를 계산할 때 포함되지 않으며, 차지하던 메모리는 해제됩니다. 폴더를 제거하면 다시 인덱스됩니다.",
     "The item couldn’t be found": "항목을 찾을 수 없음",
     "The items have moved or been changed since.": "그 이후로 항목이 이동되었거나 변경되었습니다.",

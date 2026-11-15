@@ -31,8 +31,13 @@ nonisolated struct IndexWorkerFixture {
                                  noise: Set<String> = [], excluding excluded: [String] = [],
                                  replayEventLimit: Int = IndexEventInbox.defaultReplayEventLimit,
                                  read: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
+                                 scan: @escaping IndexWorker.DirectoryRead = BulkDirectoryReader.read,
+                                 item: @escaping IndexWorker.ItemRead = BulkDirectoryReader.readItem,
+                                 readClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
                                  startEvents: (@Sendable ([String], UInt64) -> Bool)? = nil,
                                  journal: @escaping @Sendable ([String]) -> [String]? = { _ in ["journal"] },
+                                 mounted: @escaping IndexMountedVolumes.Reader = IndexMountedVolumes.inside,
+                                 toldOfMountedVolumes: (@Sendable (Set<String>) -> Void)? = nil,
                                  capturingTimers: Bool = false) async throws -> IndexWorkerFixture {
         let storage = storage ?? SecureStorage.Context(directory: tree.url(".state"), caches: tree.url(".state/cache"),
                                                        key: SymmetricKey(size: .bits256))
@@ -43,10 +48,13 @@ nonisolated struct IndexWorkerFixture {
         let worker = IndexWorker(watchesChanges: startEvents != nil, saveInterval: .infinity,
                                  fastFlushInterval: fastFlushInterval, deferredFlushInterval: deferredInterval,
                                  replayEventLimit: replayEventLimit,
-                                 now: { clock.withLock { $0 } }, readDirectory: read, startEvents: startEvents,
-                                 journal: journal, schedule: capturingTimers ? capture : nil)
+                                 now: { clock.withLock { $0 } }, readClock: readClock, readDirectory: read,
+                                 readItem: item, readScannedDirectory: scan,
+                                 startEvents: startEvents,
+                                 journal: journal, mountedVolumes: mounted, schedule: capturingTimers ? capture : nil)
         let stores = OSAllocatedUnfairLock(initialState: [IndexStore]())
         worker.onStore = { value in stores.withLock { $0.append(value) } }
+        worker.onMountedVolumes = toldOfMountedVolumes
         await withCheckedContinuation { done in worker.start(config) { done.resume() } }
         let (_, header) = try IndexPersistence.load(from: config.file, storage: storage)
         return IndexWorkerFixture(worker: worker, config: config, configs: .init(initialState: config),

@@ -250,7 +250,8 @@ import Testing
             configuredRoots: ["/synthetic"],
             started: true
         )
-        index.setPhase(.updating)
+        // While everything is read, a folder not read yet is one the index is about to read.
+        index.setPhase(.scanning(items: 0))
 
         var posted: [IndexChanges] = []
         let token = NotificationCenter.default.addObserver(forName: .indexDidChange, object: index, queue: nil) { note in

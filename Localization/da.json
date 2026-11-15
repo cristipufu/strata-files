@@ -991,6 +991,7 @@
     "in memory": "i hukommelsen",
     "Incoming": "Indkommende",
     "Index": "Indeks",
+    "Index files": "Indekser arkiver",
     "Index updates unavailable": "Indeksopdateringer er utilgængelige",
     "Indexing %lld items…": {
       "one": "Indekserer %lld emne…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Åbn i ny fane",
     "Open in Terminal": "Åbn i Terminal",
     "Open in Terminal uses": "»Åbn i Terminal« bruger",
+    "Open Index Settings…": "Åbn indeksindstillinger…",
     "Open Privacy Settings": "Åbn indstillinger for anonymitet",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Åbn indstillinger for anonymitet, træk symbolet ovenfor ind på listen (eller klik på +), og slå Strata til.",
     "Open Privacy Settings…": "Åbn indstillinger for anonymitet…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Scripts og onlineindhold er blokeret.",
     "Search": "Søg",
     "Search & Index": "Søgning og indeks",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "Søgning på hele din Mac, Seneste og Dubletter kræver det. Vil du søge i en mappe, så åbn den og søg der: Strata læser den direkte.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "Søgning på hele din Mac, Seneste, Dubletter og øjeblikkelige mappestørrelser bruger indekset. Når det er slået fra, stopper det, frigør sin hukommelse og slettes fra disken: mappestørrelser måles, når du beder om det, og søgning læser den mappe, du er i.",
     "Search box in the Dock": "Søgefelt i Dock",
     "Search by extension (also *.pdf)": "Søg efter filtypenavn (også *.pdf)",
     "Search commands or shortcuts": "Søg efter kommandoer eller genveje",
@@ -1756,6 +1760,7 @@
       "one": "Mapperne er ens (%lld emne sammenlignet)",
       "other": "Mapperne er ens (%lld emner sammenlignet)"
     },
+    "The index is turned off": "Indekset er slået fra",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "Indekset springer disse mapper og alt i dem over: søgninger efter navn og mappestørrelser udelader dem, og deres hukommelse frigøres. Fjerner du en mappe, indekseres den igen.",
     "The item couldn’t be found": "Emnet blev ikke fundet",
     "The items have moved or been changed since.": "Emnerne er siden blevet flyttet eller ændret.",

@@ -991,6 +991,7 @@
     "in memory": "in memoria",
     "Incoming": "In arrivo",
     "Index": "Indice",
+    "Index files": "Indicizza i file",
     "Index updates unavailable": "Aggiornamenti dell’indice non disponibili",
     "Indexing %lld items…": {
       "one": "Indicizzazione di %lld elemento…",
@@ -1273,6 +1274,7 @@
     "Open in New Tab": "Apri in un nuovo pannello",
     "Open in Terminal": "Apri nel Terminale",
     "Open in Terminal uses": "Apri nel Terminale usa",
+    "Open Index Settings…": "Apri le impostazioni dell’indice…",
     "Open Privacy Settings": "Apri le impostazioni della privacy",
     "Open Privacy Settings, drag the icon above into the list (or click +) and switch Strata on.": "Apri le impostazioni della privacy, trascina l’icona qui sopra nell’elenco (o fai clic su +) e attiva Strata.",
     "Open Privacy Settings…": "Apri le impostazioni della privacy…",
@@ -1515,6 +1517,8 @@
     "Scripts and online content are blocked.": "Gli script e i contenuti online sono bloccati.",
     "Search": "Cerca",
     "Search & Index": "Ricerca e indice",
+    "Search across your Mac, Recents and Duplicates need it. To search a folder, open it and search there: Strata reads it directly.": "La ricerca in tutto il Mac, Recenti e Duplicati ne hanno bisogno. Per cercare in una cartella, aprila e cerca lì: Strata la legge direttamente.",
+    "Search across your Mac, Recents, Duplicates and instant folder sizes use the index. Turned off, it stops, frees its memory and is deleted from disk: folder sizes are measured when you ask, and search reads the folder you’re in.": "La ricerca in tutto il Mac, Recenti, Duplicati e le dimensioni immediate delle cartelle usano l’indice. Se lo disattivi, si ferma, libera la memoria e viene eliminato dal disco: le dimensioni delle cartelle vengono misurate quando le chiedi e la ricerca legge la cartella in cui ti trovi.",
     "Search box in the Dock": "Campo di ricerca nel Dock",
     "Search by extension (also *.pdf)": "Cerca per estensione (anche *.pdf)",
     "Search commands or shortcuts": "Cerca comandi o abbreviazioni",
@@ -1756,6 +1760,7 @@
       "one": "Le cartelle coincidono (%lld elemento confrontato)",
       "other": "Le cartelle coincidono (%lld elementi confrontati)"
     },
+    "The index is turned off": "L’indice è disattivato",
     "The index skips these folders and everything in them: searches by name and folder sizes leave them out, and their memory is freed. Removing a folder indexes it again.": "L’indice salta queste cartelle e tutto ciò che contengono: le ricerche per nome e le dimensioni delle cartelle non le includono, e la loro memoria viene liberata. Rimuovendo una cartella, viene indicizzata di nuovo.",
     "The item couldn’t be found": "Impossibile trovare l’elemento",
     "The items have moved or been changed since.": "Nel frattempo gli elementi sono stati spostati o modificati.",

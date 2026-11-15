@@ -112,17 +112,23 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         return "…"
     }
 
-    /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt.
+    /// Symlinks and volumes aren't walked, and neither are guarded folders that would trigger a consent prompt, nor
+    /// folders that hold one: the index sizes those without opening it, a walk could not.
     func canMeasure(_ entry: FileEntry) -> Bool {
         guard entry.isDirectory, !entry.isSymlink, !entry.isVolume, !services.copies.contains(entry.url), let directory else { return false }
-        if !Privacy.measuringWouldPrompt(entry.url, browsing: directory) { return true }
+        if !Privacy.measuringWouldPrompt(entry.url, browsing: directory), !Privacy.walkingWouldReachGuardedFolders(entry.url) {
+            return true
+        }
         return services.index.folderSizeLookup(entry.url) != .unindexed || FolderSizer.cached(entry.url) != nil
     }
 
     /// Whether views show a size for `entry` without being asked: a folder you excluded from the index shows none and
-    /// isn't walked, since it can hold millions of items, until you ask (Inspector, Calculate Size).
+    /// isn't walked, since it can hold millions of items, until you ask (Inspector, Calculate Size). Nor does any folder
+    /// the index would cover while it is turned off. Nor one its cloud badge says is only in the cloud, unless its
+    /// size is known already: nothing of it is on the Mac for a walk to measure.
     func showsSize(_ entry: FileEntry) -> Bool {
-        canMeasure(entry) && !services.index.isExcludedByChoice(entry.url)
+        canMeasure(entry) && !services.index.leavesSizeUntilAsked(entry.url)
+            && (services.cloud.status(for: entry.url)?.isPlaceholder != true || folderSize(entry.url) != nil)
     }
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {

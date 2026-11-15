@@ -150,16 +150,6 @@ nonisolated package enum BulkDirectoryReader {
             raw.deallocate()
         }
 
-        package static func ensure(_ buffers: inout [ReadBuffer], count: Int) {
-            while buffers.count < count {
-                buffers.append(ReadBuffer())
-            }
-        }
-
-        package static func deallocateAll(_ buffers: inout [ReadBuffer]) {
-            for buffer in buffers { buffer.deallocate() }
-            buffers.removeAll()
-        }
     }
 
     /// Runs `workers` parallel reader closures, preserving the caller's priority when `qos` is `nil` or enforcing `qos`.
@@ -188,20 +178,19 @@ nonisolated package enum BulkDirectoryReader {
         }
     }
 
-    /// Reads a batch of folders across `workers` threads using `buffers`, transforming each listing before storing it.
+    /// Reads a batch of folders across `workers` threads, transforming each listing before storing it.
     package static func readBatch<Folder: Sendable, Output: Sendable>(
-        _ folders: [Folder], workers: Int, buffers: [ReadBuffer],
+        _ folders: [Folder], workers: Int,
         qos: DispatchQoS = .default, group: DispatchGroup? = nil,
         path: @escaping @Sendable (Folder) -> String,
-        read: @escaping @Sendable (String, inout [ScannedItem], inout [UInt8], UnsafeMutableRawBufferPointer, () -> Bool) -> Int32 = BulkDirectoryReader.read,
+        read: @escaping @Sendable (String, inout [ScannedItem], inout [UInt8], () -> Bool) -> Int32,
         shouldStop: @escaping @Sendable () -> Bool,
         results: OSAllocatedUnfairLock<[Output?]>,
         cancelled: OSAllocatedUnfairLock<Bool>,
         transform: @escaping @Sendable (Folder, Int32, [ScannedItem], [UInt8]) -> Output
     ) {
         let nextIndex = OSAllocatedUnfairLock(initialState: 0)
-        let work: @Sendable (Int) -> Void = { workerIndex in
-            let buffer = buffers[workerIndex].raw
+        let work: @Sendable (Int) -> Void = { _ in
             while true {
                 if cancelled.withLock({ $0 }) || shouldStop() { break }
                 let index = nextIndex.withLock { current -> Int? in
@@ -213,7 +202,7 @@ nonisolated package enum BulkDirectoryReader {
                 var items: [ScannedItem] = []
                 var names: [UInt8] = []
                 let folder = folders[index]
-                let error = read(path(folder), &items, &names, buffer, shouldStop)
+                let error = read(path(folder), &items, &names, shouldStop)
                 if error == ECANCELED {
                     cancelled.withLock { $0 = true }
                 }
@@ -239,6 +228,8 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     private let store: IndexStore
     private let excluded: IndexExcludedFolders
     private let noiseFolders: Set<String>
+    /// What gives up on a folder that stops answering, for the index. Without it a folder is read where the scan runs.
+    private let reads: IndexFolderReads?
     private let shouldStop: @Sendable () -> Bool
     private let condition = NSCondition()
     private let cancelledState = OSAllocatedUnfairLock(initialState: false)
@@ -257,11 +248,12 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     /// - Parameters:
     ///   - excluded: absolute paths not to descend into (they still appear as entries).
     ///   - noiseFolders: absolute paths whose subtree is kept out of default search results.
-    package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>,
+    package init(store: IndexStore, excluded: Set<String>, noiseFolders: Set<String>, reads: IndexFolderReads? = nil,
                  shouldStop: @escaping @Sendable () -> Bool = { false }) {
         self.store = store
         self.excluded = IndexExcludedFolders(excluded)
         self.noiseFolders = noiseFolders
+        self.reads = reads
         self.shouldStop = shouldStop
     }
 
@@ -328,8 +320,9 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
     }()
 
     private func work(threads: Int) {
-        let buffer = BulkDirectoryReader.ReadBuffer()
-        defer { buffer.deallocate() }
+        // The index's folders are read on the reader's threads, into their buffers: only another scan reads here.
+        let buffer = reads == nil ? BulkDirectoryReader.ReadBuffer() : nil
+        defer { buffer?.deallocate() }
         var batchResults: [ScannedFolder] = []
         batchResults.reserveCapacity(Self.batchLimit)
 
@@ -338,11 +331,8 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
             guard !batch.isEmpty else { break }
             batchResults.removeAll(keepingCapacity: true)
             var batchScanned = 0
-            for job in batch {
-                if isCancelled { break }
-                var items: [ScannedItem] = []
-                var names: [UInt8] = []
-                let error = BulkDirectoryReader.read(job.path, items: &items, names: &names, buffer: buffer.raw) { self.isCancelled }
+            for (job, listing) in zip(batch, read(batch, with: buffer)) {
+                let error = listing.status, items = listing.items, names = listing.names
                 if error == ECANCELED { break }
                 // Work out child folder paths and noise classification before taking the store lock.
                 let prefix = job.path.hasSuffix("/") ? job.path : job.path + "/"
@@ -377,6 +367,22 @@ nonisolated package final class IndexScanner: @unchecked Sendable {
             if overflowed { cancel() }
             finish(adding: childJobs, scanned: batchScanned)
         }
+    }
+
+    /// The folders of `batch` as read, in order, as far as the scan was not cancelled. The index's are read through
+    /// `reads`, a whole batch on one thread; any other scan reads them here.
+    private func read(_ batch: [Job], with buffer: BulkDirectoryReader.ReadBuffer?) -> [IndexFolderReads.Listing] {
+        if let reads { return reads.readScanned(batch.map(\.path)) { self.isCancelled } }
+        guard let buffer else { return [] }
+        var listings: [IndexFolderReads.Listing] = []
+        for job in batch where !isCancelled {
+            var listing = IndexFolderReads.Listing(status: 0)
+            listing.status = BulkDirectoryReader.read(job.path, items: &listing.items, names: &listing.names,
+                                                      buffer: buffer.raw) { self.isCancelled }
+            listings.append(listing)
+            if listing.status == ECANCELED { break }
+        }
+        return listings
     }
 
     private func nextJobs(threads: Int) -> [Job] {

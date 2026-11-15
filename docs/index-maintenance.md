@@ -73,6 +73,127 @@ were spelled, so it never keeps the index from starting. A saved index that name
 or one longer than a path can be, is not one Strata wrote: it is not used, and the folders are scanned again.
 Content search keeps its own index and does not follow this list.
 
+## Other volumes
+
+A volume mounted inside a folder the index covers (a network share, a disk image, an external disk mounted in your
+home folder) holds another disk's files, or another machine's, and reading them can wait on it for good. The index
+leaves such a volume out like a folder you excluded, for as long as it is mounted: a scan does not read into it,
+and neither does anything that changes on it, of which the system does tell whoever watches the folder that holds
+it. Which volumes are mounted comes from the system's own table, read without asking any volume anything, so one
+that stopped answering is left out like any other. The table names a volume by where it is now, also after a folder
+above it was renamed.
+
+Only the index's worker reads that table: when it starts, with each configuration it is given, each time changes
+arrive, and before it reads what waited to be read, so before anything is read. A volume mounted since is left out
+at once: what the index held of the folder it now covers goes, and nothing on it is read. The folder of one that is
+gone is read again like a folder taken off the excluded list, unless you excluded it yourself. Each time, the
+worker says which volumes are mounted, and views take what is on one for another disk's and measure it as they
+measure those. With the index off no worker has looked, so a search of a folder reads the table itself.
+
+## The index turned off
+
+Settings ▸ Search & Index ▸ Index files turns the whole index off: nothing is indexed, watched or kept. Its worker
+ends for good, the way it stops at quit: a scan or refresh under way gives up, the event stream ends, the index is
+let go from memory, and last the saved index is removed with its stale temporaries, on the worker's own queue, so no
+save of that worker's can bring it back. Only that file goes: the previous format's stays for an older copy of Strata,
+and the content index keeps its own, though its background gathering stops while the index is off, since nothing
+shows its matches. What a retired worker still reports is not taken: each worker's results are told apart by the
+run they belong to. Turning the index on again starts a new worker only once the old one has ended, so the two are
+never held together and the new one never loads the file the old one is about to remove; it then scans everything.
+A folder that does not answer holds none of this up (see below). Launching with the index off removes an index
+saved by a run in which it was on, and starts no worker. The switch acts even when the preference already says so,
+as one changed by another copy of Strata does.
+
+With the index off, folders it would cover show no size until you ask (the Inspector, Calculate Size), since every
+size shown would be a walk of its own; Disk Usage is asking, so it measures. A folder that holds one macOS guards
+and you haven't opened, as your home folder does without Full Disk Access, is not walked for the size views show
+(the list, icons, Disk Usage, the Inspector), with the index on or off: the index sizes it without opening those
+folders, and a walk could not. A search of a folder reads
+the folder, leaving out what the index would: the folders macOS guards until you open them, Strata's own, and those
+you excluded, unless the search is inside one. Search across the Mac, Recents and Duplicates say that they need the
+index, with a button that opens the setting. When the switch changes, every pane's search starts over at once, and a
+folder read on the other side of the switch is let go, still reading or not. The search field searches the folder
+shown.
+
+## Folders that are only in the cloud
+
+A folder kept by a cloud provider (iCloud Drive, or one under `~/Library/CloudStorage`) can be on the Mac in name
+only: its contents are with the provider until something opens it. Reading such a folder makes macOS ask the
+provider to fetch it, and waits for as long as that takes. The index never does that. The threads that read for it
+are told not to fetch (`IOPOL_MATERIALIZE_DATALESS_FILES_OFF`, for those threads alone), so a folder that is only in
+the cloud says so at once and stays in the index as an entry that was never read, like any folder that could not be
+read. Files that are only in the cloud are listed like any other, by the folder that holds them: listing a folder
+that is on the Mac fetches nothing.
+
+A folder never read is read whole at its first change, whatever the change names, since everything else in it is as
+new to the index: so a folder that is on the Mac at last, because you opened it in Strata or elsewhere, is read by
+the change that says so. If it still cannot be listed, the items the change names are read by themselves, and it
+stays unread. A folder the index did read, and which is later only in the cloud again, keeps what was read of it.
+A listing of a folder tries the folders in it that were never read, so each folder there that is only in the cloud
+costs one read that fails at once.
+
+A folder the index holds without having read anything of it has no total, so views show no size for it and start
+no walk of it until you ask (the Inspector, Calculate Size, Disk Usage), as for a folder you excluded: a walk would
+have its provider fetch it. While the index applies changes elsewhere it stays that way, so a size you asked for is
+not taken back by them; only while everything is read, at a scan, or a change to the excluded list is applied, is it
+a folder the index is about to read. The folder that holds it is sized by what was read, and its allocated size
+reads as incomplete.
+
+The sizes a list works out for its rows by walking them, for folders outside the index or not yet in it, fetch
+nothing either. A row whose cloud badge says its folder is only in the cloud shows no size and starts no walk,
+unless its size is known already. The badge and the size have one source (`CloudStore`), so the size follows once
+the badge says the folder is here; a walk you asked for fetches what it measures, so the badges of that folder, and
+of what is in the folder shown, are read again when its size arrives. A walk that comes to a folder only in the
+cloud all the same, its state not read yet or its place none the badge covers, measures nothing of it. One deeper
+in a folder is passed over, and the size says it is not of everything; files that are only in the cloud count by
+their length, as the folder that holds them lists it.
+
+A size you ask for (the Inspector, Disk Usage) is another matter: its walk fetches what it needs and measures
+everything, and is not stopped because the index took the folder over or is busy. It goes on for as long as
+whoever asked still wants it: the Inspector until it shows something else or is hidden, Disk Usage until you leave
+it, and both until you leave the folder. What it measured stands for as long as the index's own total leaves part
+of the folder out, in the row and where rows are sorted by size; once the index has read all of it, the index's
+total is the one. Rows sorted by size are ordered by what they show: a row that shows none, as one left until asked
+does though the Inspector has measured its folder, is ordered as one that has none. Like every size a walk measured, it is measured again after Strata changes the folder or you
+reload. Only a folder the index has not read, or does not hold, is walked: one it has read, and which holds folders
+that are only in the cloud, shows the index's total of what is on the Mac, also where you ask.
+
+What a browser's walks measured is kept for every window to use. That browser lets go of its own, never of another
+window's, when it leaves a folder having measured many sizes, or closes: never as sizes arrive, since a selection
+of more folders than it keeps would then be measured over and over. The window hears once of the sizes that arrive
+in a stretch, and only if it shows one of them, so with thousands of folders selected the Inspector goes over the
+selection a few times a second, not once for every size.
+
+A search of a folder you ask for, with the index off, reads that folder itself and fetches what it finds there.
+
+## Folders that stop answering
+
+Leaving other volumes alone and never fetching from a provider keep the index away from most reads that could
+hang. What is left, a failing disk or a file system that stops answering, can still hold a
+read for good: the system call never returns and cannot be interrupted. Every folder the index reads, in a full scan and in a refresh alike,
+and every single item, is therefore read through `IndexFolderReads`, on a thread kept for reading, while the index's
+own thread waits for it only as long as the read gets somewhere. A read that gets no further for thirty seconds is
+given up: the folder stays unread, as one that could not be opened does, and the scan or refresh goes on with the
+rest. A long listing counts as getting somewhere with every batch it returns, so a huge folder is never given up for
+being large. A full scan hands its folders over a batch at a time, up to thirty-two to one thread, so the handing
+over costs it nothing that shows when measured; each folder of a batch has its own patience, and what follows one
+given up is read on another thread. An item that does not answer says so of the folder it is in, which is then not
+listed in its place.
+
+The thread of a read given up is left where it is. What it finds, if it ever returns, is dropped; until then the
+folder and everything inside it are refused at once, so a folder that never answers costs one thread and thirty
+seconds once, however often file events or refreshes want it. After that it is a folder whose read failed, like any
+other: it is read again when it next changes, or when the index is rebuilt. At most thirty-two reads are given up
+at one time by one run of the index; past that a read is waited for, as every read was before, rather than give a
+thread away for each. The folders the index is made of, your home folder and Applications, are always waited for:
+an index without one of them would take the place of the index that has it.
+
+Told to stop (quitting, the index turned off, a rebuild taking over), a read that can notice does at once, and one
+that cannot is left after half a second, however many folders do not answer, so neither quitting nor turning the
+index off waits on one. Nothing is held against the folder of a read left that way, which may be slow and no more:
+the rebuild that follows reads it, and the read left keeps its thread until it returns. A read runs at the priority
+of whoever asked for it. A thread kept for reading ends once nothing has used it for thirty seconds, all but one.
+
 ## Trees that wait for quiet
 
 Changes inside a cache, dependency or build folder the index has already read wait for five seconds of quiet,
