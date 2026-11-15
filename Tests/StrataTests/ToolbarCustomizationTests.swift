@@ -271,6 +271,34 @@ struct ToolbarCustomizationTests {
         withExtendedLifetime((environment, state)) {}
     }
 
+    @Test func hiddenFilesButtonTogglesTheSettingAndSaysWhatAClickDoes() async throws {
+        let tree = try TestTree("left/", "right/"), state = try TestTree()
+        let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
+        defer { owner.window?.contentViewController = nil; owner.panes.forEach { $0.stopBackgroundWork() } }
+        for pane in owner.panes { await pane.browser.directoryReads.task?.value }
+        let id = BrowserToolbar.identifier(.toggleHiddenFiles)
+        #expect(!BrowserToolbar.defaults.contains(id) && BrowserToolbar.allowed.filter { $0 == id }.count == 1)
+        let preferences = environment.services.preferences
+        preferences.showHidden = false
+        owner.window?.makeFirstResponder(owner.panes[0].browser.focusView)
+        let toolbar = try #require(owner.window?.toolbar)
+        toolbar.itemIdentifiers = [id]
+        let item = toolbar.items[0]
+        #expect(item.label == "Show Hidden Files" && item.toolTip == "Show Hidden Files")
+        #expect(owner.validateToolbarItem(item))
+
+        owner.performToolbarCommand(item)
+        #expect(preferences.showHidden)
+        #expect(owner.validateToolbarItem(item))
+        #expect(item.label == "Hide Hidden Files" && item.toolTip == "Hide Hidden Files" && item.paletteLabel == "Show Hidden Files")
+
+        // ⇧⌘. or another window changes the setting: the button follows on its next validation.
+        preferences.showHidden = false
+        _ = owner.validateToolbarItem(item)
+        #expect(item.label == "Show Hidden Files")
+        withExtendedLifetime((environment, state)) {}
+    }
+
     @Test func removedAndForeignItemsAndNativeEditingCannotTriggerFileCommands() async throws {
         let tree = try TestTree("left/a", "right/a"), state = try TestTree()
         let environment = try PreviewEnvironment(state), owner = controller(tree, environment)
