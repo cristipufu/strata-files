@@ -85,7 +85,12 @@ struct StrataCommand {
     static let biggerIconsAlias = Self(String(localized: "Bigger Icons"), #selector(BrowserViewController.biggerIcons(_:)), .browser, "=", id: "biggerIcons:~1", symbol: "plus.magnifyingglass")
     static let smallerIcons = Self(String(localized: "Smaller Icons"), #selector(BrowserViewController.smallerIcons(_:)), .browser, "-", symbol: "minus.magnifyingglass")
     static let showViewOptions = Self(String(localized: "Show View Options…"), #selector(BrowserViewController.showViewOptions(_:)), .browser, "j", symbol: "slider.horizontal.3")
-    static let toggleHiddenFiles = Self(String(localized: "Show Hidden Files"), #selector(BrowserViewController.toggleHiddenFiles(_:)), .browser, ".", [.command, .shift], symbol: "eye.slash")
+    static let toggleHiddenFiles = Self(hiddenFilesTitle(showing: false), #selector(BrowserViewController.toggleHiddenFiles(_:)), .browser, ".", [.command, .shift], symbol: "eye.slash")
+    /// What toggling hidden files does now: the title its context menu, the palette and its toolbar button switch
+    /// to. The View menu keeps one title, and a checkmark.
+    static func hiddenFilesTitle(showing: Bool) -> String {
+        showing ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
+    }
     static let toggleFoldersFirst = Self(String(localized: "Keep Folders on Top"), #selector(BrowserViewController.toggleFoldersFirst(_:)), .browser, symbol: "folder")
     static let toggleDualPane = Self(String(localized: "Dual Pane"), #selector(BrowserWindowController.toggleDualPane(_:)), .window, "\\", symbol: "rectangle.split.2x1")
     static let focusOtherPane = Self(String(localized: "Focus Other Pane"), #selector(BrowserWindowController.focusOtherPane(_:)), .window, "\\", [.command, .option], symbol: "arrow.left.arrow.right")

@@ -44,7 +44,7 @@ import AppKit
         collection.setAccessibilityLabel(String(localized: "Icons", comment: "View mode: items as icons"))
         collection.onClose = { [weak self] in self?.onClose?() }
         collection.onActivate = { [weak self] in self?.activate() }
-        collection.onContextMenu = { [weak self] in self?.onContextMenu?() }
+        collection.onContextMenu = { [weak self] in self?.menuForSelection() }
         collection.onFocusChange = { [weak self] in self?.refreshSelectionState() }
         ThemeStyle.bind(collection, to: .content)
         scroll.documentView = collection
@@ -131,6 +131,13 @@ import AppKit
         return onDrag?(items[indexPath.item])
     }
 
+    /// The menu for what a right click just selected, or left unselected. A selection made in code tells no delegate,
+    /// so it is reported like one made by a click before the menu is built: the menu acts on what is shown selected.
+    private func menuForSelection() -> NSMenu? {
+        selectionChanged()
+        return onContextMenu?()
+    }
+
     private func selectionChanged() {
         guard !applying, isActive, !isClosed else { return }
         let item = collection.selectionIndexPaths.first.flatMap {
@@ -195,12 +202,23 @@ import AppKit
 
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
-        if event.clickCount == 2, indexPathForItem(at: convert(event.locationInWindow, from: nil)) != nil { onActivate?() }
+        if event.clickCount == 2 { activate(at: convert(event.locationInWindow, from: nil)) }
+    }
+
+    /// A double click opens the item it is on. The collection view asks the cell, which is hit on its icon and name
+    /// only (`GridItemView.hitTest`): beside them a click is on empty space, and opens none.
+    func activate(at point: NSPoint) {
+        if indexPathForItem(at: point) != nil { onActivate?() }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        if let index = indexPathForItem(at: convert(event.locationInWindow, from: nil)) { selectionIndexPaths = [index] }
-        else { selectionIndexPaths = [] }
+        menu(at: convert(event.locationInWindow, from: nil))
+    }
+
+    /// The menu for a right click at `point`: on an item that item is selected alone, and on empty space, the rest
+    /// of a cell included, nothing stays selected.
+    func menu(at point: NSPoint) -> NSMenu? {
+        selectionIndexPaths = indexPathForItem(at: point).map { [$0] } ?? []
         return onContextMenu?()
     }
 }

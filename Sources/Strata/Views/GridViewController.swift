@@ -367,14 +367,14 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
     }
 
     /// The item whose icon or name is at `point`; the rest of a cell is empty space, as for a click.
-    fileprivate func itemIndex(at point: NSPoint) -> Int? {
+    func itemIndex(at point: NSPoint) -> Int? {
         guard let index = layout.index(at: point), entries.indices.contains(index),
               let item = collectionView.item(at: IndexPath(item: index, section: 0)) as? GridItem,
               item.itemView.covers(item.itemView.convert(point, from: collectionView)) else { return nil }
         return index
     }
 
-    fileprivate func contextMenu(at point: NSPoint) -> NSMenu? {
+    func contextMenu(at point: NSPoint) -> NSMenu? {
         if let index = itemIndex(at: point) {
             if !collectionView.selectionIndexPaths.contains(IndexPath(item: index, section: 0)) {
                 collectionView.selectionIndexPaths = [IndexPath(item: index, section: 0)]
@@ -420,13 +420,15 @@ final class GridViewController: NSViewController, FileItemCollection, FileCollec
 
     func focusChanged() { refreshVisibleItems() }
 
-    fileprivate func noteClickSelection() {
-        // Mouse selection moves the keyboard lead to the clicked item.
-        let flags = NSApp.currentEvent?.modifierFlags ?? []
-        if let point = collectionView.lastMouseDownPoint, let index = layout.index(at: point), entries.indices.contains(index) {
-            lead = index
-            if !flags.contains(.shift) { anchor = index }
+    /// Mouse selection moves the keyboard lead to the item clicked at `point`. A selection rectangle starts on none,
+    /// in the empty part of a cell as well: the lead then only stays among what is selected.
+    func noteSelection(byMouseDownAt point: NSPoint?) {
+        guard let index = point.flatMap(itemIndex(at:)) else {
+            lead = Self.lead(lead, keptIn: collectionView.selectionIndexPaths)
+            return
         }
+        lead = index
+        if NSApp.currentEvent?.modifierFlags.contains(.shift) != true { anchor = index }
     }
 
     func index(of url: URL) -> Int? { indexByKey[url.fileViewKey] }
@@ -493,7 +495,7 @@ extension GridViewController: NSCollectionViewDataSource, NSCollectionViewDelega
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        noteClickSelection()
+        noteSelection(byMouseDownAt: self.collectionView.lastMouseDownPoint)
         reportSelection()
     }
 

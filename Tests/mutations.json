@@ -11228,5 +11228,264 @@
     "replace": "                guard false, now >= toldToStop, now - toldToStop >= stopGrace, let read = request.leaveStopped() else { continue }",
     "rule": "Folders that stop answering: turning the index off does not wait for a read that never returns",
     "tests": "IndexSwitchTests/retiringDoesNotWaitForAReadThatNeverReturnsAndNothingIsReadAfterIt"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "        guard !read.isLonger else { throw Invalid(\"Theme file is larger than 16 KiB\") }\n",
+    "replace": "        _ = read.isLonger\n",
+    "rule": "Your own themes: a file longer than a theme may be is no theme",
+    "tests": "ThemeCatalogTests/aThemeFileIsReadNoFurtherThanAThemeMayBeLong"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "        do { read = try TextFile.readPrefix(url, limit: maximumBytes) }\n",
+    "replace": "        do { read = (try Data(contentsOf: url), false) }\n",
+    "rule": "Your own themes: a theme file is read no further than a theme may be long",
+    "tests": "ThemeCatalogTests/aThemeFileIsReadNoFurtherThanAThemeMayBeLong"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "            guard seen < limit else {",
+    "replace": "            guard seen < Int.max else {",
+    "rule": "Your own themes: no more of the themes folder is looked at than its limit",
+    "tests": "ThemeCatalogTests/noMoreOfAThemesFolderIsLookedAtThanItsLimit"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "            return reason == ENOTDIR || (reason == ENOENT && isMissing(folder)) ? [] : nil\n",
+    "replace": "            _ = reason\n            return []\n",
+    "rule": "Your own themes: a themes folder that is there and could not be listed is no empty folder",
+    "tests": "ThemeCatalogTests/aFolderOrAFileThatCouldNotBeReadIsNotTakenForGone"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "        return stat(folder.deletingLastPathComponent().path, &status) == 0\n",
+    "replace": "        return true\n",
+    "rule": "Your own themes: a themes folder whose own parent can't be reached is not missing",
+    "tests": "ThemeCatalogTests/aFolderOrAFileThatCouldNotBeReadIsNotTakenForGone"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "                if error is Unread { found.unread.append(url.lastPathComponent) }\n",
+    "replace": "",
+    "rule": "Your own themes: a theme file that could not be read is named, and nothing is said of it",
+    "tests": "ThemeCatalogTests/aFolderOrAFileThatCouldNotBeReadIsNotTakenForGone"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "        catch { throw Unread(description: \"The file can't be read: \\(error)\") }\n",
+    "replace": "        catch { throw Invalid(\"The file can't be read: \\(error)\") }\n",
+    "rule": "Your own themes: a theme file that is there and can't be read is not taken for gone",
+    "tests": "ThemeCatalogTests/aFolderOrAFileThatCouldNotBeReadIsNotTakenForGone"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "$0.rawValue == definition.id || $0.name == definition.name || $0.title == definition.name",
+    "replace": "$0.rawValue == definition.id",
+    "rule": "Your own themes: a theme of yours is never called as the system's or one of Strata's",
+    "tests": "ThemeCatalogTests/aThemeOfYoursIsCalledAsItsFileSaysAndNeverAsOneOfStratas"
+  },
+  {
+    "file": "Strata/App/ThemeCatalog.swift",
+    "find": "                guard used.take(definition) else { throw Invalid(\"Another of your themes already uses this ID, name or order\") }\n",
+    "replace": "                _ = used.take(definition)\n",
+    "rule": "Your own themes: a theme of yours repeats no other's ID, name or order",
+    "tests": "ThemeCatalogTests/userThemesLoadAfterTheBundledOnesAndAMistakeSkipsOnlyItsOwnFile"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "        let found = await OwnThread.run { [self] in themes(in: folder) }\n",
+    "replace": "        let found = themes(in: folder)\n",
+    "rule": "Your own themes: the themes folder is read away from the main thread",
+    "tests": "UserThemesTests/theFolderIsReadAwayFromTheMainThreadAndItsThemesJoinTheOthers"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "                guard let folder = state.folder else { return .some(nil) }\n",
+    "replace": "                let folder = state.folder ?? URL(filePath: \"/nowhere\")\n",
+    "rule": "Your own themes: only a store told where its themes folder is reads one",
+    "tests": "UserThemesTests/onlyAStoreToldWhereItsFolderIsReadsOne"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "            guard !state.hasAskedFolder else { return }\n",
+    "replace": "",
+    "rule": "Your own themes: once the themes folder was asked about, the kept copy of the chosen theme says nothing",
+    "tests": "UserThemesTests/onceTheFolderWasAskedAboutTheKeptCopySaysNothing"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "        let kept = ThemeCatalog.accepted([(name, file)], besides: taken)\n",
+    "replace": "        let kept = ThemeCatalog.accepted([(name, file)], besides: [])\n",
+    "rule": "Your own themes: the kept copy of the chosen theme is checked like a file of the themes folder",
+    "tests": "UserThemesTests/aKeptCopyIsCheckedLikeAFileOfTheFolderAndNeverRewritten"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "        defaults.set(file, forKey: Self.keptFileKey)\n",
+    "replace": "        if let file { defaults.set(file, forKey: Self.keptFileKey) }\n",
+    "rule": "Your own themes: a choice that is no theme of yours forgets the kept copy of an earlier one",
+    "tests": "UserThemesTests/aBundledChoiceKeepsNoCopyAndForgetsAnEarlierOne"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "                guard state.isReading else {\n                    state.isReading = true\n                    return folder\n                }\n",
+    "replace": "                if !state.isReading || state.isReading { return folder }\n",
+    "rule": "Your own themes: one read of the themes folder is under way at a time",
+    "tests": "UserThemesTests/askedAboutWhileItIsReadTheFolderIsReadOnceMoreAndNoMore"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "                guard state.nextReader == nil else { return .some(nil) }\n",
+    "replace": "",
+    "rule": "Your own themes: only the first to ask about the themes folder during a read waits to read it",
+    "tests": "UserThemesTests/askedAboutWhileItIsReadTheFolderIsReadOnceMoreAndNoMore"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "        next?.resume(returning: folder)\n",
+    "replace": "        _ = (next, folder)\n",
+    "rule": "Your own themes: whoever waited to read the themes folder reads once the read under way has ended",
+    "tests": "UserThemesTests/askedAboutWhileItIsReadTheFolderIsReadOnceMoreAndNoMore"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "        guard let found = reader(folder) else { return nil }\n",
+    "replace": "        let found = reader(folder) ?? ThemeCatalog.FolderRead()\n",
+    "rule": "Your own themes: a themes folder that could not be listed says nothing, and the kept copy stays",
+    "tests": "UserThemesTests/aFolderThatCouldNotBeListedSaysNothingAndTheKeptCopyStillDrawsTheTheme"
+  },
+  {
+    "file": "Strata/App/UserThemes.swift",
+    "find": "            found.unread.compactMap { name in state.files[name].map { (name: name, data: $0) } }\n",
+    "replace": "            [String]().compactMap { name in state.files[name].map { (name: name, data: $0) } }\n",
+    "rule": "Your own themes: a theme file that could not be read stays as it was last known",
+    "tests": "UserThemesTests/aThemeFileThatCouldNotBeReadStaysAsItWasLastKnown"
+  },
+  {
+    "file": "Strata/App/ColorTheme.swift",
+    "find": "        userThemes.keepFile(of: palette, in: defaults)\n",
+    "replace": "",
+    "rule": "Your own themes: the chosen theme is kept with the choice for the next launch",
+    "tests": "UserThemesTests/theChosenThemeIsDrawnAtTheNextLaunchBeforeItsFolderIsRead"
+  },
+  {
+    "file": "Strata/App/ColorTheme.swift",
+    "find": "lhs.rawValue == rhs.rawValue && lhs.definition == rhs.definition",
+    "replace": "lhs.rawValue == rhs.rawValue",
+    "rule": "Your own themes: a theme whose file changed is another theme under its ID",
+    "tests": "UserThemesTests/aThemeFileThatChangedIsAnotherThemeUnderItsID"
+  },
+  {
+    "file": "Strata/App/ColorTheme.swift",
+    "find": "        palette.rawValue == Self.chosenID(in: defaults) && tintsWindow == Self.tintsWindow(in: defaults)\n",
+    "replace": "        self == Self(palette: ColorTheme.named(Self.chosenID(in: defaults), among: .shared) ?? .system, tintsWindow: Self.tintsWindow(in: defaults))\n",
+    "rule": "Your own themes: choosing the system's while the chosen theme's file is gone is a choice, and is saved",
+    "tests": "UserThemesTests/choosingTheSystemsWhileTheChosenThemesFileIsGoneIsAChoice"
+  },
+  {
+    "file": "Strata/Settings/ThemePreferences.swift",
+    "find": "        userThemes.keepFile(of: colorThemeOptions(among: userThemes).palette, in: defaults)\n",
+    "replace": "",
+    "rule": "Your own themes: the kept copy follows the themes folder when the chosen theme's file changes or goes",
+    "tests": "UserThemesTests/whenTheFolderHoldsOtherThemesTheKeptCopyFollowsAndWindowsAreTold"
+  },
+  {
+    "file": "Strata/Settings/ThemePreferences.swift",
+    "find": "        guard await userThemes.read() else { return }\n",
+    "replace": "        _ = await userThemes.read()\n",
+    "rule": "Your own themes: windows are told of the themes folder only when it holds other themes than known",
+    "tests": "UserThemesTests/whenTheFolderHoldsOtherThemesTheKeptCopyFollowsAndWindowsAreTold"
+  },
+  {
+    "file": "Strata/Settings/ThemePreferences.swift",
+    "find": "        guard !options.isSaved(in: defaults) else { return }\n",
+    "replace": "",
+    "rule": "Your own themes: choosing what is saved already saves and tells nothing",
+    "tests": "UserThemesTests/choosingTheSystemsWhileTheChosenThemesFileIsGoneIsAChoice"
+  },
+  {
+    "file": "Strata/Settings/ThemeChoices.swift",
+    "find": "        if self.palettes != palettes { self.palettes = palettes }\n",
+    "replace": "",
+    "rule": "Your own themes: Settings shows the themes as the folder was last read, whatever pane was in front",
+    "tests": "UserThemesTests/settingsShowsTheThemesAndTheChoiceAsTheyAreNow"
+  },
+  {
+    "file": "Strata/Settings/ThemeChoices.swift",
+    "find": "        if self.chosen != chosen { self.chosen = chosen }\n",
+    "replace": "",
+    "rule": "Your own themes: Settings shows the theme chosen as it is now",
+    "tests": "UserThemesTests/settingsShowsTheThemesAndTheChoiceAsTheyAreNow"
+  },
+  {
+    "file": "Strata/Settings/ThemeChoices.swift",
+    "find": "        guard chosen.palette != .system else { return }\n",
+    "replace": "",
+    "rule": "Your own themes: a tint asked for while the system's colors are shown saves nothing over the theme chosen",
+    "tests": "UserThemesTests/settingsShowsTheThemesAndTheChoiceAsTheyAreNow"
+  },
+  {
+    "file": "Strata/Settings/SettingsWindowController.swift",
+    "find": "        Task { [preferences, userThemes] in await preferences.readThemes(of: userThemes) }\n",
+    "replace": "",
+    "rule": "Your own themes: the themes folder is read again as Settings comes forward",
+    "tests": "UserThemesTests/aThemeFileAddedSinceLaunchShowsUpAsSettingsComesForward"
+  },
+  {
+    "file": "Strata/Browser/FileOutlineView.swift",
+    "find": "              cell.isDragHandle(at: cell.convert(mouseDownPoint, from: self)) else { return false }",
+    "replace": "              true else { return false }",
+    "rule": "Selecting by dragging: a list row is picked up only by its icon and name",
+    "tests": "RubberBandSelectionTests/aListRowIsDraggedOnlyFromItsIconAndName"
+  },
+  {
+    "file": "Strata/Views/GridViewController.swift",
+    "find": "              item.itemView.covers(item.itemView.convert(point, from: collectionView)) else { return nil }",
+    "replace": "              true else { return nil }",
+    "rule": "Selecting by dragging: in Icons the rest of a cell is empty space, and its menu acts on nothing selected",
+    "tests": "RubberBandSelectionTests/inIconsTheRestOfACellIsEmptySpaceForAClickAndForItsMenu"
+  },
+  {
+    "file": "Strata/Views/GridItem.swift",
+    "find": "        iconBoxRect.contains(point) || nameRect.contains(point)\n",
+    "replace": "        bounds.contains(point)\n",
+    "rule": "Selecting by dragging: an icon cell is hit only on its icon and name",
+    "tests": "RubberBandSelectionTests/anIconCellIsHitOnlyOnItsIconAndName"
+  },
+  {
+    "file": "Strata/Views/GridItem.swift",
+    "find": "        iconBoxRect.contains(point) || nameRect.contains(point)\n",
+    "replace": "        bounds.contains(point)\n",
+    "rule": "Selecting by dragging: in a Space preview the rest of a cell is empty space for its menu and a double click",
+    "tests": "RubberBandSelectionTests/inASpacePreviewTheRestOfACellIsEmptySpaceForItsMenuAndADoubleClick"
+  },
+  {
+    "file": "Strata/Previewing/PreviewGridController.swift",
+    "find": "        if indexPathForItem(at: point) != nil { onActivate?() }\n",
+    "replace": "        onActivate?()\n",
+    "rule": "Selecting by dragging: in a Space preview a double click on empty space opens nothing",
+    "tests": "RubberBandSelectionTests/inASpacePreviewTheRestOfACellIsEmptySpaceForItsMenuAndADoubleClick"
+  },
+  {
+    "file": "Strata/Previewing/PreviewGridController.swift",
+    "find": "        selectionIndexPaths = indexPathForItem(at: point).map { [$0] } ?? []\n",
+    "replace": "        if let path = indexPathForItem(at: point) { selectionIndexPaths = [path] }\n",
+    "rule": "Selecting by dragging: in a Space preview a right click on empty space leaves nothing selected for its menu",
+    "tests": "RubberBandSelectionTests/inASpacePreviewTheRestOfACellIsEmptySpaceForItsMenuAndADoubleClick"
+  },
+  {
+    "file": "Strata/Previewing/PreviewGridController.swift",
+    "find": "        selectionChanged()\n        return onContextMenu?()\n",
+    "replace": "        return onContextMenu?()\n",
+    "rule": "Selecting by dragging: in a Space preview the menu is for what the right click selected, never for what was selected before",
+    "tests": "RubberBandSelectionTests/inASpacePreviewTheRestOfACellIsEmptySpaceForItsMenuAndADoubleClick"
+  },
+  {
+    "file": "Strata/Views/GridViewController.swift",
+    "find": "        guard let index = point.flatMap(itemIndex(at:)) else {\n",
+    "replace": "        guard let index = point.flatMap({ layout.index(at: $0) }) else {\n",
+    "rule": "Selecting by dragging: in Icons a selection rectangle leaves the keyboard among what it selected",
+    "tests": "RubberBandSelectionTests/inIconsASelectionRectangleLeavesTheKeyboardAmongWhatItSelected"
   }
 ]

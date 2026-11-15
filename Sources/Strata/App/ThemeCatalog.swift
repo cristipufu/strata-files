@@ -4,7 +4,7 @@ import StrataSupport
 private final class ThemeBundleMarker {}
 
 /// A contributed palette supplies color choices; native drawing and accessibility stay in ThemeStyle.
-nonisolated package struct ThemeDefinition: Decodable, Sendable {
+nonisolated package struct ThemeDefinition: Decodable, Equatable, Sendable {
     package let id: String
     package let name: String
     package let order: Int
@@ -13,7 +13,7 @@ nonisolated package struct ThemeDefinition: Decodable, Sendable {
     package let lightShift: CGFloat
     package let darkShift: CGFloat
     /// A published scheme states its own colors for each appearance; nil derives them from the seed.
-    package let colors: (light: ThemeColors, dark: ThemeColors)?
+    package let colors: ThemeAppearances?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case version, id, name, comment, order, seed, tintStrength, lightnessShift, light, dark
@@ -58,7 +58,7 @@ nonisolated package struct ThemeDefinition: Decodable, Sendable {
             guard light.isReadable(dark: false), dark.isReadable(dark: true) else {
                 throw ThemeCatalog.Invalid("Stated colors must keep text readable in their appearance")
             }
-            colors = (light, dark)
+            colors = ThemeAppearances(light: light, dark: dark)
             tintStrength = 1
             lightShift = 0
             darkShift = 0
@@ -81,8 +81,13 @@ nonisolated package struct ThemeDefinition: Decodable, Sendable {
     }
 }
 
+/// A published scheme's own colors, a set for each appearance.
+nonisolated package struct ThemeAppearances: Equatable, Sendable {
+    package let light, dark: ThemeColors
+}
+
 /// One appearance of a published scheme, in its own sRGB values, such as Catppuccin’s Latte or Mocha.
-nonisolated package struct ThemeColors: Decodable, Sendable {
+nonisolated package struct ThemeColors: Decodable, Equatable, Sendable {
     package let content, sidebar, inspector, preview, chrome, alternatingRow: ThemeRGB
     /// Selected names are black on a light selection and white on a dark one.
     package let selection: ThemeRGB
@@ -159,69 +164,169 @@ nonisolated package enum ThemeCatalog {
         }
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" }
-        guard !files.isEmpty, files.count <= 128 else { throw Invalid("Expected 1–128 theme files") }
+        guard !files.isEmpty, files.count <= maximumThemes else { throw Invalid("Expected 1–128 theme files") }
         return try load(files.map { ($0.lastPathComponent, try Data(contentsOf: $0)) })
     }
 
-    /// Themes people add without rebuilding Strata: `<id>.json` files in the bundled format, read once at launch.
-    package static var userFolder: URL {
-        URL.applicationSupportDirectory.appending(path: "Strata/Themes", directoryHint: .isDirectory)
-    }
+    /// A theme file is small, and a folder of themes short: nothing longer is read, and nothing past these is looked at.
+    package static let maximumBytes = 16_384
+    package static let maximumThemes = 128
+    package static let maximumEntries = 1_024
 
-    /// The user's themes, listed after the bundled ones.
-    package static let user: [ColorTheme] = loadUser(from: userFolder, besides: bundled)
+    package typealias File = (name: String, data: Data)
 
-    /// Reads the folder's JSON files; a missing or unreadable folder means no user themes.
-    package static func loadUser(from folder: URL, besides taken: [ColorTheme]) -> [ColorTheme] {
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
-            return []
+    /// What reading a folder of the user's themes found.
+    package struct FolderRead: Sendable {
+        /// The theme files that were read.
+        package var files: [File]
+        /// The names of theme files that are there and could not be read: this read says nothing of them.
+        package var unread: [String]
+
+        package init(files: [File] = [], unread: [String] = []) {
+            self.files = files
+            self.unread = unread
         }
-        let files = urls.filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        return loadUser(files.compactMap { url in
-            guard let data = try? Data(contentsOf: url) else {
-                NSLog("Strata skipped the theme %@: the file can't be read", url.lastPathComponent)
-                return nil
-            }
-            return (url.lastPathComponent, data)
-        }, besides: taken)
     }
 
-    /// Checks every file with the bundled rules, one at a time: a file that's invalid, or repeats an ID or name already
-    /// taken or another user theme's order, is logged and skipped, so one mistake never hides the other themes.
-    package static func loadUser(_ files: [(name: String, data: Data)], besides taken: [ColorTheme]) -> [ColorTheme] {
-        var accepted: [(name: String, data: Data)] = []
-        var themes: [ColorTheme] = []
+    /// A theme file that is there and gave no bytes this time.
+    package struct Unread: Error, CustomStringConvertible {
+        package let description: String
+    }
+
+    /// Reads the theme files of `folder`, a folder of the user's. Nil when the folder is there and could not be
+    /// listed: a folder that was not read is no empty folder. A file that is no theme file is logged and skipped, and
+    /// one that could not be read is logged and named as unread.
+    package static func read(folder: URL) -> FolderRead? {
+        guard let files = themeFiles(in: folder) else {
+            NSLog("Strata could not read its themes folder")
+            return nil
+        }
+        var found = FolderRead()
+        for url in files {
+            do { found.files.append((url.lastPathComponent, try read(url))) }
+            catch {
+                NSLog("Strata skipped the theme %@: %@", url.lastPathComponent, String(describing: error))
+                if error is Unread { found.unread.append(url.lastPathComponent) }
+            }
+        }
+        return found
+    }
+
+    /// The folder's `.json` entries by name, from no more of its entries than `limit`: what the folder holds is the
+    /// user's, and may be anything. None when the folder is missing, or what is there is no folder; nil when it
+    /// could not be listed.
+    package static func themeFiles(in folder: URL, lookingAt limit: Int = maximumEntries) -> [URL]? {
+        guard let directory = opendir(folder.path) else {
+            let reason = errno
+            return reason == ENOTDIR || (reason == ENOENT && isMissing(folder)) ? [] : nil
+        }
+        defer { closedir(directory) }
+        var files: [URL] = []
+        var seen = 0
+        while true {
+            errno = 0
+            guard let entry = readdir(directory) else {
+                guard errno == 0 else { return nil }
+                break
+            }
+            let name = DirectoryEntryName.read(entry)
+            if name == "." || name == ".." { continue }
+            guard seen < limit else {
+                NSLog("Strata looked at the first %d items of its themes folder only", limit)
+                break
+            }
+            seen += 1
+            if let name, (name as NSString).pathExtension == "json" { files.append(folder.appending(path: name)) }
+        }
+        return files.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// Whether the folder that would hold `folder` is there and holds nothing by its name. A link by that name to a
+    /// folder that is away, and a folder whose own parent can't be reached, are not missing: they could not be read.
+    private static func isMissing(_ folder: URL) -> Bool {
+        var status = stat()
+        guard lstat(folder.path, &status) != 0, errno == ENOENT else { return false }
+        return stat(folder.deletingLastPathComponent().path, &status) == 0
+    }
+
+    /// A theme file's bytes: a regular file's, read no further than a theme may be long. Opening it never waits, so
+    /// a pipe or a device named like a theme is refused where reading it whole would hold whoever reads. Throws
+    /// `Unread` for a file that is there and can't be read now (only in the cloud, or not permitted), and `Invalid`
+    /// for what is no theme file, or is gone: a link whose target is missing among them.
+    package static func read(_ url: URL) throws -> Data {
+        // Through a link as well: what is asked about is the file that would be read.
+        var status = stat()
+        if stat(url.path, &status) == 0, DatalessFile.isDataless(status) {
+            throw Unread(description: "The file is only in the cloud")
+        }
+        let read: (data: Data, isLonger: Bool)
+        do { read = try TextFile.readPrefix(url, limit: maximumBytes) }
+        catch is TextFile.NotText { throw Invalid("The file is no regular file") }
+        catch POSIXError.ENOENT { throw Invalid("The file is gone") }
+        catch { throw Unread(description: "The file can't be read: \(error)") }
+        guard !read.isLonger else { throw Invalid("Theme file is larger than 16 KiB") }
+        return read.data
+    }
+
+    /// The user's themes among `files`, in their order, with the files they were read from by name. Every file is
+    /// checked once, with the bundled rules: a file that's invalid, or repeats an ID or name `taken` or another of
+    /// the user's themes already has, or that theme's order, is logged and skipped, so one mistake never hides the
+    /// other themes. A name is taken as its theme is called untranslated and as it is shown in the app's language.
+    package static func accepted(_ files: [File], besides taken: [ColorTheme]) -> (themes: [ColorTheme], files: [String: Data]) {
+        var used = Used()
+        var definitions: [ThemeDefinition] = []
+        var kept: [String: Data] = [:]
         for file in files {
             do {
-                guard accepted.count < 128 else { throw Invalid("More than 128 user themes") }
-                let loaded = try load(accepted + [file])
-                guard let theme = loaded.first(where: { $0.rawValue + ".json" == file.name }),
-                      !taken.contains(where: { $0.rawValue == theme.rawValue || $0.title == theme.title }) else {
-                    throw Invalid("A bundled theme already uses this ID or name")
+                guard definitions.count < maximumThemes else { throw Invalid("More than 128 user themes") }
+                let definition = try definition(in: file)
+                guard !taken.contains(where: { $0.rawValue == definition.id || $0.name == definition.name || $0.title == definition.name }) else {
+                    throw Invalid("A theme of Strata's already uses this ID or name")
                 }
-                accepted.append(file)
-                themes = loaded
+                guard used.take(definition) else { throw Invalid("Another of your themes already uses this ID, name or order") }
+                definitions.append(definition)
+                kept[file.name] = file.data
             } catch {
                 NSLog("Strata skipped the theme %@: %@", file.name, String(describing: error))
             }
         }
-        return themes
+        return (definitions.sorted { $0.order < $1.order }.map { ColorTheme(definition: $0, translatesName: false) }, kept)
     }
 
     /// This same loader validates new files in tests, without changing the application's catalog or preferences.
-    package static func load(_ files: [(name: String, data: Data)]) throws -> [ColorTheme] {
-        guard files.count <= 128 else { throw Invalid("Too many theme files") }
-        var ids = Set<String>(), names = Set<String>(), orders = Set<Int>()
+    package static func load(_ files: [File]) throws -> [ColorTheme] {
+        guard files.count <= maximumThemes else { throw Invalid("Too many theme files") }
+        var used = Used()
         let themes = try files.map { file in
-            guard file.data.count <= 16_384 else { throw Invalid("Theme file is larger than 16 KiB: \(file.name)") }
-            let definition = try JSONDecoder().decode(ThemeDefinition.self, from: file.data)
-            guard file.name == definition.id + ".json",
-                  ids.insert(definition.id).inserted, names.insert(definition.name).inserted,
-                  orders.insert(definition.order).inserted else {
+            let definition = try definition(in: file)
+            guard used.take(definition) else {
                 throw Invalid("Theme filename, ID, name and order must be unique: \(file.name)")
             }
             return definition
         }.sorted { $0.order < $1.order }
-        return themes.map(ColorTheme.init(definition:))
+        return themes.map { ColorTheme(definition: $0, translatesName: true) }
+    }
+
+    private static func definition(in file: File) throws -> ThemeDefinition {
+        guard file.data.count <= maximumBytes else { throw Invalid("Theme file is larger than 16 KiB: \(file.name)") }
+        let definition = try JSONDecoder().decode(ThemeDefinition.self, from: file.data)
+        guard file.name == definition.id + ".json" else { throw Invalid("A theme's file is named after its ID: \(file.name)") }
+        return definition
+    }
+
+    /// The IDs, names and orders a set of themes already has: no other theme of the set may repeat one.
+    private struct Used {
+        private var ids = Set<String>(), names = Set<String>(), orders = Set<Int>()
+
+        /// Takes `definition`'s unless one is taken, and says whether it did.
+        mutating func take(_ definition: ThemeDefinition) -> Bool {
+            guard !ids.contains(definition.id), !names.contains(definition.name), !orders.contains(definition.order) else {
+                return false
+            }
+            ids.insert(definition.id)
+            names.insert(definition.name)
+            orders.insert(definition.order)
+            return true
+        }
     }
 }

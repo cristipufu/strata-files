@@ -509,6 +509,11 @@ a native call while cancelling and replacing its caller, without loading a live 
   headless environments leave empty, never with `makeKeyAndOrderFront` in code a test reaches.
 - Strata's sounds stay silent until `main.swift` turns them on, so tests that refuse or trash things play none: play
   them through `Sounds`, never `NSSound`, `NSBeep` or `AudioServicesPlay…` (a Python check enforces this).
+- Your own color themes (`~/Library/Application Support/Strata/Themes/`) are read only once `main.swift` opts in
+  (`UserThemes.shared.useApplicationFolder()`): the theme suites check the bundled catalog, never what a developer
+  keeps there. Test the folder's reading with a `TestTree` folder (`ThemeCatalog.read(folder:)`, `accepted`), and
+  what is known of it when with a `UserThemes` of your own and a `ThemeFolderInMemory` reader. A folder or a theme
+  file that could not be read says nothing: never take one for gone.
 - Never use `NSPasteboard.general` or Strata's own preferences. Inject
   `Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter())` into the services, as
   `IndependentEnvironment` does.

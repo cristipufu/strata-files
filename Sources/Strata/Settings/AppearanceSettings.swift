@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Settings ▸ Appearance: color themes, light or dark, row spacing and the size of file names.
 struct AppearanceSettings: View {
+    @ObservedObject var themes: ThemeChoices
     @State private var theme = Prefs.shared.theme
-    @State private var colors = Prefs.shared.colorThemeOptions
     @State private var density = Prefs.shared.density
     @State private var size = Prefs.shared.nameTextSize
     @State private var alternatingRows = Prefs.shared.alternatingRows
@@ -21,29 +21,25 @@ struct AppearanceSettings: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Color theme", comment: "Settings ▸ Appearance: the browser’s color palette").settingAnchor(.colorTheme)
                     LazyVGrid(columns: Array(repeating: SwiftUI.GridItem(.flexible()), count: 3), spacing: 12) {
-                        ForEach(ColorTheme.allCases, id: \.self) { palette in
+                        ForEach(themes.palettes, id: \.rawValue) { palette in
                             Button {
-                                colors.palette = palette
-                                Prefs.shared.colorThemeOptions = colors
+                                themes.choose(palette)
                             } label: {
-                                ThemePreview(palette: palette, selected: colors.palette == palette, options: colors)
+                                ThemePreview(palette: palette, selected: themes.chosen.palette == palette, options: themes.chosen)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(palette.title)
-                            .accessibilityAddTraits(colors.palette == palette ? .isSelected : [])
+                            .accessibilityAddTraits(themes.chosen.palette == palette ? .isSelected : [])
                         }
                     }
                 }
                 .padding(.vertical, 6)
-                Picker("Window tint", selection: Binding(get: { colors.tintsWindow }, set: {
-                    colors.tintsWindow = $0
-                    Prefs.shared.colorThemeOptions = colors
-                })) {
+                Picker("Window tint", selection: Binding(get: { themes.chosen.tintsWindow }, set: { themes.tintWindow($0) })) {
                     Text("Off", comment: "Window tint setting").tag(false)
                     Text("On").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .disabled(colors.palette == .system).settingAnchor(.windowTint)
+                .disabled(themes.chosen.palette == .system).settingAnchor(.windowTint)
             }
             Section("Files") {
                 Picker("Density", selection: Binding(get: { density }, set: { density = $0; Prefs.shared.density = $0 })) {
@@ -87,7 +83,6 @@ struct AppearanceSettings: View {
             if theme != Prefs.shared.theme { theme = Prefs.shared.theme }
         }
         .onReceive(Prefs.shared.notifications.publisher(for: .alternatingRowsChanged, object: Prefs.shared)) { _ in alternatingRows = Prefs.shared.alternatingRows }
-        .onReceive(NotificationCenter.default.publisher(for: .colorThemeChanged)) { _ in colors = Prefs.shared.colorThemeOptions }
     }
 }
 

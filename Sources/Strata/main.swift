@@ -13,6 +13,8 @@ import AppKit
 SecureStorage.useApplicationStorage()
 Prefs.useApplicationPreferences()
 Sounds.useApplicationSounds()
+UserThemes.shared.useApplicationFolder()
+UserThemes.shared.rememberChoice(in: Prefs.shared.defaults)
 let app = NSApplication.shared
 CloudStore.shared.foldersShown = BrowserWindowController.foldersShown
 let delegate = AppDelegate(browserServices: .shared)

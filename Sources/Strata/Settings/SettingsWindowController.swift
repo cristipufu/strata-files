@@ -4,11 +4,20 @@ import SwiftUI
 
 /// ⌘, — the standard toolbar-tabbed settings window, each pane a SwiftUI form.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
-    static let shared = SettingsWindowController()
+    static let shared = SettingsWindowController(preferences: .shared, userThemes: .shared)
     private let room: SettingsRoom
     let settingsFocus: SettingsFocus
+    let themeChoices: ThemeChoices
+    private let preferences: Prefs
+    private let userThemes: UserThemes
 
-    init() {
+    /// `preferences` and `userThemes`: whose color themes Appearance offers, and whose themes folder is read again
+    /// as Settings comes forward.
+    init(preferences: Prefs, userThemes: UserThemes) {
+        self.preferences = preferences
+        self.userThemes = userThemes
+        let themeChoices = ThemeChoices(preferences: preferences, userThemes: userThemes)
+        self.themeChoices = themeChoices
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         let room = SettingsRoom()
@@ -31,7 +40,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(pane(.general, "gearshape", GeneralSettings()))
         tabs.addTabViewItem(pane(.search, "magnifyingglass", IndexSettings()))
         tabs.addTabViewItem(pane(.terminal, "terminal", TerminalSettings()))
-        tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings()))
+        tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings(themes: themeChoices)))
         tabs.addTabViewItem(pane(.shortcuts, "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
@@ -65,6 +74,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) { settingsFocus.clear() }
+
+    /// A theme file added or changed since the folder was last read shows up as Settings comes forward, from the
+    /// editor it was written in too: trying one needs no relaunch.
+    func windowDidBecomeKey(_ notification: Notification) {
+        Task { [preferences, userThemes] in await preferences.readThemes(of: userThemes) }
+    }
 
     func windowDidChangeScreen(_ notification: Notification) {
         fitToScreen()

@@ -16,7 +16,7 @@ extension ColorThemeTests {
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
         let shortcuts = ShortcutsWindowController(restoresFrame: false)
-        let settings = SettingsWindowController()
+        let settings = SettingsWindowController(preferences: .shared, userThemes: .shared)
         let shortcutsWindow = try #require(shortcuts.window)
         let settingsWindow = try #require(settings.window)
         let nativeColors = [shortcutsWindow.backgroundColor, settingsWindow.backgroundColor]

@@ -5,9 +5,15 @@ import Synchronization
 nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable, Sendable {
     package let rawValue: String
     private let definition: ThemeDefinition?
+    /// A bundled theme's name is a key of the app's translations; a theme of the user's is called as its file says.
+    private let translatesName: Bool
 
     package static let system = ColorTheme()
-    package static let allCases: [ColorTheme] = [.system] + ThemeCatalog.bundled + ThemeCatalog.user
+    /// The system's and the bundled themes. Those of the user are a `UserThemes`' to say: `choices(with:)`.
+    package static var allCases: [ColorTheme] { [.system] + ThemeCatalog.bundled }
+
+    /// The themes to choose from: the system's, the bundled ones, then the user's as `userThemes` last read them.
+    package static func choices(with userThemes: UserThemes) -> [ColorTheme] { allCases + userThemes.themes }
 
     // Existing call sites keep their typed names; contributed themes need no Swift declaration.
     package static let graphite = ColorTheme(rawValue: "graphite") ?? .system
@@ -19,22 +25,37 @@ nonisolated package struct ColorTheme: RawRepresentable, CaseIterable, Hashable,
     package static let rose = ColorTheme(rawValue: "rose") ?? .system
     package static let amber = ColorTheme(rawValue: "amber") ?? .system
 
-    private init() { rawValue = "system"; definition = nil }
-    package init(definition: ThemeDefinition) { rawValue = definition.id; self.definition = definition }
+    private init() { rawValue = "system"; definition = nil; translatesName = true }
 
+    package init(definition: ThemeDefinition, translatesName: Bool) {
+        rawValue = definition.id
+        self.definition = definition
+        self.translatesName = translatesName
+    }
+
+    /// The system's or a bundled theme by its ID.
     package init?(rawValue: String) {
         guard let theme = Self.allCases.first(where: { $0.rawValue == rawValue }) else { return nil }
         self = theme
     }
 
-    package static func == (lhs: Self, rhs: Self) -> Bool { lhs.rawValue == rhs.rawValue }
+    /// The theme with this ID: the system's, a bundled one, or one of the user's as `userThemes` last read them.
+    package static func named(_ id: String, among userThemes: UserThemes) -> ColorTheme? {
+        ColorTheme(rawValue: id) ?? userThemes.theme(withID: id)
+    }
+
+    /// A theme of the user's whose file changed keeps its ID and is another theme: what was drawn in it is redrawn.
+    package static func == (lhs: Self, rhs: Self) -> Bool { lhs.rawValue == rhs.rawValue && lhs.definition == rhs.definition }
     package func hash(into hasher: inout Hasher) { hasher.combine(rawValue) }
 
     package var title: String {
         guard let definition else { return String(localized: "System", comment: "Color theme: use the Mac’s colors") }
-        // localize.py extracts names and translator notes from the theme files.
-        return String(localized: String.LocalizationValue(definition.name))
+        // localize.py extracts names and translator notes from the bundled theme files.
+        return translatesName ? String(localized: String.LocalizationValue(definition.name)) : definition.name
     }
+
+    /// What the theme is called before translation.
+    package var name: String { definition?.name ?? "System" }
 
     package var seed: ThemeRGB { definition?.seed ?? ThemeRGB(red: 0.38, green: 0.44, blue: 0.67) }
 
@@ -200,14 +221,35 @@ nonisolated package struct ColorThemeOptions: Equatable, Sendable {
         palette.selectionColor(highContrast: highContrast)
     }
 
-    package static func read(from defaults: UserDefaults) -> Self {
-        Self(palette: defaults.string(forKey: "colorTheme").flatMap(ColorTheme.init(rawValue:)) ?? .system,
-             tintsWindow: defaults.object(forKey: "tintWindow") as? Bool ?? true)
+    private static let paletteKey = "colorTheme", tintKey = "tintWindow"
+
+    /// The ID of the theme chosen in `defaults`, whether or not anything knows a theme by it.
+    package static func chosenID(in defaults: UserDefaults) -> String {
+        defaults.string(forKey: paletteKey) ?? ColorTheme.system.rawValue
     }
 
-    package func save(in defaults: UserDefaults) {
-        defaults.set(palette.rawValue, forKey: "colorTheme")
-        defaults.set(tintsWindow, forKey: "tintWindow")
+    private static func tintsWindow(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: tintKey) as? Bool ?? true
+    }
+
+    /// A chosen theme of the user's that `userThemes` doesn't know stays chosen, and is drawn as the system's until
+    /// its file is read.
+    package static func read(from defaults: UserDefaults, userThemes: UserThemes) -> Self {
+        Self(palette: ColorTheme.named(chosenID(in: defaults), among: userThemes) ?? .system,
+             tintsWindow: tintsWindow(in: defaults))
+    }
+
+    /// Whether this is the choice `defaults` hold. A chosen theme whose file is gone reads as the system's and is
+    /// still the choice, so choosing the system's then is another choice, and one to save.
+    package func isSaved(in defaults: UserDefaults) -> Bool {
+        palette.rawValue == Self.chosenID(in: defaults) && tintsWindow == Self.tintsWindow(in: defaults)
+    }
+
+    /// Saves the choice, and with a theme of the user's the copy of its file that the next launch draws it from.
+    package func save(in defaults: UserDefaults, userThemes: UserThemes) {
+        defaults.set(palette.rawValue, forKey: Self.paletteKey)
+        defaults.set(tintsWindow, forKey: Self.tintKey)
+        userThemes.keepFile(of: palette, in: defaults)
     }
 
     package func surfaceColor(in appearance: NSAppearance, reduceTransparency: Bool, highContrast: Bool = false,

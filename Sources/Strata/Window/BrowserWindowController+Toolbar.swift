@@ -54,7 +54,7 @@ extension BrowserWindowController: NSToolbarDelegate, NSToolbarItemValidation {
     /// Validation keeps it current when ⇧⌘. or another window changes the setting.
     private func showHiddenFilesState(in item: NSToolbarItem) {
         let showing = services.preferences.showHidden
-        let title = showing ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
+        let title = StrataCommand.hiddenFilesTitle(showing: showing)
         guard item.label != title else { return }
         item.label = title
         item.toolTip = title
