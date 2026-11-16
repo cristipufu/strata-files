@@ -11545,6 +11545,13 @@
     "tests": "BrowserPreferencesTests/biggerAndSmallerTextStopAtTheEndsOfTheSizesNamesMayBe"
   },
   {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        guard Prefs.nameTextSizes.contains(size) else { return Sounds.beep() }\n",
+    "replace": "",
+    "rule": "Text size: ⌘+ and ⌘− past the ends of the sizes names may be shown at save nothing",
+    "tests": "BrowserPreferencesTests/biggerAndSmallerTextStopAtTheEndsOfTheSizesNamesMayBe"
+  },
+  {
     "file": "Strata/Views/GridLayout.swift",
     "find": "        let twoShortWords = narrowest.width * max(1, typography.font.pointSize / narrowest.textSize)\n",
     "replace": "        let twoShortWords = narrowest.width\n",

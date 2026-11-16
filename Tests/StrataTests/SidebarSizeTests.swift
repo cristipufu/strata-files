@@ -9,10 +9,10 @@ import Testing
 
     init() throws { testEnvironment = try IndependentEnvironment() }
 
-    /// What each sidebar size shows: AppKit's own row height and text size for a source list, and Strata's symbols.
-    private static let sizes: [(size: NSTableView.RowSizeStyle, row: CGFloat, text: CGFloat, symbol: CGFloat, tagDot: CGFloat,
-                                symbolWidth: CGFloat)] = [
-        (.small, 24, 11, 12, 8, 15), (.medium, 32, 13, 14, 10, 18), (.large, 40, 15, 16, 12, 21),
+    /// What each sidebar size shows: AppKit's own text size for a source list, and Strata's symbols. The rows' heights
+    /// are AppKit's to choose.
+    private static let sizes: [(size: NSTableView.RowSizeStyle, text: CGFloat, symbol: CGFloat, tagDot: CGFloat, symbolWidth: CGFloat)] = [
+        (.small, 11, 12, 8, 15), (.medium, 13, 14, 10, 18), (.large, 15, 16, 12, 21),
     ]
 
     private final class OneFolder: NSObject, NSOutlineViewDataSource {
@@ -41,16 +41,25 @@ import Testing
         try #require(try icon(of: cell).constraints.first { $0.firstAttribute == .width }).constant
     }
 
-    /// The first row showing a place or a folder, laid out at `size`.
+    /// Change the size without reloading, so existing cells must update too.
     private func row(in outline: NSOutlineView, at size: NSTableView.RowSizeStyle) throws -> (cell: SidebarCellView, height: CGFloat) {
         outline.rowSizeStyle = size
-        outline.reloadData()
         outline.layoutSubtreeIfNeeded()
         let row = try #require((0..<outline.numberOfRows).first {
             outline.view(atColumn: 0, row: $0, makeIfNecessary: true) is SidebarCellView
         })
         let cell = try #require(outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? SidebarCellView)
         return (cell, outline.rect(ofRow: row).height)
+    }
+
+    /// As the app leaves it, an outline follows the system: AppKit gives each cell the size in effect, never the
+    /// outline's own `.default`, and the cell shows that size. Whatever this Mac's sidebar size is set to.
+    private func expectTheSystemsSizeIsShown(in outline: NSOutlineView) throws {
+        let cell = try row(in: outline, at: .default).cell
+        let inEffect = outline.effectiveRowSizeStyle
+        #expect(inEffect != .default && cell.rowSizeStyle == inEffect)
+        #expect(try label(of: cell).font?.pointSize == SidebarMetrics(inEffect).textSize)
+        #expect(try icon(of: cell).symbolConfiguration == .init(pointSize: SidebarMetrics(inEffect).symbolSize, weight: .regular))
     }
 
     @Test func aRowsTextAndSymbolAreAsLargeAsItsSizeAsks() throws {
@@ -75,7 +84,7 @@ import Testing
             #expect(try label(of: cell).font?.pointSize == expected.text)
             #expect(try icon(of: cell).symbolConfiguration == .init(pointSize: expected.symbol, weight: .regular))
         }
-        // A size AppKit may add later is shown as the medium one.
+        // A cell told a size that is none of the three is shown as the medium one.
         cell.rowSizeStyle = .custom
         #expect(try label(of: cell).font?.pointSize == 13)
     }
@@ -84,14 +93,14 @@ import Testing
         let sidebar = SidebarViewController(services: testEnvironment.services)
         _ = sidebar.view
         sidebar.reload()
-        // The system's size, whatever it is set to: AppKit sizes the rows and tells each cell.
         #expect(sidebar.outline.rowSizeStyle == .default && sidebar.outline.style == .sourceList)
+        try expectTheSystemsSizeIsShown(in: sidebar.outline)
         for expected in Self.sizes {
             let (cell, height) = try row(in: sidebar.outline, at: expected.size)
-            let label = try label(of: cell)
-            #expect(height == expected.row && label.font?.pointSize == expected.text)
-            #expect(try icon(of: cell).symbolConfiguration == .init(pointSize: expected.symbol, weight: .regular))
-            #expect(label.fittingSize.height <= height && cell.fittingSize.height <= height)
+            let label = try label(of: cell), icon = try icon(of: cell)
+            #expect(label.font?.pointSize == expected.text)
+            #expect(icon.symbolConfiguration == .init(pointSize: expected.symbol, weight: .regular))
+            #expect(label.fittingSize.height <= height && icon.fittingSize.height <= height)
         }
     }
 
@@ -106,12 +115,14 @@ import Testing
         #expect(outline.rowSizeStyle == .default && outline.style == .sourceList)
         let folder = OneFolder(tree.url("chosen"))
         outline.dataSource = folder
+        outline.reloadData()
+        try expectTheSystemsSizeIsShown(in: outline)
         for expected in Self.sizes {
             let (cell, height) = try row(in: outline, at: expected.size)
-            let label = try label(of: cell)
-            #expect(label.stringValue == "chosen" && height == expected.row && label.font?.pointSize == expected.text)
-            #expect(try icon(of: cell).symbolConfiguration == .init(pointSize: expected.symbol, weight: .regular))
-            #expect(label.fittingSize.height <= height && cell.fittingSize.height <= height)
+            let label = try label(of: cell), icon = try icon(of: cell)
+            #expect(label.stringValue == "chosen" && label.font?.pointSize == expected.text)
+            #expect(icon.symbolConfiguration == .init(pointSize: expected.symbol, weight: .regular))
+            #expect(label.fittingSize.height <= height && icon.fittingSize.height <= height)
         }
         withExtendedLifetime(folder) {}
         #expect(tree.snapshot() == ["chosen/"])

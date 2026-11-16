@@ -72,11 +72,10 @@ extension BrowserViewController {
         setIconSize(Double(grid.iconSize))
     }
 
-    /// Past either end of the sizes names may be shown at there's nothing to do.
+    /// Past either end of the sizes names may be shown at there's nothing to do, and nothing is saved.
     private func stepTextSize(_ delta: Double) {
-        let sizes = Prefs.nameTextSizes
-        let size = min(max(preferences.nameTextSize + delta, sizes.lowerBound), sizes.upperBound)
-        guard size != preferences.nameTextSize else { return Sounds.beep() }
+        let size = preferences.nameTextSize + delta
+        guard Prefs.nameTextSizes.contains(size) else { return Sounds.beep() }
         preferences.nameTextSize = size
     }
 

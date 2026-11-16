@@ -563,22 +563,26 @@ final class SidebarRowView: NSTableRowView {
 /// What a sidebar row's label and symbol measure at one of the sidebar sizes of System Settings ▸ Appearance. Its
 /// rows are as tall as AppKit makes them for that size, and its text is as large as AppKit's own in a source list;
 /// the symbol stays a point larger than the text, as it is at the medium size.
-struct SidebarMetrics: Equatable {
+struct SidebarMetrics {
+    /// The medium size's text, and the room its widest symbol takes: the other sizes keep that proportion.
+    private static let mediumTextSize: CGFloat = 13
+    private static let mediumSymbolWidth: CGFloat = 18
+
     let textSize: CGFloat
 
+    /// A cell no table has sized, or told a size that is none of the three, is shown as the medium one.
     init(_ size: NSTableView.RowSizeStyle) {
         textSize = switch size {
         case .small: 11
         case .large: 15
-        default: 13
+        default: Self.mediumTextSize
         }
     }
 
     var symbolSize: CGFloat { textSize + 1 }
     /// Tag dots are smaller than the other symbols, like Finder's.
     var tagDotSize: CGFloat { textSize - 3 }
-    /// Room for the widest symbol at that size.
-    var symbolWidth: CGFloat { (18 * textSize / 13).rounded() }
+    var symbolWidth: CGFloat { (Self.mediumSymbolWidth * textSize / Self.mediumTextSize).rounded() }
 }
 
 /// Finder's macOS 26 look: monochrome symbol and label that keep their color when selected, at the size the system's
@@ -627,8 +631,7 @@ final class SidebarCellView: NSTableCellView {
         applyColors()
     }
 
-    /// The table gives each of its rows' cells the size it shows them at: the system's sidebar size, which may change
-    /// while the cell is shown.
+    /// The table gives each of its rows' cells the size it shows them at: the system's sidebar size.
     override var rowSizeStyle: NSTableView.RowSizeStyle {
         didSet { applySize() }
     }

@@ -231,13 +231,15 @@ struct BrowserPreferencesTests {
         #expect(browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
         browser.biggerIcons(nil)
         #expect(env.preferences.nameTextSize == 20 && !browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
+        // Past an end nothing is saved, not even a size that would read as the end.
+        let saved = { env.preferences.defaults.object(forKey: "nameTextSize") as? Double }
         browser.biggerIcons(nil)
-        #expect(env.preferences.nameTextSize == 20)
+        #expect(env.preferences.nameTextSize == 20 && saved() == 20)
         env.preferences.nameTextSize = 12
         browser.smallerIcons(nil)
         #expect(env.preferences.nameTextSize == 11 && browser.validateMenuItem(bigger) && !browser.validateMenuItem(smaller))
         browser.smallerIcons(nil)
-        #expect(env.preferences.nameTextSize == 11)
+        #expect(env.preferences.nameTextSize == 11 && saved() == 11)
         #expect(tree.snapshot() == ["alpha.txt"])
     }
 

@@ -44,4 +44,39 @@ struct GridLayoutSafetyTests {
             #expect(metrics.itemHeight.isFinite)
         }
     }
+
+    @Test func largerNamesDrawAndFitAfterAnIconCellChangesSize() throws {
+        let preferences = try Prefs.isolated()
+        let icon = GridItemView()
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: appearanceName))
+            icon.appearance = appearance
+            for textSize in [16.0, 18, 20, 11, 20] {
+                preferences.nameTextSize = textSize
+                for iconSize: CGFloat in [32, 256] {
+                    let metrics = GridMetrics(iconSize: iconSize, typography: FileViewTypography(preferences: preferences))
+                    icon.setFrameSize(NSSize(width: metrics.minCellWidth, height: metrics.itemHeight))
+                    for name in ["Tax Returns 2026.pdf", "旅行 👩🏽‍💻 e\u{301} " + String(repeating: "long filename ", count: 20)] {
+                        icon.configure(name: name, matches: [0], detail: "1 KB", metrics: metrics)
+                        try draw(icon, appearance: appearance)
+                        #expect(!icon.nameRect.isEmpty && icon.bounds.contains(icon.nameRect))
+                    }
+                }
+            }
+        }
+    }
+
+    private func draw(_ icon: GridItemView, appearance: NSAppearance) throws {
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(data: nil, width: Int(icon.bounds.width), height: Int(icon.bounds.height),
+                                            bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.translateBy(x: 0, y: icon.bounds.height)
+        context.scaleBy(x: 1, y: -1)
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        appearance.performAsCurrentDrawingAppearance { icon.draw(icon.bounds) }
+        #expect(context.makeImage() != nil)
+    }
 }
