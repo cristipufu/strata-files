@@ -360,7 +360,7 @@ final class ShimmerView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
 
     override func updateLayer() {

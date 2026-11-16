@@ -349,7 +349,7 @@ final class FlowView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     func add(_ view: NSView) {
         addSubview(view)
@@ -415,7 +415,7 @@ private final class KindChip: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: ceil(8 + 14 + 4 + text.size().width + 9), height: 22)
@@ -456,7 +456,7 @@ private final class BranchLine: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 20) }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -539,7 +539,7 @@ final class StatusItem: NSView {
         setAccessibilityLabel(title)
     }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     private var leading: CGFloat { dot != nil || symbol != nil ? 12 : 0 }
 
@@ -707,7 +707,7 @@ private final class ScriptRow: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         guard hovering else { return }

@@ -588,7 +588,7 @@ package final class DiffView: NSView {
     private let numberWidth: CGFloat
     private let textWidth: CGFloat
 
-    package override var isFlipped: Bool { true }
+    package nonisolated override var isFlipped: Bool { true }
 
     package init(rows: [LineDiff.Row]) {
         self.rows = rows

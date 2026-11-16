@@ -83,7 +83,7 @@ package final class GitBranchPill: NSView {
     @available(*, unavailable)
     package required init?(coder: NSCoder) { fatalError() }
 
-    package override var isFlipped: Bool { true }
+    package nonisolated override var isFlipped: Bool { true }
 
     // MARK: Layout
 

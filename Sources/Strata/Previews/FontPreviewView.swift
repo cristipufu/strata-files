@@ -159,7 +159,7 @@ private final class FontSpecimenCanvasView: NSView {
     private var titleText: String = ""
     private var heightConstraint: NSLayoutConstraint?
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

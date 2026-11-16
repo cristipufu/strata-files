@@ -30,7 +30,7 @@ final class GridItemView: NSView, ColorThemeUpdating {
     private var lineWidths: [CGFloat] = []
     private var linesKey: String = ""
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { false }
 
     override init(frame: NSRect) {
