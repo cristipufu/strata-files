@@ -23,6 +23,13 @@ extension BrowserViewController {
         return directory
     }
 
+    /// A selected folder in Columns is already open on the right even while its parent keeps focus.
+    var displayedDirectory: URL? {
+        guard !isShowingResults else { return nil }
+        if effectiveMode == .columns, let shown = columnController?.location { return shown }
+        return directory
+    }
+
     @objc func setViewMode(_ sender: Any?) {
         let picked: BrowserViewMode? = if let group = sender as? NSToolbarItemGroup {
             BrowserViewMode.ordered.indices.contains(group.selectedIndex) ? BrowserViewMode.ordered[group.selectedIndex] : nil

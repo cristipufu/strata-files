@@ -1246,8 +1246,8 @@
         "replace": "job.onFinish = { [weak self] job in"
       },
       {
-        "find": "guard self != nil, let other else { return }",
-        "replace": "guard self != nil else { return }"
+        "find": "let self, !isClosed, let other, panes.contains(where: { $0 === other }),",
+        "replace": "let self, !isClosed, panes.contains(where: { $0 === other }),"
       }
     ],
     "rule": "Browser service ownership completed transfers retain closed panes",
@@ -8974,8 +8974,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Modes.swift",
-    "find": "        guard !isShowingResults else { return nil }",
-    "replace": "        if false { return nil }",
+    "find": "    var targetDirectory: URL? {\n        guard !isShowingResults else { return nil }",
+    "replace": "    var targetDirectory: URL? {\n        if false { return nil }",
     "rule": "Visual results paste into the folder visited before the search",
     "tests": "ResultPresentationTests/resultsKeepRankSelectionAndCopyPathsAcrossViewsWithoutAWriteDestination"
   },
@@ -11606,5 +11606,84 @@
     "replace": "",
     "rule": "Native drawing: an old glyph failure cannot retire a replacement badge",
     "tests": "GitStatusBadgeRenderingTests/aReentrantRendererCannotHideOrPaintOverAReplacementBadge"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        if effectiveMode == .columns, let shown = columnController?.location { return shown }",
+    "replace": "        if effectiveMode == .columns, let shown = columnController?.activeDirectory { return shown }",
+    "rule": "Other-pane destinations: copy move and Undo use the folder shown without changing source selection",
+    "tests": "OtherPaneTransferTests/columnTransfersUseTheShownFolderAndUndoOnlyTheirSelection|OtherPaneTransferTests/sourceColumnsKeepSelectedFoldersAndDeeperFiles"
+  },
+  {
+    "file": "Strata/Views/ColumnBrowserViewController.swift",
+    "find": "        let url = selected.count == 1 && selected[0].isFolder ? selected[0].url : pane.folder",
+    "replace": "        let url = selected.first?.url ?? pane.folder",
+    "rule": "Other-pane destinations: a file or multiple folders use their containing column",
+    "tests": "OtherPaneTransferTests/fileAndMultipleFolderSelectionsUseTheirContainingColumn"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        if effectiveMode == .columns, let shown = columnController?.location { return shown }",
+    "replace": "        if let shown = columnController?.location { return shown }",
+    "rule": "Other-pane destinations: cached columns cannot redirect another view",
+    "tests": "OtherPaneTransferTests/viewChangesIgnoreCachedColumnsAndResultsRefuseTransfers"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "    var displayedDirectory: URL? {\n        guard !isShowingResults else { return nil }",
+    "replace": "    var displayedDirectory: URL? {",
+    "rule": "Other-pane destinations: results never accept incoming transfers",
+    "tests": "OtherPaneTransferTests/viewChangesIgnoreCachedColumnsAndResultsRefuseTransfers"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "                  let target = other.browser.displayedDirectory,",
+    "replace": "                  let target = other.browser.targetDirectory,",
+    "rule": "Other-pane destinations: validation refuses a read-only folder opened in the next column",
+    "tests": "OtherPaneTransferTests/readOnlyShownFoldersAreRefusedByValidationAndDispatch"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "edits": [
+      {
+        "find": "            guard job.state == .finished,",
+        "replace": "            guard true,"
+      },
+      {
+        "find": "            guard !created.isEmpty else { return }",
+        "replace": ""
+      }
+    ],
+    "rule": "Other-pane destinations: failed or cancelled transfers leave the destination selection alone",
+    "tests": "OtherPaneTransferTests/failedAndCancelledTransfersKeepTheDestinationSelection"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "                  other.browser.navigationRevision == revision,",
+    "replace": "                  true,",
+    "rule": "Other-pane destinations: returning to the same folder does not revive an old completion",
+    "tests": "OtherPaneTransferTests/delayedCompletionsKeepTheirOriginalDestination"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "                  other.browser.displayedDirectory.map(PathSpelling.short) == PathSpelling.short(target) else { return }",
+    "replace": "                  true else { return }",
+    "rule": "Other-pane destinations: changing view modes cannot receive a completion for another folder",
+    "tests": "OtherPaneTransferTests/delayedCompletionsKeepTheirOriginalDestination"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "edits": [
+      {
+        "find": "        guard !isClosed, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,",
+        "replace": "        guard let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,"
+      },
+      {
+        "find": "            guard !isClosed, isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,",
+        "replace": "            guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,"
+      }
+    ],
+    "rule": "Other-pane destinations: closed windows cannot start new copies or moves",
+    "tests": "OtherPaneTransferTests/closedWindowsRefuseNewTransfers"
   }
 ]

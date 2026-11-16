@@ -266,8 +266,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func moveToOtherPane(_ sender: Any?) { transferToOtherPane(move: true) }
 
     private func transferToOtherPane(move: Bool) {
-        guard let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
-              let target = other.browser.targetDirectory else { return }
+        guard !isClosed, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
+              let target = other.browser.displayedDirectory else { return }
         let urls = browser.selectedURLs
         guard !urls.isEmpty else { return }
         switch OtherPaneTransfer.route(into: target, copies: services.copies, servers: services.remote.copies) {
@@ -275,11 +275,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .refused: return
         case .queue: break
         }
+        let revision = other.browser.navigationRevision
         let job = services.transfers.enqueue(urls, to: target, mode: move ? .move : .copy,
                                                undo: window?.undoManager, conflicts: .sheet(for: window))
         job.onFinish = { [weak self, weak other] job in
-            guard self != nil, let other else { return }
-            other.browser.select(job.createdItems)
+            guard job.state == .finished,
+                  let self, !isClosed, let other, panes.contains(where: { $0 === other }),
+                  other.browser.navigationRevision == revision,
+                  other.browser.displayedDirectory.map(PathSpelling.short) == PathSpelling.short(target) else { return }
+            let created = job.createdItems
+            guard !created.isEmpty else { return }
+            other.browser.select(created)
         }
     }
 
@@ -825,10 +831,9 @@ extension BrowserWindowController: NSMenuItemValidation {
         case #selector(askStrata(_:)):
             return canAskStrata
         case #selector(copyToOtherPane(_:)), #selector(moveToOtherPane(_:)):
-            guard isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
-                  let target = other.browser.targetDirectory,
-                  services.remote.copies.contains(target) || !ReadOnlyCopies.contains(target, copies: services.copies),
-                  !Trash.isTrash(target) else { return false }
+            guard !isClosed, isDualPane, let other = panes.first(where: { $0 !== pane }), case .folder = other.destination,
+                  let target = other.browser.displayedDirectory,
+                  OtherPaneTransfer.route(into: target, copies: services.copies, servers: services.remote.copies) != .refused else { return false }
             return !browser.selectedURLs.isEmpty
         case #selector(goToEnclosingFolder(_:)):
             if case .folder = destination {
