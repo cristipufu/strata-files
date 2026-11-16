@@ -114,7 +114,7 @@ struct BrowserContextMenu {
     }
 
     private func addBackgroundItems(to menu: NSMenu) {
-        let hiddenFilesTitle = facts.showsHiddenFiles ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
+        let hiddenFilesTitle = StrataCommand.hiddenFilesTitle(showing: facts.showsHiddenFiles)
         // On a server: a new folder there, or pasting onto it; a shell there (SFTP).
         if facts.isOnServer {
             add(.newFolder, to: menu)

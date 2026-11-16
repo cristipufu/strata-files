@@ -1,17 +1,17 @@
 import AppKit
+import Synchronization
 import Testing
 @testable import StrataTheme
 
 struct ThemeCatalogTests {
     private func file(id: String = "meadow", name: String = "Meadow", order: Int = 150,
-                      changing: [String: Any] = [:]) throws -> (name: String, data: Data) {
-        var values: [String: Any] = [
-            "version": 1, "id": id, "name": name, "comment": "Color theme: soft yellow-green",
-            "order": order, "seed": [0.45, 0.60, 0.25], "tintStrength": 0.5,
-            "lightnessShift": ["light": 0.0, "dark": -0.02],
-        ]
-        values.merge(changing) { _, new in new }
-        return (id + ".json", try JSONSerialization.data(withJSONObject: values))
+                      changing: [String: Any] = [:]) throws -> ThemeCatalog.File {
+        try ThemeFixture.file(id: id, name: name, order: order, changing: changing)
+    }
+
+    /// The IDs of the themes a read of `folder` finds, or nil when it could not be listed.
+    nonisolated private static func themes(in folder: URL) -> [String]? {
+        ThemeCatalog.read(folder: folder).map { ThemeCatalog.accepted($0.files, besides: []).themes.map(\.rawValue) }
     }
 
     private static let latte: [String: String] = [
@@ -43,7 +43,8 @@ struct ThemeCatalogTests {
     @Test func bundledThemesAreValidAndEveryFileIsAvailableInSettings() throws {
         let themes = try ThemeCatalog.loadBundled()
         #expect(!themes.isEmpty)
-        #expect(ColorTheme.allCases == [.system] + themes + ThemeCatalog.user)
+        // Only the executable opts into the themes of whoever runs it: none are read here.
+        #expect(ColorTheme.allCases == [.system] + themes && UserThemes.shared.themes.isEmpty)
         for theme in themes {
             #expect(ColorTheme(rawValue: theme.rawValue) == theme)
             #expect(!theme.title.isEmpty)
@@ -231,19 +232,125 @@ struct ThemeCatalogTests {
             try file(id: "meadow", name: "Meadow", order: 10),
             ("other.json", try file(id: "night", name: "Night", order: 153).data),  // filename isn't the ID
         ]
-        let themes = ThemeCatalog.loadUser(files, besides: bundled)
+        let themes = ThemeCatalog.accepted(files, besides: bundled).themes
         #expect(themes.map(\.rawValue) == ["meadow", "dusk"])
-        #expect(ThemeCatalog.loadUser([], besides: bundled).isEmpty)
+        #expect(ThemeCatalog.accepted([], besides: bundled).themes.isEmpty)
     }
 
-    @Test func aMissingUserFolderMeansNoUserThemes() throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        #expect(ThemeCatalog.loadUser(from: folder, besides: []).isEmpty)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
+    @Test func aMissingUserFolderMeansNoUserThemesAndOnlyItsThemeFilesAreRead() throws {
+        let tree = try TestTree("themes/notes.txt", "themes/folder.json/", "themes/more/")
+        let folder = tree.url("themes")
+        #expect(Self.themes(in: tree.url("missing")) == [])
         let input = try file()
         try input.data.write(to: folder.appending(path: input.name))
-        try Data("not a theme".utf8).write(to: folder.appending(path: "notes.txt"))
-        #expect(ThemeCatalog.loadUser(from: folder, besides: []).map(\.rawValue) == ["meadow"])
+        // A valid theme deeper in, or in a folder named like one, is no theme of this folder.
+        let deeper = try file(id: "dusk", name: "Dusk", order: 151), inside = try file(id: "night", name: "Night", order: 152)
+        try deeper.data.write(to: folder.appending(path: "more").appending(path: deeper.name))
+        try inside.data.write(to: folder.appending(path: "folder.json").appending(path: inside.name))
+        #expect(Self.themes(in: folder) == ["meadow"])
+        #expect(tree.snapshot() == ["themes/", "themes/folder.json/", "themes/folder.json/night.json", "themes/meadow.json",
+                                    "themes/more/", "themes/more/dusk.json", "themes/notes.txt"])
+    }
+
+    @Test func aThemeFileIsReadNoFurtherThanAThemeMayBeLong() throws {
+        let tree = try TestTree("themes/")
+        let folder = tree.url("themes")
+        /// A valid theme padded with spaces to `bytes`: whatever follows its closing brace is no part of it.
+        func padded(_ id: String, order: Int, to bytes: Int) throws {
+            let theme = try file(id: id, name: id.capitalized, order: order)
+            let padding = Data(repeating: 0x20, count: bytes - theme.data.count)
+            try (theme.data + padding).write(to: folder.appending(path: theme.name))
+        }
+        try padded("fits", order: 150, to: ThemeCatalog.maximumBytes)
+        try padded("longer", order: 151, to: ThemeCatalog.maximumBytes + 1)
+        #expect(Self.themes(in: folder) == ["fits"])
+        #expect(try ThemeCatalog.read(folder.appending(path: "fits.json")).count == ThemeCatalog.maximumBytes)
+        #expect(throws: ThemeCatalog.Invalid.self) { try ThemeCatalog.read(folder.appending(path: "longer.json")) }
+        // Too long is no theme, not a theme that could not be read: nothing of it is kept as last known.
+        #expect(ThemeCatalog.read(folder: folder)?.unread == [])
+        #expect(tree.snapshot() == ["themes/", "themes/fits.json", "themes/longer.json"])
+    }
+
+    @Test func aPipeNamedLikeAThemeIsRefused() async throws {
+        let tree = try TestTree("themes/")
+        let folder = tree.url("themes"), pipe = folder.appending(path: "pipe.json")
+        try #require(mkfifo(pipe.path, 0o600) == 0)
+        let beside = try file()
+        try beside.data.write(to: folder.appending(path: beside.name))
+        // Opening it never waits for a writer, and what is no regular file is no theme. A read that did wait would
+        // never end: it runs on a thread of its own, and a writer opens the pipe if it has not ended in time, so a
+        // broken rule fails here and holds nothing.
+        let found = Mutex<(themes: [String], unread: [String])?>(nil)
+        Thread.detachNewThread {
+            guard let read = ThemeCatalog.read(folder: folder) else { return }
+            let themes = ThemeCatalog.accepted(read.files, besides: []).themes.map(\.rawValue)
+            found.withLock { $0 = (themes, read.unread) }
+        }
+        var turns = 0
+        while found.withLock({ $0 == nil }), turns < 500 {
+            turns += 1
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let inTime = found.withLock { $0 }
+        if inTime == nil {
+            let writer = open(pipe.path, O_WRONLY | O_NONBLOCK)
+            if writer >= 0 { close(writer) }
+        }
+        #expect(inTime?.themes == ["meadow"] && inTime?.unread == [])
+        #expect(tree.snapshot() == ["themes/", "themes/meadow.json", "themes/pipe.json"])
+    }
+
+    @Test func noMoreOfAThemesFolderIsLookedAtThanItsLimit() throws {
+        let tree = try TestTree("themes/a.json", "themes/b.json", "themes/c.json", "themes/d.txt", "themes/e.json")
+        let folder = tree.url("themes")
+        let names: (Int) -> [String] = { ThemeCatalog.themeFiles(in: folder, lookingAt: $0)?.map(\.lastPathComponent) ?? ["not listed"] }
+        // Every item counts, a theme or not: the folder is the user's, and may hold anything.
+        #expect(names(5) == ["a.json", "b.json", "c.json", "e.json"] && names(ThemeCatalog.maximumEntries) == names(5))
+        #expect(names(4).count <= 4 && names(4).count >= 3 && names(1).count <= 1 && names(0).isEmpty)
+        #expect(tree.snapshot() == ["themes/", "themes/a.json", "themes/b.json", "themes/c.json", "themes/d.txt", "themes/e.json"])
+    }
+
+    @Test func aFolderOrAFileThatCouldNotBeReadIsNotTakenForGone() throws {
+        let tree = try TestTree("themes/", "locked/", "file", "away -> ./volume/themes", "faraway -> ./volume",
+                                "themes/link.json -> ./elsewhere.json")
+        let folder = tree.url("themes"), locked = tree.url("locked")
+        let meadow = try file(), dusk = try file(id: "dusk", name: "Dusk", order: 151)
+        try meadow.data.write(to: folder.appending(path: meadow.name))
+        try dusk.data.write(to: folder.appending(path: dusk.name))
+        try #require(chmod(folder.appending(path: dusk.name).path, 0) == 0 && chmod(locked.path, 0) == 0)
+        defer {
+            chmod(folder.appending(path: dusk.name).path, 0o600)
+            chmod(locked.path, 0o700)
+        }
+        // A file that is there and may not be read is named: nothing is said of it. A link to a file that is not
+        // there is a theme that is gone.
+        let read = try #require(ThemeCatalog.read(folder: folder))
+        #expect(read.files.map(\.name) == ["meadow.json"] && read.unread == ["dusk.json"])
+        #expect(throws: ThemeCatalog.Unread.self) { try ThemeCatalog.read(folder.appending(path: dusk.name)) }
+        #expect(throws: ThemeCatalog.Invalid.self) { try ThemeCatalog.read(folder.appending(path: "link.json")) }
+        #expect(throws: ThemeCatalog.Invalid.self) { try ThemeCatalog.read(folder.appending(path: "gone.json")) }
+        // A missing folder, or a file where it would be: no themes.
+        #expect(Self.themes(in: tree.url("missing")) == [] && Self.themes(in: tree.url("file")) == [])
+        #expect(ThemeCatalog.themeFiles(in: tree.url("missing")) == [])
+        // A folder that may not be listed, a link to a folder that is away, and a folder whose own parent is away or
+        // not there: nothing is said.
+        #expect(Self.themes(in: locked) == nil && ThemeCatalog.themeFiles(in: locked) == nil)
+        #expect(Self.themes(in: tree.url("away")) == nil)
+        #expect(Self.themes(in: tree.url("faraway/themes")) == nil && Self.themes(in: tree.url("nowhere/themes")) == nil)
+        #expect(tree.snapshot() == ["away -> ./volume/themes", "faraway -> ./volume", "file", "locked/", "themes/",
+                                    "themes/dusk.json", "themes/link.json -> ./elsewhere.json", "themes/meadow.json"])
+    }
+
+    @Test func aThemeOfYoursIsCalledAsItsFileSaysAndNeverAsOneOfStratas() throws {
+        let bundled = try ThemeCatalog.loadBundled()
+        let taken = try #require(bundled.first)
+        let files = [
+            try file(id: "mine", name: "System", order: 150),              // what the system's choice is called
+            try file(id: "copy", name: taken.name, order: 151),            // a bundled theme's name
+            try file(id: "open", name: "Open", order: 152),                // a word of the app's, no theme's name
+        ]
+        let themes = ThemeCatalog.accepted(files, besides: [.system] + bundled).themes
+        #expect(themes.map(\.rawValue) == ["open"] && themes.first?.title == "Open" && themes.first?.name == "Open")
+        #expect(ColorTheme.system.name == "System" && taken.name == taken.title)
     }
 }

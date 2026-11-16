@@ -33,10 +33,16 @@ final class FileOutlineView: NSOutlineView {
         ThemeStyle.refreshHeaderAppearance(in: self)
     }
 
+    /// The name's column, the outline's (the one with the disclosure triangles); nil while the list has none.
+    private var nameColumn: Int? {
+        guard let outlineTableColumn else { return nil }
+        let column = column(withIdentifier: outlineTableColumn.identifier)
+        return column >= 0 ? column : nil
+    }
+
     override func mouseDown(with event: NSEvent) {
-        // The name is the outline column's (the one with the disclosure triangles).
-        let nameColumn = outlineTableColumn.map { column(withIdentifier: $0.identifier) } ?? -1
-        let item = ClickToRename.nameRow(in: self, column: nameColumn, for: event).flatMap { self.item(atRow: $0) as AnyObject? }
+        let item = nameColumn.flatMap { ClickToRename.nameRow(in: self, column: $0, for: event) }
+            .flatMap { self.item(atRow: $0) as AnyObject? }
         super.mouseDown(with: event)
         clickToRename.clicked(event, armed: item != nil, in: self) { [weak self] in
             guard let self, let item, window?.isKeyWindow == true, window?.firstResponder === self else { return }
@@ -48,9 +54,8 @@ final class FileOutlineView: NSOutlineView {
     /// Like Finder, only a file's icon and name pick it up. A drag from anywhere else in a row selects the rows it
     /// crosses instead of moving the file.
     override func canDragRows(with rowIndexes: IndexSet, at mouseDownPoint: NSPoint) -> Bool {
-        let nameColumn = outlineTableColumn.map { column(withIdentifier: $0.identifier) } ?? -1
         let row = row(at: mouseDownPoint)
-        guard row >= 0, column(at: mouseDownPoint) == nameColumn,
+        guard let nameColumn, row >= 0, column(at: mouseDownPoint) == nameColumn,
               let cell = view(atColumn: nameColumn, row: row, makeIfNecessary: false) as? NameCellView,
               cell.isDragHandle(at: cell.convert(mouseDownPoint, from: self)) else { return false }
         return super.canDragRows(with: rowIndexes, at: mouseDownPoint)

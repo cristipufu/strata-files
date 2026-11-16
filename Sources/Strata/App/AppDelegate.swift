@@ -22,23 +22,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteCopyStore.shared.setAsideForRemoval()
         Self.raiseFileLimit()
         registerRevealHandler()
-        let preferences = browserServices.preferences
+        let preferences = browserServices.preferences, userThemes = UserThemes.shared
         FileViewStyle.applyTheme(preferences)
-        ThemeStyle.apply(preferences.colorThemeOptions, windows: [])
+        ThemeStyle.apply(preferences.colorThemeOptions(among: userThemes), windows: [])
         NotificationCenter.default.addObserver(forName: .appearanceChanged, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 FileViewStyle.applyTheme(preferences)
-                ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows)
+                ThemeStyle.apply(preferences.colorThemeOptions(among: userThemes), windows: NSApp.windows)
             }
         }
         NotificationCenter.default.addObserver(forName: .colorThemeChanged, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows) }
+            MainActor.assumeIsolated { ThemeStyle.apply(preferences.colorThemeOptions(among: userThemes), windows: NSApp.windows) }
         }
+        // The first window is drawn in the theme as it was last known; the folder says the rest once it has been read.
+        Task { await preferences.readThemes(of: userThemes) }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
                                                           object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 FileViewStyle.applyTheme(preferences)
-                ThemeStyle.apply(preferences.colorThemeOptions, windows: NSApp.windows)
+                ThemeStyle.apply(preferences.colorThemeOptions(among: userThemes), windows: NSApp.windows)
             }
         }
         let index = browserServices.index

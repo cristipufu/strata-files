@@ -36,17 +36,17 @@ struct ColorThemeTests {
 
     @Test func savedPaletteIsIndependentOfLightDarkAndUnknownValuesFollowTheSystem() throws {
         let defaults = try Prefs.isolated().defaults
-        #expect(ColorThemeOptions.read(from: defaults) == ColorThemeOptions())
+        #expect(ColorThemeOptions.read(from: defaults, userThemes: .shared) == ColorThemeOptions())
         defaults.set(2, forKey: "theme")
         for palette in ColorTheme.allCases {
             let options = ColorThemeOptions(palette: palette, tintsWindow: false)
-            options.save(in: defaults)
-            #expect(ColorThemeOptions.read(from: defaults) == options)
+            options.save(in: defaults, userThemes: .shared)
+            #expect(ColorThemeOptions.read(from: defaults, userThemes: .shared) == options)
             #expect(defaults.integer(forKey: "theme") == 2)
         }
         defaults.set("future-palette", forKey: "colorTheme")
         defaults.set("invalid", forKey: "tintWindow")
-        #expect(ColorThemeOptions.read(from: defaults) == ColorThemeOptions())
+        #expect(ColorThemeOptions.read(from: defaults, userThemes: .shared) == ColorThemeOptions())
     }
 
     @Test func everyPaletteKeepsSelectedNamesAndMatchingLettersReadable() throws {

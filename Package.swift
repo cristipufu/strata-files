@@ -31,6 +31,7 @@ let themeSources = [
     "Appearance.swift",
     "ColorTheme.swift",
     "ThemeCatalog.swift",
+    "UserThemes.swift",
     "HeaderMaterialTint.swift",
     "NativeHeaderFillTint.swift",
     "NavigationItemTheme.swift",

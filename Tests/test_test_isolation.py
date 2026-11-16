@@ -49,6 +49,21 @@ class TestIsolationTests(unittest.TestCase):
         self.assertEqual(offenders, [], "Compose fixtures from IndependentEnvironment or explicit isolated dependencies.")
 
 
+class OptInTests(unittest.TestCase):
+    """Only the executable opts into the user's own stores (storage, preferences, sounds, themes): everything else,
+    the tests included, gets a private one or none."""
+
+    OPT_IN = re.compile(r"(?<!func )\buseApplication\w*\(")
+
+    def test_only_the_executable_opts_into_the_users_own_stores(self):
+        executable = ROOT / "Sources" / "Strata" / "main.swift"
+        swift = sorted((ROOT / "Sources").rglob("*.swift")) + sorted(SWIFT_TESTS.rglob("*.swift"))
+        offenders = [path.relative_to(ROOT).as_posix() for path in swift
+                     if path != executable and self.OPT_IN.search(code_only(path.read_text(encoding="utf-8")))]
+        self.assertEqual(offenders, [], "Opt into the user's own stores in main.swift only.")
+        self.assertGreaterEqual(len(self.OPT_IN.findall(code_only(executable.read_text(encoding="utf-8")))), 4)
+
+
 class SoundTests(unittest.TestCase):
     """Strata plays sounds only through Sounds, which stays silent until the app turns it on, so tests play none."""
 

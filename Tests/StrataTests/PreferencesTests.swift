@@ -129,7 +129,7 @@ struct PreferencesTests {
         prefs.hiddenListColumns = ["size", "created"]
         prefs.showListNameExtensions = false
         prefs.iconViewOptions = .init(showsInfo: false, folderInfo: .size)
-        prefs.colorThemeOptions = .init(palette: .teal, tintsWindow: false)
+        prefs.choose(.init(palette: .teal, tintsWindow: false), among: .shared)
         prefs.lastLocation = URL(fileURLWithPath: "/one", isDirectory: true)
         let reopened = Prefs(defaults: try #require(UserDefaults(suiteName: prefs.domainName)),
                              domainName: prefs.domainName)
@@ -139,7 +139,7 @@ struct PreferencesTests {
         #expect(reopened.hiddenListColumns == ["size", "created"])
         #expect(!reopened.showListNameExtensions)
         #expect(reopened.iconViewOptions == .init(showsInfo: false, folderInfo: .size))
-        #expect(reopened.colorThemeOptions == .init(palette: .teal, tintsWindow: false))
+        #expect(reopened.colorThemeOptions(among: .shared) == .init(palette: .teal, tintsWindow: false))
         #expect(reopened.lastLocation?.path == "/one")
         #expect(prefs.defaults.stringArray(forKey: "collapsedSidebarSections") == ["favorites", "volumes"])
     }
@@ -168,15 +168,15 @@ struct PreferencesTests {
         first.hiddenListColumns = ["size"]
         first.showListNameExtensions = false
         first.showListNameExtensions = false
-        first.colorThemeOptions = .init(palette: .rose)
-        first.colorThemeOptions = .init(palette: .rose)
+        first.choose(.init(palette: .rose), among: .shared)
+        first.choose(.init(palette: .rose), among: .shared)
         #expect(events.withLock { $0 } == names.map { "first:" + $0.rawValue })
         #expect(!second.showHidden)
         #expect(second.theme == 0)
         #expect(second.favoritePaths == nil)
         #expect(second.iconViewOptions == IconViewOptions())
         #expect(second.showListNameExtensions)
-        #expect(second.colorThemeOptions == ColorThemeOptions())
+        #expect(second.colorThemeOptions(among: .shared) == ColorThemeOptions())
         #expect(second.defaults.persistentDomain(forName: second.domainName)?.isEmpty ?? true)
         second.favoritePaths = []
         #expect(first.favoritePaths == ["/one"])

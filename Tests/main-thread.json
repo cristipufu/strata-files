@@ -192,6 +192,10 @@
   "reason": "Where git is installed, found once a launch (the first time a git store is made) among the system's own folders on the startup disk."
  },
  {
+  "helper": "ThemeCatalog.bundled",
+  "reason": "The bundled color themes, read once a launch (the first time a theme is asked for, so the first window is drawn in the one chosen) from the app's own bundle, on the disk it was started from. Your own themes folder is never read here: `UserThemes` reads it on a thread of its own."
+ },
+ {
   "file": "Sources/Strata/Model/FileOps.swift",
   "call": "RemovalVolume.refusal(in:)",
   "count": 1,

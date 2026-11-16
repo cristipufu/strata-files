@@ -76,12 +76,31 @@ appearance as well: headless rendering cannot verify the live full-screen compos
 ## Your own themes
 
 To use a palette without rebuilding Strata, save its file as `<id>.json` in
-`~/Library/Application Support/Strata/Themes/` and relaunch. It appears in Settings ▸ Appearance after the bundled
-themes. A terminal or editor scheme can be carried over with a `light` and a `dark` object as in
+`~/Library/Application Support/Strata/Themes/`. It appears in Settings ▸ Appearance after the bundled themes: Strata
+reads the folder when it launches and each time Settings comes forward, so trying a file, or a change to it, needs no
+relaunch. A terminal or editor scheme can be carried over with a `light` and a `dark` object as in
 [Published color schemes](#published-color-schemes): its background becomes `content`, its selection `selection`, and
 one of its colors the `accent`.
 
 These files follow the same format and checks as bundled ones. A theme only colors surfaces, the selection and the
-accent; text, dimmed hidden files, tags and file-type colors keep Strata's own colors. Strata checks each file at
-launch and skips one that is invalid, repeats a bundled theme's ID or name, or repeats another user theme's order. It
-logs the reason in Console, under Strata. Your theme's name isn't translated.
+accent; text, dimmed hidden files, tags and file-type colors keep Strata's own colors. Strata checks each file as
+it reads the folder and skips one that is invalid, repeats the ID or name of System or of a bundled theme, or repeats
+another of your themes' ID, name or order. It logs the reason in Console, under Strata. Your theme's name is shown
+as its file says, and isn't translated.
+
+The folder is yours, so Strata takes nothing in it on trust: only regular files are read, none further than the
+16 KiB a theme may be long, and no more than the folder's first 1,024 items are looked at. It is read away from the
+main thread (`UserThemes`), on a thread that may wait on its disk, one read at a time, so a folder that is slow to
+answer never holds a window, and one that stopped answering holds one thread. The first window is drawn in the theme you chose last time all the same: Strata keeps
+a copy of that theme's file with the choice, checks it like a file of the folder, and draws from it until the folder
+has been read. A theme whose file has changed is redrawn then, and one whose file is gone is drawn in the system's
+colors, and comes back with its file unless you chose another theme meanwhile.
+
+A folder or a file that could not be read is not taken for gone. When the folder can't be listed (it may not be
+read, it is a link to a disk that is away, or the folder that would hold it can't be reached), or a theme file is
+there and can't be read (it is only in the cloud, or may not be read), what was last known of it stands, the kept
+copy included. A folder that is missing from where it would be holds no themes, and a link to a file that is not
+there is a theme that is gone.
+
+Only the app itself reads the folder (`UserThemes.shared.useApplicationFolder()` in `main.swift`); tests read no
+one's own themes.

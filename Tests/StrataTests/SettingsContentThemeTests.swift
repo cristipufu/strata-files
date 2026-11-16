@@ -15,7 +15,7 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let controller = SettingsWindowController()
+        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared)
         let window = try #require(controller.window)
         let tabs = try #require(window.contentViewController as? NSTabViewController)
         defer { window.contentViewController = nil }
