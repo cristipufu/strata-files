@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -227,19 +228,44 @@ struct BrowserPreferencesTests {
         browser.setMode(.list, remember: false)
         let bigger = NSMenuItem(title: "", action: #selector(BrowserViewController.biggerIcons(_:)), keyEquivalent: "")
         let smaller = NSMenuItem(title: "", action: #selector(BrowserViewController.smallerIcons(_:)), keyEquivalent: "")
+        let changes = Mutex(0)
+        let observer = env.preferences.notifications.addObserver(forName: .appearanceChanged, object: nil, queue: nil) { _ in
+            changes.withLock { $0 += 1 }
+        }
+        defer { env.preferences.notifications.removeObserver(observer) }
         env.preferences.nameTextSize = 19
         #expect(browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
         browser.biggerIcons(nil)
         #expect(env.preferences.nameTextSize == 20 && !browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
         // Past an end nothing is saved, not even a size that would read as the end.
         let saved = { env.preferences.defaults.object(forKey: "nameTextSize") as? Double }
+        let changesAtUpperBound = changes.withLock { $0 }
         browser.biggerIcons(nil)
         #expect(env.preferences.nameTextSize == 20 && saved() == 20)
+        #expect(changes.withLock { $0 } == changesAtUpperBound)
         env.preferences.nameTextSize = 12
         browser.smallerIcons(nil)
         #expect(env.preferences.nameTextSize == 11 && browser.validateMenuItem(bigger) && !browser.validateMenuItem(smaller))
+        let changesAtLowerBound = changes.withLock { $0 }
         browser.smallerIcons(nil)
         #expect(env.preferences.nameTextSize == 11 && saved() == 11)
+        #expect(changes.withLock { $0 } == changesAtLowerBound)
+        #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
+    @Test func textSizeShortcutsReachTheBoundsFromFractionalSavedSizes() async throws {
+        let tree = try TestTree("alpha.txt")
+        let env = try Environment()
+        let browser = await browser(env, at: tree.root)
+        for mode in [BrowserViewMode.list, .columns] {
+            browser.setMode(mode, remember: false)
+            env.preferences.nameTextSize = 19.5
+            browser.biggerIcons(nil)
+            #expect(env.preferences.nameTextSize == 20 && env.preferences.defaults.double(forKey: "nameTextSize") == 20)
+            env.preferences.nameTextSize = 11.5
+            browser.smallerIcons(nil)
+            #expect(env.preferences.nameTextSize == 11 && env.preferences.defaults.double(forKey: "nameTextSize") == 11)
+        }
         #expect(tree.snapshot() == ["alpha.txt"])
     }
 

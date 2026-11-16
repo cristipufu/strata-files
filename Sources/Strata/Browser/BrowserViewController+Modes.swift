@@ -74,8 +74,9 @@ extension BrowserViewController {
 
     /// Past either end of the sizes names may be shown at there's nothing to do, and nothing is saved.
     private func stepTextSize(_ delta: Double) {
-        let size = preferences.nameTextSize + delta
-        guard Prefs.nameTextSizes.contains(size) else { return Sounds.beep() }
+        let currentSize = preferences.nameTextSize
+        let size = Prefs.clampedNameTextSize(currentSize + delta)
+        guard size != currentSize else { return Sounds.beep() }
         preferences.nameTextSize = size
     }
 

@@ -11518,8 +11518,8 @@
   },
   {
     "file": "Strata/Model/Prefs.swift",
-    "find": "            return min(max(value, Self.nameTextSizes.lowerBound), Self.nameTextSizes.upperBound)\n",
-    "replace": "            return value\n",
+    "find": "        return min(max(value, nameTextSizes.lowerBound), nameTextSizes.upperBound)\n",
+    "replace": "        return value\n",
     "rule": "Text size: a saved size outside the sizes names may be shown at is brought within them",
     "tests": "PreferencesTests/typedSettingsPreserveNativeDefaultsAndExistingKeys"
   },
@@ -11546,10 +11546,17 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController+Modes.swift",
-    "find": "        guard Prefs.nameTextSizes.contains(size) else { return Sounds.beep() }\n",
+    "find": "        guard size != currentSize else { return Sounds.beep() }\n",
     "replace": "",
     "rule": "Text size: ⌘+ and ⌘− past the ends of the sizes names may be shown at save nothing",
     "tests": "BrowserPreferencesTests/biggerAndSmallerTextStopAtTheEndsOfTheSizesNamesMayBe"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Modes.swift",
+    "find": "        let size = Prefs.clampedNameTextSize(currentSize + delta)\n",
+    "replace": "        let size = currentSize + delta\n",
+    "rule": "Text size: fractional saved sizes reach the bounds without saving a size outside them",
+    "tests": "BrowserPreferencesTests/textSizeShortcutsReachTheBoundsFromFractionalSavedSizes"
   },
   {
     "file": "Strata/Views/GridLayout.swift",
