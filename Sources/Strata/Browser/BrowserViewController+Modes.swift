@@ -72,11 +72,10 @@ extension BrowserViewController {
         setIconSize(Double(grid.iconSize))
     }
 
-    /// The text size's range is 11–16 pt; past an end there's nothing to do.
-    static let textSizes: ClosedRange<Double> = 11...16
-
+    /// Past either end of the sizes names may be shown at there's nothing to do.
     private func stepTextSize(_ delta: Double) {
-        let size = min(max(preferences.nameTextSize + delta, Self.textSizes.lowerBound), Self.textSizes.upperBound)
+        let sizes = Prefs.nameTextSizes
+        let size = min(max(preferences.nameTextSize + delta, sizes.lowerBound), sizes.upperBound)
         guard size != preferences.nameTextSize else { return Sounds.beep() }
         preferences.nameTextSize = size
     }

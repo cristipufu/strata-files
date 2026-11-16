@@ -50,7 +50,7 @@ struct AppearanceSettings: View {
                 .pickerStyle(.segmented).settingAnchor(.density)
                 HStack {
                     Text("Text size")
-                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.shared.nameTextSize = $0.rounded() }), in: 11...16, step: 1) {
+                    Slider(value: Binding(get: { size }, set: { size = $0.rounded(); Prefs.shared.nameTextSize = $0.rounded() }), in: Prefs.nameTextSizes, step: 1) {
                         Text("Text size")
                     } minimumValueLabel: {
                         Text(verbatim: "A").font(.system(size: 10))

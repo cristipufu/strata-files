@@ -11487,5 +11487,68 @@
     "replace": "        guard let index = point.flatMap({ layout.index(at: $0) }) else {\n",
     "rule": "Selecting by dragging: in Icons a selection rectangle leaves the keyboard among what it selected",
     "tests": "RubberBandSelectionTests/inIconsASelectionRectangleLeavesTheKeyboardAmongWhatItSelected"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        didSet { applySize() }\n",
+    "replace": "        didSet {}\n",
+    "rule": "Sidebar size: a row's text and symbol are as large as the system's sidebar size, which its table gives each cell",
+    "tests": "SidebarSizeTests/placesFollowTheSystemsSidebarSizeAndTheirTextFitsItsRow|SidebarSizeTests/theFolderTreeFollowsTheSystemsSidebarSizeAndItsTextFitsItsRow"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        case .small: 11\n",
+    "replace": "        case .small: 13\n",
+    "rule": "Sidebar size: at the small size a row's text is AppKit's own for a source list",
+    "tests": "SidebarSizeTests/aRowsTextAndSymbolAreAsLargeAsItsSizeAsks"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        applySize()\n        applyColors()\n    }\n",
+    "replace": "        applyColors()\n    }\n",
+    "rule": "Sidebar size: a row reused for a tag shows the tag's smaller dot at its size",
+    "tests": "SidebarSizeTests/aRowsTextAndSymbolAreAsLargeAsItsSizeAsks"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "    package static let nameTextSizes: ClosedRange<Double> = 11...20\n",
+    "replace": "    package static let nameTextSizes: ClosedRange<Double> = 11...16\n",
+    "rule": "Text size: names may be shown at up to 20 pt",
+    "tests": "PreferencesTests/typedSettingsPreserveNativeDefaultsAndExistingKeys"
+  },
+  {
+    "file": "Strata/Model/Prefs.swift",
+    "find": "            return min(max(value, Self.nameTextSizes.lowerBound), Self.nameTextSizes.upperBound)\n",
+    "replace": "            return value\n",
+    "rule": "Text size: a saved size outside the sizes names may be shown at is brought within them",
+    "tests": "PreferencesTests/typedSettingsPreserveNativeDefaultsAndExistingKeys"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "        [22, 26, 32][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)\n",
+    "replace": "        [22, 26, 32][min(max(preferences.density, 0), 2)]\n",
+    "rule": "Text size: a List row is tall enough for its name at every size and density",
+    "tests": "BrowserPreferencesTests/namesOfEverySizeFitTheirRowsInListAndColumnsAtEveryDensity"
+  },
+  {
+    "file": "Strata/Views/FileCollection.swift",
+    "find": "        [20, 24, 30][min(max(preferences.density, 0), 2)] + CGFloat(preferences.nameTextSize - 13).rounded(.up)\n",
+    "replace": "        [20, 24, 30][min(max(preferences.density, 0), 2)]\n",
+    "rule": "Text size: a Columns row is tall enough for its name at every size and density",
+    "tests": "BrowserPreferencesTests/namesOfEverySizeFitTheirRowsInListAndColumnsAtEveryDensity"
+  },
+  {
+    "file": "Strata/Browser/BrowserViewController+Menus.swift",
+    "find": "                return bigger ? preferences.nameTextSize < sizes.upperBound : preferences.nameTextSize > sizes.lowerBound\n",
+    "replace": "                _ = sizes\n                return true\n",
+    "rule": "Text size: Bigger Text and Smaller Text are off at the ends of the sizes names may be shown at",
+    "tests": "BrowserPreferencesTests/biggerAndSmallerTextStopAtTheEndsOfTheSizesNamesMayBe"
+  },
+  {
+    "file": "Strata/Views/GridLayout.swift",
+    "find": "        let twoShortWords = narrowest.width * max(1, typography.font.pointSize / narrowest.textSize)\n",
+    "replace": "        let twoShortWords = narrowest.width\n",
+    "rule": "Text size: in Icons a name larger than the narrowest label was made for widens it",
+    "tests": "BrowserPreferencesTests/namesLargerThanTheNarrowestIconLabelWasMadeForWidenIt"
   }
 ]
