@@ -208,9 +208,9 @@ final class TreemapView: NSView, NSViewToolTipOwner, NSDraggingSource {
     private var lastSize: NSSize = .zero
     private var accessibilityTiles: [NSAccessibilityElement]?
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    override var isOpaque: Bool { true }
+    nonisolated override var isOpaque: Bool { true }
 
     private let copies: CopyProviders
 

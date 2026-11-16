@@ -736,5 +736,5 @@ final class InspectorViewController: NSViewController {
 }
 
 final class FlippedView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }

@@ -16,7 +16,7 @@ final class ColumnPreviewPane: NSView {
     private var infoTicket: ItemInfoLoader.Ticket?
     private(set) var dimensionsField: NSTextField?
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     isolated deinit {
         thumbnails.cancel(thumbnailTicket)

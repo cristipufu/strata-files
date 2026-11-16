@@ -11564,5 +11564,47 @@
     "replace": "        let twoShortWords = narrowest.width\n",
     "rule": "Text size: in Icons a name larger than the narrowest label was made for widens it",
     "tests": "BrowserPreferencesTests/namesLargerThanTheNarrowestIconLabelWasMadeForWidenIt"
+  },
+  {
+    "file": "CNativeDrawing/BadgeGlyph.m",
+    "find": "    } @catch (NSException *exception) {\n        if (error) *error = STGlyphFailure(operation, exception);\n        return nil;\n    }\n",
+    "replace": "    } @catch (NSException *exception) {\n        @throw;\n    }\n",
+    "rule": "Native drawing: badge font setup measurement and drawing exceptions never leave the native boundary",
+    "tests": "GitStatusBadgeRenderingTests/nativeSetupMeasurementAndDrawingFailuresStayInsideTheBoundary"
+  },
+  {
+    "file": "CNativeDrawing/BadgeGlyph.m",
+    "find": "        NSGraphicsContext.currentContext = previous;\n",
+    "replace": "        NSGraphicsContext.currentContext = nil;\n",
+    "rule": "Native drawing: a failed badge glyph restores its callers graphics context",
+    "tests": "GitStatusBadgeRenderingTests/nativeSetupMeasurementAndDrawingFailuresStayInsideTheBoundary"
+  },
+  {
+    "file": "Strata/Dev/GitStatusBadge.swift",
+    "find": "        return badge.isFolder || (!textUnavailable && !badge.letter.isEmpty)\n",
+    "replace": "        return badge.isFolder || !badge.letter.isEmpty\n",
+    "rule": "Native drawing: a failed badge text renderer is retired while folder dots remain available",
+    "tests": "GitStatusBadgeRenderingTests/aFailedTextRendererIsRetiredWithoutPaintingAndOtherBadgesStillDraw"
+  },
+  {
+    "file": "Strata/Dev/GitStatusBadge.swift",
+    "find": "        guard self.badge == badge, hasVisibleBadge, badge.isFolder || glyph != nil else { return }\n",
+    "replace": "",
+    "rule": "Native drawing: a failed badge glyph paints nothing into the views graphics context",
+    "tests": "GitStatusBadgeRenderingTests/aFailedTextRendererIsRetiredWithoutPaintingAndOtherBadgesStillDraw"
+  },
+  {
+    "file": "Strata/Dev/GitStatusBadge.swift",
+    "find": "            context.scaleBy(x: 1, y: -1)\n",
+    "replace": "",
+    "rule": "Native drawing: badge glyph images preserve the original orientation and placement",
+    "tests": "GitStatusBadgeRenderingTests/glyphImagesPreserveTheOriginalOrientationAndPlacement"
+  },
+  {
+    "file": "Strata/Dev/GitStatusBadge.swift",
+    "find": "            guard self.badge == badge else { return nil }\n",
+    "replace": "",
+    "rule": "Native drawing: an old glyph failure cannot retire a replacement badge",
+    "tests": "GitStatusBadgeRenderingTests/aReentrantRendererCannotHideOrPaintOverAReplacementBadge"
   }
 ]

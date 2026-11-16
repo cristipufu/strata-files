@@ -111,6 +111,6 @@ package final class OneNoteContentsView: PreviewView {
     }
 
     private final class TopDown: NSView {
-        override var isFlipped: Bool { true }
+        nonisolated override var isFlipped: Bool { true }
     }
 }

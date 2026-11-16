@@ -399,7 +399,7 @@ package final class TransferRowView: NSView, NSMenuItemValidation {
         NSRect(x: 54, y: 0, width: bounds.width - 54, height: 1).fill()
     }
 
-    package override var isFlipped: Bool { false }
+    package nonisolated override var isFlipped: Bool { false }
 }
 
 /// The job's symbol on a softly tinted circle.
@@ -421,5 +421,5 @@ package final class TransferIconView: NSView {
 }
 
 private final class TransfersFlippedView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }

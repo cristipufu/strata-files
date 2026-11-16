@@ -6,7 +6,7 @@ import StrataTheme
 
 /// Document view holding the columns side by side.
 final class ColumnStripView: NSView {
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 }
 
 // MARK: - Folder column scroll & table views

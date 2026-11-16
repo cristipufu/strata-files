@@ -151,7 +151,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    nonisolated override var isFlipped: Bool { true }
 
     override func layout() {
         super.layout()

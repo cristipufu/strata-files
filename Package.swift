@@ -133,6 +133,8 @@ let package = Package(
                 linkerSettings: [.linkedFramework("WebKit")]),
         .target(name: "CNativeReaders", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
                 linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("PDFKit"), .linkedFramework("ImageIO")]),
+        .target(name: "CNativeDrawing", cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])],
+                linkerSettings: [.linkedFramework("AppKit")]),
         .target(name: "CArchiveSandbox", linkerSettings: [.linkedFramework("CoreFoundation"), .linkedFramework("Security")]),
         .target(name: "CArchivePreview", dependencies: ["CArchiveSandbox"], linkerSettings: [.linkedLibrary("archive.2")]),
         // The archive service, an XPC service in the app sandboxed by its entitlement, and the worker it starts for each
@@ -217,7 +219,7 @@ let package = Package(
         ),
         .target(
             name: "StrataDev",
-            dependencies: ["StrataQueue"],
+            dependencies: ["StrataQueue", "CNativeDrawing"],
             path: "Sources/Strata/Dev",
             swiftSettings: strataSwiftSettings
         ),
@@ -295,6 +297,8 @@ let package = Package(
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .target(name: "CNativeReaderTestSupport", dependencies: ["CNativeReaders"], path: "Tests/CNativeReaderTestSupport",
                 cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
+        .target(name: "CNativeDrawingTestSupport", dependencies: ["CNativeDrawing"], path: "Tests/CNativeDrawingTestSupport",
+                cSettings: [.unsafeFlags(["-fobjc-arc", "-fobjc-arc-exceptions"])]),
         .testTarget(
             name: "StrataTests",
             dependencies: [
@@ -310,6 +314,8 @@ let package = Package(
                 "CPreviewWebTestSupport",
                 "CNativeReaders",
                 "CNativeReaderTestSupport",
+                "CNativeDrawing",
+                "CNativeDrawingTestSupport",
                 "StrataArchives",
                 "StrataIndex",
                 "StrataConnections",

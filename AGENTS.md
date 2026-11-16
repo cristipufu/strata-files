@@ -22,6 +22,7 @@ files: a bug that deletes, trashes, moves or overwrites the wrong thing is the w
 - `Sources/CPreviewText/` — the native exception boundary for Markdown and source text previews.
 - `Sources/CPreviewWeb/` — the native exception boundary and terminal-state ownership for WebKit resource callbacks.
 - `Sources/CNativeReaders/` — guarded native document extraction, image metadata, decoding and preview encoding.
+- `Sources/CNativeDrawing/` — guarded badge text rendering; a complete glyph image lands before a view paints it.
 - `Sources/CArchivePreview/`, `Sources/StrataArchiveService/` and `Sources/StrataArchiveWorker/` — the C archive parser,
   the archive service (an XPC service in the app) and the worker it starts for each read; `Sources/CArchiveSandbox/`
   holds what the service and workers share (statuses, the sandbox check), so the service never links the parser;
@@ -622,6 +623,8 @@ a native call while cancelling and replacing its caller, without loading a live 
 - Register C callbacks such as `atexit` from a nonisolated function when the system may call them on another thread:
   a closure created in a MainActor context can assert at runtime even if its body is thread-safe. Include process
   shutdown when validating lifecycle changes.
+- Constant `NSView.isFlipped` and `isOpaque` overrides are `nonisolated`: AppKit can query them from background
+  drag-image coordinate conversions. Keep mutable view state isolated and test native callbacks off the main thread.
 - Use throwing Foundation I/O APIs: Swift `do`/`catch` doesn't catch Objective-C exceptions from older ones. Keep
   streaming semantics when replacing an API, covering short pipe output while the writer stays open, read failures and
   EOF. A failed read never reports partial output as success; a partial preview shows its error and keeps the rows
