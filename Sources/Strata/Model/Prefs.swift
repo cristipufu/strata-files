@@ -312,11 +312,19 @@ package final class Prefs: PreviewTextSettings {
 
     package static let defaultNameTextSize: Double = 13
 
-    /// File names' text size in points (11–16).
+    /// The sizes file names may be shown at, in points: Settings' slider, ⌘+ and ⌘− move within them.
+    package static let nameTextSizes: ClosedRange<Double> = 11...20
+
+    package static func clampedNameTextSize(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultNameTextSize }
+        return min(max(value, nameTextSizes.lowerBound), nameTextSizes.upperBound)
+    }
+
+    /// File names' text size in points, one of `nameTextSizes`.
     package var nameTextSize: Double {
         get {
             let value = defaults.object(forKey: Key.nameTextSize) as? Double ?? Self.defaultNameTextSize
-            return value.isFinite ? min(max(value, 11), 16) : Self.defaultNameTextSize
+            return Self.clampedNameTextSize(value)
         }
         set { defaults.set(newValue, forKey: Key.nameTextSize); notifications.post(name: .appearanceChanged, object: nil) }
     }

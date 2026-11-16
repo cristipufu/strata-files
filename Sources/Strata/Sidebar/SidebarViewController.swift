@@ -560,10 +560,37 @@ final class SidebarRowView: NSTableRowView {
     }
 }
 
-/// Finder's macOS 26 look: monochrome symbol and label that keep their color when selected.
+/// What a sidebar row's label and symbol measure at one of the sidebar sizes of System Settings ▸ Appearance. Its
+/// rows are as tall as AppKit makes them for that size, and its text is as large as AppKit's own in a source list;
+/// the symbol stays a point larger than the text, as it is at the medium size.
+struct SidebarMetrics {
+    /// The medium size's text, and the room its widest symbol takes: the other sizes keep that proportion.
+    private static let mediumTextSize: CGFloat = 13
+    private static let mediumSymbolWidth: CGFloat = 18
+
+    let textSize: CGFloat
+
+    /// A cell no table has sized, or told a size that is none of the three, is shown as the medium one.
+    init(_ size: NSTableView.RowSizeStyle) {
+        textSize = switch size {
+        case .small: 11
+        case .large: 15
+        default: Self.mediumTextSize
+        }
+    }
+
+    var symbolSize: CGFloat { textSize + 1 }
+    /// Tag dots are smaller than the other symbols, like Finder's.
+    var tagDotSize: CGFloat { textSize - 3 }
+    var symbolWidth: CGFloat { (Self.mediumSymbolWidth * textSize / Self.mediumTextSize).rounded() }
+}
+
+/// Finder's macOS 26 look: monochrome symbol and label that keep their color when selected, at the size the system's
+/// sidebar setting asks for.
 final class SidebarCellView: NSTableCellView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
+    private let iconWidth: NSLayoutConstraint
 
     /// Explicit colors: the source-list style recolors the semantic label color with the accent on selection.
     /// Fully opaque with Increase Contrast.
@@ -571,9 +598,9 @@ final class SidebarCellView: NSTableCellView {
     private static let iconInk = ThemeStyle.panelIcon
 
     override init(frame: NSRect) {
+        iconWidth = icon.widthAnchor.constraint(equalToConstant: 0)
         super.init(frame: frame)
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.symbolConfiguration = .init(pointSize: 14, weight: .regular)
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingTail
         addSubview(icon)
@@ -581,11 +608,12 @@ final class SidebarCellView: NSTableCellView {
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
+            iconWidth,
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        applySize()
     }
 
     @available(*, unavailable)
@@ -599,9 +627,21 @@ final class SidebarCellView: NSTableCellView {
         self.tint = tint
         toolTip = help
         setAccessibilityHelp(help)
-        // Tag dots are smaller than the other icons, like Finder's.
-        icon.symbolConfiguration = .init(pointSize: tint == nil ? 14 : 10, weight: tint == nil ? .regular : .semibold)
+        applySize()
         applyColors()
+    }
+
+    /// The table gives each of its rows' cells the size it shows them at: the system's sidebar size.
+    override var rowSizeStyle: NSTableView.RowSizeStyle {
+        didSet { applySize() }
+    }
+
+    private func applySize() {
+        let metrics = SidebarMetrics(rowSizeStyle)
+        label.font = .systemFont(ofSize: metrics.textSize)
+        icon.symbolConfiguration = tint == nil ? .init(pointSize: metrics.symbolSize, weight: .regular)
+            : .init(pointSize: metrics.tagDotSize, weight: .semibold)
+        iconWidth.constant = metrics.symbolWidth
     }
 
     override var backgroundStyle: NSView.BackgroundStyle {

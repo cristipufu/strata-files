@@ -223,7 +223,8 @@ extension BrowserViewController: NSMenuItemValidation, PaneCommandState {
             case .list, .columns:
                 item.title = bigger ? String(localized: "Bigger Text", comment: "View menu: make file names bigger (⌘+)")
                     : String(localized: "Smaller Text", comment: "View menu: make file names smaller (⌘−)")
-                return bigger ? preferences.nameTextSize < Self.textSizes.upperBound : preferences.nameTextSize > Self.textSizes.lowerBound
+                let sizes = Prefs.nameTextSizes
+                return bigger ? preferences.nameTextSize < sizes.upperBound : preferences.nameTextSize > sizes.lowerBound
             case .gallery, .treemap:
                 return false
             }

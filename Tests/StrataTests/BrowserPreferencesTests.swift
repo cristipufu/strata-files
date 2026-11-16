@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Synchronization
 import Testing
 @testable import Strata
 @testable import StrataAI
@@ -180,9 +181,97 @@ struct BrowserPreferencesTests {
         #expect(tree.snapshot() == ["top/", "top/a.txt", "top/b/"])
     }
 
+    @Test func namesOfEverySizeFitTheirRowsInListAndColumnsAtEveryDensity() async throws {
+        let tree = try TestTree("alpha.txt")
+        let env = try Environment()
+        let browser = await browser(env, at: tree.root)
+        browser.setMode(.columns, remember: false)
+        let pane = try #require(views(browser.columns.view, of: ColumnPane.self).first)
+        for size in stride(from: Prefs.nameTextSizes.lowerBound, through: Prefs.nameTextSizes.upperBound, by: 1) {
+            for density in 0...2 {
+                env.preferences.density = density
+                env.preferences.nameTextSize = size
+                // A row shorter than its name would cut the name off above and below.
+                let listName = try #require(try nameCell(browser).textField)
+                #expect(listName.font?.pointSize == CGFloat(size), "\(size) pt")
+                #expect(listName.fittingSize.height <= browser.outlineView.rowHeight, "List, \(size) pt, density \(density)")
+                let column = try #require(pane.tableView(pane.tableView, viewFor: pane.tableView.tableColumns.first, row: 0) as? NSTableCellView)
+                let columnName = try #require(column.textField)
+                #expect(columnName.font?.pointSize == CGFloat(size), "\(size) pt")
+                #expect(columnName.fittingSize.height <= pane.tableView.rowHeight, "Columns, \(size) pt, density \(density)")
+            }
+        }
+        #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
+    @Test func namesLargerThanTheNarrowestIconLabelWasMadeForWidenIt() throws {
+        let env = try Environment()
+        func metrics(_ size: Double, icon: CGFloat) -> GridMetrics {
+            env.preferences.nameTextSize = size
+            return GridMetrics(iconSize: icon, typography: FileViewTypography(preferences: env.preferences))
+        }
+        // Up to 16 pt the narrowest label is as wide as it always was: nothing moves for the sizes there were.
+        for size in [11.0, 13, 14, 16] { #expect(metrics(size, icon: 32).labelWidth == 94, "\(size) pt") }
+        // Larger names get as much more room as they are larger, so as many letters fit a line as at 16 pt.
+        #expect(metrics(18, icon: 32).labelWidth == 106 && metrics(20, icon: 32).labelWidth == 118)
+        #expect(metrics(20, icon: 32).minCellWidth == 134 && metrics(20, icon: 32).itemHeight > metrics(16, icon: 32).itemHeight)
+        // A large icon's label is wider than that already.
+        for size in [11.0, 16, 20] { #expect(metrics(size, icon: 128).labelWidth == 162, "\(size) pt") }
+        let twoShortWords = NSAttributedString(string: "Tax Returns", attributes: [.font: metrics(20, icon: 32).typography.font])
+        #expect(twoShortWords.size().width <= metrics(20, icon: 32).labelWidth)
+    }
+
+    @Test func biggerAndSmallerTextStopAtTheEndsOfTheSizesNamesMayBe() async throws {
+        let tree = try TestTree("alpha.txt")
+        let env = try Environment()
+        let browser = await browser(env, at: tree.root)
+        browser.setMode(.list, remember: false)
+        let bigger = NSMenuItem(title: "", action: #selector(BrowserViewController.biggerIcons(_:)), keyEquivalent: "")
+        let smaller = NSMenuItem(title: "", action: #selector(BrowserViewController.smallerIcons(_:)), keyEquivalent: "")
+        let changes = Mutex(0)
+        let observer = env.preferences.notifications.addObserver(forName: .appearanceChanged, object: nil, queue: nil) { _ in
+            changes.withLock { $0 += 1 }
+        }
+        defer { env.preferences.notifications.removeObserver(observer) }
+        env.preferences.nameTextSize = 19
+        #expect(browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
+        browser.biggerIcons(nil)
+        #expect(env.preferences.nameTextSize == 20 && !browser.validateMenuItem(bigger) && browser.validateMenuItem(smaller))
+        // Past an end nothing is saved, not even a size that would read as the end.
+        let saved = { env.preferences.defaults.object(forKey: "nameTextSize") as? Double }
+        let changesAtUpperBound = changes.withLock { $0 }
+        browser.biggerIcons(nil)
+        #expect(env.preferences.nameTextSize == 20 && saved() == 20)
+        #expect(changes.withLock { $0 } == changesAtUpperBound)
+        env.preferences.nameTextSize = 12
+        browser.smallerIcons(nil)
+        #expect(env.preferences.nameTextSize == 11 && browser.validateMenuItem(bigger) && !browser.validateMenuItem(smaller))
+        let changesAtLowerBound = changes.withLock { $0 }
+        browser.smallerIcons(nil)
+        #expect(env.preferences.nameTextSize == 11 && saved() == 11)
+        #expect(changes.withLock { $0 } == changesAtLowerBound)
+        #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
+    @Test func textSizeShortcutsReachTheBoundsFromFractionalSavedSizes() async throws {
+        let tree = try TestTree("alpha.txt")
+        let env = try Environment()
+        let browser = await browser(env, at: tree.root)
+        for mode in [BrowserViewMode.list, .columns] {
+            browser.setMode(mode, remember: false)
+            env.preferences.nameTextSize = 19.5
+            browser.biggerIcons(nil)
+            #expect(env.preferences.nameTextSize == 20 && env.preferences.defaults.double(forKey: "nameTextSize") == 20)
+            env.preferences.nameTextSize = 11.5
+            browser.smallerIcons(nil)
+            #expect(env.preferences.nameTextSize == 11 && env.preferences.defaults.double(forKey: "nameTextSize") == 11)
+        }
+        #expect(tree.snapshot() == ["alpha.txt"])
+    }
+
     @Test func inlineRenameUsesTheOwningPanesTextSize() async throws {
         let tree = try TestTree("alpha.txt")
-        for size in [11.0, 16.0] {
+        for size in [11.0, 20.0] {
             let env = try Environment()
             env.preferences.nameTextSize = size
             let browser = await browser(env, at: tree.root)

@@ -117,11 +117,17 @@ struct PreferencesTests {
         prefs.newFileExtension = "../bad"
         #expect(prefs.newFileExtension == "md")
         prefs.nameTextSize = 100
-        #expect(prefs.nameTextSize == 16)
+        #expect(prefs.nameTextSize == 20)
         prefs.nameTextSize = 1
         #expect(prefs.nameTextSize == 11)
-        prefs.nameTextSize = .nan
-        #expect(prefs.nameTextSize == 13 && FileViewTypography(preferences: prefs).font.pointSize == 13)
+        for size in [17.0, 18, 19, 20] {
+            prefs.nameTextSize = size
+            #expect(prefs.nameTextSize == size && FileViewTypography(preferences: prefs).font.pointSize == size)
+        }
+        for invalidSize: Double in [.nan, .infinity, -.infinity] {
+            prefs.nameTextSize = invalidSize
+            #expect(prefs.nameTextSize == 13 && FileViewTypography(preferences: prefs).font.pointSize == 13)
+        }
         prefs.sortColumn = "future-column"
         #expect(prefs.sortColumn == "name")
         prefs.favoritePaths = ["/one", "/two"]

@@ -25,8 +25,16 @@ struct GridMetrics: Equatable {
         detailHeight = ceil(detail.ascender - detail.descender) + 2
     }
 
-    /// Width available to the name: a little wider than the icon, never narrower than two short words.
-    var labelWidth: CGFloat { max(iconSize + 34, 94) }
+    /// The size of name up to which two short words fit the narrowest label.
+    private static let narrowestLabel: (width: CGFloat, textSize: CGFloat) = (94, 16)
+
+    /// Width available to the name: a little wider than the icon, never narrower than two short words. For names
+    /// larger than that label was made for, it is as much wider as they are larger.
+    var labelWidth: CGFloat {
+        let narrowest = Self.narrowestLabel
+        let twoShortWords = narrowest.width * max(1, typography.font.pointSize / narrowest.textSize)
+        return max(iconSize + 34, twoShortWords.rounded())
+    }
     var minCellWidth: CGFloat { labelWidth + 16 }
     var iconBoxSide: CGFloat { iconSize + iconPad * 2 }
     var itemHeight: CGFloat {
