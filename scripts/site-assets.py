@@ -7,6 +7,8 @@ import html
 import json
 from pathlib import Path
 import re
+import sys
+import time
 from urllib.error import HTTPError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import urlopen
@@ -19,9 +21,24 @@ CSP = "; ".join([
 ])
 ASSET = re.compile(r"immutable/([0-9a-f]{64})-([A-Za-z0-9_.-]+)\Z")
 EXTENSIONS = {'.js', '.css', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.ico', '.webmanifest'}
+RETRYABLE_HTTP_ERRORS = frozenset({408, 429, 500, 502, 503, 504})
+DOWNLOAD_RETRY_DELAYS = (1, 2)
 
 
 def fetch(url, limit):
+    for attempt in range(len(DOWNLOAD_RETRY_DELAYS) + 1):
+        try:
+            return fetch_once(url, limit)
+        except HTTPError as error:
+            error.close()
+            if error.code not in RETRYABLE_HTTP_ERRORS or attempt == len(DOWNLOAD_RETRY_DELAYS):
+                raise
+            delay = DOWNLOAD_RETRY_DELAYS[attempt]
+            print(f'HTTP {error.code} downloading {url}; retrying in {delay}s.', file=sys.stderr, flush=True)
+            time.sleep(delay)
+
+
+def fetch_once(url, limit):
     with urlopen(url, timeout=30) as response:
         if urlsplit(response.url).scheme != 'https' or urlsplit(response.url).netloc != urlsplit(url).netloc:
             raise ValueError('Asset download redirected away from the website')

@@ -64,7 +64,8 @@ fingerprinting alone does not enable long-lived `immutable` caching. Original as
 for social metadata and external links. Publishing downloads the previous deployment's asset manifest and
 retains its verified hashed files, keeping cached pages working across deployments. Downloads are restricted
 to HTTPS on the same host, checked against SHA-256 filenames and bounded by per-file and total size limits.
-Only a missing manifest (404 on the first such deployment) is ignored; other errors stop publishing.
+Downloads get up to three attempts for temporary HTTP failures, with waits of 1 and 2 seconds.
+Only a missing manifest (404 on the first such deployment) is ignored; permanent errors and exhausted retries stop publishing.
 
 The retained archive is deliberately bounded at 2,000 files or 128 MiB. Reaching either limit requires a
 retention review rather than silently breaking old URLs. If hosting later supports response headers, use
