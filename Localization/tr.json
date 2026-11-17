@@ -2049,6 +2049,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "“%@” öğesinin adı “%@” olarak değiştirilemedi: %@",
     "“%@” couldn’t have its download removed.": "“%@” öğesinin indirilen kopyası silinemedi.",
     "“%@” couldn’t make that change": "“%@” bu değişikliği yapamadı",
+    "“%@” didn’t answer in time.": "“%@” zamanında yanıt vermedi.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "“%@”, Strata’nın arşivleri okumak için koyduğu sınırları aştığı için ayıklanmadı.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "“%@” diskinin kendi Çöp Sepeti’nde %lld öğe daha var.",

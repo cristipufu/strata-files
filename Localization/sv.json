@@ -2049,6 +2049,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "”%@” kunde inte byta namn till ”%@”: %@",
     "“%@” couldn’t have its download removed.": "Hämtningen av ”%@” kunde inte tas bort.",
     "“%@” couldn’t make that change": "”%@” kunde inte göra den ändringen",
+    "“%@” didn’t answer in time.": "”%@” svarade inte i tid.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "”%@” går utöver gränserna som Strata sätter för att läsa arkiv, så det packades inte upp.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "”%@” har %lld objekt till i sin egen papperskorg.",

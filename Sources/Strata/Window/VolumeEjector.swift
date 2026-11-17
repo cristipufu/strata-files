@@ -5,9 +5,8 @@ extension Notification.Name {
     /// A disk started or finished ejecting; the object is the `VolumeEjector`.
     static let volumeEjectionsChanged = Notification.Name("StrataVolumeEjectionsChanged")
     /// A disk is about to be handed to macOS: what shows it lets go first. The object is the `VolumeEjector`, and
-    /// `VolumeEjector.volumeKey` holds the disk's URL, as for the two below.
+    /// `VolumeEjector.volumeKey` holds the disk's URL, as for the one below.
     static let volumeEjectionStarting = Notification.Name("StrataVolumeEjectionStarting")
-    static let volumeEjectionFailed = Notification.Name("StrataVolumeEjectionFailed")
     static let volumeEjected = Notification.Name("StrataVolumeEjected")
 }
 
@@ -25,11 +24,6 @@ extension Notification.Name {
     }
 
     nonisolated struct NoAnswer: Error {}
-
-    nonisolated enum Outcome: Sendable {
-        case ejected
-        case failed(any Error)
-    }
 
     nonisolated static let volumeKey = "volume"
 
@@ -63,29 +57,26 @@ extension Notification.Name {
     func eject(_ volume: URL, from window: NSWindow?) -> Task<Void, Never>? {
         guard let place = Self.volume(volume, in: Self.ejectable(places.snapshot.volumes, except: refused)) else { return nil }
         let key = Self.key(place.url)
-        post(.volumeEjectionStarting, place)
         let unmount = unmount, patience = patience, report = report
         let task = Task { [weak self, weak window] in
             let outcome = await VolumeEjector.outcome(of: unmount, place.url, patience: patience)
             self?.finish(place, key: key, outcome: outcome)
-            if case .failed(let error) = outcome {
+            if case .failure(let error) = outcome {
                 report(Failure(volume: place.url, name: place.title, error: error), window)
             }
         }
         tasks[key] = task
+        post(.volumeEjectionStarting, place)
         NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
         return task
     }
 
-    private func finish(_ place: Place, key: String, outcome: Outcome) {
+    private func finish(_ place: Place, key: String, outcome: Result<Void, any Error>) {
         tasks[key] = nil
-        switch outcome {
-        case .ejected:
+        if case .success = outcome {
             gone.insert(key)
             post(.volumeEjected, place)
             forgetOnceRead(key)
-        case .failed:
-            post(.volumeEjectionFailed, place)
         }
         NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
     }
@@ -129,24 +120,26 @@ extension Notification.Name {
     nonisolated static func key(_ url: URL) -> String { PathSpelling.short(url) }
 
     /// macOS's answer, or `NoAnswer` once `patience` runs out first. A disk that stopped answering keeps its thread.
-    nonisolated static func outcome(of unmount: @escaping Unmount, _ volume: URL, patience: @escaping Patience) async -> Outcome {
-        let waiting = Mutex<CheckedContinuation<Outcome, Never>?>(nil)
+    nonisolated static func outcome(of unmount: @escaping Unmount, _ volume: URL,
+                                    patience: @escaping Patience) async -> Result<Void, any Error> {
+        let waiting = Mutex<CheckedContinuation<Result<Void, any Error>, Never>?>(nil)
         return await withCheckedContinuation { continuation in
             waiting.withLock { $0 = continuation }
             let deadline = Task { @Sendable in
                 await patience()
-                waiting.withLock { $0.take() }?.resume(returning: .failed(NoAnswer()))
+                guard !Task.isCancelled else { return }
+                waiting.withLock { $0.take() }?.resume(returning: .failure(NoAnswer()))
             }
             Task { @Sendable in
-                let outcome: Outcome
+                let outcome: Result<Void, any Error>
                 do {
                     try await unmount(volume)
-                    outcome = .ejected
+                    outcome = .success(())
                 } catch {
-                    outcome = .failed(error)
+                    outcome = .failure(error)
                 }
-                deadline.cancel()
                 waiting.withLock { $0.take() }?.resume(returning: outcome)
+                deadline.cancel()
             }
         }
     }
@@ -169,37 +162,47 @@ extension Notification.Name {
 /// An eject failure is always shown, since a disk still mounted mustn't look ejected: as a sheet on the window that
 /// asked, one at a time there (a window takes one sheet), else as a dialog once that window has closed.
 @MainActor final class EjectFailureAlerts {
-    private var waiting: [ObjectIdentifier: [VolumeEjector.Failure]] = [:]
+    typealias Sheet = @MainActor (NSAlert, NSWindow, @escaping () -> Void) -> Void
+    typealias Dialog = @MainActor (NSAlert) -> Void
+
+    private struct Queue {
+        weak var window: NSWindow?
+        var failures: [VolumeEjector.Failure]
+    }
+
+    private let sheet: Sheet
+    private let dialog: Dialog
+    private let canAsk: @MainActor (NSWindow) -> Bool
+    private var queues: [ObjectIdentifier: Queue] = [:]
+
+    init(sheet: @escaping Sheet = { alert, window, done in FileAlerts.present(alert, in: window) { _ in done() } },
+         dialog: @escaping Dialog = { _ = $0.runModal() },
+         canAsk: @escaping @MainActor (NSWindow) -> Bool = { FileAlerts.canStillAsk(in: $0) }) {
+        self.sheet = sheet
+        self.dialog = dialog
+        self.canAsk = canAsk
+    }
 
     func present(_ failure: VolumeEjector.Failure, in window: NSWindow?) {
-        guard let window, FileAlerts.canStillAsk(in: window) else {
-            _ = Self.alert(for: failure).runModal()
-            return
-        }
+        guard let window, canAsk(window) else { return dialog(Self.alert(for: failure)) }
         let id = ObjectIdentifier(window)
-        guard waiting[id] == nil else {
-            waiting[id]?.append(failure)
+        // Another window that once had this identity may have gone without its sheet ending.
+        if queues[id]?.window === window {
+            queues[id]?.failures.append(failure)
             return
         }
-        waiting[id] = []
         show(failure, in: window)
     }
 
-    private func show(_ failure: VolumeEjector.Failure, in window: NSWindow) {
+    private func show(_ failure: VolumeEjector.Failure, in window: NSWindow, then later: [VolumeEjector.Failure] = []) {
         let id = ObjectIdentifier(window)
-        FileAlerts.present(Self.alert(for: failure), in: window) { [weak self, weak window] _ in
+        queues[id] = Queue(window: window, failures: later)
+        sheet(Self.alert(for: failure), window) { [weak self, weak window] in
             guard let self else { return }
-            guard let next = waiting[id]?.first else {
-                waiting[id] = nil
-                return
-            }
-            guard let window else {
-                let unseen = waiting.removeValue(forKey: id) ?? []
-                unseen.forEach { present($0, in: nil) }
-                return
-            }
-            waiting[id]?.removeFirst()
-            show(next, in: window)
+            let waiting = queues.removeValue(forKey: id)?.failures ?? []
+            guard let next = waiting.first else { return }
+            guard let window, canAsk(window) else { return waiting.forEach { dialog(Self.alert(for: $0)) } }
+            show(next, in: window, then: Array(waiting.dropFirst()))
         }
     }
 
@@ -207,7 +210,7 @@ extension Notification.Name {
         let alert = NSAlert()
         alert.messageText = String(localized: "“\(failure.name)” couldn’t be ejected")
         alert.informativeText = failure.error is VolumeEjector.NoAnswer
-            ? String(localized: "\(failure.name) didn’t answer in time.")
+            ? String(localized: "“\(failure.name)” didn’t answer in time.", comment: "Eject failed: macOS got no answer from the disk or share in time; the disk's name")
             : String(localized: "Close any files from it that are open in other apps, then try again. (\(failure.error.localizedDescription))")
         return alert
     }

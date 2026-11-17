@@ -2193,6 +2193,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "„%@” nu a putut fi redenumit în „%@”: %@",
     "“%@” couldn’t have its download removed.": "Descărcarea pentru „%@” nu a putut fi eliminată.",
     "“%@” couldn’t make that change": "„%@” nu a putut face această modificare",
+    "“%@” didn’t answer in time.": "„%@” nu a răspuns la timp.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "„%@” depășește limitele pe care Strata le stabilește pentru citirea arhivelor, așa că nu a fost extras.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "„%@” mai are %lld articol în propriul Coș.",

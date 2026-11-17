@@ -627,7 +627,7 @@ final class SidebarCellView: NSTableCellView {
 
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
-    private let ejectButton = SidebarEjectButton()
+    private let ejectButton = NSButton()
     private let iconWidth: NSLayoutConstraint
     private let ejectButtonSize: NSLayoutConstraint
     private let labelBeforeEjectButton: NSLayoutConstraint
@@ -713,6 +713,11 @@ final class SidebarCellView: NSTableCellView {
         refreshEjectButton()
         NSLayoutConstraint.deactivate([shown ? labelAtEdge : labelBeforeEjectButton])
         NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])
+    }
+
+    /// The eject button, when it's shown at `point` (in this cell).
+    func shownEjectButton(at point: NSPoint) -> NSButton? {
+        !ejectButton.isHidden && ejectButton.frame.contains(point) ? ejectButton : nil
     }
 
     @objc private func ejectClicked() { _ = performEjection() }
@@ -820,28 +825,29 @@ final class SavedSearchBox: NSObject {
     init(search: SavedSearch) { self.search = search }
 }
 
-/// A disk's eject button. A click on it goes straight to it: the row isn't selected, and nothing navigates.
-final class SidebarEjectButton: NSButton {}
-
 /// The sidebar's outline, telling the controller when a drag leaves or ends (to stop spring loading).
 final class SidebarOutlineView: NSOutlineView {
     var onDragEnd: (() -> Void)?
     /// Return (or Enter) on the selected row; true when it was handled.
     var onReturn: (() -> Bool)?
 
+    /// AppKit gives a click on an enabled eject button to the button. One that reaches the outline anyway, as a busy
+    /// disabled button passes it on, goes no further: the row isn't selected, and nothing navigates. A Control-click
+    /// still opens the menu.
     override func mouseDown(with event: NSEvent) {
-        if let button = ejectButton(under: event) { return button.mouseDown(with: event) }
-        super.mouseDown(with: event)
+        guard !event.modifierFlags.contains(.control), let button = ejectButton(at: convert(event.locationInWindow, from: nil)) else {
+            return super.mouseDown(with: event)
+        }
+        if button.isEnabled { button.mouseDown(with: event) }
     }
 
-    private func ejectButton(under event: NSEvent) -> SidebarEjectButton? {
-        guard let superview else { return nil }
-        var view = hitTest(superview.convert(event.locationInWindow, from: nil))
-        while let current = view, current !== self {
-            if let button = current as? SidebarEjectButton { return button }
-            view = current.superview
+    private func ejectButton(at point: NSPoint) -> NSButton? {
+        let rowIndex = row(at: point), columnIndex = column(at: point)
+        guard rowIndex >= 0, columnIndex >= 0,
+              let cell = view(atColumn: columnIndex, row: rowIndex, makeIfNecessary: false) as? SidebarCellView else {
+            return nil
         }
-        return nil
+        return cell.shownEjectButton(at: convert(point, to: cell))
     }
 
     override func keyDown(with event: NSEvent) {

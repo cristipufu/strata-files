@@ -2193,6 +2193,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "„%@“ se nepodařilo přejmenovat na „%@“: %@",
     "“%@” couldn’t have its download removed.": "U „%@“ se nepodařilo odstranit stažený obsah.",
     "“%@” couldn’t make that change": "Na „%@“ se tuto změnu nepodařilo provést",
+    "“%@” didn’t answer in time.": "„%@“ neodpověděl včas.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "„%@“ překračuje limity, které Strata nastavuje pro čtení archivů, proto nebyl rozbalen.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "„%@“ má ve vlastním koši ještě %lld položku.",

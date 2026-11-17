@@ -11705,7 +11705,7 @@
     "find": "        let disks = Self.ejectable(places.snapshot.volumes, except: refused)",
     "replace": "        let disks = Self.ejectable(places.snapshot.volumes, except: [])",
     "rule": "Eject: File ▸ Eject offers a disk that is already ejecting",
-    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAnEjectedOneStaysRefusedUntilReadAgain|VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAnEjectedOneStaysRefusedUntilReadAgain|VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
@@ -11737,10 +11737,10 @@
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
-    "find": "        case .failed:\n            post(.volumeEjectionFailed, place)",
-    "replace": "        case .failed:\n            post(.volumeEjected, place)",
-    "rule": "Eject: a failed eject keeps panes Home as if the disk had gone",
-    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAnEjectedOneStaysRefusedUntilReadAgain|VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "find": "        if case .success = outcome {",
+    "replace": "        if true {",
+    "rule": "Eject: a failed eject is taken for the disk having gone",
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAnEjectedOneStaysRefusedUntilReadAgain"
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
@@ -11751,65 +11751,114 @@
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
-    "find": "                waiting.withLock { $0.take() }?.resume(returning: .failed(NoAnswer()))\n",
+    "find": "                waiting.withLock { $0.take() }?.resume(returning: .failure(NoAnswer()))\n",
     "replace": "",
     "rule": "Eject: a disk that never answers stays ejecting for good",
-    "tests": "VolumeEjectorTests/aDiskThatDoesntAnswerIsReportedAndCanBeTriedAgain"
+    "tests": "VolumeEjectorTests/aDiskThatDoesntAnswerIsReportedItsLateAnswerIgnoredAndItCanBeTriedAgain"
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
     "find": "        return root != \"/\" && (path == root || path.hasPrefix(root + \"/\"))",
     "replace": "        return root != \"/\" && path.hasPrefix(root)",
     "rule": "Eject: a pane on a disk named like the ejected one goes Home",
-    "tests": "VolumeEjectorTests/aLocationIsOnADiskOnlyByWholePathComponents|VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/aLocationIsOnADiskOnlyByWholePathComponents|VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "            return VolumeEjector.isOnVolume((p.browser.mode == .columns ? p.columnLocation : nil) ?? p.location, volume)",
+    "find": "            return places.contains { VolumeEjector.isOnVolume($0, volume) }",
     "replace": "            return true",
     "rule": "Eject: panes on other disks go Home with the ejected one",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "            return VolumeEjector.isOnVolume((p.browser.mode == .columns ? p.columnLocation : nil) ?? p.location, volume)",
-    "replace": "            return VolumeEjector.isOnVolume(p.location, volume)",
+    "find": "            if p.browser.mode == .columns, let column = p.columnLocation { places.append(column) }\n",
+    "replace": "",
     "rule": "Eject: a deeper column on the disk is left showing it",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "        return ejector.ejectable([(browser.mode == .columns ? pane.columnLocation : nil) ?? location])",
-    "replace": "        return ejector.ejectable([location])",
+    "find": "            if case .search(_, let scope?) = p.destination { places.append(scope) }\n",
+    "replace": "",
+    "rule": "Eject: a search inside the disk is left showing it",
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        return ejector.ejectable([location, shown]).filter { seen.insert(VolumeEjector.key($0)).inserted }",
+    "replace": "        return ejector.ejectable([location]).filter { seen.insert(VolumeEjector.key($0)).inserted }",
     "rule": "Eject: File ▸ Eject misses the disk a deeper column shows",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "            go(.folder(services.homeFolder), in: p, recordHistory: false)\n            departures.record(p, leaving: folder, from: volume)",
-    "replace": "            departures.record(p, leaving: folder, from: volume)",
+    "find": "        return ejector.ejectable([location, shown]).filter { seen.insert(VolumeEjector.key($0)).inserted }",
+    "replace": "        return ejector.ejectable([shown]).filter { seen.insert(VolumeEjector.key($0)).inserted }",
+    "rule": "Eject: File ▸ Eject misses the disk a pane is on while a deeper column is focused",
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }\n        leave(volume)\n    }\n\n    @objc private func volumeEjected",
+    "replace": "        guard Self.volume(in: notification, key: VolumeEjector.volumeKey) != nil else { return }\n    }\n\n    @objc private func volumeEjected",
     "rule": "Eject: panes keep reading the disk while macOS is asked to eject it",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway|VolumeEjectorTests/everyWindowLetsTheDiskGoAndOneClosedOrAPaneClosedMeanwhileIsLeftAlone"
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
     "find": "        guard let volume = Self.volume(in: notification, key: NSWorkspace.volumeURLUserInfoKey) else { return }",
     "replace": "        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }",
     "rule": "Eject: panes stay on a disk unmounted outside Strata",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
   {
-    "file": "Strata/Window/DiskDepartures.swift",
-    "find": "            guard let pane = departure.pane, pane.navigationRevision == departure.revision else { return nil }",
-    "replace": "            guard let pane = departure.pane else { return nil }",
-    "rule": "Eject: a failed eject takes back a pane you've moved since",
-    "tests": "VolumeEjectorTests/panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays"
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "        let kept = keepingShares ? share(of: volume) : nil",
+    "replace": "        let kept: (mountPoint: String, address: String)? = nil",
+    "rule": "Eject: a pane on a share unmounted outside Strata forgets its folder",
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        if queues[id]?.window === window {",
+    "replace": "        if false {",
+    "rule": "Eject: a second failure in a window shows a sheet over the first",
+    "tests": "VolumeEjectorTests/failuresWaitTheirTurnInTheirWindowAndADialogTakesOverOnceItsClosed"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "            guard let window, canAsk(window) else { return waiting.forEach { dialog(Self.alert(for: $0)) } }",
+    "replace": "            guard let window else { return waiting.forEach { dialog(Self.alert(for: $0)) } }",
+    "rule": "Eject: failures waiting for a closed window go to its sheet instead of a dialog",
+    "tests": "VolumeEjectorTests/failuresWaitTheirTurnInTheirWindowAndADialogTakesOverOnceItsClosed"
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
     "find": "        guard item.isEjectable, let url = item.url else { return nil }",
     "replace": "        guard let url = item.url else { return nil }",
     "rule": "Eject: a sidebar row that isn't an ejectable disk shows an eject button",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController+Menus.swift",
+    "find": "        return !services.volumeEjector.isEjecting(url)",
+    "replace": "        return true",
+    "rule": "Eject: the Places menu offers Eject for a disk already ejecting",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])",
+    "replace": "        NSLayoutConstraint.activate([labelAtEdge])",
+    "rule": "Eject: a long disk name runs under its eject button",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        SidebarCellView.refreshEjectButtons(of: sections.flatMap(\\.items).filter(\\.isEjectable), in: outline)\n",
+    "replace": "",
+    "rule": "Eject: the Places eject button shown doesn't follow the disk ejecting",
     "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
   },
   {
@@ -11821,31 +11870,10 @@
   },
   {
     "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "        SidebarCellView.refreshEjectButtons(of: sections.flatMap(\\.items).filter(\\.isEjectable), in: outline)\n",
-    "replace": "",
-    "rule": "Eject: the Places eject button shown doesn't follow the disk ejecting",
-    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
-  },
-  {
-    "file": "Strata/Sidebar/SidebarViewController.swift",
     "find": "            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()\n",
     "replace": "",
     "rule": "Eject: eject buttons already shown don't follow their disk ejecting",
     "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt|VolumeEjectorTests/theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu"
-  },
-  {
-    "file": "Strata/Sidebar/SidebarViewController.swift",
-    "find": "        NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])",
-    "replace": "        NSLayoutConstraint.activate([labelAtEdge])",
-    "rule": "Eject: a long disk name runs under its eject button",
-    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
-  },
-  {
-    "file": "Strata/Sidebar/SidebarViewController+Menus.swift",
-    "find": "        return !services.volumeEjector.isEjecting(url)",
-    "replace": "        return true",
-    "rule": "Eject: the Places menu offers Eject for a disk already ejecting",
-    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndAClickEjectsThatDiskWithoutSelectingIt"
   },
   {
     "file": "Strata/Sidebar/FolderTreeController.swift",

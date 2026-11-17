@@ -1905,6 +1905,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "「%@」の名前を「%@」に変更できませんでした: %@",
     "“%@” couldn’t have its download removed.": "「%@」のダウンロードしたものを削除できませんでした。",
     "“%@” couldn’t make that change": "「%@」でその変更を行えませんでした",
+    "“%@” didn’t answer in time.": "「%@」から時間内に応答がありませんでした。",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "「%@」はStrataがアーカイブの読み込みに設けている上限を超えているため、展開されませんでした。",
     "“%@” has %lld more items in its own Trash.": {
       "other": "「%@」のゴミ箱にはほかに%lld項目があります。"

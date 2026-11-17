@@ -1905,6 +1905,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "‘%@’의 이름을 ‘%@’(으)로 변경할 수 없음: %@",
     "“%@” couldn’t have its download removed.": "‘%@’의 다운로드를 제거할 수 없습니다.",
     "“%@” couldn’t make that change": "‘%@’에서 해당 변경을 수행할 수 없음",
+    "“%@” didn’t answer in time.": "‘%@’이(가) 제시간에 응답하지 않았습니다.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "‘%@’이(가) Strata가 아카이브를 읽을 때 정한 한도를 넘어 압축 해제하지 않았습니다.",
     "“%@” has %lld more items in its own Trash.": {
       "other": "‘%@’의 자체 휴지통에 %lld개 항목이 더 있습니다."

@@ -35,7 +35,7 @@ private actor HeldUnmounts {
     }
 }
 
-/// The time an eject waits for macOS, passed when the test says so.
+/// The time an eject waits for macOS, passed when the test says so; cancelling a wait ends it at once.
 private actor Deadline {
     private var passed = false
     private var waiting: [UUID: CheckedContinuation<Void, Never>] = [:]
@@ -87,8 +87,13 @@ private actor DiskList {
     var items: [Item] = []
 }
 
+/// A window that takes clicks as the front one does, without ever being shown.
+private final class ClickWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
+}
+
 /// The eject button, its menus and ⌘E share one owner: it hands macOS only the root of a disk the latest read lists as
-/// ejectable, once until it answers. Panes on the disk go Home first, and come back if it stays.
+/// ejectable, once until it answers. Panes on the disk go Home before it's asked, and stay there.
 @MainActor struct VolumeEjectorTests {
     private static func disk(_ url: URL, named title: String, ejectable: Bool = true) -> Place {
         Place(title: title, url: url, symbol: ejectable ? "externaldrive" : "internaldrive", isEjectable: ejectable)
@@ -116,10 +121,18 @@ private actor DiskList {
         while let read = places.task { await read.value }
     }
 
-    /// Lets the main actor run until `condition` holds, for at most ten seconds.
+    /// Lets the main actor run until `condition` holds, for at most ten thousand turns.
     private static func turns(until condition: () -> Bool) async {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+        for _ in 0..<10_000 {
+            if condition() { return }
+            await Task.yield()
+        }
+    }
+
+    /// Until the read begun after its eject lands, an ejected disk is refused.
+    private static func readAgain(_ disk: Place, by ejector: VolumeEjector) async throws {
+        await turns { !ejector.isEjecting(disk.url) }
+        try #require(!ejector.isEjecting(disk.url))
     }
 
     @Test func onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected() throws {
@@ -180,6 +193,7 @@ private actor DiskList {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
 
+        // Two disks at once: one fails, the other is ejected.
         let first = try #require(ejector.eject(a.url, from: nil))
         try #require(ejector.eject(a.url, from: nil) == nil, "A second request while it ejects asks nothing more")
         #expect(ejector.eject(URL(filePath: "/Volumes/strata-test-a"), from: nil) == nil)
@@ -218,7 +232,7 @@ private actor DiskList {
     }
 
     @Test(.timeLimit(.minutes(2)))
-    func aDiskThatDoesntAnswerIsReportedAndCanBeTriedAgain() async throws {
+    func aDiskThatDoesntAnswerIsReportedItsLateAnswerIgnoredAndItCanBeTriedAgain() async throws {
         let tree = try TestTree("Home/")
         let a = Self.disk(URL(filePath: "/Volumes/strata-test-a", directoryHint: .isDirectory), named: "a")
         let unmounts = HeldUnmounts(), deadline = Deadline()
@@ -250,8 +264,22 @@ private actor DiskList {
         await unmounts.answer(a.url)
         await unmounts.answer(a.url)
         for _ in 0..<100 { await Task.yield() }
-        #expect(ejected.items.isEmpty && failures.items.count == 2)
+        #expect(ejected.items.isEmpty && failures.items.count == 2 && !ejector.isEjecting(a.url))
         #expect(tree.snapshot() == ["Home/"])
+    }
+
+    @Test(.timeLimit(.minutes(2)))
+    func anAnswerBeforeTheDeadlineIsNeverTakenForNoAnswer() async {
+        let volume = URL(filePath: "/Volumes/strata-test-a", directoryHint: .isDirectory)
+        // The deadline's wait ends the moment it's cancelled, as `Task.sleep` does: it must still not count.
+        for _ in 0..<50 {
+            let deadline = Deadline()
+            let outcome = await VolumeEjector.outcome(of: { _ in }, volume, patience: { await deadline.wait() })
+            guard case .success = outcome else {
+                Issue.record("An eject that succeeded was reported as \(outcome)")
+                return
+            }
+        }
     }
 
     @Test(.timeLimit(.minutes(2)))
@@ -282,17 +310,21 @@ private actor DiskList {
             await task.value
         }
         #expect(failures.items.map { $0.volume } == [disk.url, disk.url] && failures.items.allSatisfy { $0.refused })
+        withExtendedLifetime((isolated, configured)) {}
+        #expect(state.snapshot().allSatisfy { $0.hasPrefix("state") || $0.hasPrefix("cache") })
     }
 
     @Test(.timeLimit(.minutes(3)))
-    func panesLeaveTheDiskBeforeItsEjectedAndComeBackIfItStays() async throws {
+    func panesLeaveADiskBeforeItsEjectedAndStayAway() async throws {
         _ = NSApplication.shared
-        let tree = try TestTree("Home/", "Volumes/a/folder/deeper/", "Volumes/ab/", "Volumes/a 1/")
+        let tree = try TestTree("Home/", "Volumes/a/folder/deeper/", "Volumes/ab/", "Volumes/a 1/", "Volumes/share/folder/")
         let a = Self.disk(tree.url("Volumes/a"), named: "a"), ab = Self.disk(tree.url("Volumes/ab"), named: "ab")
         let a1 = Self.disk(tree.url("Volumes/a 1"), named: "a 1")
+        let address = try #require(URL(string: "smb://server.invalid/share"))
+        let share = Place(title: "share", url: tree.url("Volumes/share"), symbol: "network", isEjectable: true, remountAddress: address)
         let unmounts = HeldUnmounts(), workspace = NotificationCenter()
         let reportedIn = Reports<NSWindow?>()
-        let environment = try await Self.environment(DiskList([a, ab, a1]), unmounts: unmounts, home: tree.url("Home"),
+        let environment = try await Self.environment(DiskList([a, ab, a1, share]), unmounts: unmounts, home: tree.url("Home"),
                                                      notifications: workspace) { _, window in
             reportedIn.items.append(window)
         }
@@ -311,74 +343,177 @@ private actor DiskList {
         await left.browser.directoryReads.task?.value
         await right.browser.directoryReads.task?.value
         let ejector = environment.services.volumeEjector
-        func readAgain() async throws {
-            await Self.turns { !ejector.isEjecting(a.url) }
-            try #require(!ejector.isEjecting(a.url))
-        }
 
-        // The folder inside the disk goes Home before macOS is asked; the look-alike disk beside it stays.
+        // The folder inside the disk goes Home before macOS is asked, and stays when the eject fails; the look-alike
+        // disk beside it stays where it is.
         try #require(window.panesShowing(a.url).count == 1 && window.panesShowing(a.url).first === left)
-        let first = try #require(ejector.eject(a.url, from: window.window))
+        let failed = try #require(ejector.eject(a.url, from: window.window))
         #expect(shows(left, "Home") && shows(right, "Volumes/ab"))
         await unmounts.waitForAsks(1)
-        await unmounts.answer(a.url)
-        await first.value
-        #expect(shows(left, "Home") && shows(right, "Volumes/ab"))
-        try await readAgain()
-
-        // A failure brings both panes back where they were.
-        await show("Volumes/a", in: left)
-        await show("Volumes/a/folder", in: right)
-        try #require(window.panesShowing(a.url).count == 2)
-        let failed = try #require(ejector.eject(a.url, from: window.window))
-        #expect(shows(left, "Home") && shows(right, "Home"))
-        await unmounts.waitForAsks(2)
         await unmounts.answer(a.url, throwing: CocoaError(.fileWriteNoPermission))
         await failed.value
         #expect(reportedIn.items.count == 1 && reportedIn.items.first.flatMap { $0 } === window.window)
-        #expect(shows(left, "Volumes/a") && shows(right, "Volumes/a/folder"))
+        #expect(shows(left, "Home") && shows(right, "Volumes/ab"))
 
-        // A pane you've moved meanwhile stays where you took it.
-        let moved = try #require(ejector.eject(a.url, from: window.window))
+        // Two disks at once in one window: one fails, one is ejected; both panes stay Home.
+        await show("Volumes/a", in: left)
+        let first = try #require(ejector.eject(a.url, from: window.window))
+        let second = try #require(ejector.eject(ab.url, from: window.window))
+        #expect(shows(left, "Home") && shows(right, "Home"))
         await unmounts.waitForAsks(3)
-        await show("Volumes/ab", in: right)
+        await unmounts.answer(ab.url)
         await unmounts.answer(a.url, throwing: CocoaError(.fileWriteNoPermission))
-        await moved.value
-        #expect(shows(left, "Volumes/a") && shows(right, "Volumes/ab"))
+        await first.value
+        await second.value
+        #expect(shows(left, "Home") && shows(right, "Home") && reportedIn.items.count == 2)
 
-        // A deeper column on the disk counts, and ⌘E ejects the disk whose top that column shows.
+        // ⌘E: the disk whose top a pane shows, or whose top a deeper column shows, but not a folder only inside it.
+        let eject = NSMenuItem(title: "", action: #selector(BrowserWindowController.ejectVolume(_:)), keyEquivalent: "")
         left.browser.setMode(.columns, remember: false)
         await show("Volumes", in: left)
         window.browser(left.browser, columnLocationChanged: tree.url("Volumes/a/folder"))
-        #expect(window.panesShowing(a.url).first === left)
+        #expect(window.panesShowing(a.url).first === left && !window.validateMenuItem(eject))
         window.browser(left.browser, columnLocationChanged: tree.url("Volumes/a"))
-        let eject = NSMenuItem(title: "", action: #selector(BrowserWindowController.ejectVolume(_:)), keyEquivalent: "")
+        #expect(window.validateMenuItem(eject))
+        await show("Volumes/a", in: left)
+        window.browser(left.browser, columnLocationChanged: tree.url("Volumes/a/folder"))
         try #require(window.pane === left && window.validateMenuItem(eject))
         window.ejectVolume(nil)
         let byCommand = try #require(ejector.tasks.values.first)
-        #expect(!window.validateMenuItem(eject), "⌘E waits for the eject under way")
-        #expect(shows(left, "Home") && shows(right, "Volumes/ab"))
+        #expect(shows(left, "Home"))
+        // Back on the disk's top while it ejects: ⌘E waits for the eject under way, and the pane leaves again after.
+        await show("Volumes/a", in: left)
+        #expect(!window.validateMenuItem(eject))
         await unmounts.waitForAsks(4)
         await unmounts.answer(a.url)
         await byCommand.value
-        #expect(shows(left, "Home") && shows(right, "Volumes/ab"))
+        #expect(shows(left, "Home"))
 
-        // A disk unmounted elsewhere (Finder, unplugged, taken along with another) sends its panes Home too.
-        await show("Volumes/a 1", in: right)
-        workspace.post(name: NSWorkspace.didUnmountNotification, object: nil, userInfo: [NSWorkspace.volumeURLUserInfoKey: tree.url("Volumes/ab")])
-        #expect(shows(right, "Volumes/a 1"))
+        // A search inside a disk leaves it too.
+        window.go(.search("report", scope: tree.url("Volumes/a 1")), in: right)
+        let searched = try #require(ejector.eject(a1.url, from: window.window))
+        #expect(shows(right, "Home"))
+        if case .search = right.destination { Issue.record("The search inside the disk is still showing") }
+        await unmounts.waitForAsks(5)
+        await unmounts.answer(a1.url)
+        await searched.value
+
+        // A disk unmounted elsewhere (Finder, unplugged, taken along with another): its panes go Home. One on a share
+        // keeps its folder for its workspace and the session; one on a local disk doesn't.
+        try await Self.readAgain(ab, by: ejector)
+        await show("Volumes/ab", in: right)
         workspace.post(name: NSWorkspace.didUnmountNotification, object: nil, userInfo: [NSWorkspace.volumeURLUserInfoKey: a1.url])
-        #expect(shows(right, "Home") && shows(left, "Home"))
-        #expect(await unmounts.asked == [a.url, a.url, a.url, a.url])
+        #expect(shows(right, "Volumes/ab"))
+        workspace.post(name: NSWorkspace.didUnmountNotification, object: nil, userInfo: [NSWorkspace.volumeURLUserInfoKey: ab.url])
+        #expect(shows(right, "Home") && right.waiting == nil)
+        await show("Volumes/share/folder", in: right)
+        let folder = right.location.path
+        workspace.post(name: NSWorkspace.didUnmountNotification, object: nil, userInfo: [NSWorkspace.volumeURLUserInfoKey: share.url])
+        #expect(shows(right, "Home"))
+        #expect(right.waiting?.path == folder && right.waiting?.mountPoint == share.url.path && right.waiting?.address != nil)
+        #expect(await unmounts.asked == [a.url, a.url, ab.url, a.url, a1.url])
         withExtendedLifetime(environment) {}
         #expect(tree.snapshot() == ["Home/", "Volumes/", "Volumes/a 1/", "Volumes/a/", "Volumes/a/folder/", "Volumes/a/folder/deeper/",
-                                    "Volumes/ab/"])
+                                    "Volumes/ab/", "Volumes/share/", "Volumes/share/folder/"])
+    }
+
+    @Test(.timeLimit(.minutes(3)))
+    func everyWindowLetsTheDiskGoAndOneClosedOrAPaneClosedMeanwhileIsLeftAlone() async throws {
+        _ = NSApplication.shared
+        let tree = try TestTree("Home/", "Volumes/a/folder/", "elsewhere/")
+        let a = Self.disk(tree.url("Volumes/a"), named: "a")
+        let unmounts = HeldUnmounts()
+        let reportedIn = Reports<NSWindow?>()
+        let environment = try await Self.environment(DiskList([a]), unmounts: unmounts, home: tree.url("Home")) { _, window in
+            reportedIn.items.append(window)
+        }
+        let one = BrowserWindowController(location: tree.url("Volumes/a/folder"), services: environment.services)
+        let two = BrowserWindowController(location: tree.url("Volumes/a"), secondPane: tree.url("Volumes/a/folder"),
+                                          services: environment.services)
+        for controller in [one, two] {
+            controller.split.splitView.autosaveName = nil
+            controller.window?.setFrameAutosaveName("")
+        }
+        defer { one.window?.close(); two.window?.close() }
+        for pane in one.panes + two.panes { await pane.browser.directoryReads.task?.value }
+        func home(_ panes: [Pane]) -> Bool { panes.allSatisfy { PathSpelling.short($0.location) == PathSpelling.short(tree.url("Home")) } }
+        let ejector = environment.services.volumeEjector
+
+        let failed = try #require(ejector.eject(a.url, from: one.window))
+        #expect(home(one.panes) && home(two.panes))
+        // The window that asked closes, and the other loses a pane, before macOS answers.
+        one.window?.close()
+        try #require(one.isClosed)
+        two.toggleDualPane(nil)
+        try #require(two.panes.count == 1)
+        await unmounts.waitForAsks(1)
+        await unmounts.answer(a.url, throwing: CocoaError(.fileWriteNoPermission))
+        await failed.value
+        #expect(reportedIn.items.count == 1, "The failure is still reported")
+        #expect(home(two.panes))
+
+        // The window still open leaves the disk; the closed one is left alone.
+        two.go(.folder(tree.url("Volumes/a/folder")), in: two.pane)
+        await two.pane.browser.directoryReads.task?.value
+        let ejected = try #require(ejector.eject(a.url, from: two.window))
+        #expect(home(two.panes))
+        await unmounts.waitForAsks(2)
+        await unmounts.answer(a.url)
+        await ejected.value
+        #expect(home(two.panes) && home(one.panes))
+        withExtendedLifetime(environment) {}
+        #expect(tree.snapshot() == ["Home/", "Volumes/", "Volumes/a/", "Volumes/a/folder/", "elsewhere/"])
+    }
+
+    @Test func failuresWaitTheirTurnInTheirWindowAndADialogTakesOverOnceItsClosed() throws {
+        _ = NSApplication.shared
+        let sheets = Reports<(alert: NSAlert, window: NSWindow, done: () -> Void)>()
+        let dialogs = Reports<NSAlert>(), closed = Reports<ObjectIdentifier>()
+        let alerts = EjectFailureAlerts(sheet: { alert, window, done in sheets.items.append((alert, window, done)) },
+                                        dialog: { dialogs.items.append($0) },
+                                        canAsk: { !closed.items.contains(ObjectIdentifier($0)) })
+        func titles(_ shown: [NSAlert]) -> [String] { shown.map { $0.messageText } }
+        func ejectFailed(_ name: String) -> String { String(localized: "“\(name)” couldn’t be ejected") }
+        func window() -> NSWindow {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100), styleMask: .borderless,
+                                  backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            return window
+        }
+        func failure(_ name: String, _ error: any Error = CocoaError(.fileWriteNoPermission)) -> VolumeEjector.Failure {
+            VolumeEjector.Failure(volume: URL(filePath: "/Volumes/\(name)"), name: name, error: error)
+        }
+        let first = window(), second = window(), third = window()
+
+        alerts.present(failure("a"), in: first)
+        alerts.present(failure("b"), in: first)
+        alerts.present(failure("c"), in: first)
+        alerts.present(failure("d"), in: second)
+        #expect(titles(sheets.items.map { $0.alert }) == [ejectFailed("a"), ejectFailed("d")])
+        sheets.items[0].done()
+        #expect(sheets.items.count == 3 && sheets.items[2].window === first)
+        #expect(titles(sheets.items.map { $0.alert }).last == ejectFailed("b"))
+        // Closed with "c" still waiting: it's shown as a dialog, and so is what comes for that window later.
+        closed.items.append(ObjectIdentifier(first))
+        sheets.items[2].done()
+        #expect(sheets.items.count == 3 && titles(dialogs.items) == [ejectFailed("c")])
+        alerts.present(failure("e"), in: first)
+        alerts.present(failure("f"), in: nil)
+        #expect(titles(dialogs.items) == [ejectFailed("c"), ejectFailed("e"), ejectFailed("f")] && sheets.items.count == 3)
+
+        // A window that closed without its sheet ever ending leaves nothing stuck.
+        alerts.present(failure("g"), in: third)
+        closed.items.append(ObjectIdentifier(third))
+        alerts.present(failure("h", VolumeEjector.NoAnswer()), in: third)
+        #expect(sheets.items.count == 4 && titles(dialogs.items).last == ejectFailed("h"))
+        #expect(dialogs.items.last?.informativeText == String(localized: "“\("h")” didn’t answer in time."))
+        for window in [first, second, third] { window.close() }
     }
 
     /// A sidebar in a window of its own, never shown, laid out so its rows are where a click finds them.
     private func host(_ sidebar: SidebarViewController) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 700), styleMask: .borderless,
-                              backing: .buffered, defer: false)
+        let window = ClickWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 700), styleMask: .borderless,
+                                 backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = sidebar.view
         sidebar.view.layoutSubtreeIfNeeded()
@@ -391,8 +526,8 @@ private actor DiskList {
         return cell
     }
 
-    private func button(of cell: SidebarCellView) throws -> SidebarEjectButton {
-        try #require(cell.subviews.compactMap { $0 as? SidebarEjectButton }.first)
+    private func button(of cell: SidebarCellView) throws -> NSButton {
+        try #require(cell.subviews.compactMap { $0 as? NSButton }.first)
     }
 
     private func label(of cell: SidebarCellView) throws -> NSTextField {
@@ -414,14 +549,16 @@ private actor DiskList {
         return result
     }
 
-    /// A click at the button's center, through the outline as AppKit delivers it. The release waits in the app's own
-    /// queue for the button's tracking; whatever is left of it afterwards is taken out.
-    private func click(_ button: NSButton, in outline: NSOutlineView) throws {
+    /// A click at the button's center, delivered by the window as AppKit delivers it. The release waits in the app's
+    /// own queue for whatever tracks the press; one nothing took is delivered after it.
+    private func click(_ button: NSButton, in window: NSWindow) throws {
         let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
         let down = try mouse(.leftMouseDown, at: point), up = try mouse(.leftMouseUp, at: point)
         NSApp.postEvent(up, atStart: false)
-        outline.mouseDown(with: down)
-        while NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true) != nil {}
+        window.sendEvent(down)
+        if let unclaimed = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true) {
+            window.sendEvent(unclaimed)
+        }
     }
 
     @Test(.timeLimit(.minutes(2)))
@@ -452,8 +589,7 @@ private actor DiskList {
         #expect(eject.accessibilityLabel() == String(localized: "Eject “\("a")”") && eject.toolTip == eject.accessibilityLabel())
         #expect(shown.accessibilityCustomActions()?.map(\.name) == [String(localized: "Eject")])
         #expect(eject.frame.maxX <= shown.bounds.maxX - SidebarRowView.selectionInset)
-        let dataRow = outline.row(forItem: dataItem)
-        for other in [dataRow, trash] {
+        for other in [outline.row(forItem: dataItem), trash] {
             let plain = try cell(other, in: outline)
             #expect(try button(of: plain).isHidden && (plain.accessibilityCustomActions() ?? []).isEmpty)
         }
@@ -471,7 +607,7 @@ private actor DiskList {
         window.makeFirstResponder(outline)
         var navigations = 0
         sidebar.onSelect = { _ in navigations += 1 }
-        try click(eject, in: outline)
+        try click(eject, in: window)
         let task = try #require(environment.services.volumeEjector.tasks.values.first, "The click reached the button")
         await unmounts.waitForAsks(1)
         #expect(await unmounts.asked == [a.url])
@@ -480,8 +616,9 @@ private actor DiskList {
         try #require(same === shown)
         #expect(!eject.isEnabled, "Busy while it ejects")
         #expect(!sidebar.validateMenuItem(menuItem))
-        try click(eject, in: outline)
-        #expect(environment.services.volumeEjector.tasks.count == 1)
+        // A click on the busy button selects nothing and asks nothing more.
+        try click(eject, in: window)
+        #expect(outline.selectedRow == trash && navigations == 0 && environment.services.volumeEjector.tasks.count == 1)
         await unmounts.answer(a.url, throwing: CocoaError(.fileWriteNoPermission))
         await task.value
         #expect(failures.items == [a.url])
@@ -523,7 +660,7 @@ private actor DiskList {
         let window = host(sidebar)
         defer { window.close() }
         let folders = try #require(sidebar.children.first as? FolderTreeController)
-        let outline = try #require(folders.focusView as? SidebarOutlineView)
+        let outline = try #require(folders.focusView as? NSOutlineView)
         func node(_ url: URL) throws -> FolderNode {
             let row = try #require((0..<outline.numberOfRows).first { row in
                 (outline.item(atRow: row) as? FolderNode).map { PathSpelling.short($0.url) } == PathSpelling.short(url)
@@ -549,7 +686,7 @@ private actor DiskList {
         outline.selectRowIndexes([outline.row(forItem: plain)], byExtendingSelection: false)
         var navigations = 0
         sidebar.onSelect = { _ in navigations += 1 }
-        try click(eject, in: outline)
+        try click(eject, in: window)
         let task = try #require(environment.services.volumeEjector.tasks.values.first, "The click reached the button")
         await unmounts.waitForAsks(1)
         #expect(outline.item(atRow: outline.selectedRow) as? FolderNode === plain && navigations == 0)

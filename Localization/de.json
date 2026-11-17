@@ -2049,6 +2049,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "„%@“ konnte nicht in „%@“ umbenannt werden: %@",
     "“%@” couldn’t have its download removed.": "Der Download von „%@“ konnte nicht entfernt werden.",
     "“%@” couldn’t make that change": "„%@“ konnte diese Änderung nicht vornehmen",
+    "“%@” didn’t answer in time.": "„%@“ hat nicht rechtzeitig geantwortet.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "„%@“ überschreitet die Grenzen, die Strata für das Lesen von Archiven setzt, und wurde daher nicht entpackt.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "„%@“ hat %lld weiteres Objekt in seinem eigenen Papierkorb.",
