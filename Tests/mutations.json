@@ -11567,6 +11567,13 @@
   },
   {
     "file": "CNativeDrawing/BadgeGlyph.m",
+    "find": "    static NSFont *font;\n",
+    "replace": "    NSFont *font = nil;\n",
+    "rule": "Native drawing: the badge font stays owned between glyph renders and autorelease pools",
+    "tests": "GitStatusBadgeRenderingTests/nativeFontIsRetainedBetweenGlyphRenders"
+  },
+  {
+    "file": "CNativeDrawing/BadgeGlyph.m",
     "find": "    } @catch (NSException *exception) {\n        if (error) *error = STGlyphFailure(operation, exception);\n        return nil;\n    }\n",
     "replace": "    } @catch (NSException *exception) {\n        @throw;\n    }\n",
     "rule": "Native drawing: badge font setup measurement and drawing exceptions never leave the native boundary",

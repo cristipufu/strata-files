@@ -11,6 +11,7 @@ typedef NS_ENUM(NSInteger, STBadgeFailurePoint) {
 };
 
 FOUNDATION_EXPORT NSError *STTestBadgeGlyphFailure(STBadgeFailurePoint point, BOOL *contextRestored, BOOL *returnedImage);
+FOUNDATION_EXPORT BOOL STBadgeFontSurvivesTextRelease(void);
 FOUNDATION_EXPORT BOOL STReadViewIsFlipped(NSView *view);
 FOUNDATION_EXPORT BOOL STReadViewIsOpaque(NSView *view);
 FOUNDATION_EXPORT NSRect STConvertViewRect(NSView *view, NSRect rect);

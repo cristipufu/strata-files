@@ -93,6 +93,19 @@ NSError *STTestBadgeGlyphFailure(STBadgeFailurePoint point, BOOL *contextRestore
     return error ?: [NSError errorWithDomain:@"TestNativeFailureMissing" code:1 userInfo:nil];
 }
 
+BOOL STBadgeFontSurvivesTextRelease(void) {
+    @try {
+        __weak NSFont *font;
+        @autoreleasepool {
+            NSAttributedString *text = [STBadgeGlyph makeText:@"M" color:NSColor.whiteColor];
+            font = [text attribute:NSFontAttributeName atIndex:0 effectiveRange:nil];
+        }
+        return font != nil;
+    } @catch (NSException *exception) {
+        return NO;
+    }
+}
+
 BOOL STReadViewIsFlipped(NSView *view) { return view.isFlipped; }
 BOOL STReadViewIsOpaque(NSView *view) { return view.isOpaque; }
 NSRect STConvertViewRect(NSView *view, NSRect rect) { return [view convertRect:rect toView:nil]; }

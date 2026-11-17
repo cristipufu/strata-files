@@ -26,6 +26,10 @@ import Testing
         return false
     }
 
+    @Test func nativeFontIsRetainedBetweenGlyphRenders() {
+        #expect(STBadgeFontSurvivesTextRelease())
+    }
+
     @Test func nativeGlyphsHaveInkAndKeepTheirImageAfterTheirOwnerIsReleased() throws {
         for scale: CGFloat in [1, 2, 3] {
             for letter in ["M", "A", "D", "R", "C", "U", "?", "!"] {

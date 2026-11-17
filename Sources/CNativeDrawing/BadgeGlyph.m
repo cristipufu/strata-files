@@ -30,6 +30,7 @@ static NSError *STGlyphFailure(NSString *operation, NSException *exception) {
 
 @interface STBadgeGlyph ()
 - (instancetype)initWithImage:(CGImageRef)image;
++ (nullable NSFont *)badgeFont;
 + (NSAttributedString *)makeText:(NSString *)text color:(NSColor *)color;
 + (nullable instancetype)imageForText:(NSString *)text color:(NSColor *)color size:(NSSize)size
                               bitmap:(NSBitmapImageRep *)bitmap operation:(NSString *__strong *)operation;
@@ -47,8 +48,17 @@ static NSError *STGlyphFailure(NSString *operation, NSException *exception) {
 - (void)dealloc { if (_image) CGImageRelease(_image); }
 - (CGImageRef)image { return _image; }
 
++ (NSFont *)badgeFont {
+    // AppKit can fail to recreate this font after its last owner leaves an autorelease pool.
+    static NSFont *font;
+    @synchronized (STBadgeGlyph.class) {
+        if (!font) font = [NSFont monospacedSystemFontOfSize:STBadgeFontSize weight:NSFontWeightBold];
+        return font;
+    }
+}
+
 + (NSAttributedString *)makeText:(NSString *)text color:(NSColor *)color {
-    NSFont *font = [NSFont monospacedSystemFontOfSize:STBadgeFontSize weight:NSFontWeightBold];
+    NSFont *font = [self badgeFont];
     if (!font) return nil;
     return [[NSAttributedString alloc] initWithString:text
                                          attributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: color}];
