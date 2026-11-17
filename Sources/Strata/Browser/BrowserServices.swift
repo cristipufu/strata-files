@@ -7,10 +7,12 @@ final class BrowserServices {
     static let shared = application()
 
     private static func application() -> BrowserServices {
-        BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
-                        containers: .shared, containerStore: .shared, clipboard: .shared,
-                        cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
-                        contentIndex: .shared, showSetting: SettingsWindowController.present)
+        let ejectFailures = EjectFailureAlerts()
+        return BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
+                               containers: .shared, containerStore: .shared, clipboard: .shared,
+                               unmount: VolumeEjector.unmountAndEject, ejectFailed: { ejectFailures.present($0, in: $1) },
+                               cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
+                               contentIndex: .shared, showSetting: SettingsWindowController.present)
     }
 
     /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
@@ -23,6 +25,9 @@ final class BrowserServices {
                          mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                          mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                          folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
+                         readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
+                         unmount: @escaping VolumeEjector.Unmount = VolumeEjector.refuseToUnmount,
+                         ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
                          makeIndex: (@MainActor (CopyProviders) -> FileIndex)? = nil,
                          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
@@ -36,7 +41,8 @@ final class BrowserServices {
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
                           directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis,
-                          folderSizes: folderSizes, index: index, showSetting: showSetting)
+                          folderSizes: folderSizes, readPlaces: readPlaces, unmount: unmount, ejectFailed: ejectFailed,
+                          index: index, showSetting: showSetting)
     }
 
     /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History
@@ -50,6 +56,9 @@ final class BrowserServices {
                            mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                            mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                            folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
+                           readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
+                           unmount: @escaping VolumeEjector.Unmount = VolumeEjector.refuseToUnmount,
+                           ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -59,7 +68,8 @@ final class BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
-                        mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis, folderSizes: folderSizes, thumbnails: thumbnails, itemInfo: itemInfo,
+                        mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis, folderSizes: folderSizes,
+                        readPlaces: readPlaces, unmount: unmount, ejectFailed: ejectFailed, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
                         index: index, contentIndex: contentIndex, showSetting: showSetting)
     }
@@ -80,6 +90,7 @@ final class BrowserServices {
     let files: FileCommands
     let visits: Frecency
     let places: PlaceChecks
+    let volumeEjector: VolumeEjector
     let folderNames: FolderNames
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
@@ -113,6 +124,8 @@ final class BrowserServices {
                  mediaDetailsReader: @escaping MediaDetails.Reader = ArchiveMetadata.readDetails,
                  mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                  folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
+                 readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
+                 unmount: @escaping VolumeEjector.Unmount, ejectFailed: @escaping VolumeEjector.Report,
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -123,7 +136,9 @@ final class BrowserServices {
         self.transfers = transfers
         self.files = FileCommands(transfers: transfers)
         self.visits = visits
-        self.places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: PlaceChecks.read)
+        let places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: readPlaces)
+        self.places = places
+        self.volumeEjector = VolumeEjector(places: places, unmount: unmount, report: ejectFailed)
         self.folderNames = FolderNames(read: FolderNames.read)
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing

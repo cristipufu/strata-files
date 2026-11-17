@@ -17,14 +17,16 @@ extension Notification.Name {
         package var names: [String: String] = [:]
     }
 
+    package typealias Read = ([String]) async -> Snapshot
+
     package private(set) var snapshot = Snapshot()
     private let preferences: Prefs
     private let visits: Frecency
-    private let read: ([String]) async -> Snapshot
+    private let read: Read
     package private(set) var task: Task<Void, Never>?
     private var readAgain = false
 
-    package init(preferences: Prefs, visits: Frecency, read: @escaping ([String]) async -> Snapshot) {
+    package init(preferences: Prefs, visits: Frecency, read: @escaping Read) {
         self.preferences = preferences
         self.visits = visits
         self.read = read

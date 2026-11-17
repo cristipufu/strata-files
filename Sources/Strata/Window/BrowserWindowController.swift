@@ -123,6 +123,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumeEjected(_:)), name: .volumeEjected,
+                                               object: services.volumeEjector)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
                                                object: services.cloud)
@@ -600,20 +602,29 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
     private var ejectTargets: [URL] {
-        // Volumes are listed once, then matched by path (a big selection mustn't list them per item).
-        let ejectable = Set(services.places.snapshot.volumes.filter(\.isEjectable).map { $0.url.lexicallyStandardized.path })
-        guard !ejectable.isEmpty else { return [] }
-        let selected = browser.selectedURLs.filter { ejectable.contains($0.lexicallyStandardized.path) }
+        let ejector = services.volumeEjector
+        let selected = ejector.ejectable(browser.selectedURLs)
         if !selected.isEmpty { return selected }
-        if case .folder = destination, ejectable.contains(location.lexicallyStandardized.path) { return [location] }
-        return []
+        guard case .folder = destination else { return [] }
+        return ejector.ejectable([location])
     }
 
     @objc func ejectVolume(_ sender: Any?) {
-        for url in ejectTargets {
-            if location.lexicallyStandardized.path == url.lexicallyStandardized.path { navigate(to: Places.home) }
-            Places.eject(url, from: window)
+        for url in ejectTargets { services.volumeEjector.eject(url, from: window) }
+    }
+
+    /// Panes showing a folder on the disk at `volume`, its top included.
+    func panesShowing(_ volume: URL) -> [Pane] {
+        panes.filter { p in
+            guard case .folder = p.destination else { return false }
+            return VolumeEjector.isOnVolume(p.location, volume)
         }
+    }
+
+    /// Only once the disk has gone: a failed eject leaves every pane where it was.
+    @objc private func volumeEjected(_ notification: Notification) {
+        guard !isClosed, let volume = notification.userInfo?[VolumeEjector.volumeKey] as? URL else { return }
+        for p in panesShowing(volume) { go(.folder(Places.home), in: p) }
     }
 
     override func newWindowForTab(_ sender: Any?) { openTab(at: location) }

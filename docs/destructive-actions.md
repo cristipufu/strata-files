@@ -120,6 +120,13 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 | Remove Download | `CloudActions.removeDownloads` (both, away from the main thread), `removable`, `removeDownload` (the system's evict injected); capture the batch before requests, verify ownership and current upload state | `DeleteScopeTests/removeDownloadFreesOnlyWhatsAlsoInTheCloud`, `removeDownloadAsksToFreeExactlyTheItemsChosen`, `removeDownloadChoosesFromTheListingAndFreesOnlyWhatsInTheCloudNow`; `CloudFoldersTests/evictionRechecksUploadStateAndTheWholeChosenBatch`, `missingUploadMetadataNeverOffersEviction` |
 | Download Now | `CloudActions.Download`: capture the item and parent before dispatch, refuse links and replacements; coordinate File Provider file reads on a worker | `CloudFoldersTests/aDownloadKeepsItsChosenFileAcrossDelayedWork`, `downloadsRefuseLinksLocalItemsAndRedirectedParents`, `coordinatedDownloadReadsOnlyTheChosenRegularFile` |
 
+## Ejecting disks
+
+| Action | Code | Tests |
+|---|---|---|
+| Eject (the sidebar's eject buttons and menus, in Places and in Folders, and File ▸ Eject) | `VolumeEjector.eject`, `ejectable`, `volume`: only the root of a disk the latest `PlaceChecks` read lists as ejectable, never the startup disk, once until macOS answers, and macOS is handed the URL that read listed; `VolumeEjector.unmountAndEject` waits on a thread of its own; `EjectFailureAlerts` shows every failure | `VolumeEjectorTests/onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected`, `eachDiskIsHandedToMacOSOnceUntilItAnswersAndAFailureCanBeTriedAgain`, `anEnvironmentOfItsOwnNeverHandsADiskToMacOS`, `placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating`, `theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu`; mutations: “Eject” |
+| Panes on an ejected disk go home | `VolumeEjector.isOnVolume` (whole path components), `BrowserWindowController.panesShowing`, `volumeEjected`, only once macOS has ejected the disk | `VolumeEjectorTests/aLocationIsOnADiskOnlyByWholePathComponents`, `onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone`; mutations: “Eject” |
+
 ## The `strata` command, Strata's own data
 
 | Action | Code | Tests |
@@ -172,7 +179,9 @@ on any function that is in neither this table nor a mutation.
 | `AI/PlanGenerator :: (top level)`, `renameAction`, `init`, `expand`; `AI/PlanModel :: init`, `exif`; `AI/PlanValidator :: validate`, `add`, `needFolder`; `AI/RenameRules :: plan` | `rename` here is a plan step's name, not a file call, and `add` hands each step to the check for its kind (mutated). The steps are carried out by `PlanExecutor` (mutated). |
 | `App/StrataCommand :: init`; `App/MainMenu :: fileMenu`, `menuNeedsUpdate`, `rename`; `Window/Workspaces :: rename`, `askToRename` | A workspace's name in saved settings, and the menu items for it. No files. |
 | `Browser/BrowserViewController+Actions :: renameItem`; `Views/ClickToRename :: clicked`; `Browser/ServerCommands :: rename` | Hand the typed name to `FileOps.rename` or `RemoteFiles.rename` (both mutated), which hold every check. |
-| `Model/Places :: eject`; `Sidebar/SidebarViewController+Menus :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Hand a disk to macOS to eject. Nothing of the user's changes. |
+| `Window/VolumeEjector :: unmountAndEject` | The one call that hands a disk to macOS (`NSWorkspace.unmountAndEjectDevice`), which no test makes: tests stand in for it. What reaches it is decided by `VolumeEjector.volume` and `eject` (mutated). Nothing of the user's changes. |
+| `Window/VolumeEjector :: (top level)`, `init`, `alert`; `Browser/BrowserServices :: application`, `configured` | Keep the unmount and failure report each environment is given, and word the failure alert. An environment of its own refuses every unmount (`anEnvironmentOfItsOwnNeverHandsADiskToMacOS`). |
+| `Sidebar/SidebarViewController+Menus :: menuNeedsUpdate`, `ejectItem`; `Sidebar/SidebarViewController :: setUpTree`, `eject`, `ejectionsChanged`, `setUpEjectButton`, `applyColors`; `Sidebar/FolderTreeController :: outlineView`, `ejectionsChanged`, `ejectNode`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` | Show the eject buttons and menu items and hand what's chosen to `VolumeEjector.eject` (mutated), which decides what reaches macOS. |
 | `Dock/DockSearch :: restartDock` | Relaunches the Dock (`killall Dock`). No files. |
 | `Model/Prefs :: registerTestCleanup` | Runs as a test process exits and removes only that run's own `dev.strata.tests.<id>` settings suite and file; a test can't watch its own process exit. |
 | `Index/IndexStore :: remove`, `unlink` | An in-memory tree, not files. |
@@ -211,8 +220,11 @@ on any function that is in neither this table nor a mutation.
   image before failing detaches that image's own disk, found by the image's path, which no other attempt has. A disk
   that says it's busy is tried again a few times, each time looking again at what's mounted in the folder, or at the
   disk the image's path names, and none of it if it has gone meanwhile; between that look and the detach, as in a single
-  detach, hdiutil's device names leave a moment no look can close. Ejecting a disk (`Places.eject`, the sidebar's and
-  the menu's Eject) only hands the volume to macOS; nothing of the user's changes, and it isn't tested.
+  detach, hdiutil's device names leave a moment no look can close.
+- **Ejecting.** `VolumeEjector` takes the call that hands a disk to macOS as `unmount`. Tests list made-up disks
+  through the places read, record which disk each eject asks for and answer it themselves, with success or failure,
+  while the button, menus and panes are watched; an environment of its own refuses every one. Only the disk is handed
+  to macOS; nothing of the user's changes.
 
 ## Every function, by file
 
@@ -253,7 +265,6 @@ belong to.
 | `Model/CreatedFolders :: makeMissing`, `make` (away from the main thread, for it and plans) | `CreatedFolderOwnershipTests/recreationRecordsOnlyFoldersItMakesAndKeepsTryingWhenRequested`, `redoUpdatesOwnershipForLiveAndSavedHistory`, `crossDiskUndoFinishesBeforeRemovingItsCreatedFolders` |
 | `Model/FileInfoEditing :: setComment`, `setLocked`, `setAccess` | `MetadataEditTests/aCommentChangesOnlyTheComment`, `lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem` |
 | `Model/FileOps :: rename`, `moveAll`, `moveChain`, `moveItem`, `newFolder`, `newFile`, `trash`, `trashItems`, `trashOwned`, `removeEmptyFolders`, `registerMoveUndo` | `InlineRenameTests/*`, `RenameTests/*`, `NewFileTests/*`, `TrashUndoTests/*`, `AcrossDisksTests/*`, `TransferTests/historyUndoOfACopyTrashesOnlyItsOwnCopies` |
-| `Model/Places :: eject` (hands the disk to macOS) | not a file change; see above |
 | `Model/SecureStorage :: (top level)`, `prepare`, `useApplicationStorage`, `url`, `removeLegacy`, `sweepStaleTemporaries`, `init`, `commit` | `CacheRemovalTests/savingAStoreReplacesOnlyItsOwnFile`; `DeleteTests/testRunsKeepHistoryAndIndexesOutOfYourOwn`; `DeleteScopeTests/testsKeepToCachesOfTheirOwn` |
 | `Model/TagStore :: apply`, `write` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly`, `FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies` |
 | `Model/Trash :: removeTree` | `DeleteTests/emptyingATrashDeletesWhatsInItAndNothingElse`, `aTrashThatIsALinkIsNeverFollowed`, `aLockedItemInTheTrashIsReportedAndTheRestGo`, `aFolderThatCantBeListedWholeKeepsWhatsInItAndIsReported`, `anItemThatWentMeanwhileIsntAFailureAndHidesNoOther` |
@@ -264,7 +275,9 @@ belong to.
 | `Remote/RemoteSession :: rename`, `upload` (S3) | `S3Tests` rows above (in `DeleteScopeTests`) |
 | `Remote/S3Client :: download`, `Connections/SFTPClient :: init`, `rename`, `setTimes`, `download`, `upload` | `S3Tests/downloadsStopAtTheListedSize`; `SFTPClientTests/*` |
 | `Settings/SettingsWindowController :: install` | `DeleteScopeTests/theCommandReplacesOnlyItsOwnLink` |
-| `Sidebar/SidebarViewController+Menus :: menuNeedsUpdate`, `ejectItem`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (Eject) | not a file change; see above |
+| `Window/VolumeEjector :: (top level)`, `init`, `ejectable`, `eject`, `unmountAndEject` (hands the disk to macOS), `alert`; `Window/BrowserWindowController :: focusSearch`, `ejectVolume`, `validateMenuItem` (File ▸ Eject) | `VolumeEjectorTests/onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected`, `eachDiskIsHandedToMacOSOnceUntilItAnswersAndAFailureCanBeTriedAgain`, `onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone`; not a file change |
+| `Sidebar/SidebarViewController :: init`, `setUpTree`, `observeChanges`, `outlineView`, `ejection`, `eject`, `ejectionsChanged`, `setUpEjectButton`, `configure`, `refreshEjectButton`, `showEjectButton`, `ejectClicked`, `applyColors`; `Sidebar/SidebarViewController+Menus :: menuNeedsUpdate`, `ejectItem`; `Sidebar/FolderTreeController :: outlineView`, `ejection`, `ejectionsChanged`, `add`, `ejectNode` (the eject buttons and menu items) | `VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating`, `theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu` |
+| `Browser/BrowserServices :: application`, `isolated`, `configured`, `init` (the unmount each environment is given: the system's for the app's own, a refusal for one of its own) | `VolumeEjectorTests/anEnvironmentOfItsOwnNeverHandsADiskToMacOS` |
 | `Transfers/Archiver :: compress`, `extractContents`, `unpack`, `check`, `checkItem`, `clearFlagsAndAccessList`, `checkedPermissions`, `markQuarantined`, `place`, `removeEntry`, `run` (`ditto`) | `MetadataEditTests/compressingAddsOneArchiveAndNeverReplacesOne`, `aLinkIsArchivedAsALink`; `ArchiveSafetyTests/*`; `CacheRemovalTests/removingATreeNeverFollowsALinkOut` |
 | `Transfers/ArchiveWriter :: run`, `writeFolder`, `writeLink`, `writeHardLink`, `folder`, `openFolder`, `subfolder`, `finish`, `apply`, `setTimes` (write what Extract's worker sends into the private folder being extracted into) | `ArchiveWriterTests/*`; `ArchiveExtractTests/*`; `ArchiveSafetyTests/*` |
 | `Transfers/TransferEngine :: fail`, `renameInPlace`, `replaceExisting`; `Transfers/TransferEngine+Copying :: copy`, `copyfile`; `Transfers/TransferEngine+Operations :: rename`, `trash`, `removeIfPresent`, `removeOwned`, `removeOwnedTree`, `removeSource`; `Transfers/TransferSession :: repairOwnedDirectory`, `enter`, `make`, `leave`, `copyItem` | `TransferTests/*`; `TransferRetryTests/*` |

@@ -11692,5 +11692,103 @@
     ],
     "rule": "Other-pane destinations: closed windows cannot start new copies or moves",
     "tests": "OtherPaneTransferTests/closedWindowsRefuseNewTransfers"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        guard let place = Self.volume(volume, among: places.snapshot.volumes, underway: Set(tasks.keys)) else { return nil }",
+    "replace": "        guard let place = Self.volume(volume, among: places.snapshot.volumes, underway: []) else { return nil }",
+    "rule": "Eject: a second request while a disk is ejecting hands it to macOS again",
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAFailureCanBeTriedAgain"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        let underway = Set(tasks.keys)",
+    "replace": "        let underway: Set<String> = []",
+    "rule": "Eject: File ▸ Eject offers a disk that is already ejecting",
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAFailureCanBeTriedAgain|VolumeEjectorTests/onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        return volumes.first { $0.isEjectable && key($0.url) == wanted }",
+    "replace": "        return volumes.first { key($0.url) == wanted }",
+    "rule": "Eject: a disk the latest read lists as not ejectable is handed to macOS",
+    "tests": "VolumeEjectorTests/onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        guard wanted != \"/\", !underway.contains(wanted) else { return nil }",
+    "replace": "        guard !underway.contains(wanted) else { return nil }",
+    "rule": "Eject: the startup disk is handed to macOS",
+    "tests": "VolumeEjectorTests/onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        return volumes.first { $0.isEjectable && key($0.url) == wanted }",
+    "replace": "        return volumes.first { $0.isEjectable && wanted.hasPrefix(key($0.url)) }",
+    "rule": "Eject: a folder inside a disk, or a disk named like another, ejects that other disk",
+    "tests": "VolumeEjectorTests/onlyTheRootOfAnEjectableDiskInTheLatestReadCanBeEjected"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "                try await unmount(place.url)",
+    "replace": "                try await unmount(volume)",
+    "rule": "Eject: macOS is handed the URL as asked instead of the disk the read listed",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating|VolumeEjectorTests/theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "            report(Failure(volume: place.url, name: place.title, error: failure), window)\n            return\n",
+    "replace": "            report(Failure(volume: place.url, name: place.title, error: failure), window)\n",
+    "rule": "Eject: a failed eject moves panes home as if the disk had gone",
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAFailureCanBeTriedAgain|VolumeEjectorTests/onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        return root != \"/\" && (path == root || path.hasPrefix(root + \"/\"))",
+    "replace": "        return root != \"/\" && path.hasPrefix(root)",
+    "rule": "Eject: a pane on a disk named like the ejected one goes home",
+    "tests": "VolumeEjectorTests/aLocationIsOnADiskOnlyByWholePathComponents|VolumeEjectorTests/onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "            return VolumeEjector.isOnVolume(p.location, volume)",
+    "replace": "            return true",
+    "rule": "Eject: panes on other disks go home with the ejected one",
+    "tests": "VolumeEjectorTests/onlyPanesOnTheEjectedDiskGoHomeAndOnlyOnceItHasGone"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        guard item.isEjectable, let url = item.url else { return nil }",
+    "replace": "        guard let url = item.url else { return nil }",
+    "rule": "Eject: a sidebar row that isn't an ejectable disk shows an eject button",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        ejectButton.isEnabled = ejection?.isUnderway() == false",
+    "replace": "        ejectButton.isEnabled = ejection != nil",
+    "rule": "Eject: a disk's eject button stays enabled while it ejects",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating|VolumeEjectorTests/theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu"
+  },
+  {
+    "file": "Strata/Sidebar/SidebarViewController.swift",
+    "find": "        NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])",
+    "replace": "        NSLayoutConstraint.activate([labelAtEdge])",
+    "rule": "Eject: a long disk name runs under its eject button",
+    "tests": "VolumeEjectorTests/placesShowAnEjectButtonOnlyOnEjectableDisksAndItEjectsThatDiskWithoutNavigating"
+  },
+  {
+    "file": "Strata/Sidebar/FolderTreeController.swift",
+    "find": "        guard node.isEjectable, let onEject else { return nil }",
+    "replace": "        guard let onEject else { return nil }",
+    "rule": "Eject: a folder tree row that isn't an ejectable disk shows an eject button",
+    "tests": "VolumeEjectorTests/theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu"
+  },
+  {
+    "file": "Strata/Sidebar/FolderTreeController.swift",
+    "find": "        if node.isEjectable, onEject != nil {",
+    "replace": "        if onEject != nil {",
+    "rule": "Eject: the folder tree's menu offers Eject for a folder that isn't an ejectable disk",
+    "tests": "VolumeEjectorTests/theFolderTreeEjectsOnlyEjectableDisksFromItsButtonAndMenu"
   }
 ]

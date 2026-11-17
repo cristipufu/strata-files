@@ -10,6 +10,7 @@ final class FolderNode {
     let title: String
     var symbol: String
     let kind: Kind
+    var isEjectable = false
     /// nil until read (or when reading failed: it's tried again on the next expand).
     var children: [FolderNode]?
     /// From looking ahead: whether it has subfolders, before they're read.
@@ -75,6 +76,9 @@ final class FolderTreeController: NSViewController {
     var onTrash: (([URL]) -> Void)?
     /// Whether these items may go to the Trash (the sidebar's own check).
     var canTrash: (([URL]) -> Bool)?
+    /// A disk's eject button or menu item was chosen.
+    var onEject: ((URL) -> Void)?
+    var isEjecting: ((URL) -> Bool)?
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
     private let outline = SidebarOutlineView()
@@ -174,7 +178,9 @@ final class FolderTreeController: NSViewController {
         var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
         for volume in places.snapshot.volumes {
             let url = volume.url.lexicallyStandardized
-            fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
+            let node = reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) }
+            node.isEjectable = volume.isEjectable
+            fresh.append(node)
         }
         for folder in cloudFolders where !fresh.contains(where: { $0.url.fileViewKey == folder.url.fileViewKey }) {
             fresh.append(reuse(folder.url, .folder) { FolderNode(url: folder.url, title: folder.title, symbol: "icloud") })
@@ -560,8 +566,24 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             cell.identifier = id
             return cell
         }()
-        cell.configure(title: node.title, symbol: node.symbol, help: Format.tildePath(node.url))
+        cell.configure(title: node.title, symbol: node.symbol, help: Format.tildePath(node.url), ejection: ejection(for: node))
         return cell
+    }
+
+    private func ejection(for node: FolderNode) -> SidebarCellView.Ejection? {
+        guard node.isEjectable, let onEject else { return nil }
+        let url = node.url
+        return SidebarCellView.Ejection(isUnderway: { [weak self] in self?.isEjecting?(url) == true },
+                                        perform: { onEject(url) })
+    }
+
+    /// A disk started or finished ejecting: its button follows.
+    func ejectionsChanged() {
+        for root in roots where root.isEjectable {
+            let row = outline.row(forItem: root)
+            guard row >= 0 else { continue }
+            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()
+        }
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -626,11 +648,16 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 }
 
-/// Right-click: open in a new tab, copy the path, add to Favorites.
+/// Right-click: open in a new tab, copy the path, add to Favorites, eject a disk.
 extension FolderTreeController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode, node.kind != .containers, node.kind != .server else { return }
+        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode else { return }
+        addItems(for: node, to: menu)
+    }
+
+    func addItems(for node: FolderNode, to menu: NSMenu) {
+        guard node.kind != .containers, node.kind != .server else { return }
         func add(_ title: String, _ action: Selector) {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
@@ -649,6 +676,15 @@ extension FolderTreeController: NSMenuDelegate {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))
         }
+        if node.isEjectable, onEject != nil {
+            menu.addItem(.separator())
+            add(String(localized: "Eject “\(node.title)”"), #selector(ejectNode(_:)))
+        }
+    }
+
+    @objc private func ejectNode(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onEject?(url)
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {

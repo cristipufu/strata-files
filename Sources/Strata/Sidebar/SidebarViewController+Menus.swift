@@ -191,6 +191,6 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func ejectItem(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        Places.eject(url, from: view.window)
+        eject(url)
     }
 }

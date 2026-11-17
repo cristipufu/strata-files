@@ -117,6 +117,8 @@ final class SidebarViewController: NSViewController {
         tree.onTrash = { [weak self] urls in self?.moveToTrash(urls) }
         tree.canTrash = { [copies = services.copies] urls in Self.canTrash(urls, copies: copies, mounts: MountPoints.current()) }
         tree.onOpenInNewTab = { [weak self] url in self?.onOpenInNewTab?(url) }
+        tree.onEject = { [weak self] url in self?.eject(url) }
+        tree.isEjecting = { [ejector = services.volumeEjector] url in ejector.isEjecting(url) }
         addChild(tree)
     }
 
@@ -136,6 +138,8 @@ final class SidebarViewController: NSViewController {
         preferences.notifications.addObserver(self, selector: #selector(favoritesChanged), name: .favoritesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: services.places)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
+        NotificationCenter.default.addObserver(self, selector: #selector(ejectionsChanged), name: .volumeEjectionsChanged,
+                                               object: services.volumeEjector)
         preferences.notifications.addObserver(self, selector: #selector(collapsedSectionsChanged(_:)), name: .sidebarSectionsCollapsed, object: nil)
         for name in [Notification.Name.trashChanged, .operationLogChanged, NSApplication.didBecomeActiveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(trashMayHaveChanged), name: name, object: nil)
@@ -315,6 +319,19 @@ final class SidebarViewController: NSViewController {
 
     @objc private func volumesChanged() { reload(); refreshCloudFolders() }
 
+    func eject(_ volume: URL) {
+        services.volumeEjector.eject(volume, from: view.window)
+    }
+
+    @objc private func ejectionsChanged() {
+        for item in sections.flatMap(\.items) where item.isEjectable {
+            let row = outline.row(forItem: item)
+            guard row >= 0 else { continue }
+            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()
+        }
+        tree.ejectionsChanged()
+    }
+
     @objc private func favoritesChanged() {
         services.places.refresh()
         volumesChanged()
@@ -428,8 +445,14 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
             cell.identifier = id
             return cell
         }()
-        cell.configure(title: item.title, symbol: item.symbol, tint: item.tint, help: item.help)
+        cell.configure(title: item.title, symbol: item.symbol, tint: item.tint, help: item.help, ejection: ejection(for: item))
         return cell
+    }
+
+    private func ejection(for item: SidebarItem) -> SidebarCellView.Ejection? {
+        guard item.isEjectable, let url = item.url else { return nil }
+        return SidebarCellView.Ejection(isUnderway: { [ejector = services.volumeEjector] in ejector.isEjecting(url) },
+                                        perform: { [weak self] in self?.eject(url) })
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -583,14 +606,27 @@ struct SidebarMetrics {
     /// Tag dots are smaller than the other symbols, like Finder's.
     var tagDotSize: CGFloat { textSize - 3 }
     var symbolWidth: CGFloat { (Self.mediumSymbolWidth * textSize / Self.mediumTextSize).rounded() }
+    /// Never under the 20 points the Mac's guidelines ask of a control.
+    var buttonSize: CGFloat { max(symbolWidth, 20) }
 }
 
 /// Finder's macOS 26 look: monochrome symbol and label that keep their color when selected, at the size the system's
 /// sidebar setting asks for.
 final class SidebarCellView: NSTableCellView {
+    /// What a disk's eject button does. Whether that disk is ejecting is asked each time the button is shown.
+    struct Ejection {
+        let isUnderway: () -> Bool
+        let perform: () -> Void
+    }
+
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
+    let ejectButton = NSButton()
     private let iconWidth: NSLayoutConstraint
+    private let ejectButtonSize: NSLayoutConstraint
+    private let labelBeforeEjectButton: NSLayoutConstraint
+    private lazy var labelAtEdge = label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2)
+    private var ejection: Ejection?
 
     /// Explicit colors: the source-list style recolors the semantic label color with the accent on selection.
     /// Fully opaque with Increase Contrast.
@@ -599,19 +635,27 @@ final class SidebarCellView: NSTableCellView {
 
     override init(frame: NSRect) {
         iconWidth = icon.widthAnchor.constraint(equalToConstant: 0)
+        ejectButtonSize = ejectButton.widthAnchor.constraint(equalToConstant: 0)
+        labelBeforeEjectButton = label.trailingAnchor.constraint(equalTo: ejectButton.leadingAnchor, constant: -4)
         super.init(frame: frame)
         icon.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingTail
+        setUpEjectButton()
         addSubview(icon)
         addSubview(label)
+        addSubview(ejectButton)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconWidth,
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            labelAtEdge,
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ejectButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            ejectButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ejectButtonSize,
+            ejectButton.heightAnchor.constraint(equalTo: ejectButton.widthAnchor),
         ])
         applySize()
     }
@@ -619,17 +663,50 @@ final class SidebarCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    private func setUpEjectButton() {
+        ejectButton.translatesAutoresizingMaskIntoConstraints = false
+        ejectButton.title = ""
+        ejectButton.isBordered = false
+        ejectButton.imagePosition = .imageOnly
+        ejectButton.image = NSImage(systemSymbolName: "eject", accessibilityDescription: nil)
+        ejectButton.target = self
+        ejectButton.action = #selector(ejectClicked)
+        ejectButton.isHidden = true
+        ejectButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
     private var tint: NSColor?
 
-    func configure(title: String, symbol: String, tint: NSColor? = nil, help: String? = nil) {
+    func configure(title: String, symbol: String, tint: NSColor? = nil, help: String? = nil, ejection: Ejection? = nil) {
         label.stringValue = title
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         self.tint = tint
         toolTip = help
         setAccessibilityHelp(help)
+        self.ejection = ejection
+        showEjectButton(named: title)
         applySize()
         applyColors()
     }
+
+    /// Enabled again once its disk is no longer ejecting.
+    func refreshEjectButton() {
+        ejectButton.isEnabled = ejection?.isUnderway() == false
+    }
+
+    /// On every disk's row, as in Finder, not only under the pointer.
+    private func showEjectButton(named title: String) {
+        let shown = ejection != nil
+        let name = shown ? String(localized: "Eject “\(title)”") : nil
+        ejectButton.isHidden = !shown
+        ejectButton.toolTip = name
+        ejectButton.setAccessibilityLabel(name)
+        refreshEjectButton()
+        NSLayoutConstraint.deactivate([shown ? labelAtEdge : labelBeforeEjectButton])
+        NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])
+    }
+
+    @objc private func ejectClicked() { ejection?.perform() }
 
     /// The table gives each of its rows' cells the size it shows them at: the system's sidebar size.
     override var rowSizeStyle: NSTableView.RowSizeStyle {
@@ -642,6 +719,8 @@ final class SidebarCellView: NSTableCellView {
         icon.symbolConfiguration = tint == nil ? .init(pointSize: metrics.symbolSize, weight: .regular)
             : .init(pointSize: metrics.tagDotSize, weight: .semibold)
         iconWidth.constant = metrics.symbolWidth
+        ejectButton.symbolConfiguration = .init(pointSize: metrics.textSize, weight: .regular)
+        ejectButtonSize.constant = metrics.buttonSize
     }
 
     override var backgroundStyle: NSView.BackgroundStyle {
@@ -651,6 +730,7 @@ final class SidebarCellView: NSTableCellView {
     private func applyColors() {
         label.textColor = Self.ink
         icon.contentTintColor = tint ?? Self.iconInk
+        ejectButton.contentTintColor = Self.iconInk
     }
 }
 
