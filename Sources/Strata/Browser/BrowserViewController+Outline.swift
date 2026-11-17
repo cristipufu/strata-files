@@ -97,6 +97,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
         case .tags: cell.configure(services.tags.tags(for: entry.url).map(\.name).joined(separator: ", "),
                                    alignment: .left, dimmed: dimmed)
         case .size: cell.configure(sizeText(node), alignment: .right, dimmed: dimmed)
+        case .contentsModified:
+            let date = contentsModified(entry, request: true)
+            let measuring = date == nil && entry.isDirectory && sizer.isPending(entry.url)
+            cell.configure(measuring ? "…" : Format.date(date ?? entry.modified), alignment: .left, dimmed: dimmed)
         case .location: cell.configure(Format.tildePath(entry.url.deletingLastPathComponent()), alignment: .left, dimmed: dimmed)
         default: cell.configure(entry.kind, alignment: .left, dimmed: dimmed)
         }
@@ -157,8 +161,10 @@ extension BrowserViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
     func applySort(_ key: SortKey, ascending direction: Bool, remember: Bool = true) {
         if key == .tags, isShowingResults { services.tags.load(nodes.flatMap { $0.children ?? [$0] }.map(\.entry)) }
+        let wasShown = showsContentsModified
         ordering.choose(.init(key: key, ascending: direction), remember: remember)
         if !remember, directory == nil, !isShowingResults { initialSort = .init(key: key, ascending: direction) }
+        contentsDemandChanged(from: wasShown)
         syncSortDescriptor()
         if remember, !isShowingResults {
             if hasCustomFolderPresentation { rememberFolderPresentation() }
@@ -196,6 +202,10 @@ extension BrowserViewController: NSTextFieldDelegate {
         }
         view.window?.makeFirstResponder(outlineView)
         resorting.editingEnded()
+        if resultDatesChangedWhileEditing {
+            resultDatesChangedWhileEditing = false
+            if isShowingResults { showResultDates() }
+        }
         guard !newName.isEmpty, newName != node.entry.name else { return }
         renameItem(node.url, to: newName)
     }

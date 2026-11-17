@@ -242,6 +242,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
             switch result {
             case .success(let listing):
                 let entries = listing.entries
+                FolderSizer.listed(entries.filter(\.isDirectory).map { ($0.url, $0.identifier) })
                 // Where a link or alias led is watched in its place, and read once more when it is.
                 if listing.folder != self.watchedFolder {
                     let watched = self.watch(listing.folder), listed = listing.folder

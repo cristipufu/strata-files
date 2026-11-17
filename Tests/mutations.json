@@ -4886,8 +4886,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: [column])",
-    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: [column])",
+    "find": "outlineView.reloadData(forRowIndexes: inlineRename.except([row], in: outlineView), columnIndexes: totals)",
+    "replace": "outlineView.reloadData(forRowIndexes: [row], columnIndexes: totals)",
     "rule": "Inline rename metadata: folder size updates cannot commit a partial name",
     "tests": "DirectoryReadSessionTests"
   },
@@ -8361,8 +8361,8 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "guard pending[key]?.id == id else { return }",
-    "replace": "guard true else { return }",
+    "find": "guard let walk = pending[key], walk.id == id else { return }",
+    "replace": "guard let walk = pending[key] else { return }",
     "rule": "Folder sizing publishes an obsolete completion over its replacement",
     "tests": "FolderSizerCancellationTests"
   },
@@ -9704,14 +9704,14 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending, !showsContentsModified { sizer.cancel(url) }\n            return nil",
     "replace": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if request { sizer.request(url) }\n            return nil",
     "rule": "Pending index folder size lookups wait for the index instead of starting a competing FolderSizer walk",
     "tests": "FolderSizerCancellationTests/browserWaitsForLoadingIndexAndCancelsPendingSizerWalksWhenIndexTakesOver"
   },
   {
     "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "        if sizer.hasPending {\n            sizer.cancel { [index = services.index] url in index.folderSizeLookup(url) != .unindexed }\n        }",
+    "find": "        if sizer.hasPending, !showsContentsModified {\n            sizer.cancel { [index = services.index] url in index.folderSizeLookup(url) != .unindexed }\n        }",
     "replace": "",
     "rule": "Superseded FolderSizer walks are cancelled when the index takes over a folder",
     "tests": "FolderSizerCancellationTests/browserWaitsForLoadingIndexAndCancelsPendingSizerWalksWhenIndexTakesOver"
@@ -10769,8 +10769,8 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "            Self.measured[key] = Measured(size: size, asked: asked)",
-    "replace": "            Self.measured[key] = Measured(size: size, asked: false)",
+    "find": "            Self.measured[key] = Measured(size: size, asked: asked, startedAt: startedAt)",
+    "replace": "            Self.measured[key] = Measured(size: size, asked: false, startedAt: startedAt)",
     "rule": "Folder sizes you ask for: the size a walk you asked for measured is kept as one",
     "tests": "FolderSizerAskedTests/askingTakesThePlaceOfAWalkThatMayNotFetchAndOnlyAWholeSizeStandsForWhatYouAsk|FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
   },
@@ -10797,8 +10797,8 @@
   },
   {
     "file": "Strata/Browser/BrowserViewController.swift",
-    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
-    "replace": "            if sizer.hasPending { sizer.cancel(url) }\n            return nil",
+    "find": "            if let whole = FolderSizer.askedSize(url) { return whole }\n            if sizer.hasPending, !showsContentsModified { sizer.cancel(url) }\n            return nil",
+    "replace": "            if sizer.hasPending, !showsContentsModified { sizer.cancel(url) }\n            return nil",
     "rule": "Folder sizes you ask for: a size you asked for stands while the index is reading everything",
     "tests": "FolderSizerAskedTests/aSizeYouAskedForIsMeasuredToTheEndAndStandsUntilTheIndexHasReadEverything"
   },
@@ -10958,8 +10958,8 @@
   },
   {
     "file": "Strata/Model/FolderSizer.swift",
-    "find": "        if asked || Self.askedSize(url) == nil {",
-    "replace": "        if true {",
+    "find": "        let keepsKnown = asked ? known?.asked == true && newer : newer || (known?.asked == true && !Self.isStale(key))",
+    "replace": "        let keepsKnown = asked ? known?.asked == true && newer : false",
     "rule": "Folder sizes you ask for: what a walk you asked for measured is not replaced by another window's walk that may not fetch",
     "tests": "FolderSizerAskedTests/whatAWalkYouAskedForMeasuredIsNotReplacedByAnotherWindowsWalkThatMayNotFetch"
   },

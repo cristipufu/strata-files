@@ -177,7 +177,8 @@ enum MainMenu {
 
     /// Finder's Sort By shortcuts: ⌃⌥⌘1 Name, ⌃⌥⌘2 Kind, ⌃⌥⌘5 Date Modified, ⌃⌥⌘6 Date Created, ⌃⌥⌘7 Size.
     private static func sortByMenu() -> NSMenuItem {
-        let titles: [(String.LocalizationValue, String)] = [("Name", "1"), ("Kind", "2"), ("Date Modified", "5"), ("Date Created", "6"), ("Size", "7"), ("Tags", "3")]
+        let titles: [(String.LocalizationValue, String)] = [("Name", "1"), ("Kind", "2"), ("Date Modified", "5"), ("Date Created", "6"), ("Size", "7"), ("Tags", "3"),
+                                                            ("Contents Modified", "")]
         let items = titles.enumerated().map { index, entry in
             let menuItem = item(entry.0, #selector(BrowserViewController.sortBy(_:)), entry.1, [.command, .option, .control])
             menuItem.tag = index

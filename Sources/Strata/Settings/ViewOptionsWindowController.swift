@@ -53,6 +53,7 @@ struct ViewOptionsView: View {
     @State private var alternatingRows: Bool
     @State private var showNameExtensions: Bool
     @State private var hiddenColumns: Set<String>
+    @State private var countsHidden: Bool
 
     init(folderOptions: FolderViewOptions) {
         self.folderOptions = folderOptions
@@ -63,6 +64,7 @@ struct ViewOptionsView: View {
         _showNameExtensions = State(initialValue: preferences.showListNameExtensions)
         _previews = State(initialValue: preferences.showIconPreviews)
         _hiddenColumns = State(initialValue: preferences.hiddenListColumns)
+        _countsHidden = State(initialValue: preferences.contentsModifiedCountsHidden)
     }
 
     var body: some View {
@@ -110,6 +112,10 @@ struct ViewOptionsView: View {
                         preferences.hiddenListColumns = hiddenColumns
                     }))
                 }
+                Toggle("Contents Modified counts hidden files",
+                       isOn: Binding(get: { countsHidden }, set: { countsHidden = $0; preferences.contentsModifiedCountsHidden = $0 }))
+                Text("A folder is dated by the newest file inside it. Hidden files include a project’s Git data.")
+                    .font(.caption).foregroundStyle(.secondary)
             } header: { Text("List columns").settingAnchor(.listColumns) }
             Text(String(localized: "Other options apply to all windows.", comment: "View Options: folder view, sort and icon size are saved per folder; the remaining appearance options are shared")).font(.caption).foregroundStyle(.secondary)
         }
@@ -126,5 +132,6 @@ struct ViewOptionsView: View {
         .onReceive(preferences.notifications.publisher(for: .alternatingRowsChanged, object: preferences)) { _ in alternatingRows = preferences.alternatingRows }
         .onReceive(preferences.notifications.publisher(for: .listNamesChanged, object: preferences)) { _ in showNameExtensions = preferences.showListNameExtensions }
         .onReceive(preferences.notifications.publisher(for: .listColumnsChanged)) { _ in hiddenColumns = preferences.hiddenListColumns }
+        .onReceive(preferences.notifications.publisher(for: .prefsChanged)) { _ in countsHidden = preferences.contentsModifiedCountsHidden }
     }
 }

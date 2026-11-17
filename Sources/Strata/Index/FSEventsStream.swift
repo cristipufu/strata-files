@@ -35,6 +35,21 @@ nonisolated package final class FSEventsStream: @unchecked Sendable {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped) != 0
         }
 
+        /// The event names a file, folder or link that changed, not a folder whose contents did.
+        package var isItem: Bool {
+            let kinds = kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemIsDir | kFSEventStreamEventFlagItemIsSymlink
+                | kFSEventStreamEventFlagItemIsHardlink | kFSEventStreamEventFlagItemIsLastHardlink
+            return flags & FSEventStreamEventFlags(kinds) != 0
+        }
+
+        package var isFolder: Bool { flags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0 }
+
+        /// The item was made, removed, or moved in or out under its name.
+        package var addsOrRemovesItem: Bool {
+            let kinds = kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemRenamed
+            return flags & FSEventStreamEventFlags(kinds) != 0
+        }
+
         package var isHistoryDone: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone) != 0
         }
