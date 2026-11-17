@@ -123,8 +123,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
-        NotificationCenter.default.addObserver(self, selector: #selector(volumeEjected(_:)), name: .volumeEjected,
-                                               object: services.volumeEjector)
+        for (name, action) in [(Notification.Name.volumeEjectionStarting, #selector(volumeEjectionStarting(_:))),
+                               (.volumeEjectionFailed, #selector(volumeEjectionFailed(_:))), (.volumeEjected, #selector(volumeEjected(_:)))] {
+            NotificationCenter.default.addObserver(self, selector: action, name: name, object: services.volumeEjector)
+        }
+        services.workspaceNotifications.addObserver(self, selector: #selector(volumeUnmounted(_:)),
+                                                    name: NSWorkspace.didUnmountNotification, object: nil)
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
                                                object: services.cloud)
@@ -606,25 +610,58 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         let selected = ejector.ejectable(browser.selectedURLs)
         if !selected.isEmpty { return selected }
         guard case .folder = destination else { return [] }
-        return ejector.ejectable([location])
+        return ejector.ejectable([(browser.mode == .columns ? pane.columnLocation : nil) ?? location])
     }
 
     @objc func ejectVolume(_ sender: Any?) {
         for url in ejectTargets { services.volumeEjector.eject(url, from: window) }
     }
 
-    /// Panes showing a folder on the disk at `volume`, its top included.
+    /// Panes showing a folder on the disk at `volume`, its top included, in any column.
     func panesShowing(_ volume: URL) -> [Pane] {
         panes.filter { p in
             guard case .folder = p.destination else { return false }
-            return VolumeEjector.isOnVolume(p.location, volume)
+            return VolumeEjector.isOnVolume((p.browser.mode == .columns ? p.columnLocation : nil) ?? p.location, volume)
         }
     }
 
-    /// Only once the disk has gone: a failed eject leaves every pane where it was.
+    private static func volume(in notification: Notification, key: String) -> URL? {
+        notification.userInfo?[key] as? URL
+    }
+
+    /// Before the disk is handed to macOS: going Home ends each pane's reads, previews and folder sizes on it, which
+    /// would keep it busy.
+    @objc private func volumeEjectionStarting(_ notification: Notification) {
+        guard !isClosed, let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }
+        for p in panesShowing(volume) {
+            let folder = p.location
+            go(.folder(services.homeFolder), in: p, recordHistory: false)
+            departures.record(p, leaving: folder, from: volume)
+        }
+    }
+
+    @objc private func volumeEjectionFailed(_ notification: Notification) {
+        guard !isClosed, let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }
+        for (p, folder) in departures.returning(from: volume) where panes.contains(where: { $0 === p }) {
+            go(.folder(folder), in: p, recordHistory: false)
+        }
+    }
+
     @objc private func volumeEjected(_ notification: Notification) {
-        guard !isClosed, let volume = notification.userInfo?[VolumeEjector.volumeKey] as? URL else { return }
-        for p in panesShowing(volume) { go(.folder(Places.home), in: p) }
+        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }
+        leave(volume)
+    }
+
+    /// Ejected in Finder, unplugged, or taken along with a disk Strata ejected.
+    @objc private func volumeUnmounted(_ notification: Notification) {
+        guard let volume = Self.volume(in: notification, key: NSWorkspace.volumeURLUserInfoKey) else { return }
+        leave(volume)
+    }
+
+    private func leave(_ volume: URL) {
+        departures.forget(volume)
+        guard !isClosed else { return }
+        for p in panesShowing(volume) { go(.folder(services.homeFolder), in: p, recordHistory: false) }
     }
 
     override func newWindowForTab(_ sender: Any?) { openTab(at: location) }
@@ -771,6 +808,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Closed: a workspace still connecting leaves it alone.
     private var clipboardMonitoring: UUID?
     private(set) var isClosed = false
+    private let departures = DiskDepartures()
 
     isolated deinit { stopClipboardMonitoring() }
 

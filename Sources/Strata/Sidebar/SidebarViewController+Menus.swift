@@ -194,3 +194,10 @@ extension SidebarViewController: NSMenuDelegate {
         eject(url)
     }
 }
+
+extension SidebarViewController: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(ejectItem(_:)), let url = item.representedObject as? URL else { return true }
+        return !services.volumeEjector.isEjecting(url)
+    }
+}

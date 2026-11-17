@@ -47,16 +47,18 @@ final class FolderTreeController: NSViewController {
     private let copies: CopyProviders
     private let containerStore: ContainerStore
     private let places: PlaceChecks
+    private let home: URL
     var clipboard: Clipboard
     var cloudFolders: [CloudFolder] = [] {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(places: PlaceChecks, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
+    init(places: PlaceChecks, home: URL, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
          copies: CopyProviders, containerStore: ContainerStore,
          clipboard: Clipboard, watchBudget: FolderWatchers.Budget) {
         watchers = FolderWatchers(budget: watchBudget)
         self.places = places
+        self.home = home
         self.remote = remote
         self.copies = copies
         self.containerStore = containerStore
@@ -76,7 +78,6 @@ final class FolderTreeController: NSViewController {
     var onTrash: (([URL]) -> Void)?
     /// Whether these items may go to the Trash (the sidebar's own check).
     var canTrash: (([URL]) -> Bool)?
-    /// A disk's eject button or menu item was chosen.
     var onEject: ((URL) -> Void)?
     var isEjecting: ((URL) -> Bool)?
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
@@ -174,7 +175,6 @@ final class FolderTreeController: NSViewController {
         func reuse(_ url: URL, _ kind: FolderNode.Kind, _ make: () -> FolderNode) -> FolderNode {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
-        let home = Places.home
         var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
         for volume in places.snapshot.volumes {
             let url = volume.url.lexicallyStandardized
@@ -577,13 +577,8 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
                                         perform: { onEject(url) })
     }
 
-    /// A disk started or finished ejecting: its button follows.
     func ejectionsChanged() {
-        for root in roots where root.isEjectable {
-            let row = outline.row(forItem: root)
-            guard row >= 0 else { continue }
-            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()
-        }
+        SidebarCellView.refreshEjectButtons(of: roots.filter(\.isEjectable), in: outline)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -649,7 +644,7 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
 }
 
 /// Right-click: open in a new tab, copy the path, add to Favorites, eject a disk.
-extension FolderTreeController: NSMenuDelegate {
+extension FolderTreeController: NSMenuDelegate, NSMenuItemValidation {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode else { return }
@@ -685,6 +680,11 @@ extension FolderTreeController: NSMenuDelegate {
     @objc private func ejectNode(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         onEject?(url)
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(ejectNode(_:)), let url = item.representedObject as? URL else { return true }
+        return isEjecting?(url) != true
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {

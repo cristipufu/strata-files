@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import StrataArchives
 
 /// Services shared by a window and its panes. Production windows share one set; headless windows can own independent
@@ -10,7 +10,9 @@ final class BrowserServices {
         let ejectFailures = EjectFailureAlerts()
         return BrowserServices(transfers: .shared, visits: .shared, windows: .native, remote: .shared,
                                containers: .shared, containerStore: .shared, clipboard: .shared,
-                               unmount: VolumeEjector.unmountAndEject, ejectFailed: { ejectFailures.present($0, in: $1) },
+                               unmount: VolumeEjector.unmountAndEject, ejectPatience: VolumeEjector.waitBeforeGivingUp,
+                               ejectFailed: { ejectFailures.present($0, in: $1) },
+                               workspaceNotifications: NSWorkspace.shared.notificationCenter, homeFolder: Places.home,
                                cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
                                contentIndex: .shared, showSetting: SettingsWindowController.present)
     }
@@ -27,7 +29,9 @@ final class BrowserServices {
                          folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
                          readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
                          unmount: @escaping VolumeEjector.Unmount = VolumeEjector.refuseToUnmount,
+                         ejectPatience: @escaping VolumeEjector.Patience = VolumeEjector.waitBeforeGivingUp,
                          ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
+                         workspaceNotifications: NotificationCenter = NotificationCenter(), homeFolder: URL = Places.home,
                          makeIndex: (@MainActor (CopyProviders) -> FileIndex)? = nil,
                          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
@@ -41,7 +45,8 @@ final class BrowserServices {
         return configured(transfers: transfers, visits: Frecency(preferences: preferences.defaults), windows: windows,
                           remote: remote, containers: containers, containerStore: containerStore, clipboard: clipboard,
                           directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis,
-                          folderSizes: folderSizes, readPlaces: readPlaces, unmount: unmount, ejectFailed: ejectFailed,
+                          folderSizes: folderSizes, readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience,
+                          ejectFailed: ejectFailed, workspaceNotifications: workspaceNotifications, homeFolder: homeFolder,
                           index: index, showSetting: showSetting)
     }
 
@@ -58,7 +63,9 @@ final class BrowserServices {
                            folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
                            readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
                            unmount: @escaping VolumeEjector.Unmount = VolumeEjector.refuseToUnmount,
+                           ejectPatience: @escaping VolumeEjector.Patience = VolumeEjector.waitBeforeGivingUp,
                            ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
+                           workspaceNotifications: NotificationCenter = NotificationCenter(), homeFolder: URL = Places.home,
                            thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                            cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -69,7 +76,8 @@ final class BrowserServices {
                         volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
                         mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis, folderSizes: folderSizes,
-                        readPlaces: readPlaces, unmount: unmount, ejectFailed: ejectFailed, thumbnails: thumbnails, itemInfo: itemInfo,
+                        readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience, ejectFailed: ejectFailed,
+                        workspaceNotifications: workspaceNotifications, homeFolder: homeFolder, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
                         index: index, contentIndex: contentIndex, showSetting: showSetting)
     }
@@ -91,6 +99,10 @@ final class BrowserServices {
     let visits: Frecency
     let places: PlaceChecks
     let volumeEjector: VolumeEjector
+    /// Where macOS says disks come and go.
+    let workspaceNotifications: NotificationCenter
+    /// Where panes go when the disk they show leaves.
+    let homeFolder: URL
     let folderNames: FolderNames
     let remote: RemoteServices
     let remoteBrowsing: RemoteBrowsing
@@ -125,7 +137,8 @@ final class BrowserServices {
                  mediaAnalysis: MediaAnalysisReader = MediaAnalysisReader(),
                  folderSizes: @escaping FolderSizer.Reader = FolderSizer.measure,
                  readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
-                 unmount: @escaping VolumeEjector.Unmount, ejectFailed: @escaping VolumeEjector.Report,
+                 unmount: @escaping VolumeEjector.Unmount, ejectPatience: @escaping VolumeEjector.Patience,
+                 ejectFailed: @escaping VolumeEjector.Report, workspaceNotifications: NotificationCenter, homeFolder: URL,
                  thumbnails: FileThumbnails? = nil, itemInfo: ItemInfoLoader? = nil,
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
@@ -138,7 +151,9 @@ final class BrowserServices {
         self.visits = visits
         let places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: readPlaces)
         self.places = places
-        self.volumeEjector = VolumeEjector(places: places, unmount: unmount, report: ejectFailed)
+        self.volumeEjector = VolumeEjector(places: places, unmount: unmount, patience: ejectPatience, report: ejectFailed)
+        self.workspaceNotifications = workspaceNotifications
+        self.homeFolder = homeFolder
         self.folderNames = FolderNames(read: FolderNames.read)
         self.remote = remote
         self.remoteBrowsing = remoteBrowsing ?? remote.browsing

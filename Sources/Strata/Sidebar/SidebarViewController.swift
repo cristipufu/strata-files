@@ -9,7 +9,7 @@ final class SidebarViewController: NSViewController {
 
     init(services: BrowserServices) {
         self.services = services
-        tree = FolderTreeController(places: services.places,
+        tree = FolderTreeController(places: services.places, home: services.homeFolder,
                                     transfers: services.transfers, preferences: services.preferences,
                                     remote: services.remote, copies: services.copies,
                                     containerStore: services.containerStore, clipboard: services.clipboard,
@@ -324,11 +324,7 @@ final class SidebarViewController: NSViewController {
     }
 
     @objc private func ejectionsChanged() {
-        for item in sections.flatMap(\.items) where item.isEjectable {
-            let row = outline.row(forItem: item)
-            guard row >= 0 else { continue }
-            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()
-        }
+        SidebarCellView.refreshEjectButtons(of: sections.flatMap(\.items).filter(\.isEjectable), in: outline)
         tree.ejectionsChanged()
     }
 
@@ -566,6 +562,8 @@ extension SidebarViewController: NSOutlineViewDataSource, NSOutlineViewDelegate 
 
 /// Finder-style selection: a soft gray rounded highlight, with the label keeping its normal color.
 final class SidebarRowView: NSTableRowView {
+    static let selectionInset: CGFloat = 10
+
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 
     override var isEmphasized: Bool {
@@ -575,7 +573,7 @@ final class SidebarRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
-        let rect = bounds.insetBy(dx: 10, dy: 1)
+        let rect = bounds.insetBy(dx: Self.selectionInset, dy: 1)
         let ink: NSColor = ThemeStyle.options.palette == .system || ThemeStyle.highContrast || effectiveAppearance.isHighContrast
             ? .labelColor : ThemeStyle.accent
         ink.withAlphaComponent(ThemeStyle.highContrast || effectiveAppearance.isHighContrast ? 0.25 : 0.1).setFill()
@@ -619,9 +617,17 @@ final class SidebarCellView: NSTableCellView {
         let perform: () -> Void
     }
 
+    static func refreshEjectButtons(of items: [Any], in outline: NSOutlineView) {
+        for item in items {
+            let row = outline.row(forItem: item)
+            guard row >= 0 else { continue }
+            (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? SidebarCellView)?.refreshEjectButton()
+        }
+    }
+
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
-    let ejectButton = NSButton()
+    private let ejectButton = SidebarEjectButton()
     private let iconWidth: NSLayoutConstraint
     private let ejectButtonSize: NSLayoutConstraint
     private let labelBeforeEjectButton: NSLayoutConstraint
@@ -652,7 +658,8 @@ final class SidebarCellView: NSTableCellView {
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
             labelAtEdge,
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            ejectButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            // Inside the selection's rounded highlight, as in Finder.
+            ejectButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -(SidebarRowView.selectionInset + 4)),
             ejectButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             ejectButtonSize,
             ejectButton.heightAnchor.constraint(equalTo: ejectButton.widthAnchor),
@@ -672,6 +679,7 @@ final class SidebarCellView: NSTableCellView {
         ejectButton.target = self
         ejectButton.action = #selector(ejectClicked)
         ejectButton.isHidden = true
+        ejectButton.refusesFirstResponder = true
         ejectButton.setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
@@ -689,8 +697,7 @@ final class SidebarCellView: NSTableCellView {
         applyColors()
     }
 
-    /// Enabled again once its disk is no longer ejecting.
-    func refreshEjectButton() {
+    private func refreshEjectButton() {
         ejectButton.isEnabled = ejection?.isUnderway() == false
     }
 
@@ -701,12 +708,20 @@ final class SidebarCellView: NSTableCellView {
         ejectButton.isHidden = !shown
         ejectButton.toolTip = name
         ejectButton.setAccessibilityLabel(name)
+        setAccessibilityCustomActions(shown ? [NSAccessibilityCustomAction(name: String(localized: "Eject"), target: self,
+                                                                            selector: #selector(performEjection))] : [])
         refreshEjectButton()
         NSLayoutConstraint.deactivate([shown ? labelAtEdge : labelBeforeEjectButton])
         NSLayoutConstraint.activate([shown ? labelBeforeEjectButton : labelAtEdge])
     }
 
-    @objc private func ejectClicked() { ejection?.perform() }
+    @objc private func ejectClicked() { _ = performEjection() }
+
+    @objc private func performEjection() -> Bool {
+        guard let ejection, !ejection.isUnderway() else { return false }
+        ejection.perform()
+        return true
+    }
 
     /// The table gives each of its rows' cells the size it shows them at: the system's sidebar size.
     override var rowSizeStyle: NSTableView.RowSizeStyle {
@@ -805,11 +820,29 @@ final class SavedSearchBox: NSObject {
     init(search: SavedSearch) { self.search = search }
 }
 
+/// A disk's eject button. A click on it goes straight to it: the row isn't selected, and nothing navigates.
+final class SidebarEjectButton: NSButton {}
+
 /// The sidebar's outline, telling the controller when a drag leaves or ends (to stop spring loading).
 final class SidebarOutlineView: NSOutlineView {
     var onDragEnd: (() -> Void)?
     /// Return (or Enter) on the selected row; true when it was handled.
     var onReturn: (() -> Bool)?
+
+    override func mouseDown(with event: NSEvent) {
+        if let button = ejectButton(under: event) { return button.mouseDown(with: event) }
+        super.mouseDown(with: event)
+    }
+
+    private func ejectButton(under event: NSEvent) -> SidebarEjectButton? {
+        guard let superview else { return nil }
+        var view = hitTest(superview.convert(event.locationInWindow, from: nil))
+        while let current = view, current !== self {
+            if let button = current as? SidebarEjectButton { return button }
+            view = current.superview
+        }
+        return nil
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == KeyCode.returnKey || event.keyCode == KeyCode.numpadEnter, onReturn?() == true { return }

@@ -25,7 +25,9 @@ final class IndependentEnvironment {
          indexedFolders: (home: URL, applications: URL)? = nil,
          readPlaces: @escaping PlaceChecks.Read = PlaceChecks.read,
          unmount: @escaping VolumeEjector.Unmount = VolumeEjector.refuseToUnmount,
+         ejectPatience: @escaping VolumeEjector.Patience = VolumeEjector.waitBeforeGivingUp,
          ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
+         workspaceNotifications: NotificationCenter = NotificationCenter(), homeFolder: URL = Places.home,
          showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) throws {
         state = try TestTree()
         let preferences = try supplied ?? Prefs.isolated()
@@ -51,7 +53,8 @@ final class IndependentEnvironment {
             connector: RemoteConnector { _, _ in throw RemoteError.unknownServer },
             clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers,
             directories: directories, mediaDetailsReader: mediaDetailsReader, folderSizes: folderSizes,
-            readPlaces: readPlaces, unmount: unmount, ejectFailed: ejectFailed, makeIndex: makeIndex, showSetting: showSetting)
+            readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience, ejectFailed: ejectFailed,
+            workspaceNotifications: workspaceNotifications, homeFolder: homeFolder, makeIndex: makeIndex, showSetting: showSetting)
     }
 
     isolated deinit {
