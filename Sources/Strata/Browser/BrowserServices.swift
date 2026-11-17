@@ -101,7 +101,6 @@ final class BrowserServices {
     let volumeEjector: VolumeEjector
     /// Where macOS says disks come and go.
     let workspaceNotifications: NotificationCenter
-    /// Where panes go when the disk they show leaves.
     let homeFolder: URL
     let folderNames: FolderNames
     let remote: RemoteServices
@@ -149,9 +148,10 @@ final class BrowserServices {
         self.transfers = transfers
         self.files = FileCommands(transfers: transfers)
         self.visits = visits
-        let places = PlaceChecks(preferences: transfers.preferences, visits: visits, read: readPlaces)
+        let places = PlaceChecks(preferences: transfers.preferences, visits: visits, workspace: workspaceNotifications, read: readPlaces)
         self.places = places
-        self.volumeEjector = VolumeEjector(places: places, unmount: unmount, patience: ejectPatience, report: ejectFailed)
+        self.volumeEjector = VolumeEjector(places: places, workspace: workspaceNotifications, unmount: unmount,
+                                           patience: ejectPatience, report: ejectFailed)
         self.workspaceNotifications = workspaceNotifications
         self.homeFolder = homeFolder
         self.folderNames = FolderNames(read: FolderNames.read)

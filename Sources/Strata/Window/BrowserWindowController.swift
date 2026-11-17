@@ -127,8 +127,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                                (.volumeEjected, #selector(volumeEjected(_:)))] {
             NotificationCenter.default.addObserver(self, selector: action, name: name, object: services.volumeEjector)
         }
-        services.workspaceNotifications.addObserver(self, selector: #selector(volumeUnmounted(_:)),
-                                                    name: NSWorkspace.didUnmountNotification, object: nil)
+        for name in [NSWorkspace.willUnmountNotification, NSWorkspace.didUnmountNotification] {
+            services.workspaceNotifications.addObserver(self, selector: #selector(volumeUnmounted(_:)), name: name, object: nil)
+        }
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
                                                object: services.cloud)
@@ -619,14 +620,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         for url in ejectTargets { services.volumeEjector.eject(url, from: window) }
     }
 
-    /// Panes showing anything on the disk at `volume`: a folder (its top, a deeper column), or a search inside it.
     func panesShowing(_ volume: URL) -> [Pane] {
-        panes.filter { p in
-            var places = [p.location]
-            if p.browser.mode == .columns, let column = p.columnLocation { places.append(column) }
-            if case .search(_, let scope?) = p.destination { places.append(scope) }
-            return places.contains { VolumeEjector.isOnVolume($0, volume) }
+        panes.filter { shown(on: volume, by: $0) != nil }
+    }
+
+    /// What `pane` shows on the disk at `volume`: its folder, a deeper column, or a search's scope. Recents,
+    /// Duplicates and a search everywhere show nothing of one disk.
+    private func shown(on volume: URL, by pane: Pane) -> URL? {
+        var places: [URL] = []
+        switch pane.destination {
+        case .folder:
+            if pane.browser.mode == .columns, let column = pane.columnLocation { places.append(column) }
+            places.append(pane.location)
+        case .search(_, let scope?): places.append(scope)
+        case .search, .recents, .duplicates: break
         }
+        return places.first { VolumeEjector.isOnVolume($0, volume) }
     }
 
     private static func volume(in notification: Notification, key: String) -> URL? {
@@ -645,8 +654,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         leave(volume)
     }
 
-    /// Ejected in Finder, unplugged, or taken along with a disk Strata ejected. A pane on a share keeps its folder,
-    /// as one on a disconnected server does, so its workspace and the session don't lose it.
+    /// About to be ejected in Finder, or gone: unplugged, or taken along with a disk Strata ejected. A pane on a share
+    /// keeps its folder, as one on a disconnected server does, so its workspace and the session don't lose it.
     @objc private func volumeUnmounted(_ notification: Notification) {
         guard let volume = Self.volume(in: notification, key: NSWorkspace.volumeURLUserInfoKey) else { return }
         leave(volume, keepingShares: true)
@@ -655,8 +664,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func leave(_ volume: URL, keepingShares: Bool = false) {
         guard !isClosed else { return }
         let kept = keepingShares ? share(of: volume) : nil
-        for p in panesShowing(volume) {
-            let waiting = kept.map { WaitingFolder(path: p.location.path, mode: p.browser.mode.rawValue, mountPoint: $0.mountPoint,
+        for p in panes {
+            guard let place = shown(on: volume, by: p) else { continue }
+            let waiting = kept.map { WaitingFolder(path: place.path, mode: p.browser.mode.rawValue, mountPoint: $0.mountPoint,
                                                     address: $0.address) }
             go(.folder(services.homeFolder), in: p, recordHistory: false, countVisit: false)
             p.waiting = waiting

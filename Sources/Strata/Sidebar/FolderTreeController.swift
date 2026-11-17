@@ -48,17 +48,19 @@ final class FolderTreeController: NSViewController {
     private let containerStore: ContainerStore
     private let places: PlaceChecks
     private let home: URL
+    private let workspace: NotificationCenter
     var clipboard: Clipboard
     var cloudFolders: [CloudFolder] = [] {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(places: PlaceChecks, home: URL, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
+    init(places: PlaceChecks, home: URL, workspace: NotificationCenter, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
          copies: CopyProviders, containerStore: ContainerStore,
          clipboard: Clipboard, watchBudget: FolderWatchers.Budget) {
         watchers = FolderWatchers(budget: watchBudget)
         self.places = places
         self.home = home
+        self.workspace = workspace
         self.remote = remote
         self.copies = copies
         self.containerStore = containerStore
@@ -150,9 +152,8 @@ final class FolderTreeController: NSViewController {
         scroll.documentView = outline
         view = scroll
 
-        let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
-        center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: containerStore)

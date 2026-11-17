@@ -11,14 +11,14 @@ extension Notification.Name {
 }
 
 /// Ejects disks for one environment's windows: the sidebar's eject buttons and menus in both modes, and File ▸ Eject.
-/// Only a disk the latest `PlaceChecks` read lists as ejectable is handed to macOS, and only once until it answers.
+/// Only a disk the latest `PlaceChecks` read lists as ejectable is handed to macOS, and only once until it answers, even
+/// after it was reported as not answering: a second call would only block another thread on the same disk.
 @MainActor final class VolumeEjector {
     typealias Unmount = @Sendable (URL) async throws -> Void
     typealias Patience = @Sendable () async -> Void
     typealias Report = @MainActor (Failure, NSWindow?) -> Void
 
     struct Failure {
-        let volume: URL
         let name: String
         let error: any Error
     }
@@ -28,18 +28,32 @@ extension Notification.Name {
     nonisolated static let volumeKey = "volume"
 
     private let places: PlaceChecks
+    private let workspace: NotificationCenter
     private let unmount: Unmount
     private let patience: Patience
     private let report: Report
     private(set) var tasks: [String: Task<Void, Never>] = [:]
-    /// Disks ejected that the places read may still list, until a read begun since has landed.
+    /// Disks ejected or unmounted that the places read may still list, until a read begun since has landed.
     private var gone: Set<String> = []
 
-    init(places: PlaceChecks, unmount: @escaping Unmount, patience: @escaping Patience, report: @escaping Report) {
+    init(places: PlaceChecks, workspace: NotificationCenter, unmount: @escaping Unmount, patience: @escaping Patience,
+         report: @escaping Report) {
         self.places = places
+        self.workspace = workspace
         self.unmount = unmount
         self.patience = patience
         self.report = report
+        // Unmounted elsewhere, or taken along with a disk ejected here: offering it again would only fail.
+        for name in [NSWorkspace.willUnmountNotification, NSWorkspace.didUnmountNotification] {
+            workspace.addObserver(self, selector: #selector(unmounted(_:)), name: name, object: nil)
+        }
+    }
+
+    isolated deinit { workspace.removeObserver(self) }
+
+    @objc private func unmounted(_ notification: Notification) {
+        guard let volume = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else { return }
+        markGone(Self.key(volume))
     }
 
     private var refused: Set<String> { gone.union(tasks.keys) }
@@ -57,13 +71,16 @@ extension Notification.Name {
     func eject(_ volume: URL, from window: NSWindow?) -> Task<Void, Never>? {
         guard let place = Self.volume(volume, in: Self.ejectable(places.snapshot.volumes, except: refused)) else { return nil }
         let key = Self.key(place.url)
-        let unmount = unmount, patience = patience, report = report
+        let unmount = unmount, patience = patience, report = report, url = place.url
         let task = Task { [weak self, weak window] in
-            let outcome = await VolumeEjector.outcome(of: unmount, place.url, patience: patience)
-            self?.finish(place, key: key, outcome: outcome)
-            if case .failure(let error) = outcome {
-                report(Failure(volume: place.url, name: place.title, error: error), window)
+            let answer = Task.detached { await VolumeEjector.answer(of: unmount, url) }
+            let timely = await VolumeEjector.outcome(of: answer, patience: patience)
+            if case .failure(let error) = timely {
+                report(Failure(name: place.title, error: error), window)
             }
+            var final = timely
+            if case .failure(let error) = timely, error is NoAnswer { final = await answer.value }
+            self?.finish(place, key: key, outcome: final)
         }
         tasks[key] = task
         post(.volumeEjectionStarting, place)
@@ -74,14 +91,15 @@ extension Notification.Name {
     private func finish(_ place: Place, key: String, outcome: Result<Void, any Error>) {
         tasks[key] = nil
         if case .success = outcome {
-            gone.insert(key)
             post(.volumeEjected, place)
-            forgetOnceRead(key)
+            markGone(key)
         }
         NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
     }
 
-    private func forgetOnceRead(_ key: String) {
+    private func markGone(_ key: String) {
+        guard gone.insert(key).inserted else { return }
+        NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
         let places = places
         places.refresh()
         Task { [weak self] in
@@ -119,8 +137,17 @@ extension Notification.Name {
 
     nonisolated static func key(_ url: URL) -> String { PathSpelling.short(url) }
 
-    /// macOS's answer, or `NoAnswer` once `patience` runs out first. A disk that stopped answering keeps its thread.
-    nonisolated static func outcome(of unmount: @escaping Unmount, _ volume: URL,
+    nonisolated static func answer(of unmount: Unmount, _ volume: URL) async -> Result<Void, any Error> {
+        do {
+            try await unmount(volume)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// `answer`, or `NoAnswer` once `patience` runs out first. A disk that stopped answering keeps its thread.
+    nonisolated static func outcome(of answer: Task<Result<Void, any Error>, Never>,
                                     patience: @escaping Patience) async -> Result<Void, any Error> {
         let waiting = Mutex<CheckedContinuation<Result<Void, any Error>, Never>?>(nil)
         return await withCheckedContinuation { continuation in
@@ -131,14 +158,8 @@ extension Notification.Name {
                 waiting.withLock { $0.take() }?.resume(returning: .failure(NoAnswer()))
             }
             Task { @Sendable in
-                let outcome: Result<Void, any Error>
-                do {
-                    try await unmount(volume)
-                    outcome = .success(())
-                } catch {
-                    outcome = .failure(error)
-                }
-                waiting.withLock { $0.take() }?.resume(returning: outcome)
+                let result = await answer.value
+                waiting.withLock { $0.take() }?.resume(returning: result)
                 deadline.cancel()
             }
         }

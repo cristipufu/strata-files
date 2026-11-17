@@ -9,7 +9,7 @@ final class SidebarViewController: NSViewController {
 
     init(services: BrowserServices) {
         self.services = services
-        tree = FolderTreeController(places: services.places, home: services.homeFolder,
+        tree = FolderTreeController(places: services.places, home: services.homeFolder, workspace: services.workspaceNotifications,
                                     transfers: services.transfers, preferences: services.preferences,
                                     remote: services.remote, copies: services.copies,
                                     containerStore: services.containerStore, clipboard: services.clipboard,
@@ -125,7 +125,7 @@ final class SidebarViewController: NSViewController {
     /// What changes the sidebar's sections: settings, disks, servers, tags, places, containers and the Trash.
     private func observeChanges() {
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
-        let center = NSWorkspace.shared.notificationCenter
+        let center = services.workspaceNotifications
         NotificationCenter.default.addObserver(self, selector: #selector(refreshCloudFolders), name: NSApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
