@@ -137,7 +137,6 @@ struct CloudFoldersTests {
         let sidebar = SidebarViewController(services: environment.services)
         sidebar.loadViewIfNeeded()
         NotificationCenter.default.removeObserver(sidebar)
-        NSWorkspace.shared.notificationCenter.removeObserver(sidebar)
         await sidebar.cloudRead?.value
         let urls = try Self.folderRows(sidebar).compactMap(\.url?.path)
         #expect(urls.filter { $0 == tree.url("Library/CloudStorage/Drive-first").standardizedFileURL.path }.count == 1)
@@ -158,10 +157,9 @@ struct CloudFoldersTests {
         environment.preferences.favoritePaths = []
         let sidebar = SidebarViewController(services: environment.services)
         sidebar.loadViewIfNeeded()
-        // Other suites can post real application, tag and volume notifications. This reader is controlled only by
+        // Other suites can post real application and tag notifications. This reader is controlled only by
         // the two explicit refreshes below, so those unrelated notifications must not replace its held requests.
         NotificationCenter.default.removeObserver(sidebar)
-        NSWorkspace.shared.notificationCenter.removeObserver(sidebar)
         let previous = try #require(sidebar.cloudRead)
         await first.waitUntilStarted()
         sidebar.refreshCloudFolders()

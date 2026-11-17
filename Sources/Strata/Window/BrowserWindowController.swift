@@ -657,7 +657,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// About to be ejected in Finder, or gone: unplugged, or taken along with a disk Strata ejected. A pane on a share
     /// keeps its folder, as one on a disconnected server does, so its workspace and the session don't lose it.
     @objc private func volumeUnmounted(_ notification: Notification) {
-        guard let volume = Self.volume(in: notification, key: NSWorkspace.volumeURLUserInfoKey) else { return }
+        guard let volume = VolumeEjector.unmounting(notification) else { return }
         leave(volume, keepingShares: true)
     }
 
@@ -665,12 +665,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard !isClosed else { return }
         let kept = keepingShares ? share(of: volume) : nil
         for p in panes {
-            guard let place = shown(on: volume, by: p) else { continue }
+            guard let place = shown(on: volume, by: p) else {
+                // Results stay; "this folder" and the session no longer name the disk they were opened from.
+                if VolumeEjector.isOnVolume(p.location, volume) { settleHome(p) }
+                continue
+            }
             let waiting = kept.map { WaitingFolder(path: place.path, mode: p.browser.mode.rawValue, mountPoint: $0.mountPoint,
                                                     address: $0.address) }
             go(.folder(services.homeFolder), in: p, recordHistory: false, countVisit: false)
             p.waiting = waiting
         }
+    }
+
+    private func settleHome(_ p: Pane) {
+        p.location = services.homeFolder
+        p.columnLocation = nil
+        if p === pane { updateChrome() }
     }
 
     /// Where the share at `volume` was mounted and the address that mounts it again, as the disks last read say.

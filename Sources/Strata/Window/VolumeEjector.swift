@@ -52,8 +52,14 @@ extension Notification.Name {
     isolated deinit { workspace.removeObserver(self) }
 
     @objc private func unmounted(_ notification: Notification) {
-        guard let volume = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL else { return }
+        guard let volume = Self.unmounting(notification) else { return }
         markGone(Self.key(volume))
+    }
+
+    /// The disk a will- or didUnmount notice names: a willUnmount notice may give only its path.
+    static func unmounting(_ notice: Notification) -> URL? {
+        if let url = notice.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL { return url }
+        return (notice.userInfo?["NSDevicePath"] as? String).map { URL(filePath: $0, directoryHint: .isDirectory) }
     }
 
     private var refused: Set<String> { gone.union(tasks.keys) }
@@ -75,12 +81,14 @@ extension Notification.Name {
         let task = Task { [weak self, weak window] in
             let answer = Task.detached { await VolumeEjector.answer(of: unmount, url) }
             let timely = await VolumeEjector.outcome(of: answer, patience: patience)
-            if case .failure(let error) = timely {
+            if case .failure(let error) = timely, error is NoAnswer {
                 report(Failure(name: place.title, error: error), window)
+                let late = await answer.value
+                self?.finish(place, key: key, outcome: late)
+            } else {
+                self?.finish(place, key: key, outcome: timely)
+                if case .failure(let error) = timely { report(Failure(name: place.title, error: error), window) }
             }
-            var final = timely
-            if case .failure(let error) = timely, error is NoAnswer { final = await answer.value }
-            self?.finish(place, key: key, outcome: final)
         }
         tasks[key] = task
         post(.volumeEjectionStarting, place)

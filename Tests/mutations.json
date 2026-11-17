@@ -11807,8 +11807,8 @@
   },
   {
     "file": "Strata/Window/BrowserWindowController.swift",
-    "find": "        guard let volume = Self.volume(in: notification, key: NSWorkspace.volumeURLUserInfoKey) else { return }",
-    "replace": "        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }",
+    "find": "        guard let volume = VolumeEjector.unmounting(notification) else { return }",
+    "replace": "        guard let volume = VolumeEjector.unmounting(Notification(name: notification.name)) else { return }",
     "rule": "Eject: panes stay on a disk unmounted outside Strata",
     "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   },
@@ -11898,8 +11898,8 @@
   },
   {
     "file": "Strata/Window/VolumeEjector.swift",
-    "find": "            if case .failure(let error) = timely, error is NoAnswer { final = await answer.value }\n",
-    "replace": "",
+    "find": "            if case .failure(let error) = timely, error is NoAnswer {",
+    "replace": "            if case .failure(let error) = timely, error is NoAnswer, false {",
     "rule": "Eject: a disk reported as not answering is handed to macOS again before it answers",
     "tests": "VolumeEjectorTests/aDiskThatDoesntAnswerIsReportedAndStaysEjectingUntilMacOSAnswersLate"
   },
@@ -11936,6 +11936,27 @@
     "find": "            let waiting = kept.map { WaitingFolder(path: place.path,",
     "replace": "            let waiting = kept.map { WaitingFolder(path: p.location.path,",
     "rule": "Eject: a pane on a share keeps a folder that isn't the one it showed there",
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "                self?.finish(place, key: key, outcome: timely)\n                if case .failure(let error) = timely { report(Failure(name: place.title, error: error), window) }",
+    "replace": "                if case .failure(let error) = timely { report(Failure(name: place.title, error: error), window) }\n                self?.finish(place, key: key, outcome: timely)",
+    "rule": "Eject: a failure dialog keeps the disk ejecting while it's up",
+    "tests": "VolumeEjectorTests/eachDiskIsHandedToMacOSOnceUntilItAnswersAndAnEjectedOneStaysRefusedUntilReadAgain"
+  },
+  {
+    "file": "Strata/Window/VolumeEjector.swift",
+    "find": "        return (notice.userInfo?[\"NSDevicePath\"] as? String).map { URL(filePath: $0, directoryHint: .isDirectory) }",
+    "replace": "        return nil",
+    "rule": "Eject: a willUnmount notice that names the disk by its path alone is ignored",
+    "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
+  },
+  {
+    "file": "Strata/Window/BrowserWindowController.swift",
+    "find": "                if VolumeEjector.isOnVolume(p.location, volume) { settleHome(p) }\n",
+    "replace": "",
+    "rule": "Eject: Recents and searches keep naming a gone disk as where they were opened from",
     "tests": "VolumeEjectorTests/panesLeaveADiskBeforeItsEjectedAndStayAway"
   }
 ]

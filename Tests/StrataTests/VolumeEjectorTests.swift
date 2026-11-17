@@ -191,10 +191,13 @@ private final class ClickWindow: NSWindow {
         let urls = Self.volumes("/Volumes/strata-test-a", "/Volumes/strata-test-ab", "/Volumes/strata-test-a 1")
         let a = Self.disk(urls[0], named: "a"), ab = Self.disk(urls[1], named: "ab"), a1 = Self.disk(urls[2], named: "a 1")
         let list = DiskList([a, ab, a1]), unmounts = HeldUnmounts()
-        let failures = Reports<String>()
-        let environment = try await Self.environment(list, unmounts: unmounts, home: tree.url("Home"),
-                                                     failed: { failure, _ in failures.items.append(failure.name) })
+        let failures = Reports<String>(), ejectors = Reports<VolumeEjector>(), stillEjecting = Reports<Bool>()
+        let environment = try await Self.environment(list, unmounts: unmounts, home: tree.url("Home"), failed: { failure, _ in
+            failures.items.append(failure.name)
+            stillEjecting.items.append(ejectors.items.first?.isEjecting(a.url) ?? true)
+        })
         let ejector = environment.services.volumeEjector
+        ejectors.items.append(ejector)
         let ejected = Reports<URL>()
         let observer = NotificationCenter.default.addObserver(forName: .volumeEjected, object: ejector, queue: nil) { note in
             let volume = note.userInfo?[VolumeEjector.volumeKey] as? URL
@@ -217,6 +220,7 @@ private final class ClickWindow: NSWindow {
         await first.value
         #expect(!ejector.isEjecting(a.url) && ejector.isEjecting(ab.url))
         #expect(failures.items == ["a"])
+        #expect(stillEjecting.items == [false], "A failure dialog doesn't keep the disk ejecting while it's up")
         #expect(ejected.items.isEmpty)
 
         let retry = try #require(ejector.eject(a.url, from: nil))
@@ -411,6 +415,7 @@ private final class ClickWindow: NSWindow {
         #expect(shows(right, "Home"))
         if case .search = right.destination { Issue.record("The search inside the disk is still showing") }
         if left.destination != .recents { Issue.record("Recents went Home with the disk") }
+        #expect(shows(left, "Home"), "Recents no longer counts the disk as where it was opened from")
         await unmounts.waitForAsks(5)
         await unmounts.answer(a1.url)
         await searched.value
@@ -427,7 +432,9 @@ private final class ClickWindow: NSWindow {
         #expect(shows(right, "Home") && right.waiting == nil && ejector.isEjecting(ab.url))
         let scope = tree.url("Volumes/share/folder")
         window.go(.search("report", scope: scope), in: right)
-        workspace.post(name: NSWorkspace.willUnmountNotification, object: nil, userInfo: [NSWorkspace.volumeURLUserInfoKey: share.url])
+        // A willUnmount notice may name the disk by its path alone.
+        workspace.post(name: NSWorkspace.willUnmountNotification, object: nil, userInfo: ["NSDevicePath": share.url.path])
+        #expect(ejector.isEjecting(share.url))
         #expect(shows(right, "Home"))
         let kept = right.waiting
         #expect(kept?.path == scope.path && kept?.mountPoint == share.url.path && kept?.address != nil)
