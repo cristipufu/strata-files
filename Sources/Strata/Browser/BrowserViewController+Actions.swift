@@ -12,33 +12,36 @@ extension BrowserViewController {
         open(selectedEntries)
     }
 
-    func open(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+    func open(_ entries: [FileEntry],
+              applicationForFile: @escaping @Sendable (URL) -> URL? = FileOpenPlan.defaultApplication,
+              batchOpener: @escaping @MainActor ([URL], URL) -> Void = FileOpenPlan.openInApplication,
+              fileOpener: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         guard !entries.isEmpty else { return }
-        // A container's files are fetched first.
-        fetches.afterFetching(entries.filter { !$0.isFolder }.map(\.url)) { [weak self] in
-            self?.openFetched(entries, fileOpener: fileOpener)
+        let files = entries.filter { !$0.isFolder }
+        let folder = entries.first(where: \.isFolder)?.url
+        let launch: (FileOpenPlan) -> Void = { [weak self] plan in
+            guard let self else { return }
+            let revision = navigationRevision
+            for request in plan.requests {
+                guard navigationRevision == revision else { return }
+                if let app = request.application {
+                    batchOpener(request.urls, app)
+                } else if let url = request.urls.first {
+                    fileOpener(url)
+                }
+            }
+            if navigationRevision == revision, let folder = plan.folder {
+                delegate?.browser(self, navigateTo: folder)
+            }
         }
-    }
-
-    private func openFetched(_ entries: [FileEntry], fileOpener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
-        // One archive opens like a folder (Windows-style), unless that's turned off in Settings.
-        if entries.count == 1, let entry = entries.first, opensAsFolder(entry) { return browseArchive(entry.url) }
-        // A Finder alias to a folder opens that folder here, like a folder (macOS would hand it to Finder). Where an
-        // alias leads is read away from the main thread.
-        // An index hit (search results, Recents) may be one too: its listing never said.
-        let aliases = entries.filter { !$0.isFolder && ($0.isAlias || !$0.isListed) }
-        guard !aliases.isEmpty else { return open(entries, aliasedFolders: [], fileOpener: fileOpener) }
-        fetches.afterReading({ aliases.filter { FileEntry.openedFolder($0.url) != $0.url } }) { [weak self] folders in
-            self?.open(entries, aliasedFolders: folders, fileOpener: fileOpener)
-        }
-    }
-
-    private func open(_ entries: [FileEntry], aliasedFolders: [FileEntry], fileOpener: (URL) -> Void) {
-        for entry in entries where !entry.isFolder && !aliasedFolders.contains(entry) {
-            fileOpener(entry.url)
-        }
-        if let folder = entries.first(where: \.isFolder) ?? aliasedFolders.first {
-            delegate?.browser(self, navigateTo: folder.url)
+        fetches.afterFetching(files.map(\.url)) { [weak self] in
+            guard let self else { return }
+            // Only an archive opened on its own is browsed as a folder.
+            if entries.count == 1, let file = files.first, opensAsFolder(file) { return browseArchive(file.url) }
+            if files.count <= 1, files.allSatisfy({ $0.isListed && !$0.isAlias }) {
+                return launch(FileOpenPlan(requests: files.map { .init(urls: [$0.url], application: nil) }, folder: folder))
+            }
+            fetches.afterReading({ FileOpenPlan.read(files, folder: folder, applicationForFile: applicationForFile) }, launch)
         }
     }
 
@@ -48,9 +51,7 @@ extension BrowserViewController {
     }
 
     func open(_ urls: [URL], withApplicationAt app: URL,
-              opener: @escaping ([URL], URL) -> Void = { urls, app in
-                  NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
-              }) {
+              opener: @escaping @MainActor ([URL], URL) -> Void = FileOpenPlan.openInApplication) {
         guard !urls.isEmpty else { return }
         fetches.afterFetching(urls) { opener(urls, app) }
     }

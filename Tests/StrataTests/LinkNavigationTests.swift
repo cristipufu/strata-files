@@ -67,9 +67,9 @@ import Testing
         let link = try #require(entries.first { $0.name == "link" })
         #expect(alias.isAlias && !doc.isAlias && !link.isAlias)
         var opened: [String] = []
-        window.browser.open([doc]) { opened.append($0.lastPathComponent) }
+        window.browser.open([doc], fileOpener: { opened.append($0.lastPathComponent) })
         #expect(opened == ["doc.txt"])
-        window.browser.open([alias]) { opened.append($0.lastPathComponent) }
+        window.browser.open([alias], fileOpener: { opened.append($0.lastPathComponent) })
         await window.browser.fetches.action?.value
         await landed(window)
         #expect(window.location.lastPathComponent == "real" && opened == ["doc.txt"])

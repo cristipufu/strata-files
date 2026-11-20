@@ -7814,11 +7814,18 @@
     "tests": "OpeningAtLaunchTests/theWelcomeGoesOnTheFirstWindowShownAndFree"
   },
   {
-    "file": "Strata/Browser/BrowserViewController+Actions.swift",
-    "find": "        let aliases = entries.filter { !$0.isFolder && ($0.isAlias || !$0.isListed) }\n",
-    "replace": "        let aliases = entries.filter { _ in false }\n",
+    "file": "Strata/Browser/FileOpenPlan.swift",
+    "find": "            if (file.isAlias || !file.isListed), FileEntry.openedFolder(url) != url {\n",
+    "replace": "            if false, (file.isAlias || !file.isListed), FileEntry.openedFolder(url) != url {\n",
     "rule": "A Finder alias to a folder is handed to another app rather than opened here",
     "tests": "LinkNavigationTests/openingAFinderAliasToAFolderGoesThereAndAFileOpensAtOnce"
+  },
+  {
+    "file": "Strata/Browser/FileOpenPlan.swift",
+    "find": "            if let index = applicationIndices[app] {\n",
+    "replace": "            if let index = applicationIndices[app], false {\n",
+    "rule": "Files for one application open separately rather than in a batch",
+    "tests": "FileOpenTests/multipleFilesUseTheirOwnDefaultsAndOpenInStableBatches"
   },
   {
     "file": "Strata/Model/FileEntry.swift",
@@ -7913,10 +7920,17 @@
   },
   {
     "file": "Strata/Browser/PaneFetches.swift",
-    "find": "        let act = { [revision] in if revision() == started { action() } }\n",
-    "replace": "        let act = action\n",
+    "find": "            guard let self, actionRevision == request, revision() == started else { return }\n",
+    "replace": "",
     "rule": "A big fetch finished after the pane went elsewhere still opens what it fetched",
     "tests": "AsyncActionContextTests/deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges"
+  },
+  {
+    "file": "Strata/Browser/PaneFetches.swift",
+    "find": "            guard let self, actionRevision == request, revision() == started else { return }\n",
+    "replace": "            guard let self, revision() == started else { return }\n",
+    "rule": "A queued fetch opens after a newer open in the same folder",
+    "tests": "AsyncActionContextTests/batchOpeningWaitsForFetchAndAQueuedFetchCannotReplaceANewerOpen"
   },
   {
     "file": "Strata/Queue/ArchiveJob.swift",

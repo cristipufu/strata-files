@@ -15,6 +15,7 @@ import AppKit
     private(set) var selection: Task<Void, Never>?
     /// The pane's pending action, waiting for a fetch or a read.
     private(set) var action: Task<Void, Never>?
+    private var actionRevision = 0
 
     init(services: BrowserServices, revision: @escaping () -> Int?, window: @escaping () -> NSWindow?) {
         self.services = services
@@ -45,6 +46,7 @@ import AppKit
 
     /// Stops the action waiting for a fetch or a read, if any: the pane has one at a time.
     func cancelAction() {
+        actionRevision += 1
         action?.cancel()
         action = nil
     }
@@ -69,7 +71,12 @@ import AppKit
         guard let started = revision() else { return nil }
         let pending = urls.filter(copies.isPlaceholder)
         guard !pending.isEmpty else { action(); return nil }
-        let act = { [revision] in if revision() == started { action() } }
+        // A queued fetch outlives this task, but must not start an action that has since been replaced.
+        let request = actionRevision
+        let act = { [weak self] in
+            guard let self, actionRevision == request, revision() == started else { return }
+            action()
+        }
         let transfers = services.transfers
         let fetch = Task { [weak self] in
             if await Self.size(of: pending) > 8 << 20 {
