@@ -67,14 +67,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     static func present(_ id: SettingID) { shared.reveal(id) }
+    static func presentPage(_ page: SettingsPage) { shared.openPage(page) }
 
     func reveal(_ id: SettingID, present: Bool = true) {
         guard let entry = SettingsCatalog.entry(for: id), entry.page != .viewOptions,
-              let tabs = window?.contentViewController as? NSTabViewController,
-              let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == entry.page.rawValue }) else { return }
-        tabs.selectedTabViewItemIndex = index
+              selectPage(entry.page) else { return }
         settingsFocus.reveal(entry)
         if present { show() }
+    }
+
+    func openPage(_ page: SettingsPage, present: Bool = true) {
+        guard selectPage(page) else { return }
+        settingsFocus.clear()
+        if present { show() }
+    }
+
+    private func selectPage(_ page: SettingsPage) -> Bool {
+        guard let tabs = window?.contentViewController as? NSTabViewController,
+              let index = tabs.tabViewItems.firstIndex(where: { ($0.identifier as? String) == page.rawValue }) else { return false }
+        tabs.selectedTabViewItemIndex = index
+        return true
     }
 
     func windowWillClose(_ notification: Notification) { settingsFocus.clear(); tagManagement.cancel() }

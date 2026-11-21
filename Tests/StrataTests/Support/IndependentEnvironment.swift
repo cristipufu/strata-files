@@ -28,7 +28,8 @@ final class IndependentEnvironment {
          ejectPatience: @escaping VolumeEjector.Patience = VolumeEjector.waitBeforeGivingUp,
          ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
          workspaceNotifications: NotificationCenter = NotificationCenter(), homeFolder: URL = Places.home,
-         showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) throws {
+         showSetting: @escaping @MainActor (SettingID) -> Void = { _ in },
+         showSettingsPage: @escaping @MainActor (SettingsPage) -> Void = { _ in }) throws {
         state = try TestTree()
         let preferences = try supplied ?? Prefs.isolated()
         preferences.showIconPreviews = false
@@ -54,7 +55,8 @@ final class IndependentEnvironment {
             clipboard: Clipboard(pasteboard: .withUniqueName(), notifications: NotificationCenter()), containers: containers,
             directories: directories, mediaDetailsReader: mediaDetailsReader, folderSizes: folderSizes,
             readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience, ejectFailed: ejectFailed,
-            workspaceNotifications: workspaceNotifications, homeFolder: homeFolder, makeIndex: makeIndex, showSetting: showSetting)
+            workspaceNotifications: workspaceNotifications, homeFolder: homeFolder, makeIndex: makeIndex,
+            showSetting: showSetting, showSettingsPage: showSettingsPage)
     }
 
     isolated deinit {

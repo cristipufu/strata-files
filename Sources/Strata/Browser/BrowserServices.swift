@@ -14,7 +14,8 @@ final class BrowserServices {
                                ejectFailed: { ejectFailures.present($0, in: $1) },
                                workspaceNotifications: NSWorkspace.shared.notificationCenter, homeFolder: Places.home,
                                cloudFolders: CloudFolders.discover, tags: .shared, cloud: .shared, git: .shared, index: .shared,
-                               contentIndex: .shared, showSetting: SettingsWindowController.present)
+                               contentIndex: .shared, showSetting: SettingsWindowController.present,
+                               showSettingsPage: SettingsWindowController.presentPage)
     }
 
     /// Build an independent environment as a unit. Its queue, History, providers and preferences agree from birth;
@@ -33,7 +34,8 @@ final class BrowserServices {
                          ejectFailed: @escaping VolumeEjector.Report = { _, _ in },
                          workspaceNotifications: NotificationCenter = NotificationCenter(), homeFolder: URL = Places.home,
                          makeIndex: (@MainActor (CopyProviders) -> FileIndex)? = nil,
-                         showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
+                         showSetting: @escaping @MainActor (SettingID) -> Void = { _ in },
+                         showSettingsPage: @escaping @MainActor (SettingsPage) -> Void = { _ in }) -> BrowserServices {
         let remote = RemoteServices(preferences: preferences, credentials: credentials,
                                     copyRoot: storage.caches.appending(path: "Servers"), connector: connector)
         let containers = containers ?? ContainerFiles(copies: ContainerCopyStore(root: storage.caches.appending(path: "Containers")))
@@ -47,7 +49,7 @@ final class BrowserServices {
                           directories: directories, mediaReader: mediaReader, mediaDetailsReader: mediaDetailsReader, mediaAnalysis: mediaAnalysis,
                           folderSizes: folderSizes, readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience,
                           ejectFailed: ejectFailed, workspaceNotifications: workspaceNotifications, homeFolder: homeFolder,
-                          index: index, showSetting: showSetting)
+                          index: index, showSetting: showSetting, showSettingsPage: showSettingsPage)
     }
 
     /// Explicit composition for custom providers and readers. The queue is the sole owner of preferences, History
@@ -71,7 +73,8 @@ final class BrowserServices {
                            openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
                            tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil,
                            index: FileIndex? = nil, contentIndex: SemanticIndex? = nil,
-                           showSetting: @escaping @MainActor (SettingID) -> Void = { _ in }) -> BrowserServices {
+                           showSetting: @escaping @MainActor (SettingID) -> Void = { _ in },
+                           showSettingsPage: @escaping @MainActor (SettingsPage) -> Void = { _ in }) -> BrowserServices {
         BrowserServices(transfers: transfers, visits: visits, directories: directories, windows: windows,
                         volumeSpace: volumeSpace, remote: remote, remoteBrowsing: remoteBrowsing,
                         containers: containers, containerStore: containerStore, clipboard: clipboard,
@@ -79,11 +82,12 @@ final class BrowserServices {
                         readPlaces: readPlaces, unmount: unmount, ejectPatience: ejectPatience, ejectFailed: ejectFailed,
                         workspaceNotifications: workspaceNotifications, homeFolder: homeFolder, thumbnails: thumbnails, itemInfo: itemInfo,
                         cloudFolders: cloudFolders, openContainer: openContainer, tags: tags, cloud: cloud, git: git,
-                        index: index, contentIndex: contentIndex, showSetting: showSetting)
+                        index: index, contentIndex: contentIndex, showSetting: showSetting, showSettingsPage: showSettingsPage)
     }
 
     let preferences: Prefs
     let showSetting: @MainActor (SettingID) -> Void
+    let showSettingsPage: @MainActor (SettingsPage) -> Void
     lazy var workspaces = Workspaces(services: self)
     lazy var windowSession = WindowSession(services: self)
     lazy var connectionSettings = ServerConnectionSettings(preferences: preferences)
@@ -142,9 +146,11 @@ final class BrowserServices {
                  cloudFolders: @escaping @Sendable () async -> [CloudFolder] = { [] },
                  openContainer: (@MainActor @Sendable (String) async throws -> URL)? = nil,
                  tags: TagStore? = nil, cloud: CloudStore? = nil, git: GitStatusStore? = nil, index: FileIndex? = nil,
-                 contentIndex: SemanticIndex? = nil, showSetting: @escaping @MainActor (SettingID) -> Void) {
+                 contentIndex: SemanticIndex? = nil, showSetting: @escaping @MainActor (SettingID) -> Void,
+                 showSettingsPage: @escaping @MainActor (SettingsPage) -> Void) {
         self.preferences = transfers.preferences
         self.showSetting = showSetting
+        self.showSettingsPage = showSettingsPage
         self.transfers = transfers
         self.files = FileCommands(transfers: transfers)
         self.visits = visits
