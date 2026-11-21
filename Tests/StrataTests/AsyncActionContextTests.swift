@@ -285,7 +285,8 @@ struct AsyncActionContextTests {
         // 1. Cached archive opened in leftPane while rightPane is focused opens in leftPane.
         window.focusOtherPane(nil)
         #expect(window.pane === rightPane)
-        leftPane.browser.browseArchive(cachedArchive)
+        leftPane.browser.open([try #require(FileEntry(url: cachedArchive))],
+                              fileOpener: { _ in Issue.record("A single archive should be browsed") })
         // Where its copy is is looked up away from the main thread first.
         await leftPane.browser.fetches.action?.value
         #expect(leftPane.location == cachedCopy.standardizedFileURL)
@@ -341,6 +342,55 @@ struct AsyncActionContextTests {
         #expect(!FileManager.default.fileExists(atPath: droppedCopy.deletingLastPathComponent().path))
     }
 
+    @Test(.timeLimit(.minutes(1))) func batchOpeningWaitsForFetchAndAQueuedFetchCannotReplaceANewerOpen() async throws {
+        let tree = try TestTree("provider/a.txt", "provider/b.txt", "provider/big.bin")
+        let a = try #require(FileEntry(url: tree.url("provider/a.txt")))
+        let b = try #require(FileEntry(url: tree.url("provider/b.txt")))
+        let big = tree.url("provider/big.bin")
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: UInt64(8 << 20) + 1)
+        try handle.close()
+        let gate = Gate()
+        let state = PlaceholderState([a.url, big])
+        let provider = GatedProvider(root: tree.url("provider"), state: state, gate: gate)
+        let env = try Environment(tree, providers: [provider])
+        let browser = BrowserViewController(services: env.services)
+        let app = URL(fileURLWithPath: "/Fixture/Editor.app", isDirectory: true)
+        let unresolved = Mutex<[URL]>([])
+        let lookup: @Sendable (URL) -> URL? = { url in
+            if state.isPlaceholder(url) { unresolved.withLock { $0.append(url) } }
+            return app
+        }
+        var batches: [[URL]] = [], singles: [URL] = []
+        let batch: @MainActor ([URL], URL) -> Void = { urls, resolvedApp in
+            #expect(resolvedApp == app)
+            batches.append(urls)
+        }
+        let single: @MainActor (URL) -> Void = { singles.append($0) }
+        browser.open([a, b], applicationForFile: lookup, batchOpener: batch, fileOpener: single)
+        let fetch = try #require(browser.fetches.action)
+        await gate.started(1)
+        #expect(batches.isEmpty && singles.isEmpty)
+        await gate.finish()
+        await fetch.value
+        await browser.fetches.action?.value
+        #expect(unresolved.withLock { $0.isEmpty })
+        #expect(batches == [[a.url, b.url]] && singles.isEmpty)
+
+        browser.open([try #require(FileEntry(url: big)), a], applicationForFile: lookup, batchOpener: batch, fileOpener: single)
+        await browser.fetches.action?.value
+        let queued = try #require(env.transfers.jobs.compactMap { $0 as? CopyFetchJob }.first)
+        await gate.started(2)
+        browser.open([b], fileOpener: single)
+        await gate.finish()
+        await queued.finished()
+        await browser.fetches.action?.value
+        #expect(queued.state == .finished)
+        #expect(batches == [[a.url, b.url]] && singles == [b.url])
+        #expect(state.fetches.withLock { $0 } == [[a.url], [big]])
+        #expect(tree.snapshot().contains("provider/big.bin"))
+    }
+
     @Test func deferredOpenAndQuickLookActionsStopWhenNavigationOrSelectionChanges() async throws {
         _ = NSApplication.shared
         let tree = try TestTree("provider/a.txt", "provider/b.txt", "provider/big.bin", "provider/pack.tar", "other/")
@@ -362,7 +412,7 @@ struct AsyncActionContextTests {
         await browser1.directoryReads.task?.value
         let entryA = try #require(FileEntry(url: itemA))
         var openedFiles: [URL] = []
-        browser1.open([entryA]) { openedFiles.append($0) }
+        browser1.open([entryA], fileOpener: { openedFiles.append($0) })
         let fetchTask1 = try #require(browser1.fetches.action)
         await gate1.started(1)
         browser1.load(tree.url("other"))
@@ -378,7 +428,7 @@ struct AsyncActionContextTests {
         try handle.truncate(atOffset: UInt64(8 << 20) + 1)
         try handle.close()
         _ = state1.placeholders.withLock { $0.insert(big.standardizedFileURL.path) }
-        browser1.open([try #require(FileEntry(url: big))]) { openedFiles.append($0) }
+        browser1.open([try #require(FileEntry(url: big))], fileOpener: { openedFiles.append($0) })
         await browser1.fetches.action?.value
         let bigFetch = try #require(env1.transfers.jobs.compactMap { $0 as? CopyFetchJob }.first)
         await gate1.started(2)
