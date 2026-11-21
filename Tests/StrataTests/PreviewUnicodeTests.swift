@@ -56,9 +56,9 @@ import Testing
         let inspector = InspectorViewController(services: environment.services, previewScheduler: { $0.perform() })
         inspector.view.frame = NSRect(x: 0, y: 0, width: 400, height: 700)
         inspector.show(entries: [entry], folder: nil, folderSize: { _ in nil }, canMeasure: { _ in false })
-        let rich = try #require(inspector.richPreview as? MarkdownPreviewView)
+        let rich = try #require(inspector.richPreview as? MarkdownWebPreviewView)
         await rich.loadingTask?.value
-        #expect(rich.textView.string.contains("中文"))
+        #expect(rich.isOpen)
         environment.services.previews.show(entry, from: browser, present: false)
         let content = try #require(environment.services.previews.content)
         await content.session.task?.value

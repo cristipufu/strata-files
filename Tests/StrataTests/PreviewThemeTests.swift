@@ -35,10 +35,8 @@ extension ColorThemeTests {
         let deadline = ContinuousClock.now + .seconds(20)
         while rich.isLoading, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         try #require(!rich.isLoading)
-        let text = try #require(descendants(rich).compactMap { $0 as? NSTextView }.first)
-        let storage = try #require(text.textStorage)
-        text.setSelectedRange(NSRange(location: 0, length: min(3, storage.length)))
-        let selectedText = text.selectedRange(), selectedItem = content.session.selected
+        let selectedText = try await PreviewSelectionCheck.capture(in: rich)
+        let selectedItem = content.session.selected
         let cell = try #require(content.outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NameCellView)
         let backdrop = try #require(content.fileView.subviews.compactMap { $0 as? ThemeSurfaceView }.first)
         let controlsBackdrop = try #require(content.controls.subviews.compactMap { $0 as? ThemeSurfaceView }.first)
@@ -67,7 +65,7 @@ extension ColorThemeTests {
                     #expect(passwordField.isBezeled && !password.window.isVisible)
                     #expect(content.controls.search.isBezeled == searchBezel)
                     #expect(content.session.selected === selectedItem && content.outline.selectedRow == 0)
-                    #expect(text.textStorage === storage && text.selectedRange() == selectedText)
+                    try await selectedText.verify()
                     #expect(descendants(content.fileView).contains { $0 === rich })
                     #expect(!window.isVisible)
                 }
@@ -77,7 +75,7 @@ extension ColorThemeTests {
         let updatedCell = try #require(content.outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NameCellView)
         #expect(updatedCell.textField?.font?.pointSize == 16)
         #expect(content.session.selected === selectedItem && content.outline.selectedRow == 0)
-        #expect(text.textStorage === storage && text.selectedRange() == selectedText)
+        try await selectedText.verify()
         coordinator.close()
         #expect(tree.snapshot() == before)
         withExtendedLifetime(environment) {}

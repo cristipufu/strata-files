@@ -14,17 +14,23 @@ package final class PreviewWebPage: NSView {
         package let content: WebPreviewContent
         package let limits: HTMLWebSession.Limits
         package let trustedScript: String?
-        package init(url: URL, read: @escaping HTMLWebSession.Reader, limits: HTMLWebSession.Limits = .init(), trustedScript: String? = nil) {
+        package let links: HTMLWebSession.Links
+        package let waitsForLoad: Bool
+        package init(url: URL, read: @escaping HTMLWebSession.Reader, limits: HTMLWebSession.Limits = .init(), trustedScript: String? = nil, links: HTMLWebSession.Links = .web, waitsForLoad: Bool = false) {
             self.url = url
             content = .buffered(read)
             self.limits = limits
             self.trustedScript = trustedScript
+            self.links = links
+            self.waitsForLoad = waitsForLoad
         }
         package init(url: URL, stream: @escaping HTMLWebSession.StreamReader, limits: HTMLWebSession.Limits) {
             self.url = url
             content = .streamed(stream)
             self.limits = limits
             trustedScript = nil
+            links = .web
+            waitsForLoad = false
         }
     }
 
@@ -39,6 +45,7 @@ package final class PreviewWebPage: NSView {
     private var session: HTMLWebSession?
     private var timeout: Task<Void, Never>?
     private var failed: ((Error?) -> Void)?
+    private var loaded: (() -> Void)?
     private var revision = 0
 
     /// `timeLimit` ends when WebKit has had long enough to start showing a document; one it hasn't by then fails.
@@ -66,9 +73,11 @@ package final class PreviewWebPage: NSView {
     /// Shows the document `prepare` makes, or tells `failed` why it couldn't be: the error that kept it from being
     /// made, or nil when WebKit couldn't show it, in time or at all.
     package func show(_ prepare: @escaping @Sendable () async throws -> Document,
+                      loaded: (() -> Void)? = nil,
                       failed: @escaping (Error?) -> Void) {
         clear()
         self.failed = failed
+        self.loaded = loaded
         spinner.startAnimation(nil)
         let revision = revision
         task = Task { [weak self] in
@@ -88,7 +97,7 @@ package final class PreviewWebPage: NSView {
     }
 
     private func load(_ document: Document, rules: WKContentRuleList) {
-        let session = HTMLWebSession(url: document.url, content: document.content, limits: document.limits, openLink: openLink)
+        let session = HTMLWebSession(url: document.url, content: document.content, limits: document.limits, links: document.links, openLink: openLink)
         let web = WKWebView(frame: .zero, configuration: session.configuration(rules: rules, trustedScript: document.trustedScript))
         web.navigationDelegate = session; web.uiDelegate = session
         web.allowsLinkPreview = false
@@ -98,7 +107,13 @@ package final class PreviewWebPage: NSView {
         session.onCommit = { [weak self] in
             self?.isShowing = true
             self?.spinner.stopAnimation(nil)
+            if !document.waitsForLoad { self?.timeout?.cancel(); self?.timeout = nil }
+        }
+        session.onFinish = { [weak self] in
             self?.timeout?.cancel(); self?.timeout = nil
+            let loaded = self?.loaded
+            self?.loaded = nil
+            loaded?()
         }
         self.session = session; webView = web
         web.translatesAutoresizingMaskIntoConstraints = false
@@ -117,6 +132,7 @@ package final class PreviewWebPage: NSView {
         revision += 1; task?.cancel(); task = nil
         timeout?.cancel(); timeout = nil
         failed = nil; isShowing = false
+        loaded = nil
         spinner.stopAnimation(nil)
         problem.isHidden = true
         session?.close(); session = nil

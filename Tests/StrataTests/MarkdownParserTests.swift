@@ -18,7 +18,7 @@ struct MarkdownParserTests {
             case let .paragraph(text): "p \(text)"
             case let .code(language, text): "code[\(language)] \(text)"
             case let .quote(inner): "quote(\(described(inner).joined(separator: "; ")))"
-            case let .list(ordered, start, items):
+            case let .list(ordered, start, items, _):
                 "\(ordered ? "ol \(start)" : "ul")(" + items.map { item in
                     (item.checked.map { $0 ? "[x] " : "[ ] " } ?? "") + described(item.blocks).joined(separator: "; ")
                 }.joined(separator: " | ") + ")"
@@ -84,5 +84,22 @@ struct MarkdownParserTests {
 
     @Test func aTableNeedsAsManyHeadersAsAlignments() throws {
         #expect(described(try MarkdownParser.parse("a | b | c\n|--|--|\nrest")) == ["p a | b | c\n|--|--|\nrest"])
+    }
+
+    @Test func listSpacingBelongsToItsOwnBlockLevel() throws {
+        func loose(_ source: String) throws -> Bool {
+            guard case .list(_, _, _, let loose)? = try MarkdownParser.parse(source).first else {
+                Issue.record("Expected a list")
+                return false
+            }
+            return loose
+        }
+        #expect(try !loose("- one\n- two"))
+        #expect(try loose("- one\n\n- two"))
+        #expect(try loose("- one\n\n  second paragraph"))
+        #expect(try loose("- one\n\n  ```swift\n  let value = 1\n  ```"))
+        #expect(try !loose("- one\n  - nested\n\n  - also nested\n- two"))
+        #expect(try !loose("- ```swift\n  let value = 1\n\n  let other = 2\n  ```\n- two"))
+        #expect(try !loose("- one\n\nOutside the list."))
     }
 }

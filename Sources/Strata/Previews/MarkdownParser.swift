@@ -7,7 +7,7 @@ nonisolated package indirect enum MarkdownBlock {
     case paragraph(String)
     case code(language: String, text: String)
     case quote([MarkdownBlock])
-    case list(ordered: Bool, start: Int, items: [MarkdownListItem])
+    case list(ordered: Bool, start: Int, items: [MarkdownListItem], isLoose: Bool = false)
     case rule
     case table(header: [String], alignments: [NSTextAlignment], rows: [[String]])
     case html(String)
@@ -44,13 +44,24 @@ nonisolated package final class MarkdownParser {
     /// Nesting deeper than any real document uses shows as plain text instead.
     private let maxDepth = 16
     private func parse(lines: [String], depth: Int) throws -> [MarkdownBlock] {
+        try sequence(lines: lines, depth: depth).blocks
+    }
+
+    private struct BlockSequence {
+        var blocks: [MarkdownBlock]
+        var separatedByBlankLines = false
+    }
+
+    private func sequence(lines: [String], depth: Int) throws -> BlockSequence {
         guard depth < maxDepth else {
-            guard !lines.isEmpty else { return [] }
+            guard !lines.isEmpty else { return BlockSequence(blocks: []) }
             try budget.reserveNode()
-            return [.code(language: "", text: lines.joined(separator: "\n"))]
+            return BlockSequence(blocks: [.code(language: "", text: lines.joined(separator: "\n"))])
         }
         var blocks: [MarkdownBlock] = []
         var paragraph: [String] = []
+        var blankAfterBlock = false
+        var separated = false
         var i = 0
         func flush() throws {
             if !paragraph.isEmpty {
@@ -64,12 +75,20 @@ nonisolated package final class MarkdownParser {
             try Task.checkCancellation()
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { try flush(); i += 1; continue }
+            if trimmed.isEmpty {
+                try flush()
+                blankAfterBlock = !blocks.isEmpty
+                i += 1
+                continue
+            }
+            separated = separated || blankAfterBlock
+            blankAfterBlock = false
             switch try start(lines, at: &i, depth: depth, inParagraph: !paragraph.isEmpty) {
             case .block(let block)?:
                 try flush()
                 try budget.reserveNode()
                 blocks.append(block)
+                blankAfterBlock = i > 0 && isBlank(lines[i - 1])
             case .underline(let level)?:
                 try budget.reserveNode()
                 blocks.append(.heading(level: level, text: paragraph.joined(separator: "\n")))
@@ -80,7 +99,7 @@ nonisolated package final class MarkdownParser {
             }
         }
         try flush()
-        return blocks
+        return BlockSequence(blocks: blocks, separatedByBlankLines: separated)
     }
 
     private enum Start {
@@ -257,6 +276,7 @@ nonisolated package final class MarkdownParser {
     private func parseList(_ lines: [String], from i: inout Int, depth: Int) throws -> MarkdownBlock {
         guard let first = listMarker(lines[i]) else { return .paragraph(lines[i]) }
         var items: [MarkdownListItem] = []
+        var isLoose = false
         while i < lines.count, let marker = listMarker(lines[i]), marker.ordered == first.ordered,
               marker.delimiter == first.delimiter, marker.indent < first.contentOffset, !isRule(lines[i].trimmingCharacters(in: .whitespaces)) {
             try Task.checkCancellation()
@@ -288,16 +308,19 @@ nonisolated package final class MarkdownParser {
                 checked = head.lowercased().hasPrefix("[x]")
                 content[0] = String(head.dropFirst(4))
             }
-            items.append(MarkdownListItem(checked: checked, blocks: try parse(lines: content, depth: depth + 1)))
+            let item = try sequence(lines: content, depth: depth + 1)
+            isLoose = isLoose || item.separatedByBlankLines
+            items.append(MarkdownListItem(checked: checked, blocks: item.blocks))
             // Blank lines between items keep the list going.
             var next = i
             while next < lines.count, isBlank(lines[next]) { next += 1 }
             if next > i, next < lines.count, let following = listMarker(lines[next]), following.ordered == first.ordered,
                following.delimiter == first.delimiter, following.indent < first.contentOffset {
+                isLoose = true
                 i = next
             }
         }
-        return .list(ordered: first.ordered, start: first.number, items: items)
+        return .list(ordered: first.ordered, start: first.number, items: items, isLoose: isLoose)
     }
 
     // MARK: - Line classification

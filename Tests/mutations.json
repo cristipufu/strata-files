@@ -6509,7 +6509,7 @@
   {
     "file": "Strata/Previews/PreviewWebPage.swift",
     "rule": "Previews: a page that shows outlasts its time limit",
-    "find": "            self?.spinner.stopAnimation(nil)\n            self?.timeout?.cancel(); self?.timeout = nil\n",
+    "find": "            self?.spinner.stopAnimation(nil)\n            if !document.waitsForLoad { self?.timeout?.cancel(); self?.timeout = nil }\n",
     "replace": "            self?.spinner.stopAnimation(nil)\n",
     "tests": "OneNotePreviewTests/aDocumentThatDoesntShowInTimeFailsAndOneThatShowsStays"
   },

@@ -74,6 +74,9 @@ import Testing
                 #expect(try #require(text.layoutManager).firstUnlaidCharacterIndex() < storage.length)
             }
             #expect(try draw(text))
+            if source {
+                #expect(try #require(text.layoutManager).firstUnlaidCharacterIndex() < storage.length)
+            }
             #expect(text.frame.width == frame.width && text.visibleRect.origin == .zero)
             #expect(text.renderingError == nil && !window.isVisible)
         }

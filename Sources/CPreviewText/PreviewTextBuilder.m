@@ -49,14 +49,24 @@
     @try {
         BOOL valid = isfinite(available) && available > 0;
         for (NSNumber *width in widths) valid &= isfinite(width.doubleValue) && width.doubleValue > 0;
-        for (NSTextTableBlock *cell in cells) valid &= cell.startingColumn >= 0 && cell.startingColumn < widths.count;
+        NSMutableArray<NSNumber *> *insets = [NSMutableArray arrayWithCapacity:cells.count];
+        for (NSTextTableBlock *cell in cells) {
+            valid &= cell.startingColumn >= 0 && cell.startingColumn < widths.count;
+            CGFloat inset = 0;
+            for (NSTextBlockLayer layer = NSTextBlockPadding; layer <= NSTextBlockMargin; layer++) {
+                inset += [cell widthForLayer:layer edge:NSMinXEdge] + [cell widthForLayer:layer edge:NSMaxXEdge];
+            }
+            valid &= isfinite(inset) && inset >= 0;
+            [insets addObject:@(inset)];
+        }
         if (!valid) {
             if (error) *error = STPreviewError(@"table dimensions", nil);
             return NO;
         }
         [table setValue:available type:NSTextBlockAbsoluteValueType forDimension:NSTextBlockWidth];
-        for (NSTextTableBlock *cell in cells) {
-            [cell setValue:MAX(1, widths[cell.startingColumn].doubleValue - 18)
+        for (NSUInteger index = 0; index < cells.count; index++) {
+            NSTextTableBlock *cell = cells[index];
+            [cell setValue:MAX(1, widths[cell.startingColumn].doubleValue - insets[index].doubleValue)
                      type:NSTextBlockAbsoluteValueType forDimension:NSTextBlockWidth];
         }
         return YES;

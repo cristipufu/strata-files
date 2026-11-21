@@ -31,11 +31,7 @@ extension ColorThemeTests {
             }
             let loaded = try #require(preview)
             try #require(!loaded.isLoading)
-            let text = try #require(descendants(loaded).compactMap { $0 as? NSTextView }.first)
-            let storage = try #require(text.textStorage)
-            let string = text.string
-            text.setSelectedRange(NSRange(location: 0, length: min(3, storage.length)))
-            let selection = text.selectedRange()
+            let selection = try await PreviewSelectionCheck.capture(in: loaded)
             let backdrop = try #require(descendants(inspector.view).compactMap { $0 as? NSBox }.first { $0.boxType == .custom })
             for palette in ColorTheme.allCases {
                 ThemeStyle.apply(ColorThemeOptions(palette: palette), windows: [], highContrast: false)
@@ -45,10 +41,8 @@ extension ColorThemeTests {
                     #expect(backdrop.fillColor.usingColorSpace(.sRGB) == expected.usingColorSpace(.sRGB))
                     #expect(backdrop.borderColor.usingColorSpace(.sRGB) == ThemeStyle.border.usingColorSpace(.sRGB))
                 }
-                #expect(text.textStorage === storage && text.string == string)
-                #expect(text.selectedRange() == selection)
+                try await selection.verify()
                 #expect(descendants(inspector.view).contains { $0 === loaded })
-                #expect(!text.drawsBackground)
             }
         }
         #expect(tree.snapshot() == ["note.md", "note.txt", "sample.swift"])

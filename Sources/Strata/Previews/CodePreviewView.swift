@@ -5,7 +5,7 @@ import StrataSupport
 
 /// Syntax-highlighted source with original line numbers and the owner's wrapping preference.
 /// JSON is pretty-printed (or shown as written, with the error line marked, when invalid).
-package final class CodePreviewView: PreviewView {
+package final class CodePreviewView: PreviewView, PreviewDocumentSearch {
     nonisolated package enum Mode: Sendable {
         case source(Language)
         case json
@@ -24,6 +24,11 @@ package final class CodePreviewView: PreviewView {
     private var rulerInset: CGFloat = 0
     // TextKit 1 keeps line-fragment layout lazy while the gutter maps fragments to original lines.
     private let textView = STPreviewTextView(usingTextLayoutManager: false)
+    private lazy var search = PreviewTextSearch(textView: textView)
+    private var query = ""
+
+    package func find(_ query: String) { self.query = query; search.find(query) }
+    package func findNext(backwards: Bool) { search.findNext(backwards: backwards) }
 
     package init(url: URL, mode: Mode, preferences: any PreviewTextSettings) {
         self.preferences = preferences
@@ -141,6 +146,7 @@ package final class CodePreviewView: PreviewView {
 
     private func show(_ document: CodeDocument) {
         guard textView.renderingError == nil, textView.useTextStorage(document.storage.value, allowingNonContiguousLayout: true) else { return }
+        search.find(query)
         let font = CodeTheme.font()
         let padding = 2 * (textView.textContainer?.lineFragmentPadding ?? 0) + 12
         unwrappedWidth = CGFloat(document.maxColumns) * CodeTheme.advance(of: font) + padding

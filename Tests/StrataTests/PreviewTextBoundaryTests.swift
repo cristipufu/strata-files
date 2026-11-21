@@ -133,6 +133,32 @@ import Testing
         #expect(tree.snapshot() == ["document.md"])
     }
 
+    @Test func aNativeMarginChangeFailureRetiresTheDocumentOnce() async throws {
+        let text = STFailingPreviewMargins(usingTextLayoutManager: false)
+        #expect(text.useTextStorage(NSTextStorage(string: "Document with reading margins"), allowingNonContiguousLayout: false))
+        text.failsMargins = true
+        defer { text.failsMargins = false }
+        try await expectRetirement(text) {
+            text.textContainerInset = NSSize(width: 60, height: 24)
+        }
+        text.textContainerInset = .zero
+        #expect(text.failures == 1)
+        #expect(text.string == "Document with reading margins")
+    }
+
+    @Test func aDocumentLayoutExceptionRetiresOnlyItsPreviewBeforePainting() async throws {
+        let tree = try TestTree("document.md")
+        try Data("# Viewport\n\nA paragraph with `code`.".utf8).write(to: tree.url("document.md"))
+        let view = await markdown(tree)
+        let manager = try failureManager(in: view.textView)
+        defer { manager.failurePoint = .none; view.cancelLoad() }
+        manager.failurePoint = .documentLayout
+        try await expectRetirement(view.textView) { #expect(!view.textView.layoutDocument()) }
+        #expect(manager.failures == 1 && view.textView.enclosingScrollView == nil)
+        let independent = await markdown(tree)
+        #expect(independent.textView.renderingError == nil)
+    }
+
     @Test func aDiagramEditingExceptionRetiresThePreviewAndDoesNotInstallTheAttachment() async throws {
         let tree = try TestTree("document.md")
         try Data("Document before diagrams".utf8).write(to: tree.url("document.md"))

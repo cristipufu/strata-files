@@ -21,7 +21,8 @@ FOUNDATION_EXPORT NSTextStorage *_Nullable STCreatePreviewTextStorage(NSAttribut
 - (BOOL)useTextStorage:(NSTextStorage *)storage allowingNonContiguousLayout:(BOOL)allows;
 - (BOOL)applyWrapping:(BOOL)wraps;
 - (void)retireWithError:(NSError *)error;
-- (BOOL)resizeAttachments:(NSArray<NSTextAttachment *> *)attachments width:(CGFloat)width NS_SWIFT_NAME(resizeAttachments(_:width:));
+- (BOOL)resizeAttachments:(NSArray<NSTextAttachment *> *)attachments widths:(NSArray<NSNumber *> *)widths NS_SWIFT_NAME(resizeAttachments(_:widths:));
+- (BOOL)layoutDocument;
 - (BOOL)replaceCharactersInRange:(NSRange)range withAttributedString:(NSAttributedString *)replacement;
 - (BOOL)replaceRanges:(NSArray<NSValue *> *)ranges withStrings:(NSArray<NSAttributedString *> *)strings
     NS_SWIFT_NAME(replaceRanges(_:with:));

@@ -20,7 +20,7 @@ package enum RichPreview {
         case .code(let language): CodePreviewView(url: url, mode: .source(language), preferences: preferences)
         case .json: CodePreviewView(url: url, mode: .json, preferences: preferences)
         case .pdf: PDFPreviewView(url: url)
-        case .markdown: MarkdownPreviewView(url: url)
+        case .markdown: MarkdownWebPreviewView(url: url, preferences: preferences)
         case .notebook: MarkdownPreviewView(notebook: url)
         case .html: HTMLPreviewView(url: url, preferences: preferences)
         case .epub: EPUBPreviewView(url: url)

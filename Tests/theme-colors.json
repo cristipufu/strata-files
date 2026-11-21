@@ -115,15 +115,15 @@
   },
   {
     "file": "Sources/Strata/Previews/MarkdownRenderer.swift",
-    "code": "NSColor.tertiaryLabelColor.withAlphaComponent(0.35).setFill()",
+    "code": "NSColor.separatorColor.setFill()",
     "count": 1,
-    "reason": "Document table headings and rules are rendered Markdown content, separate from the themed preview surface."
+    "reason": "Document table stripes and quote separators use appearance-aware colors for rendered Markdown content, separate from the themed preview surface."
   },
   {
     "file": "Sources/Strata/Previews/MarkdownRenderer.swift",
-    "code": "if rowIndex == 0 { cell.backgroundColor = MarkdownColors.tableHeader }",
+    "code": "if rowIndex % 2 == 1 { cell.backgroundColor = MarkdownColors.tableStripe }",
     "count": 1,
-    "reason": "Document table headings and rules are rendered Markdown content, separate from the themed preview surface."
+    "reason": "Document table stripes and quote separators use appearance-aware colors for rendered Markdown content, separate from the themed preview surface."
   },
   {
     "file": "Sources/Strata/Settings/AppearanceSettings.swift",

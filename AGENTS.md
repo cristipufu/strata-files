@@ -561,7 +561,12 @@ a native call while cancelling and replacing its caller, without loading a live 
 - An AppKit exception escaping a Swift task can corrupt concurrency state even if AppKit catches it later. A crash
   in an executor check can be the delayed result: inspect the preceding unified log and the crash report's
   `SOME_OTHER_THREAD_SWALLOWED_AT_LEAST_ONE_EXCEPTION` breadcrumb before changing actor isolation checks.
-- Markdown block decorations are `NSTextTableBlock`s: TextKit sends table messages to enclosing blocks when it draws
+- Markdown files use `MarkdownWebPreviewView`: `MarkdownHTMLRenderer` emits escaped HTML with document styling,
+  and the existing offline WebKit session owns local resources, navigation and cancellation. Bundled Mermaid and
+  KaTeX run only in the isolated client world; document scripts and network requests remain blocked. Keep SVG and
+  MathML as vectors, enforce rendering limits and deadlines, and fall back to source after WebKit failure. Test real
+  WebKit layout, scrolling, search, resource refusals and teardown in hidden windows.
+- The attributed Markdown renderer used by notebooks has `NSTextTableBlock` decorations: TextKit sends table messages to enclosing blocks when it draws
   a nested table. Exercise native drawing, including quoted tables and diagram attachments, across widths and
   appearances. Text previews use `CPreviewText` for storage creation and native view drawing/layout; after an
   Objective-C exception the failed renderer is retired and replaced with a message. Never resume it or install an

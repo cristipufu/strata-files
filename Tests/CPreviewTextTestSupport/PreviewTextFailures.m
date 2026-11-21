@@ -29,6 +29,11 @@
     [super invalidateLayoutForCharacterRange:range actualCharacterRange:actual];
 }
 
+- (void)ensureLayoutForTextContainer:(NSTextContainer *)container {
+    [self failAt:STPreviewFailureDocumentLayout];
+    [super ensureLayoutForTextContainer:container];
+}
+
 @end
 
 @implementation STFailingPreviewTableCell
@@ -74,6 +79,16 @@
         [NSException raise:NSInternalInconsistencyException format:@"Controlled preview display failure"];
     }
     [super setNeedsDisplayInRect:rect avoidAdditionalLayout:avoidLayout];
+}
+@end
+
+@implementation STFailingPreviewMargins
+- (void)invalidateTextContainerOrigin {
+    if (self.failsMargins && !self.renderingError) {
+        _failures++;
+        [NSException raise:NSInternalInconsistencyException format:@"Controlled preview margin failure"];
+    }
+    [super invalidateTextContainerOrigin];
 }
 @end
 

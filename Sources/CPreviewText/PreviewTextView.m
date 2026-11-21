@@ -65,6 +65,28 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
     }
 }
 
+- (BOOL)layoutDocument {
+    if (_renderingError) return NO;
+    @try {
+        NSTextContainer *container = self.textContainer;
+        if (!container) {
+            [self retireWithError:STPreviewError(@"document layout", nil)];
+            return NO;
+        }
+        // Rich text blocks can span the viewport. Finish their geometry before AppKit paints or caches
+        // scrolling pixels; idle layout is deliberately disabled so native failures stay inside this boundary.
+        [self.layoutManager ensureLayoutForTextContainer:container];
+        if (_renderingError) return NO;
+        [self sizeToFit];
+        if (_renderingError) return NO;
+        [self setNeedsDisplayInRect:self.visibleRect avoidAdditionalLayout:NO];
+        return _renderingError == nil;
+    } @catch (NSException *exception) {
+        [self retireAfterException:exception operation:@"document layout"];
+        return NO;
+    }
+}
+
 - (BOOL)applyWrapping:(BOOL)wraps {
     if (_renderingError) return NO;
     @try {
@@ -88,6 +110,19 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
         [super setFrameSize:size];
     } @catch (NSException *exception) {
         [self retireAfterException:exception operation:@"view resizing"];
+    }
+}
+
+- (void)setTextContainerInset:(NSSize)inset {
+    if (_renderingError) return;
+    if (!isfinite(inset.width) || !isfinite(inset.height) || inset.width < 0 || inset.height < 0) {
+        [self retireWithError:STPreviewError(@"text margins", nil)];
+        return;
+    }
+    @try {
+        [super setTextContainerInset:inset];
+    } @catch (NSException *exception) {
+        [self retireAfterException:exception operation:@"text margins"];
     }
 }
 
@@ -133,18 +168,21 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
     return range.location <= length && range.length <= length - range.location;
 }
 
-- (BOOL)resizeAttachments:(NSArray<NSTextAttachment *> *)attachments width:(CGFloat)width {
+- (BOOL)resizeAttachments:(NSArray<NSTextAttachment *> *)attachments widths:(NSArray<NSNumber *> *)widths {
     if (_renderingError) return NO;
     @try {
-        if (!isfinite(width) || width <= 0) {
+        BOOL valid = widths.count == attachments.count;
+        for (NSNumber *width in widths) valid &= isfinite(width.doubleValue) && width.doubleValue > 0;
+        if (!valid) {
             [self retireWithError:STPreviewError(@"attachment dimensions", nil)];
             return NO;
         }
-        for (NSTextAttachment *attachment in attachments) {
+        for (NSUInteger index = 0; index < attachments.count; index++) {
+            NSTextAttachment *attachment = attachments[index];
             NSSize size = attachment.image.size;
             if (!isfinite(size.width) || !isfinite(size.height) || size.width <= 0 || size.height <= 0) continue;
-            CGFloat fitted = MIN(size.width, MAX(1, width - 20));
-            attachment.bounds = NSMakeRect(0, 0, fitted, size.height * fitted / size.width);
+            CGFloat fitted = MIN(size.width, widths[index].doubleValue);
+            attachment.bounds = NSMakeRect(0, 0, fitted, size.height * (fitted / size.width));
         }
         [self.layoutManager invalidateLayoutForCharacterRange:NSMakeRange(0, self.textStorage.length) actualCharacterRange:nil];
         return _renderingError == nil;

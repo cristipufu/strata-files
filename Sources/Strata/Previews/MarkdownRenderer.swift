@@ -17,10 +17,8 @@ nonisolated package final class MarkdownRenderer {
     static let mermaidSource = NSAttributedString.Key("StrataMermaidSource")
     static let assetID = NSAttributedString.Key("StrataMarkdownAssetID")
 
-    private let bodySize: CGFloat = 13
-    private let blockSpacing: CGFloat = 10
-    private let listColumn: CGFloat = 20
-    private let maxImageSize = NSSize(width: 320, height: 240)
+    private let bodySize = MarkdownStyle.bodySize
+    private let blockSpacing = MarkdownStyle.blockSpacing
 
     /// `baseURL` resolves relative links and images (the Markdown file's folder).
     package init(baseURL: URL) {
@@ -70,9 +68,8 @@ nonisolated package final class MarkdownRenderer {
                 let start = output.length
                 let bar = QuoteBlock()
                 bar.setValue(100, type: .percentageValueType, for: .width)
-                bar.setWidth(14, type: .absoluteValueType, for: .padding, edge: .minX)
-                bar.setWidth(2, type: .absoluteValueType, for: .padding, edge: .minY)
-                bar.setWidth(2, type: .absoluteValueType, for: .padding, edge: .maxY)
+                bar.setWidth(MarkdownStyle.quoteBarWidth, type: .absoluteValueType, for: .border, edge: .minX)
+                bar.setWidth(MarkdownStyle.quotePadding, type: .absoluteValueType, for: .padding, edge: .minX)
                 bar.setWidth(context.indent, type: .absoluteValueType, for: .margin, edge: .minX)
                 bar.setWidth(blockSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
                 var inner = context
@@ -81,17 +78,17 @@ nonisolated package final class MarkdownRenderer {
                 inner.quoted = true
                 try render(children, into: output, context: inner)
                 setTrailingSpacing(0, in: output, from: start)
-            case .list(let ordered, let start, let items):
-                try list(ordered: ordered, start: start, items: items, into: output, context: context)
+            case .list(let ordered, let start, let items, let isLoose):
+                try list(ordered: ordered, start: start, items: items, isLoose: isLoose, into: output, context: context)
             case .rule:
                 try budget.reserveText("")
                 let line = MarkdownTextBlock()
                 line.setValue(100, type: .percentageValueType, for: .width)
-                line.setWidth(1, type: .absoluteValueType, for: .border, edge: .minY)
+                line.setWidth(MarkdownStyle.borderWidth, type: .absoluteValueType, for: .border, edge: .minY)
                 line.setBorderColor(.separatorColor, for: .minY)
                 line.setWidth(context.indent, type: .absoluteValueType, for: .margin, edge: .minX)
-                line.setWidth(6, type: .absoluteValueType, for: .margin, edge: .minY)
-                line.setWidth(blockSpacing + 4, type: .absoluteValueType, for: .margin, edge: .maxY)
+                line.setWidth(MarkdownStyle.sectionSpacing, type: .absoluteValueType, for: .margin, edge: .minY)
+                line.setWidth(MarkdownStyle.sectionSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
                 let style = NSMutableParagraphStyle()
                 style.textBlocks = context.textBlocks + [line]
                 style.minimumLineHeight = 1
@@ -102,30 +99,30 @@ nonisolated package final class MarkdownRenderer {
             case .table(let header, let alignments, let rows):
                 try table(header: header, alignments: alignments, rows: rows, into: output, context: context)
             case .html(let html):
-                try render(htmlBlocks(html), into: output, context: context)
+                try render(Self.htmlBlocks(html), into: output, context: context)
             }
         }
     }
 
     private func heading(level: Int, text: String, into output: NSMutableAttributedString, context: Context) throws {
-        let sizes: [CGFloat] = [21, 17, 15, 13, 12, 12]
+        let sizes = MarkdownStyle.headingSizes
         let clamped = min(max(level, 1), 6)
         let size = sizes[clamped - 1]
-        let style = paragraphStyle(context, after: clamped <= 2 ? 10 : 6, before: output.length == 0 ? 0 : (clamped <= 2 ? 12 : 8))
-        style.lineHeightMultiple = 1.05
+        let style = paragraphStyle(context, before: output.length == 0 ? 0 : MarkdownStyle.sectionSpacing)
+        style.minimumLineHeight = ceil(size * MarkdownStyle.headingLineHeight)
         if clamped <= 2 {
             let rule = MarkdownTextBlock()
             rule.setValue(100, type: .percentageValueType, for: .width)
-            rule.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
+            rule.setWidth(MarkdownStyle.borderWidth, type: .absoluteValueType, for: .border, edge: .maxY)
             rule.setBorderColor(.separatorColor, for: .maxY)
-            rule.setWidth(6, type: .absoluteValueType, for: .padding, edge: .maxY)
+            rule.setWidth(ceil(size * MarkdownStyle.headingRulePadding), type: .absoluteValueType, for: .padding, edge: .maxY)
             rule.setWidth(context.indent, type: .absoluteValueType, for: .margin, edge: .minX)
             style.textBlocks = context.textBlocks + [rule]
             style.headIndent = 0
             style.firstLineHeadIndent = 0
         }
         let color: NSColor = level == 6 ? .secondaryLabelColor : textColor(context)
-        output.append(try inline(text, size: size, weight: level <= 2 ? .bold : .semibold, color: color, paragraph: style))
+        output.append(try inline(text, size: size, weight: .semibold, color: color, paragraph: style, codeSize: size))
         output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
     }
 
@@ -133,18 +130,15 @@ nonisolated package final class MarkdownRenderer {
         try budget.reserveText(text)
         let background = CodeBlockBackground()
         background.setValue(100, type: .percentageValueType, for: .width)
-        background.setWidth(9, type: .absoluteValueType, for: .padding)
-        background.setWidth(11, type: .absoluteValueType, for: .padding, edge: .minX)
-        background.setWidth(11, type: .absoluteValueType, for: .padding, edge: .maxX)
+        background.setWidth(MarkdownStyle.codePadding, type: .absoluteValueType, for: .padding)
         background.setWidth(context.indent, type: .absoluteValueType, for: .margin, edge: .minX)
-        background.setWidth(2, type: .absoluteValueType, for: .margin, edge: .minY)
         background.setWidth(blockSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
-        let size: CGFloat = 11.5
+        let size = bodySize * MarkdownStyle.codeScale
         var attributes = CodeTheme.baseAttributes(size: size)
         let style = (attributes[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
         style.textBlocks = context.textBlocks + [background]
-        style.minimumLineHeight = 16
-        style.maximumLineHeight = 16
+        style.minimumLineHeight = MarkdownStyle.codeLineHeight
+        style.maximumLineHeight = 0
         attributes[.paragraphStyle] = style
         let body = text.isEmpty ? " " : text
         let start = output.length
@@ -168,14 +162,15 @@ nonisolated package final class MarkdownRenderer {
         }
     }
 
-    private func list(ordered: Bool, start: Int, items: [MarkdownListItem], into output: NSMutableAttributedString, context: Context) throws {
+    private func list(ordered: Bool, start: Int, items: [MarkdownListItem], isLoose: Bool, into output: NSMutableAttributedString, context: Context) throws {
         let start = max(0, min(start, 999_999_999))
         let listStart = output.length
         let bullets = ["•", "◦", "▪"]
         let markerFont = NSFont.monospacedDigitSystemFont(ofSize: bodySize, weight: .regular)
         let widest = ordered ? CGFloat(truncating: try STPreviewTextBuilder.width(of: NSAttributedString(
             string: "\(start + items.count - 1).", attributes: [.font: markerFont]))) : 0
-        let column = max(listColumn, ceil(widest) + 8)
+        let column = max(MarkdownStyle.listIndent, ceil(widest) + 8)
+        let itemSpacing = isLoose ? blockSpacing : MarkdownStyle.listItemSpacing
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             try budget.reserveNode()
@@ -183,7 +178,8 @@ nonisolated package final class MarkdownRenderer {
             var inner = context
             inner.indent = context.indent + column
             inner.listDepth += 1
-            let style = paragraphStyle(context, after: 4)
+            let hasNestedBlocks = item.blocks.count > 1
+            let style = paragraphStyle(context, after: !isLoose && hasNestedBlocks ? 0 : itemSpacing)
             style.headIndent = inner.indent
             style.tabStops = [
                 NSTextTab(textAlignment: ordered ? .right : .center, location: context.indent + (ordered ? column - 6 : column / 2 - 2)),
@@ -211,10 +207,10 @@ nonisolated package final class MarkdownRenderer {
             if !rest.isEmpty {
                 let nestedStart = output.length
                 try render(rest, into: output, context: inner)
-                setTrailingSpacing(4, in: output, from: nestedStart)
+                setTrailingSpacing(itemSpacing, in: output, from: nestedStart)
             }
         }
-        setTrailingSpacing(context.listDepth == 0 ? blockSpacing : 4, in: output, from: listStart)
+        setTrailingSpacing(context.listDepth == 0 ? blockSpacing : 0, in: output, from: listStart)
     }
 
     private func table(header: [String], alignments: [NSTextAlignment], rows: [[String]],
@@ -225,11 +221,7 @@ nonisolated package final class MarkdownRenderer {
         try budget.reserveTable()
         try budget.reserveCells(header.count * (rows.count + 1))
         let table = MarkdownTable()
-        table.availableInset = context.indent + context.textBlocks.reduce(0) { inset, block in
-            inset + [NSTextBlock.Layer.margin, .border, .padding].reduce(0) { width, layer in
-                width + block.width(for: layer, edge: .minX) + block.width(for: layer, edge: .maxX)
-            }
-        }
+        table.availableInset = MarkdownStyle.horizontalInset(of: paragraphStyle(context))
         table.preferredWidths = Array(repeating: 28, count: header.count)
         tables.append(table)
         table.numberOfColumns = header.count
@@ -244,22 +236,22 @@ nonisolated package final class MarkdownRenderer {
             for (column, text) in row.prefix(header.count).enumerated() {
                 let cell = NSTextTableBlock(table: table, startingRow: rowIndex, rowSpan: 1, startingColumn: column, columnSpan: 1)
                 table.add(cell)
-                cell.setWidth(1, type: .absoluteValueType, for: .border)
+                cell.setWidth(MarkdownStyle.borderWidth, type: .absoluteValueType, for: .border)
                 cell.setBorderColor(.separatorColor)
-                cell.setWidth(5, type: .absoluteValueType, for: .padding)
-                cell.setWidth(8, type: .absoluteValueType, for: .padding, edge: .minX)
-                cell.setWidth(8, type: .absoluteValueType, for: .padding, edge: .maxX)
-                if rowIndex == 0 { cell.backgroundColor = MarkdownColors.tableHeader }
+                cell.setWidth(MarkdownStyle.tableVerticalPadding, type: .absoluteValueType, for: .padding)
+                cell.setWidth(MarkdownStyle.tableHorizontalPadding, type: .absoluteValueType, for: .padding, edge: .minX)
+                cell.setWidth(MarkdownStyle.tableHorizontalPadding, type: .absoluteValueType, for: .padding, edge: .maxX)
+                if rowIndex % 2 == 1 { cell.backgroundColor = MarkdownColors.tableStripe }
                 let style = NSMutableParagraphStyle()
                 style.textBlocks = context.textBlocks + [cell]
                 style.alignment = alignments.indices.contains(column) ? alignments[column] : .left
-                style.lineHeightMultiple = 1.1
-                let size: CGFloat = 12
+                style.minimumLineHeight = MarkdownStyle.bodyLineHeight
+                let size = bodySize
                 let content = try inline(text, size: size, weight: rowIndex == 0 ? .semibold : .regular, color: textColor(context), paragraph: style)
                 let measurement = NSMutableAttributedString(attributedString: content)
                 measurement.removeAttribute(.paragraphStyle, range: NSRange(location: 0, length: measurement.length))
                 let measured = CGFloat(truncating: try STPreviewTextBuilder.width(of: measurement))
-                table.preferredWidths[column] = max(table.preferredWidths[column], ceil(measured) + 18)
+                table.preferredWidths[column] = max(table.preferredWidths[column], ceil(measured) + 2 * (MarkdownStyle.tableHorizontalPadding + MarkdownStyle.borderWidth))
                 output.append(content)
                 output.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style, .font: NSFont.systemFont(ofSize: size)]))
             }
@@ -268,7 +260,7 @@ nonisolated package final class MarkdownRenderer {
 
     /// Raw HTML blocks, reduced to what reads well as text: headings stay headings, tags and comments go.
     /// One linear pass over the bytes (regexes here went quadratic on unclosed comments, headings or tags).
-    private func htmlBlocks(_ html: String) -> [MarkdownBlock] {
+    static func htmlBlocks(_ html: String) -> [MarkdownBlock] {
         let bytes = Array(html.utf8)
         let n = bytes.count
         let open = UInt8(ascii: "<"), close = UInt8(ascii: ">")
@@ -329,7 +321,7 @@ nonisolated package final class MarkdownRenderer {
     // MARK: - Inline
 
     private func inline(_ markdown: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor,
-                        paragraph: NSParagraphStyle) throws -> NSAttributedString {
+                        paragraph: NSParagraphStyle, codeSize: CGFloat? = nil) throws -> NSAttributedString {
         guard markdown.utf16.count <= MarkdownLimits.formattingInputUnits else { throw MarkdownLimitExceeded() }
         try budget.reserveText(markdown)
         let math = MarkdownMath.prepare(markdown, limit: MathRenderer.equationLimit - equations)
@@ -357,7 +349,7 @@ nonisolated package final class MarkdownRenderer {
             }
             var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .paragraphStyle: paragraph]
             if intent.contains(.code) {
-                attributes[.font] = NSFont.monospacedSystemFont(ofSize: (size * 0.88).rounded(), weight: weight)
+                attributes[.font] = NSFont.monospacedSystemFont(ofSize: codeSize ?? size * MarkdownStyle.codeScale, weight: weight)
                 attributes[.backgroundColor] = MarkdownColors.inlineCode
             } else {
                 attributes[.font] = Self.font(size: size, weight: intent.contains(.stronglyEmphasized) ? .bold : weight,
@@ -392,12 +384,13 @@ nonisolated package final class MarkdownRenderer {
             image = nil
         }
         if let image {
-            let scale = min(1, maxImageSize.width / image.size.width, maxImageSize.height / image.size.height)
+            let scale = min(1, MarkdownStyle.maximumReadingWidth / image.size.width)
             let attachment = NSTextAttachment()
             attachment.image = image
             attachment.bounds = CGRect(x: 0, y: 0, width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
             let result = NSMutableAttributedString(attachment: attachment)
             result.addAttributes(attributes, range: NSRange(location: 0, length: result.length))
+            result.addAttribute(MarkdownStyle.responsiveImage, value: true, range: NSRange(location: 0, length: result.length))
             return result
         }
         guard !alt.isEmpty else { return NSAttributedString() }
@@ -459,7 +452,7 @@ nonisolated package final class MarkdownRenderer {
         style.textBlocks = context.textBlocks
         style.firstLineHeadIndent = context.indent
         style.headIndent = context.indent
-        style.lineHeightMultiple = 1.18
+        style.minimumLineHeight = MarkdownStyle.bodyLineHeight
         style.paragraphSpacing = after ?? blockSpacing
         style.paragraphSpacingBefore = before
         return style
@@ -497,7 +490,7 @@ nonisolated package enum MarkdownColors {
         let alpha: CGFloat = appearance.isHighContrast ? 0.15 : appearance.isDark ? 0.06 : 0.04
         return NSColor(white: appearance.isDark ? 1 : 0, alpha: alpha)
     }
-    package static let tableHeader = codeBlock
+    package static let tableStripe = codeBlock
 }
 
 // TextKit table drawing expects every enclosing block to be a table cell, including decorations.
@@ -518,7 +511,7 @@ nonisolated final class CodeBlockBackground: MarkdownTextBlock {
                                  layoutManager: NSLayoutManager) {
         let rect = contentFrame(frameRect)
         MarkdownColors.codeBlock.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+        NSBezierPath(roundedRect: rect, xRadius: MarkdownStyle.blockCornerRadius, yRadius: MarkdownStyle.blockCornerRadius).fill()
     }
 
     /// `frameRect` includes the margins; the background covers padding and content only.
@@ -532,14 +525,14 @@ nonisolated final class CodeBlockBackground: MarkdownTextBlock {
     }
 }
 
-/// The rounded bar to the left of a block quote.
+/// The separator bar to the left of a block quote.
 nonisolated final class QuoteBlock: MarkdownTextBlock {
     override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         let left = frameRect.minX + width(for: .margin, edge: .minX)
         let top = frameRect.minY + width(for: .margin, edge: .minY)
         let bottom = frameRect.maxY - width(for: .margin, edge: .maxY)
-        NSColor.tertiaryLabelColor.withAlphaComponent(0.35).setFill()
-        NSBezierPath(roundedRect: NSRect(x: left, y: top, width: 3, height: bottom - top), xRadius: 1.5, yRadius: 1.5).fill()
+        NSColor.separatorColor.setFill()
+        NSBezierPath(rect: NSRect(x: left, y: top, width: MarkdownStyle.quoteBarWidth, height: bottom - top)).fill()
     }
 }

@@ -7,6 +7,7 @@ import CPreviewWeb
 /// One WebKit lifetime. Both resource delivery and navigation are refused after closure.
 @MainActor package final class HTMLWebSession: NSObject, WKURLSchemeHandler, WKNavigationDelegate, WKUIDelegate {
     package enum Navigation: Equatable { case document, anchor, external, refuse }
+    nonisolated package enum Links: Sendable { case web, webMailAndFiles }
     package typealias Reader = @Sendable (URL) async throws -> HTMLPreviewResource
     package typealias StreamReader = @Sendable (URL) async throws -> WebPreviewStream
     /// What one document's WebKit lifetime may ask for and be given in all.
@@ -23,6 +24,7 @@ import CPreviewWeb
     /// Let go of once the session closes, and what it holds with it, such as a file.
     private var content: WebPreviewContent?
     private let openLink: (URL) -> Void
+    private let links: Links
     private var requests: [ObjectIdentifier: WebResourceRequest] = [:]
     package var pendingTasks: [Task<Void, Never>] { requests.values.compactMap(\.work) }
     private var remainingRequests: Int
@@ -32,6 +34,7 @@ import CPreviewWeb
     package var onFailure: (() -> Void)?
     /// When WebKit starts showing the document, before what it asks for besides has come.
     package var onCommit: (() -> Void)?
+    package var onFinish: (() -> Void)?
     private static var rules: Task<WKContentRuleList, Error>?
 
     private final class WebResourceRequest {
@@ -55,8 +58,9 @@ import CPreviewWeb
         self.init(url: url, content: .streamed(stream), limits: limits, openLink: openLink)
     }
 
-    package init(url: URL, content: WebPreviewContent, limits: Limits = Limits(), openLink: @escaping (URL) -> Void) {
+    package init(url: URL, content: WebPreviewContent, limits: Limits = Limits(), links: Links = .web, openLink: @escaping (URL) -> Void) {
         documentURL = url; self.content = content; self.openLink = openLink
+        self.links = links
         remainingRequests = limits.requests; remainingBytes = limits.bytes
         super.init()
     }
@@ -109,6 +113,7 @@ import CPreviewWeb
         let pending = requests.values
         requests = [:]
         pending.forEach { $0.stop() }
+        onFinish = nil
         onFailure = nil; onCommit = nil
         content = nil
     }
@@ -200,9 +205,11 @@ import CPreviewWeb
     }
 
     /// Only the first document load and clicked same-document anchors navigate inside this preview.
-    package static func navigation(_ url: URL?, document: URL, method: String?, mainFrame: Bool, link: Bool, initial: Bool) -> Navigation {
+    package static func navigation(_ url: URL?, document: URL, method: String?, mainFrame: Bool, link: Bool, initial: Bool, links: Links = .web) -> Navigation {
         guard let url, method == "GET" else { return .refuse }
         if link, isWebLink(url) { return .external }
+        if link, links == .webMailAndFiles, url.user == nil, url.password == nil,
+           url.scheme?.lowercased() == "mailto" || url.isFileURL { return .external }
         guard mainFrame, var target = URLComponents(url: url, resolvingAgainstBaseURL: false),
               var source = URLComponents(url: document, resolvingAgainstBaseURL: false) else { return .refuse }
         let fragment = target.fragment
@@ -217,7 +224,7 @@ import CPreviewWeb
         guard !closed, !navigationAction.shouldPerformDownload else { decisionHandler(.cancel); return }
         let decision = Self.navigation(navigationAction.request.url, document: documentURL, method: navigationAction.request.httpMethod,
                                        mainFrame: navigationAction.targetFrame?.isMainFrame == true,
-                                       link: navigationAction.navigationType == .linkActivated, initial: initial)
+                                       link: navigationAction.navigationType == .linkActivated, initial: initial, links: links)
         switch decision {
         case .document: initial = false; decisionHandler(.allow)
         case .anchor: decisionHandler(.allow)
@@ -235,6 +242,7 @@ import CPreviewWeb
     }
 
     package func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { if !closed { onCommit?() } }
+    package func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { if !closed { onFinish?() } }
     package func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }
     package func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if !closed { onFailure?() } }
     package func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { if !closed { onFailure?() } }

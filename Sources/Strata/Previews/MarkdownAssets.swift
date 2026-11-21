@@ -34,7 +34,7 @@ enum MarkdownAsset {
                 range.length += 1
             }
             let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
-            let pointSize = asset.isBlock ? 13 : font?.pointSize ?? 13
+            let pointSize = asset.isBlock ? MarkdownStyle.bodySize : font?.pointSize ?? MarkdownStyle.bodySize
             let color = storage.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor
             let rgb = color?.usingColorSpace(.sRGB)
             let components: [Double]

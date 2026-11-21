@@ -213,6 +213,8 @@ nonisolated package enum NotebookLoader {
         let attachment = NSTextAttachment()
         attachment.image = nsImage
         attachment.bounds = NSRect(origin: .zero, size: size)
-        return NSAttributedString(attachment: attachment)
+        let result = NSMutableAttributedString(attachment: attachment)
+        result.addAttribute(MarkdownStyle.responsiveImage, value: true, range: NSRange(location: 0, length: result.length))
+        return result
     }
 }

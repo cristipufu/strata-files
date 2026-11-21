@@ -7,7 +7,8 @@ typedef NS_ENUM(NSInteger, STPreviewFailurePoint) {
     STPreviewFailureHighlighting,
     STPreviewFailureRuler,
     STPreviewFailureCentering,
-    STPreviewFailureInvalidation
+    STPreviewFailureInvalidation,
+    STPreviewFailureDocumentLayout
 };
 
 /// Each fixture arms only its own native object, after normal document installation.
@@ -31,6 +32,11 @@ typedef NS_ENUM(NSInteger, STPreviewFailurePoint) {
 
 @interface STFailingPreviewDisplay : STPreviewTextView
 @property(nonatomic) BOOL failsDisplay;
+@property(nonatomic, readonly) NSUInteger failures;
+@end
+
+@interface STFailingPreviewMargins : STPreviewTextView
+@property(nonatomic) BOOL failsMargins;
 @property(nonatomic, readonly) NSUInteger failures;
 @end
 

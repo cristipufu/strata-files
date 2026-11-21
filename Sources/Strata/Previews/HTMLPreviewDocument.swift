@@ -33,6 +33,7 @@ package actor HTMLPreviewDocument {
     package static let policy = "default-src 'none'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; media-src 'none'; font-src 'none'; worker-src 'none'; manifest-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'"
     nonisolated package let url: URL
     nonisolated package let sourceURL: URL
+    nonisolated package let sourceText: String
     private let chosen: ChosenFile
     private let folder: Int32
     private let stamp: Stamp
@@ -54,12 +55,13 @@ package actor HTMLPreviewDocument {
         }
     }
 
-    @concurrent package static func open(_ url: URL, chosen: ChosenFile? = nil) async throws -> HTMLPreviewDocument {
+    @concurrent package static func open(_ url: URL, chosen: ChosenFile? = nil,
+        transform: @escaping @Sendable (String) throws -> String = HTMLPreviewMarkup.prepare) async throws -> HTMLPreviewDocument {
         try Task.checkCancellation()
-        return try HTMLPreviewDocument(url, expected: chosen)
+        return try HTMLPreviewDocument(url, expected: chosen, transform: transform)
     }
 
-    private init(_ source: URL, expected: ChosenFile?) throws {
+    private init(_ source: URL, expected: ChosenFile?, transform: @Sendable (String) throws -> String) throws {
         guard source.isFileURL else { throw PreviewError.unsupported }
         let chosen: ChosenFile
         if let expected {
@@ -67,7 +69,7 @@ package actor HTMLPreviewDocument {
             chosen = expected
         } else { chosen = try ChosenFile(source) }
         self.chosen = chosen
-        let opened = try chosen.withParent { parent, name, _ -> (Int32, Stamp, Data) in
+        let opened = try chosen.withParent { parent, name, _ -> (Int32, Stamp, Data, String) in
             let fd = openat(parent, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { throw POSIXError(.EACCES) }
             defer { close(fd) }
@@ -81,12 +83,15 @@ package actor HTMLPreviewDocument {
             }
             var after = stat()
             guard fstat(fd, &after) == 0, Stamp(info) == Stamp(after) else { throw POSIXError(.ESTALE) }
+            let rendered = try transform(TextFile.normalizeNewlines(text))
+            try Task.checkCancellation()
             let directory = openat(parent, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard directory >= 0 else { throw POSIXError(.EACCES) }
             let prefix = Self.head
-            return (directory, Stamp(after), Data((prefix + HTMLPreviewMarkup.prepare(text)).utf8))
+            return (directory, Stamp(after), Data((prefix + rendered).utf8), text)
         }
         folder = opened.0; stamp = opened.1; document = opened.2
+        sourceText = opened.3
         sourceURL = source
         url = URL(string: "\(Self.scheme)://\(UUID().uuidString.lowercased())/")!.appendingPathComponent(source.lastPathComponent)
     }

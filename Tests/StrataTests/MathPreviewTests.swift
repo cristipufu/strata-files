@@ -162,12 +162,15 @@ import WebKit
         defer { view.stop() }
         view.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
         view.layoutSubtreeIfNeeded()
-        await view.loadingTask?.value; await view.renderingTask?.value
+        await view.loadingTask?.value
+        let initial = try #require(view.textView.textStorage)
+        let headingFont = try #require(initial.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        await view.renderingTask?.value
         for _ in 0..<2 {
             let storage = try #require(view.textView.textStorage)
             let placeholders = MarkdownAsset.placeholders(in: storage)
             let heading = try #require(placeholders.first { $0.asset.source == "x^2" })
-            #expect(heading.pointSize == 21)
+            #expect(heading.pointSize == headingFont.pointSize)
             let linked = try #require(placeholders.first { $0.asset.source == "y^2" })
             #expect((storage.attribute(.link, at: linked.range.location, effectiveRange: nil) as? URL)?.absoluteString == "https://fixture.invalid/chosen")
             #expect(storage.attribute(.foregroundColor, at: heading.range.location, effectiveRange: nil) != nil)

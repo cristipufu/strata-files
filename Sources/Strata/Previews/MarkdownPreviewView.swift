@@ -54,8 +54,8 @@ import StrataSupport
         textView.drawsBackground = false
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 10, height: 12)
-        textView.textContainer?.lineFragmentPadding = 4
+        textView.textContainerInset = NSSize(width: MarkdownStyle.compactInset, height: MarkdownStyle.verticalInset)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -71,14 +71,7 @@ import StrataSupport
         guard textView.renderingError == nil else { return }
         layoutSubtreeIfNeeded()
         textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
-        textView.tables = document.tables.value
-        do {
-            for table in textView.tables { try table.fit(to: max(1, textView.bounds.width - 28)) }
-        } catch {
-            textView.retireWithError(error as NSError)
-            return
-        }
-        guard textView.renderingError == nil, textView.useTextStorage(document.storage.value, allowingNonContiguousLayout: document.isSource) else { return }
+        guard textView.install(document) else { return }
         search.find(query)
         guard textView.renderingError == nil else { return }
         renderAssets()
@@ -195,6 +188,7 @@ import StrataSupport
         guard textView.replaceRanges(ranges, with: replacements) else { return }
         textView.assets.removeAll { old in previous.contains { $0 === old } }
         textView.assets.append(contentsOf: attachments)
+        guard textView.refreshPictures() else { return }
         search.find(query)
     }
 
@@ -206,8 +200,6 @@ import StrataSupport
             attachment = math
         } else { attachment = NSTextAttachment(); attachment.image = image.image }
         image.image.accessibilityDescription = asset.source
-        let width = min(image.image.size.width, max(1, textView.bounds.width - 48))
-        attachment.bounds = NSRect(x: 0, y: 0, width: width, height: image.image.size.height * width / image.image.size.width)
         let original = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle ?? NSParagraphStyle()
         let style = original.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
         if asset.isBlock {
@@ -222,6 +214,7 @@ import StrataSupport
         }
         var attributes = storage.attributes(at: range.location, effectiveRange: nil)
         attributes[.attachment] = attachment
+        attributes[MarkdownStyle.responsiveImage] = true
         attributes[.paragraphStyle] = style
         let picture = NSMutableAttributedString(string: "\u{FFFC}", attributes: attributes)
         picture.addAttribute(MarkdownRenderer.assetID, value: image.placeholder.id, range: NSRange(location: 0, length: 1))
@@ -292,22 +285,5 @@ nonisolated package enum MarkdownLoader {
         try Task.checkCancellation()
         return MarkdownDocument(storage: Handoff(value: storage), tables: Handoff(value: tables), wordCount: words,
                                 isTruncated: file.isTruncated, isSource: isSource)
-    }
-}
-
-/// Draws inline code backgrounds as small rounded capsules instead of full-line-height boxes.
-nonisolated final class MarkdownLayoutManager: NSLayoutManager {
-    override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
-                                          forCharacterRange charRange: NSRange, color: NSColor) {
-        guard color === MarkdownColors.inlineCode else {
-            super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
-            return
-        }
-        guard rectCount > 0 else { return }
-        color.setFill()
-        for rect in UnsafeBufferPointer(start: rectArray, count: rectCount) {
-            let capsule = rect.insetBy(dx: -2, dy: max(1, (rect.height - 16) / 2))
-            NSBezierPath(roundedRect: capsule, xRadius: 3.5, yRadius: 3.5).fill()
-        }
     }
 }
