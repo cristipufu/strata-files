@@ -17,8 +17,13 @@ import Testing
     }
 
     @discardableResult
-    private func draw(_ text: MarkdownTextView, width: CGFloat) throws -> NSBitmapImageRep {
-        text.setFrameSize(NSSize(width: width, height: 3000))
+    private func draw(_ preview: MarkdownPreviewView, width: CGFloat) throws -> NSBitmapImageRep {
+        // The scroll view owns its document's width; resize the presentation just as a window does.
+        preview.setFrameSize(NSSize(width: width, height: preview.frame.height))
+        preview.layoutSubtreeIfNeeded()
+        let text = preview.textView
+        let scroll = try #require(text.enclosingScrollView)
+        try #require(abs(text.frame.width - scroll.contentSize.width) < 1)
         let context = try #require(CGContext(data: nil, width: Int(width), height: 3000, bitsPerComponent: 8,
             bytesPerRow: Int(width) * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         NSGraphicsContext.saveGraphicsState()
@@ -43,7 +48,7 @@ import Testing
         let source = "# Heading\n\nBody paragraph.\n\n- Compact one\n- Compact two\n  - Nested item\n\nAfter the list.\n\n- Loose one\n\n- Loose two\n\n## Next section\n\nLast paragraph."
         let (view, tree) = try await preview(source)
         defer { view.stop() }
-        try draw(view.textView, width: 720)
+        try draw(view, width: 720)
         let heading = try rect("Heading", in: view.textView)
         let body = try rect("Body paragraph.", in: view.textView)
         let compactOne = try rect("Compact one", in: view.textView)
@@ -65,13 +70,13 @@ import Testing
         defer { view.stop() }
         let text = view.textView
         for width: CGFloat in [1200, 280, 720, 1200] {
-            try draw(text, width: width)
+            try draw(view, width: width)
             let container = try #require(text.textContainer)
             let used = try #require(text.layoutManager).usedRect(for: container)
             #expect(container.size.width <= 800)
             #expect(used.maxX <= container.size.width + 1)
             #expect(text.textContainerInset.width > 0)
-            #expect(abs(text.textContainerInset.width * 2 + container.size.width - width) < 1)
+            #expect(abs(text.textContainerInset.width * 2 + container.size.width - text.frame.width) < 1)
             for table in text.tables {
                 #expect(table.value(for: .width) + table.availableInset <= container.size.width + 1)
             }
@@ -100,7 +105,7 @@ import Testing
         #expect(text.refreshPictures())
         var narrowWidth: CGFloat = 0
         for width: CGFloat in [280, 1200] {
-            try draw(text, width: width)
+            try draw(view, width: width)
             let paragraph = try #require(attributes[.paragraphStyle] as? NSParagraphStyle)
             let cell = try #require(paragraph.textBlocks.last)
             #expect(picture.bounds.width <= cell.value(for: .width))
@@ -133,7 +138,7 @@ import Testing
         let code = "packages/testing/test-support/src/resources/written-lines.ts"
         let (view, _) = try await preview("- A description before `\(code)` and some text after it.")
         defer { view.stop() }
-        try draw(view.textView, width: 320)
+        try draw(view, width: 320)
         let text = view.textView
         let manager = try #require(text.layoutManager as? MarkdownLayoutManager)
         let storage = try #require(text.textStorage)
@@ -168,7 +173,7 @@ import Testing
         let source = "```swift\n\(code)\n```" + (atEnd ? "" : "\n\nFollowing paragraph.")
         let (view, _) = try await preview(source)
         defer { view.stop() }
-        let bitmap = try draw(view.textView, width: 320)
+        let bitmap = try draw(view, width: 320)
         let text = view.textView
         let manager = try #require(text.layoutManager)
         let container = try #require(text.textContainer)
