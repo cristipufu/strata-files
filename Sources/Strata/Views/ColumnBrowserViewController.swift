@@ -83,6 +83,8 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
     }
 
     override func loadView() {
+        // A horizontal scroller changes the clip height without resizing the browser itself.
+        strip.autoresizingMask = [.height]
         scrollView.documentView = strip
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = false
@@ -224,6 +226,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
 
     private func makePane(_ folder: URL, depth: Int) -> ColumnPane {
         let pane = ColumnPane(folder: folder, controller: self)
+        pane.autoresizingMask = [.height]
         pane.width = widths[depth] ?? defaultColumnWidth
         strip.addSubview(pane)
         return pane
@@ -305,6 +308,7 @@ final class ColumnBrowserViewController: NSViewController, FileCollectionControl
             removeColumns(after: index)
             if selected.count == 1, let entry = selected.first {
                 let preview = ColumnPreviewPane(thumbnails: thumbnails, itemInfo: itemInfo)
+                preview.autoresizingMask = [.height]
                 strip.addSubview(preview)
                 self.preview = preview
                 preview.show(entry)
