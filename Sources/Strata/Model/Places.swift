@@ -21,24 +21,6 @@ package nonisolated struct Place: Sendable, Equatable {
 package enum Places {
     package static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
-    /// Unmounts (and for disks, ejects) the volume at `url` off the main thread; reports a failure in `window`.
-    package static func eject(_ url: URL, from window: NSWindow?) {
-        Task.detached {
-            do {
-                try NSWorkspace.shared.unmountAndEjectDevice(at: url)
-            } catch {
-                let name = FileManager.default.displayName(atPath: url.path)
-                await MainActor.run {
-                    let alert = NSAlert()
-                    alert.messageText = String(localized: "“\(name)” couldn’t be ejected")
-                    alert.informativeText = String(localized: "Close any files from it that are open in other apps, then try again. (\(error.localizedDescription))")
-                    if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
-                }
-            }
-        }
-    }
-
-
     /// The sidebar's favorites: your own list once you've added, removed or reordered any, else the defaults; as
     /// `checks` last read them, for lists that mustn't wait on a disk.
     package static func favorites(preferences: Prefs, checks: PlaceChecks) -> [Place] {

@@ -1905,6 +1905,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "無法將「%@」重新命名為「%@」：%@",
     "“%@” couldn’t have its download removed.": "無法移除「%@」的下載內容。",
     "“%@” couldn’t make that change": "「%@」無法進行該更改",
+    "“%@” didn’t answer in time.": "「%@」未及時回應。",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "「%@」超出了 Strata 為讀取封存檔設定的限制，因此未解壓縮。",
     "“%@” has %lld more items in its own Trash.": {
       "other": "「%@」本身的垃圾桶中還有%lld個項目。"

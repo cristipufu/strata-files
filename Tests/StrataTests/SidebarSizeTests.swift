@@ -107,7 +107,7 @@ import Testing
     @Test func theFolderTreeFollowsTheSystemsSidebarSizeAndItsTextFitsItsRow() throws {
         let tree = try TestTree("chosen/")
         let services = testEnvironment.services
-        let controller = FolderTreeController(places: services.places, transfers: services.transfers, preferences: services.preferences,
+        let controller = FolderTreeController(places: services.places, home: services.homeFolder, workspace: services.workspaceNotifications, transfers: services.transfers, preferences: services.preferences,
                                               remote: services.remote, copies: services.copies, containerStore: services.containerStore,
                                               clipboard: services.clipboard, watchBudget: FolderWatchers.Budget(limit: 1))
         _ = controller.view

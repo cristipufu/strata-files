@@ -22,7 +22,7 @@ import Testing
         let (started, starts) = AsyncStream<Void>.makeStream()
         let (released, release) = AsyncStream<Void>.makeStream()
         var reads = 0
-        let checks = PlaceChecks(preferences: preferences, visits: visits) { paths in
+        let checks = PlaceChecks(preferences: preferences, visits: visits, workspace: NotificationCenter()) { paths in
             reads += 1
             starts.yield()
             for await _ in released { break }
@@ -68,7 +68,7 @@ import Testing
 
     @Test func aDefaultPlaceIsOfferedOnlyOnceItsFound() throws {
         let preferences = try Prefs.isolated()
-        let checks = PlaceChecks(preferences: preferences, visits: Frecency(preferences: preferences.defaults)) { _ in
+        let checks = PlaceChecks(preferences: preferences, visits: Frecency(preferences: preferences.defaults), workspace: NotificationCenter()) { _ in
             PlaceChecks.Snapshot()
         }
         let developer = Places.home.appending(path: "Developer").path

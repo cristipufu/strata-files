@@ -43,7 +43,7 @@ struct FolderWatcherTests {
         let budget = FolderWatchers.Budget(limit: 1)
         weak var released: FolderTreeController?
         try autoreleasepool {
-            let controller = FolderTreeController(places: testEnvironment.services.places, transfers: testEnvironment.services.transfers, preferences: testEnvironment.services.preferences, remote: testEnvironment.services.remote, copies: testEnvironment.services.copies, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, watchBudget: budget)
+            let controller = FolderTreeController(places: testEnvironment.services.places, home: testEnvironment.services.homeFolder, workspace: testEnvironment.services.workspaceNotifications, transfers: testEnvironment.services.transfers, preferences: testEnvironment.services.preferences, remote: testEnvironment.services.remote, copies: testEnvironment.services.copies, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, watchBudget: budget)
             released = controller
             _ = controller.view
             let outline = try #require(controller.focusView as? NSOutlineView)
@@ -63,7 +63,7 @@ struct FolderWatcherTests {
         let tree = try TestTree("chosen/child/")
         let before = tree.snapshot(), budget = FolderWatchers.Budget(limit: 1)
         try autoreleasepool {
-            let controller = FolderTreeController(places: testEnvironment.services.places, transfers: testEnvironment.services.transfers, preferences: testEnvironment.services.preferences, remote: testEnvironment.services.remote, copies: testEnvironment.services.copies, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, watchBudget: budget)
+            let controller = FolderTreeController(places: testEnvironment.services.places, home: testEnvironment.services.homeFolder, workspace: testEnvironment.services.workspaceNotifications, transfers: testEnvironment.services.transfers, preferences: testEnvironment.services.preferences, remote: testEnvironment.services.remote, copies: testEnvironment.services.copies, containerStore: testEnvironment.services.containerStore, clipboard: testEnvironment.services.clipboard, watchBudget: budget)
             _ = controller.view
             let outline = try #require(controller.focusView as? NSOutlineView)
             let rows = Rows([tree.url("chosen")])

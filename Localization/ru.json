@@ -2339,6 +2339,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "Не удалось переименовать «%@» в «%@»: %@",
     "“%@” couldn’t have its download removed.": "Не удалось удалить загруженную копию «%@».",
     "“%@” couldn’t make that change": "Не удалось внести это изменение на «%@»",
+    "“%@” didn’t answer in time.": "«%@» не ответил вовремя.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "«%@» выходит за пределы, которые Strata устанавливает для чтения архивов, поэтому он не распакован.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "На «%@» есть еще %lld объект в собственной Корзине.",

@@ -17,18 +17,22 @@ extension Notification.Name {
         package var names: [String: String] = [:]
     }
 
+    package typealias Read = ([String]) async -> Snapshot
+
     package private(set) var snapshot = Snapshot()
     private let preferences: Prefs
     private let visits: Frecency
-    private let read: ([String]) async -> Snapshot
+    private let read: Read
+    private let workspace: NotificationCenter
     package private(set) var task: Task<Void, Never>?
     private var readAgain = false
 
-    package init(preferences: Prefs, visits: Frecency, read: @escaping ([String]) async -> Snapshot) {
+    /// `workspace`: where macOS says disks come and go (`NSWorkspace`'s own center, for the app).
+    package init(preferences: Prefs, visits: Frecency, workspace: NotificationCenter, read: @escaping Read) {
         self.preferences = preferences
         self.visits = visits
         self.read = read
-        let workspace = NSWorkspace.shared.notificationCenter
+        self.workspace = workspace
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
                      NSWorkspace.didRenameVolumeNotification] {
             workspace.addObserver(self, selector: #selector(volumesChanged), name: name, object: nil)
@@ -36,7 +40,7 @@ extension Notification.Name {
     }
 
     isolated deinit {
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        workspace.removeObserver(self)
         task?.cancel()
     }
 

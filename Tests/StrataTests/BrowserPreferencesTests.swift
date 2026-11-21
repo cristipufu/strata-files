@@ -398,7 +398,7 @@ struct BrowserPreferencesTests {
         browser.addToSidebar(nil)
         #expect(try await added(first.preferences, [tree.url(unique), tree.url("\(unique)/child")].map(\.standardizedFileURL.path)))
 
-        let folderTree = FolderTreeController(places: second.services.places, transfers: second.services.transfers,
+        let folderTree = FolderTreeController(places: second.services.places, home: second.services.homeFolder, workspace: second.services.workspaceNotifications, transfers: second.services.transfers,
                                               preferences: second.preferences, remote: second.services.remote,
                                               copies: second.services.copies, containerStore: second.services.containerStore,
                                               clipboard: second.services.clipboard, watchBudget: .shared)

@@ -10,6 +10,7 @@ final class FolderNode {
     let title: String
     var symbol: String
     let kind: Kind
+    var isEjectable = false
     /// nil until read (or when reading failed: it's tried again on the next expand).
     var children: [FolderNode]?
     /// From looking ahead: whether it has subfolders, before they're read.
@@ -46,16 +47,20 @@ final class FolderTreeController: NSViewController {
     private let copies: CopyProviders
     private let containerStore: ContainerStore
     private let places: PlaceChecks
+    private let home: URL
+    private let workspace: NotificationCenter
     var clipboard: Clipboard
     var cloudFolders: [CloudFolder] = [] {
         didSet { if cloudFolders != oldValue { volumesChanged() } }
     }
 
-    init(places: PlaceChecks, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
+    init(places: PlaceChecks, home: URL, workspace: NotificationCenter, transfers: TransferQueue, preferences: Prefs, remote: RemoteServices,
          copies: CopyProviders, containerStore: ContainerStore,
          clipboard: Clipboard, watchBudget: FolderWatchers.Budget) {
         watchers = FolderWatchers(budget: watchBudget)
         self.places = places
+        self.home = home
+        self.workspace = workspace
         self.remote = remote
         self.copies = copies
         self.containerStore = containerStore
@@ -75,6 +80,8 @@ final class FolderTreeController: NSViewController {
     var onTrash: (([URL]) -> Void)?
     /// Whether these items may go to the Trash (the sidebar's own check).
     var canTrash: (([URL]) -> Bool)?
+    var onEject: ((URL) -> Void)?
+    var isEjecting: ((URL) -> Bool)?
     private var trashVerdict: (drag: Int, operation: NSDragOperation)?
 
     private let outline = SidebarOutlineView()
@@ -145,9 +152,8 @@ final class FolderTreeController: NSViewController {
         scroll.documentView = outline
         view = scroll
 
-        let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
-        center.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
         // Show Hidden Files shows hidden folders here too.
         preferences.notifications.addObserver(self, selector: #selector(prefsChanged), name: .prefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .containersChanged, object: containerStore)
@@ -170,11 +176,12 @@ final class FolderTreeController: NSViewController {
         func reuse(_ url: URL, _ kind: FolderNode.Kind, _ make: () -> FolderNode) -> FolderNode {
             roots.first { $0.kind == kind && $0.url.fileViewKey == url.fileViewKey } ?? make()
         }
-        let home = Places.home
         var fresh = [reuse(home, .folder) { FolderNode(url: home, title: places.name(home), symbol: "house") }]
         for volume in places.snapshot.volumes {
             let url = volume.url.lexicallyStandardized
-            fresh.append(reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) })
+            let node = reuse(url, .folder) { FolderNode(url: url, title: volume.title, symbol: volume.symbol) }
+            node.isEjectable = volume.isEjectable
+            fresh.append(node)
         }
         for folder in cloudFolders where !fresh.contains(where: { $0.url.fileViewKey == folder.url.fileViewKey }) {
             fresh.append(reuse(folder.url, .folder) { FolderNode(url: folder.url, title: folder.title, symbol: "icloud") })
@@ -560,8 +567,19 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
             cell.identifier = id
             return cell
         }()
-        cell.configure(title: node.title, symbol: node.symbol, help: Format.tildePath(node.url))
+        cell.configure(title: node.title, symbol: node.symbol, help: Format.tildePath(node.url), ejection: ejection(for: node))
         return cell
+    }
+
+    private func ejection(for node: FolderNode) -> SidebarCellView.Ejection? {
+        guard node.isEjectable, let onEject else { return nil }
+        let url = node.url
+        return SidebarCellView.Ejection(isUnderway: { [weak self] in self?.isEjecting?(url) == true },
+                                        perform: { onEject(url) })
+    }
+
+    func ejectionsChanged() {
+        SidebarCellView.refreshEjectButtons(of: roots.filter(\.isEjectable), in: outline)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
@@ -626,11 +644,16 @@ extension FolderTreeController: NSOutlineViewDataSource, NSOutlineViewDelegate {
     }
 }
 
-/// Right-click: open in a new tab, copy the path, add to Favorites.
-extension FolderTreeController: NSMenuDelegate {
+/// Right-click: open in a new tab, copy the path, add to Favorites, eject a disk.
+extension FolderTreeController: NSMenuDelegate, NSMenuItemValidation {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode, node.kind != .containers, node.kind != .server else { return }
+        guard let node = outline.item(atRow: outline.clickedRow) as? FolderNode else { return }
+        addItems(for: node, to: menu)
+    }
+
+    func addItems(for node: FolderNode, to menu: NSMenu) {
+        guard node.kind != .containers, node.kind != .server else { return }
         func add(_ title: String, _ action: Selector) {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = self
@@ -649,6 +672,20 @@ extension FolderTreeController: NSMenuDelegate {
             menu.addItem(.separator())
             add(String(localized: "Add to Favorites"), #selector(addFavorite(_:)))
         }
+        if node.isEjectable, onEject != nil {
+            menu.addItem(.separator())
+            add(String(localized: "Eject “\(node.title)”"), #selector(ejectNode(_:)))
+        }
+    }
+
+    @objc private func ejectNode(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        onEject?(url)
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(ejectNode(_:)), let url = item.representedObject as? URL else { return true }
+        return isEjecting?(url) != true
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {

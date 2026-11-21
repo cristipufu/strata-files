@@ -2049,6 +2049,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "»%@« kunne ikke omdøbes til »%@«: %@",
     "“%@” couldn’t have its download removed.": "Den hentede kopi af »%@« kunne ikke fjernes.",
     "“%@” couldn’t make that change": "»%@« kunne ikke foretage den ændring",
+    "“%@” didn’t answer in time.": "»%@« svarede ikke i tide.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "»%@« går ud over de grænser, Strata sætter for læsning af arkiver, så det blev ikke udpakket.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "»%@« har %lld emne mere i sin egen papirkurv.",

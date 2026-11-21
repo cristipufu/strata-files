@@ -123,6 +123,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                                                object: services.folderNames)
         services.preferences.notifications.addObserver(self, selector: #selector(sidebarModePrefChanged), name: .prefsChanged, object: nil)
         services.remote.notifications.addObserver(self, selector: #selector(serverDisconnected(_:)), name: .remoteServerDisconnected, object: services.remote.servers)
+        for (name, action) in [(Notification.Name.volumeEjectionStarting, #selector(volumeEjectionStarting(_:))),
+                               (.volumeEjected, #selector(volumeEjected(_:)))] {
+            NotificationCenter.default.addObserver(self, selector: action, name: name, object: services.volumeEjector)
+        }
+        for name in [NSWorkspace.willUnmountNotification, NSWorkspace.didUnmountNotification] {
+            services.workspaceNotifications.addObserver(self, selector: #selector(volumeUnmounted(_:)), name: name, object: nil)
+        }
         // The Inspector's Cloud row follows downloads and uploads.
         NotificationCenter.default.addObserver(self, selector: #selector(cloudStatusChanged), name: .cloudStatusChanged,
                                                object: services.cloud)
@@ -600,20 +607,88 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     /// Volumes ⌘E would eject: selected volume roots, else the volume whose top level is showing.
     private var ejectTargets: [URL] {
-        // Volumes are listed once, then matched by path (a big selection mustn't list them per item).
-        let ejectable = Set(services.places.snapshot.volumes.filter(\.isEjectable).map { $0.url.lexicallyStandardized.path })
-        guard !ejectable.isEmpty else { return [] }
-        let selected = browser.selectedURLs.filter { ejectable.contains($0.lexicallyStandardized.path) }
+        let ejector = services.volumeEjector
+        let selected = ejector.ejectable(browser.selectedURLs)
         if !selected.isEmpty { return selected }
-        if case .folder = destination, ejectable.contains(location.lexicallyStandardized.path) { return [location] }
-        return []
+        guard case .folder = destination else { return [] }
+        let shown = (browser.mode == .columns ? pane.columnLocation : nil) ?? location
+        var seen = Set<String>()
+        return ejector.ejectable([location, shown]).filter { seen.insert(VolumeEjector.key($0)).inserted }
     }
 
     @objc func ejectVolume(_ sender: Any?) {
-        for url in ejectTargets {
-            if location.lexicallyStandardized.path == url.lexicallyStandardized.path { navigate(to: Places.home) }
-            Places.eject(url, from: window)
+        for url in ejectTargets { services.volumeEjector.eject(url, from: window) }
+    }
+
+    func panesShowing(_ volume: URL) -> [Pane] {
+        panes.filter { shown(on: volume, by: $0) != nil }
+    }
+
+    /// What `pane` shows on the disk at `volume`: its folder, a deeper column, or a search's scope. Recents,
+    /// Duplicates and a search everywhere show nothing of one disk.
+    private func shown(on volume: URL, by pane: Pane) -> URL? {
+        var places: [URL] = []
+        switch pane.destination {
+        case .folder:
+            if pane.browser.mode == .columns, let column = pane.columnLocation { places.append(column) }
+            places.append(pane.location)
+        case .search(_, let scope?): places.append(scope)
+        case .search, .recents, .duplicates: break
         }
+        return places.first { VolumeEjector.isOnVolume($0, volume) }
+    }
+
+    private static func volume(in notification: Notification, key: String) -> URL? {
+        notification.userInfo?[key] as? URL
+    }
+
+    /// Before the disk is handed to macOS, and for good, as Finder closes a disk's windows: going Home asks each pane's
+    /// reads, previews and folder sizes there to stop, which would keep the disk busy.
+    @objc private func volumeEjectionStarting(_ notification: Notification) {
+        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }
+        leave(volume)
+    }
+
+    @objc private func volumeEjected(_ notification: Notification) {
+        guard let volume = Self.volume(in: notification, key: VolumeEjector.volumeKey) else { return }
+        leave(volume)
+    }
+
+    /// About to be ejected in Finder, or gone: unplugged, or taken along with a disk Strata ejected. A pane on a share
+    /// keeps its folder, as one on a disconnected server does, so its workspace and the session don't lose it.
+    @objc private func volumeUnmounted(_ notification: Notification) {
+        guard let volume = VolumeEjector.unmounting(notification) else { return }
+        leave(volume, keepingShares: true)
+    }
+
+    private func leave(_ volume: URL, keepingShares: Bool = false) {
+        guard !isClosed else { return }
+        let kept = keepingShares ? share(of: volume) : nil
+        for p in panes {
+            guard let place = shown(on: volume, by: p) else {
+                // Results stay; "this folder" and the session no longer name the disk they were opened from.
+                if VolumeEjector.isOnVolume(p.location, volume) { settleHome(p) }
+                continue
+            }
+            let waiting = kept.map { WaitingFolder(path: place.path, mode: p.browser.mode.rawValue, mountPoint: $0.mountPoint,
+                                                    address: $0.address) }
+            go(.folder(services.homeFolder), in: p, recordHistory: false, countVisit: false)
+            p.waiting = waiting
+        }
+    }
+
+    private func settleHome(_ p: Pane) {
+        p.location = services.homeFolder
+        p.columnLocation = nil
+        if p === pane { updateChrome() }
+    }
+
+    /// Where the share at `volume` was mounted and the address that mounts it again, as the disks last read say.
+    private func share(of volume: URL) -> (mountPoint: String, address: String)? {
+        let volumes = services.places.snapshot.volumes
+        guard let disk = volumes.first(where: { VolumeEjector.key($0.url) == VolumeEjector.key(volume) }),
+              let share = Workspaces.shares(for: [disk.url.path], on: volumes)?.first else { return nil }
+        return (share.key, share.value)
     }
 
     override func newWindowForTab(_ sender: Any?) { openTab(at: location) }

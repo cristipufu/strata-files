@@ -13,7 +13,7 @@ import Testing
 /// back now) stays, and new ones go where they're dropped among those shown.
 @MainActor struct FavoritesTests {
     private func checks(_ preferences: Prefs, missing: Set<String>) async -> PlaceChecks {
-        let checks = PlaceChecks(preferences: preferences, visits: Frecency(preferences: preferences.defaults)) { _ in
+        let checks = PlaceChecks(preferences: preferences, visits: Frecency(preferences: preferences.defaults), workspace: NotificationCenter()) { _ in
             var snapshot = PlaceChecks.Snapshot()
             snapshot.missing = missing
             return snapshot

@@ -2049,6 +2049,7 @@
     "“%@” couldn’t be renamed to “%@”: %@": "«%@» kunne ikke få det nye navnet «%@»: %@",
     "“%@” couldn’t have its download removed.": "Nedlastingen av «%@» kunne ikke fjernes.",
     "“%@” couldn’t make that change": "«%@» kunne ikke gjøre den endringen",
+    "“%@” didn’t answer in time.": "«%@» svarte ikke i tide.",
     "“%@” goes past the limits Strata sets for reading archives, so it wasn’t extracted.": "«%@» går utover grensene Strata setter for lesing av arkiver, så det ble ikke pakket ut.",
     "“%@” has %lld more items in its own Trash.": {
       "one": "«%@» har %lld objekt til i sin egen papirkurv.",
