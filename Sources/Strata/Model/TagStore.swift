@@ -2,10 +2,13 @@ import AppKit
 import os
 
 /// A Finder tag: a name and one of Finder's colors.
-package nonisolated struct FinderTag: Hashable, Sendable {
+package nonisolated struct FinderTag: Hashable, Codable, Sendable {
+    package static let maximumNameLength = 255
     package let name: String
     /// Finder's color number: 0 none, 1 gray, 2 green, 3 purple, 4 blue, 5 yellow, 6 red, 7 orange.
     package let color: Int
+
+    package init(name: String, color: Int) { self.name = name; self.color = color }
 
     /// The seven colored tags, in Finder's menu order (red to gray), named as the system names them.
     @MainActor package static var standard: [FinderTag] { standard(labels: NSWorkspace.shared.fileLabels) }
@@ -36,6 +39,7 @@ extension Notification.Name {
     package static let tagsChanged = Notification.Name("StrataTagsChanged")
     /// Posted (object: the store) when a folder's tags have been read, for cells to show them.
     package static let tagsLoaded = Notification.Name("StrataTagsLoaded")
+    package static let tagUndoFailed = Notification.Name("StrataTagUndoFailed")
 }
 
 /// Finder tags: read and written through the extended attribute Finder keeps them in (so Finder,
@@ -43,9 +47,14 @@ extension Notification.Name {
 /// visible cell asks; a folder's tags are read off the main thread when it loads, and changes are always worked out from
 /// what's on disk now, never from the cache.
 package final class TagStore {
-    package static let shared = TagStore(preferences: .shared, copies: .live)
+    package static let shared = application()
+
+    private static func application() -> TagStore {
+        TagStore(preferences: .shared, copies: .live, discover: { await FinderTagCatalogReader.discover() })
+    }
 
     /// Where the tags you've added are remembered, for suggestions and the sidebar.
+    package let catalog: TagCatalog
     private let preferences: Prefs
     /// Its window's server and container copies, whose items carry no tags from Strata.
     private let copies: CopyProviders
@@ -54,10 +63,11 @@ package final class TagStore {
     package typealias Reader = @Sendable ([String], [String]) -> [String: [FinderTag]]
     private let reader: Reader
 
-    package init(preferences: Prefs, copies: CopyProviders, reader: @escaping Reader = TagStore.readAll) {
+    package init(preferences: Prefs, copies: CopyProviders, reader: @escaping Reader = TagStore.readAll, discover: @escaping @Sendable () async -> [FinderTag] = { [] }) {
         self.preferences = preferences
         self.copies = copies
         self.reader = reader
+        self.catalog = TagCatalog(preferences: preferences, standard: FinderTag.standard, discover: discover)
     }
 
     nonisolated private static let attribute = "com.apple.metadata:_kMDItemUserTags"
@@ -76,9 +86,6 @@ package final class TagStore {
             failed.count == 1
                 ? String(localized: "The tags of “\(failed[0].lastPathComponent)” couldn’t be changed.")
                 : String(localized: "The tags of \(failed.count) items couldn’t be changed.", comment: "plural")
-        }
-        package var failureReason: String? {
-            String(localized: "They’re locked, or you don’t have permission to change them.", comment: "Why tags couldn’t be changed")
         }
     }
 
@@ -140,12 +147,15 @@ package final class TagStore {
     @discardableResult
     private func keep(_ read: [String: [FinderTag]], unchangedSince before: [String: Int]) -> Bool {
         var changed = false
+        var discovered: [FinderTag] = []
         for (path, list) in read where tagChanges[path, default: 0] == before[path, default: 0] {
             if (cache[path] ?? []) != list { changed = true }
+            discovered += list
             cache[path] = list
             stale.remove(path)
         }
         if requestedSince.isEmpty { tagChanges.removeAll() }
+        catalog.include(discovered)
         return changed
     }
 
@@ -205,10 +215,88 @@ package final class TagStore {
     /// Adds `adding` to every item and removes `removing` (lowercased names) from each, keeping their other tags.
     package func update(_ urls: [URL], adding: [String], removing: Set<String>, undo: UndoManager?) async throws {
         let copies = copies, labels = NSWorkspace.shared.fileLabels
+        await catalog.load()
+        let resolved = adding.map { catalog.resolve($0) }
         let applied = await afterPrevious {
-            await Self.updating(urls, adding: adding, removing: removing, copies: copies, labels: labels)
+            await Self.updating(urls, adding: resolved, removing: removing, copies: copies, labels: labels)
         }
         try finish(applied, undo: undo)
+    }
+
+    /// A reviewed batch owns the file identities and metadata it saw before the confirmation.
+    package nonisolated struct EditPlan: Sendable {
+        fileprivate let changes: [Change]
+        package var count: Int { changes.count }
+    }
+
+    @concurrent package static func plan(_ urls: [URL], replacing tag: FinderTag, with replacement: FinderTag?,
+                                         copies: CopyProviders) async throws -> EditPlan {
+        var changes: [Change] = []
+        var seen = Set<String>()
+        for url in urls {
+            try Task.checkCancellation()
+            let path = url.lexicallyStandardized.path
+            guard seen.insert(path).inserted else { continue }
+            guard canTag(onDisk: url, copies: copies) else { throw Failure(failed: [url]) }
+            guard try url.resourceValues(forKeys: [.isVolumeKey]).isVolume != true else { throw Failure(failed: [url]) }
+            let chosen = try ChosenFile(url)
+            let before = try chosen.withDescriptor { fd, info in
+                guard info.st_mode & S_IFMT != S_IFLNK else { throw POSIXError(.ELOOP) }
+                guard info.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE) == 0 else { throw POSIXError(.EPERM) }
+                return try read(fd, labels: [])
+            }
+            guard before.contains(where: { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }) else { continue }
+            // A rename must never merge an existing differently colored assignment without a decision.
+            if let replacement, replacement.name.caseInsensitiveCompare(tag.name) != .orderedSame,
+               before.contains(where: { $0.name.caseInsensitiveCompare(replacement.name) == .orderedSame }) { throw Failure(failed: [url]) }
+            let after = before.compactMap { old in old.name.caseInsensitiveCompare(tag.name) == .orderedSame ? replacement : old }
+            changes.append(Change(url: url, path: path, identity: chosen.identity, before: before, after: after))
+        }
+        return EditPlan(changes: changes)
+    }
+
+    package func plan(_ urls: [URL], replacing tag: FinderTag, with replacement: FinderTag?) async throws -> EditPlan {
+        try await Self.plan(urls, replacing: tag, with: replacement, copies: copies)
+    }
+
+    package func apply(_ plan: EditPlan, editing id: UUID? = nil, replacement: FinderTag? = nil, undo: UndoManager?) async throws {
+        let expectedEntry = id.flatMap { id in catalog.entries.first { $0.id == id } }
+        if let id {
+            guard expectedEntry != nil else { throw POSIXError(.ESTALE) }
+            if let replacement { try catalog.validate(replacement, replacing: id) }
+        }
+        let copies = copies
+        let applied = await afterPrevious { await Self.applying(plan.changes, copies: copies) }
+        took(applied)
+        undo?.beginUndoGrouping()
+        defer { undo?.endUndoGrouping() }
+        registerUndo(applied.changes, undo: undo)
+        if !applied.failed.isEmpty { throw Failure(failed: applied.failed) }
+        if applied.changes.count < plan.count { throw CancellationError() }
+        try Task.checkCancellation()
+        if let id {
+            guard catalog.entries.first(where: { $0.id == id }) == expectedEntry else { throw POSIXError(.ESTALE) }
+            try catalog.replace(id, with: replacement, undo: undo)
+        }
+    }
+
+    /// Refuse stale identities and changed metadata through the same descriptor used for writing.
+    @concurrent private static func applying(_ changes: [Change], copies: CopyProviders) async -> Applied {
+        var applied = Applied()
+        for change in changes {
+            if Task.isCancelled { break }
+            do {
+                guard canTag(onDisk: change.url, copies: copies) else { throw POSIXError(.EPERM) }
+                let chosen = try ChosenFile(change.url)
+                guard chosen.identity == change.identity else { throw POSIXError(.ESTALE) }
+                try chosen.withDescriptor { fd, info in
+                    guard info.st_mode & S_IFMT != S_IFLNK, try read(fd, labels: []) == change.before else { throw POSIXError(.ESTALE) }
+                    try write(change.after, to: fd)
+                }
+                applied.changes.append(change)
+            } catch { applied.failed.append(change.url) }
+        }
+        return applied
     }
 
     /// Runs `change` once the change before it has written: each reads the items' tags only after that, so none
@@ -220,31 +308,23 @@ package final class TagStore {
             return await change()
         }
         lastChange = Task { _ = await this.value }
-        return await this.value
+        return await withTaskCancellationHandler { await this.value } onCancel: { this.cancel() }
     }
 
-    /// Tags to suggest: the seven colored ones, then others you've added here, most recent first.
-    package var suggestions: [FinderTag] {
-        let standard = FinderTag.standard
-        let standardNames = Set(standard.map { $0.name.lowercased() })
-        let recent = (preferences.defaults.stringArray(forKey: Self.recentKey) ?? [])
-            .filter { !standardNames.contains($0.lowercased()) }
-            .map { FinderTag(name: $0, color: 0) }
-        return standard + recent
-    }
+    package var suggestions: [FinderTag] { catalog.entries.map(\.tag) }
 
-    /// Takes a tag out of the suggestions (and the sidebar). The colored ones always stay.
+    /// Hiding a sidebar item never removes its assignments from files or its picker entry.
     package func forget(_ name: String) {
-        var recent = preferences.defaults.stringArray(forKey: Self.recentKey) ?? []
-        recent.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
-        preferences.defaults.set(recent, forKey: Self.recentKey)
+        if let entry = catalog.entries.first(where: { $0.tag.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            catalog.show(entry.id, inSidebar: false)
+        }
         NotificationCenter.default.post(name: .tagsChanged, object: self, userInfo: ["urls": [URL]()])
     }
 
     // MARK: - Private
 
     /// One item's tags changed: what it is, and its tags before and after.
-    private nonisolated struct Change: Sendable {
+    fileprivate nonisolated struct Change: Sendable {
         let url: URL
         let path: String
         let identity: FileIdentity?
@@ -275,24 +355,18 @@ package final class TagStore {
         return applied
     }
 
-    @concurrent private static func updating(_ urls: [URL], adding: [String], removing: Set<String>, copies: CopyProviders,
+    @concurrent private static func updating(_ urls: [URL], adding: [FinderTag], removing: Set<String>, copies: CopyProviders,
                                              labels: [String]) async -> Applied {
-        let added = adding.map(clean).filter { !$0.isEmpty }
+        let added = adding.filter { !$0.name.isEmpty }
         var applied = write(urls.filter { canTag(onDisk: $0, copies: copies) }.map { url in
             var tags = read(url.lexicallyStandardized.path, labels: labels).filter { !removing.contains($0.name.lowercased()) }
-            for name in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
-                tags.append(FinderTag(name: name, color: color(forNew: name, labels: labels)))
+            for tag in added where !tags.contains(where: { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }) {
+                tags.append(tag)
             }
             return (url, tags)
         }, copies: copies, labels: labels)
-        applied.added = added
+        applied.added = added.map(\.name)
         return applied
-    }
-
-    /// Puts back each item's tags from `changes` (their `after`), only while it's still the item that changed.
-    @concurrent private static func restoring(_ changes: [Change], copies: CopyProviders, labels: [String]) async -> Applied {
-        write(changes.filter { $0.identity != nil && FileIdentity.read($0.path) == $0.identity }.map { ($0.url, $0.after) },
-              copies: copies, labels: labels)
     }
 
     /// Writes each item's tags, going on past failures. Links are skipped.
@@ -314,7 +388,7 @@ package final class TagStore {
             do {
                 let before = try chosen.withDescriptor { fd, info -> [FinderTag]? in
                     guard info.st_mode & S_IFMT != S_IFLNK else { throw CocoaError(.fileWriteUnsupportedScheme) }
-                    let before = read(fd, labels: labels)
+                    let before = try read(fd, labels: labels)
                     guard wanted != before else { return nil }
                     try write(wanted, to: fd)
                     return before
@@ -334,6 +408,9 @@ package final class TagStore {
         if !applied.changes.isEmpty {
             took(applied)
             registerUndo(applied.changes, undo: undo)
+            let addedNames = Set(applied.added.map { $0.lowercased() })
+            catalog.include(applied.changes.flatMap(\.after).filter { addedNames.contains($0.name.lowercased()) }, origin: .chosen)
+            catalog.include(applied.changes.flatMap(\.after))
             remember(applied.added)
         }
         if !applied.failed.isEmpty { throw Failure(failed: applied.failed) }
@@ -353,17 +430,20 @@ package final class TagStore {
     /// themselves are written as undo work, away from the main thread.
     private func registerUndo(_ changes: [Change], undo: UndoManager?) {
         guard let undo else { return }
-        undo.registerUndo(withTarget: undo) { [weak self] undo in
+        // NSUndoManager does not retain its target. The action explicitly owns the service it needs.
+        undo.registerUndo(withTarget: undo) { [store = self] undo in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.registerUndo(changes.map(\.reversed), undo: undo)
-                let copies = self.copies, labels = NSWorkspace.shared.fileLabels
-                _ = FileOps.afterUndoWork { [weak self] in
-                    guard let self else { return }
-                    let applied = await self.afterPrevious {
-                        await Self.restoring(changes.map(\.reversed), copies: copies, labels: labels)
+                store.registerUndo(changes.map(\.reversed), undo: undo)
+                let copies = store.copies
+                _ = FileOps.afterUndoWork {
+                    let applied = await store.afterPrevious {
+                        await Self.applying(changes.map(\.reversed), copies: copies)
                     }
-                    self.took(applied)
+                    store.took(applied)
+                    if !applied.failed.isEmpty {
+                        NotificationCenter.default.post(name: .tagUndoFailed, object: store,
+                                                        userInfo: ["error": Failure(failed: applied.failed)])
+                    }
                 }
             }
         }
@@ -379,11 +459,6 @@ package final class TagStore {
             recent.insert(name, at: 0)
         }
         preferences.defaults.set(Array(recent.prefix(30)), forKey: Self.recentKey)
-    }
-
-    /// A new tag's color: one of the colored tags by name, else none.
-    nonisolated private static func color(forNew name: String, labels: [String]) -> Int {
-        FinderTag.standard(labels: labels).first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.color ?? 0
     }
 
     /// One line, trimmed: a tag name can't hold line breaks (they'd be read back as a color).
@@ -402,13 +477,16 @@ package final class TagStore {
         return parse(data.prefix(read), labels: labels)
     }
 
-    nonisolated private static func read(_ fd: Int32, labels: [String]) -> [FinderTag] {
+    nonisolated private static func read(_ fd: Int32, labels: [String]) throws -> [FinderTag] {
         let size = fgetxattr(fd, attribute, nil, 0, 0, 0)
-        guard size > 0, size <= maxAttributeSize else { return [] }
+        if size < 0, errno == ENOATTR { return [] }
+        guard size > 0, size <= maxAttributeSize else { throw POSIXError(.EIO) }
         var data = Data(count: size)
-        let read = data.withUnsafeMutableBytes { fgetxattr(fd, attribute, $0.baseAddress, size, 0, 0) }
-        guard read > 0 else { return [] }
-        return parse(data.prefix(read), labels: labels)
+        let count = data.withUnsafeMutableBytes { fgetxattr(fd, attribute, $0.baseAddress, size, 0, 0) }
+        guard count == size, BinaryPropertyListBudget.permitsDecoding(data),
+              let strings = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String],
+              strings.count <= maxTags else { throw POSIXError(.EIO) }
+        return parse(data, labels: labels)
     }
 
     package nonisolated static func parse(_ data: Data, labels: [String]) -> [FinderTag] {
@@ -434,8 +512,10 @@ package final class TagStore {
 
     /// Writes "Name\nColor" strings directly (never through a link), to keep colors the system wouldn't know.
     nonisolated private static func write(_ tags: [FinderTag], to fd: Int32) throws {
+        guard tags.count <= maxTags else { throw POSIXError(.E2BIG) }
         let strings = tags.map { "\($0.name)\n\($0.color)" }
         let data = try PropertyListSerialization.data(fromPropertyList: strings, format: .binary, options: 0)
+        guard data.count <= maxAttributeSize else { throw POSIXError(.E2BIG) }
         let result = data.withUnsafeBytes { fsetxattr(fd, attribute, $0.baseAddress, data.count, 0, 0) }
         if result != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }

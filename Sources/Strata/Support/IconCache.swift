@@ -13,10 +13,20 @@ package final class IconCache {
 
     private var byType: [String: NSImage] = [:]
     private let byPath = NSCache<NSString, NSImage>()
+    private let customIcons = NSCache<NSString, NSNumber>()
+    private var awaitingTint: Set<String> = []
+    private let tinted = NSCache<NSString, TintedIcon>()
+    private final class TintedIcon {
+        let original: NSImage
+        let image: NSImage
+        init(original: NSImage, image: NSImage) { self.original = original; self.image = image }
+    }
     private var drawn: [String: NSImage] = [:]
 
     private init() {
         byPath.countLimit = 4000
+        customIcons.countLimit = 4000
+        tinted.countLimit = 128
         reads = BatchedReads(read: Self.read) { [weak self] found in self?.keep(found) }
     }
 
@@ -125,6 +135,34 @@ package final class IconCache {
         await reads.settled()
     }
 
+    /// Color is supplied by the caller's environment. Custom icons and unknown metadata are left intact.
+    package func tintedFolder(_ original: NSImage, at path: String, color: NSColor) -> NSImage {
+        guard let custom = customIcons.object(forKey: path as NSString) else {
+            awaitingTint.insert(path)
+            if shownKinds[path] == nil { shownKinds[path] = .folder; reads.request(path) }
+            return original
+        }
+        guard !custom.boolValue, let rgb = color.usingColorSpace(.sRGB) else { return original }
+        let key = "\(ObjectIdentifier(original))|\(rgb.redComponent)|\(rgb.greenComponent)|\(rgb.blueComponent)" as NSString
+        if let cached = tinted.object(forKey: key), cached.original === original { return cached.image }
+        let side = 256
+        let rect = CGRect(x: 0, y: 0, width: side, height: side)
+        guard let source = Self.bitmap(original, size: rect.size),
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return original }
+        context.draw(source, in: rect)
+        context.setBlendMode(.color)
+        context.setFillColor(rgb.cgColor)
+        context.fill(rect)
+        context.setBlendMode(.destinationIn)
+        context.draw(source, in: rect)
+        guard let image = context.makeImage() else { return original }
+        let result = NSImage(cgImage: image, size: original.size)
+        tinted.setObject(TintedIcon(original: original, image: result), forKey: key)
+        return result
+    }
+
     /// What the name says, for an item whose own icon isn't known yet: a folder unless it's a package, such as an app.
     private static func kind(ofPath path: String, folder: Bool) -> UTType {
         let named = UTType(filenameExtension: (path as NSString).pathExtension)
@@ -138,6 +176,10 @@ package final class IconCache {
         var changed: Set<String> = []
         for (path, icon) in found {
             guard let kind = shownKinds.removeValue(forKey: path) else { continue }
+            if case .made(let made) = icon {
+                customIcons.setObject(NSNumber(value: made.custom), forKey: path as NSString)
+                if awaitingTint.remove(path) != nil { changed.insert(path) }
+            }
             let shown = self.icon(forType: kind)
             let image = switch icon {
             case .known(let known): documentIcon(known)
@@ -170,6 +212,7 @@ package final class IconCache {
     nonisolated private struct MadeElsewhere: @unchecked Sendable {
         let image: NSImage
         let pixels: [UInt8]?
+        let custom: Bool
     }
 
     nonisolated private static func read(_ paths: [String]) -> [String: Found] {
@@ -179,7 +222,7 @@ package final class IconCache {
                 found[path] = .known(known)
             } else {
                 let image = NSWorkspace.shared.icon(forFile: path)
-                found[path] = .made(MadeElsewhere(image: image, pixels: pixels(image)))
+                found[path] = .made(MadeElsewhere(image: image, pixels: pixels(image), custom: hasCustomIcon(path)))
             }
         }
         return found
@@ -210,13 +253,13 @@ package final class IconCache {
     nonisolated private static func current(_ paths: [String]) -> [String: Found] {
         var found: [String: Found] = [:]
         for path in paths {
-            found[path] = knownKind(path).map(Found.known) ?? .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil))
+            found[path] = knownKind(path).map(Found.known) ?? .made(MadeElsewhere(image: NSWorkspace.shared.icon(forFile: path), pixels: nil, custom: hasCustomIcon(path)))
         }
         return found
     }
 
     nonisolated private static func together(_ paths: [String]) -> MadeElsewhere? {
-        NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil) }
+        NSWorkspace.shared.icon(forFiles: paths).map { MadeElsewhere(image: $0, pixels: nil, custom: false) }
     }
 
     /// A kind Strata draws a page for, unless the item has an icon of its own.
@@ -244,9 +287,9 @@ package final class IconCache {
     /// kHasCustomIcon flag, in the high byte of the Finder flags at offset 8 of its Finder info.
     nonisolated private static func hasCustomIcon(_ path: String) -> Bool {
         var info = [UInt8](repeating: 0, count: 32)
-        guard getxattr(path, "com.apple.FinderInfo", &info, info.count, 0, XATTR_NOFOLLOW) == info.count else {
-            return false
-        }
+        let count = getxattr(path, "com.apple.FinderInfo", &info, info.count, 0, XATTR_NOFOLLOW)
+        if count < 0, errno == ENOATTR { return false }
+        guard count == info.count else { return true }
         return info[8] & 0x04 != 0
     }
 }

@@ -15,11 +15,11 @@ extension ColorThemeTests {
         let saved = ThemeStyle.options, contrast = ThemeStyle.highContrast
         defer { ThemeStyle.apply(saved, windows: [], highContrast: contrast) }
         ThemeStyle.apply(ColorThemeOptions(), windows: [], highContrast: false)
-        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared)
+        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared, tags: TagStore(preferences: try .isolated(), copies: .live))
         let window = try #require(controller.window)
         let tabs = try #require(window.contentViewController as? NSTabViewController)
         defer { window.contentViewController = nil }
-        #expect(tabs.tabStyle == .toolbar && tabs.tabViewItems.count == 5)
+        #expect(tabs.tabStyle == .toolbar && tabs.tabViewItems.count == SettingsPage.allCases.filter { $0 != .viewOptions }.count)
 
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             let appearance = try #require(NSAppearance(named: name))
@@ -46,7 +46,7 @@ extension ColorThemeTests {
                 let points = [NSPoint(x: 8, y: 8), NSPoint(x: 8, y: host.bounds.midY),
                               NSPoint(x: host.bounds.maxX - 8, y: host.bounds.midY),
                               NSPoint(x: host.bounds.maxX - 8, y: host.bounds.maxY - 8)]
-                    + (index == 4 ? [NSPoint(x: 28, y: 110)] : [])
+                    + ((tab.identifier as? String) == SettingsPage.shortcuts.rawValue ? [NSPoint(x: 28, y: 110)] : [])
                 let original = try points.map { try settingsPixel(native, view: host, at: $0) }
 
                 for palette in ColorTheme.allCases.filter({ $0 != .system }) + [.system] {

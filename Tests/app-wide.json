@@ -142,5 +142,11 @@
   "instance": "SecureStorage.Context.shared",
   "count": 1,
   "reason": "WebKit's compiled content rules are the same for every window and preview; keeping them in the app's caches only saves compiling them again."
+ },
+ {
+  "file": "Sources/Strata/Model/TagStore.swift",
+  "instance": "*",
+  "count": 2,
+  "reason": "TagStore.application() composes the shared store with the application preferences, providers and read-only Finder discovery. Its concurrent defaults require a function instead of a static initializer; injected stores do not discover Finder unless explicitly configured."
  }
 ]

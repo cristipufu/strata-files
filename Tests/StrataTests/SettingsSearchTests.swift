@@ -50,7 +50,7 @@ import Testing
     }
 
     @Test func everyAppSettingOpensItsNativeTabAndBringsItsControlIntoViewWithoutChangingPreferences() async throws {
-        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared), window = try #require(controller.window)
+        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared, tags: TagStore(preferences: try .isolated(), copies: .live)), window = try #require(controller.window)
         defer { window.close() }
         let tabs = try #require(window.contentViewController as? NSTabViewController)
         let verify = Prefs.shared.verifyCopies, mode = Prefs.shared.viewMode, size = Prefs.shared.nameTextSize

@@ -135,6 +135,8 @@ final class SidebarViewController: NSViewController {
         services.remote.notifications.addObserver(self, selector: #selector(volumesChanged), name: .remoteSessionsChanged, object: services.remote.status)
         // A tag used for the first time joins the Tags section.
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagsChanged, object: services.tags)
+        NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .tagCatalogChanged, object: services.tags.catalog)
+        Task { [catalog = services.tags.catalog] in await catalog.load() }
         preferences.notifications.addObserver(self, selector: #selector(favoritesChanged), name: .favoritesChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(volumesChanged), name: .placesChecked, object: services.places)
         NotificationCenter.default.addObserver(self, selector: #selector(containersChanged), name: .containersChanged, object: services.containerStore)
@@ -233,16 +235,16 @@ final class SidebarViewController: NSViewController {
                               items: servers)
     }
 
-    /// Finder's Tags: the colored ones, then others you've used here. Each shows everything with that tag (Spotlight).
+    /// The owner's visible tags, in catalog order. Each searches Spotlight; All Tags opens their settings.
     private func tagsSection() -> SidebarSection? {
-        let tags = services.tags.suggestions.prefix(12).map { tag in
+        var tags = services.tags.catalog.sidebarTags.map { tag in
             let item = SidebarItem(title: tag.shownName, target: .search(SavedSearch(name: tag.name, query: SpotlightQuery.term(forTag: tag.name), scopePath: nil)),
                                    symbol: tag.displayColor == nil ? "circle" : "circle.fill")
             item.tint = tag.displayColor ?? .secondaryLabelColor
             item.tagName = tag.name
             return item
         }
-        guard !tags.isEmpty else { return nil }
+        tags.append(SidebarItem(title: String(localized: "All Tags…"), target: .tags, symbol: "tag"))
         return SidebarSection(id: "tags", title: String(localized: "Tags", comment: "Sidebar section title: Finder tags"), items: Array(tags))
     }
 

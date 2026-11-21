@@ -364,7 +364,7 @@ struct UserThemesTests {
         let folder = ThemeFolderInMemory()
         let themes = themes(reading: folder.reader)
         await preferences.readThemes(of: themes)
-        let settings = SettingsWindowController(preferences: preferences, userThemes: themes)
+        let settings = SettingsWindowController(preferences: preferences, userThemes: themes, tags: TagStore(preferences: preferences, copies: .live))
         defer { settings.window?.close() }
         #expect(settings.themeChoices.palettes == [.system] + ThemeCatalog.bundled)
 

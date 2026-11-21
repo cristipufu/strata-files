@@ -34,6 +34,7 @@ struct BrowserContextMenu {
         /// For each standard tag, whether every selected item has it (empty for a huge selection), read only when the
         /// tag row is shown.
         var appliedTags: () -> [String: Bool]
+        var favoriteTags: [FinderTag] = []
     }
 
     let facts: Facts
@@ -218,9 +219,11 @@ struct BrowserContextMenu {
 
     private func addTagItems(to menu: NSMenu) {
         menu.addItem(.separator())
-        let row = NSMenuItem()
-        row.view = TagMenuView(applied: facts.appliedTags(), onPick: toggleTag)
-        menu.addItem(row)
+        if !facts.favoriteTags.isEmpty {
+            let row = NSMenuItem()
+            row.view = TagMenuView(tags: facts.favoriteTags, applied: facts.appliedTags(), onPick: toggleTag)
+            menu.addItem(row)
+        }
         add(.editTags, to: menu)
     }
 }

@@ -11,7 +11,7 @@ import os
 /// modification date and size bucket. Requests for the same thumbnail are coalesced; cancelling the last
 /// interested caller cancels the generation.
 @MainActor final class FileThumbnails {
-    static let shared = FileThumbnails(copies: .live, containerStore: .shared)
+    static let shared = FileThumbnails(copies: .live, containerStore: .shared, tags: .shared)
 
     typealias Completion = @Sendable (CGImage?, Bool) -> Void
     typealias Generate = (QLThumbnailGenerator.Request, @escaping Completion) -> Void
@@ -44,6 +44,7 @@ import os
         let finished: (() -> Void)?
     }
 
+    private let tags: TagStore?
     private let covers: BookCoverThumbnails
     private let reads = ReadQueue(limit: 4)
     private let cache: ThumbnailCache
@@ -57,13 +58,14 @@ import os
     private var keysByPath: [String: Set<String>] = [:]
     private var nextID = 0
 
-    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore, generate: @escaping Generate = { request, completion in
+    init(cache: ThumbnailCache = ThumbnailCache(), coverReader: @escaping BookCoverThumbnails.Reader = { try await BookFormat.cover($0, pixels: $1) }, copies: CopyProviders, containerStore: ContainerStore, tags: TagStore? = nil, generate: @escaping Generate = { request, completion in
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             let cancelled = (error as? CocoaError)?.code == .userCancelled || (error as NSError?)?.code == NSUserCancelledError
             let image = representation?.cgImage
             DispatchQueue.global(qos: .utility).async { completion(image, cancelled) }
         }
     }, cancel: @escaping (QLThumbnailGenerator.Request) -> Void = { QLThumbnailGenerator.shared.cancel($0) }) {
+        self.tags = tags
         covers = BookCoverThumbnails(reader: coverReader)
         self.cache = cache
         self.copies = copies
@@ -78,7 +80,11 @@ import os
     }
 
     func icon(for entry: FileEntry) -> NSImage {
-        IconCache.shared.icon(for: entry, containerCopies: copies.containerCopies, containerStore: containerStore)
+        let original = IconCache.shared.icon(for: entry, containerCopies: copies.containerCopies, containerStore: containerStore)
+        guard entry.isFolder, !entry.isSymlink, !entry.isPackage, !entry.isVolume, !copies.contains(entry.url),
+              let tags, tags.catalog.tintFolders,
+              let color = tags.tags(for: entry.url).first(where: { $0.color != 0 })?.displayColor else { return original }
+        return IconCache.shared.tintedFolder(original, at: entry.url.path, color: color)
     }
 
     func canThumbnail(_ entry: FileEntry) -> Bool {

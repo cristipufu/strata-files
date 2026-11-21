@@ -107,7 +107,7 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
         }
         // Tags the items have keep their names; only new ones map a color's name ("Rot") to how it's stored.
         let present = Dictionary(shown.map { ($0.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
-        return values.map { present[$0.lowercased()] ?? Self.stored($0) }.filter { !$0.isEmpty }
+        return values.map { present[$0.lowercased()] ?? storedName($0) }.filter { !$0.isEmpty }
     }
 
     /// Adds `name` in place of what's typed, as a tag, and applies it. (Not a name with a comma: the field would split
@@ -163,6 +163,12 @@ final class TagField: NSTokenField, NSTokenFieldDelegate {
 
     /// The name a tag is stored under: the colored tags are typed and shown in your language ("Rot") but stored as
     /// Finder stores them ("Red").
+    private func storedName(_ name: String) -> String {
+        let canonical = tags.catalog.resolve(name)
+        if tags.suggestions.contains(canonical) { return canonical.name }
+        return Self.stored(name)
+    }
+
     static func stored(_ name: String) -> String {
         let name = TagStore.clean(name)
         return FinderTag.standard.first { $0.shownName.caseInsensitiveCompare(name) == .orderedSame }?.name ?? name
@@ -233,6 +239,8 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
         self.maxRows = maxRows
         super.init(frame: .zero)
         field.translatesAutoresizingMaskIntoConstraints = false
+        NotificationCenter.default.addObserver(self, selector: #selector(catalogChanged), name: .tagCatalogChanged, object: tags.catalog)
+        Task { [catalog = tags.catalog] in await catalog.load() }
         field.onTyping = { [weak self] in
             self?.editing = true
             self?.refresh()
@@ -284,7 +292,9 @@ final class TagPicker: NSView, NSTableViewDataSource, NSTableViewDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Lists the tags matching what's typed: names that start with it first, then names that contain it.
+    @objc private func catalogChanged() { refresh() }
+
+    /// Lists matching names: prefixes first, then names containing the text.
     func refresh() {
         let query = field.typed?.text ?? ""
         let present = Set(field.tokens(includingTyped: false).map { $0.lowercased() })

@@ -31,7 +31,7 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
         label.lineBreakMode = .byTruncatingMiddle
         label.maximumNumberOfLines = 1
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        // The name hugs its text so tag dots follow it, like Finder.
+        // Empty space remains available for rubber-band selection rather than dragging the file.
         label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         tagDots.translatesAutoresizingMaskIntoConstraints = false
         cloudBadge.translatesAutoresizingMaskIntoConstraints = false
@@ -48,13 +48,13 @@ final class NameCellView: NSTableCellView, ColorThemeUpdating {
             icon.widthAnchor.constraint(equalToConstant: Self.iconSide),
             icon.heightAnchor.constraint(equalToConstant: Self.iconSide),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7),
-            tagDots.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
-            tagDots.trailingAnchor.constraint(lessThanOrEqualTo: cloudBadge.leadingAnchor, constant: -2),
-            cloudBadge.trailingAnchor.constraint(equalTo: gitBadge.leadingAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: gitBadge.leadingAnchor, constant: -4),
+            gitBadge.trailingAnchor.constraint(equalTo: cloudBadge.leadingAnchor),
+            cloudBadge.trailingAnchor.constraint(equalTo: tagDots.leadingAnchor, constant: -4),
             cloudBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
             tagDots.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            gitBadge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            tagDots.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             gitBadge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }

@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated enum SettingsPage: String, CaseIterable, Sendable {
-    case general, search, terminal, appearance, shortcuts, viewOptions
+    case general, search, terminal, appearance, shortcuts, tags, viewOptions
 
     var title: String {
         switch self {
@@ -9,6 +9,7 @@ nonisolated enum SettingsPage: String, CaseIterable, Sendable {
         case .search: String(localized: "Search & Index")
         case .terminal: String(localized: "Terminal")
         case .appearance: String(localized: "Appearance")
+        case .tags: String(localized: "Tags")
         case .shortcuts: String(localized: "Shortcuts")
         case .viewOptions: String(localized: "View Options")
         }
@@ -16,6 +17,7 @@ nonisolated enum SettingsPage: String, CaseIterable, Sendable {
 }
 
 nonisolated enum SettingID: String, CaseIterable, Sendable {
+    case tags
     case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case indexFiles, rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
@@ -34,6 +36,7 @@ nonisolated struct SettingEntry: Sendable {
 
 enum SettingsCatalog {
     static let entries: [SettingEntry] = [
+        entry(.tags, .tags, "Tags", "tags finder colors favorites sidebar folders tint"),
         entry(.language, .general, "Language", "language locale translation"),
         entry(.hiddenFiles, .general, "Show hidden files", "hidden files dotfiles invisible"),
         entry(.foldersFirst, .general, "Keep folders on top", "folders first sorting directories"),

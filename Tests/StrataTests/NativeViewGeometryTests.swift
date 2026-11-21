@@ -34,7 +34,7 @@ import Testing
         let badge = GitStatusBadge(), branch = GitBranchPill(clipboard: environment.services.clipboard)
         let preview = ColumnPreviewPane(thumbnails: environment.services.thumbnails, itemInfo: environment.services.itemInfo)
         let flow = FlowView(spacing: 4, lineSpacing: 4), status = StatusItem(nil, "State"), shimmer = ShimmerView()
-        let map = TreemapView(copies: environment.services.copies), tags = TagMenuView(applied: [:]) { _ in }
+        let map = TreemapView(copies: environment.services.copies), tags = TagMenuView(tags: FinderTag.standard, applied: [:]) { _ in }
         let diff = DiffView(rows: [])
         let result = await Task.detached {
             let swift = [grid.isFlipped, strip.isFlipped, flipped.isFlipped, badge.isFlipped, branch.isFlipped,

@@ -384,6 +384,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         switch target {
         case .folder(let url): navigate(to: url)
         case .recents: go(.recents)
+        case .tags: services.showSetting(.tags)
         case .search(let saved): go(.search(saved.query, scope: saved.scopePath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }))
         case .duplicates: go(.duplicates)
         case .largeFiles: go(.search(Self.largeFilesQuery, scope: nil))

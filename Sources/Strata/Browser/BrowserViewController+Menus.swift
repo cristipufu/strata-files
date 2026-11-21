@@ -60,14 +60,15 @@ extension BrowserViewController {
             folderIsArchiveCopy: targetDirectory.map(ArchiveCache.contains) == true,
             selectionIsStacks: selectionIsStacks,
             hasStackProjects: offersStacks && !stackProjectDirectories().isEmpty,
-            appliedTags: { [weak self] in self?.appliedStandardTags(selected.map(\.url)) ?? [:] })
+            appliedTags: { [weak self] in self?.appliedStandardTags(selected.map(\.url)) ?? [:] },
+            favoriteTags: services.tags.catalog.favorites)
     }
 
     /// Checkmarks for the tags every item has (not worked out for huge selections: each item would be read).
     private func appliedStandardTags(_ urls: [URL]) -> [String: Bool] {
         guard urls.count <= 300 else { return [:] }
         var applied: [String: Bool] = [:]
-        for tag in FinderTag.standard {
+        for tag in services.tags.catalog.favorites {
             applied[tag.name.lowercased()] = urls.allSatisfy { url in
                 services.tags.tags(for: url).contains { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
             }

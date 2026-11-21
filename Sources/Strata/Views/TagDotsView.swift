@@ -18,7 +18,7 @@ extension FinderTag {
     }
 }
 
-/// Finder's tag dots: up to three overlapping circles after a name, the most recent tag on top. A tag without a color
+/// Finder's tag dots: up to three overlapping circles, the most recent tag on top. A tag without a color
 /// is a hollow gray ring.
 final class TagDotsView: NSView {
     var tags: [FinderTag] = [] {
@@ -37,7 +37,7 @@ final class TagDotsView: NSView {
         didSet { if backgroundStyle != oldValue { needsDisplay = true } }
     }
 
-    var diameter: CGFloat = 9 {
+    var diameter: CGFloat = 12 {
         didSet { invalidateIntrinsicContentSize(); needsDisplay = true }
     }
 

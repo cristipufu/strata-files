@@ -11,7 +11,7 @@ import Testing
 
 struct SettingsWindowTests {
     @Test func everySettingsPaneKeepsRoomForItsControlsAfterLayout() async throws {
-        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared)
+        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared, tags: TagStore(preferences: try .isolated(), copies: .live))
         let window = try #require(controller.window)
         defer { window.close() }
         let tabs = try #require(window.contentViewController as? NSTabViewController)
@@ -30,7 +30,7 @@ struct SettingsWindowTests {
     }
 
     @Test func settingsCanJoinTheBrowserInFullScreenInsteadOfSwitchingDesktops() throws {
-        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared)
+        let controller = SettingsWindowController(preferences: .shared, userThemes: .shared, tags: TagStore(preferences: try .isolated(), copies: .live))
         let window = try #require(controller.window)
         #expect(window.collectionBehavior.contains(.auxiliary))
         #expect(window.collectionBehavior.contains(.fullScreenAuxiliary))

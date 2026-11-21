@@ -15,16 +15,11 @@ extension SidebarViewController: NSMenuDelegate {
             addServerItems(server, to: menu)
             return
         }
-        // Tags you added can leave the sidebar; the seven colored ones stay, like Finder's.
-        if item.tint != nil {
-            let name = item.tagName ?? item.title
-            let isStandard = FinderTag.standard.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
-            if !isStandard {
-                let remove = NSMenuItem(title: String(localized: "Remove “\(item.title)” from Sidebar"), action: #selector(forgetTag(_:)), keyEquivalent: "")
-                remove.target = self
-                remove.representedObject = name
-                menu.addItem(remove)
-            }
+        if let name = item.tagName {
+            let remove = NSMenuItem(title: String(localized: "Remove “\(item.title)” from Sidebar"), action: #selector(forgetTag(_:)), keyEquivalent: "")
+            remove.target = self
+            remove.representedObject = name
+            menu.addItem(remove)
             return
         }
         if case .search(let search) = item.target {

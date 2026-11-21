@@ -22,6 +22,7 @@ extension NSPasteboard.PasteboardType {
 /// Where a sidebar row takes you.
 enum SidebarTarget: Equatable {
     case folder(URL)
+    case tags
     case recents
     case search(SavedSearch)
     case duplicates

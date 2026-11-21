@@ -69,6 +69,7 @@ The proof, below). A change to any of these, or a new one, comes with tests and 
 |---|---|---|
 | Locked, permissions, comments (Get Info) | `FileInfoEditing`; `InfoEditor` retains a chosen comment item while editing | `MetadataEditTests/lockingTouchesOnlyThatItem`, `permissionsChangeOnlyThatAccessOnThatItem`, `aCommentChangesOnlyTheComment`; `SecurityFollowupTests/commentEditsRefuseItemsReplacedWhileTyping`, `focusedCommentsKeepTheirDisplayedItemBeforeTheFirstEditNotification`; `InspectorProviderTests/switchingFromEditableItemToProviderCopyCommitsActiveCommentToOriginalItem`; `ChosenFileFollowupTests/commentWritesAndRemovalRefuseReplacedParents`, `commentRemovalChangesOnlyTheChosenLink` |
 | Tags | `TagStore.update`, `toggle`, `canTag` | `MetadataEditTests/tagsGoOnTheChosenFilesOnly`, `FileCommandOwnershipTests/tagsNeverGoOnItemsOfTheirWindowsCopies` |
+| Tag management: reviewed rename, recolor and deletion, preserving unrelated tags; identity and metadata checks through the writing descriptor; partial failures and cancellation retain Undo | `TagStore.plan`, `apply`, `applying`; `TagCatalog.replace` | `TagManagementTests/*`; mutations: “Tag management” |
 
 ## Compare and Sync, archives, Ask Strata, project cleanup
 

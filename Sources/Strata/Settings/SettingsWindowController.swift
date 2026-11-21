@@ -4,7 +4,8 @@ import SwiftUI
 
 /// ⌘, — the standard toolbar-tabbed settings window, each pane a SwiftUI form.
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
-    static let shared = SettingsWindowController(preferences: .shared, userThemes: .shared)
+    static let shared = SettingsWindowController(preferences: .shared, userThemes: .shared, tags: .shared)
+    let tagManagement: TagManagement
     private let room: SettingsRoom
     let settingsFocus: SettingsFocus
     let themeChoices: ThemeChoices
@@ -13,7 +14,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     /// `preferences` and `userThemes`: whose color themes Appearance offers, and whose themes folder is read again
     /// as Settings comes forward.
-    init(preferences: Prefs, userThemes: UserThemes) {
+    init(preferences: Prefs, userThemes: UserThemes, tags: TagStore) {
+        let tagManagement = TagManagement(store: tags)
+        self.tagManagement = tagManagement
         self.preferences = preferences
         self.userThemes = userThemes
         let themeChoices = ThemeChoices(preferences: preferences, userThemes: userThemes)
@@ -41,6 +44,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabs.addTabViewItem(pane(.search, "magnifyingglass", IndexSettings()))
         tabs.addTabViewItem(pane(.terminal, "terminal", TerminalSettings()))
         tabs.addTabViewItem(pane(.appearance, "paintbrush", AppearanceSettings(themes: themeChoices)))
+        tabs.addTabViewItem(pane(.tags, "tag", TagSettings(catalog: tags.catalog, management: tagManagement)))
         tabs.addTabViewItem(pane(.shortcuts, "keyboard", ShortcutSettings()))
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
@@ -73,7 +77,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if present { show() }
     }
 
-    func windowWillClose(_ notification: Notification) { settingsFocus.clear() }
+    func windowWillClose(_ notification: Notification) { settingsFocus.clear(); tagManagement.cancel() }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        guard let tabs = window.contentViewController as? NSTabViewController,
+              tabs.tabViewItems.indices.contains(tabs.selectedTabViewItemIndex),
+              tabs.tabViewItems[tabs.selectedTabViewItemIndex].identifier as? String == SettingsPage.tags.rawValue else { return nil }
+        return tagManagement.busy ? nil : tagManagement.undo
+    }
 
     /// A theme file added or changed since the folder was last read shows up as Settings comes forward, from the
     /// editor it was written in too: trying one needs no relaunch.

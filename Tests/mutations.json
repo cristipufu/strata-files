@@ -7990,7 +7990,7 @@
   },
   {
     "file": "Strata/Model/TagStore.swift",
-    "find": "                self.registerUndo(changes.map(\\.reversed), undo: undo)\n",
+    "find": "                store.registerUndo(changes.map(\\.reversed), undo: undo)\n",
     "replace": "",
     "rule": "Undoing a tag change can't be redone",
     "tests": "MetadataEditTests/tagsGoOnTheChosenFilesOnly"
@@ -11986,5 +11986,40 @@
     "replace": "            post(.volumeEjected, place)\n            invalidateVolume(key)\n",
     "rule": "Eject ownership: success observers can start a second eject before the stale volume listing is refused",
     "tests": "VolumeEjectorTests/aSuccessObserverCannotStartAnotherEjectBeforeTheVolumeListRefreshes"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "guard chosen.identity == change.identity else { throw POSIXError(.ESTALE) }",
+    "replace": "guard true else { throw POSIXError(.ESTALE) }",
+    "rule": "Tag management: a reviewed edit adopts replacement files",
+    "tests": "TagManagementTests/reviewedEditRefusesReplacementsAndMetadataChanges"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "guard info.st_mode & S_IFMT != S_IFLNK, try read(fd, labels: []) == change.before else { throw POSIXError(.ESTALE) }",
+    "replace": "guard info.st_mode & S_IFMT != S_IFLNK else { throw POSIXError(.ESTALE) }",
+    "rule": "Tag management: a reviewed edit overwrites later metadata",
+    "tests": "TagManagementTests/reviewedEditRefusesReplacementsAndMetadataChanges"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "old.name.caseInsensitiveCompare(tag.name) == .orderedSame ? replacement : old",
+    "replace": "replacement",
+    "rule": "Tag management: changing one tag drops unrelated assignments",
+    "tests": "TagManagementTests/reviewedRenameTouchesOnlyChosenAssignmentsAndUndoRestoresCatalogAndFiles"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "            if Task.isCancelled { break }",
+    "replace": "            if false { break }",
+    "rule": "Tag management: cancellation writes a reviewed batch anyway",
+    "tests": "TagManagementTests/cancelledEditChangesNeitherFilesNorCatalog"
+  },
+  {
+    "file": "Strata/Model/TagStore.swift",
+    "find": "guard catalog.entries.first(where: { $0.id == id }) == expectedEntry else { throw POSIXError(.ESTALE) }",
+    "replace": "guard true else { throw POSIXError(.ESTALE) }",
+    "rule": "Tag management: a late file edit overwrites a newer catalog definition",
+    "tests": "TagManagementTests/anEditNeverOverwritesACatalogChangeMadeDuringFileWork"
   }
 ]

@@ -61,6 +61,8 @@ let appModelSources = [
     "SavedSearches.swift",
     "ServerConnectionSettings.swift",
     "TagStore.swift",
+    "TagCatalog.swift",
+    "FinderTagCatalogReader.swift",
     "Trash.swift",
 ]
 

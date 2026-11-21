@@ -3,7 +3,7 @@ import AppKit
 /// Finder's row of colored circles in a context menu: clicking one adds that tag to the selection, or removes it when
 /// every selected item already has it (those circles carry a checkmark). The hovered circle's action shows below.
 final class TagMenuView: NSView {
-    private let tags = FinderTag.standard
+    private let tags: [FinderTag]
     /// Per tag: every selected item has it.
     private let applied: [Bool]
     private let onPick: (FinderTag) -> Void
@@ -20,10 +20,11 @@ final class TagMenuView: NSView {
     private static let gap: CGFloat = 7
     private static let inset: CGFloat = 20
 
-    init(applied: [String: Bool], onPick: @escaping (FinderTag) -> Void) {
-        self.applied = FinderTag.standard.map { applied[$0.name.lowercased()] ?? false }
+    init(tags: [FinderTag], applied: [String: Bool], onPick: @escaping (FinderTag) -> Void) {
+        self.tags = tags
+        self.applied = tags.map { applied[$0.name.lowercased()] ?? false }
         self.onPick = onPick
-        let width = Self.inset * 2 + CGFloat(FinderTag.standard.count) * Self.diameter + CGFloat(FinderTag.standard.count - 1) * Self.gap
+        let width = Self.inset * 2 + CGFloat(tags.count) * Self.diameter + CGFloat(max(0, tags.count - 1)) * Self.gap
         super.init(frame: NSRect(x: 0, y: 0, width: max(width, 220), height: 46))
         caption.font = .menuFont(ofSize: 11)
         caption.textColor = .secondaryLabelColor

@@ -174,13 +174,14 @@ final class BrowserServices {
         self.mediaDetailsReader = { url, type in
             await mediaReads.run { await mediaDetailsReader(url, type) } ?? MediaDetails()
         }
-        self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore)
+        let tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
+        self.tags = tags
+        self.thumbnails = thumbnails ?? FileThumbnails(copies: self.copies, containerStore: containerStore, tags: tags)
         self.itemInfo = itemInfo ?? ItemInfoLoader(copies: self.copies, containerStore: containerStore, mediaReader: mediaReader)
         self.volumeSpace = volumeSpace
         self.windows = windows
         // An environment of its own reads its own: unstarted indexes in its History's storage, and stores no other window
         // shares.
-        self.tags = tags ?? TagStore(preferences: transfers.preferences, copies: transfers.copies)
         self.cloud = cloud ?? CloudStore()
         self.git = git ?? GitStatusStore()
         self.index = index ?? FileIndex(storage: transfers.history.storage, copies: transfers.copies,
