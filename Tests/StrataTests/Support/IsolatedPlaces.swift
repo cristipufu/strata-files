@@ -1,3 +1,4 @@
+import Foundation
 @testable import Strata
 @testable import StrataAI
 @testable import StrataConnections

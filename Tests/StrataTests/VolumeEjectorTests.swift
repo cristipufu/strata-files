@@ -95,11 +95,6 @@ private actor DiskList {
     var items: [Item] = []
 }
 
-/// A window that takes clicks as the front one does, without ever being shown.
-private final class ClickWindow: NSWindow {
-    override var isKeyWindow: Bool { true }
-}
-
 /// The eject button, its menus and ⌘E share one owner: it hands macOS only the root of a disk the latest read lists as
 /// ejectable, once until it answers. Panes on the disk go Home before it's asked, and stay there.
 @MainActor struct VolumeEjectorTests {
@@ -245,6 +240,68 @@ private final class ClickWindow: NSWindow {
         #expect(tree.snapshot() == ["Home/"])
     }
 
+    @Test(.timeLimit(.minutes(2)), arguments: [false, true])
+    func aFailedEjectCanRetryUnlessTheVolumeActuallyUnmounted(confirmedUnmount: Bool) async throws {
+        let tree = try TestTree("Home/", "Disk/")
+        let disk = Self.disk(tree.url("Disk"), named: "Disk")
+        let list = DiskList([disk]), unmounts = HeldUnmounts(), workspace = NotificationCenter()
+        let environment = try await Self.environment(list, unmounts: unmounts, home: tree.url("Home"), notifications: workspace)
+        let ejector = environment.services.volumeEjector
+        let task = try #require(ejector.eject(disk.url, from: nil))
+        await unmounts.waitForAsks(1)
+        await list.hold()
+        environment.services.places.refresh()
+        workspace.post(name: NSWorkspace.willUnmountNotification, object: nil, userInfo: ["NSDevicePath": disk.url.path])
+        #expect(ejector.isEjecting(disk.url))
+        if confirmedUnmount {
+            workspace.post(name: NSWorkspace.didUnmountNotification, object: nil, userInfo: ["NSDevicePath": disk.url.path])
+        }
+        await unmounts.answer(disk.url, throwing: CocoaError(.fileWriteNoPermission))
+        await task.value
+        #expect(ejector.tasks.isEmpty)
+        #expect(ejector.isEjecting(disk.url) == confirmedUnmount)
+        let retry = ejector.eject(disk.url, from: nil)
+        #expect((retry == nil) == confirmedUnmount)
+        if let retry {
+            await unmounts.waitForAsks(2)
+            await unmounts.answer(disk.url, throwing: CocoaError(.fileWriteNoPermission))
+            await retry.value
+        }
+        await list.release()
+        await Self.read(environment.services.places)
+        #expect(tree.snapshot() == ["Disk/", "Home/"])
+    }
+
+    @Test(.timeLimit(.minutes(2)))
+    func aSuccessObserverCannotStartAnotherEjectBeforeTheVolumeListRefreshes() async throws {
+        let tree = try TestTree("Home/", "Disk/")
+        let disk = Self.disk(tree.url("Disk"), named: "Disk")
+        let list = DiskList([disk]), unmounts = HeldUnmounts()
+        let environment = try await Self.environment(list, unmounts: unmounts, home: tree.url("Home"))
+        let ejector = environment.services.volumeEjector
+        let retried = Reports<Task<Void, Never>>()
+        let observer = NotificationCenter.default.addObserver(forName: .volumeEjected, object: ejector, queue: nil) { _ in
+            MainActor.assumeIsolated {
+                if let retry = ejector.eject(disk.url, from: nil) { retried.items.append(retry) }
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let task = try #require(ejector.eject(disk.url, from: nil))
+        await unmounts.waitForAsks(1)
+        await list.hold()
+        await unmounts.answer(disk.url)
+        await task.value
+        #expect(retried.items.isEmpty)
+        if let retry = retried.items.first {
+            await unmounts.waitForAsks(2)
+            await unmounts.answer(disk.url, throwing: CocoaError(.fileWriteNoPermission))
+            await retry.value
+        }
+        await list.release()
+        await Self.read(environment.services.places)
+        #expect(tree.snapshot() == ["Disk/", "Home/"])
+    }
+
     @Test(.timeLimit(.minutes(2)))
     func aDiskThatDoesntAnswerIsReportedAndStaysEjectingUntilMacOSAnswersLate() async throws {
         let tree = try TestTree("Home/")
@@ -387,7 +444,7 @@ private final class ClickWindow: NSWindow {
 
         // ⌘E: the disk whose top a pane shows, or whose top a deeper column shows, but not a folder only inside it.
         let eject = NSMenuItem(title: "", action: #selector(BrowserWindowController.ejectVolume(_:)), keyEquivalent: "")
-        left.browser.setMode(.columns, remember: false)
+        left.browser.setMode(.columns)
         await show("Volumes", in: left)
         window.browser(left.browser, columnLocationChanged: tree.url("Volumes/a/folder"))
         #expect(window.panesShowing(a.url).first === left && !window.validateMenuItem(eject))
@@ -540,7 +597,7 @@ private final class ClickWindow: NSWindow {
 
     /// A sidebar in a window of its own, never shown, laid out so its rows are where a click finds them.
     private func host(_ sidebar: SidebarViewController) -> NSWindow {
-        let window = ClickWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 700), styleMask: .borderless,
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 700), styleMask: .borderless,
                                  backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = sidebar.view
@@ -562,30 +619,20 @@ private final class ClickWindow: NSWindow {
         try #require(cell.subviews.compactMap { $0 as? NSTextField }.first)
     }
 
-    private func mouse(_ type: CGEventType, at point: NSPoint) throws -> NSEvent {
-        let source = try #require(CGEventSource(stateID: .privateState))
-        let event = try #require(CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: .zero, mouseButton: .left))
-        event.flags = []
-        event.setIntegerValueField(.mouseEventClickState, value: 1)
-        event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: 0)
-        event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: 0)
-        let initial = try #require(NSEvent(cgEvent: event)).locationInWindow
-        let location = event.location
-        event.location = CGPoint(x: location.x + point.x - initial.x, y: location.y + initial.y - point.y)
-        let result = try #require(NSEvent(cgEvent: event))
-        try #require(abs(result.locationInWindow.x - point.x) < 1 && abs(result.locationInWindow.y - point.y) < 1)
-        return result
-    }
-
-    /// A click at the button's center, delivered by the window as AppKit delivers it. The release waits in the app's
-    /// own queue for whatever tracks the press; one nothing took is delivered after it.
-    private func click(_ button: NSButton, in window: NSWindow) throws {
+    /// Native hit testing and target/action need no event-tracking loop in a hidden window. Disabled buttons pass
+    /// their press to the outline, whose refusal must preserve selection without tracking that press.
+    private func click(_ button: NSButton, in window: NSWindow, outline: NSOutlineView) throws {
         let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
-        let down = try mouse(.leftMouseDown, at: point), up = try mouse(.leftMouseUp, at: point)
-        NSApp.postEvent(up, atStart: false)
-        window.sendEvent(down)
-        if let unclaimed = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true) {
-            window.sendEvent(unclaimed)
+        if button.isEnabled {
+            let content = try #require(window.contentView)
+            let hit = content.hitTest(content.superview?.convert(point, from: nil) ?? point)
+            try #require(hit === button)
+            button.performClick(nil)
+        } else {
+            let event = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+                                                       windowNumber: window.windowNumber, context: nil,
+                                                       eventNumber: 0, clickCount: 1, pressure: 1))
+            outline.mouseDown(with: event)
         }
     }
 
@@ -634,7 +681,7 @@ private final class ClickWindow: NSWindow {
         window.makeFirstResponder(outline)
         var navigations = 0
         sidebar.onSelect = { _ in navigations += 1 }
-        try click(eject, in: window)
+        try click(eject, in: window, outline: outline)
         let task = try #require(environment.services.volumeEjector.tasks.values.first, "The click reached the button")
         await unmounts.waitForAsks(1)
         #expect(await unmounts.asked == [a.url])
@@ -644,7 +691,7 @@ private final class ClickWindow: NSWindow {
         #expect(!eject.isEnabled, "Busy while it ejects")
         #expect(!sidebar.validateMenuItem(menuItem))
         // A click on the busy button selects nothing and asks nothing more.
-        try click(eject, in: window)
+        try click(eject, in: window, outline: outline)
         #expect(outline.selectedRow == trash && navigations == 0 && environment.services.volumeEjector.tasks.count == 1)
         await unmounts.answer(a.url, throwing: CocoaError(.fileWriteNoPermission))
         await task.value
@@ -713,7 +760,7 @@ private final class ClickWindow: NSWindow {
         outline.selectRowIndexes([outline.row(forItem: plain)], byExtendingSelection: false)
         var navigations = 0
         sidebar.onSelect = { _ in navigations += 1 }
-        try click(eject, in: window)
+        try click(eject, in: window, outline: outline)
         let task = try #require(environment.services.volumeEjector.tasks.values.first, "The click reached the button")
         await unmounts.waitForAsks(1)
         #expect(outline.item(atRow: outline.selectedRow) as? FolderNode === plain && navigations == 0)

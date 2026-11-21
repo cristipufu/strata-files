@@ -33,8 +33,8 @@ extension Notification.Name {
     private let patience: Patience
     private let report: Report
     private(set) var tasks: [String: Task<Void, Never>] = [:]
-    /// Disks ejected or unmounted that the places read may still list, until a read begun since has landed.
-    private var gone: Set<String> = []
+    /// Workspace notices and completed ejects invalidate the last volume listing until a fresh read lands.
+    private var awaitingRefresh: Set<String> = []
 
     init(places: PlaceChecks, workspace: NotificationCenter, unmount: @escaping Unmount, patience: @escaping Patience,
          report: @escaping Report) {
@@ -43,17 +43,23 @@ extension Notification.Name {
         self.unmount = unmount
         self.patience = patience
         self.report = report
-        // Unmounted elsewhere, or taken along with a disk ejected here: offering it again would only fail.
-        for name in [NSWorkspace.willUnmountNotification, NSWorkspace.didUnmountNotification] {
-            workspace.addObserver(self, selector: #selector(unmounted(_:)), name: name, object: nil)
-        }
+        workspace.addObserver(self, selector: #selector(willUnmount(_:)), name: NSWorkspace.willUnmountNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(didUnmount(_:)), name: NSWorkspace.didUnmountNotification, object: nil)
     }
 
     isolated deinit { workspace.removeObserver(self) }
 
-    @objc private func unmounted(_ notification: Notification) {
+    @objc private func willUnmount(_ notification: Notification) {
         guard let volume = Self.unmounting(notification) else { return }
-        markGone(Self.key(volume))
+        let key = Self.key(volume)
+        // Our request owns its refusal until macOS answers. A willUnmount notice isn't proof of success.
+        guard tasks[key] == nil else { return }
+        invalidateVolume(key)
+    }
+
+    @objc private func didUnmount(_ notification: Notification) {
+        guard let volume = Self.unmounting(notification) else { return }
+        invalidateVolume(Self.key(volume))
     }
 
     /// The disk a will- or didUnmount notice names: a willUnmount notice may give only its path.
@@ -62,7 +68,7 @@ extension Notification.Name {
         return (notice.userInfo?["NSDevicePath"] as? String).map { URL(filePath: $0, directoryHint: .isDirectory) }
     }
 
-    private var refused: Set<String> { gone.union(tasks.keys) }
+    private var refused: Set<String> { awaitingRefresh.union(tasks.keys) }
 
     func isEjecting(_ volume: URL) -> Bool { refused.contains(Self.key(volume)) }
 
@@ -99,20 +105,20 @@ extension Notification.Name {
     private func finish(_ place: Place, key: String, outcome: Result<Void, any Error>) {
         tasks[key] = nil
         if case .success = outcome {
+            invalidateVolume(key)
             post(.volumeEjected, place)
-            markGone(key)
         }
         NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
     }
 
-    private func markGone(_ key: String) {
-        guard gone.insert(key).inserted else { return }
+    private func invalidateVolume(_ key: String) {
+        guard awaitingRefresh.insert(key).inserted else { return }
         NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
         let places = places
         places.refresh()
         Task { [weak self] in
             while let read = places.task { await read.value }
-            guard let self, gone.remove(key) != nil else { return }
+            guard let self, awaitingRefresh.remove(key) != nil else { return }
             NotificationCenter.default.post(name: .volumeEjectionsChanged, object: self)
         }
     }

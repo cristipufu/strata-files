@@ -16,10 +16,11 @@ SPEC.loader.exec_module(DIAGNOSTICS)
 
 
 class CheckDiagnosticsTests(unittest.TestCase):
-    def run_check(self, code, output):
+    def run_check(self, code, output, require_tests=False):
         return subprocess.run([
             sys.executable, str(SCRIPT), "--output-directory", str(output),
-            "--report-wait-seconds", "0", "--", sys.executable, "-c", code,
+            "--report-wait-seconds", "0", *(["--require-test-summary"] if require_tests else []),
+            "--", sys.executable, "-c", code,
         ], capture_output=True, timeout=10)
 
     def test_success_and_failure_keep_output_and_exit_status(self):
@@ -42,6 +43,55 @@ class CheckDiagnosticsTests(unittest.TestCase):
             result = self.run_check("import os, signal; os.kill(os.getpid(), signal.SIGTERM)", output)
             self.assertEqual(result.returncode, 128 + signal.SIGTERM)
             self.assertEqual(json.loads((output / "result.json").read_text())["returncode"], -signal.SIGTERM)
+
+    def test_incomplete_failed_and_empty_test_runs_cannot_exit_successfully(self):
+        outputs = [
+            "◇ Test run started.\n◇ Test example() started.\n",
+            "◇ Test run started.\n✘ Test run with 1 test in 1 suite failed after 0.1 seconds.\n",
+            "◇ Test run started.\n✔ Test run with 0 tests in 0 suites passed after 0.1 seconds.\n",
+            "◇ Test run started.\n✔ Test run with 1 test in 1 suite passed.\n◇ Test run started.\n",
+        ]
+        for text in outputs:
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary)
+                result = self.run_check("print(" + repr(text) + ")", output)
+                self.assertEqual(result.returncode, 1)
+                details = json.loads((output / "result.json").read_text())
+                self.assertEqual(details["returncode"], 0)
+                self.assertEqual(details["check_returncode"], 1)
+                self.assertTrue(details["test_problems"])
+
+    def test_required_test_run_cannot_succeed_without_any_test_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = self.run_check("print('Build complete!')", Path(temporary), require_tests=True)
+            self.assertEqual(result.returncode, 1)
+
+    def test_swift_test_requires_a_summary_without_an_extra_flag(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            swift = root / "swift"
+            swift.write_text("#!/bin/sh\necho 'Build complete!'\n")
+            swift.chmod(0o755)
+            result = subprocess.run([
+                sys.executable, str(SCRIPT), "--output-directory", str(root / "diagnostics"),
+                "--report-wait-seconds", "0", "--", str(swift), "test",
+            ], capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 1)
+
+    def test_complete_runs_pass_across_chunk_boundaries_without_counting_markers_twice(self):
+        run = "◇ Test run started.\n✔ Test run with 2 tests in 1 suite passed after 0.1 seconds.\n".encode()
+        for padding in (65500, 65530, 65536):
+            with self.subTest(padding=padding), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary)
+                text = b"x" * padding + run + run
+                result = self.run_check("import sys; sys.stdout.buffer.write(" + repr(text) + ")", output, require_tests=True)
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(json.loads((output / "result.json").read_text())["test_problems"], [])
+
+    def test_failed_summary_preserves_the_process_failure_code(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            result = self.run_check("import sys; print('✘ Test run with 1 test in 1 suite failed'); sys.exit(7)", Path(temporary))
+            self.assertEqual(result.returncode, 7)
 
     def test_swallowed_native_exception_diagnostics_fail_a_successful_process(self):
         messages = [

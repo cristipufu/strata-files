@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import UniformTypeIdentifiers
 
 nonisolated struct FileOpenPlan: Sendable {
@@ -38,13 +38,5 @@ nonisolated struct FileOpenPlan: Sendable {
             }
         }
         return Self(requests: requests, folder: folder)
-    }
-
-    static func defaultApplication(for url: URL) -> URL? {
-        NSWorkspace.shared.urlForApplication(toOpen: url)
-    }
-
-    @MainActor static func openInApplication(_ urls: [URL], _ app: URL) {
-        NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
 }

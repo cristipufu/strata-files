@@ -13,8 +13,8 @@ extension BrowserViewController {
     }
 
     func open(_ entries: [FileEntry],
-              applicationForFile: @escaping @Sendable (URL) -> URL? = FileOpenPlan.defaultApplication,
-              batchOpener: @escaping @MainActor ([URL], URL) -> Void = FileOpenPlan.openInApplication,
+              applicationForFile: @escaping @Sendable (URL) -> URL? = FileApplications.defaultApplication,
+              batchOpener: @escaping @MainActor ([URL], URL) -> Void = FileApplications.open,
               fileOpener: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         guard !entries.isEmpty else { return }
         let files = entries.filter { !$0.isFolder }
@@ -51,7 +51,7 @@ extension BrowserViewController {
     }
 
     func open(_ urls: [URL], withApplicationAt app: URL,
-              opener: @escaping @MainActor ([URL], URL) -> Void = FileOpenPlan.openInApplication) {
+              opener: @escaping @MainActor ([URL], URL) -> Void = FileApplications.open) {
         guard !urls.isEmpty else { return }
         fetches.afterFetching(urls) { opener(urls, app) }
     }
