@@ -29,6 +29,11 @@ typedef NS_ENUM(NSInteger, STPreviewFailurePoint) {
 @property(nonatomic) BOOL failsEditing;
 @end
 
+@interface STFailingPreviewDisplay : STPreviewTextView
+@property(nonatomic) BOOL failsDisplay;
+@property(nonatomic, readonly) NSUInteger failures;
+@end
+
 FOUNDATION_EXPORT NSError *_Nullable STTestInlineMarkdownFailure(void);
 
 NS_ASSUME_NONNULL_END

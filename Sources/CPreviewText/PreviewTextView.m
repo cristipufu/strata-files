@@ -45,6 +45,10 @@ NSTextStorage *STCreatePreviewTextStorage(NSAttributedString *document) {
         [self.layoutManager replaceTextStorage:storage];
         if (_renderingError) return NO;
         if (!allows) self.layoutManager.allowsNonContiguousLayout = NO;
+        if (_renderingError) return NO;
+        // Storage replacement requests a redraw that avoids layout. With idle layout disabled, the viewport
+        // can stay blank after its empty first paint until scrolling requests a layout-enabled redraw.
+        [self setNeedsDisplayInRect:self.visibleRect avoidAdditionalLayout:NO];
         return _renderingError == nil;
     } @catch (NSException *exception) {
         [self retireAfterException:exception operation:@"text storage installation"];

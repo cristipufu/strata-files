@@ -67,6 +67,16 @@
 }
 @end
 
+@implementation STFailingPreviewDisplay
+- (void)setNeedsDisplayInRect:(NSRect)rect avoidAdditionalLayout:(BOOL)avoidLayout {
+    if (self.failsDisplay && !self.renderingError && !avoidLayout) {
+        _failures++;
+        [NSException raise:NSInternalInconsistencyException format:@"Controlled preview display failure"];
+    }
+    [super setNeedsDisplayInRect:rect avoidAdditionalLayout:avoidLayout];
+}
+@end
+
 @interface STFailingMarkdownString : NSString
 @end
 @implementation STFailingMarkdownString
