@@ -37,6 +37,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
     private(set) var suggesting: Task<Void, Never>?
     private let copies: CopyProviders
     private let names: FolderNames
+    private let preferences: Prefs
+    /// The account folder the first crumb shows as a cloud place, whose icon the bar waits for.
+    private var cloudRootPath: String?
+    private var showsCloudRoots: Bool
     private let embedded: Bool
     // Breadcrumbs must yield when AppKit measures the toolbar's minimum size.
     private static let toolbarSizingPriority = NSLayoutConstraint.Priority(
@@ -51,6 +55,8 @@ final class PathBar: NSView, NSTextFieldDelegate {
         branchPill = GitBranchPill(clipboard: clipboard)
         self.copies = copies
         self.names = names
+        self.preferences = preferences
+        showsCloudRoots = preferences.cloudRootCrumbs
         self.embedded = embedded
         suggestionList = PathSuggestionList(copies: copies, names: names)
         suggestions = PathSuggestions(preferences: preferences, places: places, index: index)
@@ -59,6 +65,10 @@ final class PathBar: NSView, NSTextFieldDelegate {
         wantsLayer = true
         NotificationCenter.default.addObserver(self, selector: #selector(namesRead(_:)), name: .folderNamesRead,
                                                object: names)
+        NotificationCenter.default.addObserver(self, selector: #selector(iconsLoaded(_:)), name: .iconsLoaded,
+                                               object: IconCache.shared)
+        preferences.notifications.addObserver(self, selector: #selector(appearanceChanged), name: .appearanceChanged,
+                                              object: nil)
 
         setUpCrumbs()
         setUpField()
@@ -148,12 +158,14 @@ final class PathBar: NSView, NSTextFieldDelegate {
             return
         }
         guard let url else { crumbs.show([]); return }
-        let parts = Self.components(of: url, copies: copies, names: names)
+        let parts = Self.components(of: url, copies: copies, names: names, cloudRoots: showsCloudRoots)
+        cloudRootPath = parts.first.flatMap { $0.cloud == nil ? nil : $0.url.path }
         let repoRootPath = gitRoot?.lexicallyStandardized.path
         var steps: [PathBreadcrumbs.Step] = []
         for (index, part) in parts.enumerated() {
             let isLast = index == parts.count - 1
-            let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast)
+            let icon = part.cloud == nil ? nil : IconCache.shared.icon(forPath: part.url.path, folder: true)
+            let crumb = CrumbButton(title: part.title, symbol: part.symbol, emphasized: isLast, cloud: part.cloud, icon: icon)
             crumb.toolTip = Format.tildePath(part.url)
             crumb.target = self
             crumb.action = #selector(crumbClicked(_:))
@@ -184,33 +196,49 @@ final class PathBar: NSView, NSTextFieldDelegate {
         rebuild()
     }
 
+    /// The cloud account's own icon (Dropbox's, iCloud's) arrived: its crumb shows it.
+    @objc private func iconsLoaded(_ notification: Notification) {
+        guard !isEditing, title == nil, let cloudRootPath,
+              let paths = notification.userInfo?["paths"] as? Set<String>, paths.contains(cloudRootPath) else { return }
+        rebuild()
+    }
+
+    /// Settings ▸ Appearance ▸ Files ▸ Show cloud folders as their own place.
+    @objc private func appearanceChanged() {
+        guard preferences.cloudRootCrumbs != showsCloudRoots else { return }
+        showsCloudRoots = preferences.cloudRootCrumbs
+        if !isEditing, title == nil, url != nil { rebuild() }
+    }
+
     @objc private func crumbClicked(_ sender: CrumbButton) {
         onActivate?()
         guard let destination = sender.destination else { return }
         onNavigate?(destination, nil)
     }
 
-    /// One step of the path bar: its title, where it leads, and its symbol, if any.
-    private typealias Crumb = (title: String, url: URL, symbol: String?)
+    /// One step of the path bar: its title, where it leads, its symbol, if any, and the cloud account it stands for.
+    typealias Crumb = (title: String, url: URL, symbol: String?, cloud: CloudProvider?)
 
-    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders, names: FolderNames) -> [Crumb] {
+    private static func components(of url: URL, depth: Int = 0, copies: CopyProviders, names: FolderNames,
+                                   cloudRoots: Bool) -> [Crumb] {
         // Containers, then a container, then its folders from `/`.
         if let folder = copies.containerCopies.containersFolder(of: url) {
-            return [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox")]
+            return [(String(localized: "Containers", comment: "Sidebar section title: Docker containers"), folder, "shippingbox", nil)]
                 + steps(of: url, below: folder)
         }
         // On a server: the server, then its folders from `/`.
         if let (server, top) = copies.remoteCopies.server(containing: url) {
-            return [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack")]
+            return [(server.name, top, server.kind == .s3 ? "externaldrive.connected.to.line.below" : "server.rack", nil)]
                 + steps(of: url, below: top)
         }
         // Inside an archive opened as a folder: the archive's own location, the archive, then the folders inside it
         // (an archive opened from inside another one nests, a few levels at most).
         if depth < 8, let (archive, top) = ArchiveCache.archive(containing: url) {
-            return components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies, names: names)
-                + [(archive.lastPathComponent, top, "archivebox")] + steps(of: url, below: top)
+            return components(of: archive.deletingLastPathComponent(), depth: depth + 1, copies: copies, names: names,
+                              cloudRoots: cloudRoots)
+                + [(archive.lastPathComponent, top, "archivebox", nil)] + steps(of: url, below: top)
         }
-        return localComponents(of: url, copies: copies, names: names)
+        return localComponents(of: url, copies: copies, names: names, cloudRoots: cloudRoots)
     }
 
     /// Each folder from `top` (not included) down to `url`, by its own name.
@@ -220,30 +248,41 @@ final class PathBar: NSView, NSTextFieldDelegate {
         let inner = url.lexicallyStandardized.path.dropFirst(top.lexicallyStandardized.path.count).split(separator: "/")
         for component in inner {
             current = current.appending(path: String(component))
-            parts.append((String(component), current, nil))
+            parts.append((String(component), current, nil, nil))
         }
         return parts
     }
 
     /// Your home folder, another disk or the startup disk, then each folder by the name it's shown with; a Trash as
-    /// one "Trash" step.
-    private static func localComponents(of url: URL, copies: CopyProviders, names: FolderNames) -> [Crumb] {
+    /// one "Trash" step. With `cloudRoots`, a cloud account (Dropbox, iCloud Drive…) starts the path in place of
+    /// Home › Library › CloudStorage.
+    static func localComponents(of url: URL, copies: CopyProviders, names: FolderNames, home homeFolder: URL = Places.home,
+                                cloudRoots: Bool) -> [Crumb] {
         let path = url.lexicallyStandardized.path
-        let home = Places.home.lexicallyStandardized.path
+        let home = homeFolder.lexicallyStandardized.path
         var parts: [Crumb] = []
         let root: String
-        if path == home || path.hasPrefix(home + "/") {
+        if cloudRoots, let (account, provider) = CloudFolders.cloudRoot(for: url, home: homeFolder),
+           case let top = account.lexicallyStandardized.path, path == top || path.hasPrefix(top + "/") {
+            root = top
+            let account = URL(filePath: top, directoryHint: .isDirectory)
+            var name = names.name(account)
+            if provider == .iCloud, name == account.lastPathComponent {
+                name = String(localized: "iCloud Drive", comment: "Path bar: the iCloud Drive folder")
+            }
+            parts.append((name, account, nil, provider))
+        } else if path == home || path.hasPrefix(home + "/") {
             root = home
             // Icon only, unless home is the folder being shown.
             let homeURL = URL(filePath: home, directoryHint: .isDirectory)
-            parts.append((path == home ? names.name(homeURL) : "", homeURL, "house.fill"))
+            parts.append((path == home ? names.name(homeURL) : "", homeURL, "house.fill", nil))
         } else if path.hasPrefix("/Volumes/"), let name = path.split(separator: "/").dropFirst().first {
             root = "/Volumes/\(name)"
-            parts.append((String(name), URL(filePath: root, directoryHint: .isDirectory), "externaldrive.fill"))
+            parts.append((String(name), URL(filePath: root, directoryHint: .isDirectory), "externaldrive.fill", nil))
         } else {
             root = "/"
             let startup = URL(filePath: "/", directoryHint: .isDirectory), name = names.name(startup)
-            parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill"))
+            parts.append((name == startup.lastPathComponent ? "Macintosh HD" : name, startup, "internaldrive.fill", nil))
         }
         // Each step's URL is spelled with what's known, never asking the disk.
         var current = URL(filePath: root, directoryHint: .isDirectory)
@@ -252,9 +291,9 @@ final class PathBar: NSView, NSTextFieldDelegate {
             // Another disk's Trash is `.Trashes/<uid>`: shown as one "Trash" step.
             if component == ".Trashes", Trash.isTrash(current.appending(path: String(getuid()))) { continue }
             if Trash.isTrash(current) {
-                parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash"))
+                parts.append((String(localized: "Trash", comment: "Path bar: a Trash folder"), current, "trash", nil))
             } else {
-                parts.append((Places.displayName(current, copies: copies, names: names), current, nil))
+                parts.append((Places.displayName(current, copies: copies, names: names), current, nil, nil))
             }
         }
         return parts
@@ -494,9 +533,13 @@ final class PathBar: NSView, NSTextFieldDelegate {
 /// A breadcrumb segment with a soft hover highlight.
 final class CrumbButton: NSButton {
     var destination: URL?
+    /// The cloud account this crumb stands for: it sits in a pill of the service's color.
+    let cloud: CloudProvider?
     private var tracking: NSTrackingArea?
+    private var hovered = false
 
-    init(title: String, symbol: String?, emphasized: Bool) {
+    init(title: String, symbol: String?, emphasized: Bool, cloud: CloudProvider? = nil, icon: NSImage? = nil) {
+        self.cloud = cloud
         super.init(frame: .zero)
         cell = CrumbButtonCell(textCell: "")
         isBordered = false
@@ -517,6 +560,18 @@ final class CrumbButton: NSButton {
             contentTintColor = .secondaryLabelColor
             imagePosition = title.isEmpty ? .imageOnly : .imageLeading
             imageHugsTitle = true
+        }
+        if cloud != nil {
+            // The account folder's own icon (Dropbox's, iCloud's), or a cloud until it has been read.
+            let shown = (icon?.copy() as? NSImage)
+                ?? NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: nil) ?? NSImage()
+            shown.size = NSSize(width: 16, height: 16)
+            image = shown
+            imagePosition = .imageLeading
+            imageHugsTitle = true
+            setAccessibilityLabel(String(localized: "\(title), cloud storage",
+                                         comment: "Accessibility: the path bar crumb of a cloud account, like Dropbox"))
+            setHighlight(false)
         }
         (cell as? NSButtonCell)?.lineBreakMode = .byTruncatingTail
         cell?.usesSingleLineMode = true
@@ -552,10 +607,23 @@ final class CrumbButton: NSButton {
         super.viewWillMove(toWindow: newWindow)
     }
 
-    fileprivate func setHighlight(_ on: Bool) {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        setHighlight(hovered)
+    }
+
+    func setHighlight(_ on: Bool) {
+        hovered = on
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = on ? NSColor.labelColor.withAlphaComponent(0.08).cgColor : nil
+            layer?.backgroundColor = fill(hovered: on)?.cgColor
         }
+    }
+
+    /// A cloud crumb keeps its tint and deepens it under the pointer; others show a hover fill only.
+    private func fill(hovered on: Bool) -> NSColor? {
+        guard let cloud else { return on ? NSColor.labelColor.withAlphaComponent(0.08) : nil }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return cloud.tint.withAlphaComponent(on ? (dark ? 0.32 : 0.22) : (dark ? 0.24 : 0.14))
     }
 }
 
@@ -718,5 +786,19 @@ final class ChevronButton: NSButton {
     @objc private func pick(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         navigate(url)
+    }
+}
+
+extension CloudProvider {
+    /// Each service's own brand color, which the cloud crumb is tinted with.
+    var tint: NSColor {
+        switch self {
+        case .dropbox: NSColor(srgbRed: 0x00 / 255, green: 0x61 / 255, blue: 0xFE / 255, alpha: 1)
+        case .googleDrive: NSColor(srgbRed: 0x1A / 255, green: 0x73 / 255, blue: 0xE8 / 255, alpha: 1)
+        case .oneDrive: NSColor(srgbRed: 0x00 / 255, green: 0x78 / 255, blue: 0xD4 / 255, alpha: 1)
+        case .box: NSColor(srgbRed: 0x00 / 255, green: 0x61 / 255, blue: 0xD5 / 255, alpha: 1)
+        case .iCloud: .systemBlue
+        case .other: .controlAccentColor
+        }
     }
 }

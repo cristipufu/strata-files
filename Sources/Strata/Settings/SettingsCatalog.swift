@@ -21,7 +21,7 @@ nonisolated enum SettingID: String, CaseIterable, Sendable {
     case language, hiddenFiles, foldersFirst, addressBars, reopenWindows, archives, returnKey, newWindowFolder
     case newFileExtension, updates, verifyCopies, dockSearch, defaultFileBrowser, commandLine
     case indexFiles, rebuildIndex, excludedFolders, fullDiskAccess, searchSyntax, terminalApp
-    case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, shortcuts
+    case appearance, colorTheme, windowTint, density, textSize, alternatingRows, iconPreviews, cloudRootCrumbs, shortcuts
     case folderView, folderSort, iconSize, itemInfo, folderInfo, listColumns, nameExtensions
 
     var requiresFolder: Bool { [.folderView, .folderSort, .iconSize].contains(self) }
@@ -64,6 +64,8 @@ enum SettingsCatalog {
         entry(.textSize, .appearance, "Text size", "font text size typography"),
         entry(.alternatingRows, .appearance, "Alternating row colors", "zebra stripes alternating rows"),
         entry(.iconPreviews, .appearance, "Show icon previews", "thumbnails icons pictures previews"),
+        entry(.cloudRootCrumbs, .appearance, "Show cloud folders as their own place",
+              "dropbox icloud google drive onedrive box cloud storage path bar breadcrumbs"),
         entry(.shortcuts, .shortcuts, "Shortcuts", "keyboard shortcuts key bindings hotkeys"),
         entry(.folderView, .viewOptions, "View", "folder view mode icons gallery columns use as defaults reset"),
         entry(.folderSort, .viewOptions, "Sort By", "folder sorting ascending descending reverse order"),
