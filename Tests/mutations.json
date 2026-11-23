@@ -1269,8 +1269,8 @@
   },
   {
     "file": "Strata/Views/ColumnPane.swift",
-    "find": "        directoryReads.invalidate()\n        watchersOpening?.cancel()",
-    "replace": "        watchersOpening?.cancel()",
+    "find": "        directoryReads.invalidate()\n        listingWatch = nil",
+    "replace": "        listingWatch = nil",
     "rule": "Directory read ownership removed columns apply outstanding reads",
     "tests": "DirectoryReadSessionTests/columnsRejectStaleReadsAndStopApplyingAfterTeardown"
   },

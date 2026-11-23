@@ -35,9 +35,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     /// Shown instead of rows when the folder can't be read.
     private let message = NSTextField(wrappingLabelWithString: "")
     private let listingStatus = NSTextField(labelWithString: "")
-    private var watchers: [DirectoryWatcher] = []
+    private var listingWatch: ListingWatch?
     private var watchedFolder: URL?
-    private var watchersOpening: Task<Void, Never>?
     let directoryReads: DirectoryReadSession
     private var generation: Int { directoryReads.generation }
     private var suppressSelection = false
@@ -171,9 +170,8 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tearDown() {
         directoryReads.invalidate()
-        watchersOpening?.cancel()
+        listingWatch = nil
         watchedFolder = nil
-        watchers = []
     }
 
     // MARK: Loading
@@ -192,24 +190,19 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private func watch(_ watched: URL) -> Task<Void, Never> {
         watchedFolder = watched
         let directories = (controller?.applicationFolders ?? .standard).directories(for: watched)
-        watchersOpening?.cancel()
-        let opened = Self.open(directories) { [weak self] in self?.reload() }
-        watchersOpening = Task { [weak self] in
-            let watchers = await opened.value
-            guard let self, !Task.isCancelled, watchedFolder == watched else { return }
-            self.watchers = watchers
-        }
-        return Self.ready(opened)
+        let watch = ListingWatch(directories, changed: { [weak self] in self?.reload() },
+                                 filesChanged: { [weak self] in self?.reloadChangedFiles($0) })
+        listingWatch = watch
+        return watch.ready
     }
 
-    /// Opened away from the main actor, so the read waiting for them never waits for it.
-    nonisolated private static func open(_ folders: [URL], onChange: @escaping @MainActor @Sendable () -> Void)
-        -> Task<[DirectoryWatcher], Never> {
-        Task { await DirectoryWatcher.watching(folders, onChange: onChange) }
-    }
-
-    nonisolated private static func ready(_ opened: Task<[DirectoryWatcher], Never>) -> Task<Void, Never> {
-        Task { _ = await opened.value }
+    /// `current`: files of this column's folder as they are now. One listed with another size or date reads the folder
+    /// again, unless a read is under way: that one reads them anew.
+    func reloadChangedFiles(_ current: [FileEntry]) {
+        guard directoryReads.task == nil else { return }
+        let listed = Dictionary(entries.map { ($0.locationKey, $0) }, uniquingKeysWith: { first, _ in first })
+        guard current.contains(where: { ListingWatch.differs(listed[$0.locationKey], from: $0) }) else { return }
+        reload()
     }
 
     func reload(after watched: Task<Void, Never>? = nil) {
@@ -230,7 +223,7 @@ final class ColumnPane: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let progressive = !isLoaded && sortedBy != nil
         statuses.tags.invalidate(folder)
         directoryReads.load(folder, showHidden: showHidden, applications: applications,
-                            sortedBy: sortedBy, after: watched, progressive: progressive,
+                            sortedBy: sortedBy, after: watched ?? listingWatch?.ready, progressive: progressive,
                             progress: { [weak self] listing, _ in
                                 guard let self else { return }
                                 spinner.stopAnimation(nil)
