@@ -151,9 +151,9 @@
   },
   {
     "file": "Sources/Strata/Toolbar/PathBar.swift",
-    "code": "layer?.backgroundColor = on ? NSColor.labelColor.withAlphaComponent(0.08).cgColor : nil",
+    "code": "layer?.backgroundColor = fill(hovered: on)?.cgColor",
     "count": 1,
-    "reason": "The breadcrumb hover fill is translucent semantic ink over the existing toolbar surface."
+    "reason": "The breadcrumb hover fill is translucent semantic ink over the existing toolbar surface; a cloud account's crumb is tinted with its service's brand color (semantic artwork), kept translucent so labelColor text stays readable."
   },
   {
     "file": "Sources/Strata/Window/ConflictSheetController.swift",

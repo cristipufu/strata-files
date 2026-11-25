@@ -92,6 +92,7 @@ package final class Prefs: PreviewTextSettings {
         static let alternatingRows = "alternatingRows"
         static let showListNameExtensions = "showListNameExtensions"
         static let showIconPreviews = "showIconPreviews"
+        static let cloudRootCrumbs = "cloudRootCrumbs"
         static let sidebarShowsTree = "sidebarShowsTree"
         static let sortColumn = "sortColumn"
         static let sortAscending = "sortAscending"
@@ -351,6 +352,13 @@ package final class Prefs: PreviewTextSettings {
     package var showIconPreviews: Bool {
         get { defaults.object(forKey: Key.showIconPreviews) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.showIconPreviews); notifications.post(name: .appearanceChanged, object: nil) }
+    }
+
+    /// The path bar starts a cloud folder (Dropbox, iCloud Drive…) with its account, in place of Home › Library ›
+    /// CloudStorage.
+    package var cloudRootCrumbs: Bool {
+        get { defaults.object(forKey: Key.cloudRootCrumbs) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.cloudRootCrumbs); notifications.post(name: .appearanceChanged, object: nil) }
     }
 
     /// Read every copied file back and compare it with the original (slower; catches failing disks and cables).

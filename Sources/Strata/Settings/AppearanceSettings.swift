@@ -8,6 +8,7 @@ struct AppearanceSettings: View {
     @State private var size = Prefs.shared.nameTextSize
     @State private var alternatingRows = Prefs.shared.alternatingRows
     @State private var previews = Prefs.shared.showIconPreviews
+    @State private var cloudRoots = Prefs.shared.cloudRootCrumbs
 
     var body: some View {
         Form {
@@ -73,6 +74,12 @@ struct AppearanceSettings: View {
                 Text("Applies to the list, columns and icons in every window.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section("Folders") {
+                Toggle(isOn: Binding(get: { cloudRoots }, set: { cloudRoots = $0; Prefs.shared.cloudRootCrumbs = $0 })) {
+                    Text("Show cloud folders as their own place")
+                    Text("Dropbox, iCloud Drive and other synced folders start the path bar with their own tinted crumb, in place of Home › Library › CloudStorage.")
+                }.settingAnchor(.cloudRootCrumbs)
             }
         }
         .formStyle(.grouped)
